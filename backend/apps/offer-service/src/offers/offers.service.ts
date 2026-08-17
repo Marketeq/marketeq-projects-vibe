@@ -26,6 +26,14 @@ import {
 import { OfferHistoryService } from '../offer-history/offer-history.service';
 import { OfferTermsSnapshot } from '../offer-history/entities/offer-history-event.entity';
 import { OFFER_CONSTANTS } from '../common/constants/offer.constants';
+import { UserRole } from '../common/types/user-role.enum';
+import { ListOffersQueryDto } from './dto/list-offers-query.dto';
+import { OfferListQueryBuilder } from './offer-list-query.builder';
+import {
+  LatestCounterOfferSummary,
+  OfferListItem,
+  PaginatedOfferListResponse,
+} from './interfaces/offer-response.interface';
 
 // Re-export for counter-offers service
 export { OfferConcurrentModificationException };
@@ -57,6 +65,96 @@ export class OffersService {
   // Backward-compat alias used by controller GET :id
   async findById(id: string): Promise<Offer> {
     return this.findByIdOrThrow(id);
+  }
+
+  // ============================================================
+  // list() — GET /v1/offers — role-scoped, paginated offers inbox
+  // ============================================================
+
+  /**
+   * userId/role come from the JWT (CurrentUser), never from the query
+   * string — OfferListQueryBuilder.resolvePartyFilter is the only thing
+   * that decides which column gets filtered, so a client can never widen
+   * the query to talent_id or vice versa.
+   */
+  async list(
+    userId: string,
+    role: UserRole,
+    query: ListOffersQueryDto,
+  ): Promise<PaginatedOfferListResponse> {
+    const partyFilter = OfferListQueryBuilder.resolvePartyFilter(role, userId);
+    const sortSpec = OfferListQueryBuilder.resolveSort(query.sort, query.order);
+    const offset = OfferListQueryBuilder.resolveOffset(query.page, query.limit);
+
+    const qb = this.offerRepo
+      .createQueryBuilder('o')
+      .where(`o.${partyFilter.column} = :partyId`, { partyId: partyFilter.value });
+
+    if (query.status && query.status.length > 0) {
+      qb.andWhere('o.status IN (:...statuses)', { statuses: query.status });
+    }
+
+    qb.orderBy(`o.${sortSpec.column}`, sortSpec.direction)
+      // Tie-breaker: createdAt/expiresAt aren't unique, so without a
+      // second key, rows on the boundary between two pages could shift
+      // between requests and either repeat or get skipped.
+      .addOrderBy('o.id', sortSpec.direction)
+      .skip(offset)
+      .take(query.limit);
+
+    const [offers, total] = await qb.getManyAndCount();
+
+    const latestCounterOffers = await this.fetchLatestCounterOffers(
+      offers.map((offer) => offer.id),
+    );
+
+    const data: OfferListItem[] = offers.map((offer) => ({
+      ...offer,
+      latestCounterOffer: latestCounterOffers.get(offer.id) ?? null,
+    }));
+
+    return { data, total, page: query.page, limit: query.limit };
+  }
+
+  // One extra query for the whole page (not one per row) — avoids the N+1
+  // a naive per-offer lookup would cause. DISTINCT ON (offer_id) with
+  // created_at DESC, id DESC picks exactly the latest counter-offer per
+  // offer id in a single pass.
+  private async fetchLatestCounterOffers(
+    offerIds: string[],
+  ): Promise<Map<string, LatestCounterOfferSummary>> {
+    const latestByOfferId = new Map<string, LatestCounterOfferSummary>();
+    if (offerIds.length === 0) return latestByOfferId;
+
+    const rows = await this.dataSource.query(
+      `
+        SELECT DISTINCT ON (offer_id)
+          id, offer_id, submitted_by, submitted_by_id, status,
+          rate, currency_code, duration_months, start_date, created_at
+        FROM offer_service.counter_offers
+        WHERE offer_id = ANY($1)
+        ORDER BY offer_id, created_at DESC, id DESC
+      `,
+      [offerIds],
+    );
+
+    for (const raw of rows) {
+      latestByOfferId.set(raw.offer_id, {
+        id: raw.id,
+        submittedBy: raw.submitted_by,
+        submittedById: raw.submitted_by_id,
+        status: raw.status,
+        rate: raw.rate,
+        currencyCode: raw.currency_code,
+        durationMonths: raw.duration_months,
+        startDate: raw.start_date,
+        createdAt: raw.created_at instanceof Date
+          ? raw.created_at.toISOString()
+          : raw.created_at,
+      });
+    }
+
+    return latestByOfferId;
   }
 
   // ============================================================

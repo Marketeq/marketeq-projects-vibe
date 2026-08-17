@@ -16,6 +16,7 @@ import { DeclineOfferDto } from './dto/decline-offer.dto';
 import { WithdrawOfferDto } from './dto/withdraw-offer.dto';
 import { ResendOfferDto } from './dto/resend-offer.dto';
 import { OfferHistoryQueryDto } from './dto/offer-history-query.dto';
+import { ListOffersQueryDto } from './dto/list-offers-query.dto';
 import { RolesGuard } from '../guards/roles.guard';
 import { OfferPartyGuard } from '../guards/offer-party.guard';
 import { IdempotencyInterceptor } from '../interceptors/idempotency.interceptor';
@@ -42,6 +43,27 @@ export class OffersController {
     return this.offersService.create(user.id, dto, clientJwt);
   }
  
+  // GET /v1/offers — offers inbox, scoped to the authenticated user by role.
+  // Declared ahead of GET :id (literal path, no collision either way since
+  // ':id' requires a path segment — same convention as the other literal
+  // routes in this file).
+  //
+  // Guarded exactly as GET :id: OfferPartyGuard only, no RolesGuard/@Roles —
+  // both clients and talents call this for their own inbox. OfferPartyGuard
+  // itself no-ops here (it only checks a :id/:offerId param, and there is
+  // none on this route — see its own "skip (creation endpoints)" comment).
+  // The actual authorization boundary is inside offersService.list(): the
+  // party (client_id or talent_id) is derived from the JWT-carried
+  // role+userId only, never from a query param.
+  @Get()
+  @UseGuards(OfferPartyGuard)
+  async listOffers(
+    @CurrentUser() user: any,
+    @Query() query: ListOffersQueryDto,
+  ) {
+    return this.offersService.list(user.id, user.role, query);
+  }
+
   // GET /v1/offers/:id
   @Get(':id')
   @UseGuards(OfferPartyGuard)
