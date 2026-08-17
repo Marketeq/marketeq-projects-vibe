@@ -1540,7 +1540,7 @@ export const TopMostHeader = ({
   const { authModalOpen, authModalView, openAuthModal, closeAuthModal } = useAuth()
 
   const router = useRouter()
-  const { logoutHandler, user, setUser, isAuthChecked } = useAuth()
+  const { logoutHandler, user, setUser } = useAuth()
 
   // Job details pages use the same marketplace secondary nav shell as the
   // homepage/category surfaces, so the primary header must coordinate with it.
@@ -1617,9 +1617,7 @@ export const TopMostHeader = ({
         </div>
 
         <div className="flex items-center">
-          {!isAuthChecked ? (
-          <div className="flex items-center gap-x-1 min-h-[40px] min-w-[88px]" aria-hidden />
-          ) : user ? (
+          {user ? (
           <>
           <div className="flex items-center gap-x-1">
             <InviteWindowTrigger asChild>
