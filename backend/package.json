@@ -63,6 +63,7 @@
     "@aws-sdk/client-s3": "^3.913.0",
     "@aws-sdk/s3-request-presigner": "^3.913.0",
     "@golevelup/nestjs-rabbitmq": "^4.1.0",
+    "@google/generative-ai": "^0.24.1",
     "@grpc/grpc-js": "^1.14.3",
     "@grpc/proto-loader": "^0.8.0",
     "@nestjs/axios": "^3.0.0",

@@ -58,12 +58,18 @@ function Calendar({
   focusedValue,
   onFocusedValueChange,
   className,
+  minValue,
 }: {
   value?: Date
   onValueChange?: (value: Date) => void
   focusedValue?: Date
   onFocusedValueChange?: (value: Date) => void
   className?: string
+  // Optional and additive — existing callers that don't pass it are
+  // unaffected. Forwarded to AriaCalendar's own minValue, which both
+  // visually disables and blocks selection of anything before it (not a
+  // CSS-only fake-disable that would still be clickable).
+  minValue?: Date
 }) {
   const [date, setDate] = React.useState<string>(() =>
     value ? format(value, "LLL d, yyyy") : format(new Date(), "LLL d, yyyy")
@@ -182,6 +188,7 @@ function Calendar({
           : undefined
       }
       value={state ? parseDate(format(state, "yyyy-MM-dd")) : undefined}
+      minValue={minValue ? parseDate(format(minValue, "yyyy-MM-dd")) : undefined}
       onFocusChange={onFocusChange}
       onChange={handleChange}
       className={cn(

@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation"
 import { cn } from "@/utils/functions"
 import {
   ArrowRight,
+  ChevronDown,
   ChevronLeft,
+  ChevronRight,
   MapPin,
   Plus,
   SearchMd,
@@ -25,16 +27,21 @@ import { ProjectAPI } from "@/service/http/project"
 import type { UserProfile } from "@/types/user"
 import NextImage from "@/components/next-image"
 import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
   Avatar,
   AvatarFallback,
   AvatarGroup,
   AvatarImage,
   Button,
+  Calendar,
   Dialog,
   DialogClose,
   DialogContent,
   DialogTitle,
   DialogTrigger,
+  DisclosureContent,
   ErrorMessage,
   IconButton,
   Input,
@@ -144,6 +151,11 @@ type ContractRow = {
   subtitle: string
   avatars: ContractRowAvatar[]
   extra?: string
+  // T3: carried through so the start-date estimate effect can call
+  // ProjectAPI.GetProjectDraft again for just the selected row, once the
+  // user actually reaches the offer-details step — the initial list-build
+  // fetch (T2-3) discards everything but title/subtitle/avatars.
+  projectId: string | null
 }
 
 // Duplicated rather than imported from talent-profile/page.tsx:110-116 —
@@ -173,6 +185,81 @@ const renderAvatarFallbackContent = (name?: string) =>
     <UserCircle className="size-full text-gray-400" />
   )
 
+// T3/FR-7/AC-11 + the weekend edge case: the closest Monday on or after
+// `date` — if `date` is already Monday, that counts (not forced a full
+// week out). Reused for both "no scope, fall back to next Monday" and
+// "a scope-derived date landed on a weekend, adjust to the following
+// Monday" — same closest-Monday-on-or-after math either way.
+const getNextMondayOnOrAfter = (date: Date): Date => {
+  const result = new Date(date)
+  result.setHours(0, 0, 0, 0)
+  const daysUntilMonday = (8 - result.getDay()) % 7
+  result.setDate(result.getDate() + daysUntilMonday)
+  return result
+}
+
+const isWeekendDate = (date: Date): boolean => {
+  const day = date.getDay()
+  return day === 0 || day === 6
+}
+
+// T3/FR-1/AC-8.1: no backend endpoint computes this. offer-service
+// specified it in full — offer-response.interface.ts's startDateDisplay
+// field carries the exact "Monday, Jan 30, 2025" string this file had
+// hardcoded, and a SCOPED_CONTRACT_TYPES array exists specifically to gate
+// "contract types where start date is suggested by listings-service scope"
+// — but SCOPED_CONTRACT_TYPES is never imported anywhere, and
+// listings.client.ts (offer-service's own client for talking to
+// listings-service) has exactly one method, validateListing. Specified,
+// never built. See TICKET-3-CHECKLIST.md for the full finding.
+//
+// Computing it client-side instead is a declared deviation from "the
+// estimate is calculated server-side" in the security line, not a hidden
+// one — acceptable here specifically because FR-6 lets the client select
+// ANY non-past date regardless of what this proposes. A tampered or wrong
+// estimate produces nothing the client couldn't already pick legitimately;
+// there's no privileged information in a proposed date.
+//
+// THE FORMULA (invented — nothing in any doc defines "derived from
+// project scope"): anchor = the project's own createdAt, the only date
+// field guaranteed present regardless of publish status
+// (projectDatePublished is null for drafts, which is most of this seed
+// data) + scope[0]'s startDay offset (first phase by order — the same
+// phase this file already uses for the row subtitle elsewhere). If that
+// lands in the past, or scope/the offset is unavailable at all, fall back
+// to the next Monday from today (FR-7/AC-11 — deliberately one fallback
+// for both cases, not two). If it lands on a genuine future weekend,
+// adjust to the following Monday — the edge case this ticket names
+// explicitly, and observable only for a real scope-derived date, since
+// getNextMondayOnOrAfter never itself returns a weekend date.
+//
+// Honest weakness: createdAt is a DB timestamp, not "when work begins" —
+// on this seed data (projects created weeks ago, small phase offsets)
+// this will often compute a past date and fall through to next-Monday
+// rather than a genuine scope-derived one. Expected, not a bug — no
+// better anchor exists anywhere in the data model today.
+const computeEstimatedStartDate = (
+  projectCreatedAt: Date | null,
+  startDayOffset: number | null | undefined
+): Date => {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  if (projectCreatedAt && typeof startDayOffset === "number") {
+    const candidate = new Date(projectCreatedAt)
+    candidate.setHours(0, 0, 0, 0)
+    candidate.setDate(candidate.getDate() + startDayOffset)
+
+    if (candidate >= today) {
+      return isWeekendDate(candidate)
+        ? getNextMondayOnOrAfter(candidate)
+        : candidate
+    }
+  }
+
+  return getNextMondayOnOrAfter(today)
+}
+
 // Edit mode edits one specific, already-known offer directly — it never
 // lists contracts, so it must never depend on the real fetched list below.
 // Before this was decoupled, edit mode seeded selectedContractId from
@@ -193,6 +280,9 @@ const EDIT_MODE_PLACEHOLDER_CONTRACT: ContractRow = {
     { url: "/man.jpg" },
   ],
   extra: "+5",
+  // T3: edit mode never runs the estimate-fetch effect (isExistingContractOfferStep
+  // excludes it), so this is inert — null purely to satisfy the type.
+  projectId: null,
 }
 
 // T2-17: one talent, resolved once, from either UserAPI.getProfile's
@@ -249,6 +339,7 @@ const buildFallbackContractRow = (
       group.members.length > 5
         ? `+${group.members.length - 5}`
         : undefined,
+    projectId: group.projectId,
   }
 }
 
@@ -289,6 +380,7 @@ const hydrateContractRow = async (
       group.members.length > 5
         ? `+${group.members.length - 5}`
         : undefined,
+    projectId: group.projectId,
   }
 }
 
@@ -393,6 +485,7 @@ export function OfferDialog({
   // the highlight renders before schedule commits and the screen advances.
   const [pendingSchedule, setPendingSchedule] = React.useState("")
   const modalScrollViewportRef = React.useRef<HTMLDivElement>(null)
+  const startDateAccordionRef = React.useRef<HTMLDivElement>(null)
   const [modalScrollThumb, setModalScrollThumb] = React.useState({
     height: 0,
     offset: 0,
@@ -458,6 +551,34 @@ export function OfferDialog({
   const [selectedStartDateAction, setSelectedStartDateAction] = React.useState(
     initialState.selectedStartDateAction
   )
+  const [confirmStartDateOpen, setConfirmStartDateOpen] = React.useState(false)
+  // T3: FR-7/AC-11's fallback, not an arbitrary placeholder — this is the
+  // correct starting assumption before the estimate effect below has a
+  // chance to resolve (or fails to), not a "wrong until fetched" stopgap
+  // the way the old hardcoded 2025-01-30 was.
+  const [selectedStartDate, setSelectedStartDate] = React.useState(() =>
+    getNextMondayOnOrAfter(new Date())
+  )
+  const [focusedStartDate, setFocusedStartDate] = React.useState(() =>
+    getNextMondayOnOrAfter(new Date())
+  )
+  const [startDateCalendarOpen, setStartDateCalendarOpen] =
+    React.useState(false)
+  // T3/FR-9: mirrors groupsFetchError's shape and reasoning exactly — one
+  // "data" value covering both offline and a genuine fetch failure, not
+  // two strings that could say something different about the same event.
+  const [isLoadingStartDateEstimate, setIsLoadingStartDateEstimate] =
+    React.useState(false)
+  const [startDateEstimateError, setStartDateEstimateError] = React.useState<
+    "data" | null
+  >(null)
+  const [startDateRetryToken, setStartDateRetryToken] = React.useState(0)
+  const selectedStartDateLabel = selectedStartDate.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
   const [contractTitle, setContractTitle] = React.useState(
     initialState.contractTitle
   )
@@ -644,6 +765,34 @@ export function OfferDialog({
     return () => cancelAnimationFrame(animationFrame)
   }, [currentScreen, existingContracts.length, open, syncModalScrollThumb])
 
+  React.useEffect(() => {
+    if (selectedStartDateAction !== "change") return
+
+    const timeout = setTimeout(() => {
+      const viewport = modalScrollViewportRef.current
+      if (!viewport) return
+
+      if (startDateCalendarOpen) {
+        viewport.scrollTo({
+          top: viewport.scrollHeight,
+          behavior: "smooth",
+        })
+      } else {
+        startDateAccordionRef.current?.scrollIntoView({
+          block: "nearest",
+          behavior: "smooth",
+        })
+      }
+      syncModalScrollThumb()
+    }, 300)
+
+    return () => clearTimeout(timeout)
+  }, [
+    selectedStartDateAction,
+    startDateCalendarOpen,
+    syncModalScrollThumb,
+  ])
+
   const screenTransition = {
     duration: 0.26,
     ease: [0.22, 1, 0.36, 1] as const,
@@ -730,6 +879,13 @@ export function OfferDialog({
     setSelectedRate(initialState.selectedRate)
     setSelectedDuration(initialState.selectedDuration)
     setSelectedStartDateAction(initialState.selectedStartDateAction)
+    setConfirmStartDateOpen(false)
+    setSelectedStartDate(getNextMondayOnOrAfter(new Date()))
+    setFocusedStartDate(getNextMondayOnOrAfter(new Date()))
+    setStartDateCalendarOpen(false)
+    setIsLoadingStartDateEstimate(false)
+    setStartDateEstimateError(null)
+    setStartDateRetryToken(0)
     setContractTitle(initialState.contractTitle)
     setIsSubmittingOffer(false)
     setAddMemberError(null)
@@ -748,6 +904,100 @@ export function OfferDialog({
     clearScheduleCommitTimeout()
     setPendingSchedule("")
   }, [initialState, clearScheduleCommitTimeout, mode])
+
+  // T3/FR-1/AC-8.1: fetches the estimated start date on entering the
+  // offer-details step. Mirrors the groups-fetch effect's shape exactly
+  // (offline pre-flight before the loading flag, isActive cleanup guard,
+  // 401 via the shared sessionExpiredRedirecting module flag, inline
+  // error + retry rather than a silent fallback on genuine failure).
+  React.useEffect(() => {
+    if (!isOfferDetailsStep) return
+
+    // FR-8: once the user has confirmed or changed a date this session,
+    // this effect never runs again for it — matches how selectedRate/
+    // selectedDuration already behave (flow-level state, not re-derived
+    // on every re-entry into this step). Re-entering this step for the
+    // SAME selection (e.g. Change Contract, then picking the same
+    // contract again) must not silently overwrite what the user already
+    // decided.
+    if (selectedStartDateAction !== "") return
+
+    if (!isExistingContractOfferStep || !selectedContract?.projectId) {
+      // isStepFour (brand-new contract) or the zero-existing-contracts
+      // skip-through case: there is no project to derive scope from at
+      // all — FR-7's fallback applies unconditionally here, not just on
+      // a fetch failure below.
+      const next = getNextMondayOnOrAfter(new Date())
+      setSelectedStartDate(next)
+      setFocusedStartDate(next)
+      return
+    }
+
+    // Checked and returned on BEFORE setIsLoadingStartDateEstimate(true)
+    // — same ordering as every other offline pre-flight in this file;
+    // flipping the flag first and returning here would pin the skeleton
+    // forever with nothing left to clear it.
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast({
+        variant: "destructive",
+        description:
+          "You appear to be offline. Please check your connection and try again.",
+        duration: 5000,
+      })
+      setStartDateEstimateError("data")
+      setIsLoadingStartDateEstimate(false)
+      return
+    }
+
+    let isActive = true
+    setIsLoadingStartDateEstimate(true)
+    setStartDateEstimateError(null)
+
+    ProjectAPI.GetProjectDraft(selectedContract.projectId)
+      .then((res) => {
+        if (!isActive) return
+        const projectData = res?.data ?? {}
+        const scope = Array.isArray(projectData.scope) ? projectData.scope : []
+        const createdAt = projectData.createdAt
+          ? new Date(projectData.createdAt)
+          : null
+        const estimate = computeEstimatedStartDate(
+          createdAt,
+          scope[0]?.startDay
+        )
+        setSelectedStartDate(estimate)
+        setFocusedStartDate(estimate)
+      })
+      .catch((error) => {
+        if (!isActive) return
+
+        if (error?.response?.status === 401) {
+          if (!sessionExpiredRedirecting) {
+            sessionExpiredRedirecting = true
+            const returnTo = `${window.location.pathname}${window.location.search}`
+            window.location.href = `/sign-in?redirect=${encodeURIComponent(returnTo)}&sessionExpired=1`
+          }
+          return
+        }
+
+        // FR-9: inline error + retry, not a silent fallback to
+        // next-Monday — a genuine fetch failure is a different, worse
+        // signal than "scope legitimately doesn't exist" and must say so.
+        setStartDateEstimateError("data")
+      })
+      .finally(() => {
+        if (isActive) setIsLoadingStartDateEstimate(false)
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [
+    isOfferDetailsStep,
+    isExistingContractOfferStep,
+    selectedContract?.projectId,
+    startDateRetryToken,
+  ])
 
   const tryConfirmCustomSchedule = (hours: string, frequency: string) => {
     const parsedHours = Number(hours)
@@ -1837,75 +2087,237 @@ export function OfferDialog({
                         </div>
                       ) : null}
 
-                      {isStepThree ? (
+                      {isOfferDetailsStep ? (
                         <div className="mt-7">
-                          <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
-                            Confirm Start Date
-                          </h2>
-                          <p className="mt-3 text-[13px] font-light leading-normal text-gray-500">
-                            Based on the project scope, the anticipated start
-                            date is
-                            <br />
-                            <span className="font-semibold text-dark-blue-400">
-                              Monday, Jan 30, 2025
-                            </span>
-                          </p>
-                          <div className="mt-4 grid grid-cols-2 gap-3">
-                            <Button
-                              variant="outlined"
-                              visual="gray"
-                              className={
-                                selectedStartDateAction === "confirm"
-                                  ? "border-2 border-primary-500 text-primary-500"
-                                  : ""
-                              }
-                              onClick={() =>
-                                setSelectedStartDateAction("confirm")
-                              }
-                            >
-                              Confirm Start Date
-                            </Button>
-                            <Button
-                              variant="outlined"
-                              visual="gray"
-                              className={
-                                selectedStartDateAction === "change"
-                                  ? "border-2 border-primary-500 text-primary-500"
-                                  : ""
-                              }
-                              onClick={() =>
-                                setSelectedStartDateAction("change")
-                              }
-                            >
-                              Change Date
-                            </Button>
-                          </div>
-                          {selectedStartDateActionError ? (
-                            <ErrorMessage className="mt-2">
-                              {selectedStartDateActionError}
-                            </ErrorMessage>
+                          {/* T3/FR-9: same skeleton -> error+retry -> content
+                          priority chain as T2-4/T2-5's contracts list —
+                          mutually exclusive states, not independent
+                          {cond && ...} blocks. */}
+                          {isLoadingStartDateEstimate ? (
+                            <div className="space-y-3">
+                              <Shimmer className="h-3.5 w-32" />
+                              <Shimmer className="h-3 w-full max-w-[280px]" />
+                              <div className="mt-4 grid grid-cols-2 gap-3">
+                                <Shimmer className="h-9 w-full rounded-[5px]" />
+                                <Shimmer className="h-9 w-full rounded-[5px]" />
+                              </div>
+                            </div>
+                          ) : startDateEstimateError ? (
+                            <div className="text-center">
+                              <ErrorMessage className="mt-1">
+                                We couldn&apos;t load the date picker. Please
+                                try again.
+                              </ErrorMessage>
+                              <Button
+                                visual="gray"
+                                variant="outlined"
+                                className="mt-2"
+                                onClick={() =>
+                                  setStartDateRetryToken((t) => t + 1)
+                                }
+                              >
+                                Retry
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              {selectedStartDateAction !== "change" ? (
+                                <>
+                                  <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
+                                    Confirm Start Date
+                                  </h2>
+                                  <p className="mt-3 text-[13px] font-light leading-normal text-gray-500">
+                                    Based on the project scope, the
+                                    anticipated start date is
+                                    <br />
+                                    <span className="font-semibold text-dark-blue-400">
+                                      {selectedStartDateLabel}
+                                    </span>
+                                  </p>
+                                </>
+                              ) : null}
+                              <div
+                                className={cn(
+                                  "grid grid-cols-2 gap-3",
+                                  selectedStartDateAction !== "change"
+                                    ? "mt-4"
+                                    : ""
+                                )}
+                              >
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  className={
+                                    selectedStartDateAction === "confirm"
+                                      ? "border-2 border-primary-500 text-primary-500"
+                                      : ""
+                                  }
+                                  onClick={() => setConfirmStartDateOpen(true)}
+                                >
+                                  Confirm Start Date
+                                </Button>
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  className={
+                                    selectedStartDateAction === "change"
+                                      ? "border-2 border-primary-500 text-primary-500"
+                                      : ""
+                                  }
+                                  onClick={() => {
+                                    setSelectedStartDateAction("change")
+                                    setStartDateCalendarOpen(true)
+                                  }}
+                                >
+                                  Change Date
+                                </Button>
+                              </div>
+                              {selectedStartDateActionError ? (
+                                <ErrorMessage className="mt-2">
+                                  {selectedStartDateActionError}
+                                </ErrorMessage>
+                              ) : null}
+
+                              {selectedStartDateAction === "change" ? (
+                                <div className="mt-7">
+                                  <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
+                                    Select A Start Date
+                                  </h2>
+                                  <Accordion
+                                    type="single"
+                                    collapsible
+                                    value={
+                                      startDateCalendarOpen ? "start-date" : ""
+                                    }
+                                    onValueChange={(value) =>
+                                      setStartDateCalendarOpen(
+                                        value === "start-date"
+                                      )
+                                    }
+                                  >
+                                    <AccordionItem
+                                      ref={startDateAccordionRef}
+                                      value="start-date"
+                                    >
+                                      <AccordionTrigger asChild>
+                                        <Button
+                                          variant="outlined"
+                                          visual="gray"
+                                          className="mt-3 w-full justify-between"
+                                        >
+                                          {selectedStartDateLabel}
+                                          <ChevronDown className="size-4 text-gray-500 transition-transform group-data-[state=open]/trigger:rotate-180" />
+                                        </Button>
+                                      </AccordionTrigger>
+                                      <DisclosureContent className="shadow-xl">
+                                        <div className="relative mt-1">
+                                          <span className="absolute left-6 top-5 z-10 flex items-center gap-0.5 text-[14px] font-semibold leading-normal text-dark-blue-400">
+                                            {focusedStartDate.getFullYear()}
+                                            <ChevronRight className="size-4 text-primary-500" />
+                                          </span>
+                                          <Calendar
+                                        className="w-full shadow-none [&>div]:hidden [&>header]:justify-end [&>header]:gap-2 [&>header>h2]:hidden [&>header_svg]:text-primary-500 [&_table]:!mt-0 [&_table]:w-full [&_th]:relative [&_th]:text-center [&_th]:text-transparent [&_th]:before:absolute [&_th]:before:inset-0 [&_th]:before:flex [&_th]:before:items-center [&_th]:before:justify-center [&_th]:before:text-[11px] [&_th]:before:text-gray-400 [&_th:nth-child(1)]:before:content-['SUN'] [&_th:nth-child(2)]:before:content-['MON'] [&_th:nth-child(3)]:before:content-['TUE'] [&_th:nth-child(4)]:before:content-['WED'] [&_th:nth-child(5)]:before:content-['THU'] [&_th:nth-child(6)]:before:content-['FRI'] [&_th:nth-child(7)]:before:content-['SAT'] [&_td]:text-center [&_[data-outside-month]]:invisible [&_[data-hovered]:not([data-selected])]:!bg-transparent [&_[data-today]:not([data-selected])]:!bg-transparent [&_[data-today]:not([data-selected])]:!text-primary-500 [&_[data-selected]]:!bg-primary-50 [&_[data-selected]]:!text-primary-500"
+                                            value={selectedStartDate}
+                                            // FR-6/AC-10.3: past dates
+                                            // disabled — forwarded to
+                                            // AriaCalendar's own minValue,
+                                            // which blocks selection, not
+                                            // just styles it gray.
+                                            minValue={new Date()}
+                                            onValueChange={(date) => {
+                                              setSelectedStartDate(date)
+                                              setFocusedStartDate(date)
+                                              setSelectedStartDateAction(
+                                                "change"
+                                              )
+                                              setStartDateCalendarOpen(false)
+                                            }}
+                                            focusedValue={focusedStartDate}
+                                            onFocusedValueChange={
+                                              setFocusedStartDate
+                                            }
+                                          />
+                                        </div>
+                                      </DisclosureContent>
+                                    </AccordionItem>
+                                  </Accordion>
+                                </div>
+                              ) : null}
+                            </>
+                          )}
+
+                          {!startDateCalendarOpen ? (
+                            <div className="mt-7">
+                              <div className="flex items-center justify-between gap-3">
+                                <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
+                                  Add a Message
+                                </h2>
+                                <span className="text-[12px] font-light leading-normal text-gray-500">
+                                  Optional
+                                </span>
+                              </div>
+                              <Textarea
+                                className="mt-3 min-h-[110px]"
+                                placeholder="Write your message"
+                                value={message}
+                                onChange={(event) =>
+                                  setMessage(event.target.value)
+                                }
+                              />
+                            </div>
                           ) : null}
+
+                          <Dialog
+                            open={confirmStartDateOpen}
+                            onOpenChange={setConfirmStartDateOpen}
+                          >
+                            <DialogContent className="max-w-[440px] rounded-[12px] p-0">
+                              <div className="flex h-[52px] items-center justify-between border-b border-gray-200 px-3 py-2">
+                                <DialogTitle className="text-[16px] font-semibold leading-normal text-dark-blue-400">
+                                  Confirm Start Date
+                                </DialogTitle>
+                                <DialogClose asChild>
+                                  <IconButton
+                                    variant="ghost"
+                                    visual="gray"
+                                    size="sm"
+                                  >
+                                    <X className="size-5" />
+                                  </IconButton>
+                                </DialogClose>
+                              </div>
+
+                              <div className="px-6 pb-6 pt-5">
+                                <p className="text-[14px] font-light leading-normal text-dark-blue-400">
+                                  Start on {selectedStartDateLabel}?
+                                </p>
+                                <div className="mt-5 grid grid-cols-2 gap-3">
+                                  <Button
+                                    variant="outlined"
+                                    visual="gray"
+                                    onClick={() => {
+                                      setConfirmStartDateOpen(false)
+                                      setSelectedStartDateAction("change")
+                                      setStartDateCalendarOpen(true)
+                                    }}
+                                  >
+                                    Change date
+                                  </Button>
+                                  <Button
+                                    onClick={() => {
+                                      setSelectedStartDateAction("confirm")
+                                      setConfirmStartDateOpen(false)
+                                    }}
+                                  >
+                                    {selectedStartDateLabel}
+                                  </Button>
+                                </div>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
                         </div>
                       ) : null}
 
-                      {isOfferDetailsStep ? (
-                        <div className="mt-7">
-                          <div className="flex items-center justify-between gap-3">
-                            <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
-                              Add a Message
-                            </h2>
-                            <span className="text-[12px] font-light leading-normal text-gray-500">
-                              Optional
-                            </span>
-                          </div>
-                          <Textarea
-                            className="mt-3 min-h-[110px]"
-                            placeholder="Write your message"
-                            value={message}
-                            onChange={(event) => setMessage(event.target.value)}
-                          />
-                        </div>
-                      ) : null}
                     </>
                   )}
                 </motion.div>
@@ -1957,7 +2369,7 @@ export function OfferDialog({
               </div>
             ) : null}
           </div>
-          {isOfferDetailsStep ? (
+          {isOfferDetailsStep && !startDateCalendarOpen ? (
             <div className="shrink-0 border-t border-gray-200 bg-white px-6 py-4">
               {/* ERR-007: inline, not a toast (that's ERR-006 below). The
               Change Contract button above is the recovery path this error

@@ -11,7 +11,7 @@ export interface ResumeParsingConfig {
   maxExtractedChars: number;
   hardRejectChars: number;
   nearEmptyTextChars: number;
-  anthropicApiKey: string;
+  geminiApiKey: string;
   modelId: string;
   modelMaxOutputTokens: number;
   modelTemperature: number;
@@ -31,8 +31,8 @@ export function loadConfig(): ResumeParsingConfig {
     maxExtractedChars: parseInt(process.env.MAX_EXTRACTED_CHARS || '150000', 10),
     hardRejectChars: parseInt(process.env.HARD_REJECT_CHARS || '500000', 10),
     nearEmptyTextChars: parseInt(process.env.NEAR_EMPTY_TEXT_CHARS || '50', 10),
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
-    modelId: process.env.MODEL_ID || 'claude-haiku-4-5-20251001',
+    geminiApiKey: process.env.GEMINI_API_KEY || '',
+    modelId: process.env.MODEL_ID || 'gemini-2.0-flash',
     modelMaxOutputTokens: parseInt(process.env.MODEL_MAX_OUTPUT_TOKENS || '16384', 10),
     modelTemperature: parseFloat(process.env.MODEL_TEMPERATURE || '0'),
   };
@@ -52,8 +52,8 @@ export function loadConfig(): ResumeParsingConfig {
     );
   }
 
-  if (config.nodeEnv === 'production' && !config.anthropicApiKey) {
-    throw new Error('ANTHROPIC_API_KEY is required in production');
+  if (config.nodeEnv === 'production' && !config.geminiApiKey) {
+    throw new Error('GEMINI_API_KEY is required in production');
   }
 
   if (config.nodeEnv === 'production' && !config.serviceAuthToken) {
