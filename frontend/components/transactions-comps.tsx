@@ -60,7 +60,11 @@ import {
   StripeDefault,
 } from "@blend-metrics/icons/payment-methods"
 import { type Stripe as StripeJSInstance, loadStripe } from "@stripe/stripe-js"
-import { format as formatDate, formatDistanceToNowStrict, parseISO } from "date-fns"
+import {
+  format as formatDate,
+  formatDistanceToNowStrict,
+  parseISO,
+} from "date-fns"
 import { QRCodeSVG } from "qrcode.react"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import {
@@ -91,17 +95,19 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DoubleCalendar,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DualCalendar,
   IconButton,
   Input,
   NumberInput,
+  HeadlessRadioGroupItem,
   Popover,
   PopoverContent,
   PopoverTrigger,
+  RadioGroup,
   ScrollArea,
   SearchField,
   SearchFieldButton,
@@ -9463,6 +9469,121 @@ const DATE_API_TO_PRESET: Record<string, string> = {
   custom: "custom range",
 }
 
+// Read-only design system rule (CLAUDE.md): components/ui/calendar/calendar.tsx
+// is Storybook source, never edited. DualCalendar's own Sidebar preset buttons
+// only scroll the visible month (no "select this preset's actual date range"
+// behavior) — so the preset list and the "Custom range" option live here
+// instead, composed from DualCalendar's own onCancel/onApply/value props
+// (all present, unmodified, in the exported component) rather than by adding
+// new props to the read-only file. Non-custom presets commit immediately
+// (see DateRangeFilterPopoverContent) so DualCalendar never needs a
+// preset-derived starting range.
+
+const DATE_PRESET_RADIO_ITEMS = [
+  "today", "yesterday", "this week", "last week", "this month",
+  "last month", "this year", "last year", "all time", "custom range",
+]
+
+function DateRangeSidebar({
+  preset,
+  onPresetChange,
+}: {
+  preset: string
+  onPresetChange: (preset: string) => void
+}) {
+  return (
+    <RadioGroup
+      value={preset}
+      onValueChange={onPresetChange}
+      className="flex flex-col items-start gap-1 w-[192px] py-3 px-4 border-r border-gray-200"
+    >
+      {DATE_PRESET_RADIO_ITEMS.map((item) => (
+        // Figma "_Date picker list item": plain text row, no visible radio
+        // circle — @/components/ui's styled RadioGroupItem always discards
+        // its children (renders only a bare indicator dot), so this uses the
+        // unstyled HeadlessRadioGroupItem primitive instead, styled to match
+        // the spec directly (10px/16px padding, 14px medium, #F9FAFB when
+        // checked).
+        <HeadlessRadioGroupItem
+          key={item}
+          value={item}
+          className="w-full text-left rounded-md flex items-center h-10 py-2.5 px-4 text-sm font-medium text-gray-700 capitalize data-[state=checked]:bg-gray-50 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-100"
+        >
+          {item}
+        </HeadlessRadioGroupItem>
+      ))}
+    </RadioGroup>
+  )
+}
+
+// Composed entirely from DualCalendar's own existing, unmodified props
+// (value/onCancel/onApply). Non-custom presets commit immediately without
+// ever touching DualCalendar, so it only mounts for "custom range" — and
+// stays mounted for the life of the popover (no key-forced remount). An
+// earlier version remounted DualCalendar on every preset click via
+// key={preset}, which raced Radix RadioGroup's roving-focus management on
+// the sidebar underneath it and caused a "Maximum update depth exceeded"
+// loop.
+function DateRangeFilterPopoverContent({
+  dateRange,
+  dateFrom,
+  dateTo,
+  defaultPreset,
+  onCommit,
+  onCancel,
+}: {
+  dateRange: string
+  dateFrom: string
+  dateTo: string
+  defaultPreset: string
+  onCommit: (apiDateRange: string, from: string, to: string) => void
+  onCancel: () => void
+}) {
+  const initialPreset = DATE_API_TO_PRESET[dateRange] ?? defaultPreset
+  const [preset, setPreset] = React.useState(initialPreset)
+
+  const handlePresetChange = React.useCallback((next: string) => {
+    setPreset(next)
+    if (next === "custom range") return
+    onCommit(DATE_PRESET_TO_API[next] ?? "all_time", "", "")
+  }, [onCommit])
+
+  // DualCalendar re-renders on its own internal state (e.g. every date
+  // click), which re-invokes the left() render-prop below. Memoizing the
+  // sidebar element keeps that a no-op reconciliation instead of handing
+  // Radix's RadioGroup a brand-new element/child tree on every keystroke —
+  // the latter was the actual cause of the "Maximum update depth exceeded"
+  // crash (Radix's roving-focus bookkeeping re-firing in a loop).
+  const sidebar = React.useMemo(
+    () => <DateRangeSidebar preset={preset} onPresetChange={handlePresetChange} />,
+    [preset, handlePresetChange]
+  )
+
+  if (preset !== "custom range") {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 shadow-xl">
+        {sidebar}
+      </div>
+    )
+  }
+
+  return (
+    <DualCalendar
+      value={
+        dateFrom && dateTo
+          ? { start: parseISO(dateFrom), end: parseISO(dateTo) }
+          : undefined
+      }
+      onCancel={onCancel}
+      onApply={(applied) => {
+        if (!applied) return
+        onCommit("custom", formatDate(applied.start, "yyyy-MM-dd"), formatDate(applied.end, "yyyy-MM-dd"))
+      }}
+      left={() => sidebar}
+    />
+  )
+}
+
 export interface EarningsFilters {
   dateRange: string
   startDate?: string
@@ -10070,26 +10191,16 @@ export const EarningsTab = ({
             collisionPadding={16}
           >
             {datePickerOpen ? (
-              <DoubleCalendar
-                key={`${dateRange}-${dateFrom}-${dateTo}`}
-                preset={DATE_API_TO_PRESET[dateRange] ?? "this month"}
-                value={
-                  dateFrom && dateTo
-                    ? { start: parseISO(dateFrom), end: parseISO(dateTo) }
-                    : undefined
-                }
+              <DateRangeFilterPopoverContent
+                dateRange={dateRange}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                defaultPreset="this month"
                 onCancel={() => setDatePickerOpen(false)}
-                onApply={(range, preset) => {
-                  if (preset === "custom range" && !range) return
-                  const next = DATE_PRESET_TO_API[preset] ?? "this_month"
+                onCommit={(next, from, to) => {
                   setDateRange(next)
-                  if (next === "custom" && range) {
-                    setDateFrom(formatDate(range.start, "yyyy-MM-dd"))
-                    setDateTo(formatDate(range.end, "yyyy-MM-dd"))
-                  } else {
-                    setDateFrom("")
-                    setDateTo("")
-                  }
+                  setDateFrom(from)
+                  setDateTo(to)
                   setCurrentPage(1)
                   setDatePickerOpen(false)
                 }}
@@ -11353,26 +11464,16 @@ export const PayoutsTab = ({
             collisionPadding={16}
           >
             {datePickerOpen ? (
-            <DoubleCalendar
-              key={`${dateRange}-${dateFrom}-${dateTo}`}
-              preset={DATE_API_TO_PRESET[dateRange] ?? "all time"}
-              value={
-                dateFrom && dateTo
-                  ? { start: parseISO(dateFrom), end: parseISO(dateTo) }
-                  : undefined
-              }
+            <DateRangeFilterPopoverContent
+              dateRange={dateRange}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              defaultPreset="all time"
               onCancel={() => setDatePickerOpen(false)}
-              onApply={(range, preset) => {
-                if (preset === "custom range" && !range) return
-                const next = DATE_PRESET_TO_API[preset] ?? "all_time"
+              onCommit={(next, from, to) => {
                 setDateRange(next)
-                if (next === "custom" && range) {
-                  setDateFrom(formatDate(range.start, "yyyy-MM-dd"))
-                  setDateTo(formatDate(range.end, "yyyy-MM-dd"))
-                } else {
-                  setDateFrom("")
-                  setDateTo("")
-                }
+                setDateFrom(from)
+                setDateTo(to)
                 setCurrentPage(1)
                 setDatePickerOpen(false)
               }}
