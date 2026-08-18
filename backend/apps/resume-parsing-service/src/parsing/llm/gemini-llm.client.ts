@@ -18,7 +18,9 @@ export class GeminiLlmClient implements LlmClient {
 
   constructor() {
     this.apiKey = process.env.GEMINI_API_KEY || '';
-    this.modelId = process.env.MODEL_ID || 'gemini-2.0-flash';
+    // Keep in sync with config.schema.ts's fallback — see the note there on
+    // why gemini-2.0-flash cannot be used as a default any more.
+    this.modelId = process.env.MODEL_ID || 'gemini-3.6-flash';
     this.maxOutputTokens = parseInt(process.env.MODEL_MAX_OUTPUT_TOKENS || '16384', 10);
     this.temperature = parseFloat(process.env.MODEL_TEMPERATURE || '0');
     this.timeoutMs = parseInt(process.env.MODEL_TIMEOUT_MS || '45000', 10);
