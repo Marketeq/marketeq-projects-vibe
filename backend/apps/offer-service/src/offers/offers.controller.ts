@@ -19,6 +19,7 @@ import { OfferHistoryQueryDto } from './dto/offer-history-query.dto';
 import { ListOffersQueryDto } from './dto/list-offers-query.dto';
 import { RolesGuard } from '../guards/roles.guard';
 import { OfferPartyGuard } from '../guards/offer-party.guard';
+import { ListingOwnerGuard } from '../guards/listing-owner.guard';
 import { IdempotencyInterceptor } from '../interceptors/idempotency.interceptor';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/types/user-role.enum';
@@ -31,10 +32,13 @@ export class OffersController {
     private readonly ablyService: AblyService,
   ) {}
 
-  // POST /v1/offers — CLIENT only
+  // POST /v1/offers — no @Roles(CLIENT)/RolesGuard here: role is never set
+  // on the JWT (see roles.guard.ts's comment), and there's no offer yet to
+  // derive a party from either. ListingOwnerGuard is the authorization
+  // boundary instead — only the client who owns dto.jobListingId may
+  // create an offer against it. See listing-owner.guard.ts.
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.CLIENT)
+  @UseGuards(ListingOwnerGuard)
   @UseInterceptors(IdempotencyInterceptor)
   @HttpCode(HttpStatus.CREATED)
   async createOffer(@CurrentUser() user: any, @Body() dto: CreateOfferDto, @Req() req: Request) {
