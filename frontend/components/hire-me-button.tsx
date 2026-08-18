@@ -137,6 +137,10 @@ type OfferDialogProps = {
     selectedRate: string
     schedule: string
     selectedDuration: string
+    // Only set when selectedRate is "custom" — the real number the user
+    // typed, which no offerRates tile can carry. Optional so the existing
+    // call sites that don't read it are unaffected.
+    customRate?: string
   }) => void
 }
 
@@ -858,6 +862,40 @@ export function OfferDialog({
     selectedRate === "custom" && !(Number(customRateValue) > 0)
   const isCustomDurationIncomplete =
     selectedDuration === "custom" && !(Number(customDurationValue) > 0)
+  // The "custom" sentinel is only meaningful INSIDE this component (see the
+  // state declarations). Everything downstream reads these two values
+  // literally: the four checkout screens price an offer by looking
+  // selectedRate up in offerRates — which has no "custom" tile, so it falls
+  // through to the web-development tile and silently prices a custom offer
+  // at $70/hr — and confirmation/page.tsx renders selectedDuration straight
+  // into its duration badge. Resolve both here, once, so every exit from
+  // this dialog (the addContractGroupMember payload, the checkout URL, and
+  // onSaveOffer) carries the same real values rather than each call site
+  // remembering to unwrap the sentinel itself.
+  const resolvedDuration =
+    selectedDuration === "custom"
+      ? `${customDurationValue} ${customDurationUnit}`
+      : selectedDuration
+  // Deliberately NOT folded into `rate`: offerRates is a fixed three-tile
+  // list and the checkout pages key off it, so a custom rate has to travel
+  // as its own value rather than as a tile that doesn't exist. Empty string
+  // whenever a predefined tile is selected, which is what lets the callers
+  // below clear a stale customRate instead of leaving the previous custom
+  // price applied to a newly-picked tile.
+  const resolvedCustomRate = selectedRate === "custom" ? customRateValue : ""
+  // Single builder for the checkout query string — used by both the Review
+  // Your Offer button and the Send Offer redirect below, so the two can't
+  // drift apart the way they would if each set its own params inline.
+  const buildCheckoutSearchParams = () => {
+    const nextSearchParams = new URLSearchParams()
+    nextSearchParams.set("rate", selectedRate)
+    nextSearchParams.set("schedule", schedule)
+    nextSearchParams.set("duration", resolvedDuration)
+    if (resolvedCustomRate) {
+      nextSearchParams.set("customRate", resolvedCustomRate)
+    }
+    return nextSearchParams
+  }
   // AC-13.1: "A contract title input field is displayed and required" — doc
   // 04 §6 places it on the Send Offer screen, which is isStepThree here,
   // not just isStepFour. The input was only ever wired to isStepFour; this
@@ -1425,12 +1463,8 @@ export function OfferDialog({
                             // fire unconditionally on success; now it only
                             // fires from here, so it can't be skipped.
                             onOpenChange(false)
-                            const nextSearchParams = new URLSearchParams()
-                            nextSearchParams.set("rate", selectedRate)
-                            nextSearchParams.set("schedule", schedule)
-                            nextSearchParams.set("duration", selectedDuration)
                             router.push(
-                              `/talent-checkout/${checkoutSlug}?${nextSearchParams.toString()}`
+                              `/talent-checkout/${checkoutSlug}?${buildCheckoutSearchParams().toString()}`
                             )
                           }}
                         >
@@ -2604,13 +2638,12 @@ export function OfferDialog({
                         // T4-A: selectedDuration holds the literal string
                         // "custom" while that row is open (see the state
                         // declaration) — that sentinel is meaningless to
-                        // the backend, so it's formatted into the same
-                        // shape as the predefined tiles ("5 Months") right
-                        // here, at the one place this payload is built.
-                        duration:
-                          selectedDuration === "custom"
-                            ? `${customDurationValue} ${customDurationUnit}`
-                            : selectedDuration,
+                        // the backend, so it's resolved into the same shape
+                        // as the predefined tiles ("5 Months"). Shared with
+                        // the checkout URL and onSaveOffer via
+                        // resolvedDuration above, rather than formatted
+                        // only here where the other two exits missed it.
+                        duration: resolvedDuration,
                       })
                     } catch (error: any) {
                       setIsSubmittingOffer(false)
@@ -2668,7 +2701,12 @@ export function OfferDialog({
                     // currentScreen to "offer-sent" via the ternary above,
                     // and the footer below is now gated on !offerSent so it
                     // doesn't render underneath this screen.
-                    onSaveOffer?.({ selectedRate, schedule, selectedDuration })
+                    onSaveOffer?.({
+                      selectedRate,
+                      schedule,
+                      selectedDuration: resolvedDuration,
+                      customRate: resolvedCustomRate,
+                    })
                     setOfferSent(true)
                     return
                   }
@@ -2680,15 +2718,16 @@ export function OfferDialog({
                   // "Offer Sent!" copy would be wrong here regardless of
                   // wiring). Both keep exactly today's behaviour; FR-13 only
                   // changes the path above that actually submits something.
-                  onSaveOffer?.({ selectedRate, schedule, selectedDuration })
+                  onSaveOffer?.({
+                    selectedRate,
+                    schedule,
+                    selectedDuration: resolvedDuration,
+                    customRate: resolvedCustomRate,
+                  })
                   onOpenChange(false)
                   if (!isEditMode) {
-                    const nextSearchParams = new URLSearchParams()
-                    nextSearchParams.set("rate", selectedRate)
-                    nextSearchParams.set("schedule", schedule)
-                    nextSearchParams.set("duration", selectedDuration)
                     router.push(
-                      `/talent-checkout/${checkoutSlug}?${nextSearchParams.toString()}`
+                      `/talent-checkout/${checkoutSlug}?${buildCheckoutSearchParams().toString()}`
                     )
                   }
                 }}

@@ -556,7 +556,16 @@ export default function CheckoutPage() {
     offerRates.find((rate) => rate.value === selectedRateValue) ||
     offerRates.find((rate) => rate.value === "web-development") ||
     offerRates[0]
-  const hourlyRate = Number(selectedRate?.price.replace(/[^0-9.]/g, "") || 0)
+  // A custom rate has no offerRates tile to resolve against, so selectedRate
+  // above falls through to the web-development tile for it — the real number
+  // travels as its own param instead and wins here. Guarded on > 0 so an
+  // absent or malformed customRate falls back to the tile price rather than
+  // pricing the whole offer at $0.
+  const customRateParam = Number(searchParams.get("customRate"))
+  const hourlyRate =
+    Number.isFinite(customRateParam) && customRateParam > 0
+      ? customRateParam
+      : Number(selectedRate?.price.replace(/[^0-9.]/g, "") || 0)
   const estimatedTax = hourlyRate * 0.07
   const totalHourlyRate = hourlyRate + estimatedTax
   const estimatedWeeklyCost = totalHourlyRate * 40
@@ -716,11 +725,24 @@ export default function CheckoutPage() {
   }, [addOnStateStorageKey, selectedAddOnIds])
 
   const updateOfferInUrl = React.useCallback(
-    (nextRate: string, nextSchedule: string, nextDuration: string) => {
+    (
+      nextRate: string,
+      nextSchedule: string,
+      nextDuration: string,
+      nextCustomRate?: string
+    ) => {
       const nextSearchParams = new URLSearchParams(searchParams.toString())
       nextSearchParams.set("rate", nextRate)
       nextSearchParams.set("schedule", nextSchedule)
       nextSearchParams.set("duration", nextDuration)
+      // Deleted, not just skipped, when the offer moves back to a predefined
+      // tile — otherwise a customRate left over from a previous edit would
+      // keep overriding the newly-picked tile's price.
+      if (nextCustomRate) {
+        nextSearchParams.set("customRate", nextCustomRate)
+      } else {
+        nextSearchParams.delete("customRate")
+      }
       router.replace(`${pathname}?${nextSearchParams.toString()}`, {
         scroll: false,
       })
@@ -2970,11 +2992,21 @@ export default function CheckoutPage() {
           open={isEditOfferOpen}
           onOpenChange={setIsEditOfferOpen}
           mode="edit"
-          onSaveOffer={({ selectedRate, schedule, selectedDuration }) => {
+          onSaveOffer={({
+            selectedRate,
+            schedule,
+            selectedDuration,
+            customRate,
+          }) => {
             setSelectedRateValue(selectedRate)
             setSelectedSchedule(schedule)
             setSelectedDuration(selectedDuration)
-            updateOfferInUrl(selectedRate, schedule, selectedDuration)
+            updateOfferInUrl(
+              selectedRate,
+              schedule,
+              selectedDuration,
+              customRate
+            )
           }}
           profile={{
             username: talentUsername,
