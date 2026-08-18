@@ -22,7 +22,7 @@ import { OfferPartyGuard } from '../guards/offer-party.guard';
 import { IdempotencyInterceptor } from '../interceptors/idempotency.interceptor';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/types/user-role.enum';
- 
+
 @Controller('offers')
 @UseGuards(JwtAuthGuard)
 export class OffersController {
@@ -30,7 +30,7 @@ export class OffersController {
     private readonly offersService: OffersService,
     private readonly ablyService: AblyService,
   ) {}
- 
+
   // POST /v1/offers — CLIENT only
   @Post()
   @UseGuards(RolesGuard)
@@ -61,7 +61,7 @@ export class OffersController {
     @CurrentUser() user: any,
     @Query() query: ListOffersQueryDto,
   ) {
-    return this.offersService.list(user.id, user.role, query);
+    return this.offersService.list(user.id, query);
   }
 
   // GET /v1/offers/:id

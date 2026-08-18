@@ -4,6 +4,7 @@ import { OfferStatus } from '../enums/offer-status.enum';
 import { ContractType } from '../enums/contract-type.enum';
 import { WorkScheduleType } from '../enums/work-schedule-type.enum';
 import { CounterOfferStatus } from '../../counter-offers/enums/counter-offer-status.enum';
+import { UserRole } from '../../common/types/user-role.enum';
 
 /** WorkSchedule as returned in all API responses. */
 export interface WorkScheduleResponse {
@@ -128,6 +129,11 @@ export interface OfferListItem {
   expiredAt: Date | null;
   warningSentAt: Date | null;
   latestCounterOffer: LatestCounterOfferSummary | null;
+  // Which side of this offer the authenticated caller is on. Derived from
+  // clientId/talentId vs the JWT's userId — never from the `as` query
+  // param, which only narrows the WHERE clause and has no bearing on what
+  // any individual row actually is.
+  viewerRole: UserRole;
 }
 
 /** PaginatedOfferListResponse — Returned by GET /v1/offers (200) */

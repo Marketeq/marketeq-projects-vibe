@@ -7,7 +7,11 @@ import { Repository, EntityManager, DataSource } from 'typeorm';
 import { Offer } from './entities/offer.entity';
 import { OfferStatus } from './enums/offer-status.enum';
 import { OfferStateMachine, OfferConcurrentModificationException } from './offer-state-machine';
-import { ActiveOfferAlreadyExistsException, OfferNotResendableException } from '../common/exceptions/offer.exceptions';
+import {
+  ActiveOfferAlreadyExistsException,
+  OfferNotResendableException,
+  InternalOfferException,
+} from '../common/exceptions/offer.exceptions';
 import { OutboxService } from '../outbox/outbox.service';
 import { AblyService } from '../realtime/ably.service';
 import { ListingsClient } from '../integrations/listings.client';
@@ -27,9 +31,9 @@ import { OfferHistoryService } from '../offer-history/offer-history.service';
 import { OfferTermsSnapshot } from '../offer-history/entities/offer-history-event.entity';
 import { OFFER_CONSTANTS } from '../common/constants/offer.constants';
 import { normalizeDateOnly } from '../common/utils/normalize-date-only';
-import { UserRole } from '../common/types/user-role.enum';
 import { ListOffersQueryDto } from './dto/list-offers-query.dto';
 import { OfferListQueryBuilder } from './offer-list-query.builder';
+import { derivePartyRole } from '../guards/party-role.util';
 import {
   LatestCounterOfferSummary,
   OfferListItem,
@@ -73,23 +77,38 @@ export class OffersService {
   // ============================================================
 
   /**
-   * userId/role come from the JWT (CurrentUser), never from the query
-   * string — OfferListQueryBuilder.resolvePartyFilter is the only thing
-   * that decides which column gets filtered, so a client can never widen
-   * the query to talent_id or vice versa.
+   * userId comes from the JWT (CurrentUser), never from the query string —
+   * OfferListQueryBuilder.resolvePartyFilter is the only thing that
+   * decides the WHERE clause, so `as` can narrow to one side of userId's
+   * own offers but can never widen the query to another user's.
+   *
+   * No role param: libs/auth's JwtStrategy.validate() never sets one (see
+   * roles.guard.ts's comment), so the default scope is "offers where
+   * userId is either party" rather than branching on a role that's always
+   * undefined.
    */
   async list(
     userId: string,
-    role: UserRole,
     query: ListOffersQueryDto,
   ): Promise<PaginatedOfferListResponse> {
-    const partyFilter = OfferListQueryBuilder.resolvePartyFilter(role, userId);
+    const partyFilter = OfferListQueryBuilder.resolvePartyFilter(userId, query.as);
     const sortSpec = OfferListQueryBuilder.resolveSort(query.sort, query.order);
     const offset = OfferListQueryBuilder.resolveOffset(query.page, query.limit);
 
-    const qb = this.offerRepo
-      .createQueryBuilder('o')
-      .where(`o.${partyFilter.column} = :partyId`, { partyId: partyFilter.value });
+    const qb = this.offerRepo.createQueryBuilder('o');
+
+    if (partyFilter.mode === 'either') {
+      // BitmapOr over idx_offers_client_id + idx_offers_talent_id (also
+      // satisfiable via idx_offers_client_talent's leading column) at
+      // realistic table sizes — confirmed with EXPLAIN against the local
+      // seed data (SET enable_seqscan=off surfaces the BitmapOr plan; the
+      // planner just prefers a seq scan on this table while it's this
+      // small, which is expected and not a sign of a missing index).
+      qb.where('(o.client_id = :partyId OR o.talent_id = :partyId)', { partyId: partyFilter.userId });
+    } else {
+      const column = partyFilter.mode === 'client' ? 'client_id' : 'talent_id';
+      qb.where(`o.${column} = :partyId`, { partyId: partyFilter.userId });
+    }
 
     if (query.status && query.status.length > 0) {
       qb.andWhere('o.status IN (:...statuses)', { statuses: query.status });
@@ -109,10 +128,22 @@ export class OffersService {
       offers.map((offer) => offer.id),
     );
 
-    const data: OfferListItem[] = offers.map((offer) => ({
-      ...offer,
-      latestCounterOffer: latestCounterOffers.get(offer.id) ?? null,
-    }));
+    const data: OfferListItem[] = offers.map((offer) => {
+      // Always derived from clientId/talentId vs userId — never from
+      // `as`, which only shaped the WHERE clause above. null here would
+      // mean the WHERE clause and derivePartyRole disagree on membership,
+      // which the query construction above rules out by design.
+      const viewerRole = derivePartyRole(offer, userId);
+      if (!viewerRole) {
+        this.logger.error(`Offer ${offer.id} returned by the party filter but userId ${userId} is neither party.`);
+        throw new InternalOfferException();
+      }
+      return {
+        ...offer,
+        viewerRole,
+        latestCounterOffer: latestCounterOffers.get(offer.id) ?? null,
+      };
+    });
 
     return { data, total, page: query.page, limit: query.limit };
   }

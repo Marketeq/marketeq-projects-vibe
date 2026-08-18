@@ -3,17 +3,21 @@
 // (no repo, no DataSource) so it's unit-testable the same way as
 // OfferStateMachine: plain inputs, plain outputs, no mocking.
 //
-// This is the actual authorization boundary for the list endpoint — the
-// party is derived from the JWT-carried role+userId here, never from a
-// query param, and OffersService.list() uses resolvePartyFilter's output
-// verbatim to build its WHERE clause. Testing this function IS testing
-// "can user A see user B's offers."
-import { UserRole } from '../common/types/user-role.enum';
-import type { OfferListSortField, SortOrder } from './dto/list-offers-query.dto';
+// This is the actual authorization boundary for the list endpoint. There
+// is no JWT role claim to scope by (libs/auth's JwtStrategy.validate()
+// never sets one — see roles.guard.ts's comment for the full story), so
+// the default scope is "offers where userId is EITHER party" — every
+// offer this user is actually part of, and nothing else. The optional
+// `as` query param (validated in ListOffersQueryDto) only NARROWS that
+// same set to one side of it; userId always comes from the JWT, never
+// from a query param, so `as` can never widen what a caller sees.
+import type { OfferListSortField, SortOrder, ViewerRoleFilter } from './dto/list-offers-query.dto';
+
+export type PartyFilterMode = 'either' | 'client' | 'talent';
 
 export interface PartyFilter {
-  column: 'client_id' | 'talent_id';
-  value: string;
+  mode: PartyFilterMode;
+  userId: string;
 }
 
 export interface SortSpec {
@@ -22,10 +26,10 @@ export interface SortSpec {
 }
 
 export class OfferListQueryBuilder {
-  static resolvePartyFilter(role: UserRole, userId: string): PartyFilter {
-    return role === UserRole.CLIENT
-      ? { column: 'client_id', value: userId }
-      : { column: 'talent_id', value: userId };
+  static resolvePartyFilter(userId: string, as?: ViewerRoleFilter): PartyFilter {
+    if (as === 'client') return { mode: 'client', userId };
+    if (as === 'talent') return { mode: 'talent', userId };
+    return { mode: 'either', userId };
   }
 
   static resolveSort(sort: OfferListSortField, order: SortOrder): SortSpec {
@@ -44,16 +48,17 @@ export class OfferListQueryBuilder {
 
   // Not called by OffersService.list() (which pushes the filter into SQL
   // via resolvePartyFilter) — this exists so "a user can't see another
-  // user's offers" is provable directly against data in a unit test, not
-  // just by inspecting which column name got returned.
+  // user's offers" (and "either" doesn't secretly mean "everyone's") is
+  // provable directly against data in a unit test, not just by inspecting
+  // which column name got returned.
   static applyPartyFilter<T extends { clientId: string; talentId: string }>(
     offers: T[],
     filter: PartyFilter,
   ): T[] {
-    return offers.filter((offer) =>
-      filter.column === 'client_id'
-        ? offer.clientId === filter.value
-        : offer.talentId === filter.value,
-    );
+    return offers.filter((offer) => {
+      if (filter.mode === 'client') return offer.clientId === filter.userId;
+      if (filter.mode === 'talent') return offer.talentId === filter.userId;
+      return offer.clientId === filter.userId || offer.talentId === filter.userId;
+    });
   }
 }

@@ -7,6 +7,7 @@ import { LIST_DEFAULT_PAGE_SIZE, LIST_MAX_PAGE_SIZE } from '../../common/constan
 
 export type OfferListSortField = 'createdAt' | 'expiresAt';
 export type SortOrder = 'asc' | 'desc';
+export type ViewerRoleFilter = 'client' | 'talent';
 
 export class ListOffersQueryDto {
   // Repeatable: ?status=PENDING&status=COUNTERED. A single value arrives
@@ -42,4 +43,13 @@ export class ListOffersQueryDto {
   @IsOptional()
   @IsIn(['asc', 'desc'], { message: 'order must be either asc or desc.' })
   order: SortOrder = 'desc';
+
+  // Default scope (when omitted) is "offers where the caller is either
+  // party" — see OfferListQueryBuilder.resolvePartyFilter's comment for
+  // why. This narrows to one side of that same set; it can never widen it,
+  // since the userId behind the filter always comes from the JWT, never
+  // from this param.
+  @IsOptional()
+  @IsIn(['client', 'talent'], { message: 'as must be either client or talent.' })
+  as?: ViewerRoleFilter;
 }
