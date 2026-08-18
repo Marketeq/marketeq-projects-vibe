@@ -71,9 +71,12 @@ export class OffersController {
     return this.offersService.findById(id);
   }
  
-  // PATCH /v1/offers/:id — CLIENT only
+  // PATCH /v1/offers/:id — CLIENT (derived from offer party). Guard order
+  // matters — OfferPartyGuard must run first to populate request.partyRole
+  // before RolesGuard reads it. Same bug as accept/decline/withdraw/resend
+  // had, same fix.
   @Patch(':id')
-  @UseGuards(RolesGuard, OfferPartyGuard)
+  @UseGuards(OfferPartyGuard, RolesGuard)
   @Roles(UserRole.CLIENT)
   @UseInterceptors(IdempotencyInterceptor)
   async editOffer(
@@ -84,10 +87,13 @@ export class OffersController {
     return this.offersService.edit(id, user.id, dto);
   }
  
-  // POST /v1/offers/:id/accept — TALENT only
+  // POST /v1/offers/:id/accept — TALENT (derived from offer party — see
+  // OfferPartyGuard/RolesGuard). OfferPartyGuard MUST run before
+  // RolesGuard: it's what populates request.partyRole that RolesGuard
+  // reads. Order here is significant, not stylistic.
   @Post(':id/accept')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard, OfferPartyGuard)
+  @UseGuards(OfferPartyGuard, RolesGuard)
   @Roles(UserRole.TALENT)
   @UseInterceptors(IdempotencyInterceptor)
   async acceptOffer(
@@ -98,10 +104,11 @@ export class OffersController {
     return this.offersService.accept(id, user.id, dto);
   }
  
-  // POST /v1/offers/:id/decline — TALENT only
+  // POST /v1/offers/:id/decline — TALENT (derived from offer party).
+  // Guard order matters — see acceptOffer's comment above.
   @Post(':id/decline')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard, OfferPartyGuard)
+  @UseGuards(OfferPartyGuard, RolesGuard)
   @Roles(UserRole.TALENT)
   @UseInterceptors(IdempotencyInterceptor)
   async declineOffer(
@@ -112,10 +119,11 @@ export class OffersController {
     return this.offersService.decline(id, user.id, dto);
   }
  
-  // POST /v1/offers/:id/withdraw — CLIENT only
+  // POST /v1/offers/:id/withdraw — CLIENT (derived from offer party).
+  // Guard order matters — see acceptOffer's comment above.
   @Post(':id/withdraw')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard, OfferPartyGuard)
+  @UseGuards(OfferPartyGuard, RolesGuard)
   @Roles(UserRole.CLIENT)
   @UseInterceptors(IdempotencyInterceptor)
   async withdrawOffer(
@@ -126,10 +134,11 @@ export class OffersController {
     return this.offersService.withdraw(id, user.id, dto);
   }
  
-  // POST /v1/offers/:id/resend — CLIENT only
+  // POST /v1/offers/:id/resend — CLIENT (derived from offer party).
+  // Guard order matters — see acceptOffer's comment above.
   @Post(':id/resend')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard, OfferPartyGuard)
+  @UseGuards(OfferPartyGuard, RolesGuard)
   @Roles(UserRole.CLIENT)
   @UseInterceptors(IdempotencyInterceptor)
   async resendOffer(

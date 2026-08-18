@@ -26,6 +26,7 @@ import {
 import { OfferHistoryService } from '../offer-history/offer-history.service';
 import { OfferTermsSnapshot } from '../offer-history/entities/offer-history-event.entity';
 import { OFFER_CONSTANTS } from '../common/constants/offer.constants';
+import { normalizeDateOnly } from '../common/utils/normalize-date-only';
 import { UserRole } from '../common/types/user-role.enum';
 import { ListOffersQueryDto } from './dto/list-offers-query.dto';
 import { OfferListQueryBuilder } from './offer-list-query.builder';
@@ -147,7 +148,7 @@ export class OffersService {
         rate: raw.rate,
         currencyCode: raw.currency_code,
         durationMonths: raw.duration_months,
-        startDate: raw.start_date,
+        startDate: normalizeDateOnly(raw.start_date),
         createdAt: raw.created_at instanceof Date
           ? raw.created_at.toISOString()
           : raw.created_at,
@@ -684,7 +685,7 @@ export class OffersService {
       workSchedule: typeof raw.work_schedule === 'string'
         ? JSON.parse(raw.work_schedule)
         : (raw.work_schedule ?? raw.workSchedule),
-      startDate: raw.start_date ?? raw.startDate,
+      startDate: normalizeDateOnly(raw.start_date ?? raw.startDate),
       message: raw.message ?? null,
       expiresAt: raw.expires_at ? new Date(raw.expires_at) : (raw.expiresAt ?? null),
       warningSentAt: raw.warning_sent_at ? new Date(raw.warning_sent_at) : (raw.warningSentAt ?? null),
