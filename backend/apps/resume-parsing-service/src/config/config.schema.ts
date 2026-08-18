@@ -32,7 +32,11 @@ export function loadConfig(): ResumeParsingConfig {
     hardRejectChars: parseInt(process.env.HARD_REJECT_CHARS || '500000', 10),
     nearEmptyTextChars: parseInt(process.env.NEAR_EMPTY_TEXT_CHARS || '50', 10),
     geminiApiKey: process.env.GEMINI_API_KEY || '',
-    modelId: process.env.MODEL_ID || 'gemini-2.0-flash',
+    // Keep in sync with gemini-llm.client.ts's fallback. gemini-2.0-flash was
+    // retired by Google and now 404s on generateContent, which surfaced as a
+    // 503 from this service and a 502 on POST /api/resume/upload. Google's own
+    // deprecation notice names gemini-3.6-flash as the successor.
+    modelId: process.env.MODEL_ID || 'gemini-3.6-flash',
     modelMaxOutputTokens: parseInt(process.env.MODEL_MAX_OUTPUT_TOKENS || '16384', 10),
     modelTemperature: parseFloat(process.env.MODEL_TEMPERATURE || '0'),
   };
