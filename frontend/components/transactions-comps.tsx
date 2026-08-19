@@ -4358,9 +4358,9 @@ export const OverviewTab = ({
                         Verifying Your Account...
                       </h4>
                       <div className="flex justify-center">
-                        <div className="size-8 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+                        <div className="size-14 border-[3px] border-primary-100 border-t-primary-600 rounded-full animate-spin" />
                       </div>
-                      <p className="text-sm text-gray-400">
+                      <p className="text-sm text-dark-blue-400">
                         We're verifying your bank account. This may take up to
                         30 seconds.
                       </p>
@@ -4368,16 +4368,6 @@ export const OverviewTab = ({
                   )}
                   {verifyState.step === "success" && (
                     <div className="p-6 space-y-4">
-                      <div className="flex items-center justify-end">
-                        <IconButton
-                          size="sm"
-                          variant="ghost"
-                          visual="gray"
-                          onClick={() => setVerifyState(null)}
-                        >
-                          <X className="size-4" />
-                        </IconButton>
-                      </div>
                       <div className="text-center py-4 space-y-3">
                         <div className="flex flex-col items-center gap-1">
                           <BankLogo bankName={verifyState.bankName} size={80} />
@@ -4430,7 +4420,7 @@ export const OverviewTab = ({
                         visual="gray"
                         size="sm"
                         className="w-full"
-                        leftIcon={<ChevronLeft className="size-4" />}
+                        leftIcon={<ArrowLeft className="size-4" />}
                         onClick={() => {
                           setVerifyState(null)
                           setShowAddMethod(true)
@@ -4452,18 +4442,32 @@ export const OverviewTab = ({
                           ? "Connection Failed"
                           : "Verification Failed"}
                       </h4>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-dark-blue-400">
                         {verifyState.source === "stripe"
                           ? verifyState.errorMessage ||
                             "We couldn't verify your bank at this time. This may be due to a temporary network issue or incorrect information."
                           : "We couldn't verify your bank at this time. Please check your deposit amounts and try again."}
                       </p>
-                      <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        {/* Same fix as the success screen above — reopen the picker
+                          instead of just closing everything. */}
+                        <Button
+                          variant="link"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => {
+                            setVerifyState(null)
+                            setShowAddMethod(true)
+                            setAddForm((f) => ({ ...f, methodType: "PICK" }))
+                            fetchMethods()
+                          }}
+                        >
+                          Back to Deposit Methods
+                        </Button>
                         <Button
                           variant="outlined"
                           visual="gray"
                           size="sm"
-                          className="w-full"
                           leftIcon={<RefreshCcw01 className="size-4" />}
                           onClick={() => {
                             if (verifyState.source === "stripe") {
@@ -4477,23 +4481,6 @@ export const OverviewTab = ({
                           }}
                         >
                           Retry
-                        </Button>
-                        {/* Same fix as the success screen above — reopen the picker
-                          instead of just closing everything. */}
-                        <Button
-                          variant="link"
-                          visual="gray"
-                          size="sm"
-                          className="w-full"
-                          leftIcon={<ChevronLeft className="size-4" />}
-                          onClick={() => {
-                            setVerifyState(null)
-                            setShowAddMethod(true)
-                            setAddForm((f) => ({ ...f, methodType: "PICK" }))
-                            fetchMethods()
-                          }}
-                        >
-                          Back to Deposit Methods
                         </Button>
                       </div>
                     </div>
