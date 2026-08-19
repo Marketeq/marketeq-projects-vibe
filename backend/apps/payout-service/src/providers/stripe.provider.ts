@@ -481,7 +481,16 @@ export class StripeProvider {
     if (!this.stripe || !this.isRealStripeKey()) {
       throw new PayoutError('Stripe not configured.', HttpStatus.SERVICE_UNAVAILABLE, 'ERR_STRIPE_NOT_CONFIGURED');
     }
-    await this.stripe.setupIntents.verifyMicrodeposits(setupIntentId, { amounts: [amount1, amount2] });
+    // Stripe's test-mode sandbox can resolve a SetupIntent straight to
+    // "succeeded" before the contractor ever submits amounts (observed with
+    // the documented test account 000123456789). verifyMicrodeposits() only
+    // accepts intents still in requires_action, so calling it on an
+    // already-succeeded intent throws — and that error would otherwise be
+    // indistinguishable from a genuine wrong-amounts submission below.
+    const existing = await this.stripe.setupIntents.retrieve(setupIntentId);
+    if (existing.status !== 'succeeded') {
+      await this.stripe.setupIntents.verifyMicrodeposits(setupIntentId, { amounts: [amount1, amount2] });
+    }
 
     // Amounts confirmed — the SetupIntent's payment_method is now a usable
     // us_bank_account. Finish what finaliseBankStripe's non-instant branch
