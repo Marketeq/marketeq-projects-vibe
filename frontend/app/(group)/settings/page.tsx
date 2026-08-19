@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
@@ -18,7 +18,15 @@ import {
 } from "@/components/two-factor-setup"
 import { PhoneNumberInput } from "@/components/phone-number-input"
 import dynamic from "next/dynamic"
-import { Edit01, X2 } from "@blend-metrics/icons"
+import { Edit01, HelpCircle, Plus, X2 } from "@blend-metrics/icons"
+import {
+  BillingTabValue,
+  billingTabs,
+} from "@/components/billing-section-header"
+import {
+  BillingPaymentMethodsContent,
+  BillingPaymentMethodsContentHandle,
+} from "@/app/(group)/payments/page"
 
 const BillingOverviewContent = dynamic(
   () => import("@/app/(group)/billing/page").then((m) => m.BillingOverviewContent),
@@ -30,10 +38,6 @@ const BillingTransactionsContent = dynamic(
 )
 const BillingInvoicesContent = dynamic(
   () => import("@/app/(group)/invoices/page").then((m) => m.BillingInvoicesContent),
-  { ssr: false }
-)
-const BillingPaymentMethodsContent = dynamic(
-  () => import("@/app/(group)/payments/page").then((m) => m.BillingPaymentMethodsContent),
   { ssr: false }
 )
 const BillingMyPlansContent = dynamic(
@@ -53,6 +57,9 @@ import {
   ListboxOption,
   ListboxOptions,
   Switch,
+  Tabs,
+  TabsList,
+  TabsTrigger,
   useToast,
 } from "@/components/ui"
 
@@ -121,8 +128,39 @@ export default function SettingsPage() {
     )
   }, [profileForm, user])
 
+  const paymentMethodsRef = useRef<BillingPaymentMethodsContentHandle | null>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    contentRef.current?.scrollTo(0, 0)
+  }, [activeTab])
+
   const accountRole = useMemo(() => resolveDashboardRole(user), [user])
   const settingsTabItems = useMemo(() => buildSettingsTabItems(accountRole), [accountRole])
+
+  const isBillingTab = activeTab.startsWith("billing-")
+
+  const activeBillingTabValue: BillingTabValue = useMemo(() => {
+    const map: Record<string, BillingTabValue> = {
+      "billing-overview": "overview",
+      "billing-transactions": "transactions",
+      "billing-invoices": "invoices",
+      "billing-payment-methods": "payment-methods",
+      "billing-plans": "my-plans",
+    }
+    return map[activeTab] ?? "overview"
+  }, [activeTab])
+
+  const handleBillingTabChange = (value: BillingTabValue) => {
+    const map: Record<BillingTabValue, string> = {
+      "overview": "billing-overview",
+      "transactions": "billing-transactions",
+      "invoices": "billing-invoices",
+      "payment-methods": "billing-payment-methods",
+      "my-plans": "billing-plans",
+    }
+    setActiveTab(map[value])
+  }
 
   const handleProfileChange = (field: string, value: string) => {
     setProfileForm((prev) => ({ ...prev, [field]: value }))
@@ -192,8 +230,18 @@ export default function SettingsPage() {
       <div className="flex bg-gray-50 h-screen overflow-hidden">
         <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
-        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:p-16 min-[1024px]:pl-[288px] overflow-y-auto">
-          <div className="flex-auto min-w-0">
+        <div
+          ref={contentRef}
+          className={cn(
+          "flex-auto p-3.5 md:p-6 min-[1024px]:p-16 min-[1024px]:pl-[288px]",
+          activeTab === "billing-payment-methods"
+            ? "flex flex-col overflow-hidden"
+            : "overflow-y-auto"
+        )}>
+          <div className={cn(
+            "flex-auto min-w-0",
+            activeTab === "billing-payment-methods" && "flex flex-col min-h-0 overflow-hidden"
+          )}>
             <div className="min-[1024px]:hidden mb-6">
               <h1 className="text-2xl font-semibold text-dark-blue-400">
                 Settings
@@ -222,14 +270,9 @@ export default function SettingsPage() {
 
               {activeTab === "personal-info" && (
                 <>
-                  <div className="flex flex-col gap-3">
-                    <h1 className="text-[26px] leading-6 font-semibold text-dark-blue-400 capitalize">
-                      Personal Info
-                    </h1>
-                    <p className="text-sm leading-5 text-gray-500">
-                      Manage your personal details and account information.
-                    </p>
-                  </div>
+                  <h1 className="text-xl font-bold text-dark-blue-400">
+                    Personal Info
+                  </h1>
 
                   <div className="mt-6 flex items-center gap-x-6">
                     <div className="relative">
@@ -424,92 +467,90 @@ export default function SettingsPage() {
                 </>
               )}
 
-              {activeTab === "account" && (
-                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                  <h2 className="text-lg font-semibold text-dark-blue-400">
-                    Account Settings
-                  </h2>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Manage your account preferences
-                  </p>
-
-                  <div className="mt-6 space-y-4">
-                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                      <div>
-                        <p className="text-sm font-medium text-dark-blue-400">
-                          Language
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Select your preferred language
-                        </p>
-                      </div>
-                      <span className="text-sm text-gray-500">
-                        English (US)
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                      <div>
-                        <p className="text-sm font-medium text-dark-blue-400">
-                          Timezone
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Set your local timezone
-                        </p>
-                      </div>
-                      <span className="text-sm text-gray-500">
-                        {Intl.DateTimeFormat().resolvedOptions().timeZone}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                      <div>
-                        <p className="text-sm font-medium text-dark-blue-400">
-                          Account Type
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Your current account role
-                        </p>
-                      </div>
-                      <span className="text-sm text-gray-500 capitalize">
-                        {accountRole?.toLowerCase() ?? "—"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+              {activeTab === "company-info" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Company Info
+                </h1>
               )}
 
-              {activeTab === "notifications" && <NotificationPreferences />}
+              {activeTab === "privacy" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Privacy
+                </h1>
+              )}
 
-              {activeTab === "security" && (
-                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                  <h2 className="text-lg font-semibold text-dark-blue-400">
-                    Security
-                  </h2>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Manage your security settings
-                  </p>
+              {activeTab === "notifications" && (
+                <>
+                  <h1 className="text-xl font-bold text-dark-blue-400 mb-6">
+                    Notifications
+                  </h1>
+                  <NotificationPreferences />
+                </>
+              )}
 
-                  <div className="mt-6 space-y-4">
-                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                      <div>
-                        <p className="text-sm font-medium text-dark-blue-400">
-                          Password
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {user?.hasPassword
-                            ? "Password is set"
-                            : "No password set — secure your account"}
-                        </p>
+              {activeTab === "tax-info" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Tax Info
+                </h1>
+              )}
+
+              {activeTab === "login-password" && (
+                <>
+                  <h1 className="text-xl font-bold text-dark-blue-400 mb-6">
+                    Login & Password
+                  </h1>
+                  <div className="bg-white rounded-xl border border-gray-200 p-6">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                        <div>
+                          <p className="text-sm font-medium text-dark-blue-400">
+                            Password
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {user?.hasPassword
+                              ? "Password is set"
+                              : "No password set, secure your account"}
+                          </p>
+                        </div>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => setShowPasswordModal(true)}
+                        >
+                          {user?.hasPassword ? "Change Password" : "Set Password"}
+                        </Button>
                       </div>
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        size="sm"
-                        onClick={() => setShowPasswordModal(true)}
-                      >
-                        {user?.hasPassword ? "Change Password" : "Set Password"}
-                      </Button>
+                      <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                        <div>
+                          <p className="text-sm font-medium text-dark-blue-400">
+                            Active Sessions
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Manage your active login sessions
+                          </p>
+                        </div>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => setShowSessionsModal(true)}
+                        >
+                          View Sessions
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                  </div>
+                </>
+              )}
+
+              {activeTab === "two-factor-auth" && (
+                <>
+                  <h1 className="text-xl font-bold text-dark-blue-400 mb-6">
+                    Two-Factor Authentication
+                  </h1>
+                  <div className="bg-white rounded-xl border border-gray-200 p-6">
+                    <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-dark-blue-400">
                           Two-Factor Authentication
@@ -530,48 +571,121 @@ export default function SettingsPage() {
                         }}
                       />
                     </div>
-                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                      <div>
-                        <p className="text-sm font-medium text-dark-blue-400">
-                          Active Sessions
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Manage your active login sessions
-                        </p>
-                      </div>
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        size="sm"
-                        onClick={() => setShowSessionsModal(true)}
-                      >
-                        View Sessions
-                      </Button>
-                    </div>
                   </div>
-                </div>
+                </>
               )}
 
-              {activeTab === "billing-overview" && (
-                <BillingOverviewContent
-                  onNavigateTab={(tab) => setActiveTab(`billing-${tab === "overview" ? "overview" : tab}`)}
-                />
+              {activeTab === "social-login" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Social Login
+                </h1>
               )}
 
-              {activeTab === "billing-transactions" && (
-                <BillingTransactionsContent />
+              {activeTab === "account-recovery" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Account Recovery
+                </h1>
               )}
 
-              {activeTab === "billing-invoices" && (
-                <BillingInvoicesContent />
+              {activeTab === "users" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Users
+                </h1>
               )}
 
-              {activeTab === "billing-payment-methods" && (
-                <BillingPaymentMethodsContent embedded />
+              {activeTab === "roles" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Roles
+                </h1>
               )}
 
-              {activeTab === "billing-plans" && (
-                <BillingMyPlansContent />
+              {activeTab === "devices" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Devices
+                </h1>
+              )}
+
+              {activeTab === "ip-restrictions" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  IP Restrictions
+                </h1>
+              )}
+
+              {activeTab === "integrations" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Integrations
+                </h1>
+              )}
+
+              {activeTab === "my-apps" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  My Apps
+                </h1>
+              )}
+
+              {isBillingTab && (
+                <>
+                  <div className="shrink-0 space-y-5">
+                    <div className="flex flex-col gap-3 lg:min-h-10 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <h1 className="text-xl font-bold text-dark-blue-400">
+                          Billing
+                        </h1>
+                      </div>
+
+                      {activeTab === "billing-payment-methods" && (
+                        <div className="flex shrink-0 flex-wrap items-center gap-3">
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
+                            className="text-gray-500"
+                            leftIcon={<HelpCircle className="size-4" />}
+                          >
+                            Get Help
+                          </Button>
+                          <Button
+                            onClick={() => paymentMethodsRef.current?.openAddPaymentMethodDialog()}
+                            leftIcon={<Plus className="size-4" />}
+                          >
+                            Add Payment Method
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    <Tabs
+                      value={activeBillingTabValue}
+                      layoutId="settings-billing-tabs"
+                      onValueChange={(value) => handleBillingTabChange(value as BillingTabValue)}
+                    >
+                      <TabsList className="w-full justify-start gap-x-6 border-b border-gray-200 bg-transparent px-0 pt-0">
+                        {billingTabs.map((tab) => (
+                          <TabsTrigger key={tab.value} value={tab.value} className="pb-3">
+                            {tab.label}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+                    </Tabs>
+                  </div>
+
+                  <div className={cn(
+                    "mt-5",
+                    activeTab === "billing-payment-methods"
+                      ? "min-h-0 flex-1 overflow-hidden"
+                      : ""
+                  )}>
+                    {activeTab === "billing-overview" && (
+                      <BillingOverviewContent onNavigateTab={handleBillingTabChange} />
+                    )}
+                    {activeTab === "billing-transactions" && <BillingTransactionsContent />}
+                    {activeTab === "billing-invoices" && <BillingInvoicesContent />}
+                    {activeTab === "billing-payment-methods" && (
+                      <BillingPaymentMethodsContent ref={paymentMethodsRef} embedded />
+                    )}
+                    {activeTab === "billing-plans" && <BillingMyPlansContent />}
+                  </div>
+                </>
               )}
           </div>
         </div>
