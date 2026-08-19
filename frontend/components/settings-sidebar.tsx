@@ -136,7 +136,7 @@ export default function SettingsSidebar({
       <div
         className={cn(
           "shrink-0 px-[15px] transition-all duration-200",
-          isScrolled ? "pt-2 pb-2" : "pt-[15px] pb-1"
+          isScrolled ? "pt-2 pb-2" : "pt-[15px] pb-3"
         )}
       >
         <NextLink
