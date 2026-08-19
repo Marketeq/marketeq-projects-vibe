@@ -23,6 +23,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let errorCode = 'ERR_INTERNAL';
     let message = 'An unexpected error occurred.';
+    // Extra fields PayoutError attaches (attemptsLeft, lockedUntil, etc.) —
+    // callers like the deposit-method verification UI depend on these
+    // reaching the client, not just errorCode/message.
+    let meta: Record<string, unknown> = {};
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -32,6 +36,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         const resp = exceptionResponse as any;
         errorCode = resp.errorCode || `ERR_HTTP_${status}`;
         message = resp.message || exception.message;
+        const { errorCode: _ec, message: _msg, statusCode: _sc, ...rest } = resp;
+        meta = rest;
       } else {
         message = exception.message;
       }
@@ -44,6 +50,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       statusCode: status,
       errorCode,
       message,
+      ...meta,
       timestamp: new Date().toISOString(),
       path: request.url,
     });

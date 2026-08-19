@@ -4211,7 +4211,7 @@ export const OverviewTab = ({
                               }))
                             }}
                           >
-                            ← Back
+                            Back
                           </Button>
                           <Button
                             variant="filled"
