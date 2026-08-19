@@ -231,6 +231,7 @@ export default function SettingsPage() {
         <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
         <div
+          key={activeTab}
           ref={contentRef}
           className={cn(
           "flex-auto p-3.5 md:p-6 min-[1024px]:p-16 min-[1024px]:pl-[288px]",
