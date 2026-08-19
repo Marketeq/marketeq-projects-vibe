@@ -1522,7 +1522,6 @@ const HAS_SIDEBAR_NAV = [
   "/time-tracking",
   "/reports",
   "/invoices",
-  "/billing",
   "/payments",
   "/notifications",
   "/complete-profile",

@@ -17,7 +17,29 @@ import {
   TwoFactorSetupModal,
 } from "@/components/two-factor-setup"
 import { PhoneNumberInput } from "@/components/phone-number-input"
+import dynamic from "next/dynamic"
 import { Edit01, X2 } from "@blend-metrics/icons"
+
+const BillingOverviewContent = dynamic(
+  () => import("@/app/(group)/billing/page").then((m) => m.BillingOverviewContent),
+  { ssr: false }
+)
+const BillingTransactionsContent = dynamic(
+  () => import("@/components/billing-transactions-content").then((m) => m.BillingTransactionsContent),
+  { ssr: false }
+)
+const BillingInvoicesContent = dynamic(
+  () => import("@/app/(group)/invoices/page").then((m) => m.BillingInvoicesContent),
+  { ssr: false }
+)
+const BillingPaymentMethodsContent = dynamic(
+  () => import("@/app/(group)/payments/page").then((m) => m.BillingPaymentMethodsContent),
+  { ssr: false }
+)
+const BillingMyPlansContent = dynamic(
+  () => import("@/app/(group)/billing/page").then((m) => m.BillingMyPlansContent),
+  { ssr: false }
+)
 import {
   Avatar,
   AvatarFallback,
@@ -528,6 +550,28 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {activeTab === "billing-overview" && (
+                <BillingOverviewContent
+                  onNavigateTab={(tab) => setActiveTab(`billing-${tab === "overview" ? "overview" : tab}`)}
+                />
+              )}
+
+              {activeTab === "billing-transactions" && (
+                <BillingTransactionsContent />
+              )}
+
+              {activeTab === "billing-invoices" && (
+                <BillingInvoicesContent />
+              )}
+
+              {activeTab === "billing-payment-methods" && (
+                <BillingPaymentMethodsContent embedded />
+              )}
+
+              {activeTab === "billing-plans" && (
+                <BillingMyPlansContent />
               )}
           </div>
         </div>

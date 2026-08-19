@@ -66,11 +66,11 @@ const signInSecurityItems: SidebarItem[] = [
 ]
 
 const billingItems: SidebarItem[] = [
-  { href: "/billing", label: "Overview", icon: CoinStack, isRoute: true },
-  { href: "/billing/transactions", label: "Transactions", icon: CreditCard, isRoute: true },
-  { href: "/billing/invoices", label: "Invoices", icon: File02, isRoute: true },
-  { href: "/billing/payment-methods", label: "Payment Methods", icon: Wallet02, isRoute: true },
-  { href: "/billing/my-plans", label: "Plans", icon: Zap, isRoute: true },
+  { href: "/settings/billing-overview", label: "Overview", icon: CoinStack },
+  { href: "/settings/billing-transactions", label: "Transactions", icon: CreditCard },
+  { href: "/settings/billing-invoices", label: "Invoices", icon: File02 },
+  { href: "/settings/billing-payment-methods", label: "Payment Methods", icon: Wallet02 },
+  { href: "/settings/billing-plans", label: "Plans", icon: Zap },
 ]
 
 const teamManagementItems: SidebarItem[] = [
