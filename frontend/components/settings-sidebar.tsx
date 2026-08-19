@@ -33,6 +33,7 @@ type SidebarItem = {
   label: string
   icon: ComponentType<{ className?: string }>
   badge?: string
+  isRoute?: boolean
 }
 
 type SidebarSection = {
@@ -65,11 +66,11 @@ const signInSecurityItems: SidebarItem[] = [
 ]
 
 const billingItems: SidebarItem[] = [
-  { href: "/settings/billing-overview", label: "Overview", icon: CoinStack },
-  { href: "/settings/transactions", label: "Transactions", icon: CreditCard },
-  { href: "/settings/invoices", label: "Invoices", icon: File02 },
-  { href: "/settings/payment-methods", label: "Payment Methods", icon: Wallet02 },
-  { href: "/settings/plans", label: "Plans", icon: Zap },
+  { href: "/billing", label: "Overview", icon: CoinStack, isRoute: true },
+  { href: "/billing/transactions", label: "Transactions", icon: CreditCard, isRoute: true },
+  { href: "/billing/invoices", label: "Invoices", icon: File02, isRoute: true },
+  { href: "/billing/payment-methods", label: "Payment Methods", icon: Wallet02, isRoute: true },
+  { href: "/billing/my-plans", label: "Plans", icon: Zap, isRoute: true },
 ]
 
 const teamManagementItems: SidebarItem[] = [
@@ -165,7 +166,7 @@ export default function SettingsSidebar({
       <div ref={scrollRef} className="flex-1 overflow-y-auto pt-5 px-[15px] pb-[15px] space-y-6">
       {sections.map((section) => (
         <div key={section.label} className="flex flex-col gap-y-2">
-          <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400 uppercase tracking-[0.02em]">
+          <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">
             {section.label}
           </span>
 
@@ -173,26 +174,47 @@ export default function SettingsSidebar({
             {section.items.map((item) => {
               const Icon = item.icon
               const tabId = item.href.replace("/settings/", "")
-              const isActive = activeTab === tabId
+              const isRouteActive = item.isRoute && (pathname === item.href || pathname?.startsWith(item.href + "/"))
+              const isTabActive = !item.isRoute && activeTab === tabId
+              const isActive = isRouteActive || isTabActive
+
+              const itemClass = cn(
+                "flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none px-3 text-left",
+                isActive
+                  ? "bg-primary-50 text-primary-500"
+                  : "hover:bg-gray-100"
+              )
+
+              const iconEl = (
+                <Icon
+                  className={cn(
+                    "size-[18px]",
+                    isActive ? "text-primary-500" : "text-dark-blue-400/50"
+                  )}
+                />
+              )
+
+              if (item.isRoute) {
+                return (
+                  <NextLink
+                    key={item.label}
+                    href={item.href}
+                    className={itemClass}
+                  >
+                    {iconEl}
+                    {item.label}
+                  </NextLink>
+                )
+              }
 
               return (
                 <button
                   key={item.label}
                   type="button"
-                  className={cn(
-                    "flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none px-3 text-left",
-                    isActive
-                      ? "bg-primary-50 text-primary-500"
-                      : "hover:bg-gray-100"
-                  )}
+                  className={itemClass}
                   onClick={() => onTabChange(tabId)}
                 >
-                  <Icon
-                    className={cn(
-                      "size-[18px]",
-                      isActive ? "text-primary-500" : "text-dark-blue-400/50"
-                    )}
-                  />
+                  {iconEl}
                   {item.label}
                 </button>
               )
