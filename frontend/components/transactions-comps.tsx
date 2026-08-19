@@ -32,7 +32,9 @@ import {
   Check,
   CheckCircle,
   ChevronDown,
+  ArrowLeft,
   ChevronLeft,
+  Zap,
   ChevronRight,
   Clock,
   Copy,
@@ -4119,14 +4121,15 @@ export const OverviewTab = ({
             {/* Verification Dialog */}
             {verifyState && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                <div className="bg-white rounded-xl w-full max-w-md shadow-xl overflow-hidden">
+                <div className="bg-white rounded-xl w-full max-w-[700px] shadow-xl overflow-hidden">
                   {verifyState.step === "instructions" && (
-                    <div className="p-6">
-                      <div className="flex items-center justify-between mb-4">
+                    <div className="flex flex-col">
+                      <div className="relative flex items-center gap-2 px-6 py-6 border-b border-gray-200">
                         <IconButton
                           size="sm"
                           variant="ghost"
                           visual="gray"
+                          className="text-dark-blue-400"
                           onClick={() => {
                             if (verifyState?.methodId)
                               deleteMethod(verifyState.methodId)
@@ -4138,15 +4141,16 @@ export const OverviewTab = ({
                             }))
                           }}
                         >
-                          <ChevronLeft className="size-4" />
+                          <ArrowLeft className="size-4" />
                         </IconButton>
-                        <h3 className="text-base font-semibold text-dark-blue-400">
+                        <h3 className="text-lg font-semibold text-dark-blue-400">
                           Add your bank account manually
                         </h3>
                         <IconButton
                           size="sm"
                           variant="ghost"
                           visual="gray"
+                          className="absolute right-2.5 top-2.5"
                           onClick={() => {
                             if (verifyState?.methodId)
                               deleteMethod(verifyState.methodId)
@@ -4158,11 +4162,11 @@ export const OverviewTab = ({
                           <X className="size-4" />
                         </IconButton>
                       </div>
-                      <div className="rounded-lg border border-gray-200 p-6 text-center space-y-3">
-                        <h4 className="text-base font-semibold text-dark-blue-400">
+                      <div className="flex flex-col items-center gap-5 px-10 py-[50px] text-center max-h-[282px] overflow-y-auto">
+                        <h4 className="text-lg font-semibold text-dark-blue-400">
                           Please verify your bank account
                         </h4>
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-dark-blue-400">
                           We sent two deposits (between $0.01 and $0.99) to your
                           account ending in{" "}
                           <strong>{verifyState.displayLabel}</strong>. It can
@@ -4178,9 +4182,9 @@ export const OverviewTab = ({
                           call <strong>800-529-7465</strong>
                         </p>
                       </div>
-                      <div className="flex items-center justify-between mt-4">
+                      <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200">
                         <button
-                          className="text-sm text-primary-600 flex items-center gap-1"
+                          className="text-xs font-semibold text-primary-500 flex items-center gap-2"
                           onClick={() =>
                             toast({
                               title: "Use Instant Verification",
@@ -4188,9 +4192,10 @@ export const OverviewTab = ({
                             })
                           }
                         >
-                          ⚡ Use Instant Verification
+                          <Zap className="size-3.5" />
+                          Use Instant Verification
                         </button>
-                        <div className="flex gap-2">
+                        <div className="flex gap-3">
                           <Button
                             variant="outlined"
                             visual="gray"
@@ -4225,52 +4230,46 @@ export const OverviewTab = ({
                     </div>
                   )}
                   {verifyState.step === "amounts" && (
-                    <div className="p-6">
-                      <div className="flex items-center justify-between mb-4">
+                    <div className="flex flex-col">
+                      <div className="relative flex items-center gap-2 px-6 py-6 border-b border-gray-200">
                         <IconButton
                           size="sm"
                           variant="ghost"
                           visual="gray"
+                          className="text-dark-blue-400"
                           onClick={() =>
                             setVerifyState((s) =>
                               s ? { ...s, step: "instructions" } : null
                             )
                           }
                         >
-                          <ChevronLeft className="size-4" />
+                          <ArrowLeft className="size-4" />
                         </IconButton>
-                        <h3 className="text-base font-semibold text-dark-blue-400">
+                        <h3 className="text-lg font-semibold text-dark-blue-400">
                           Add your bank account manually
                         </h3>
                         <IconButton
                           size="sm"
                           variant="ghost"
                           visual="gray"
+                          className="absolute right-2.5 top-2.5"
                           onClick={() => setVerifyState(null)}
                         >
                           <X className="size-4" />
                         </IconButton>
                       </div>
-                      <div className="rounded-lg border border-gray-200 p-6 space-y-4">
-                        <h4 className="text-base font-semibold text-dark-blue-400 text-center">
-                          Please verify your bank account
-                        </h4>
-                        <p className="text-sm text-gray-500 text-center">
-                          Enter the two micro deposit amounts we sent to your
-                          account ending in{" "}
-                          <strong>{verifyState.displayLabel}</strong>. The
-                          deposits are sent from "Marketeq".
-                        </p>
-                        {process.env.NODE_ENV === "development" && (
-                          <p className="text-xs text-primary-500 bg-primary-50 rounded px-2 py-1 text-center">
-                            Dev mode: check DB for amounts —{" "}
-                            <code>
-                              SELECT amount_1_cents, amount_2_cents FROM
-                              deposit_method_verification ORDER BY created_at
-                              DESC LIMIT 1;
-                            </code>
+                      <div className="flex flex-col gap-8 px-[50px] py-[50px] max-h-[278px] overflow-y-auto">
+                        <div className="flex flex-col items-center gap-5 px-[90px] text-center">
+                          <h4 className="text-lg font-semibold text-dark-blue-400">
+                            Please verify your bank account
+                          </h4>
+                          <p className="text-sm text-dark-blue-400">
+                            Enter the two micro deposit amounts we sent to your
+                            account ending in{" "}
+                            <strong>{verifyState.displayLabel}</strong>. The
+                            deposits are sent from "Marketeq".
                           </p>
-                        )}
+                        </div>
                         {/* AC-05.04/05.05: hidden on first visit, shown after a failed attempt (EC-09) */}
                         {typeof verifyState.attemptsLeft === "number" && (
                           <p
@@ -4288,13 +4287,13 @@ export const OverviewTab = ({
                             remaining.
                           </p>
                         )}
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-xs text-gray-500 mb-1 block">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1">
+                            <label className="text-sm font-medium text-dark-blue-400 mb-1.5 block">
                               1st Deposit
                             </label>
                             <input
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                              className="w-full border border-gray-300 rounded-[5px] px-3.5 py-2.5 text-base shadow-xs"
                               placeholder="e.g. 7 (cents)"
                               value={microAmounts.amount1}
                               onChange={(e) =>
@@ -4305,12 +4304,12 @@ export const OverviewTab = ({
                               }
                             />
                           </div>
-                          <div>
-                            <label className="text-xs text-gray-500 mb-1 block">
+                          <div className="flex-1">
+                            <label className="text-sm font-medium text-dark-blue-400 mb-1.5 block">
                               2nd Deposit
                             </label>
                             <input
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                              className="w-full border border-gray-300 rounded-[5px] px-3.5 py-2.5 text-base shadow-xs"
                               placeholder="e.g. 39 (cents)"
                               value={microAmounts.amount2}
                               onChange={(e) =>
@@ -4323,12 +4322,11 @@ export const OverviewTab = ({
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2 mt-4">
+                      <div className="flex items-center justify-end gap-3 px-6 py-3 border-t border-gray-200">
                         <Button
                           variant="outlined"
                           visual="gray"
                           size="sm"
-                          className="flex-1"
                           onClick={() => setVerifyState(null)}
                         >
                           Cancel
@@ -4337,7 +4335,6 @@ export const OverviewTab = ({
                           variant="filled"
                           visual="primary"
                           size="sm"
-                          className="flex-1"
                           onClick={handleVerifyMicroDeposits}
                           disabled={
                             !microAmounts.amount1.trim() ||
