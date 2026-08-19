@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation"
 import { cn } from "@/utils/functions"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
-import { useMemo } from "react"
+import { useRef, useEffect, useState, useMemo } from "react"
 import {
   Bell,
   Building05,
@@ -41,7 +41,7 @@ type SidebarSection = {
 }
 
 const sidebarFrameClass =
-  "w-[224px] shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r space-y-6 border-gray-200 p-[15px] overflow-y-auto"
+  "w-[224px] shrink-0 bg-gray-50 min-[1024px]:flex flex-col fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200"
 
 const sharedAccountItems: SidebarItem[] = [
   { href: "/settings/personal-info", label: "Personal Info", icon: UserCircle },
@@ -120,23 +120,49 @@ export default function SettingsSidebar({
 
   const backHref = role === "CLIENT" ? "/client-dashboard" : "/talent-dashboard"
 
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [isScrolled, setIsScrolled] = useState(false)
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onScroll = () => setIsScrolled(el.scrollTop > 0)
+    el.addEventListener("scroll", onScroll, { passive: true })
+    return () => el.removeEventListener("scroll", onScroll)
+  }, [])
+
   return (
     <div className={sidebarFrameClass}>
-      <div className="flex flex-col gap-y-4 -mx-[15px] px-[15px] pb-1">
+      <div
+        className={cn(
+          "shrink-0 px-[15px] transition-all duration-200",
+          isScrolled ? "pt-2 pb-0" : "pt-[15px] pb-1"
+        )}
+      >
         <NextLink
           href={backHref}
-          className="group flex items-center gap-x-2.5 rounded-[5px] -mx-1 px-1 py-1 transition-colors hover:bg-gray-100"
+          className={cn(
+            "group flex items-center gap-x-2.5 rounded-[5px] -mx-1 px-1 transition-colors hover:bg-gray-100",
+            isScrolled ? "py-0.5" : "py-1"
+          )}
         >
           <span className="inline-flex items-center justify-center size-6 rounded-md border border-gray-200 bg-white shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)] transition-all group-hover:border-gray-300 group-hover:shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]">
             <ChevronLeft className="size-3.5 text-gray-500 transition-transform group-hover:-translate-x-px" />
           </span>
-          <span className="text-sm leading-5 font-semibold text-dark-blue-400">
+          <span className={cn(
+            "font-semibold text-dark-blue-400 transition-all duration-200",
+            isScrolled ? "text-xs leading-4" : "text-sm leading-5"
+          )}>
             Settings
           </span>
         </NextLink>
-        <div className="h-px bg-gray-200" />
       </div>
+      <div className={cn(
+        "h-px bg-gray-200 shrink-0 transition-all duration-200",
+        isScrolled ? "mx-0" : "mx-[15px]"
+      )} />
 
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-[15px] space-y-6">
       {sections.map((section) => (
         <div key={section.label} className="flex flex-col gap-y-2">
           <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400 uppercase tracking-[0.02em]">
@@ -174,6 +200,7 @@ export default function SettingsSidebar({
           </div>
         </div>
       ))}
+      </div>
     </div>
   )
 }
