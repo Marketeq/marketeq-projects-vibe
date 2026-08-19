@@ -4,24 +4,32 @@ import { useEffect, useMemo, useState } from "react"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
-import { cn } from "@/utils/functions"
+import { cn, getIsNotEmpty } from "@/utils/functions"
+import languagesMock from "@/public/mock/languages.json"
 import ActiveSessionsModal from "@/components/active-sessions-modal"
 import NotificationPreferences from "@/components/notification-preferences"
 import SecuritySettingsStepper from "@/components/security-settings"
 import SettingsSidebar, {
-  settingsTabItems,
+  buildSettingsTabItems,
 } from "@/components/settings-sidebar"
 import {
   DisableTwoFactorModal,
   TwoFactorSetupModal,
 } from "@/components/two-factor-setup"
+import { PhoneNumberInput } from "@/components/phone-number-input"
+import { Edit01, X2 } from "@blend-metrics/icons"
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
+  Badge,
   Button,
   Input,
   Label,
+  Listbox,
+  ListboxButton,
+  ListboxOption,
+  ListboxOptions,
   Switch,
   useToast,
 } from "@/components/ui"
@@ -29,7 +37,7 @@ import {
 export default function SettingsPage() {
   const { user, setUser } = useAuth()
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = useState("profile")
+  const [activeTab, setActiveTab] = useState("personal-info")
 
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -37,6 +45,10 @@ export default function SettingsPage() {
     firstName: "",
     lastName: "",
     username: "",
+    phone: "",
+    jobTitle: "",
+    team: [] as string[],
+    languages: [] as string[],
   })
 
   const [showPasswordModal, setShowPasswordModal] = useState(false)
@@ -44,12 +56,36 @@ export default function SettingsPage() {
   const [show2FASetup, setShow2FASetup] = useState(false)
   const [show2FADisable, setShow2FADisable] = useState(false)
 
+  const languageOptions = useMemo(
+    () => languagesMock.map((item) => item.label),
+    []
+  )
+
+  const teamOptions = [
+    "Engineering",
+    "Design",
+    "Marketing",
+    "Sales",
+    "Operations",
+    "Product",
+    "Finance",
+    "HR",
+    "Legal",
+    "Other",
+  ]
+
   useEffect(() => {
     if (user) {
+      const rawTeam = (user as any).team ?? ""
+      const rawLang = (user as any).language ?? ""
       setProfileForm({
         firstName: user.firstName ?? "",
         lastName: user.lastName ?? "",
         username: user.username ?? "",
+        phone: (user as any).phone ?? "",
+        jobTitle: (user as any).recentJobTitle ?? "",
+        team: rawTeam ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+        languages: rawLang ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
       })
     }
   }, [user])
@@ -64,6 +100,7 @@ export default function SettingsPage() {
   }, [profileForm, user])
 
   const accountRole = useMemo(() => resolveDashboardRole(user), [user])
+  const settingsTabItems = useMemo(() => buildSettingsTabItems(accountRole), [accountRole])
 
   const handleProfileChange = (field: string, value: string) => {
     setProfileForm((prev) => ({ ...prev, [field]: value }))
@@ -114,34 +151,39 @@ export default function SettingsPage() {
   }
 
   const handleProfileCancel = () => {
+    const rawTeam = (user as any)?.team ?? ""
+    const rawLang = (user as any)?.language ?? ""
     setProfileForm({
       firstName: user?.firstName ?? "",
       lastName: user?.lastName ?? "",
       username: user?.username ?? "",
+      phone: (user as any)?.phone ?? "",
+      jobTitle: (user as any)?.recentJobTitle ?? "",
+      team: rawTeam ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+      languages: rawLang ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
     })
     setIsEditing(false)
   }
 
   return (
     <AuthenticatedRoute>
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="flex gap-6">
-            <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+      <div className="flex bg-gray-50 h-screen overflow-hidden">
+        <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
-            <div className="flex-1 min-w-0">
-              <div className="min-[1024px]:hidden mb-6">
-                <h1 className="text-2xl font-semibold text-dark-blue-400">
-                  Settings
-                </h1>
-                <p className="text-sm text-gray-500 mt-1">
-                  Manage your account settings and preferences
-                </p>
-                <div className="flex gap-1 mt-4 border-b border-gray-200 overflow-x-auto">
-                  {settingsTabItems.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => setActiveTab(item.id)}
+        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:p-16 min-[1024px]:pl-[288px] overflow-y-auto">
+          <div className="flex-auto min-w-0">
+            <div className="min-[1024px]:hidden mb-6">
+              <h1 className="text-2xl font-semibold text-dark-blue-400">
+                Settings
+              </h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Manage your account settings and preferences
+              </p>
+              <div className="flex gap-1 mt-4 border-b border-gray-200 overflow-x-auto">
+                {settingsTabItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
                       className={cn(
                         "flex items-center gap-1.5 px-3 pb-3 text-sm border-b-2 transition-colors whitespace-nowrap",
                         activeTab === item.id
@@ -156,48 +198,55 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {activeTab === "profile" && (
-                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-lg font-semibold text-dark-blue-400">
-                        Profile Information
-                      </h2>
-                      <p className="text-sm text-gray-500 mt-1">
-                        Update your personal details
-                      </p>
-                    </div>
-                    {!isEditing && (
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        size="sm"
-                        onClick={() => setIsEditing(true)}
+              {activeTab === "personal-info" && (
+                <>
+                  <div className="flex flex-col gap-3">
+                    <h1 className="text-[26px] leading-6 font-semibold text-dark-blue-400 capitalize">
+                      Personal Info
+                    </h1>
+                    <p className="text-sm leading-5 text-gray-500">
+                      Manage your personal details and account information.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 flex items-center gap-x-6">
+                    <div className="relative">
+                      <Avatar className="size-24 border-4 border-white">
+                        <AvatarImage
+                          src={user?.avatarUrl ?? ""}
+                          alt={user?.firstName ?? "User"}
+                        />
+                        <AvatarFallback className="text-4xl font-medium tracking-tight text-gray-300">
+                          {(user?.firstName?.[0] ?? "").toUpperCase()}
+                          {(user?.lastName?.[0] ?? "").toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <button
+                        type="button"
+                        className="absolute -bottom-1 -right-1 size-[30px] rounded-full bg-white border border-gray-300 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)] flex items-center justify-center hover:bg-gray-50 transition-colors"
                       >
-                        Edit Profile
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="mt-6 flex items-center gap-x-4">
-                    <Avatar className="size-16">
-                      <AvatarImage
-                        src={user?.avatarUrl ?? ""}
-                        alt={user?.firstName ?? "User"}
-                      />
-                      <AvatarFallback className="text-lg">
-                        {user?.firstName?.[0]?.toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
+                        <Edit01 className="size-4 text-gray-400" />
+                      </button>
+                    </div>
                     <div>
-                      <p className="text-sm font-medium text-dark-blue-400">
-                        {user?.firstName} {user?.lastName}
+                      <div className="flex items-center gap-x-3">
+                        <h2 className="text-2xl leading-[38px] font-medium text-gray-600 capitalize">
+                          {user?.firstName} {user?.lastName}
+                        </h2>
+                        <Badge visual="primary" size="sm">
+                          {accountRole === "ADMIN"
+                            ? "Admin"
+                            : accountRole?.charAt(0).toUpperCase() +
+                              (accountRole?.slice(1).toLowerCase() ?? "")}
+                        </Badge>
+                      </div>
+                      <p className="text-sm leading-5 text-gray-500">
+                        {user?.email}
                       </p>
-                      <p className="text-xs text-gray-500">{user?.email}</p>
                     </div>
                   </div>
 
-                  <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="mt-6 max-w-[664px] grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div className="space-y-1.5">
                       <Label size="sm">First Name</Label>
                       <Input
@@ -205,8 +254,6 @@ export default function SettingsPage() {
                         onChange={(e) =>
                           handleProfileChange("firstName", e.target.value)
                         }
-                        readOnly={!isEditing}
-                        className={!isEditing ? "bg-gray-50" : ""}
                       />
                     </div>
                     <div className="space-y-1.5">
@@ -216,8 +263,6 @@ export default function SettingsPage() {
                         onChange={(e) =>
                           handleProfileChange("lastName", e.target.value)
                         }
-                        readOnly={!isEditing}
-                        className={!isEditing ? "bg-gray-50" : ""}
                       />
                     </div>
                     <div className="space-y-1.5">
@@ -229,38 +274,132 @@ export default function SettingsPage() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label size="sm">Username</Label>
-                      <Input
-                        value={profileForm.username}
-                        onChange={(e) =>
-                          handleProfileChange("username", e.target.value)
-                        }
-                        readOnly={!isEditing}
-                        className={!isEditing ? "bg-gray-50" : ""}
+                      <Label size="sm">Phone Number</Label>
+                      <PhoneNumberInput
+                        defaultCountry="us"
+                        value={profileForm.phone}
+                        onChange={(v) => handleProfileChange("phone", v)}
                       />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">What team do you work on?</Label>
+                      <Listbox
+                        value={profileForm.team}
+                        onChange={(values) =>
+                          setProfileForm((prev) => ({
+                            ...prev,
+                            team: values as string[],
+                          }))
+                        }
+                        multiple
+                      >
+                        <ListboxButton
+                          placeholder="Select Team"
+                          displayValue={(val) =>
+                            Array.isArray(val) && val.length
+                              ? val.join(", ")
+                              : null
+                          }
+                        />
+                        <ListboxOptions>
+                          {teamOptions.map((item) => (
+                            <ListboxOption key={item} value={item}>
+                              {item}
+                            </ListboxOption>
+                          ))}
+                        </ListboxOptions>
+                      </Listbox>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Job Title</Label>
+                      <Input
+                        value={profileForm.jobTitle}
+                        onChange={(e) =>
+                          handleProfileChange("jobTitle", e.target.value)
+                        }
+                        placeholder="e.g. President"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Language</Label>
+                      <div className="flex flex-col gap-y-1.5">
+                        <Listbox
+                          value={profileForm.languages}
+                          onChange={(values) =>
+                            setProfileForm((prev) => ({
+                              ...prev,
+                              languages: values as string[],
+                            }))
+                          }
+                          multiple
+                        >
+                          <ListboxButton
+                            placeholder="Select Language"
+                            displayValue={(val) =>
+                              Array.isArray(val) && val.length
+                                ? val.join(", ")
+                                : null
+                            }
+                          />
+                          <ListboxOptions>
+                            {languageOptions.map((item) => (
+                              <ListboxOption key={item} value={item}>
+                                {item}
+                              </ListboxOption>
+                            ))}
+                          </ListboxOptions>
+                        </Listbox>
+
+                        {getIsNotEmpty(profileForm.languages) && (
+                          <div className="flex flex-wrap gap-2">
+                            {profileForm.languages.map((lang) => (
+                              <Badge
+                                key={lang}
+                                visual="primary"
+                                size="sm"
+                                variant="rounded"
+                              >
+                                {lang}
+                                <button
+                                  className="focus-visible:outline-none"
+                                  onClick={() =>
+                                    setProfileForm((prev) => ({
+                                      ...prev,
+                                      languages: prev.languages.filter(
+                                        (l) => l !== lang
+                                      ),
+                                    }))
+                                  }
+                                  type="button"
+                                >
+                                  <X2 className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {isEditing && (
-                    <div className="mt-6 flex justify-end gap-x-3">
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        size="sm"
-                        onClick={handleProfileCancel}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={handleProfileSave}
-                        disabled={isSaving || !isProfileDirty}
-                      >
-                        {isSaving ? "Saving..." : "Save Changes"}
-                      </Button>
-                    </div>
-                  )}
-                </div>
+                  <div className="mt-6 max-w-[664px] flex justify-end gap-x-3">
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      onClick={handleProfileCancel}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleProfileSave}
+                      disabled={isSaving || !isProfileDirty}
+                    >
+                      {isSaving ? "Saving..." : "Save Changes"}
+                    </Button>
+                  </div>
+                </>
               )}
 
               {activeTab === "account" && (
@@ -390,7 +529,6 @@ export default function SettingsPage() {
                   </div>
                 </div>
               )}
-            </div>
           </div>
         </div>
       </div>

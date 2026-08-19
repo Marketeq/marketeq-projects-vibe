@@ -58,6 +58,20 @@ import {
   ClientAccountSidebar,
   TalentAccountSidebar,
 } from "@/components/account-sidebars"
+import {
+  MoreInfoDialog,
+  AvailabilityDialog,
+  SkillsDialog,
+} from "@/components/edit-profile-modals"
+import dynamic from "next/dynamic"
+
+const PayoutScheduleDialog = dynamic(
+  () =>
+    import("@/components/transactions-comps").then(
+      (mod) => mod.PayoutScheduleDialog
+    ),
+  { ssr: false }
+)
 import { DashboardFooter } from "@/components/dashboard-footer"
 import { Logo } from "@/components/icons"
 import { GridVertical6 } from "@/components/icons/grid-vertical-6"
@@ -178,6 +192,20 @@ export const LeftSidebar = ({
   return isTalent ? <TalentAccountSidebar /> : <ClientAccountSidebar />
 }
 
+const useProfile = () => {
+  const { user } = useAuth()
+  const [profile, setProfile] = React.useState<any>(null)
+  const fetchProfile = React.useCallback(async () => {
+    if (!user?.id) return
+    try {
+      const res = await UserAPI.getProfile(user.id)
+      setProfile(res?.data ?? null)
+    } catch {}
+  }, [user?.id])
+  React.useEffect(() => { fetchProfile() }, [fetchProfile])
+  return { profile, refreshProfile: fetchProfile }
+}
+
 export const RightDrawer = ({
   className,
   onCompleteProfile,
@@ -188,6 +216,9 @@ export const RightDrawer = ({
   profileProgress?: number
 }) => {
   const { user } = useAuth()
+  const { profile, refreshProfile } = useProfile()
+  const [moreInfoOpen, setMoreInfoOpen] = React.useState(false)
+  const [availabilityOpen, setAvailabilityOpen] = React.useState(false)
   return (
     <div
       className={cn(
@@ -213,6 +244,7 @@ export const RightDrawer = ({
             visual="gray"
             size="md"
             variant="link"
+            onClick={() => setMoreInfoOpen(true)}
           >
             Add your job title
           </Button>
@@ -252,36 +284,6 @@ export const RightDrawer = ({
           </div>
         </div>
 
-        <div className="p-5">
-          <div className="flex gap-x-[5px] items-center">
-            <ThumbsUp className="size-[15px] text-dark-blue-400" />
-            <span className="text-[11px] leading-6 font-semibold text-dark-blue-400">
-              0% Client Success
-            </span>
-          </div>
-        </div>
-
-        <div className="p-5 space-y-3">
-          <div className="flex gap-x-[5px] items-center">
-            <MapPin className="size-[15px] text-dark-blue-400" />
-            <NextLink
-              href="#"
-              className="text-[11px] leading-6 font-semibold text-dark-blue-400 underline hover:text-primary-500"
-            >
-              Add your location
-            </NextLink>
-          </div>
-          <div className="flex gap-x-[5px] items-center">
-            <Clock className="size-[15px] text-dark-blue-400" />
-            <NextLink
-              href="#"
-              className="text-[11px] leading-6 font-semibold text-dark-blue-400 underline hover:text-primary-500"
-            >
-              Add your local time
-            </NextLink>
-          </div>
-        </div>
-
         <div className="p-5 grid grid-cols-2 gap-x-[15px] gap-y-3">
           <div className="flex flex-col items-start gap-y-[5px]">
             <span className="inline-block text-sm leading-[16.94px] text-dark-blue-400">
@@ -291,6 +293,7 @@ export const RightDrawer = ({
               className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
               visual="gray"
               variant="link"
+              onClick={() => setMoreInfoOpen(true)}
             >
               Edit
             </Button>
@@ -303,6 +306,7 @@ export const RightDrawer = ({
               className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
               visual="gray"
               variant="link"
+              onClick={() => setAvailabilityOpen(true)}
             >
               Edit
             </Button>
@@ -323,6 +327,7 @@ export const RightDrawer = ({
               className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
               visual="gray"
               variant="link"
+              onClick={() => setMoreInfoOpen(true)}
             >
               Edit
             </Button>
@@ -331,6 +336,9 @@ export const RightDrawer = ({
 
         <Tasks />
       </div>
+
+      <MoreInfoDialog opened={moreInfoOpen} onOpenedChange={setMoreInfoOpen} profile={profile} onSaved={refreshProfile} />
+      <AvailabilityDialog opened={availabilityOpen} onOpenedChange={setAvailabilityOpen} profile={profile} onSaved={refreshProfile} />
     </div>
   )
 }
@@ -345,6 +353,9 @@ export const RightSidebar = ({
   profileProgress?: number
 }) => {
   const { user } = useAuth()
+  const { profile, refreshProfile } = useProfile()
+  const [moreInfoOpen, setMoreInfoOpen] = React.useState(false)
+  const [availabilityOpen, setAvailabilityOpen] = React.useState(false)
   return (
     <div
       className={cn("w-[322px] shrink-0 min-[1440px]:block hidden", className)}
@@ -367,6 +378,7 @@ export const RightSidebar = ({
             visual="gray"
             size="md"
             variant="link"
+            onClick={() => setMoreInfoOpen(true)}
           >
             Add your job title
           </Button>
@@ -406,36 +418,6 @@ export const RightSidebar = ({
           </div>
         </div>
 
-        <div className="p-5">
-          <div className="flex gap-x-[5px] items-center">
-            <ThumbsUp className="size-[15px]" />
-            <span className="text-[11px] leading-6 font-semibold text-dark-blue-400">
-              0% Client Success
-            </span>
-          </div>
-        </div>
-
-        <div className="p-5 space-y-3">
-          <div className="flex gap-x-[5px] items-center">
-            <MapPin className="size-[15px]" />
-            <NextLink
-              href="#"
-              className="text-[11px] leading-6 font-semibold text-dark-blue-400 underline hover:text-primary-500"
-            >
-              Add your location
-            </NextLink>
-          </div>
-          <div className="flex gap-x-[5px] items-center">
-            <Clock className="size-[15px]" />
-            <NextLink
-              href="#"
-              className="text-[11px] leading-6 font-semibold text-dark-blue-400 underline hover:text-primary-500"
-            >
-              Add your local time
-            </NextLink>
-          </div>
-        </div>
-
         <div className="p-5 grid grid-cols-2 gap-x-[15px] gap-y-3">
           <div className="flex flex-col items-start gap-y-[5px]">
             <span className="inline-block text-sm leading-[16.94px] text-dark-blue-400">
@@ -445,6 +427,7 @@ export const RightSidebar = ({
               className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
               visual="gray"
               variant="link"
+              onClick={() => setMoreInfoOpen(true)}
             >
               Edit
             </Button>
@@ -457,6 +440,7 @@ export const RightSidebar = ({
               className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
               visual="gray"
               variant="link"
+              onClick={() => setAvailabilityOpen(true)}
             >
               Edit
             </Button>
@@ -477,12 +461,16 @@ export const RightSidebar = ({
               className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
               visual="gray"
               variant="link"
+              onClick={() => setMoreInfoOpen(true)}
             >
               Edit
             </Button>
           </div>
         </div>
       </div>
+
+      <MoreInfoDialog opened={moreInfoOpen} onOpenedChange={setMoreInfoOpen} profile={profile} onSaved={refreshProfile} />
+      <AvailabilityDialog opened={availabilityOpen} onOpenedChange={setAvailabilityOpen} profile={profile} onSaved={refreshProfile} />
 
       <div className="bg-white mt-5 border rounded-lg border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
         <Tasks />
@@ -771,9 +759,13 @@ export const Tasks = () => {
                         onDoneChange({ id: task.id, done: false })
                       }
                     />
-                    <span className="text-sm font-medium leading-5  text-dark-blue-400">
-                      {task.value}
-                    </span>
+                    <Editable
+                      defaultValue={task.value}
+                      onChange={(value) =>
+                        onEditableChange({ value, id: task.id })
+                      }
+                      placeholder="Task"
+                    />
 
                     <button
                       className="group-hover:opacity-100 opacity-0 absolute right-0 top-[2.5px] focus-visible:outline-none text-error-500/50 hover:text-error-500"
@@ -906,6 +898,7 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
   const { user } = useAuth()
   const router = useRouter()
   const [creatingDraft, setCreatingDraft] = React.useState(false)
+  const [scheduleOpen, setScheduleOpen] = React.useState(false)
 
   const handleCreateProject = async () => {
     if (creatingDraft) return
@@ -1060,6 +1053,7 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
                     className="bg-white h-7 px-2.5 text-[10px] leading-5 text-dark-blue-400"
                     variant="outlined"
                     visual="gray"
+                    onClick={() => setScheduleOpen(true)}
                   >
                     Edit Schedule
                   </Button>
@@ -1088,6 +1082,8 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
           </div>
         </div>
       </div>
+
+      <PayoutScheduleDialog open={scheduleOpen} onOpenChange={setScheduleOpen} />
     </>
   )
 }
@@ -1477,6 +1473,8 @@ export const RecommendedForYou = () => {
   const [carousel, setCarousel] = React.useState<Swiper>()
   const [projects, setProjects] = React.useState<RecommendedProject[]>([])
   const [dismissed, setDismissed] = React.useState<Set<string>>(new Set())
+  const [skillsOpen, setSkillsOpen] = React.useState(false)
+  const { profile, refreshProfile } = useProfile()
   const { user } = useAuth()
 
   React.useEffect(() => {
@@ -1509,12 +1507,13 @@ export const RecommendedForYou = () => {
             {!hasSkills && (
               <p className="text-sm leading-[16.94px] font-light text-dark-blue-400">
                 Improve your recommendations by{" "}
-                <NextLink
+                <button
+                  type="button"
                   className="focus-visible:outline-none underline hover:text-primary-500"
-                  href="/complete-profile"
+                  onClick={() => setSkillsOpen(true)}
                 >
                   adding skills
-                </NextLink>{" "}
+                </button>{" "}
                 to your profile.
               </p>
             )}
@@ -1573,6 +1572,8 @@ export const RecommendedForYou = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      <SkillsDialog opened={skillsOpen} onOpenedChange={setSkillsOpen} profile={profile} onSaved={refreshProfile} />
     </div>
   )
 }

@@ -76,7 +76,7 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
                 <Badge
                   className="rounded-full ml-auto"
                   size="md"
-                  visual="error"
+                  visual={isActive ? "primary" : "error"}
                 >
                   {item.badge}
                 </Badge>
@@ -126,7 +126,6 @@ const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
       { href: "/my-contracts", label: "My Contracts", icon: FileCheck02 },
       { href: "/my-jobs", label: "My Jobs", icon: Briefcase },
       { href: "/my-team", label: "My Team", icon: Users },
-      { href: "/payments", label: "Payments", icon: CurrencyDollar },
       { href: "/stats", label: "Stats & Trends", icon: BarChartSquare02 },
     ],
   },
