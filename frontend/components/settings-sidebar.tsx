@@ -48,7 +48,7 @@ const sharedAccountItems: SidebarItem[] = [
   { href: "/settings/personal-info", label: "Personal Info", icon: UserCircle },
 ]
 
-const talentOnlyAccountItems: SidebarItem[] = [
+const clientOnlyAccountItems: SidebarItem[] = [
   { href: "/settings/company-info", label: "Company Info", icon: Building05 },
 ]
 
@@ -89,11 +89,11 @@ const integrationsItems: SidebarItem[] = [
 ]
 
 const buildSections = (role: string | null): SidebarSection[] => {
-  const isTalent = role === "TALENT" || role === "ADMIN"
+  const isClient = role === "CLIENT" || role === "ADMIN"
 
   const accountItems = [
     ...sharedAccountItems,
-    ...(isTalent ? talentOnlyAccountItems : []),
+    ...(isClient ? clientOnlyAccountItems : []),
     ...sharedAccountTail,
   ]
 
@@ -102,8 +102,8 @@ const buildSections = (role: string | null): SidebarSection[] => {
     { label: "Sign In & Security", items: signInSecurityItems },
     { label: "Billing", items: billingItems },
     { label: "Team Management", items: teamManagementItems },
-    { label: "Access Management", items: accessManagementItems },
     { label: "Integrations", items: integrationsItems },
+    { label: "Access Management", items: accessManagementItems },
   ]
 }
 
