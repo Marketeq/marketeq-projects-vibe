@@ -73,15 +73,16 @@ export default function Onboarding() {
                 className="focus-visible:outline-none rounded-lg p-5 border border-gray-200 flex items-center gap-x-5 bg-white hover:border-gray-300 hover:ring-1 hover:ring-gray-300 cursor-pointer transition duration-300"
               >
                 <div className="w-[100px] shrink-0 bg-primary-50 rounded-lg self-stretch flex items-center justify-center min-h-[80px]">
-                  <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="8" y="12" width="40" height="32" rx="3" stroke="#7C3AED" strokeWidth="2" fill="#EDE9FE" />
-                    <circle cx="22" cy="24" r="5" fill="#C4B5FD" />
-                    <rect x="16" y="31" width="12" height="3" rx="1.5" fill="#C4B5FD" />
-                    <rect x="32" y="20" width="12" height="2" rx="1" fill="#A78BFA" />
-                    <rect x="32" y="25" width="10" height="2" rx="1" fill="#C4B5FD" />
-                    <rect x="32" y="30" width="8" height="2" rx="1" fill="#DDD6FE" />
-                    <circle cx="42" cy="40" r="8" fill="#7C3AED" />
-                    <path d="M42 36v8M38 40h8" stroke="white" strokeWidth="2" strokeLinecap="round" />
+                  <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    {/* Magnifying glass */}
+                    <circle cx="28" cy="28" r="12" stroke="#7C3AED" strokeWidth="2.5" fill="none" />
+                    <line x1="37" y1="37" x2="46" y2="46" stroke="#7C3AED" strokeWidth="2.5" strokeLinecap="round" />
+                    {/* Person inside magnifying glass */}
+                    <circle cx="28" cy="24" r="4" fill="#A78BFA" />
+                    <path d="M21 34c0-3.5 3.1-5 7-5s7 1.5 7 5" stroke="#A78BFA" strokeWidth="2" strokeLinecap="round" fill="none" />
+                    {/* Checkmark badge */}
+                    <circle cx="48" cy="16" r="8" fill="#7C3AED" />
+                    <path d="M44 16l3 3 5-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>
 
@@ -104,14 +105,17 @@ export default function Onboarding() {
                 className="focus-visible:outline-none rounded-lg p-5 border border-gray-200 flex items-center gap-x-5 bg-white hover:border-gray-300 hover:ring-1 hover:ring-gray-300 cursor-pointer transition duration-300"
               >
                 <div className="w-[100px] shrink-0 bg-emerald-50 rounded-lg self-stretch flex items-center justify-center min-h-[80px]">
-                  <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="12" y="8" width="32" height="40" rx="3" stroke="#059669" strokeWidth="2" fill="#ECFDF5" />
-                    <circle cx="28" cy="20" r="6" fill="#A7F3D0" />
-                    <path d="M18 32c0-4 4.5-6 10-6s10 2 10 6" stroke="#059669" strokeWidth="2" strokeLinecap="round" />
-                    <rect x="20" y="36" width="16" height="2" rx="1" fill="#6EE7B7" />
-                    <rect x="22" y="40" width="12" height="2" rx="1" fill="#A7F3D0" />
-                    <path d="M40 14l4 4-4 4" stroke="#059669" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M44 18h-6" stroke="#059669" strokeWidth="1.5" strokeLinecap="round" />
+                  <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    {/* Briefcase */}
+                    <rect x="12" y="24" width="28" height="22" rx="3" stroke="#059669" strokeWidth="2.5" fill="none" />
+                    <path d="M20 24v-4a4 4 0 014-4h4a4 4 0 014 4v4" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" />
+                    <line x1="12" y1="34" x2="40" y2="34" stroke="#059669" strokeWidth="2" />
+                    <rect x="23" y="31" width="6" height="6" rx="1.5" fill="#34D399" />
+                    {/* Upward arrow / growth */}
+                    <path d="M48 42V20" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" />
+                    <path d="M42 26l6-6 6 6" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    {/* Star */}
+                    <path d="M48 10l1.5 3 3.5.5-2.5 2.5.5 3.5L48 18l-3 1.5.5-3.5L43 13.5l3.5-.5L48 10z" fill="#34D399" />
                   </svg>
                 </div>
 
