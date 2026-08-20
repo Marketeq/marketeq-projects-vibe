@@ -66,7 +66,7 @@ import {
 export default function SettingsPage() {
   const { user, setUser } = useAuth()
   const { toast } = useToast()
-  const [activeTab, setActiveTabRaw] = useState("personal-info")
+  const [activeTab, setActiveTab] = useState("personal-info")
 
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -131,12 +131,10 @@ export default function SettingsPage() {
   const paymentMethodsRef = useRef<BillingPaymentMethodsContentHandle | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
-  const setActiveTab = (tab: string) => {
-    setActiveTabRaw(tab)
-    requestAnimationFrame(() => {
-      contentRef.current?.scrollTo({ top: 0, behavior: "instant" })
-    })
-  }
+  useEffect(() => {
+    if (contentRef.current) contentRef.current.scrollTop = 0
+    window.scrollTo(0, 0)
+  }, [activeTab])
 
   const accountRole = useMemo(() => resolveDashboardRole(user), [user])
   const settingsTabItems = useMemo(() => buildSettingsTabItems(accountRole), [accountRole])
