@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
@@ -60,7 +61,10 @@ import {
 export default function SettingsPage() {
   const { user, setUser } = useAuth()
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = useState("personal-info")
+  const searchParams = useSearchParams()
+  const [activeTab, setActiveTab] = useState(
+    searchParams.get("tab") || "personal-info"
+  )
 
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
