@@ -62,9 +62,12 @@ export default function SettingsPage() {
   const { user, setUser } = useAuth()
   const { toast } = useToast()
   const searchParams = useSearchParams()
-  const [activeTab, setActiveTab] = useState(
-    searchParams.get("tab") || "personal-info"
-  )
+  const tabParam = searchParams.get("tab")
+  const [activeTab, setActiveTab] = useState(tabParam || "personal-info")
+
+  useEffect(() => {
+    if (tabParam) setActiveTab(tabParam)
+  }, [tabParam])
 
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
