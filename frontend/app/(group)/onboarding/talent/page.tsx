@@ -3811,49 +3811,34 @@ const DoNext = ({
   }
 
   const completeOnboardingAndNavigate = async (targetRoute: string) => {
-    try {
-      setIsLoading(true)
-      const response = await UserAPI.handleSkip({ role: ROLE.TALENT })
+    setIsLoading(true)
 
-      let nextUser = response?.data?.user as User | undefined
-      if (!nextUser) {
-        const fallbackUser = talentUser ?? user
-        if (fallbackUser) {
-          nextUser = {
-            ...fallbackUser,
-            onboardingDismissed: true,
-            talentOnboardedAt: new Date().toISOString(),
-            userType: "talent",
-          }
+    // Mark onboarding as dismissed locally first so AuthenticatedRoute won't bounce back
+    const fallbackUser = talentUser ?? user
+    const finishedUser = fallbackUser
+      ? {
+          ...fallbackUser,
+          onboardingDismissed: true,
+          talentOnboardedAt: new Date().toISOString(),
+          userType: "talent",
         }
-      }
-
-      if (nextUser) {
-        setUser(nextUser)
-      }
-
-      let refreshedUser = nextUser
-      try {
-        const userResponse = await UserAPI.me()
-        if (userResponse?.data?.user) {
-          refreshedUser = userResponse.data.user
-          setUser(userResponse.data.user)
-        }
-      } catch (error) {
-        console.error("Failed to refresh user after onboarding", error)
-      }
-
-      router.push(
-        getPostOnboardingRoute(
-          targetRoute,
-          refreshedUser ?? talentUser ?? user
-        )
-      )
-    } catch (error) {
-      console.error("Failed to complete onboarding", error)
-    } finally {
-      setIsLoading(false)
+      : null
+    if (finishedUser) {
+      setUser(finishedUser as User)
     }
+
+    try {
+      await UserAPI.handleSkip({ role: ROLE.TALENT })
+      const userResponse = await UserAPI.me()
+      if (userResponse?.data?.user) {
+        setUser(userResponse.data.user)
+      }
+    } catch (error) {
+      console.error("Failed to complete onboarding on server", error)
+    }
+
+    setIsLoading(false)
+    router.push(targetRoute)
   }
 
   const handleFinish = () => completeOnboardingAndNavigate("/talent-dashboard")

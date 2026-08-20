@@ -104,7 +104,7 @@ export default function Onboarding() {
                 href="/onboarding/talent"
                 className="focus-visible:outline-none rounded-lg p-5 border border-gray-200 flex items-center gap-x-5 bg-white hover:border-gray-300 hover:ring-1 hover:ring-gray-300 cursor-pointer transition duration-300"
               >
-                <div className="w-[100px] shrink-0 bg-primary-25 rounded-lg self-stretch flex items-center justify-center min-h-[80px]">
+                <div className="w-[100px] shrink-0 bg-primary-50 rounded-lg self-stretch flex items-center justify-center min-h-[80px]">
                   <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
                     {/* Briefcase */}
                     <rect x="10" y="24" width="30" height="22" rx="3" stroke="#306CFE" strokeWidth="2.5" fill="none" />
