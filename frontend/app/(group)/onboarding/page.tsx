@@ -75,14 +75,14 @@ export default function Onboarding() {
                 <div className="w-[100px] shrink-0 bg-primary-50 rounded-lg self-stretch flex items-center justify-center min-h-[80px]">
                   <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
                     {/* Magnifying glass */}
-                    <circle cx="28" cy="28" r="12" stroke="#7C3AED" strokeWidth="2.5" fill="none" />
-                    <line x1="37" y1="37" x2="46" y2="46" stroke="#7C3AED" strokeWidth="2.5" strokeLinecap="round" />
-                    {/* Person inside magnifying glass */}
-                    <circle cx="28" cy="24" r="4" fill="#A78BFA" />
-                    <path d="M21 34c0-3.5 3.1-5 7-5s7 1.5 7 5" stroke="#A78BFA" strokeWidth="2" strokeLinecap="round" fill="none" />
+                    <circle cx="27" cy="28" r="13" stroke="#306CFE" strokeWidth="2.5" fill="none" />
+                    <line x1="37" y1="37" x2="47" y2="47" stroke="#306CFE" strokeWidth="2.5" strokeLinecap="round" />
+                    {/* Person silhouette inside glass */}
+                    <circle cx="27" cy="24" r="4.5" fill="#98B6FF" />
+                    <path d="M19.5 35c0-4 3.3-5.5 7.5-5.5s7.5 1.5 7.5 5.5" stroke="#98B6FF" strokeWidth="2" strokeLinecap="round" fill="none" />
                     {/* Checkmark badge */}
-                    <circle cx="48" cy="16" r="8" fill="#7C3AED" />
-                    <path d="M44 16l3 3 5-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <circle cx="48" cy="15" r="8" fill="#306CFE" />
+                    <path d="M44 15l3 3 5-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>
 
@@ -104,18 +104,19 @@ export default function Onboarding() {
                 href="/onboarding/talent"
                 className="focus-visible:outline-none rounded-lg p-5 border border-gray-200 flex items-center gap-x-5 bg-white hover:border-gray-300 hover:ring-1 hover:ring-gray-300 cursor-pointer transition duration-300"
               >
-                <div className="w-[100px] shrink-0 bg-emerald-50 rounded-lg self-stretch flex items-center justify-center min-h-[80px]">
+                <div className="w-[100px] shrink-0 bg-primary-25 rounded-lg self-stretch flex items-center justify-center min-h-[80px]">
                   <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
                     {/* Briefcase */}
-                    <rect x="12" y="24" width="28" height="22" rx="3" stroke="#059669" strokeWidth="2.5" fill="none" />
-                    <path d="M20 24v-4a4 4 0 014-4h4a4 4 0 014 4v4" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" />
-                    <line x1="12" y1="34" x2="40" y2="34" stroke="#059669" strokeWidth="2" />
-                    <rect x="23" y="31" width="6" height="6" rx="1.5" fill="#34D399" />
-                    {/* Upward arrow / growth */}
-                    <path d="M48 42V20" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" />
-                    <path d="M42 26l6-6 6 6" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                    {/* Star */}
-                    <path d="M48 10l1.5 3 3.5.5-2.5 2.5.5 3.5L48 18l-3 1.5.5-3.5L43 13.5l3.5-.5L48 10z" fill="#34D399" />
+                    <rect x="10" y="24" width="30" height="22" rx="3" stroke="#306CFE" strokeWidth="2.5" fill="none" />
+                    <path d="M19 24v-4a4 4 0 014-4h6a4 4 0 014 4v4" stroke="#306CFE" strokeWidth="2.5" strokeLinecap="round" />
+                    <line x1="10" y1="35" x2="40" y2="35" stroke="#C9D9FF" strokeWidth="2" />
+                    <rect x="22" y="32" width="6" height="6" rx="1.5" fill="#5687FF" />
+                    {/* Upward trend arrow */}
+                    <path d="M48 44V22" stroke="#306CFE" strokeWidth="2.5" strokeLinecap="round" />
+                    <path d="M42 28l6-6 6 6" stroke="#306CFE" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    {/* Small floating dot accents */}
+                    <circle cx="46" cy="14" r="2.5" fill="#98B6FF" />
+                    <circle cx="54" cy="18" r="1.5" fill="#C9D9FF" />
                   </svg>
                 </div>
 

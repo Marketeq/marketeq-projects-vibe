@@ -2965,7 +2965,7 @@ const DoNext = ({
     return requiresPasswordSetup(candidate) ? "/client-dashboard" : targetRoute
   }
 
-  const handleFinish = async () => {
+  const completeOnboardingAndNavigate = async (targetRoute: string) => {
     setIsLoading(true)
 
     // Always mark onboarding as dismissed locally so AuthenticatedRoute won't bounce back
@@ -2993,8 +2993,10 @@ const DoNext = ({
     }
 
     setIsLoading(false)
-    router.push("/client-dashboard")
+    router.push(getPostOnboardingRoute(targetRoute, clientUser ?? user))
   }
+
+  const handleFinish = () => completeOnboardingAndNavigate("/client-dashboard")
 
   return (
     <div className="min-h-screen flex 2xl:pl-[480px]">
@@ -3013,14 +3015,7 @@ const DoNext = ({
           <div className="mt-10 md:mt-[50px] grid md:grid-cols-2 gap-2.5 2xl:gap-5">
             <div
               className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-              onClick={() => {
-                if (clientUser) {
-                  setUser(clientUser)
-                }
-                router.push(
-                  getPostOnboardingRoute("/projects", clientUser ?? user)
-                )
-              }}
+              onClick={() => completeOnboardingAndNavigate("/projects")}
             >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
@@ -3036,14 +3031,7 @@ const DoNext = ({
 
             <div
               className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-              onClick={() => {
-                if (clientUser) {
-                  setUser(clientUser)
-                }
-                router.push(
-                  getPostOnboardingRoute("/teams", clientUser ?? user)
-                )
-              }}
+              onClick={() => completeOnboardingAndNavigate("/teams")}
             >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
@@ -3059,14 +3047,7 @@ const DoNext = ({
 
             <div
               className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-              onClick={() => {
-                if (clientUser) {
-                  setUser(clientUser)
-                }
-                router.push(
-                  getPostOnboardingRoute("/services", clientUser ?? user)
-                )
-              }}
+              onClick={() => completeOnboardingAndNavigate("/services")}
             >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
@@ -3082,17 +3063,7 @@ const DoNext = ({
 
             <div
               className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-              onClick={() => {
-                if (clientUser) {
-                  setUser(clientUser)
-                }
-                router.push(
-                  getPostOnboardingRoute(
-                    "/publish-project",
-                    clientUser ?? user
-                  )
-                )
-              }}
+              onClick={() => completeOnboardingAndNavigate("/publish-project")}
             >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">

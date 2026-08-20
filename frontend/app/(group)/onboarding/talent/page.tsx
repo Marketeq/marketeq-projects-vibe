@@ -3810,7 +3810,7 @@ const DoNext = ({
     return requiresPasswordSetup(candidate) ? "/talent-dashboard" : targetRoute
   }
 
-  const handleFinish = async () => {
+  const completeOnboardingAndNavigate = async (targetRoute: string) => {
     try {
       setIsLoading(true)
       const response = await UserAPI.handleSkip({ role: ROLE.TALENT })
@@ -3845,17 +3845,18 @@ const DoNext = ({
 
       router.push(
         getPostOnboardingRoute(
-          "/talent-dashboard",
+          targetRoute,
           refreshedUser ?? talentUser ?? user
         )
       )
     } catch (error) {
       console.error("Failed to complete onboarding", error)
-      // Show error toast if needed
     } finally {
       setIsLoading(false)
     }
   }
+
+  const handleFinish = () => completeOnboardingAndNavigate("/talent-dashboard")
 
   return (
     <div className="min-h-screen flex md:pl-[480px] bg-white">
@@ -3873,17 +3874,7 @@ const DoNext = ({
           <div className="mt-10 2xl:mt-[50px] grid md:grid-cols-2 gap-2.5 2xl:gap-5">
             <div
               className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-              onClick={() => {
-                if (talentUser) {
-                  setUser(talentUser)
-                }
-                router.push(
-                  getPostOnboardingRoute(
-                    "/projects",
-                    talentUser ?? user
-                  )
-                )
-              }}
+              onClick={() => completeOnboardingAndNavigate("/projects")}
             >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
@@ -3899,14 +3890,7 @@ const DoNext = ({
 
             <div
               className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-              onClick={() => {
-                if (talentUser) {
-                  setUser(talentUser)
-                }
-                router.push(
-                  getPostOnboardingRoute("/teams", talentUser ?? user)
-                )
-              }}
+              onClick={() => completeOnboardingAndNavigate("/teams")}
             >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
@@ -3922,14 +3906,7 @@ const DoNext = ({
 
             <div
               className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-              onClick={() => {
-                if (talentUser) {
-                  setUser(talentUser)
-                }
-                router.push(
-                  getPostOnboardingRoute("/publish-project", talentUser ?? user)
-                )
-              }}
+              onClick={() => completeOnboardingAndNavigate("/publish-project")}
             >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
@@ -3945,14 +3922,7 @@ const DoNext = ({
 
             <div
               className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-              onClick={() => {
-                if (talentUser) {
-                  setUser(talentUser)
-                }
-                router.push(
-                  getPostOnboardingRoute("/services", talentUser ?? user)
-                )
-              }}
+              onClick={() => completeOnboardingAndNavigate("/services")}
             >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
