@@ -7678,7 +7678,7 @@ export const OverviewTab = ({
                           <button
                             type="button"
                             className="text-sm font-semibold text-[#22376B] underline underline-offset-4"
-                            onClick={() => router.push("/billing")}
+                            onClick={() => router.push("/settings")}
                           >
                             Manage
                           </button>

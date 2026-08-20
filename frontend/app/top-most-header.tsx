@@ -1781,7 +1781,7 @@ export const TopMostHeader = ({
               <DropdownMenuItem
                 onSelect={() => {
                   setMenuOpen(false)
-                  router.push("/billing")
+                  router.push("/settings")
                 }}
               >
                 <CoinStack className="size-4" />
