@@ -4,7 +4,8 @@
 // payout-service calls its email provider directly for magic links;
 // every other contractor communication goes through notification-service
 // via RabbitMQ. Reuses the same BREVO_API_KEY/FROM_EMAIL/FROM_NAME env vars
-// notification-service already reads — no new env vars needed.
+// notification-service already reads, plus BREVO_WITHDRAWAL_TEMPLATE_ID for
+// the branded template — unset falls back to the inline HTML below.
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
