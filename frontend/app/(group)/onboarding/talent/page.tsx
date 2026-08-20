@@ -165,6 +165,7 @@ const IntroduceYourself = ({
   stepData: CreateTalentType | null
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
 }) => {
+  const router = useRouter()
   const [formError, setFormError] = useState<string | null>(null)
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null)
 
@@ -394,7 +395,7 @@ const IntroduceYourself = ({
               variant="outlined"
               visual="gray"
               type="button"
-              disabled
+              onClick={() => router.push("/onboarding")}
             >
               Back
             </Button>
@@ -3088,7 +3089,7 @@ const setYourPreferencesFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["customAvailability"],
-        message: "End time cannot be earlier than start time",
+        message: "Please ensure end time is later than start time.",
       })
     }
 
@@ -3096,7 +3097,7 @@ const setYourPreferencesFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["customAvailability"],
-        message: "Custom availability times cannot overlap.",
+        message: "Please adjust your times so they do not overlap.",
       })
     }
   })

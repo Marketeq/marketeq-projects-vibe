@@ -269,9 +269,9 @@ const getBudgetDefaultValue = (value?: string) => {
 }
 
 const describeYourTeamFormSchema = z.object({
-  teamName: z.string().min(1, "Team/company name is required."),
-  role: z.string().min(1, "Role/job title is required."),
-  industry: z.string().min(1, "Industry is required."),
+  teamName: z.string().min(1, "Please enter your team or company name."),
+  role: z.string().min(1, "Please enter your role or job title."),
+  industry: z.string().min(1, "Please select your industry."),
 })
 
 type DescribeYourTeamFormValues = z.infer<typeof describeYourTeamFormSchema>
@@ -755,7 +755,7 @@ const shareYourGoalsFormSchema = z
     )
   )
   .refine((data) => keys(data).some((value) => data[value]), {
-    message: "Select at least one goal.",
+    message: "Please select at least one goal.",
     path: [defaultValue.label],
   })
 
@@ -1339,8 +1339,8 @@ const InviteYourTeam = ({
 const usernameRules = z
   .string()
   .trim()
-  .min(3, "Username must be at least 3 characters.")
-  .max(24, "Username must be at most 24 characters.")
+  .min(3, "Please enter at least 3 characters.")
+  .max(24, "Please keep your username under 24 characters.")
   .regex(
     /^[a-z][a-z0-9_]*$/,
     "Username must start with a letter and contain only lowercase letters, numbers, and underscores."
@@ -2470,21 +2470,21 @@ const outlineYourInterestsFormSchema = z
     }),
     lookingToWorkWith: z
       .array(z.string())
-      .min(1, "Enter at least one desired role or one desired skill."),
+      .min(1, "Please enter at least one desired role or skill."),
     skillsLookingFor: z
       .array(z.string())
-      .min(1, "Enter at least one desired role or one desired skill."),
+      .min(1, "Please enter at least one desired role or skill."),
   })
   .refine(
     (data) =>
       industriesOrVerticals.some((item) => data.industriesOrVerticals[item]),
     {
-      message: "Select at least one industry or vertical.",
+      message: "Please select at least one industry or vertical.",
       path: ["industriesOrVerticals"],
     }
   )
   .refine((data) => projects.some((item) => data.projects[item]), {
-    message: "Select at least one project type.",
+    message: "Please select at least one project type.",
     path: ["projects"],
   })
 
@@ -3215,8 +3215,8 @@ const introduceYourselfFormSchema = z.object({
       required_error: "Please select a profile photo.",
     })
     .min(1, "Please select a profile photo."),
-  firstName: z.string().min(1, "First name is required."),
-  lastName: z.string().min(1, "Last name is required."),
+  firstName: z.string().min(1, "Please enter your first name."),
+  lastName: z.string().min(1, "Please enter your last name."),
 })
 type IntroduceYourselfFormValues = z.infer<typeof introduceYourselfFormSchema>
 
