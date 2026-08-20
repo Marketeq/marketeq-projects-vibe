@@ -633,8 +633,8 @@ export default function SettingsPage() {
               )}
 
               {activeTab === "billing-payment-methods" && (
-                <>
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-5">
+                <div className="flex flex-col min-h-0 h-full overflow-hidden">
+                  <div className="shrink-0 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-5">
                     <h1 className="text-xl font-bold text-dark-blue-400">
                       Payment Methods
                     </h1>
@@ -659,7 +659,7 @@ export default function SettingsPage() {
                   <div className="min-h-0 flex-1 overflow-hidden">
                     <BillingPaymentMethodsContent ref={paymentMethodsRef} embedded />
                   </div>
-                </>
+                </div>
               )}
 
               {activeTab === "billing-plans" && (
