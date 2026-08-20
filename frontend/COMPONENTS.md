@@ -32,6 +32,133 @@ Any PR or code change that creates custom UI components, modifies Storybook sour
 
 ---
 
+## SPACING & LAYOUT SYSTEM
+
+> **Source of truth:** All values below are extracted from the full-page Storybook screens. Use ONLY these spacing values when building pages. Do not invent custom spacing.
+
+All spacing follows a **4px base grid**. Values are expressed as Tailwind classes.
+
+---
+
+### Page Container Padding
+
+The outermost content wrapper on every page.
+
+| Context | Horizontal | Vertical | Used on |
+|---------|-----------|----------|---------|
+| Standard pages | `px-[100px]` | `py-[50px]` | Talent Profile, Project Details |
+| Category pages | `px-[50px]` | `py-[50px]` | Categories L1, L2, L3 |
+| Onboarding content area | `px-[200px]` | `py-[100px]` | Client Onboarding, Talent Onboarding |
+| Onboarding sidebar | `p-[75px]` | — | Onboarding left panels |
+| Dashboard/sidebar pages | `px-5` (20px) | `py-6` (24px) | Sidebar layouts, Complete My Profile |
+
+### Section Spacing (Vertical Gaps Between Major Blocks)
+
+Space between top-level sections on a page (e.g., between a hero and a card grid, between two card groups).
+
+| Value | Pixels | When to use |
+|-------|--------|-------------|
+| `mt-[50px]` | 50px | Between hero/banner and main content grid |
+| `mt-10` | 40px | Between major page sections |
+| `mt-8` | 32px | Between related section groups |
+| `mt-6` | 24px | Standard section gap (most common) |
+| `mt-[30px]` | 30px | Sub-sections under headers (onboarding) |
+| `gap-y-6` | 24px | Flex column layouts with multiple sections |
+| `gap-y-5` | 20px | Flex column section spacing (onboarding cards) |
+
+### Widget / Card Padding
+
+Internal padding of cards, panels, and content widgets.
+
+| Value | Pixels | When to use |
+|-------|--------|-------------|
+| `p-10` | 40px | Large profile header cards |
+| `p-8` | 32px | Content-heavy panels (project details message area) |
+| `p-6` | 24px | Standard cards with moderate content |
+| `p-5` | 20px | Most common card padding (category cards, sidebar cards, form cards) |
+| `p-4` | 16px | Compact cards, modals, dialog content |
+| `p-3` | 12px | Tight widget padding (message input area, inline tools) |
+
+### Grid Gaps (Between Cards in Grids)
+
+| Value | Pixels | When to use |
+|-------|--------|-------------|
+| `gap-[15px]` | 15px | Card grids on category pages (grid-cols-4, grid-cols-5) |
+| `gap-6` | 24px | Standard content grids |
+| `gap-5` | 20px | Portfolio / gallery grids |
+| `gap-x-3` | 12px | Horizontal spacing in inline grids (step indicators, tab groups) |
+
+### Content Spacing Within Sections
+
+Vertical spacing between items inside a card or section.
+
+| Value | Pixels | When to use |
+|-------|--------|-------------|
+| `gap-y-6` | 24px | Form sections, card groups inside a panel |
+| `gap-y-5` | 20px | Benefit/feature lists, onboarding card stacks |
+| `gap-y-3` | 12px | Button rows, action groups |
+| `space-y-5` | 20px | Stacked list items (feature lists, onboarding benefits) |
+| `space-y-3` | 12px | List items (payment methods, radio groups) |
+| `space-y-2` | 8px | Tightly related stacked content |
+| `space-y-1` | 4px | Minimal list spacing (nav items, metadata lines) |
+
+### Header / Title Margins
+
+| Value | Pixels | When to use |
+|-------|--------|-------------|
+| `mt-6` | 24px | Below page title before content starts |
+| `mt-3` | 12px | Below section title before section content |
+| `mt-2` | 8px | Below heading before description text |
+| `mt-1` | 4px | Subtitle directly under a title |
+| `mb-4` | 16px | Bottom margin closing a header block |
+| `mb-3` | 12px | Bottom margin for sub-headers |
+
+### Horizontal Component Spacing
+
+| Value | Pixels | When to use |
+|-------|--------|-------------|
+| `gap-x-10` | 40px | Profile avatar to profile content |
+| `gap-x-6` | 24px | Side-by-side content panels |
+| `gap-x-5` | 20px | Sidebar to main content |
+| `gap-x-3` | 12px | Icon + text pairs, inline groups (most common horizontal gap) |
+| `gap-x-2` | 8px | Tight inline elements (badge + badge, small icon + label) |
+
+### Section Dividers
+
+| Pattern | When to use |
+|---------|-------------|
+| `border-b border-gray-200 pb-4` | Divider between card sections with bottom padding |
+| `border-b border-gray-200 pb-5` | Divider with slightly more breathing room |
+| `divide-y divide-gray-200` | Auto-dividers on stacked list items |
+
+### Sidebar Navigation
+
+| Value | Pixels | When to use |
+|-------|--------|-------------|
+| `py-6 px-[15px]` | 24px / 15px | Sidebar container padding (publish-project, complete-my-profile) |
+| `px-3 py-2` | 12px / 8px | Individual nav item padding |
+| `pl-[25px]` | 25px | Nested/indented nav items |
+| `gap-x-3` | 12px | Icon to label spacing in nav items |
+
+### Quick Reference (Most Used Values)
+
+These are the spacing values you will use 90% of the time:
+
+| Pixels | Tailwind | Usage |
+|--------|----------|-------|
+| 4px | `1` | Tight subtitle gaps, minimal list spacing |
+| 8px | `2` | Small gaps, tight stacked content |
+| 12px | `3` | Icon-to-text, inline groups, nav item padding |
+| 16px | `4` | Compact card padding, header bottom margins |
+| 20px | `5` | Standard card padding, list stacks, flex gaps |
+| 24px | `6` | Standard section gaps, form sections, content grids |
+| 32px | `8` | Content panel padding, section group gaps |
+| 40px | `10` | Large card padding, major section breaks |
+| 50px | `[50px]` | Page vertical padding, hero-to-content breaks |
+| 100px | `[100px]` | Page horizontal padding (standard pages) |
+
+---
+
 ## SECTION 1: Base UI Components
 
 All base components live in `frontend/components/ui/` and are re-exported from the barrel `@/components/ui` (via `frontend/components/ui/index.ts`).
@@ -248,6 +375,16 @@ All base components live in `frontend/components/ui/` and are re-exported from t
 - **Import**: `import { Input, inputVariants, InputLeftAddon, InputRightAddon, InputLeftElement, InputRightElement } from "@/components/ui"`
 - **Key Props**: `isInvalid?: boolean`; standard input HTML props
 - **Variants**: Base, BaseDestructive, LabeledBase
+- **Search Input Pattern**: Search inputs have 4 visual states. The width behavior (grow/shrink) is page-specific and not part of this pattern.
+  - **InputGroup**: `className="group/search"` (add width/transition classes per page)
+  - **Search icon** (InputLeftElement): `<SearchMd className="size-4 text-gray-400 transition-colors duration-300 group-hover/search:text-gray-500 group-focus-within/search:!text-primary-500" />`
+  - **Input**: `className="pl-9 pr-9 transition-[border-color] duration-300 hover:border-primary-200 hover:shadow-[0px_0px_0px_4px_#E1EAFF] focus:!ring-0 focus:!shadow-[0px_0px_0px_4px_#E1EAFF]"`
+    - NOTE: Do NOT use `transition-all` — it interpolates box-shadow between `shadow-xs` and the ring, causing a dark flash. Only transition `border-color`.
+  - **Clear button** (InputRightElement): `onMouseDown={(e) => e.preventDefault()}` to keep input focused after clearing. Icon: `<XCircle className="size-4 text-gray-500 opacity-50 hover:opacity-100" />`
+  - **Default**: border-gray-300 (built-in), shadow-xs (built-in), icon gray-400
+  - **Hover**: border-primary-200, glow #E1EAFF, icon gray-500
+  - **Active/Focus**: border-primary-500 (built-in), glow #E1EAFF, icon primary-500
+  - **Filled**: same as active, typed text in gray-black, clear button (XCircle) at opacity-50 hover:opacity-100
 - **Storybook**: `components/ui/input/input.stories.tsx` (Base, BaseDestructive, LabeledBase)
 
 ### InputGroup
@@ -383,6 +520,14 @@ All base components live in `frontend/components/ui/` and are re-exported from t
 ### Table
 - **Import**: `import { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption } from "@/components/ui"`
 - **Key Props**: Standard HTML table element wrappers; works with `@tanstack/react-table` columnHelper
+- **Sortable Columns**: For sortable column headers, use the following pattern:
+  - Add `className="cursor-pointer select-none group/sort"` and an `onClick` handler to the `TableHead`
+  - Inside, wrap the label and arrow icon in `<div className="inline-flex items-center gap-x-1">`
+  - When **unsorted**: show `<ArrowDown className="h-4 w-4 opacity-0 group-hover/sort:opacity-50 transition-opacity duration-300" />` (hidden by default, fades in at 50% on hover to indicate sortability)
+  - When **sorted asc**: show `<ArrowUp className="h-4 w-4" />` at full opacity
+  - When **sorted desc**: show `<ArrowDown className="h-4 w-4" />` at full opacity
+  - Non-sortable columns should have no arrow icon, no cursor-pointer, and no group class
+  - Icons: `import { ArrowDown, ArrowUp } from "@blend-metrics/icons"`
 - **Storybook**: `components/ui/table/table.stories.tsx` (Default)
 
 ### Tabs
