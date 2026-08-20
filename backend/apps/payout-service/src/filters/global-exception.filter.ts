@@ -23,9 +23,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let errorCode = 'ERR_INTERNAL';
     let message = 'An unexpected error occurred.';
-    // Extra fields PayoutError attaches (attemptsLeft, lockedUntil, etc.) —
-    // callers like the deposit-method verification UI depend on these
-    // reaching the client, not just errorCode/message.
+    // Extra fields PayoutError attaches — callers like the deposit-method
+    // verification UI depend on these reaching the client, not just
+    // errorCode/message. Explicitly allowlisted rather than spread so an
+    // HttpException can't leak arbitrary response properties to the client.
+    const META_ALLOWLIST = ['attemptsLeft', 'lockedUntil'] as const;
     let meta: Record<string, unknown> = {};
 
     if (exception instanceof HttpException) {
@@ -36,8 +38,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         const resp = exceptionResponse as any;
         errorCode = resp.errorCode || `ERR_HTTP_${status}`;
         message = resp.message || exception.message;
-        const { errorCode: _ec, message: _msg, statusCode: _sc, ...rest } = resp;
-        meta = rest;
+        for (const key of META_ALLOWLIST) {
+          if (resp[key] !== undefined) meta[key] = resp[key];
+        }
       } else {
         message = exception.message;
       }

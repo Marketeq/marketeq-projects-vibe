@@ -90,6 +90,12 @@ import {
   Button,
   Card,
   Checkbox,
+  Combobox,
+  ComboboxButton,
+  ComboboxInput,
+  ComboboxOption,
+  ComboboxOptions,
+  ComboboxTrigger,
   DatePicker,
   Dialog,
   DialogClose,
@@ -114,6 +120,7 @@ import {
   PopoverContent,
   PopoverTrigger,
   RadioGroup,
+  ScaleOutIn,
   ScrollArea,
   SearchField,
   SearchFieldButton,
@@ -1227,7 +1234,7 @@ const EDIT_BANK_COUNTRIES: { code: string; name: string; flag: string }[] = [
   { code: "AU", name: "Australia", flag: "🇦🇺" },
   { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
   { code: "JP", name: "Japan", flag: "🇯🇵" },
-  { code: "SG", name: "Asia", flag: "🇨🇭" },
+  { code: "SG", name: "Asia", flag: "🌏" },
 ]
 function editBankRegion(country: string): BankRegion {
   return country ? detectBankRegion(country) : "US"
@@ -1281,8 +1288,6 @@ function createBlankEditBankForm(bankCountry = "") {
     bankSwiftBic: "",
     bankCode: "",
     bankBranchCode: "",
-    bankBranchName: "",
-    accountType: "",
     bankCountry,
   }
 }
@@ -1334,6 +1339,11 @@ const isValidRuAccountNumber = (v: string) => /^\d{20}$/.test(v)
 function isEditBankInfoComplete(form: ReturnType<typeof createBlankEditBankForm>) {
   const region = editBankRegion(form.bankCountry)
   if (!form.bankAccountName.trim()) return false
+  if (
+    region !== "SEPA" &&
+    form.bankAccountNumberConfirm !== form.bankAccountNumber
+  )
+    return false
   switch (region) {
     case "US":
       return (
@@ -1359,8 +1369,8 @@ function isEditBankInfoComplete(form: ReturnType<typeof createBlankEditBankForm>
       )
     case "JP":
       return (
-        !!form.bankBranchName.trim() &&
-        !!form.accountType &&
+        isValidJpBankCode(form.bankCode) &&
+        isValidJpBranchCode(form.bankBranchCode) &&
         /^\d{7}$/.test(form.bankAccountNumber)
       )
     case "SWIFT":
@@ -3019,9 +3029,8 @@ export const OverviewTab = ({
             payload.bankTransitNumber = editBankForm.bankTransitNumber
             break
           case "JP":
-            if (editBankForm.bankCode) payload.bankCode = editBankForm.bankCode
-            if (editBankForm.bankBranchCode)
-              payload.bankBranchCode = editBankForm.bankBranchCode
+            payload.bankCode = editBankForm.bankCode
+            payload.bankBranchCode = editBankForm.bankBranchCode
             break
           case "SEPA":
             payload.bankIban = editBankForm.bankIban
@@ -5021,13 +5030,15 @@ export const OverviewTab = ({
                           <X className="size-4" />
                         </IconButton>
                       </div>
-                      <div className="py-10 text-center space-y-5">
-                        <div className="mx-auto size-12 rounded-full bg-primary-50 flex items-center justify-center">
-                          <BankIcon className="size-6 text-primary-600" />
+                      <div className="py-10 space-y-5">
+                        <div className="flex items-center gap-4">
+                          <BankIcon className="size-14 shrink-0 text-dark-blue-400" />
+                          <h3 className="text-base font-semibold text-dark-blue-400">
+                            Securely connect your bank account.
+                          </h3>
                         </div>
-                        <p className="text-sm text-gray-500 px-4">
-                          You'll be securely connected to your bank through
-                          Stripe. Your banking credentials are never shared with
+                        <p className="text-xs text-gray-400">
+                          Your banking credentials are never shared with
                           Marketeq.
                         </p>
                         <Button
@@ -5593,7 +5604,7 @@ export const OverviewTab = ({
                               onClick={() =>
                                 setAddForm((f) => ({
                                   ...f,
-                                  methodType: "PICK",
+                                  methodType: "BANK_CONNECT_CONFIRM",
                                 }))
                               }
                             >
@@ -5613,20 +5624,22 @@ export const OverviewTab = ({
                             </IconButton>
                           </div>
                           <div className="space-y-3">
-                            <div className="relative">
-                              <label className="text-xs text-gray-500 mb-1 block">
-                                Country
-                              </label>
-                              <div className="relative">
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm"
+                            <Combobox
+                              className="w-full"
+                              value={selectedCountry ?? null}
+                              onChange={(country) => {
+                                if (country) selectCountry(country.code)
+                              }}
+                            >
+                              <ComboboxTrigger className="flex flex-col gap-y-1">
+                                <Label size="xs" className="text-gray-500">
+                                  Country
+                                </Label>
+                                <ComboboxInput
+                                  className="pl-3 pr-8 py-2 text-sm"
                                   placeholder="Select country"
-                                  value={
-                                    addForm.bankCountryOpen
-                                      ? addForm.bankCountrySearch
-                                      : selectedCountry
-                                        ? `${selectedCountry.flag} ${selectedCountry.name}`
-                                        : ""
+                                  displayValue={(c: typeof selectedCountry) =>
+                                    c ? `${c.flag} ${c.name}` : ""
                                   }
                                   onFocus={() =>
                                     setAddForm((f) => ({
@@ -5652,32 +5665,31 @@ export const OverviewTab = ({
                                     }))
                                   }
                                 />
-                                <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 text-gray-400" />
-                              </div>
-                              {addForm.bankCountryOpen && (
-                                <div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-                                  {filteredCountries.length === 0 ? (
-                                    <p className="text-xs text-gray-400 text-center py-4">
-                                      No countries found
-                                    </p>
-                                  ) : (
-                                    filteredCountries.map((c) => (
-                                      <button
-                                        key={c.code}
-                                        type="button"
-                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-50"
-                                        onClick={() => selectCountry(c.code)}
-                                      >
-                                        <span>{c.flag}</span>{" "}
-                                        <span className="text-dark-blue-400">
-                                          {c.name}
-                                        </span>
-                                      </button>
-                                    ))
-                                  )}
-                                </div>
-                              )}
-                            </div>
+                                <ComboboxButton align="right">
+                                  <Search className="size-3.5 text-gray-400" />
+                                </ComboboxButton>
+                              </ComboboxTrigger>
+                              <ScaleOutIn show={addForm.bankCountryOpen}>
+                                <ComboboxOptions>
+                                  <ScrollArea viewportClassName="max-h-56">
+                                    {filteredCountries.length === 0 ? (
+                                      <p className="text-xs text-gray-400 text-center py-4">
+                                        No countries found
+                                      </p>
+                                    ) : (
+                                      filteredCountries.map((c) => (
+                                        <ComboboxOption key={c.code} value={c}>
+                                          <span>{c.flag}</span>{" "}
+                                          <span className="text-dark-blue-400">
+                                            {c.name}
+                                          </span>
+                                        </ComboboxOption>
+                                      ))
+                                    )}
+                                  </ScrollArea>
+                                </ComboboxOptions>
+                              </ScaleOutIn>
+                            </Combobox>
                             {OFAC_BLOCKED_COUNTRIES.has(
                               addForm.bankCountry.toUpperCase()
                             ) && (
@@ -5687,11 +5699,11 @@ export const OverviewTab = ({
                               </p>
                             )}
                             <div>
-                              <label className="text-xs text-gray-500 mb-1 block">
+                              <Label size="xs" className="text-gray-500 mb-1 block">
                                 Bank Name
-                              </label>
-                              <input
-                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                              </Label>
+                              <Input
+                                className="w-full px-3 py-2 text-sm"
                                 placeholder="e.g. Bank of America"
                                 value={addForm.bankAccountName}
                                 onChange={(e) =>
@@ -5703,11 +5715,11 @@ export const OverviewTab = ({
                               />
                             </div>
                             <div>
-                              <label className="text-xs text-gray-500 mb-1 block">
+                              <Label size="xs" className="text-gray-500 mb-1 block">
                                 Account Holder Name
-                              </label>
-                              <input
-                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                              </Label>
+                              <Input
+                                className="w-full px-3 py-2 text-sm"
                                 placeholder="John Doe"
                                 value={addForm.nickname}
                                 onChange={(e) =>
@@ -5720,23 +5732,26 @@ export const OverviewTab = ({
                             </div>
                             {region === "US" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   Account Type
-                                </label>
-                                <select
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Select
                                   value={addForm.accountType}
-                                  onChange={(e) =>
+                                  onValueChange={(accountType) =>
                                     setAddForm((f) => ({
                                       ...f,
-                                      accountType: e.target.value,
+                                      accountType,
                                     }))
                                   }
                                 >
-                                  <option value="">Select</option>
-                                  <option value="CHECKING">Checking</option>
-                                  <option value="SAVINGS">Savings</option>
-                                </select>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="CHECKING">Checking</SelectItem>
+                                    <SelectItem value="SAVINGS">Savings</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               </div>
                             )}
 
@@ -5747,11 +5762,11 @@ export const OverviewTab = ({
                               region !== "GCC" && (
                                 <>
                                   <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">
+                                    <Label size="xs" className="text-gray-500 mb-1 block">
                                       Account Number
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                    </Label>
+                                    <Input
+                                      className="w-full px-3 py-2 text-sm"
                                       placeholder="Up to 17 digits"
                                       value={addForm.bankAccountNumber}
                                       onChange={(e) =>
@@ -5765,11 +5780,11 @@ export const OverviewTab = ({
                                   <div>
                                     {/* SCR-02: anti-typo protection — a mistyped account number sends
                                 funds nowhere recoverable, so it must be entered twice. */}
-                                    <label className="text-xs text-gray-500 mb-1 block">
+                                    <Label size="xs" className="text-gray-500 mb-1 block">
                                       Confirm Account Number
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                    </Label>
+                                    <Input
+                                      className="w-full px-3 py-2 text-sm"
                                       placeholder="Re-enter account number"
                                       value={addForm.bankAccountNumberConfirm}
                                       onChange={(e) =>
@@ -5794,11 +5809,11 @@ export const OverviewTab = ({
 
                             {region === "US" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   Bank Routing Number
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="9-digit ABA routing number"
                                   value={addForm.bankRoutingNumber}
                                   onChange={(e) =>
@@ -5820,11 +5835,11 @@ export const OverviewTab = ({
                             )}
                             {region === "GB" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   Sort Code
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="6 digits, e.g. 12-34-56"
                                   value={addForm.bankSortCode}
                                   onChange={(e) =>
@@ -5844,11 +5859,11 @@ export const OverviewTab = ({
                             )}
                             {region === "IN" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   IFSC Code
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm uppercase"
                                   placeholder="e.g. HDFC0001234"
                                   value={addForm.bankIfscCode}
                                   onChange={(e) =>
@@ -5868,11 +5883,11 @@ export const OverviewTab = ({
                             )}
                             {region === "AU" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   BSB Number
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="6 digits, e.g. 123-456"
                                   value={addForm.bankBsbNumber}
                                   onChange={(e) =>
@@ -5893,11 +5908,11 @@ export const OverviewTab = ({
                             {region === "CA" && (
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
                                     Institution Number
-                                  </label>
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
                                     placeholder="3 digits"
                                     value={addForm.bankInstitutionNumber}
                                     onChange={(e) =>
@@ -5917,11 +5932,11 @@ export const OverviewTab = ({
                                     )}
                                 </div>
                                 <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
                                     Transit Number
-                                  </label>
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
                                     placeholder="5 digits"
                                     value={addForm.bankTransitNumber}
                                     onChange={(e) =>
@@ -5945,11 +5960,11 @@ export const OverviewTab = ({
                             {region === "JP" && (
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
                                     Bank Code
-                                  </label>
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
                                     placeholder="4 digits"
                                     value={addForm.bankCode}
                                     onChange={(e) =>
@@ -5967,11 +5982,11 @@ export const OverviewTab = ({
                                     )}
                                 </div>
                                 <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
                                     Branch Code
-                                  </label>
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
                                     placeholder="3 digits"
                                     value={addForm.bankBranchCode}
                                     onChange={(e) =>
@@ -5994,11 +6009,11 @@ export const OverviewTab = ({
                             )}
                             {region === "MX" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   CLABE
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="18-digit CLABE"
                                   value={addForm.bankClabe}
                                   onChange={(e) =>
@@ -6018,11 +6033,11 @@ export const OverviewTab = ({
                             )}
                             {region === "CN" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   CNAPS Code
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="12 digits"
                                   value={addForm.bankCnapsCode}
                                   onChange={(e) =>
@@ -6042,11 +6057,11 @@ export const OverviewTab = ({
                             )}
                             {region === "RU" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   BIK
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="9 digits"
                                   value={addForm.bankBik}
                                   onChange={(e) =>
@@ -6066,11 +6081,11 @@ export const OverviewTab = ({
                             )}
                             {(region === "SEPA" || region === "GCC") && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   IBAN
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm uppercase"
                                   placeholder="e.g. DE89370400440532013000"
                                   value={addForm.bankIban}
                                   onChange={(e) =>
@@ -6092,11 +6107,11 @@ export const OverviewTab = ({
                               region === "BACS" ||
                               region === "SWIFT") && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   SWIFT/BIC Code
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm uppercase"
                                   placeholder="e.g. DEUTDEFF"
                                   value={addForm.bankSwiftBic}
                                   onChange={(e) =>
@@ -6116,11 +6131,11 @@ export const OverviewTab = ({
                             )}
                             {region === "SEPA" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   SWIFT/BIC Code (optional)
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm uppercase"
                                   placeholder="e.g. DEUTDEFF"
                                   value={addForm.bankSwiftBic}
                                   onChange={(e) =>
@@ -6139,15 +6154,14 @@ export const OverviewTab = ({
                               </div>
                             )}
 
-                            <label className="flex items-start gap-2 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                className="mt-0.5 accent-primary-600"
+                            <div className="flex items-start gap-2">
+                              <Checkbox
+                                className="mt-0.5"
                                 checked={addForm.bankConsent}
-                                onChange={(e) =>
+                                onCheckedChange={(checked) =>
                                   setAddForm((f) => ({
                                     ...f,
-                                    bankConsent: e.target.checked,
+                                    bankConsent: checked as boolean,
                                   }))
                                 }
                               />
@@ -6158,7 +6172,7 @@ export const OverviewTab = ({
                                 will comply with applicable local laws and
                                 banking regulations.
                               </span>
-                            </label>
+                            </div>
                           </div>
                           <div className="flex gap-2 mt-5">
                             <Button
@@ -7178,6 +7192,17 @@ export const OverviewTab = ({
                                     }))
                                   }
                                 />
+                                {editBankForm.bankRoutingNumber.length > 0 &&
+                                  !isValidAbaRouting(
+                                    editBankForm.bankRoutingNumber.replace(
+                                      /\D/g,
+                                      ""
+                                    )
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid routing number.
+                                    </p>
+                                  )}
                               </div>
                             </>
                           )}
@@ -7200,6 +7225,12 @@ export const OverviewTab = ({
                                     }))
                                   }
                                 />
+                                {editBankForm.bankIban.length > 0 &&
+                                  !isValidIban(editBankForm.bankIban) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid IBAN.
+                                    </p>
+                                  )}
                               </div>
                               <div className="space-y-1.5">
                                 <Label size="sm" htmlFor="edit-bank-swift">
@@ -7217,6 +7248,14 @@ export const OverviewTab = ({
                                     }))
                                   }
                                 />
+                                {editBankForm.bankSwiftBic.length > 0 &&
+                                  !isValidSwiftBic(
+                                    editBankForm.bankSwiftBic
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid SWIFT / BIC code.
+                                    </p>
+                                  )}
                               </div>
                             </>
                           )}
@@ -7259,6 +7298,12 @@ export const OverviewTab = ({
                                     }))
                                   }
                                 />
+                                {editBankForm.bankIfscCode.length > 0 &&
+                                  !isValidIfsc(editBankForm.bankIfscCode) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid IFSC code.
+                                    </p>
+                                  )}
                               </div>
                             </>
                           )}
@@ -7301,6 +7346,12 @@ export const OverviewTab = ({
                                     }))
                                   }
                                 />
+                                {editBankForm.bankBsbNumber.length > 0 &&
+                                  !isValidBsb(editBankForm.bankBsbNumber) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid BSB code.
+                                    </p>
+                                  )}
                               </div>
                             </>
                           )}
@@ -7343,6 +7394,14 @@ export const OverviewTab = ({
                                     }))
                                   }
                                 />
+                                {editBankForm.bankSortCode.length > 0 &&
+                                  !isValidSortCode(
+                                    editBankForm.bankSortCode
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Sort code must be 6 digits.
+                                    </p>
+                                  )}
                               </div>
                             </>
                           )}
@@ -7352,51 +7411,56 @@ export const OverviewTab = ({
                               <div className="space-y-1.5">
                                 <Label
                                   size="sm"
-                                  htmlFor="edit-bank-branch-name"
+                                  htmlFor="edit-bank-code-jp"
                                 >
-                                  Branch Name
+                                  Bank Code
                                 </Label>
                                 <Input
-                                  id="edit-bank-branch-name"
+                                  id="edit-bank-code-jp"
                                   type="text"
-                                  placeholder="e.g. Shinjuku"
-                                  value={editBankForm.bankBranchName}
+                                  placeholder="Enter 4 digit Bank Code here"
+                                  value={editBankForm.bankCode}
                                   onChange={(e) =>
                                     setEditBankForm((f) => ({
                                       ...f,
-                                      bankBranchName: e.target.value,
+                                      bankCode: e.target.value,
                                     }))
                                   }
                                 />
+                                {editBankForm.bankCode.length > 0 &&
+                                  !isValidJpBankCode(editBankForm.bankCode) && (
+                                    <p className="text-xs text-red-500">
+                                      Bank code must be 4 digits.
+                                    </p>
+                                  )}
                               </div>
                               <div className="space-y-1.5">
                                 <Label
                                   size="sm"
-                                  htmlFor="edit-bank-account-type"
+                                  htmlFor="edit-bank-branch-code-jp"
                                 >
-                                  Account Type
+                                  Branch Code
                                 </Label>
-                                <Listbox
-                                  value={editBankForm.accountType}
-                                  onChange={(value: string) =>
+                                <Input
+                                  id="edit-bank-branch-code-jp"
+                                  type="text"
+                                  placeholder="Enter 3 digit Branch Code here"
+                                  value={editBankForm.bankBranchCode}
+                                  onChange={(e) =>
                                     setEditBankForm((f) => ({
                                       ...f,
-                                      accountType: value,
+                                      bankBranchCode: e.target.value,
                                     }))
                                   }
-                                >
-                                  <ListboxButton placeholder="Select" />
-                                  <ListboxOptions>
-                                    {["Checking", "Savings"].map((option) => (
-                                      <ListboxOption
-                                        key={option}
-                                        value={option}
-                                      >
-                                        {option}
-                                      </ListboxOption>
-                                    ))}
-                                  </ListboxOptions>
-                                </Listbox>
+                                />
+                                {editBankForm.bankBranchCode.length > 0 &&
+                                  !isValidJpBranchCode(
+                                    editBankForm.bankBranchCode
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Branch code must be 3 digits.
+                                    </p>
+                                  )}
                               </div>
                               <div className="space-y-1.5">
                                 <Label
@@ -7417,6 +7481,14 @@ export const OverviewTab = ({
                                     }))
                                   }
                                 />
+                                {editBankForm.bankAccountNumber.length > 0 &&
+                                  !/^\d{7}$/.test(
+                                    editBankForm.bankAccountNumber
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Account number must be 7 digits.
+                                    </p>
+                                  )}
                               </div>
                             </>
                           )}
@@ -7459,8 +7531,47 @@ export const OverviewTab = ({
                                     }))
                                   }
                                 />
+                                {editBankForm.bankSwiftBic.length > 0 &&
+                                  !isValidSwiftBic(
+                                    editBankForm.bankSwiftBic
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid SWIFT / BIC code.
+                                    </p>
+                                  )}
                               </div>
                             </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) !==
+                            "SEPA" && (
+                            <div className="space-y-1.5">
+                              <Label
+                                size="sm"
+                                htmlFor="edit-bank-account-number-confirm"
+                              >
+                                Confirm Account Number
+                              </Label>
+                              <Input
+                                id="edit-bank-account-number-confirm"
+                                type="text"
+                                placeholder="Re-enter account number"
+                                value={editBankForm.bankAccountNumberConfirm}
+                                onChange={(e) =>
+                                  setEditBankForm((f) => ({
+                                    ...f,
+                                    bankAccountNumberConfirm: e.target.value,
+                                  }))
+                                }
+                              />
+                              {editBankForm.bankAccountNumberConfirm.length >
+                                0 &&
+                                editBankForm.bankAccountNumberConfirm !==
+                                  editBankForm.bankAccountNumber && (
+                                  <p className="text-xs text-red-500">
+                                    Account numbers do not match.
+                                  </p>
+                                )}
+                            </div>
                           )}
                         </div>
                         <div className="mt-12 flex items-center justify-end gap-x-2">
