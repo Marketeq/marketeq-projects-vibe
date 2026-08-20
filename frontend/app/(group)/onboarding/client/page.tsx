@@ -2555,13 +2555,12 @@ const OutlineYourInterests = ({
 
   const onSubmit: SubmitHandler<OutlineYourInterestsFormValues> = (values) => {
     setIsLoading(true)
-    const { firstName, lastName } = deriveClientProfileNames(user, stepData)
+    const derived = deriveClientProfileNames(user, stepData)
 
-    //const { userId, ...restStepData } = stepData || {};
     const clientData: CreateClientType = {
       ...stepData,
-      firstName: user?.firstName ?? stepData?.firstName,
-      lastName: user?.lastName ?? stepData?.lastName,
+      firstName: user?.firstName || stepData?.firstName || derived.firstName,
+      lastName: user?.lastName || stepData?.lastName || derived.lastName,
       avatarUrl: stepData?.avatarUrl ?? user?.avatarUrl ?? undefined,
       budget: values.budget,
       skills: values?.skillsLookingFor,
@@ -2587,30 +2586,42 @@ const OutlineYourInterests = ({
 
     ClientAPI.CreateClient(clientData)
       .then((response) => {
-        if (response?.status === 201 && response?.data?.user) {
+        if (response?.status === 201) {
           toggleValidation(true)
           setStep(currentStep + 1)
           setStepData(null)
-          setClientUser(response?.data?.user)
+          const returnedUser = response?.data?.user ?? response?.data
+          if (returnedUser) {
+            setClientUser(returnedUser)
+          }
         }
       })
       .catch((error) => {
+        const status = error?.response?.status
+        const msg = error?.response?.data?.message
+
+        // 422 "Client already exists" means the user already onboarded
+        // before — treat as success and advance to the final screen.
+        if (status === 422) {
+          toggleValidation(true)
+          setStep(currentStep + 1)
+          setStepData(null)
+          return
+        }
+
         if (error?.response?.data?.errors?.message) {
           toast({
             title: error?.response?.data?.errors?.message,
             variant: "destructive",
           })
-        } else if (
-          Array.isArray(error?.response?.data?.message) &&
-          error?.response?.data?.message?.length > 0
-        ) {
+        } else if (Array.isArray(msg) && msg.length > 0) {
           toast({
-            title: error?.response?.data?.message?.[0],
+            title: msg[0],
             variant: "destructive",
           })
         } else {
           toast({
-            title: error?.response?.data?.message,
+            title: msg || "Something went wrong. Please try again.",
             variant: "destructive",
           })
         }

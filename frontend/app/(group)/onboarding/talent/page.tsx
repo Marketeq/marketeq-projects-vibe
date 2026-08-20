@@ -3498,33 +3498,39 @@ const SetYourPreferences = ({
 
     TalentAPI.CreateTalent(formData)
       .then((response) => {
-        if (
-          response?.status === 201 &&
-          response?.data &&
-          response?.data?.user
-        ) {
+        if (response?.status === 201) {
           nextStep()
           setStepData(null)
-          setTalentUser(response?.data?.user)
+          const returnedUser = response?.data?.user ?? response?.data
+          if (returnedUser) {
+            setTalentUser(returnedUser)
+          }
         }
       })
       .catch((error) => {
+        const status = error?.response?.status
+        const msg = error?.response?.data?.message
+
+        // 422 means talent profile already exists — advance anyway.
+        if (status === 422) {
+          nextStep()
+          setStepData(null)
+          return
+        }
+
         if (error?.response?.data?.errors?.message) {
           toast({
             title: error?.response?.data?.errors?.message,
             variant: "destructive",
           })
-        } else if (
-          Array.isArray(error?.response?.data?.message) &&
-          error?.response?.data?.message?.length > 0
-        ) {
+        } else if (Array.isArray(msg) && msg.length > 0) {
           toast({
-            title: error?.response?.data?.message?.[0],
+            title: msg[0],
             variant: "destructive",
           })
         } else {
           toast({
-            title: error?.response?.data?.message,
+            title: msg || "Something went wrong. Please try again.",
             variant: "destructive",
           })
         }
