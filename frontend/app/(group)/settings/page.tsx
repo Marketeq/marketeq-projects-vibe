@@ -19,10 +19,7 @@ import {
 import { PhoneNumberInput } from "@/components/phone-number-input"
 import dynamic from "next/dynamic"
 import { Edit01, HelpCircle, Plus, X2 } from "@blend-metrics/icons"
-import {
-  BillingTabValue,
-  billingTabs,
-} from "@/components/billing-section-header"
+import type { BillingTabValue } from "@/components/billing-section-header"
 import {
   BillingPaymentMethodsContent,
   BillingPaymentMethodsContentHandle,
@@ -57,9 +54,6 @@ import {
   ListboxOption,
   ListboxOptions,
   Switch,
-  Tabs,
-  TabsList,
-  TabsTrigger,
   useToast,
 } from "@/components/ui"
 
@@ -138,19 +132,6 @@ export default function SettingsPage() {
 
   const accountRole = useMemo(() => resolveDashboardRole(user), [user])
   const settingsTabItems = useMemo(() => buildSettingsTabItems(accountRole), [accountRole])
-
-  const isBillingTab = activeTab.startsWith("billing-")
-
-  const activeBillingTabValue: BillingTabValue = useMemo(() => {
-    const map: Record<string, BillingTabValue> = {
-      "billing-overview": "overview",
-      "billing-transactions": "transactions",
-      "billing-invoices": "invoices",
-      "billing-payment-methods": "payment-methods",
-      "billing-plans": "my-plans",
-    }
-    return map[activeTab] ?? "overview"
-  }, [activeTab])
 
   const handleBillingTabChange = (value: BillingTabValue) => {
     const map: Record<BillingTabValue, string> = {
@@ -624,68 +605,69 @@ export default function SettingsPage() {
                 </h1>
               )}
 
-              {isBillingTab && (
+              {activeTab === "billing-overview" && (
                 <>
-                  <div className="shrink-0 space-y-5">
-                    <div className="flex flex-col gap-3 lg:min-h-10 lg:flex-row lg:items-center lg:justify-between">
-                      <div>
-                        <h1 className="text-xl font-bold text-dark-blue-400">
-                          Billing
-                        </h1>
-                      </div>
+                  <h1 className="text-xl font-bold text-dark-blue-400 mb-5">
+                    Overview
+                  </h1>
+                  <BillingOverviewContent onNavigateTab={handleBillingTabChange} />
+                </>
+              )}
 
-                      {activeTab === "billing-payment-methods" && (
-                        <div className="flex shrink-0 flex-wrap items-center gap-3">
-                          <Button
-                            variant="link"
-                            visual="gray"
-                            size="sm"
-                            className="text-gray-500"
-                            leftIcon={<HelpCircle className="size-4" />}
-                          >
-                            Get Help
-                          </Button>
-                          <Button
-                            onClick={() => paymentMethodsRef.current?.openAddPaymentMethodDialog()}
-                            leftIcon={<Plus className="size-4" />}
-                          >
-                            Add Payment Method
-                          </Button>
-                        </div>
-                      )}
+              {activeTab === "billing-transactions" && (
+                <>
+                  <h1 className="text-xl font-bold text-dark-blue-400 mb-5">
+                    Transactions
+                  </h1>
+                  <BillingTransactionsContent />
+                </>
+              )}
+
+              {activeTab === "billing-invoices" && (
+                <>
+                  <h1 className="text-xl font-bold text-dark-blue-400 mb-5">
+                    Invoices
+                  </h1>
+                  <BillingInvoicesContent />
+                </>
+              )}
+
+              {activeTab === "billing-payment-methods" && (
+                <>
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-5">
+                    <h1 className="text-xl font-bold text-dark-blue-400">
+                      Payment Methods
+                    </h1>
+                    <div className="flex shrink-0 flex-wrap items-center gap-3">
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="sm"
+                        className="text-gray-500"
+                        leftIcon={<HelpCircle className="size-4" />}
+                      >
+                        Get Help
+                      </Button>
+                      <Button
+                        onClick={() => paymentMethodsRef.current?.openAddPaymentMethodDialog()}
+                        leftIcon={<Plus className="size-4" />}
+                      >
+                        Add Payment Method
+                      </Button>
                     </div>
-
-                    <Tabs
-                      value={activeBillingTabValue}
-                      layoutId="settings-billing-tabs"
-                      onValueChange={(value) => handleBillingTabChange(value as BillingTabValue)}
-                    >
-                      <TabsList className="w-full justify-start gap-x-6 border-b border-gray-200 bg-transparent px-0 pt-0">
-                        {billingTabs.map((tab) => (
-                          <TabsTrigger key={tab.value} value={tab.value} className="pb-3">
-                            {tab.label}
-                          </TabsTrigger>
-                        ))}
-                      </TabsList>
-                    </Tabs>
                   </div>
-
-                  <div className={cn(
-                    "mt-5",
-                    activeTab === "billing-payment-methods"
-                      ? "min-h-0 flex-1 overflow-hidden"
-                      : ""
-                  )}>
-                    {activeTab === "billing-overview" && (
-                      <BillingOverviewContent onNavigateTab={handleBillingTabChange} />
-                    )}
-                    {activeTab === "billing-transactions" && <BillingTransactionsContent />}
-                    {activeTab === "billing-invoices" && <BillingInvoicesContent />}
-                    {activeTab === "billing-payment-methods" && (
-                      <BillingPaymentMethodsContent ref={paymentMethodsRef} embedded />
-                    )}
-                    {activeTab === "billing-plans" && <BillingMyPlansContent />}
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    <BillingPaymentMethodsContent ref={paymentMethodsRef} embedded />
                   </div>
+                </>
+              )}
+
+              {activeTab === "billing-plans" && (
+                <>
+                  <h1 className="text-xl font-bold text-dark-blue-400 mb-5">
+                    Plans
+                  </h1>
+                  <BillingMyPlansContent />
                 </>
               )}
           </div>
