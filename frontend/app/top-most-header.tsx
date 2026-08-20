@@ -1790,7 +1790,7 @@ export const TopMostHeader = ({
               <DropdownMenuItem
                 onSelect={() => {
                   setMenuOpen(false)
-                  router.push("/settings")
+                  router.push("/settings?tab=personal-info")
                 }}
               >
                 <Settings className="size-4" />
