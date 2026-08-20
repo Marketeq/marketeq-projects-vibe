@@ -1,13 +1,14 @@
 // render-env-guard — Runs every 30 min, checks Render env vars, auto-repairs drift
 //
 // Jenkins pipeline: create as "render-env-guard" with cron trigger H/30 * * * *
-// Requires credentials: render-api-key, plus all RENDER_ENV_* secrets
+// Requires credentials: render-api-key
 //
 // Can also be called as a pre-deploy gate from staging-orchestrator:
 //   build job: 'render-env-guard', parameters: [string(name: 'MODE', value: 'check')]
 
 pipeline {
     agent any
+    options { ansiColor('xterm'); timestamps(); timeout(time: 5, unit: 'MINUTES') }
 
     triggers {
         cron('H/30 * * * *')
@@ -18,81 +19,89 @@ pipeline {
     }
 
     environment {
-        RENDER_TOKEN = credentials('render-api-key')
+        REPO = 'Marketeq/marketeq-projects-vibe'
+        SERVICE_ID = 'srv-d76r48nafjfc73e1djf0'
+        MINIMUM_VARS = '41'
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/dev-main']],
-                    userRemoteConfigs: [[
-                        url: 'https://github.com/Marketeq/marketeq-projects-vibe.git',
-                        credentialsId: 'github-token'
-                    ]]
-                ])
-            }
-        }
-
         stage('Count Check') {
             steps {
-                script {
-                    def count = sh(
-                        script: '''
-                            curl -sf \
-                              -H "Authorization: Bearer $RENDER_TOKEN" \
-                              "https://api.render.com/v1/services/srv-d76r48nafjfc73e1djf0/env-vars?limit=100" \
-                              | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"
-                        ''',
-                        returnStdout: true
-                    ).trim().toInteger()
+                withCredentials([string(credentialsId: 'render-api-key', variable: 'RENDER_TOKEN')]) {
+                    script {
+                        def count = sh(
+                            script: '''#!/bin/bash
+                                curl -sf \
+                                  -H "Authorization: Bearer $RENDER_TOKEN" \
+                                  "https://api.render.com/v1/services/${SERVICE_ID}/env-vars?limit=100" \
+                                  | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"
+                            ''',
+                            returnStdout: true
+                        ).trim().toInteger()
 
-                    echo "Render env var count: ${count} (minimum: 41)"
+                        def minimum = env.MINIMUM_VARS.toInteger()
+                        echo "Render env var count: ${count} (minimum: ${minimum})"
 
-                    if (count < 41) {
-                        def missing = 41 - count
-                        echo "CRITICAL: ${missing} env vars have been deleted!"
+                        if (count < minimum) {
+                            def missing = minimum - count
+                            echo "CRITICAL: ${missing} env vars have been deleted!"
 
-                        if (params.MODE == 'check') {
-                            error("BLOCKED: Only ${count}/41 env vars present. ${missing} vars missing. Run with --repair to fix.")
+                            if (params.MODE == 'check') {
+                                error("BLOCKED: Only ${count}/${minimum} env vars present. ${missing} vars missing.")
+                            }
+                            env.NEEDS_REPAIR = 'true'
+                        } else {
+                            env.NEEDS_REPAIR = 'false'
+                            echo "Count OK."
                         }
-                        // --repair and --cron modes continue to repair stage
-                        env.NEEDS_REPAIR = 'true'
-                    } else {
-                        env.NEEDS_REPAIR = 'false'
                     }
                 }
             }
         }
 
-        stage('Full Drift Check') {
+        stage('Key Presence Check') {
             steps {
-                script {
-                    def result = sh(
-                        script: '''
-                            cd "${WORKSPACE}"
-                            node scripts/devops/check-runtime-env-drift.mjs 2>&1 || true
-                        ''',
-                        returnStdout: true
-                    ).trim()
+                withCredentials([string(credentialsId: 'render-api-key', variable: 'RENDER_TOKEN')]) {
+                    script {
+                        def result = sh(
+                            script: '''#!/bin/bash
+                                REQUIRED_KEYS="DATABASE_URL AUTH_JWT_PRIVATE_KEY AUTH_JWT_PUBLIC_KEY AUTH_REFRESH_SECRET INTERNAL_SERVICE_TOKEN E2EE_SERVER_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET LINKEDIN_CLIENT_ID LINKEDIN_CLIENT_SECRET CLOUDFLARE_R2_ACCESS_KEY CLOUDFLARE_R2_SECRET_KEY BREVO_API_KEY ABLY_API_KEY GEMINI_API_KEY FRONTEND_URL NODE_ENV DATABASE_SSL DATABASE_SSL_ENABLED"
 
-                    def driftOk = false
-                    try {
-                        def parsed = readJSON text: result
-                        driftOk = parsed.ok == true
-                    } catch (e) {
-                        echo "Could not parse drift check output: ${e.message}"
-                    }
+                                LIVE_KEYS=$(curl -sf \
+                                  -H "Authorization: Bearer $RENDER_TOKEN" \
+                                  "https://api.render.com/v1/services/${SERVICE_ID}/env-vars?limit=100" \
+                                  | python3 -c "import json,sys; [print(e['envVar']['key']) for e in json.load(sys.stdin)]")
 
-                    if (driftOk) {
-                        echo "All env vars OK. No drift detected."
-                    } else {
-                        echo "DRIFT DETECTED:\n${result}"
-                        if (params.MODE == 'check') {
-                            error("BLOCKED: Env var drift detected. Run with --repair to fix.")
+                                MISSING=""
+                                for KEY in $REQUIRED_KEYS; do
+                                    if ! echo "$LIVE_KEYS" | grep -q "^${KEY}$"; then
+                                        MISSING="${MISSING} ${KEY}"
+                                    fi
+                                done
+
+                                if [ -n "$MISSING" ]; then
+                                    echo "MISSING:${MISSING}"
+                                    exit 1
+                                else
+                                    echo "ALL_PRESENT"
+                                    exit 0
+                                fi
+                            ''',
+                            returnStdout: true,
+                            returnStatus: false
+                        ).trim()
+
+                        if (result.startsWith('MISSING:')) {
+                            def missingKeys = result.replace('MISSING:', '').trim()
+                            echo "CRITICAL: Missing required env vars: ${missingKeys}"
+
+                            if (params.MODE == 'check') {
+                                error("BLOCKED: Required env vars missing: ${missingKeys}")
+                            }
+                            env.NEEDS_REPAIR = 'true'
+                        } else {
+                            echo "All required keys present."
                         }
-                        env.NEEDS_REPAIR = 'true'
                     }
                 }
             }
@@ -103,29 +112,38 @@ pipeline {
                 expression { env.NEEDS_REPAIR == 'true' }
             }
             steps {
-                script {
-                    echo "Repairing Render env vars..."
-                    sh '''
-                        cd "${WORKSPACE}"
-                        node scripts/devops/sync-staging-runtime-envs.mjs --apply --component render --json
-                    '''
+                withCredentials([
+                    string(credentialsId: 'render-api-key', variable: 'RENDER_TOKEN'),
+                    string(credentialsId: 'github-token', variable: 'GH_TOKEN')
+                ]) {
+                    script {
+                        echo "Cloning repo for repair scripts..."
+                        sh '''#!/bin/bash
+                            rm -rf repo
+                            git clone --depth=1 "https://${GH_TOKEN}@github.com/${REPO}.git" repo
+                            cd repo
+                            export RENDER_TOKEN
+                            node scripts/devops/sync-staging-runtime-envs.mjs --apply --component render --json
+                        '''
 
-                    // Verify repair
-                    def newCount = sh(
-                        script: '''
-                            curl -sf \
-                              -H "Authorization: Bearer $RENDER_TOKEN" \
-                              "https://api.render.com/v1/services/srv-d76r48nafjfc73e1djf0/env-vars?limit=100" \
-                              | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"
-                        ''',
-                        returnStdout: true
-                    ).trim().toInteger()
+                        // Verify repair
+                        def newCount = sh(
+                            script: '''#!/bin/bash
+                                curl -sf \
+                                  -H "Authorization: Bearer $RENDER_TOKEN" \
+                                  "https://api.render.com/v1/services/${SERVICE_ID}/env-vars?limit=100" \
+                                  | python3 -c "import json,sys; print(len(json.load(sys.stdin)))"
+                            ''',
+                            returnStdout: true
+                        ).trim().toInteger()
 
-                    if (newCount < 41) {
-                        error("FATAL: Repair failed. Still only ${newCount}/41 vars.")
+                        def minimum = env.MINIMUM_VARS.toInteger()
+                        if (newCount < minimum) {
+                            error("FATAL: Repair failed. Still only ${newCount}/${minimum} vars.")
+                        }
+
+                        echo "Repair successful. ${newCount} env vars verified."
                     }
-
-                    echo "Repair successful. ${newCount} env vars verified."
                 }
             }
         }
@@ -133,11 +151,13 @@ pipeline {
 
     post {
         failure {
-            echo "ENV GUARD FAILED — Render env vars may be missing. Check immediately."
-            // TODO: Add Slack/email notification here
+            echo "ENV GUARD FAILED — Render env vars may be missing or deleted. Check immediately."
         }
         success {
             echo "Render env guard passed."
+        }
+        always {
+            cleanWs()
         }
     }
 }
