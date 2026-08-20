@@ -3011,7 +3011,17 @@ const DoNext = ({
           </p>
 
           <div className="mt-10 md:mt-[50px] grid md:grid-cols-2 gap-2.5 2xl:gap-5">
-            <div className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300">
+            <div
+              className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
+              onClick={() => {
+                if (clientUser) {
+                  setUser(clientUser)
+                }
+                router.push(
+                  getPostOnboardingRoute("/projects", clientUser ?? user)
+                )
+              }}
+            >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
                   <Briefcase02 className="size-5" />
@@ -3024,7 +3034,17 @@ const DoNext = ({
               <ChevronRight className="shrink-0 size-5" />
             </div>
 
-            <div className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300">
+            <div
+              className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
+              onClick={() => {
+                if (clientUser) {
+                  setUser(clientUser)
+                }
+                router.push(
+                  getPostOnboardingRoute("/teams", clientUser ?? user)
+                )
+              }}
+            >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
                   <Users03 className="size-5" />
@@ -3037,7 +3057,17 @@ const DoNext = ({
               <ChevronRight className="shrink-0 size-5" />
             </div>
 
-            <div className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300">
+            <div
+              className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
+              onClick={() => {
+                if (clientUser) {
+                  setUser(clientUser)
+                }
+                router.push(
+                  getPostOnboardingRoute("/services", clientUser ?? user)
+                )
+              }}
+            >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
                   <User02 className="size-5" />
@@ -3058,7 +3088,7 @@ const DoNext = ({
                 }
                 router.push(
                   getPostOnboardingRoute(
-                    "/client-dashboard",
+                    "/publish-project",
                     clientUser ?? user
                   )
                 )

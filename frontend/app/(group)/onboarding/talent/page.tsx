@@ -3879,7 +3879,7 @@ const DoNext = ({
                 }
                 router.push(
                   getPostOnboardingRoute(
-                    "/talent-dashboard",
+                    "/projects",
                     talentUser ?? user
                   )
                 )
@@ -3904,7 +3904,7 @@ const DoNext = ({
                   setUser(talentUser)
                 }
                 router.push(
-                  getPostOnboardingRoute("/publish-project", talentUser ?? user)
+                  getPostOnboardingRoute("/teams", talentUser ?? user)
                 )
               }}
             >
@@ -3950,7 +3950,7 @@ const DoNext = ({
                   setUser(talentUser)
                 }
                 router.push(
-                  getPostOnboardingRoute("/publish-project", talentUser ?? user)
+                  getPostOnboardingRoute("/services", talentUser ?? user)
                 )
               }}
             >

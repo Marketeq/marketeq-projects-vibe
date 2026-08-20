@@ -72,7 +72,18 @@ export default function Onboarding() {
                 href="/onboarding/client"
                 className="focus-visible:outline-none rounded-lg p-5 border border-gray-200 flex items-center gap-x-5 bg-white hover:border-gray-300 hover:ring-1 hover:ring-gray-300 cursor-pointer transition duration-300"
               >
-                <div className="w-[100px] shrink-0 bg-gray-200 rounded-lg self-stretch" />
+                <div className="w-[100px] shrink-0 bg-primary-50 rounded-lg self-stretch flex items-center justify-center min-h-[80px]">
+                  <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="8" y="12" width="40" height="32" rx="3" stroke="#7C3AED" strokeWidth="2" fill="#EDE9FE" />
+                    <circle cx="22" cy="24" r="5" fill="#C4B5FD" />
+                    <rect x="16" y="31" width="12" height="3" rx="1.5" fill="#C4B5FD" />
+                    <rect x="32" y="20" width="12" height="2" rx="1" fill="#A78BFA" />
+                    <rect x="32" y="25" width="10" height="2" rx="1" fill="#C4B5FD" />
+                    <rect x="32" y="30" width="8" height="2" rx="1" fill="#DDD6FE" />
+                    <circle cx="42" cy="40" r="8" fill="#7C3AED" />
+                    <path d="M42 36v8M38 40h8" stroke="white" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </div>
 
                 <div className="flex-auto">
                   <h1 className="text-lg leading-[21.78px] font-semibold text-dark-blue-400">
@@ -92,7 +103,17 @@ export default function Onboarding() {
                 href="/onboarding/talent"
                 className="focus-visible:outline-none rounded-lg p-5 border border-gray-200 flex items-center gap-x-5 bg-white hover:border-gray-300 hover:ring-1 hover:ring-gray-300 cursor-pointer transition duration-300"
               >
-                <div className="w-[100px] shrink-0 bg-gray-200 rounded-lg self-stretch" />
+                <div className="w-[100px] shrink-0 bg-emerald-50 rounded-lg self-stretch flex items-center justify-center min-h-[80px]">
+                  <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="12" y="8" width="32" height="40" rx="3" stroke="#059669" strokeWidth="2" fill="#ECFDF5" />
+                    <circle cx="28" cy="20" r="6" fill="#A7F3D0" />
+                    <path d="M18 32c0-4 4.5-6 10-6s10 2 10 6" stroke="#059669" strokeWidth="2" strokeLinecap="round" />
+                    <rect x="20" y="36" width="16" height="2" rx="1" fill="#6EE7B7" />
+                    <rect x="22" y="40" width="12" height="2" rx="1" fill="#A7F3D0" />
+                    <path d="M40 14l4 4-4 4" stroke="#059669" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M44 18h-6" stroke="#059669" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </div>
 
                 <div className="flex-auto">
                   <h1 className="text-lg leading-[21.78px] font-semibold text-dark-blue-400">
