@@ -638,7 +638,7 @@ export default function SettingsPage() {
                     <h1 className="text-xl font-bold text-dark-blue-400">
                       Payment Methods
                     </h1>
-                    <div className="flex shrink-0 flex-wrap items-center gap-3">
+                    <div className="flex shrink-0 flex-wrap items-center gap-6">
                       <Button
                         variant="link"
                         visual="gray"
