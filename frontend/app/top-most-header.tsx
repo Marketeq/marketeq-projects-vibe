@@ -970,7 +970,10 @@ const Notifications = () => {
               <div className="py-3.5 grid">
                 <button
                   className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium"
-                  onClick={() => router.push("/notifications")}
+                  onClick={() => {
+                    setOpen(false)
+                    router.push("/notifications")
+                  }}
                 >
                   View All
                 </button>
@@ -984,9 +987,6 @@ const Notifications = () => {
                 >
                   <div className="px-2">
                     {(() => {
-                      const unreadThreads = inboxThreads.filter(
-                        (t) => t.hasUnread
-                      )
                       if (inboxLoading && inboxThreads.length === 0) {
                         return (
                           <div className="px-3 py-6 text-sm text-gray-500">
@@ -994,14 +994,14 @@ const Notifications = () => {
                           </div>
                         )
                       }
-                      if (unreadThreads.length === 0) {
+                      if (inboxThreads.length === 0) {
                         return (
                           <div className="px-3 py-6 text-sm text-gray-500">
-                            No unread messages
+                            No messages
                           </div>
                         )
                       }
-                      return unreadThreads
+                      return inboxThreads
                         .slice(0, 8)
                         .map(renderInboxThreadItem)
                     })()}

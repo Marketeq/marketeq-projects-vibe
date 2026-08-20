@@ -471,10 +471,10 @@ const CreateYourUsername = ({
       .trim()
     return generateUsernameSuggestions(
       stepData?.firstName || "",
-      stepData?.lastName || "",
+      "",
       contextParts
     )
-  }, [stepData?.firstName, stepData?.lastName, stepData?.recentJobTitle, user?.email])
+  }, [stepData?.firstName, stepData?.recentJobTitle, user?.email])
 
   const { toggleValidation } = useStepContext()
   const { nextStep, prevStep, setStep } = useStepperContext()

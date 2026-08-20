@@ -141,7 +141,7 @@ const getClientUsernameSuggestions = ({
 
   const primarySuggestions = generateUsernameSuggestions(
     firstName ?? "",
-    lastName ?? "",
+    "",
     contextParts
   )
 
@@ -1489,7 +1489,8 @@ const CreateYourUsername = ({
   const setFormValue = (value: string) => {
     setValue("username", value)
     trigger("username")
-    setUsernameCommitted(true)
+    setUsernameCommitted(false)
+    setTimeout(() => usernameInputRef.current?.focus(), 0)
   }
 
   const clearUsername = () => {
