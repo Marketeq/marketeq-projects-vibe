@@ -6,7 +6,6 @@ import dynamic from "next/dynamic"
 import { useParams, usePathname, useRouter } from "next/navigation"
 import { ProjectChatPanel } from "./project-chat-panel"
 import { RecentQuestionsManager } from "./recent-questions-manager"
-import { ProjectDiscoverySections } from "@/components/project-discovery-sections"
 
 const ClientListingView = dynamic(
   () => import("@/app/(group)/(group)/project-details/[slug]/page"),
@@ -10520,8 +10519,6 @@ export default function ProjectDetails() {
         </div>
 
         <div className="pb-[100px]" />
-
-        <ProjectDiscoverySections project={project} />
       </div>
 
       <MarketplaceFooter />
