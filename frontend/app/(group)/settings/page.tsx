@@ -19,7 +19,14 @@ import {
 } from "@/components/two-factor-setup"
 import { PhoneNumberInput } from "@/components/phone-number-input"
 import dynamic from "next/dynamic"
-import { Edit01, HelpCircle, Plus, X2 } from "@blend-metrics/icons"
+import { ChevronDown, Edit01, HelpCircle, Plus, Settings02, Share06, X2 } from "@blend-metrics/icons"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui"
+import { useInviteWindowStore } from "@/components/invite-window"
 import type { BillingTabValue } from "@/components/billing-section-header"
 import {
   BillingPaymentMethodsContent,
@@ -48,6 +55,7 @@ import {
   AvatarImage,
   Badge,
   Button,
+  IconButton,
   Input,
   Label,
   Listbox,
@@ -69,6 +77,7 @@ export default function SettingsPage() {
     if (tabParam) setActiveTab(tabParam)
   }, [tabParam])
 
+  const toggleInviteWindow = useInviteWindowStore((s) => s.toggle)
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [profileForm, setProfileForm] = useState({
@@ -623,10 +632,60 @@ export default function SettingsPage() {
 
               {activeTab === "billing-transactions" && (
                 <>
-                  <h1 className="text-xl font-bold text-dark-blue-400 mb-5">
-                    Transactions
-                  </h1>
+                  <div className="flex items-start justify-between gap-x-5 mb-5">
+                    <h1 className="text-xl font-bold text-dark-blue-400">
+                      Transactions
+                    </h1>
+                    <div className="flex items-center gap-x-6">
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="sm"
+                        className="text-gray-500 underline decoration-gray-500/30 hover:decoration-gray-500 hover:text-dark-blue-500 transition-colors duration-300"
+                        leftIcon={<HelpCircle className="size-[15px]" />}
+                      >
+                        Get Help
+                      </Button>
+                      <div className="flex items-center gap-x-3">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outlined"
+                              visual="gray"
+                              size="sm"
+                              className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                              rightIcon={<ChevronDown className="size-[15px]" />}
+                            >
+                              Export
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" sideOffset={4}>
+                            <DropdownMenuItem>Export CSV</DropdownMenuItem>
+                            <DropdownMenuItem>Export PDF</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <IconButton
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                          onClick={() => toggleInviteWindow(true, "Share Your Transactions")}
+                        >
+                          <Share06 className="size-[15px]" />
+                        </IconButton>
+                        {/* <IconButton
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                        >
+                          <Settings02 className="size-[15px]" />
+                        </IconButton> */}
+                      </div>
+                    </div>
+                  </div>
                   <BillingTransactionsContent />
+
                 </>
               )}
 
@@ -650,8 +709,8 @@ export default function SettingsPage() {
                         variant="link"
                         visual="gray"
                         size="sm"
-                        className="text-gray-500"
-                        leftIcon={<HelpCircle className="size-4" />}
+                        className="text-gray-500 underline decoration-gray-500/30 hover:decoration-gray-500 hover:text-dark-blue-500 transition-colors duration-300"
+                        leftIcon={<HelpCircle className="size-[15px]" />}
                       >
                         Get Help
                       </Button>

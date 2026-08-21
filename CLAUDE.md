@@ -57,6 +57,10 @@ Marketeq is a freelance marketplace platform (similar to Upwork/Fiverr) built wi
 
 ### Backend (run from `backend/`)
 ```bash
+# IMPORTANT: RabbitMQ must be running BEFORE starting services.
+# Without it, services show "online" in PM2 but fail on every request.
+lsof -i :5672 || rabbitmq-server -detached  # ensure RabbitMQ is up first
+
 # Start all services via PM2 (local dev)
 npm run dev
 
@@ -64,6 +68,13 @@ npm run dev
 npm run dev:stop
 npm run dev:status
 npm run dev:logs
+
+# MANDATORY: After starting services, health-check the actual endpoints.
+# PM2 "online" does NOT mean the service is healthy. Always verify:
+curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/health  # api-gateway
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/health  # auth-service
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3002/health  # user-service
+# All must return 200. If any returns 000, check RabbitMQ and PM2 error logs.
 
 # Build all services (run from backend/ root — npm run build:all is broken on this monorepo)
 for svc in apps/*/src/main.ts; do npx nest build "$(echo $svc | cut -d'/' -f2)"; done
