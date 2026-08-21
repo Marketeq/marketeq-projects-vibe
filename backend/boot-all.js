@@ -282,10 +282,49 @@ function startHealthServer() {
   });
 }
 
+/**
+ * Runs run-migrations.js as a child process so its ~21 DataSource connections
+ * are reclaimed when it exits instead of sitting in the launcher's heap.
+ *
+ * Defaults to reporting drift, which is why the report is not awaited: it must
+ * never delay a boot. Only an explicit MIGRATE_MODE=apply is awaited, so that
+ * schema changes land before any service starts serving against them.
+ */
+function runMigrationStep() {
+  return new Promise((resolve) => {
+    const child = spawn(
+      'node',
+      ['--max-old-space-size=128', path.join(__dirname, 'run-migrations.js')],
+      { env: process.env, stdio: 'inherit' },
+    );
+    child.on('exit', (code) => resolve(code ?? 0));
+    child.on('error', (err) => {
+      console.error(`[boot] migration step failed to spawn: ${err.message}`);
+      resolve(0);
+    });
+  });
+}
+
 async function bootstrapAll() {
   console.log('[boot] Launching all services in single container...');
   console.log(`[boot] Gateway will listen on port ${GATEWAY_PORT}`);
   console.log(`[boot] Starting ${SERVICES.length} microservices + gateway`);
+
+  const migrateMode = (process.env.MIGRATE_MODE || 'report').toLowerCase();
+  const migrationStep = runMigrationStep();
+  if (migrateMode === 'apply') {
+    const code = await migrationStep;
+    if (code !== 0) {
+      // Deliberately not fatal: §3.0.2 of the DevOps SOP forbids taking the
+      // backend down, and a failed migration still leaves services that can
+      // serve every unaffected route. The non-zero exit is logged loudly above
+      // so the staging-services-monitor surfaces it.
+      console.error(
+        '[boot] MIGRATIONS FAILED — booting anyway per zero-downtime rule. ' +
+          'Schema may be inconsistent; investigate before the next deploy.',
+      );
+    }
+  }
 
   launchService(GATEWAY, gatewayEnv, true);
 
