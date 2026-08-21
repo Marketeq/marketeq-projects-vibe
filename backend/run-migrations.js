@@ -73,7 +73,12 @@ function discoverServices() {
  */
 async function pendingFor(dataSource) {
   const schema = dataSource.options.schema || 'public';
-  const registered = dataSource.migrations.map((m) => m.name);
+  // dataSource.migrations holds instances, not classes, so `.name` is defined
+  // only for migrations that declare it as a field — the rest reported blank.
+  // This mirrors how TypeORM's own MigrationExecutor resolves the name.
+  const registered = dataSource.migrations.map(
+    (m) => m.name || m.constructor.name,
+  );
 
   let applied = [];
   try {
@@ -152,11 +157,29 @@ async function main() {
   let totalPending = 0;
   let failed = 0;
 
+  // Collected before printing so the applied-count can be qualified: services
+  // that share a schema also share its migrations table, which makes a bare
+  // "N applied" read as if those rows were that service's own.
+  const results = [];
+
   // Sequential on purpose: 29 concurrent pools would blow the container's
   // connection and memory budget.
   for (const dir of targets) {
-    const r = await processService(dir);
+    results.push(await processService(dir));
+  }
 
+  const perSchema = new Map();
+  for (const r of results) {
+    if (!r.schema) continue;
+    perSchema.set(r.schema, (perSchema.get(r.schema) || 0) + 1);
+  }
+  const sharesSchema = (r) => r.schema && perSchema.get(r.schema) > 1;
+  const appliedNote = (r) =>
+    sharesSchema(r)
+      ? `${r.appliedCount} applied in shared schema "${r.schema}"`
+      : `${r.appliedCount} applied`;
+
+  for (const r of results) {
     if (r.skipped) {
       console.log(`[migrations] ${r.name}: skipped (${r.skipped})`);
     } else if (r.error) {
@@ -170,13 +193,27 @@ async function main() {
       totalPending += r.pending.length;
       console.warn(
         `[migrations] ${r.name} (${r.schema}): ${r.pending.length} PENDING ` +
-          `(${r.appliedCount} applied) — ${r.pending.join(', ')}`,
+          `(${appliedNote(r)}) — ${r.pending.join(', ')}`,
       );
     } else {
       console.log(
-        `[migrations] ${r.name} (${r.schema}): up to date (${r.appliedCount} applied)`,
+        `[migrations] ${r.name} (${r.schema}): up to date (${appliedNote(r)})`,
       );
     }
+  }
+
+  const shared = [...perSchema.entries()].filter(([, count]) => count > 1);
+  for (const [schema, count] of shared) {
+    const names = results
+      .filter((r) => r.schema === schema)
+      .map((r) => r.name)
+      .join(', ');
+    console.warn(
+      `[migrations] NOTE: ${count} services share schema "${schema}" and therefore share ` +
+        `its single "${schema}".migrations table, so each one's applied-count includes the ` +
+        `others' rows and its pending list is measured against them: ${names}. ` +
+        'Resolve the shared bookkeeping before applying migrations for any of them.',
+    );
   }
 
   if (MODE !== 'apply' && totalPending > 0) {
