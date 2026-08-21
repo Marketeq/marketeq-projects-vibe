@@ -32,7 +32,9 @@ import {
   Check,
   CheckCircle,
   ChevronDown,
+  ArrowLeft,
   ChevronLeft,
+  Zap,
   ChevronRight,
   Clock,
   Copy,
@@ -88,6 +90,12 @@ import {
   Button,
   Card,
   Checkbox,
+  Combobox,
+  ComboboxButton,
+  ComboboxInput,
+  ComboboxOption,
+  ComboboxOptions,
+  ComboboxTrigger,
   DatePicker,
   Dialog,
   DialogClose,
@@ -102,12 +110,17 @@ import {
   DualCalendar,
   IconButton,
   Input,
+  Listbox,
+  ListboxButton,
+  ListboxOption,
+  ListboxOptions,
   NumberInput,
   HeadlessRadioGroupItem,
   Popover,
   PopoverContent,
   PopoverTrigger,
   RadioGroup,
+  ScaleOutIn,
   ScrollArea,
   SearchField,
   SearchFieldButton,
@@ -1212,6 +1225,72 @@ const ALL_COUNTRIES: { code: string; name: string; flag: string }[] = [
   { code: "ZM", name: "Zambia", flag: "🇿🇲" },
   { code: "ZW", name: "Zimbabwe", flag: "🇿🇼" },
 ]
+// Figma "Edit Bank Info" — seven country/region states. Asia uses the Swiss
+// flag as drawn in the design file.
+const EDIT_BANK_COUNTRIES: { code: string; name: string; flag: string }[] = [
+  { code: "US", name: "United States", flag: "🇺🇸" },
+  { code: "DE", name: "Europe", flag: "🇪🇺" },
+  { code: "IN", name: "India", flag: "🇮🇳" },
+  { code: "AU", name: "Australia", flag: "🇦🇺" },
+  { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
+  { code: "JP", name: "Japan", flag: "🇯🇵" },
+  { code: "SG", name: "Asia", flag: "🌏" },
+]
+function editBankRegion(country: string): BankRegion {
+  return country ? detectBankRegion(country) : "US"
+}
+function editBankNamePlaceholder(country: string): string {
+  switch (editBankRegion(country)) {
+    case "SEPA":
+      return "e.g. Bank of Europe"
+    case "IN":
+      return "e.g. ICICI Bank"
+    case "AU":
+      return "e.g. Westpac"
+    case "GB":
+      return "e.g. Bank of London"
+    case "JP":
+      return "e.g. 三井住友銀行 (Mitsui Sumitomo)"
+    case "SWIFT":
+      return "e.g. DBS Bank"
+    default:
+      return "e.g. Bank of America"
+  }
+}
+function editBankAccountPlaceholder(country: string): string {
+  switch (editBankRegion(country)) {
+    case "IN":
+      return "Enter valid Account Number (9-18 digits) here"
+    case "AU":
+      return "Enter 6-10 digit Account Number"
+    case "GB":
+      return "Enter 8 digit Account Number here"
+    case "JP":
+      return "Enter 7 digit Account Number"
+    case "SWIFT":
+      return "Enter your full Account Number"
+    default:
+      return "Up to 17 digits"
+  }
+}
+function createBlankEditBankForm(bankCountry = "") {
+  return {
+    bankAccountName: "",
+    bankAccountNumber: "",
+    bankAccountNumberConfirm: "",
+    bankRoutingNumber: "",
+    bankSortCode: "",
+    bankIfscCode: "",
+    bankBsbNumber: "",
+    bankInstitutionNumber: "",
+    bankTransitNumber: "",
+    bankIban: "",
+    bankSwiftBic: "",
+    bankCode: "",
+    bankBranchCode: "",
+    bankCountry,
+  }
+}
 const isValidAbaRouting = (routing: string) => {
   if (!/^\d{9}$/.test(routing)) return false
   const d = routing.split("").map(Number)
@@ -1257,6 +1336,53 @@ const isValidCnaps = (v: string) => /^\d{12}$/.test(v)
 const isValidCnAccountNumber = (v: string) => /^\d{16,19}$/.test(v)
 const isValidBik = (v: string) => /^\d{9}$/.test(v)
 const isValidRuAccountNumber = (v: string) => /^\d{20}$/.test(v)
+function isEditBankInfoComplete(form: ReturnType<typeof createBlankEditBankForm>) {
+  const region = editBankRegion(form.bankCountry)
+  if (!form.bankAccountName.trim()) return false
+  if (
+    region !== "SEPA" &&
+    form.bankAccountNumberConfirm !== form.bankAccountNumber
+  )
+    return false
+  switch (region) {
+    case "US":
+      return (
+        !!form.bankAccountNumber.trim() &&
+        isValidAbaRouting(form.bankRoutingNumber.replace(/\D/g, ""))
+      )
+    case "SEPA":
+      return isValidIban(form.bankIban) && isValidSwiftBic(form.bankSwiftBic)
+    case "IN":
+      return (
+        /^\d{9,18}$/.test(form.bankAccountNumber) &&
+        isValidIfsc(form.bankIfscCode)
+      )
+    case "AU":
+      return (
+        /^\d{6,10}$/.test(form.bankAccountNumber) &&
+        isValidBsb(form.bankBsbNumber)
+      )
+    case "GB":
+      return (
+        /^\d{8}$/.test(form.bankAccountNumber) &&
+        isValidSortCode(form.bankSortCode)
+      )
+    case "JP":
+      return (
+        isValidJpBankCode(form.bankCode) &&
+        isValidJpBranchCode(form.bankBranchCode) &&
+        /^\d{7}$/.test(form.bankAccountNumber)
+      )
+    case "SWIFT":
+      return (
+        !!form.bankAccountNumber.trim() && isValidSwiftBic(form.bankSwiftBic)
+      )
+    default:
+      return (
+        !!form.bankAccountNumber.trim() && isValidSwiftBic(form.bankSwiftBic)
+      )
+  }
+}
 
 // US-63: bank-validation.service.ts throws these exact ERR_BANK_* codes as
 // errorCode — mapped here to a friendly, field-specific checklist instead of
@@ -2121,22 +2247,7 @@ export const OverviewTab = ({
   // see methods.service.ts toDetailItem), so editing means full re-entry,
   // not a diff against hidden values. Starts blank whenever Edit opens on
   // an eligible (BANK_MANUAL, not-yet-verified) method.
-  const [editBankForm, setEditBankForm] = React.useState({
-    bankAccountName: "",
-    bankAccountNumber: "",
-    bankAccountNumberConfirm: "",
-    bankRoutingNumber: "",
-    bankSortCode: "",
-    bankIfscCode: "",
-    bankBsbNumber: "",
-    bankInstitutionNumber: "",
-    bankTransitNumber: "",
-    bankIban: "",
-    bankSwiftBic: "",
-    bankCode: "",
-    bankBranchCode: "",
-    bankCountry: "US",
-  })
+  const [editBankForm, setEditBankForm] = React.useState(createBlankEditBankForm)
   const [editBankError, setEditBankError] = React.useState("")
   // Dedicated "Bank Details Updated" / "Unable To Update Bank Info" screens
   // (Figma) for edits that actually touch bank fields — nickname-only edits
@@ -2885,20 +2996,24 @@ export const OverviewTab = ({
     if (!editingMethod) return
     setEditBankError("")
     try {
-      const editRegion = detectBankRegion(editBankForm.bankCountry)
+      const resolvedCountry = editBankForm.bankCountry || "US"
+      const editRegion = detectBankRegion(resolvedCountry)
       const submittingBankDetails =
         editingBankDetails &&
         (editBankForm.bankAccountNumber.trim() || editBankForm.bankIban.trim())
       const payload: any = { nickname: editingMethod.nickname ?? "" }
       if (submittingBankDetails) {
         payload.bankAccountName = editBankForm.bankAccountName
-        payload.bankCountry = editBankForm.bankCountry
-        payload.bankCurrency = bankCountryCurrency(editBankForm.bankCountry)
+        payload.bankCountry = resolvedCountry
+        payload.bankCurrency = bankCountryCurrency(resolvedCountry)
         if (editRegion !== "SEPA")
           payload.bankAccountNumber = editBankForm.bankAccountNumber
         switch (editRegion) {
           case "US":
-            payload.bankRoutingNumber = editBankForm.bankRoutingNumber
+            payload.bankRoutingNumber = editBankForm.bankRoutingNumber.replace(
+              /\D/g,
+              ""
+            )
             break
           case "GB":
             payload.bankSortCode = editBankForm.bankSortCode
@@ -3844,22 +3959,7 @@ export const OverviewTab = ({
                     onClick={() => {
                       if (defaultMethod) {
                         setEditingMethod({ ...defaultMethod })
-                        setEditBankForm({
-                          bankAccountName: "",
-                          bankAccountNumber: "",
-                          bankAccountNumberConfirm: "",
-                          bankRoutingNumber: "",
-                          bankSortCode: "",
-                          bankIfscCode: "",
-                          bankBsbNumber: "",
-                          bankInstitutionNumber: "",
-                          bankTransitNumber: "",
-                          bankIban: "",
-                          bankSwiftBic: "",
-                          bankCode: "",
-                          bankBranchCode: "",
-                          bankCountry: defaultMethod.bankCountry || "US",
-                        })
+                        setEditBankForm(createBlankEditBankForm())
                         setEditBankError("")
                         setEditBankSaveState(null)
                       }
@@ -4080,22 +4180,7 @@ export const OverviewTab = ({
                         visual="gray"
                         onClick={() => {
                           setEditingMethod({ ...m })
-                          setEditBankForm({
-                            bankAccountName: "",
-                            bankAccountNumber: "",
-                            bankAccountNumberConfirm: "",
-                            bankRoutingNumber: "",
-                            bankSortCode: "",
-                            bankIfscCode: "",
-                            bankBsbNumber: "",
-                            bankInstitutionNumber: "",
-                            bankTransitNumber: "",
-                            bankIban: "",
-                            bankSwiftBic: "",
-                            bankCode: "",
-                            bankBranchCode: "",
-                            bankCountry: m.bankCountry || "US",
-                          })
+                          setEditBankForm(createBlankEditBankForm())
                           setEditBankError("")
                           setEditBankSaveState(null)
                         }}
@@ -4119,14 +4204,23 @@ export const OverviewTab = ({
             {/* Verification Dialog */}
             {verifyState && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                <div className="bg-white rounded-xl w-full max-w-md shadow-xl overflow-hidden">
+                <div
+                  className={cn(
+                    "bg-white rounded-xl w-full shadow-xl overflow-hidden",
+                    verifyState.step === "instructions" ||
+                      verifyState.step === "amounts"
+                      ? "max-w-[700px]"
+                      : "max-w-md"
+                  )}
+                >
                   {verifyState.step === "instructions" && (
-                    <div className="p-6">
-                      <div className="flex items-center justify-between mb-4">
+                    <div className="flex flex-col">
+                      <div className="relative flex items-center gap-2 px-6 py-6 border-b border-gray-200">
                         <IconButton
                           size="sm"
                           variant="ghost"
                           visual="gray"
+                          className="text-dark-blue-400"
                           onClick={() => {
                             if (verifyState?.methodId)
                               deleteMethod(verifyState.methodId)
@@ -4138,15 +4232,16 @@ export const OverviewTab = ({
                             }))
                           }}
                         >
-                          <ChevronLeft className="size-4" />
+                          <ArrowLeft className="size-4" />
                         </IconButton>
-                        <h3 className="text-base font-semibold text-dark-blue-400">
+                        <h3 className="text-lg font-semibold text-dark-blue-400">
                           Add your bank account manually
                         </h3>
                         <IconButton
                           size="sm"
                           variant="ghost"
                           visual="gray"
+                          className="absolute right-2.5 top-2.5"
                           onClick={() => {
                             if (verifyState?.methodId)
                               deleteMethod(verifyState.methodId)
@@ -4158,11 +4253,11 @@ export const OverviewTab = ({
                           <X className="size-4" />
                         </IconButton>
                       </div>
-                      <div className="rounded-lg border border-gray-200 p-6 text-center space-y-3">
-                        <h4 className="text-base font-semibold text-dark-blue-400">
+                      <div className="flex flex-col items-center gap-5 px-10 py-[50px] text-center max-h-[282px] overflow-y-auto">
+                        <h4 className="text-lg font-semibold text-dark-blue-400">
                           Please verify your bank account
                         </h4>
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-dark-blue-400">
                           We sent two deposits (between $0.01 and $0.99) to your
                           account ending in{" "}
                           <strong>{verifyState.displayLabel}</strong>. It can
@@ -4178,9 +4273,9 @@ export const OverviewTab = ({
                           call <strong>800-529-7465</strong>
                         </p>
                       </div>
-                      <div className="flex items-center justify-between mt-4">
+                      <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200">
                         <button
-                          className="text-sm text-primary-600 flex items-center gap-1"
+                          className="text-xs font-semibold text-primary-500 flex items-center gap-2"
                           onClick={() =>
                             toast({
                               title: "Use Instant Verification",
@@ -4188,9 +4283,10 @@ export const OverviewTab = ({
                             })
                           }
                         >
-                          ⚡ Use Instant Verification
+                          <Zap className="size-3.5" />
+                          Use Instant Verification
                         </button>
-                        <div className="flex gap-2">
+                        <div className="flex gap-3">
                           <Button
                             variant="outlined"
                             visual="gray"
@@ -4206,7 +4302,7 @@ export const OverviewTab = ({
                               }))
                             }}
                           >
-                            ← Back
+                            Back
                           </Button>
                           <Button
                             variant="filled"
@@ -4225,52 +4321,46 @@ export const OverviewTab = ({
                     </div>
                   )}
                   {verifyState.step === "amounts" && (
-                    <div className="p-6">
-                      <div className="flex items-center justify-between mb-4">
+                    <div className="flex flex-col">
+                      <div className="relative flex items-center gap-2 px-6 py-6 border-b border-gray-200">
                         <IconButton
                           size="sm"
                           variant="ghost"
                           visual="gray"
+                          className="text-dark-blue-400"
                           onClick={() =>
                             setVerifyState((s) =>
                               s ? { ...s, step: "instructions" } : null
                             )
                           }
                         >
-                          <ChevronLeft className="size-4" />
+                          <ArrowLeft className="size-4" />
                         </IconButton>
-                        <h3 className="text-base font-semibold text-dark-blue-400">
+                        <h3 className="text-lg font-semibold text-dark-blue-400">
                           Add your bank account manually
                         </h3>
                         <IconButton
                           size="sm"
                           variant="ghost"
                           visual="gray"
+                          className="absolute right-2.5 top-2.5"
                           onClick={() => setVerifyState(null)}
                         >
                           <X className="size-4" />
                         </IconButton>
                       </div>
-                      <div className="rounded-lg border border-gray-200 p-6 space-y-4">
-                        <h4 className="text-base font-semibold text-dark-blue-400 text-center">
-                          Please verify your bank account
-                        </h4>
-                        <p className="text-sm text-gray-500 text-center">
-                          Enter the two micro deposit amounts we sent to your
-                          account ending in{" "}
-                          <strong>{verifyState.displayLabel}</strong>. The
-                          deposits are sent from "Marketeq".
-                        </p>
-                        {process.env.NODE_ENV === "development" && (
-                          <p className="text-xs text-primary-500 bg-primary-50 rounded px-2 py-1 text-center">
-                            Dev mode: check DB for amounts —{" "}
-                            <code>
-                              SELECT amount_1_cents, amount_2_cents FROM
-                              deposit_method_verification ORDER BY created_at
-                              DESC LIMIT 1;
-                            </code>
+                      <div className="flex flex-col gap-8 px-[50px] py-[50px] max-h-[278px] overflow-y-auto">
+                        <div className="flex flex-col items-center gap-5 px-[90px] text-center">
+                          <h4 className="text-lg font-semibold text-dark-blue-400">
+                            Please verify your bank account
+                          </h4>
+                          <p className="text-sm text-dark-blue-400">
+                            Enter the two micro deposit amounts we sent to your
+                            account ending in{" "}
+                            <strong>{verifyState.displayLabel}</strong>. The
+                            deposits are sent from "Marketeq".
                           </p>
-                        )}
+                        </div>
                         {/* AC-05.04/05.05: hidden on first visit, shown after a failed attempt (EC-09) */}
                         {typeof verifyState.attemptsLeft === "number" && (
                           <p
@@ -4288,13 +4378,13 @@ export const OverviewTab = ({
                             remaining.
                           </p>
                         )}
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-xs text-gray-500 mb-1 block">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1">
+                            <label className="text-sm font-medium text-dark-blue-400 mb-1.5 block">
                               1st Deposit
                             </label>
                             <input
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                              className="w-full border border-gray-300 rounded-[5px] px-3.5 py-2.5 text-base shadow-xs"
                               placeholder="e.g. 7 (cents)"
                               value={microAmounts.amount1}
                               onChange={(e) =>
@@ -4305,12 +4395,12 @@ export const OverviewTab = ({
                               }
                             />
                           </div>
-                          <div>
-                            <label className="text-xs text-gray-500 mb-1 block">
+                          <div className="flex-1">
+                            <label className="text-sm font-medium text-dark-blue-400 mb-1.5 block">
                               2nd Deposit
                             </label>
                             <input
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                              className="w-full border border-gray-300 rounded-[5px] px-3.5 py-2.5 text-base shadow-xs"
                               placeholder="e.g. 39 (cents)"
                               value={microAmounts.amount2}
                               onChange={(e) =>
@@ -4323,12 +4413,11 @@ export const OverviewTab = ({
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2 mt-4">
+                      <div className="flex items-center justify-end gap-3 px-6 py-3 border-t border-gray-200">
                         <Button
                           variant="outlined"
                           visual="gray"
                           size="sm"
-                          className="flex-1"
                           onClick={() => setVerifyState(null)}
                         >
                           Cancel
@@ -4337,7 +4426,6 @@ export const OverviewTab = ({
                           variant="filled"
                           visual="primary"
                           size="sm"
-                          className="flex-1"
                           onClick={handleVerifyMicroDeposits}
                           disabled={
                             !microAmounts.amount1.trim() ||
@@ -4361,9 +4449,9 @@ export const OverviewTab = ({
                         Verifying Your Account...
                       </h4>
                       <div className="flex justify-center">
-                        <div className="size-8 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+                        <div className="size-14 border-[3px] border-primary-100 border-t-primary-600 rounded-full animate-spin" />
                       </div>
-                      <p className="text-sm text-gray-400">
+                      <p className="text-sm text-dark-blue-400">
                         We're verifying your bank account. This may take up to
                         30 seconds.
                       </p>
@@ -4371,16 +4459,6 @@ export const OverviewTab = ({
                   )}
                   {verifyState.step === "success" && (
                     <div className="p-6 space-y-4">
-                      <div className="flex items-center justify-end">
-                        <IconButton
-                          size="sm"
-                          variant="ghost"
-                          visual="gray"
-                          onClick={() => setVerifyState(null)}
-                        >
-                          <X className="size-4" />
-                        </IconButton>
-                      </div>
                       <div className="text-center py-4 space-y-3">
                         <div className="flex flex-col items-center gap-1">
                           <BankLogo bankName={verifyState.bankName} size={80} />
@@ -4433,7 +4511,7 @@ export const OverviewTab = ({
                         visual="gray"
                         size="sm"
                         className="w-full"
-                        leftIcon={<ChevronLeft className="size-4" />}
+                        leftIcon={<ArrowLeft className="size-4" />}
                         onClick={() => {
                           setVerifyState(null)
                           setShowAddMethod(true)
@@ -4455,18 +4533,32 @@ export const OverviewTab = ({
                           ? "Connection Failed"
                           : "Verification Failed"}
                       </h4>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-dark-blue-400">
                         {verifyState.source === "stripe"
                           ? verifyState.errorMessage ||
                             "We couldn't verify your bank at this time. This may be due to a temporary network issue or incorrect information."
                           : "We couldn't verify your bank at this time. Please check your deposit amounts and try again."}
                       </p>
-                      <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        {/* Same fix as the success screen above — reopen the picker
+                          instead of just closing everything. */}
+                        <Button
+                          variant="link"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => {
+                            setVerifyState(null)
+                            setShowAddMethod(true)
+                            setAddForm((f) => ({ ...f, methodType: "PICK" }))
+                            fetchMethods()
+                          }}
+                        >
+                          Back to Deposit Methods
+                        </Button>
                         <Button
                           variant="outlined"
                           visual="gray"
                           size="sm"
-                          className="w-full"
                           leftIcon={<RefreshCcw01 className="size-4" />}
                           onClick={() => {
                             if (verifyState.source === "stripe") {
@@ -4480,23 +4572,6 @@ export const OverviewTab = ({
                           }}
                         >
                           Retry
-                        </Button>
-                        {/* Same fix as the success screen above — reopen the picker
-                          instead of just closing everything. */}
-                        <Button
-                          variant="link"
-                          visual="gray"
-                          size="sm"
-                          className="w-full"
-                          leftIcon={<ChevronLeft className="size-4" />}
-                          onClick={() => {
-                            setVerifyState(null)
-                            setShowAddMethod(true)
-                            setAddForm((f) => ({ ...f, methodType: "PICK" }))
-                            fetchMethods()
-                          }}
-                        >
-                          Back to Deposit Methods
                         </Button>
                       </div>
                     </div>
@@ -4955,13 +5030,15 @@ export const OverviewTab = ({
                           <X className="size-4" />
                         </IconButton>
                       </div>
-                      <div className="py-10 text-center space-y-5">
-                        <div className="mx-auto size-12 rounded-full bg-primary-50 flex items-center justify-center">
-                          <BankIcon className="size-6 text-primary-600" />
+                      <div className="py-10 space-y-5">
+                        <div className="flex items-center gap-4">
+                          <BankIcon className="size-14 shrink-0 text-dark-blue-400" />
+                          <h3 className="text-base font-semibold text-dark-blue-400">
+                            Securely connect your bank account.
+                          </h3>
                         </div>
-                        <p className="text-sm text-gray-500 px-4">
-                          You'll be securely connected to your bank through
-                          Stripe. Your banking credentials are never shared with
+                        <p className="text-xs text-gray-400">
+                          Your banking credentials are never shared with
                           Marketeq.
                         </p>
                         <Button
@@ -5527,7 +5604,7 @@ export const OverviewTab = ({
                               onClick={() =>
                                 setAddForm((f) => ({
                                   ...f,
-                                  methodType: "PICK",
+                                  methodType: "BANK_CONNECT_CONFIRM",
                                 }))
                               }
                             >
@@ -5547,20 +5624,22 @@ export const OverviewTab = ({
                             </IconButton>
                           </div>
                           <div className="space-y-3">
-                            <div className="relative">
-                              <label className="text-xs text-gray-500 mb-1 block">
-                                Country
-                              </label>
-                              <div className="relative">
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm"
+                            <Combobox
+                              className="w-full"
+                              value={selectedCountry ?? null}
+                              onChange={(country) => {
+                                if (country) selectCountry(country.code)
+                              }}
+                            >
+                              <ComboboxTrigger className="flex flex-col gap-y-1">
+                                <Label size="xs" className="text-gray-500">
+                                  Country
+                                </Label>
+                                <ComboboxInput
+                                  className="pl-3 pr-8 py-2 text-sm"
                                   placeholder="Select country"
-                                  value={
-                                    addForm.bankCountryOpen
-                                      ? addForm.bankCountrySearch
-                                      : selectedCountry
-                                        ? `${selectedCountry.flag} ${selectedCountry.name}`
-                                        : ""
+                                  displayValue={(c: typeof selectedCountry) =>
+                                    c ? `${c.flag} ${c.name}` : ""
                                   }
                                   onFocus={() =>
                                     setAddForm((f) => ({
@@ -5586,32 +5665,31 @@ export const OverviewTab = ({
                                     }))
                                   }
                                 />
-                                <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 text-gray-400" />
-                              </div>
-                              {addForm.bankCountryOpen && (
-                                <div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-                                  {filteredCountries.length === 0 ? (
-                                    <p className="text-xs text-gray-400 text-center py-4">
-                                      No countries found
-                                    </p>
-                                  ) : (
-                                    filteredCountries.map((c) => (
-                                      <button
-                                        key={c.code}
-                                        type="button"
-                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-50"
-                                        onClick={() => selectCountry(c.code)}
-                                      >
-                                        <span>{c.flag}</span>{" "}
-                                        <span className="text-dark-blue-400">
-                                          {c.name}
-                                        </span>
-                                      </button>
-                                    ))
-                                  )}
-                                </div>
-                              )}
-                            </div>
+                                <ComboboxButton align="right">
+                                  <Search className="size-3.5 text-gray-400" />
+                                </ComboboxButton>
+                              </ComboboxTrigger>
+                              <ScaleOutIn show={addForm.bankCountryOpen}>
+                                <ComboboxOptions>
+                                  <ScrollArea viewportClassName="max-h-56">
+                                    {filteredCountries.length === 0 ? (
+                                      <p className="text-xs text-gray-400 text-center py-4">
+                                        No countries found
+                                      </p>
+                                    ) : (
+                                      filteredCountries.map((c) => (
+                                        <ComboboxOption key={c.code} value={c}>
+                                          <span>{c.flag}</span>{" "}
+                                          <span className="text-dark-blue-400">
+                                            {c.name}
+                                          </span>
+                                        </ComboboxOption>
+                                      ))
+                                    )}
+                                  </ScrollArea>
+                                </ComboboxOptions>
+                              </ScaleOutIn>
+                            </Combobox>
                             {OFAC_BLOCKED_COUNTRIES.has(
                               addForm.bankCountry.toUpperCase()
                             ) && (
@@ -5621,11 +5699,11 @@ export const OverviewTab = ({
                               </p>
                             )}
                             <div>
-                              <label className="text-xs text-gray-500 mb-1 block">
+                              <Label size="xs" className="text-gray-500 mb-1 block">
                                 Bank Name
-                              </label>
-                              <input
-                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                              </Label>
+                              <Input
+                                className="w-full px-3 py-2 text-sm"
                                 placeholder="e.g. Bank of America"
                                 value={addForm.bankAccountName}
                                 onChange={(e) =>
@@ -5637,11 +5715,11 @@ export const OverviewTab = ({
                               />
                             </div>
                             <div>
-                              <label className="text-xs text-gray-500 mb-1 block">
+                              <Label size="xs" className="text-gray-500 mb-1 block">
                                 Account Holder Name
-                              </label>
-                              <input
-                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                              </Label>
+                              <Input
+                                className="w-full px-3 py-2 text-sm"
                                 placeholder="John Doe"
                                 value={addForm.nickname}
                                 onChange={(e) =>
@@ -5654,23 +5732,26 @@ export const OverviewTab = ({
                             </div>
                             {region === "US" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   Account Type
-                                </label>
-                                <select
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Select
                                   value={addForm.accountType}
-                                  onChange={(e) =>
+                                  onValueChange={(accountType) =>
                                     setAddForm((f) => ({
                                       ...f,
-                                      accountType: e.target.value,
+                                      accountType,
                                     }))
                                   }
                                 >
-                                  <option value="">Select</option>
-                                  <option value="CHECKING">Checking</option>
-                                  <option value="SAVINGS">Savings</option>
-                                </select>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="CHECKING">Checking</SelectItem>
+                                    <SelectItem value="SAVINGS">Savings</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               </div>
                             )}
 
@@ -5681,11 +5762,11 @@ export const OverviewTab = ({
                               region !== "GCC" && (
                                 <>
                                   <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">
+                                    <Label size="xs" className="text-gray-500 mb-1 block">
                                       Account Number
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                    </Label>
+                                    <Input
+                                      className="w-full px-3 py-2 text-sm"
                                       placeholder="Up to 17 digits"
                                       value={addForm.bankAccountNumber}
                                       onChange={(e) =>
@@ -5699,11 +5780,11 @@ export const OverviewTab = ({
                                   <div>
                                     {/* SCR-02: anti-typo protection — a mistyped account number sends
                                 funds nowhere recoverable, so it must be entered twice. */}
-                                    <label className="text-xs text-gray-500 mb-1 block">
+                                    <Label size="xs" className="text-gray-500 mb-1 block">
                                       Confirm Account Number
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                    </Label>
+                                    <Input
+                                      className="w-full px-3 py-2 text-sm"
                                       placeholder="Re-enter account number"
                                       value={addForm.bankAccountNumberConfirm}
                                       onChange={(e) =>
@@ -5728,11 +5809,11 @@ export const OverviewTab = ({
 
                             {region === "US" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   Bank Routing Number
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="9-digit ABA routing number"
                                   value={addForm.bankRoutingNumber}
                                   onChange={(e) =>
@@ -5754,11 +5835,11 @@ export const OverviewTab = ({
                             )}
                             {region === "GB" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   Sort Code
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="6 digits, e.g. 12-34-56"
                                   value={addForm.bankSortCode}
                                   onChange={(e) =>
@@ -5778,11 +5859,11 @@ export const OverviewTab = ({
                             )}
                             {region === "IN" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   IFSC Code
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm uppercase"
                                   placeholder="e.g. HDFC0001234"
                                   value={addForm.bankIfscCode}
                                   onChange={(e) =>
@@ -5802,11 +5883,11 @@ export const OverviewTab = ({
                             )}
                             {region === "AU" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   BSB Number
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="6 digits, e.g. 123-456"
                                   value={addForm.bankBsbNumber}
                                   onChange={(e) =>
@@ -5827,11 +5908,11 @@ export const OverviewTab = ({
                             {region === "CA" && (
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
                                     Institution Number
-                                  </label>
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
                                     placeholder="3 digits"
                                     value={addForm.bankInstitutionNumber}
                                     onChange={(e) =>
@@ -5851,11 +5932,11 @@ export const OverviewTab = ({
                                     )}
                                 </div>
                                 <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
                                     Transit Number
-                                  </label>
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
                                     placeholder="5 digits"
                                     value={addForm.bankTransitNumber}
                                     onChange={(e) =>
@@ -5879,11 +5960,11 @@ export const OverviewTab = ({
                             {region === "JP" && (
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
                                     Bank Code
-                                  </label>
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
                                     placeholder="4 digits"
                                     value={addForm.bankCode}
                                     onChange={(e) =>
@@ -5901,11 +5982,11 @@ export const OverviewTab = ({
                                     )}
                                 </div>
                                 <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
                                     Branch Code
-                                  </label>
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
                                     placeholder="3 digits"
                                     value={addForm.bankBranchCode}
                                     onChange={(e) =>
@@ -5928,11 +6009,11 @@ export const OverviewTab = ({
                             )}
                             {region === "MX" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   CLABE
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="18-digit CLABE"
                                   value={addForm.bankClabe}
                                   onChange={(e) =>
@@ -5952,11 +6033,11 @@ export const OverviewTab = ({
                             )}
                             {region === "CN" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   CNAPS Code
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="12 digits"
                                   value={addForm.bankCnapsCode}
                                   onChange={(e) =>
@@ -5976,11 +6057,11 @@ export const OverviewTab = ({
                             )}
                             {region === "RU" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   BIK
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="9 digits"
                                   value={addForm.bankBik}
                                   onChange={(e) =>
@@ -6000,11 +6081,11 @@ export const OverviewTab = ({
                             )}
                             {(region === "SEPA" || region === "GCC") && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   IBAN
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm uppercase"
                                   placeholder="e.g. DE89370400440532013000"
                                   value={addForm.bankIban}
                                   onChange={(e) =>
@@ -6026,11 +6107,11 @@ export const OverviewTab = ({
                               region === "BACS" ||
                               region === "SWIFT") && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   SWIFT/BIC Code
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm uppercase"
                                   placeholder="e.g. DEUTDEFF"
                                   value={addForm.bankSwiftBic}
                                   onChange={(e) =>
@@ -6050,11 +6131,11 @@ export const OverviewTab = ({
                             )}
                             {region === "SEPA" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   SWIFT/BIC Code (optional)
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm uppercase"
                                   placeholder="e.g. DEUTDEFF"
                                   value={addForm.bankSwiftBic}
                                   onChange={(e) =>
@@ -6073,15 +6154,14 @@ export const OverviewTab = ({
                               </div>
                             )}
 
-                            <label className="flex items-start gap-2 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                className="mt-0.5 accent-primary-600"
+                            <div className="flex items-start gap-2">
+                              <Checkbox
+                                className="mt-0.5"
                                 checked={addForm.bankConsent}
-                                onChange={(e) =>
+                                onCheckedChange={(checked) =>
                                   setAddForm((f) => ({
                                     ...f,
-                                    bankConsent: e.target.checked,
+                                    bankConsent: checked as boolean,
                                   }))
                                 }
                               />
@@ -6092,7 +6172,7 @@ export const OverviewTab = ({
                                 will comply with applicable local laws and
                                 banking regulations.
                               </span>
-                            </label>
+                            </div>
                           </div>
                           <div className="flex gap-2 mt-5">
                             <Button
@@ -6873,12 +6953,12 @@ export const OverviewTab = ({
                 }}
               >
                 <div
-                  className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl max-h-[85vh] overflow-y-auto relative"
+                  className="bg-white rounded-xl w-full max-w-md shadow-xl relative"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {editBankSaveState === "success" ? (
                     /* Figma "Bank Details Updated" */
-                    <div className="text-center py-4">
+                    <div className="text-center p-6">
                       <IconButton
                         size="sm"
                         variant="ghost"
@@ -6906,7 +6986,7 @@ export const OverviewTab = ({
                     </div>
                   ) : editBankSaveState === "error" ? (
                     /* Figma "Unable To Update Bank Info" */
-                    <div className="text-center py-4">
+                    <div className="text-center p-6">
                       <IconButton
                         size="sm"
                         variant="ghost"
@@ -6978,522 +7058,601 @@ export const OverviewTab = ({
                         </Button>
                       </div>
                     </div>
-                  ) : (
+                  ) : editingBankDetails ? (
                     <>
-                      <h3 className="text-base font-semibold text-dark-blue-400 mb-4">
-                        Edit Account
-                      </h3>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">
-                            Account
-                          </label>
-                          <p className="text-sm font-medium text-dark-blue-400">
-                            {editingMethod.displayLabel}
-                          </p>
+                      <div className="flex items-center justify-between border-b border-gray-200 p-3">
+                        <div className="flex items-center gap-x-3">
+                          <IconButton
+                            variant="ghost"
+                            visual="gray"
+                            size="md"
+                            className="text-dark-blue-400"
+                            onClick={() => {
+                              setEditingMethod(null)
+                              setEditBankSaveState(null)
+                            }}
+                          >
+                            <ArrowLeft className="size-5" />
+                          </IconButton>
+                          <h2 className="text-lg font-semibold leading-7 text-dark-blue-400">
+                            Edit Bank Info
+                          </h2>
                         </div>
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">
-                            Nickname (optional)
-                          </label>
-                          <input
-                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                            placeholder="e.g. My Chase Savings"
-                            value={editingMethod.nickname ?? ""}
-                            onChange={(e) =>
-                              setEditingMethod((m: any) => ({
-                                ...m,
-                                nickname: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-
-                        {/* US-59: bank details are re-entered fresh, never pre-filled — the
-                      backend never returns raw account numbers back out (security). */}
-                        {editingBankDetails ? (
-                          (() => {
-                            const editRegion = detectBankRegion(
-                              editBankForm.bankCountry
-                            )
-                            return (
-                              <div className="space-y-3 pt-2 border-t border-gray-200">
-                                <p className="text-xs text-gray-500">
-                                  To correct your bank account details, re-enter
-                                  them below. This restarts verification — two
-                                  small deposits will arrive within 2 business
-                                  days. Leave blank to keep your current
-                                  (unverified) details.
-                                </p>
-                                <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
-                                    Country
-                                  </label>
-                                  <select
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                    value={editBankForm.bankCountry}
-                                    onChange={(e) =>
-                                      setEditBankForm((f) => ({
-                                        ...f,
-                                        bankCountry: e.target.value,
-                                        bankAccountNumber: "",
-                                        bankAccountNumberConfirm: "",
-                                        bankRoutingNumber: "",
-                                        bankSortCode: "",
-                                        bankIfscCode: "",
-                                        bankBsbNumber: "",
-                                        bankInstitutionNumber: "",
-                                        bankTransitNumber: "",
-                                        bankIban: "",
-                                        bankSwiftBic: "",
-                                        bankCode: "",
-                                        bankBranchCode: "",
-                                      }))
-                                    }
-                                  >
-                                    <option value="US">🇺🇸 United States</option>
-                                    <option value="DE">🇪🇺 Europe</option>
-                                    <option value="IN">🇮🇳 India</option>
-                                    <option value="AU">🇦🇺 Australia</option>
-                                    <option value="GB">
-                                      🇬🇧 United Kingdom
-                                    </option>
-                                    <option value="JP">🇯🇵 Japan</option>
-                                    <option value="SG">🌏 Asia</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
-                                    Bank Name
-                                  </label>
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                    placeholder="e.g. Bank of America"
-                                    value={editBankForm.bankAccountName}
-                                    onChange={(e) =>
-                                      setEditBankForm((f) => ({
-                                        ...f,
-                                        bankAccountName: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                </div>
-                                {editRegion !== "SEPA" && (
-                                  <>
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        Account Number
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                        placeholder="Up to 17 digits"
-                                        value={editBankForm.bankAccountNumber}
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankAccountNumber: e.target.value,
-                                          }))
-                                        }
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        Confirm Account Number
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                        placeholder="Re-enter account number"
-                                        value={
-                                          editBankForm.bankAccountNumberConfirm
-                                        }
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankAccountNumberConfirm:
-                                              e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      {editBankForm.bankAccountNumberConfirm
-                                        .length > 0 &&
-                                        editBankForm.bankAccountNumberConfirm !==
-                                          editBankForm.bankAccountNumber && (
-                                          <p className="text-xs text-red-500 mt-1">
-                                            Account numbers don't match.
-                                          </p>
-                                        )}
-                                    </div>
-                                  </>
-                                )}
-                                {editRegion === "US" && (
-                                  <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">
-                                      Routing Number
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                      placeholder="9-digit ABA routing number"
-                                      value={editBankForm.bankRoutingNumber}
-                                      onChange={(e) =>
-                                        setEditBankForm((f) => ({
-                                          ...f,
-                                          bankRoutingNumber: e.target.value,
-                                        }))
-                                      }
-                                    />
-                                    {editBankForm.bankRoutingNumber.length >
-                                      0 &&
-                                      !isValidAbaRouting(
-                                        editBankForm.bankRoutingNumber
-                                      ) && (
-                                        <p className="text-xs text-red-500 mt-1">
-                                          Invalid routing number.
-                                        </p>
-                                      )}
-                                  </div>
-                                )}
-                                {editRegion === "GB" && (
-                                  <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">
-                                      Sort Code
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                      placeholder="6 digits, e.g. 12-34-56"
-                                      value={editBankForm.bankSortCode}
-                                      onChange={(e) =>
-                                        setEditBankForm((f) => ({
-                                          ...f,
-                                          bankSortCode: e.target.value,
-                                        }))
-                                      }
-                                    />
-                                    {editBankForm.bankSortCode.length > 0 &&
-                                      !isValidSortCode(
-                                        editBankForm.bankSortCode
-                                      ) && (
-                                        <p className="text-xs text-red-500 mt-1">
-                                          Sort code must be 6 digits.
-                                        </p>
-                                      )}
-                                  </div>
-                                )}
-                                {editRegion === "IN" && (
-                                  <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">
-                                      IFSC Code
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
-                                      placeholder="e.g. HDFC0001234"
-                                      value={editBankForm.bankIfscCode}
-                                      onChange={(e) =>
-                                        setEditBankForm((f) => ({
-                                          ...f,
-                                          bankIfscCode: e.target.value,
-                                        }))
-                                      }
-                                    />
-                                    {editBankForm.bankIfscCode.length > 0 &&
-                                      !isValidIfsc(
-                                        editBankForm.bankIfscCode
-                                      ) && (
-                                        <p className="text-xs text-red-500 mt-1">
-                                          Invalid IFSC code.
-                                        </p>
-                                      )}
-                                  </div>
-                                )}
-                                {editRegion === "AU" && (
-                                  <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">
-                                      BSB Number
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                      placeholder="6 digits, e.g. 123-456"
-                                      value={editBankForm.bankBsbNumber}
-                                      onChange={(e) =>
-                                        setEditBankForm((f) => ({
-                                          ...f,
-                                          bankBsbNumber: e.target.value,
-                                        }))
-                                      }
-                                    />
-                                    {editBankForm.bankBsbNumber.length > 0 &&
-                                      !isValidBsb(
-                                        editBankForm.bankBsbNumber
-                                      ) && (
-                                        <p className="text-xs text-red-500 mt-1">
-                                          BSB must be 6 digits.
-                                        </p>
-                                      )}
-                                  </div>
-                                )}
-                                {editRegion === "CA" && (
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        Institution Number
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                        placeholder="3 digits"
-                                        value={
-                                          editBankForm.bankInstitutionNumber
-                                        }
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankInstitutionNumber:
-                                              e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      {editBankForm.bankInstitutionNumber
-                                        .length > 0 &&
-                                        !isValidCaInstitution(
-                                          editBankForm.bankInstitutionNumber
-                                        ) && (
-                                          <p className="text-xs text-red-500 mt-1">
-                                            Must be 3 digits.
-                                          </p>
-                                        )}
-                                    </div>
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        Transit Number
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                        placeholder="5 digits"
-                                        value={editBankForm.bankTransitNumber}
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankTransitNumber: e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      {editBankForm.bankTransitNumber.length >
-                                        0 &&
-                                        !isValidCaTransit(
-                                          editBankForm.bankTransitNumber
-                                        ) && (
-                                          <p className="text-xs text-red-500 mt-1">
-                                            Must be 5 digits.
-                                          </p>
-                                        )}
-                                    </div>
-                                  </div>
-                                )}
-                                {editRegion === "JP" && (
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        Bank Code
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                        placeholder="4 digits"
-                                        value={editBankForm.bankCode}
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankCode: e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      {editBankForm.bankCode.length > 0 &&
-                                        !isValidJpBankCode(
-                                          editBankForm.bankCode
-                                        ) && (
-                                          <p className="text-xs text-red-500 mt-1">
-                                            4 digits required.
-                                          </p>
-                                        )}
-                                    </div>
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        Branch Code
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                        placeholder="3 digits"
-                                        value={editBankForm.bankBranchCode}
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankBranchCode: e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      {editBankForm.bankBranchCode.length > 0 &&
-                                        !isValidJpBranchCode(
-                                          editBankForm.bankBranchCode
-                                        ) && (
-                                          <p className="text-xs text-red-500 mt-1">
-                                            3 digits required.
-                                          </p>
-                                        )}
-                                    </div>
-                                  </div>
-                                )}
-                                {editRegion === "SEPA" && (
-                                  <>
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        IBAN
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
-                                        placeholder="Enter your full IBAN (starts with country code, e.g., DE...)"
-                                        value={editBankForm.bankIban}
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankIban: e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      {editBankForm.bankIban.length > 0 &&
-                                        !isValidIban(editBankForm.bankIban) && (
-                                          <p className="text-xs text-red-500 mt-1">
-                                            Invalid IBAN.
-                                          </p>
-                                        )}
-                                    </div>
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        SWIFT/BIC Number (optional)
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
-                                        placeholder="Enter 8 or 11 character SWIFT/BIC Code"
-                                        value={editBankForm.bankSwiftBic}
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankSwiftBic: e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      {editBankForm.bankSwiftBic.length > 0 &&
-                                        !isValidSwiftBic(
-                                          editBankForm.bankSwiftBic
-                                        ) && (
-                                          <p className="text-xs text-red-500 mt-1">
-                                            Invalid SWIFT/BIC code.
-                                          </p>
-                                        )}
-                                    </div>
-                                  </>
-                                )}
-                                {editRegion === "SWIFT" && (
-                                  <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">
-                                      SWIFT Code
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
-                                      placeholder="Enter 8 or 11 character SWIFT/BIC Code"
-                                      value={editBankForm.bankSwiftBic}
-                                      onChange={(e) =>
-                                        setEditBankForm((f) => ({
-                                          ...f,
-                                          bankSwiftBic: e.target.value,
-                                        }))
-                                      }
-                                    />
-                                    {editBankForm.bankSwiftBic.length > 0 &&
-                                      !isValidSwiftBic(
-                                        editBankForm.bankSwiftBic
-                                      ) && (
-                                        <p className="text-xs text-red-500 mt-1">
-                                          Invalid SWIFT/BIC code.
-                                        </p>
-                                      )}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })()
-                        ) : editingMethod.methodType === "BANK_MANUAL" &&
-                          editingMethod.verificationStatus === "verified" ? (
-                          <p className="text-xs text-gray-400 pt-2 border-t border-gray-200">
-                            This account is verified and its bank details can't
-                            be changed here — remove it and add a new one
-                            instead.
-                          </p>
-                        ) : null}
-
-                        {editBankError && (
-                          <p className="text-sm text-red-600">
-                            {editBankError}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex gap-2 mt-5">
-                        <Button
-                          variant="outlined"
+                        <IconButton
+                          className="text-gray-500"
+                          variant="ghost"
                           visual="gray"
-                          size="sm"
-                          className="flex-1"
-                          onClick={() => setEditingMethod(null)}
+                          size="md"
+                          onClick={() => {
+                            setEditingMethod(null)
+                            setEditBankSaveState(null)
+                          }}
                         >
-                          Cancel
-                        </Button>
-                        <Button
-                          variant="filled"
-                          visual="primary"
-                          size="sm"
-                          className="flex-1"
-                          disabled={(() => {
-                            if (!editingBankDetails) return false
-                            const editRegion = detectBankRegion(
-                              editBankForm.bankCountry
-                            )
-                            const touchedBankDetails =
-                              editBankForm.bankAccountNumber.trim().length >
-                                0 || editBankForm.bankIban.trim().length > 0
-                            if (!touchedBankDetails) return false
-                            return (
-                              !editBankForm.bankAccountName.trim() ||
-                              (editRegion !== "SEPA" &&
-                                editBankForm.bankAccountNumberConfirm !==
-                                  editBankForm.bankAccountNumber) ||
-                              (editRegion === "US" &&
-                                !isValidAbaRouting(
-                                  editBankForm.bankRoutingNumber
-                                )) ||
-                              (editRegion === "GB" &&
-                                !isValidSortCode(editBankForm.bankSortCode)) ||
-                              (editRegion === "IN" &&
-                                !isValidIfsc(editBankForm.bankIfscCode)) ||
-                              (editRegion === "AU" &&
-                                !isValidBsb(editBankForm.bankBsbNumber)) ||
-                              (editRegion === "CA" &&
-                                (!isValidCaInstitution(
-                                  editBankForm.bankInstitutionNumber
-                                ) ||
-                                  !isValidCaTransit(
-                                    editBankForm.bankTransitNumber
-                                  ))) ||
-                              (editRegion === "JP" &&
-                                (!isValidJpBankCode(editBankForm.bankCode) ||
+                          <X className="size-5" />
+                        </IconButton>
+                      </div>
+                      <div className="p-6">
+                        <div className="space-y-3">
+                          <div className="space-y-1.5">
+                            <Label size="sm" htmlFor="edit-bank-country">
+                              Country
+                            </Label>
+                            <Listbox
+                              value={editBankForm.bankCountry}
+                              onChange={(code: string) =>
+                                setEditBankForm(createBlankEditBankForm(code))
+                              }
+                            >
+                              <ListboxButton placeholder="Select country">
+                                {({ value }) => {
+                                  const selected = EDIT_BANK_COUNTRIES.find(
+                                    (c) => c.code === value
+                                  )
+                                  return selected ? (
+                                    <span className="flex items-center gap-2">
+                                      <span>{selected.flag}</span>
+                                      <span>{selected.name}</span>
+                                    </span>
+                                  ) : null
+                                }}
+                              </ListboxButton>
+                              <ListboxOptions>
+                                {EDIT_BANK_COUNTRIES.map((country) => (
+                                  <ListboxOption
+                                    key={country.code}
+                                    value={country.code}
+                                  >
+                                    <span>{country.flag}</span>
+                                    <span>{country.name}</span>
+                                  </ListboxOption>
+                                ))}
+                              </ListboxOptions>
+                            </Listbox>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label size="sm" htmlFor="edit-bank-name">
+                              Bank Name
+                            </Label>
+                            <Input
+                              id="edit-bank-name"
+                              type="text"
+                              placeholder={editBankNamePlaceholder(
+                                editBankForm.bankCountry
+                              )}
+                              value={editBankForm.bankAccountName}
+                              onChange={(e) =>
+                                setEditBankForm((f) => ({
+                                  ...f,
+                                  bankAccountName: e.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                          {editBankRegion(editBankForm.bankCountry) ===
+                            "US" && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-account-number"
+                                >
+                                  Account Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-account-number"
+                                  type="text"
+                                  placeholder={editBankAccountPlaceholder(
+                                    editBankForm.bankCountry
+                                  )}
+                                  value={editBankForm.bankAccountNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankAccountNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-routing-number"
+                                >
+                                  Bank Routing Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-routing-number"
+                                  type="text"
+                                  placeholder="xxxx-xxxx-x"
+                                  value={editBankForm.bankRoutingNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankRoutingNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankRoutingNumber.length > 0 &&
+                                  !isValidAbaRouting(
+                                    editBankForm.bankRoutingNumber.replace(
+                                      /\D/g,
+                                      ""
+                                    )
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid routing number.
+                                    </p>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) ===
+                            "SEPA" && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label size="sm" htmlFor="edit-bank-iban">
+                                  IBAN Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-iban"
+                                  type="text"
+                                  placeholder="Enter your full IBAN (starts with country code, e.g., DE...)"
+                                  value={editBankForm.bankIban}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankIban: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankIban.length > 0 &&
+                                  !isValidIban(editBankForm.bankIban) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid IBAN.
+                                    </p>
+                                  )}
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label size="sm" htmlFor="edit-bank-swift">
+                                  SWIFT / BIC Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-swift"
+                                  type="text"
+                                  placeholder="Enter 8 or 11 character SWIFT / BIC Code"
+                                  value={editBankForm.bankSwiftBic}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankSwiftBic: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankSwiftBic.length > 0 &&
+                                  !isValidSwiftBic(
+                                    editBankForm.bankSwiftBic
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid SWIFT / BIC code.
+                                    </p>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) ===
+                            "IN" && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-account-number-in"
+                                >
+                                  Account Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-account-number-in"
+                                  type="text"
+                                  placeholder={editBankAccountPlaceholder("IN")}
+                                  value={editBankForm.bankAccountNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankAccountNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label size="sm" htmlFor="edit-bank-ifsc">
+                                  IFSC Code
+                                </Label>
+                                <Input
+                                  id="edit-bank-ifsc"
+                                  type="text"
+                                  placeholder="Enter 11 character IFSC Code (e.g. ICIC0001234)"
+                                  value={editBankForm.bankIfscCode}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankIfscCode: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankIfscCode.length > 0 &&
+                                  !isValidIfsc(editBankForm.bankIfscCode) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid IFSC code.
+                                    </p>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) ===
+                            "AU" && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-account-number-au"
+                                >
+                                  Account Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-account-number-au"
+                                  type="text"
+                                  placeholder={editBankAccountPlaceholder("AU")}
+                                  value={editBankForm.bankAccountNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankAccountNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label size="sm" htmlFor="edit-bank-bsb">
+                                  BSB Code
+                                </Label>
+                                <Input
+                                  id="edit-bank-bsb"
+                                  type="text"
+                                  placeholder="Enter 6 digit BSB Code (e.g. 062-000)"
+                                  value={editBankForm.bankBsbNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankBsbNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankBsbNumber.length > 0 &&
+                                  !isValidBsb(editBankForm.bankBsbNumber) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid BSB code.
+                                    </p>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) ===
+                            "GB" && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-account-number-gb"
+                                >
+                                  Account Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-account-number-gb"
+                                  type="text"
+                                  placeholder={editBankAccountPlaceholder("GB")}
+                                  value={editBankForm.bankAccountNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankAccountNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label size="sm" htmlFor="edit-bank-sort-code">
+                                  Sort Code
+                                </Label>
+                                <Input
+                                  id="edit-bank-sort-code"
+                                  type="text"
+                                  placeholder="Enter 6 digit Sort Code here (e.g. 20-00-00)"
+                                  value={editBankForm.bankSortCode}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankSortCode: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankSortCode.length > 0 &&
+                                  !isValidSortCode(
+                                    editBankForm.bankSortCode
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Sort code must be 6 digits.
+                                    </p>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) ===
+                            "JP" && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-code-jp"
+                                >
+                                  Bank Code
+                                </Label>
+                                <Input
+                                  id="edit-bank-code-jp"
+                                  type="text"
+                                  placeholder="Enter 4 digit Bank Code here"
+                                  value={editBankForm.bankCode}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankCode: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankCode.length > 0 &&
+                                  !isValidJpBankCode(editBankForm.bankCode) && (
+                                    <p className="text-xs text-red-500">
+                                      Bank code must be 4 digits.
+                                    </p>
+                                  )}
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-branch-code-jp"
+                                >
+                                  Branch Code
+                                </Label>
+                                <Input
+                                  id="edit-bank-branch-code-jp"
+                                  type="text"
+                                  placeholder="Enter 3 digit Branch Code here"
+                                  value={editBankForm.bankBranchCode}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankBranchCode: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankBranchCode.length > 0 &&
                                   !isValidJpBranchCode(
                                     editBankForm.bankBranchCode
-                                  ))) ||
-                              (editRegion === "SEPA" &&
-                                !isValidIban(editBankForm.bankIban)) ||
-                              (editRegion === "SWIFT" &&
-                                !isValidSwiftBic(editBankForm.bankSwiftBic))
-                            )
-                          })()}
-                          onClick={() => setConfirmEditSave(true)}
-                        >
-                          Save Changes
-                        </Button>
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Branch code must be 3 digits.
+                                    </p>
+                                  )}
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-account-number-jp"
+                                >
+                                  Account Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-account-number-jp"
+                                  type="text"
+                                  placeholder={editBankAccountPlaceholder("JP")}
+                                  value={editBankForm.bankAccountNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankAccountNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankAccountNumber.length > 0 &&
+                                  !/^\d{7}$/.test(
+                                    editBankForm.bankAccountNumber
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Account number must be 7 digits.
+                                    </p>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) ===
+                            "SWIFT" && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-account-number-asia"
+                                >
+                                  Account Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-account-number-asia"
+                                  type="text"
+                                  placeholder={editBankAccountPlaceholder("SG")}
+                                  value={editBankForm.bankAccountNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankAccountNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label size="sm" htmlFor="edit-bank-swift-asia">
+                                  Swift Code
+                                </Label>
+                                <Input
+                                  id="edit-bank-swift-asia"
+                                  type="text"
+                                  placeholder="Enter 8 or 11 character SWIFT/BIC Code"
+                                  value={editBankForm.bankSwiftBic}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankSwiftBic: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankSwiftBic.length > 0 &&
+                                  !isValidSwiftBic(
+                                    editBankForm.bankSwiftBic
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid SWIFT / BIC code.
+                                    </p>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) !==
+                            "SEPA" && (
+                            <div className="space-y-1.5">
+                              <Label
+                                size="sm"
+                                htmlFor="edit-bank-account-number-confirm"
+                              >
+                                Confirm Account Number
+                              </Label>
+                              <Input
+                                id="edit-bank-account-number-confirm"
+                                type="text"
+                                placeholder="Re-enter account number"
+                                value={editBankForm.bankAccountNumberConfirm}
+                                onChange={(e) =>
+                                  setEditBankForm((f) => ({
+                                    ...f,
+                                    bankAccountNumberConfirm: e.target.value,
+                                  }))
+                                }
+                              />
+                              {editBankForm.bankAccountNumberConfirm.length >
+                                0 &&
+                                editBankForm.bankAccountNumberConfirm !==
+                                  editBankForm.bankAccountNumber && (
+                                  <p className="text-xs text-red-500">
+                                    Account numbers do not match.
+                                  </p>
+                                )}
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-12 flex items-center justify-end gap-x-2">
+                          <Button
+                            type="button"
+                            variant="outlined"
+                            visual="gray"
+                            onClick={() => setEditingMethod(null)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            disabled={!isEditBankInfoComplete(editBankForm)}
+                            onClick={() => setConfirmEditSave(true)}
+                          >
+                            Save
+                          </Button>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="p-6">
+                        <h3 className="text-base font-semibold text-dark-blue-400 mb-4">
+                          Edit Account
+                        </h3>
+                        <div className="space-y-3">
+                          <div>
+                            <Label size="sm">Account</Label>
+                            <p className="text-sm font-medium text-dark-blue-400">
+                              {editingMethod.displayLabel}
+                            </p>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label size="sm" htmlFor="edit-account-nickname">
+                              Nickname (optional)
+                            </Label>
+                            <Input
+                              id="edit-account-nickname"
+                              type="text"
+                              placeholder="e.g. My Chase Savings"
+                              value={editingMethod.nickname ?? ""}
+                              onChange={(e) =>
+                                setEditingMethod((m: any) => ({
+                                  ...m,
+                                  nickname: e.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                          {editingMethod.methodType === "BANK_MANUAL" &&
+                          editingMethod.verificationStatus === "verified" ? (
+                            <p className="text-xs text-gray-400 pt-2 border-t border-gray-200">
+                              This account is verified and its bank details
+                              can&apos;t be changed here — remove it and add a
+                              new one instead.
+                            </p>
+                          ) : null}
+                          {editBankError && (
+                            <p className="text-sm text-red-600">
+                              {editBankError}
+                            </p>
+                          )}
+                        </div>
+                        <div className="mt-12 flex items-center justify-end gap-x-2">
+                          <Button
+                            type="button"
+                            variant="outlined"
+                            visual="gray"
+                            onClick={() => setEditingMethod(null)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={() => setConfirmEditSave(true)}
+                          >
+                            Save
+                          </Button>
+                        </div>
                       </div>
                     </>
                   )}
