@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { addWeeks, endOfWeek, format, isWithinInterval, parse, startOfWeek } from "date-fns"
+import { addDays, addWeeks, endOfWeek, format, isBefore, isValid, parse, startOfDay, startOfWeek } from "date-fns"
 import { preventDefault } from "@/utils/dom-utils"
 import { getFirstItem } from "@/utils/functions"
 import {
@@ -243,19 +243,19 @@ interface Task {
 }
 
 const initialThisWeekTasks: Task[] = [
-  { id: "t1", name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "Completed", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
-  { id: "t2", name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
-  { id: "t3", name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
-  { id: "t4", name: "UX Research", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
-  { id: "t5", name: "UX Research", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "t1", name: "Homepage Wireframes", assignee: "Devon Lane", avatar: "/man.jpg", status: "Completed", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "t2", name: "Nav Redesign", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "t3", name: "Mobile Breakpoints", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "t4", name: "Component Audit", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "t5", name: "Empty State Copy", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
 ]
 
 const initialNextWeekTasks: Task[] = [
-  { id: "n1", name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "Completed", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
-  { id: "n2", name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
-  { id: "n3", name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
-  { id: "n4", name: "UX Research", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
-  { id: "n5", name: "UX Research", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "n1", name: "Checkout Flow Spec", assignee: "Devon Lane", avatar: "/man.jpg", status: "Completed", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "n2", name: "Payment Error States", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "n3", name: "Order Summary UI", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "n4", name: "Receipt Email Template", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "n5", name: "Refund Policy Page", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
 ]
 
 const initialOverdueTasks: Task[] = [
@@ -293,6 +293,7 @@ interface SortableTaskRowProps {
   duplicateTask: (list: TaskListKey, index: number) => void
   deleteTask: (list: TaskListKey, index: number) => void
   onManageFiles: (task: Task, list: TaskListKey, index: number) => void
+  onToggleComplete: (list: TaskListKey, index: number, complete: boolean) => void
 }
 
 
@@ -411,6 +412,7 @@ const SortableTaskRow = ({
   duplicateTask,
   deleteTask,
   onManageFiles,
+  onToggleComplete,
 }: SortableTaskRowProps) => {
   const {
     attributes,
@@ -438,7 +440,9 @@ const SortableTaskRow = ({
 
   return (
 
-                              <TableRow ref={setNodeRef} style={rowStyle} className={`cursor-pointer ${isDragging ? "opacity-40" : ""} ${dropLine}`} onClick={() => openTask(task, list, i)}>
+                              <TableRow ref={setNodeRef} style={rowStyle} className={`cursor-pointer ${isDragging ? "opacity-40" : ""} ${dropLine} ${
+                                  i >= 5 ? "animate-in fade-in slide-in-from-top-1 duration-150" : ""
+                                }`} onClick={() => openTask(task, list, i)}>
                                 <TableCell className="w-[50px] py-4 pl-4 pr-0" onClick={(e) => e.stopPropagation()}>
                                   <img
                                     src="/icons/drag.svg"
@@ -450,21 +454,27 @@ const SortableTaskRow = ({
                                     {...listeners}
                                   />
                                 </TableCell>
-                                <TableCell className="w-11 py-4 pl-4 pr-4" onClick={(e) => e.stopPropagation()}><Checkbox /></TableCell>
+                                <TableCell className="w-11 py-4 pl-4 pr-4" onClick={(e) => e.stopPropagation()}>
+                                  <Checkbox
+                                    checked={task.status === "Completed"}
+                                    onCheckedChange={(checked) =>
+                                      onToggleComplete(list, i, checked === true)
+                                    }
+                                  />
+                                </TableCell>
                                 <TableCell
                                   className="w-full max-w-0 py-4 px-6 text-sm text-gray-600"
                                   onClick={(e) => {
-                                    if (renamingTaskKey === "LISTKEY" + i) e.stopPropagation()
+                                    if (renamingTaskKey === list + "-" + i) e.stopPropagation()
                                   }}
                                 >
                                   <EditableRoot
                                     value={task.name}
-                                    edit={renamingTaskKey === "LISTKEY" + i}
-                                    activationMode="dblclick"
+                                    edit={renamingTaskKey === list + "-" + i}
                                     submitMode="both"
-                                    onEditChange={(details) =>
-                                      setRenamingTaskKey(details.edit ? "LISTKEY" + i : null)
-                                    }
+                                    onEditChange={(details) => {
+                                      if (!details.edit) setRenamingTaskKey(null)
+                                    }}
                                     onValueChange={(details) => renameTask(list, i, details.value)}
                                   >
                                     <EditableArea>
@@ -499,7 +509,7 @@ const SortableTaskRow = ({
                                     <DropdownMenuContent align="end" className="w-[165px]" onCloseAutoFocus={preventDefault}>
                                       <DropdownMenuItem
                                         className="gap-2"
-                                        onClick={() => setRenamingTaskKey("LISTKEY" + i)}
+                                        onClick={() => setRenamingTaskKey(list + "-" + i)}
                                       >
                                         <Edit03 className="w-4 h-4 text-gray-500" />
                                         <span className="text-xs font-medium text-gray-500">Rename</span>
@@ -634,12 +644,37 @@ export default function ActiveProjectPage() {
   const [editingTask, setEditingTask] = useState<{ list: TaskListKey; index: number; original: Task } | null>(null)
 
   const [activeDragTask, setActiveDragTask] = useState<Task | null>(null)
-  const [showOverdueAlert, setShowOverdueAlert] = useState(true)
+  // count at the moment the alert was dismissed; a different count re-shows it,
+  // and the state resets on refresh so unresolved overdue tasks surface again
+  const [dismissedOverdueCount, setDismissedOverdueCount] = useState<number | null>(null)
+  // how many rows each section is currently showing; 5 until expanded
+  const [sectionLimits, setSectionLimits] = useState<Partial<Record<TaskListKey, number>>>({})
+  const [collapsedSections, setCollapsedSections] = useState<Partial<Record<TaskListKey, boolean>>>({})
 
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
+
+  // which group a task belongs to, derived from its due date
+  const sectionForDueDate = (dueDate: string): TaskListKey => {
+    if (!dueDate) return "none"
+    const due = parse(dueDate, "LLL d, yyyy", new Date())
+    if (!isValid(due)) return "none"
+    const today = startOfDay(new Date())
+    if (isBefore(due, today)) return "overdue"
+    if (due <= endOfWeek(today, { weekStartsOn: 1 })) return "this"
+    if (due <= endOfWeek(addWeeks(today, 1), { weekStartsOn: 1 })) return "next"
+    return "later"
+  }
+
+  // Friday of the week a section covers; No due date clears it
+  const dueDateForSection = (list: TaskListKey) => {
+    if (list === "none") return ""
+    const weeks = { overdue: -1, this: 0, next: 1, later: 2 }[list] ?? 0
+    const friday = addDays(startOfWeek(addWeeks(new Date(), weeks), { weekStartsOn: 1 }), 4)
+    return format(friday, "LLL d, yyyy")
+  }
 
   const handleTaskDragEnd = (event: DragEndEvent) => {
     // the dragged card has pointer-events off, so hold the cursor on the document
@@ -658,25 +693,45 @@ export default function ActiveProjectPage() {
     if (!from || !to) return
 
     if (from === to) {
-      const items = from === "this" ? thisWeekTasks : nextWeekTasks
+      const items = allTaskSections.find(section => section.key === from)?.items ?? []
       const oldIndex = items.findIndex(t => t.id === active.id)
       const newIndex = items.findIndex(t => t.id === over.id)
       taskListSetter(from)(prev => arrayMove(prev, oldIndex, newIndex))
       return
     }
 
-    // moving between the two weeks
-    const source = from === "this" ? thisWeekTasks : nextWeekTasks
-    const target = to === "this" ? thisWeekTasks : nextWeekTasks
+    // moving between sections also rewrites the due date to match the new range
+    const source = allTaskSections.find(section => section.key === from)?.items ?? []
+    const target = allTaskSections.find(section => section.key === to)?.items ?? []
     const moved = source.find(t => t.id === active.id)
     if (!moved) return
     const insertAt = target.findIndex(t => t.id === over.id)
+    const previousDueDate = moved.dueDate
+    const dropped = { ...moved, dueDate: dueDateForSection(to) }
     taskListSetter(from)(prev => prev.filter(t => t.id !== active.id))
     taskListSetter(to)(prev => {
       const next = [...prev]
-      next.splice(insertAt < 0 ? next.length : insertAt, 0, moved)
+      next.splice(insertAt < 0 ? next.length : insertAt, 0, dropped)
       return next
     })
+    if (previousDueDate !== dropped.dueDate) {
+      toast({
+        variant: "success",
+        title: "Due date updated",
+        action: (
+          <ToastAction
+            altText="Undo"
+            className="ml-auto border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
+            onClick={() => {
+              taskListSetter(to)(prev => prev.filter(t => t.id !== dropped.id))
+              taskListSetter(from)(prev => [...prev, { ...moved, dueDate: previousDueDate }])
+            }}
+          >
+            Undo
+          </ToastAction>
+        ),
+      })
+    }
   }
 
   const taskListSetter = (list: TaskListKey) =>
@@ -727,6 +782,14 @@ export default function ActiveProjectPage() {
     setShowChecklist(task.checklist.length > 0)
     setCreateTaskOpen(true)
   }
+
+  // completing a task never moves it out of its due-date group
+  const toggleTaskComplete = (list: TaskListKey, index: number, complete: boolean) =>
+    taskListSetter(list)(prev =>
+      prev.map((t, i) =>
+        i === index ? { ...t, status: complete ? "Completed" : "Not Started" } : t
+      )
+    )
 
   const openTaskFiles = (task: Task, list: TaskListKey, index: number) => {
     // load the task's data without opening the task dialog behind the files view
@@ -1148,7 +1211,7 @@ export default function ActiveProjectPage() {
                 </TabsContent>
 
                 <TabsContent value="tasks">
-                  <div className="mt-6 flex flex-col items-start p-6 gap-8 bg-white border border-gray-200 shadow-xs rounded-lg">
+                  <div className="mt-6 flex flex-col items-start p-6 gap-0 bg-white border border-gray-200 shadow-xs rounded-lg">
                     <DndContext
                       sensors={dndSensors}
                       collisionDetection={closestCenter}
@@ -1157,7 +1220,8 @@ export default function ActiveProjectPage() {
                         document.body.style.cursor = "grabbing"
                         const id = String(event.active.id)
                         setActiveDragTask(
-                          [...thisWeekTasks, ...nextWeekTasks].find(t => t.id === id) ?? null
+                          allTaskSections.flatMap(section => section.items).find(t => t.id === id) ??
+                            null
                         )
                       }}
                       onDragCancel={() => {
@@ -1166,12 +1230,15 @@ export default function ActiveProjectPage() {
                       }}
                       onDragEnd={handleTaskDragEnd}
                     >
-                    {overdueTasks.length > 0 && showOverdueAlert && (
+                    {overdueTasks.length > 0 &&
+                      dismissedOverdueCount !== overdueTasks.length && (
                       <Alert
                         variant="warning"
-                        className="w-full gap-3 rounded-lg p-4"
-                        value={showOverdueAlert}
-                        onValueChange={setShowOverdueAlert}
+                        className="mb-6 w-full gap-3 rounded-lg p-4"
+                        value={dismissedOverdueCount !== overdueTasks.length}
+                        onValueChange={(open) =>
+                          setDismissedOverdueCount(open ? null : overdueTasks.length)
+                        }
                       >
                         <AlertIcon>
                           <AlertTriangle className="h-5 w-5" />
@@ -1185,7 +1252,12 @@ export default function ActiveProjectPage() {
                             <Button
                               variant="link"
                               visual="gray"
-                              className="h-auto gap-2 p-0 text-sm font-semibold text-warning-600 hover:no-underline"
+                              className="h-auto gap-2 p-0 text-sm font-semibold text-warning-600 hover:text-warning-600 hover:underline focus:text-warning-600 active:text-warning-600"
+                              onClick={() =>
+                                document
+                                  .getElementById("task-section-overdue")
+                                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                              }
                             >
                               <ArrowDown className="size-3.5" />
                               View tasks
@@ -1197,11 +1269,32 @@ export default function ActiveProjectPage() {
                     )}
                     {taskSections.map((section) => (
                       <div key={section.key} className="contents">
-                                          <div className="self-stretch flex flex-col gap-3">
+                                          <div
+                          id={`task-section-${section.key}`}
+                          className={`self-stretch flex flex-col gap-3 scroll-mt-24 ${
+                            collapsedSections[section.key] ? "pb-6" : ""
+                          }`}
+                        >
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <IconButton variant="ghost" visual="gray" size="sm" className="flex items-center justify-center w-4.5 h-4.5 p-0">
-                              <ChevronDown className="w-4.5 h-4.5 text-gray-500" />
+                          <div
+                            className="flex cursor-pointer items-center gap-2"
+                            onClick={() =>
+                              setCollapsedSections(prev => {
+                                const collapsing = !prev[section.key]
+                                // expanding returns the group to its default five rows
+                                if (!collapsing) {
+                                  setSectionLimits(limits => ({ ...limits, [section.key]: 5 }))
+                                }
+                                return { ...prev, [section.key]: collapsing }
+                              })
+                            }
+                          >
+                            <IconButton variant="ghost" visual="gray" size="sm" className="-m-1 flex size-7 items-center justify-center rounded-md p-0 transition-colors duration-300 hover:!bg-gray-100 focus:bg-transparent">
+                              <ChevronDown
+                                className={`w-4.5 h-4.5 text-gray-500 transition-transform duration-300 ${
+                                  collapsedSections[section.key] ? "-rotate-90" : ""
+                                }`}
+                              />
                             </IconButton>
                             <h2 className="text-lg font-semibold text-dark-blue-400">{section.label}</h2>
                           </div>
@@ -1212,6 +1305,18 @@ export default function ActiveProjectPage() {
                             </Button>
                           )}
                         </div>
+                        <div
+                          className={`grid w-full transition-all duration-300 ease-out ${
+                            collapsedSections[section.key]
+                              ? "grid-rows-[0fr] opacity-0"
+                              : "grid-rows-[1fr] opacity-100"
+                          }`}
+                        >
+                          <div
+                            className={`flex min-h-0 flex-col ${
+                              collapsedSections[section.key] ? "overflow-hidden" : ""
+                            }`}
+                          >
                         <div className="bg-white border border-gray-200 shadow-xs rounded-lg overflow-hidden">
                         <Table>
                           <TableHeader className="[&_tr]:border-t-0">
@@ -1228,10 +1333,10 @@ export default function ActiveProjectPage() {
                           </TableHeader>
                           <TableBody>
                             <SortableContext
-                              items={section.items.map(t => t.id)}
+                              items={section.items.slice(0, sectionLimits[section.key] ?? 5).map(t => t.id)}
                               strategy={verticalListSortingStrategy}
                             >
-                              {section.items.map((task, i) => (
+                              {section.items.slice(0, sectionLimits[section.key] ?? 5).map((task, i) => (
                                 <SortableTaskRow
                                   key={task.id}
                                   task={task}
@@ -1244,17 +1349,44 @@ export default function ActiveProjectPage() {
                                   duplicateTask={duplicateTask}
                                   deleteTask={deleteTask}
                                   onManageFiles={openTaskFiles}
+                                  onToggleComplete={toggleTaskComplete}
                                 />
                               ))}
                             </SortableContext>
                           </TableBody>
                         </Table>
                         </div>
-                        <div className="flex justify-end">
-                          <Button variant="link" visual="primary" className="flex h-auto items-center gap-1.5 p-0 text-xs font-semibold text-primary-500 transition-colors duration-300">
-                            View More
-                            <ChevronRight className="w-3 h-3" />
-                          </Button>
+                          <div className="flex h-9 w-full items-end justify-end pb-1">
+                            {section.items.length > 5 && (
+                            <div className="flex items-center">
+                            <Button
+                              variant="link"
+                              visual="gray"
+                              className="h-auto p-0"
+                              onClick={() =>
+                                setSectionLimits(prev => {
+                                  const shown = prev[section.key] ?? 5
+                                  return {
+                                    ...prev,
+                                    [section.key]:
+                                      shown >= section.items.length
+                                        ? 5
+                                        : Math.min(shown + 5, section.items.length),
+                                  }
+                                })
+                              }
+                            >
+                              {(sectionLimits[section.key] ?? 5) >= section.items.length
+                                ? "View less"
+                                : `View ${Math.min(
+                                    5,
+                                    section.items.length - (sectionLimits[section.key] ?? 5)
+                                  )} more`}
+                            </Button>
+                            </div>
+                            )}
+                          </div>
+                          </div>
                         </div>
                       </div>
 
@@ -3093,24 +3225,22 @@ export default function ActiveProjectPage() {
                 if (!taskName.trim()) return
                 const newTask = draftTask
                 if (editingTask) {
-                  taskListSetter(editingTask.list)(prev =>
-                    prev.map((t, i) => (i === editingTask.index ? newTask : t))
-                  )
+                  const belongs = sectionForDueDate(newTask.dueDate)
+                  if (belongs === editingTask.list) {
+                    taskListSetter(editingTask.list)(prev =>
+                      prev.map((t, i) => (i === editingTask.index ? newTask : t))
+                    )
+                  } else {
+                    taskListSetter(editingTask.list)(prev =>
+                      prev.filter((_, i) => i !== editingTask.index)
+                    )
+                    taskListSetter(belongs)(prev => [newTask, ...prev])
+                  }
                   setEditingTask(null)
                   setCreateTaskOpen(false)
                   return
                 }
-                // a due date inside next week lands in that list, everything else in this week
-                const nextWeekStart = startOfWeek(addWeeks(new Date(), 1))
-                const nextWeekEnd = endOfWeek(addWeeks(new Date(), 1))
-                const isNextWeek =
-                  !!taskDueDate &&
-                  isWithinInterval(taskDueDate, { start: nextWeekStart, end: nextWeekEnd })
-                if (isNextWeek) {
-                  setNextWeekTasks(prev => [...prev, newTask])
-                } else {
-                  setThisWeekTasks(prev => [...prev, newTask])
-                }
+                taskListSetter(sectionForDueDate(newTask.dueDate))(prev => [newTask, ...prev])
                 setTaskName("")
                 setTaskDescription("")
                 setTaskDueDate(undefined)
