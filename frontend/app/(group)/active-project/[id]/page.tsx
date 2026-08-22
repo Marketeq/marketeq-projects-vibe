@@ -1542,9 +1542,9 @@ export default function ActiveProjectPage() {
                             onOpenChange={setBulkAssignOpen}
                             side="bottom"
                             sideOffset={8}
-                            triggerClassName="!h-auto !w-auto !border-0 !bg-transparent !p-0"
+                            triggerClassName="!h-auto !w-auto !border-0 bg-transparent data-[state=open]:!ring-0 data-[state=open]:!border-0"
                             trigger={
-                              <Button variant="link" visual="gray" className="group/act h-auto gap-2 p-0 text-sm font-medium text-gray-500 transition-colors duration-300 hover:text-gray-900 hover:no-underline">
+                              <Button variant="link" visual="gray" className="group/act -mx-2 -my-1.5 h-auto gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-gray-500 transition-colors duration-300 hover:bg-gray-100 hover:text-gray-900 hover:no-underline">
                                 <UserCircle className="size-4 text-gray-500 transition-colors duration-300 group-hover/act:text-gray-900" />
                                 Assign to
                               </Button>
@@ -1555,7 +1555,7 @@ export default function ActiveProjectPage() {
                             onChange={(status) => updateSelectedTasks(t => ({ ...t, status }))}
                             sideOffset={8}
                             trigger={
-                              <Button variant="link" visual="gray" className="group/act h-auto gap-2 p-0 text-sm font-medium text-gray-500 transition-colors duration-300 hover:text-gray-900 hover:no-underline">
+                              <Button variant="link" visual="gray" className="group/act -mx-2 -my-1.5 h-auto gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-gray-500 transition-colors duration-300 hover:bg-gray-100 hover:text-gray-900 hover:no-underline">
                                 <CheckCircle className="size-4 text-gray-500 transition-colors duration-300 group-hover/act:text-gray-900" />
                                 Status
                               </Button>
@@ -1573,7 +1573,7 @@ export default function ActiveProjectPage() {
                               setBulkDueOpen(false)
                             }}
                             trigger={
-                              <Button variant="link" visual="gray" className="group/act h-auto gap-2 p-0 text-sm font-medium text-gray-500 transition-colors duration-300 hover:text-gray-900 hover:no-underline">
+                              <Button variant="link" visual="gray" className="group/act -mx-2 -my-1.5 h-auto gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-gray-500 transition-colors duration-300 hover:bg-gray-100 hover:text-gray-900 hover:no-underline">
                                 <Calendar className="size-4 text-gray-500 transition-colors duration-300 group-hover/act:text-gray-900" />
                                 Due Date
                               </Button>
@@ -1582,11 +1582,8 @@ export default function ActiveProjectPage() {
                           <Button
                             variant="link"
                             visual="gray"
-                            className="group/act h-auto gap-2 p-0 text-sm font-medium text-gray-500 transition-colors duration-300 hover:text-gray-900 hover:no-underline"
-                            onClick={() => {
-                              duplicateSelectedTasks()
-                              setSelectedTaskIds([])
-                            }}
+                            className="group/act -mx-2 -my-1.5 h-auto gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-gray-500 transition-colors duration-300 hover:bg-gray-100 hover:text-gray-900 hover:no-underline"
+                            onClick={() => duplicateSelectedTasks()}
                           >
                             <Copy07 className="size-4 text-gray-500 transition-colors duration-300 group-hover/act:text-gray-900" />
                             Duplicate
@@ -1609,6 +1606,16 @@ export default function ActiveProjectPage() {
                             <Trash01 className="size-4" />
                           </IconButton>
                           </div>
+                          <span className="ml-0 h-5 w-px bg-gray-200" />
+                          <IconButton
+                            variant="ghost"
+                            visual="gray"
+                            size="sm"
+                            className={`-ml-4 size-8 rounded-full p-0 text-gray-500 hover:bg-gray-100 hover:text-gray-900 ${barStuck ? "-mr-4" : "-mr-2"}`}
+                            onClick={() => setSelectedTaskIds([])}
+                          >
+                            <X className="size-4" />
+                          </IconButton>
                         </div>
                       </div>
                         )}
@@ -1745,22 +1752,18 @@ export default function ActiveProjectPage() {
                               onClick={() =>
                                 setSectionLimits(prev => {
                                   const shown = prev[section.key] ?? 5
+                                  // expand to the whole list, collapse back to five
                                   return {
                                     ...prev,
                                     [section.key]:
-                                      shown >= section.items.length
-                                        ? 5
-                                        : Math.min(shown + 5, section.items.length),
+                                      shown >= section.items.length ? 5 : section.items.length,
                                   }
                                 })
                               }
                             >
                               {(sectionLimits[section.key] ?? 5) >= section.items.length
                                 ? "View less"
-                                : `View ${Math.min(
-                                    5,
-                                    section.items.length - (sectionLimits[section.key] ?? 5)
-                                  )} more`}
+                                : `View ${section.items.length - (sectionLimits[section.key] ?? 5)} more`}
                             </Button>
                             </div>
                             )}

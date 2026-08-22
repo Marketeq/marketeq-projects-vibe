@@ -225,6 +225,7 @@ All base components live in `frontend/components/ui/` and are re-exported from t
 - **Import**: `import { Button, buttonVariants } from "@/components/ui"`
 - **Key Props**: `visual?: "primary" | "error" | "gray"`, `variant?: "filled" | "light" | "outlined" | "ghost" | "link"`, `size?: "sm" | "md" | "lg" | "xl" | "2xl"`, `asChild?: boolean`
 - **Variants**: 3 visuals x 5 variants x 5 sizes
+- **Hover transition**: the base already includes `transition duration-300` — do NOT add your own `transition-colors duration-300` to Buttons or link Buttons
 - **Storybook**: `components/ui/button/button.stories.tsx` (Primary)
 
 ### ButtonGroup
@@ -364,6 +365,7 @@ All base components live in `frontend/components/ui/` and are re-exported from t
 - **Import**: `import { IconButton } from "@/components/ui"`
 - **Key Props**: `visual?: "primary" | "error" | "gray"`, `variant?: "filled" | "light" | "outlined" | "ghost"`, `size?: "sm" | "md" | "lg" | "xl" | "2xl"`
 - **Variants**: 3 visuals x 4 variants x 5 sizes
+- **Hover transition**: the base already includes `transition-colors` — do NOT add your own
 - **Storybook**: `components/ui/icon-button/icon-button.stories.tsx` (GoogleOutlined)
 
 ### ImageEditor / PictureEditor
