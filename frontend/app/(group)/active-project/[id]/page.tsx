@@ -1,18 +1,50 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { addWeeks, endOfWeek, format, isWithinInterval, parse, startOfWeek } from "date-fns"
+import { preventDefault } from "@/utils/dom-utils"
+import { getFirstItem } from "@/utils/functions"
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core"
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers"
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
+  Alert,
+  AlertContent,
+  AlertIcon,
+  AlertTitle,
   Avatar,
   AvatarFallback,
   AvatarGroup,
+  AvatarGroupButton,
   AvatarImage,
+  AvatarRoot,
   Badge,
   Button,
   Checkbox,
+  Dialog,
+  DialogContent,
+  DialogClose,
+  DialogTitle,
   IconButton,
   Table,
   TableHeader,
@@ -24,6 +56,14 @@ import {
   TabsList,
   TabsTrigger,
   TabsContent,
+  CloseButton,
+  Textarea,
+  ToastAction,
+  useToast,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@/components/ui"
 import {
   Accordion,
@@ -41,29 +81,57 @@ import {
   Input,
   InputGroup,
   InputLeftElement,
+  DropdownPopover,
+  DropdownPopoverTrigger,
+  DropdownPopoverContent,
+  DropdownCommand,
+  DropdownCommandInput,
+  DropdownCommandEmpty,
+  DropdownCommandGroup,
+  DropdownCommandItem,
+  CommandList,
+  comboboxInputVariants,
+  EditableRoot,
+  EditableArea,
+  EditableInput,
+  EditablePreview,
+  Calendar as CalendarPicker,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
 } from "@/components/ui"
 import {
+  ArrowDown,
+  AlertTriangle,
+  Attachment01,
   Calendar,
   CalendarCheck01,
   Check,
+  Check1,
   ChevronDown,
   ChevronRight,
   Clock,
   CurrencyDollar,
   Copy07,
+  CornerRightUp,
+  Download01,
   Edit03,
   Edit05,
   Expand01,
   FilterLines,
   FolderClosed,
+  Folder,
   File02,
   File06,
   FileCheck02,
   HelpCircle,
   Home,
   LinkExternal01,
+  List as ListIcon,
   Mail,
+  Menu02,
   MessageSquare01,
+  Laptop01,
   MoreHorizontal,
   Paperclip,
   Phone,
@@ -75,8 +143,15 @@ import {
   Trash01,
   UploadCloud,
   Users,
+  Users01,
+  X,
   XCircle,
 } from "@blend-metrics/icons"
+import {
+  DropboxBrand,
+  GoogleDrive1Brand,
+  MsOnedriveBrand,
+} from "@blend-metrics/icons/brands"
 import { Grid } from "@/components/icons/grid"
 import { List } from "@/components/icons/list"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
@@ -139,28 +214,64 @@ const activityCategoryStyles: Record<string, { bg: string; icon: string }> = {
   review: { bg: "bg-error-50", icon: "text-error-500" },
 }
 
+interface TaskAttachment {
+  name: string
+  size: string
+  progress: number
+  /** object URL, set for image files so the card can show a thumbnail */
+  url?: string
+}
+
+interface ChecklistItem {
+  text: string
+  checked: boolean
+  dueDate: string
+  attachments: TaskAttachment[]
+}
+
 interface Task {
+  id: string
   name: string
   assignee: string
   avatar: string
   status: "Completed" | "Not Started" | "In Progress"
   dueDate: string
+  description: string
+  milestone: string
+  attachments: TaskAttachment[]
+  checklist: ChecklistItem[]
 }
 
-const thisWeekTasks: Task[] = [
-  { name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "Completed", dueDate: "Jul 23, 2024" },
-  { name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024" },
-  { name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024" },
-  { name: "UX Research", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024" },
-  { name: "UX Research", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024" },
+const initialThisWeekTasks: Task[] = [
+  { id: "t1", name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "Completed", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "t2", name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "t3", name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "t4", name: "UX Research", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "t5", name: "UX Research", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
 ]
 
-const nextWeekTasks: Task[] = [
-  { name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "Completed", dueDate: "Jul 23, 2024" },
-  { name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024" },
-  { name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024" },
-  { name: "UX Research", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024" },
-  { name: "UX Research", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024" },
+const initialNextWeekTasks: Task[] = [
+  { id: "n1", name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "Completed", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "n2", name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "n3", name: "UX Wireframing", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "n4", name: "UX Research", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "n5", name: "UX Research", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+]
+
+const initialOverdueTasks: Task[] = [
+  { id: "o1", name: "Competitor Analysis", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 9, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "o2", name: "Stakeholder Interviews", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 11, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "o3", name: "Content Audit", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 15, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+]
+
+const initialLaterTasks: Task[] = [
+  { id: "l1", name: "Design QA", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Aug 12, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "l2", name: "Usability Testing", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Aug 20, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+]
+
+const initialNoDueDateTasks: Task[] = [
+  { id: "d1", name: "Design System Cleanup", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "d2", name: "Icon Library Review", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "", description: "", milestone: "None", attachments: [], checklist: [] },
 ]
 
 const taskStatusStyles: Record<string, { bg: string; text: string }> = {
@@ -169,12 +280,505 @@ const taskStatusStyles: Record<string, { bg: string; text: string }> = {
   "In Progress": { bg: "bg-primary-50", text: "text-primary-500" },
 }
 
+type TaskListKey = "this" | "next" | "overdue" | "later" | "none"
+
+interface SortableTaskRowProps {
+  task: Task
+  list: TaskListKey
+  i: number
+  openTask: (task: Task, list: TaskListKey, index: number) => void
+  renamingTaskKey: string | null
+  setRenamingTaskKey: (key: string | null) => void
+  renameTask: (list: TaskListKey, index: number, name: string) => void
+  duplicateTask: (list: TaskListKey, index: number) => void
+  deleteTask: (list: TaskListKey, index: number) => void
+  onManageFiles: (task: Task, list: TaskListKey, index: number) => void
+}
+
+
+interface AssigneePickerProps {
+  selected: TeamMember[]
+  onSelectedChange: (value: TeamMember[]) => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+const AssigneePicker = ({
+  selected,
+  onSelectedChange,
+  open,
+  onOpenChange,
+}: AssigneePickerProps) => {
+  const [search, setSearch] = React.useState("")
+
+  return (
+  <DropdownPopover
+    open={open}
+    onOpenChange={onOpenChange}
+    multiple
+    selected={selected}
+    onSelectedChange={(value: TeamMember[]) => onSelectedChange(value)}
+  >
+    <DropdownPopoverTrigger asChild className="!inline-flex !h-8 !w-8 !rounded-full !p-0 !text-gray-400 transition-colors duration-300 hover:!border-gray-400 hover:!text-gray-500">
+      <AvatarGroupButton size="sm">
+        <Plus className="h-4 w-4" />
+      </AvatarGroupButton>
+    </DropdownPopoverTrigger>
+    <DropdownPopoverContent
+      align="start"
+      collisionPadding={16}
+      className="w-72 border border-gray-100 p-0"
+    >
+      <DropdownCommand>
+        <div className="border-b border-gray-100 p-3.5">
+          <InputGroup>
+            <InputLeftElement className="w-8">
+              <SearchMd className="size-4 text-gray-500" />
+            </InputLeftElement>
+            <DropdownCommandInput
+              placeholder="Search names, emails, or roles"
+              className={comboboxInputVariants({ visual: "default", size: "sm" })}
+              value={search}
+              onValueChange={setSearch}
+            />
+          </InputGroup>
+        </div>
+
+        <CommandList className="max-h-72 pr-2.5 scrollbar scrollbar-w-2 scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+          <DropdownCommandEmpty>No team members found</DropdownCommandEmpty>
+          {[
+            { heading: "My team", members: sampleMembers.slice(0, 3) },
+            { heading: "Suggested", members: sampleMembers.slice(3) },
+          ].map((group) => (
+            <DropdownCommandGroup
+              key={group.heading}
+              heading={group.heading}
+              className="[&_[cmdk-group-heading]]:mb-2 [&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-gray-800"
+            >
+              {group.members.map((member) => (
+                <DropdownCommandItem
+                  key={member.username}
+                  itemValue={member}
+                  value={`${member.name} ${member.username} ${member.role}`}
+                  className="items-center gap-2 rounded-md bg-transparent py-2 data-[selected=true]:bg-gray-50"
+                >
+                  <Avatar size="sm">
+                    <AvatarImage src={member.avatar} alt={member.name} />
+                    <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
+                    <p className="truncate text-[13px] font-medium leading-[13px] text-gray-700 transition-colors group-data-[selected=true]:text-gray-900">
+                      {member.name.split(" ")[0]}{" "}
+                      <span className="font-normal text-gray-500 transition-colors group-data-[selected=true]:text-gray-700">
+                        {member.username}
+                      </span>
+                    </p>
+                    <p className="truncate text-[11px] font-light leading-[13px] text-gray-500 transition-colors group-data-[selected=true]:text-gray-700">
+                      {member.role}
+                    </p>
+                  </div>
+                  <Check1 className="ml-auto size-4 shrink-0 text-primary-500 opacity-0 group-data-[state=selected]:opacity-100" />
+                </DropdownCommandItem>
+              ))}
+            </DropdownCommandGroup>
+          ))}
+        </CommandList>
+
+        <Button
+          variant="ghost"
+          visual="gray"
+          className="group h-auto w-full shrink-0 justify-start gap-2 rounded-none border-t border-gray-100 p-3.5 hover:bg-gray-50"
+        >
+          <Users01 className="size-4 text-gray-500 transition-colors group-hover:text-gray-900" />
+          <span className="text-[13px] font-medium leading-[13px] text-gray-500 transition-colors group-hover:text-gray-900">
+            Invite team member
+          </span>
+        </Button>
+      </DropdownCommand>
+    </DropdownPopoverContent>
+  </DropdownPopover>
+  )
+}
+
+const SortableTaskRow = ({
+  task,
+  list,
+  i,
+  openTask,
+  renamingTaskKey,
+  setRenamingTaskKey,
+  renameTask,
+  duplicateTask,
+  deleteTask,
+  onManageFiles,
+}: SortableTaskRowProps) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+    activeIndex,
+    index,
+  } = useSortable({ id: task.id, data: { list } })
+  // 4px blue rule marking where the card will land
+  const dropBefore = activeIndex === -1 || activeIndex > index
+  const dropLine = !isOver
+    ? ""
+    : dropBefore
+      ? "border-t-4 border-t-primary-500"
+      : "border-b-4 border-b-primary-500"
+  const rowStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+  const style = taskStatusStyles[task.status]
+
+  return (
+
+                              <TableRow ref={setNodeRef} style={rowStyle} className={`cursor-pointer ${isDragging ? "opacity-40" : ""} ${dropLine}`} onClick={() => openTask(task, list, i)}>
+                                <TableCell className="w-[50px] py-4 pl-4 pr-0" onClick={(e) => e.stopPropagation()}>
+                                  <img
+                                    src="/icons/drag.svg"
+                                    alt=""
+                                    className={`box-content mx-auto w-2 h-3 cursor-grab -my-2 p-2 transition-opacity duration-300 hover:opacity-100 active:cursor-grabbing ${
+                                      isDragging ? "opacity-100" : "opacity-50"
+                                    }`}
+                                    {...attributes}
+                                    {...listeners}
+                                  />
+                                </TableCell>
+                                <TableCell className="w-11 py-4 pl-4 pr-4" onClick={(e) => e.stopPropagation()}><Checkbox /></TableCell>
+                                <TableCell
+                                  className="w-full max-w-0 py-4 px-6 text-sm text-gray-600"
+                                  onClick={(e) => {
+                                    if (renamingTaskKey === "LISTKEY" + i) e.stopPropagation()
+                                  }}
+                                >
+                                  <EditableRoot
+                                    value={task.name}
+                                    edit={renamingTaskKey === "LISTKEY" + i}
+                                    activationMode="dblclick"
+                                    submitMode="both"
+                                    onEditChange={(details) =>
+                                      setRenamingTaskKey(details.edit ? "LISTKEY" + i : null)
+                                    }
+                                    onValueChange={(details) => renameTask(list, i, details.value)}
+                                  >
+                                    <EditableArea>
+                                      <EditableInput className="w-full bg-transparent text-sm font-normal leading-5 text-gray-600 shadow-none" />
+                                      <EditablePreview className="block truncate text-sm font-normal leading-5 text-gray-600" />
+                                    </EditableArea>
+                                  </EditableRoot>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  <Avatar size="sm">
+                                    <AvatarImage src={task.avatar} alt={task.assignee} />
+                                    <AvatarFallback>{task.assignee[0]}</AvatarFallback>
+                                  </Avatar>
+                                </TableCell>
+                                <TableCell className="py-4 px-6 whitespace-nowrap">
+                                  <Badge className={`${style.bg} ${style.text} border-0`}>{task.status}</Badge>
+                                </TableCell>
+                                <TableCell className="py-4 px-6 text-sm text-gray-600 whitespace-nowrap truncate">{task.dueDate}</TableCell>
+                                <TableCell className="w-[50px] py-4 pl-4 pr-0" onClick={(e) => e.stopPropagation()}>
+                                  <IconButton visual="gray" variant="outlined" size="sm" className="rounded-full w-7 h-7 hover:bg-gray-50 transition-colors duration-300 group/attach">
+                                    <Paperclip className="w-3 h-3 group-hover/attach:hidden" />
+                                    <Plus className="w-3 h-3 text-gray-800 hidden group-hover/attach:block" />
+                                  </IconButton>
+                                </TableCell>
+                                <TableCell className="py-4 px-6" onClick={(e) => e.stopPropagation()}>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <IconButton visual="gray" variant="ghost" size="sm" className="rounded-full data-[state=open]:bg-gray-100 transition-colors duration-300">
+                                        <MoreHorizontal className="w-4 h-4" />
+                                      </IconButton>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-[165px]" onCloseAutoFocus={preventDefault}>
+                                      <DropdownMenuItem
+                                        className="gap-2"
+                                        onClick={() => setRenamingTaskKey("LISTKEY" + i)}
+                                      >
+                                        <Edit03 className="w-4 h-4 text-gray-500" />
+                                        <span className="text-xs font-medium text-gray-500">Rename</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        className="gap-2"
+                                        onClick={() => duplicateTask(list, i)}
+                                      >
+                                        <Copy07 className="w-4 h-4 text-gray-500" />
+                                        <span className="text-xs font-medium text-gray-500">Duplicate task</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem className="gap-2" onClick={() => onManageFiles(task, list, i)}>
+                                        <FolderClosed className="w-4 h-4 text-gray-500" />
+                                        <span className="text-xs font-medium text-gray-500">Manage files</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        className="gap-2 text-error-600 focus:bg-error-50 focus:text-error-600"
+                                        onClick={() => deleteTask(list, i)}
+                                      >
+                                        <Trash01 className="w-4 h-4" />
+                                        <span className="text-xs font-medium">Delete task</span>
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </TableCell>
+                              </TableRow>
+                              )
+}
+
+
 export default function ActiveProjectPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const contractTitle = searchParams.get("title") || "Marketeq Client Portal - Redesigning and Optimizing Website for Enhanced User Experience."
   const groupName = searchParams.get("group") || "My Contracts"
   const [activeTab, setActiveTab] = useState("overview")
+  const [createTaskOpen, setCreateTaskOpen] = useState(false)
+  const [taskName, setTaskName] = useState("")
+  const [taskPhase, setTaskPhase] = useState("Phase 1 Research")
+  const [taskMilestone, setTaskMilestone] = useState("None")
+  const [taskStatus, setTaskStatus] = useState("Not Started")
+  const [taskDueDate, setTaskDueDate] = useState<Date>()
+  const [dueDateOpen, setDueDateOpen] = useState(false)
+  // "Phase 1 Research" -> label "Phase 1" keeps its style, name "Research" is lighter
+  const phaseLabel = taskPhase.split(" ").slice(0, 2).join(" ")
+  const phaseName = taskPhase.split(" ").slice(2).join(" ")
+  const [taskDescription, setTaskDescription] = useState("")
+  const [taskAttachments, setTaskAttachments] = useState<TaskAttachment[]>([])
+  const [taskAssignees, setTaskAssignees] = useState<TeamMember[]>([])
+  const [assigneeSearch, setAssigneeSearch] = useState("")
+  const [assigneePopoverOpen, setAssigneePopoverOpen] = useState(false)
+  const [showChecklist, setShowChecklist] = useState(false)
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([])
+  const [newChecklistItem, setNewChecklistItem] = useState("")
+  const [dragOverChecklistIdx, setDragOverChecklistIdx] = useState<number | null>(null)
+  const [renamingChecklistIdx, setRenamingChecklistIdx] = useState<number | null>(null)
+  const [checklistMenuIdx, setChecklistMenuIdx] = useState<number | null>(null)
+  const [checklistDateIdx, setChecklistDateIdx] = useState<number | null>(null)
+  const [dateConfirmIdx, setDateConfirmIdx] = useState<number | null>(null)
+  const [dateTipIdx, setDateTipIdx] = useState<number | null>(null)
+  const [clipConfirmIdx, setClipConfirmIdx] = useState<number | null>(null)
+  const [clipTipIdx, setClipTipIdx] = useState<number | null>(null)
+  const clipConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const checklistFileInputRef = useRef<HTMLInputElement>(null)
+  const checklistFileTargetIdx = useRef<number | null>(null)
+  const dateConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [deleteChecklistIdx, setDeleteChecklistIdx] = useState<number | null>(null)
+  const [deleteChecklistOpen, setDeleteChecklistOpen] = useState(false)
+  const [deleteAttachmentIdx, setDeleteAttachmentIdx] = useState<number | null>(null)
+  const [deleteAllAttachmentsOpen, setDeleteAllAttachmentsOpen] = useState(false)
+  const [showAttachments, setShowAttachments] = useState(false)
+  const [convertItemIdx, setConvertItemIdx] = useState<number | null>(null)
+  const [convertPhase, setConvertPhase] = useState("Phase 1 Research")
+  const [convertAssignees, setConvertAssignees] = useState<TeamMember[]>([])
+  const [convertAssigneeOpen, setConvertAssigneeOpen] = useState(false)
+  const [allAttachmentsOpen, setAllAttachmentsOpen] = useState(false)
+  const [attachmentSearch, setAttachmentSearch] = useState("")
+  const [attachmentScope, setAttachmentScope] = useState(["all"])
+  const [attachmentView, setAttachmentView] = useState(["grid"])
+  const { toast } = useToast()
+
+  const removeChecklistItem = (index: number, keepAttachments: boolean) => {
+    const removed = checklistItems[index]
+    if (!removed) return
+    const count = removed.attachments.length
+    const kept = keepAttachments ? removed.attachments : []
+    if (kept.length > 0) setTaskAttachments(prev => [...prev, ...kept])
+    setChecklistItems(prev => prev.filter((_, i) => i !== index))
+    toast({
+      variant: "success",
+      title: (count === 0 ? (
+        "Checklist item deleted"
+      ) : keepAttachments ? (
+        <span>
+          Checklist item deleted. {count} attachments were kept in{" "}
+          <span className="underline">task files</span>
+        </span>
+      ) : (
+        `Checklist item and ${count} attachments deleted`
+      )) as unknown as string,
+      action: (
+        <ToastAction
+          altText="Undo"
+          className="ml-auto border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
+          onClick={() => {
+            setChecklistItems(prev => {
+              const next = [...prev]
+              next.splice(index, 0, removed)
+              return next
+            })
+            if (kept.length > 0) {
+              setTaskAttachments(prev => prev.slice(0, prev.length - kept.length))
+            }
+          }}
+        >
+          Undo
+        </ToastAction>
+      ),
+    })
+  }
+  const [keepChecklistAttachments, setKeepChecklistAttachments] = useState(false)
+  const taskBodyRef = useRef<HTMLDivElement>(null)
+  const [taskDragOver, setTaskDragOver] = useState(false)
+  const [thisWeekTasks, setThisWeekTasks] = useState<Task[]>(initialThisWeekTasks)
+  const [nextWeekTasks, setNextWeekTasks] = useState<Task[]>(initialNextWeekTasks)
+  const [overdueTasks, setOverdueTasks] = useState<Task[]>(initialOverdueTasks)
+  const [laterTasks, setLaterTasks] = useState<Task[]>(initialLaterTasks)
+  const [noDueDateTasks, setNoDueDateTasks] = useState<Task[]>(initialNoDueDateTasks)
+
+  const [renamingTaskKey, setRenamingTaskKey] = useState<string | null>(null)
+  const [editingTask, setEditingTask] = useState<{ list: TaskListKey; index: number; original: Task } | null>(null)
+
+  const [activeDragTask, setActiveDragTask] = useState<Task | null>(null)
+  const [showOverdueAlert, setShowOverdueAlert] = useState(true)
+
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  const handleTaskDragEnd = (event: DragEndEvent) => {
+    // the dragged card has pointer-events off, so hold the cursor on the document
+    document.body.style.cursor = ""
+    setActiveDragTask(null)
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const findList = (id: string): "this" | "next" | null => {
+      if (thisWeekTasks.some(t => t.id === id)) return "this"
+      if (nextWeekTasks.some(t => t.id === id)) return "next"
+      return null
+    }
+    const from = findList(String(active.id))
+    const to = findList(String(over.id)) ?? (over.data.current?.list as TaskListKey | undefined)
+    if (!from || !to) return
+
+    if (from === to) {
+      const items = from === "this" ? thisWeekTasks : nextWeekTasks
+      const oldIndex = items.findIndex(t => t.id === active.id)
+      const newIndex = items.findIndex(t => t.id === over.id)
+      taskListSetter(from)(prev => arrayMove(prev, oldIndex, newIndex))
+      return
+    }
+
+    // moving between the two weeks
+    const source = from === "this" ? thisWeekTasks : nextWeekTasks
+    const target = to === "this" ? thisWeekTasks : nextWeekTasks
+    const moved = source.find(t => t.id === active.id)
+    if (!moved) return
+    const insertAt = target.findIndex(t => t.id === over.id)
+    taskListSetter(from)(prev => prev.filter(t => t.id !== active.id))
+    taskListSetter(to)(prev => {
+      const next = [...prev]
+      next.splice(insertAt < 0 ? next.length : insertAt, 0, moved)
+      return next
+    })
+  }
+
+  const taskListSetter = (list: TaskListKey) =>
+    ({
+      this: setThisWeekTasks,
+      next: setNextWeekTasks,
+      overdue: setOverdueTasks,
+      later: setLaterTasks,
+      none: setNoDueDateTasks,
+    })[list]
+
+  const allTaskSections: { key: TaskListKey; label: string; items: Task[] }[] = [
+    { key: "this", label: "To-do for This Week", items: thisWeekTasks },
+    { key: "next", label: "To-do for Next Week", items: nextWeekTasks },
+    { key: "overdue", label: "Overdue Tasks", items: overdueTasks },
+    { key: "later", label: "To-do Later", items: laterTasks },
+    { key: "none", label: "No Due Date", items: noDueDateTasks },
+  ]
+  // an empty section is hidden entirely, but This Week always stays so
+  // there is somewhere to add a task from
+  const taskSections = allTaskSections.filter(
+    section => section.items.length > 0 || section.key === "this"
+  )
+
+  const renameTask = (list: TaskListKey, index: number, name: string) =>
+    taskListSetter(list)(prev => prev.map((t, i) => (i === index ? { ...t, name } : t)))
+
+  const duplicateTask = (list: TaskListKey, index: number) =>
+    taskListSetter(list)(prev => [
+      ...prev.slice(0, index + 1),
+      { ...prev[index], name: `${prev[index].name} (copy)` },
+      ...prev.slice(index + 1),
+    ])
+
+  const deleteTask = (list: TaskListKey, index: number) =>
+    taskListSetter(list)(prev => prev.filter((_, i) => i !== index))
+
+  const openTask = (task: Task, list: TaskListKey, index: number) => {
+    setEditingTask({ list, index, original: task })
+    setTaskName(task.name)
+    setTaskStatus(task.status)
+    setTaskDescription(task.description)
+    setTaskMilestone(task.milestone)
+    setTaskDueDate(task.dueDate ? parse(task.dueDate, "LLL d, yyyy", new Date()) : undefined)
+    setTaskAssignees(sampleMembers.filter(m => m.name === task.assignee))
+    setTaskAttachments(task.attachments)
+    setChecklistItems(task.checklist)
+    setShowChecklist(task.checklist.length > 0)
+    setCreateTaskOpen(true)
+  }
+
+  const openTaskFiles = (task: Task, list: TaskListKey, index: number) => {
+    // load the task's data without opening the task dialog behind the files view
+    setEditingTask({ list, index, original: task })
+    setTaskName(task.name)
+    setTaskAttachments(task.attachments)
+    setChecklistItems(task.checklist)
+    setAllAttachmentsOpen(true)
+  }
+
+  const draftTask: Task = {
+    id: editingTask ? editingTask.original.id : `task-${Date.now()}`,
+    name: taskName.trim(),
+    assignee: taskAssignees[0] ? taskAssignees[0].name : "Unassigned",
+    avatar: taskAssignees[0] ? taskAssignees[0].avatar : "/man.jpg",
+    status: taskStatus as Task["status"],
+    dueDate: taskDueDate ? format(taskDueDate, "LLL d, yyyy") : "",
+    description: taskDescription,
+    milestone: taskMilestone,
+    attachments: taskAttachments,
+    checklist: checklistItems,
+  }
+  const taskDirty =
+    !editingTask ||
+    JSON.stringify(draftTask) !== JSON.stringify(editingTask.original)
+
+  const describeFiles = (files: FileList | null): TaskAttachment[] =>
+    files
+      ? Array.from(files).map(f => ({
+          name: f.name,
+          size:
+            f.size < 1024 * 1024
+              ? `${Math.round(f.size / 1024)} KB`
+              : `${(f.size / (1024 * 1024)).toFixed(1)} MB`,
+          progress: 100,
+          url: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined,
+        }))
+      : []
+
+  const addTaskFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const newFiles = describeFiles(files)
+    setTaskAttachments(prev => [...prev, ...newFiles])
+    // reveal the upload progress as soon as the files land
+    requestAnimationFrame(() => {
+      const body = taskBodyRef.current
+      if (body) {
+        body.scrollTo({ top: body.scrollHeight, behavior: "smooth" })
+      }
+    })
+  }
+  const taskFileInputRef = useRef<HTMLInputElement>(null)
 
   const [visible, setVisible] = useState(false)
 
@@ -545,193 +1149,143 @@ export default function ActiveProjectPage() {
 
                 <TabsContent value="tasks">
                   <div className="mt-6 flex flex-col items-start p-6 gap-8 bg-white border border-gray-200 shadow-xs rounded-lg">
-                    {/* To-do for This Week */}
-                    <div className="self-stretch flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <button className="flex items-center justify-center w-4.5 h-4.5">
-                            <ChevronDown className="w-4.5 h-4.5 text-gray-500" />
-                          </button>
-                          <h2 className="text-lg font-semibold text-dark-blue-400">To-do for This Week</h2>
+                    <DndContext
+                      sensors={dndSensors}
+                      collisionDetection={closestCenter}
+                      modifiers={[restrictToVerticalAxis]}
+                      onDragStart={(event) => {
+                        document.body.style.cursor = "grabbing"
+                        const id = String(event.active.id)
+                        setActiveDragTask(
+                          [...thisWeekTasks, ...nextWeekTasks].find(t => t.id === id) ?? null
+                        )
+                      }}
+                      onDragCancel={() => {
+                        document.body.style.cursor = ""
+                        setActiveDragTask(null)
+                      }}
+                      onDragEnd={handleTaskDragEnd}
+                    >
+                    {overdueTasks.length > 0 && showOverdueAlert && (
+                      <Alert
+                        variant="warning"
+                        className="w-full gap-3 rounded-lg p-4"
+                        value={showOverdueAlert}
+                        onValueChange={setShowOverdueAlert}
+                      >
+                        <AlertIcon>
+                          <AlertTriangle className="h-5 w-5" />
+                        </AlertIcon>
+                        <AlertContent>
+                          <div className="flex items-center gap-6">
+                            <AlertTitle className="text-sm font-semibold leading-5 text-warning-600">
+                              You have {overdueTasks.length} overdue{" "}
+                              {overdueTasks.length === 1 ? "task" : "tasks"}
+                            </AlertTitle>
+                            <Button
+                              variant="link"
+                              visual="gray"
+                              className="h-auto gap-2 p-0 text-sm font-semibold text-warning-600 hover:no-underline"
+                            >
+                              <ArrowDown className="size-3.5" />
+                              View tasks
+                            </Button>
+                          </div>
+                        </AlertContent>
+                        <CloseButton className="text-warning-600" />
+                      </Alert>
+                    )}
+                    {taskSections.map((section) => (
+                      <div key={section.key} className="contents">
+                                          <div className="self-stretch flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <IconButton variant="ghost" visual="gray" size="sm" className="flex items-center justify-center w-4.5 h-4.5 p-0">
+                              <ChevronDown className="w-4.5 h-4.5 text-gray-500" />
+                            </IconButton>
+                            <h2 className="text-lg font-semibold text-dark-blue-400">{section.label}</h2>
+                          </div>
+                          {section.key === "this" && (
+                            <Button variant="outlined" visual="gray" size="sm" onClick={() => { setEditingTask(null); setCreateTaskOpen(true) }}>
+                              <Plus className="w-3 h-3" />
+                              Add Task
+                            </Button>
+                          )}
                         </div>
-                        <Button variant="outlined" visual="gray" size="sm">
-                          <Plus className="w-3 h-3" />
-                          Add Task
-                        </Button>
+                        <div className="bg-white border border-gray-200 shadow-xs rounded-lg overflow-hidden">
+                        <Table>
+                          <TableHeader className="[&_tr]:border-t-0">
+                            <TableRow>
+                              <TableHead className="w-[50px] py-3 pl-4 pr-0" />
+                              <TableHead className="w-11 py-3 pl-4 pr-4"><Checkbox className="opacity-0" /></TableHead>
+                              <TableHead className="w-full max-w-0 min-w-[143px] whitespace-nowrap py-3 px-6">Task</TableHead>
+                              <TableHead className="w-[105px] py-3 px-6 whitespace-nowrap">Assigned to</TableHead>
+                              <TableHead className="w-[131px] whitespace-nowrap py-3 px-6">Status</TableHead>
+                              <TableHead className="w-[131px] whitespace-nowrap py-3 px-6">Due Date</TableHead>
+                              <TableHead className="w-[52px] py-3 pr-0 pl-6" />
+                              <TableHead className="w-[75px] py-3 px-6" />
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            <SortableContext
+                              items={section.items.map(t => t.id)}
+                              strategy={verticalListSortingStrategy}
+                            >
+                              {section.items.map((task, i) => (
+                                <SortableTaskRow
+                                  key={task.id}
+                                  task={task}
+                                  list={section.key}
+                                  i={i}
+                                  openTask={openTask}
+                                  renamingTaskKey={renamingTaskKey}
+                                  setRenamingTaskKey={setRenamingTaskKey}
+                                  renameTask={renameTask}
+                                  duplicateTask={duplicateTask}
+                                  deleteTask={deleteTask}
+                                  onManageFiles={openTaskFiles}
+                                />
+                              ))}
+                            </SortableContext>
+                          </TableBody>
+                        </Table>
+                        </div>
+                        <div className="flex justify-end">
+                          <Button variant="link" visual="primary" className="flex h-auto items-center gap-1.5 p-0 text-xs font-semibold text-primary-500 transition-colors duration-300">
+                            View More
+                            <ChevronRight className="w-3 h-3" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="bg-white border border-gray-200 shadow-xs rounded-lg overflow-hidden">
-                      <Table>
-                        <TableHeader className="[&_tr]:border-t-0">
-                          <TableRow>
-                            <TableHead className="w-11 py-3 pr-0 pl-6"><Checkbox className="opacity-0" /></TableHead>
-                            <TableHead className="w-[68px] py-3 px-6"><Checkbox className="opacity-0" /></TableHead>
-                            <TableHead className="min-w-[143px] py-3 px-6">Task</TableHead>
-                            <TableHead className="w-[105px] py-3 px-6 whitespace-nowrap">Assigned to</TableHead>
-                            <TableHead className="w-[131px] py-3 px-6">Status</TableHead>
-                            <TableHead className="w-[131px] py-3 px-6">Due Date</TableHead>
-                            <TableHead className="w-[52px] py-3 pr-0 pl-6" />
-                            <TableHead className="w-[75px] py-3 px-6" />
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {thisWeekTasks.map((task, i) => {
-                            const style = taskStatusStyles[task.status]
-                            return (
-                              <TableRow key={i}>
-                                <TableCell className="py-4 pr-0 pl-6 text-center">
-                                  <img src="/icons/drag.svg" alt="" className="w-2 h-3 cursor-grab" />
-                                </TableCell>
-                                <TableCell className="py-4 px-6"><Checkbox /></TableCell>
-                                <TableCell className="py-4 px-6 text-sm text-gray-600">{task.name}</TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Avatar size="sm">
-                                    <AvatarImage src={task.avatar} alt={task.assignee} />
-                                    <AvatarFallback>{task.assignee[0]}</AvatarFallback>
-                                  </Avatar>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Badge className={`${style.bg} ${style.text} border-0`}>{task.status}</Badge>
-                                </TableCell>
-                                <TableCell className="py-4 px-6 text-sm text-gray-600">{task.dueDate}</TableCell>
-                                <TableCell className="py-4 pr-0 pl-6 text-center">
-                                  <IconButton visual="gray" variant="outlined" size="sm" className="rounded-full w-7 h-7 hover:bg-gray-50 transition-colors duration-300 group/attach">
-                                    <Paperclip className="w-3 h-3 group-hover/attach:hidden" />
-                                    <Plus className="w-3 h-3 text-gray-800 hidden group-hover/attach:block" />
-                                  </IconButton>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <IconButton visual="gray" variant="ghost" size="sm" className="rounded-full data-[state=open]:bg-gray-100 transition-colors duration-300">
-                                        <MoreHorizontal className="w-4 h-4" />
-                                      </IconButton>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="w-[165px]">
-                                      <DropdownMenuItem className="gap-2">
-                                        <Edit03 className="w-4 h-4 text-gray-500" />
-                                        <span className="text-xs font-medium text-gray-500">Rename</span>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem className="gap-2">
-                                        <Copy07 className="w-4 h-4 text-gray-500" />
-                                        <span className="text-xs font-medium text-gray-500">Duplicate task</span>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem className="gap-2">
-                                        <FolderClosed className="w-4 h-4 text-gray-500" />
-                                        <span className="text-xs font-medium text-gray-500">Manage files</span>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem className="gap-2 text-error-600 focus:bg-error-50 focus:text-error-600">
-                                        <Trash01 className="w-4 h-4" />
-                                        <span className="text-xs font-medium">Delete task</span>
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </TableCell>
-                              </TableRow>
-                            )
-                          })}
-                        </TableBody>
-                      </Table>
-                      </div>
-                      <div className="flex justify-end">
-                        <button className="flex items-center gap-1.5 text-xs font-semibold text-primary-500 transition-colors duration-300">
-                          View More
-                          <ChevronRight className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
 
-                    {/* To-do for Next Week */}
-                    <div className="self-stretch flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <button className="flex items-center justify-center w-4.5 h-4.5">
-                            <ChevronDown className="w-4.5 h-4.5 text-gray-500" />
-                          </button>
-                          <h2 className="text-lg font-semibold text-dark-blue-400">To-do for Next Week</h2>
+                      </div>
+                    ))}
+                    <DragOverlay>
+                      {activeDragTask ? (
+                        <div className="flex cursor-grabbing items-center gap-6 rounded-lg border border-gray-200 bg-white px-6 py-4 shadow-xl">
+                          <img src="/icons/drag.svg" alt="" className="h-3 w-2" />
+                          <Checkbox />
+                          <span className="flex-1 truncate text-sm text-gray-600">
+                            {activeDragTask.name}
+                          </span>
+                          <Avatar size="sm">
+                            <AvatarImage src={activeDragTask.avatar} alt={activeDragTask.assignee} />
+                            <AvatarFallback>{activeDragTask.assignee[0]}</AvatarFallback>
+                          </Avatar>
+                          <Badge
+                            className={`${taskStatusStyles[activeDragTask.status].bg} ${
+                              taskStatusStyles[activeDragTask.status].text
+                            } border-0`}
+                          >
+                            {activeDragTask.status}
+                          </Badge>
+                          <span className="whitespace-nowrap text-sm text-gray-600">
+                            {activeDragTask.dueDate}
+                          </span>
                         </div>
-                      </div>
-                      <div className="bg-white border border-gray-200 shadow-xs rounded-lg overflow-hidden">
-                      <Table>
-                        <TableHeader className="[&_tr]:border-t-0">
-                          <TableRow>
-                            <TableHead className="w-11 py-3 pr-0 pl-6"><Checkbox className="opacity-0" /></TableHead>
-                            <TableHead className="w-[68px] py-3 px-6"><Checkbox className="opacity-0" /></TableHead>
-                            <TableHead className="min-w-[143px] py-3 px-6">Task</TableHead>
-                            <TableHead className="w-[105px] py-3 px-6 whitespace-nowrap">Assigned to</TableHead>
-                            <TableHead className="w-[131px] py-3 px-6">Status</TableHead>
-                            <TableHead className="w-[131px] py-3 px-6">Due Date</TableHead>
-                            <TableHead className="w-[52px] py-3 pr-0 pl-6" />
-                            <TableHead className="w-[75px] py-3 px-6" />
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {nextWeekTasks.map((task, i) => {
-                            const style = taskStatusStyles[task.status]
-                            return (
-                              <TableRow key={i}>
-                                <TableCell className="py-4 pr-0 pl-6 text-center">
-                                  <img src="/icons/drag.svg" alt="" className="w-2 h-3 cursor-grab" />
-                                </TableCell>
-                                <TableCell className="py-4 px-6"><Checkbox /></TableCell>
-                                <TableCell className="py-4 px-6 text-sm text-gray-600">{task.name}</TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Avatar size="sm">
-                                    <AvatarImage src={task.avatar} alt={task.assignee} />
-                                    <AvatarFallback>{task.assignee[0]}</AvatarFallback>
-                                  </Avatar>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <Badge className={`${style.bg} ${style.text} border-0`}>{task.status}</Badge>
-                                </TableCell>
-                                <TableCell className="py-4 px-6 text-sm text-gray-600">{task.dueDate}</TableCell>
-                                <TableCell className="py-4 pr-0 pl-6 text-center">
-                                  <IconButton visual="gray" variant="outlined" size="sm" className="rounded-full w-7 h-7 hover:bg-gray-50 transition-colors duration-300 group/attach">
-                                    <Paperclip className="w-3 h-3 group-hover/attach:hidden" />
-                                    <Plus className="w-3 h-3 text-gray-800 hidden group-hover/attach:block" />
-                                  </IconButton>
-                                </TableCell>
-                                <TableCell className="py-4 px-6">
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <IconButton visual="gray" variant="ghost" size="sm" className="rounded-full data-[state=open]:bg-gray-100 transition-colors duration-300">
-                                        <MoreHorizontal className="w-4 h-4" />
-                                      </IconButton>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="w-[165px]">
-                                      <DropdownMenuItem className="gap-2">
-                                        <Edit03 className="w-4 h-4 text-gray-500" />
-                                        <span className="text-xs font-medium text-gray-500">Rename</span>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem className="gap-2">
-                                        <Copy07 className="w-4 h-4 text-gray-500" />
-                                        <span className="text-xs font-medium text-gray-500">Duplicate task</span>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem className="gap-2">
-                                        <FolderClosed className="w-4 h-4 text-gray-500" />
-                                        <span className="text-xs font-medium text-gray-500">Manage files</span>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem className="gap-2 text-error-600 focus:bg-error-50 focus:text-error-600">
-                                        <Trash01 className="w-4 h-4" />
-                                        <span className="text-xs font-medium">Delete task</span>
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </TableCell>
-                              </TableRow>
-                            )
-                          })}
-                        </TableBody>
-                      </Table>
-                      </div>
-                      <div className="flex justify-end">
-                        <button className="flex items-center gap-1.5 text-xs font-semibold text-primary-500 transition-colors duration-300">
-                          View More
-                          <ChevronRight className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
+                      ) : null}
+                    </DragOverlay>
+                    </DndContext>
                   </div>
                 </TabsContent>
                 <TabsContent value="chat">
@@ -1020,13 +1574,14 @@ export default function ActiveProjectPage() {
                         <div className="mt-2">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <button
-                                type="button"
+                              <Button
+                                variant="outlined"
+                                visual="gray"
                                 className="inline-flex h-[44px] w-full items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm hover:border-gray-300 focus-visible:outline-none"
                               >
                                 <span className="text-gray-500">None selected</span>
                                 <ChevronDown className="size-4 text-gray-500" />
-                              </button>
+                              </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start" style={{ width: "var(--radix-dropdown-menu-trigger-width)" }}>
                               {["Account Manager", "Project Manager", "Client Relations Manager", "Team Manager"].map((l) => (
@@ -1107,13 +1662,14 @@ export default function ActiveProjectPage() {
                                     ) : (
                                       <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                          <button
-                                            type="button"
+                                          <Button
+                                            variant="outlined"
+                                            visual="gray"
                                             className="inline-flex h-[36px] w-[150px] items-center justify-between rounded-lg border border-gray-200 bg-white px-3 text-sm text-dark-blue-400 hover:border-gray-300 focus-visible:outline-none"
                                           >
                                             {role}
                                             <ChevronDown className="size-4 text-gray-500" />
-                                          </button>
+                                          </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="start" className="w-[288px]">
                                           {["Manager", "Contributor", "Viewer"].map((r) => (
@@ -1382,14 +1938,14 @@ export default function ActiveProjectPage() {
                       <div className="space-y-1">
                         <div className="flex items-center justify-between">
                           <p className="text-xs font-medium text-gray-400 leading-[160%]">Scope Summary</p>
-                          <button className="text-[10px] font-semibold text-primary-500 capitalize" onClick={() => setActiveTab("scope")}>View Scope</button>
+                          <Button variant="link" visual="primary" className="h-auto p-0 text-[10px] font-semibold text-primary-500 capitalize" onClick={() => setActiveTab("scope")}>View Scope</Button>
                         </div>
                         <p className="text-sm text-gray-500 leading-6">
                           Lorem ipsum dolor sit amet consectetur adipiscing elit. Quisque faucibus ex sapien vitae pellen metus bibebibe
                           Quisque faucibus ex sapien dolor sit amet. Duis aute irure dolor in reprehenderit in voluptate velit esse cillvelit a
                           dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deseru...
                         </p>
-                        <button className="text-xs font-semibold text-gray-500">Read More</button>
+                        <Button variant="link" visual="gray" className="h-auto p-0 text-xs font-semibold text-gray-500">Read More</Button>
                       </div>
                     </div>
 
@@ -1632,10 +2188,10 @@ export default function ActiveProjectPage() {
                       <h3 className="text-sm font-bold text-dark-blue-400 capitalize">Upcoming Meetings</h3>
                       <p className="text-xs font-semibold text-dark-blue-400 leading-[13px]">Internal</p>
                     </div>
-                    <button className="flex items-center gap-1 px-2.5 py-1 bg-white border border-gray-300 rounded shadow-[0px_1px_4px_rgba(0,0,0,0.03)] hover:bg-gray-50 transition-colors">
+                    <Button variant="outlined" visual="gray" size="sm" className="flex h-auto items-center gap-1 px-2.5 py-1 bg-white border border-gray-300 rounded shadow-[0px_1px_4px_rgba(0,0,0,0.03)] hover:bg-gray-50 transition-colors">
                       <Plus className="size-3 text-dark-blue-400" />
                       <span className="text-xs font-semibold text-dark-blue-400">New</span>
-                    </button>
+                    </Button>
                   </div>
 
                   {/* Internal meetings */}
@@ -1707,6 +2263,1575 @@ export default function ActiveProjectPage() {
           </div>
         </div>
       </div>
+      {/* Create Task Modal */}
+      <Dialog open={createTaskOpen} onOpenChange={setCreateTaskOpen}>
+        <DialogContent className="sm:max-w-[520px] max-h-[85vh] p-0 gap-0 flex flex-col overflow-visible">
+          <TooltipProvider delayDuration={300}>
+          {/* Header — phase selector + close (pinned) */}
+          <div className="flex items-center justify-between gap-4 px-6 py-5 shrink-0 bg-white rounded-t-lg z-10">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  className="w-60 h-9 gap-2 rounded-[5px] shadow-xs justify-start"
+                >
+                  <Menu02 className="size-5 text-gray-500 shrink-0" />
+                  <span className="flex-1 truncate text-left text-sm text-gray-800">
+                    <span className="font-semibold">{phaseLabel}</span>{" "}
+                    <span className="font-light leading-5">{phaseName}</span>
+                  </span>
+                  <ChevronDown className="size-[15px] text-gray-500 shrink-0 ml-auto" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-60">
+                <DropdownMenuItem onClick={() => setTaskPhase("Phase 1 Research")}>Phase 1 Research</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTaskPhase("Phase 2 Design")}>Phase 2 Design</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTaskPhase("Phase 3 Front-End")}>Phase 3 Front-End</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTaskPhase("Phase 4 Back-End")}>Phase 4 Back-End</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>
+                  <Plus className="size-4 mr-2" />
+                  Add new phase
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DialogClose asChild>
+              <IconButton size="md" variant="ghost" visual="gray" className="rounded-lg size-9 opacity-50 hover:opacity-100 transition-opacity">
+                <X className="size-5 text-gray-500" />
+              </IconButton>
+            </DialogClose>
+          </div>
+
+          {/* Scrollable content */}
+          <div
+            ref={taskBodyRef}
+            className="flex-1 overflow-y-auto px-6"
+            onDragOver={(event) => {
+              event.preventDefault()
+              if (!taskDragOver) {
+                setTaskDragOver(true)
+                // bring the drop area into view as soon as a drag starts
+                requestAnimationFrame(() => {
+                  const body = taskBodyRef.current
+                  if (body) {
+                    body.scrollTo({ top: body.scrollHeight, behavior: "smooth" })
+                  }
+                })
+              }
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                setTaskDragOver(false)
+              }
+            }}
+            onDrop={(event) => {
+              event.preventDefault()
+              setTaskDragOver(false)
+              addTaskFiles(event.dataTransfer.files)
+            }}
+          >
+          {/* Form fields */}
+          <div className="space-y-5">
+            {/* Task Name */}
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium text-gray-600">Task Name</span>
+              <Input
+                placeholder="Enter task name..."
+                className="h-11 rounded-[5px]"
+                value={taskName}
+                onChange={(e) => setTaskName(e.target.value)}
+              />
+            </div>
+
+            {/* Milestone (Optional) */}
+            <div className="flex items-center gap-4">
+              <div className="w-20 shrink-0 flex flex-col justify-center">
+                <span className="text-sm font-medium text-gray-600">Milestone</span>
+                <span className="text-xs text-gray-400">(optional)</span>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    className="w-[174px] h-9 justify-between rounded-[5px] shadow-xs"
+                  >
+                    <span className="text-sm font-semibold text-gray-800">{taskMilestone || "None"}</span>
+                    <ChevronDown className="size-[15px] text-gray-500" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[174px] py-0">
+                  <div className="max-h-48 overflow-y-auto scrollbar scrollbar-w-2 scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+                  <DropdownMenuItem onClick={() => setTaskMilestone("None")}>None</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTaskMilestone("Milestone 1")}>Milestone 1</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTaskMilestone("Milestone 2")}>Milestone 2</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTaskMilestone("Milestone 3")}>Milestone 3</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTaskMilestone("Milestone 4")}>Milestone 4</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTaskMilestone("Milestone 5")}>Milestone 5</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTaskMilestone("Milestone 6")}>Milestone 6</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTaskMilestone("Milestone 7")}>Milestone 7</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTaskMilestone("Milestone 8")}>Milestone 8</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTaskMilestone("Milestone 9")}>Milestone 9</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTaskMilestone("Milestone 10")}>Milestone 10</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTaskMilestone("Milestone 11")}>Milestone 11</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTaskMilestone("Milestone 12")}>Milestone 12</DropdownMenuItem>
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="my-1">
+                    <Plus className="size-4 mr-2" />
+                    Add Milestone
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* Status */}
+            <div className="flex items-start gap-4">
+              <div className="w-20 shrink-0">
+                <span className="text-sm font-medium text-gray-600">Status</span>
+              </div>
+              <div className="flex items-start gap-3">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      className="w-[174px] h-9 justify-between rounded-[5px] shadow-xs"
+                    >
+                      <span className="text-sm font-semibold text-gray-800">{taskStatus}</span>
+                      <ChevronDown className="size-[15px] text-gray-500" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-[174px]">
+                    <DropdownMenuItem onClick={() => setTaskStatus("Not Started")}>Not Started</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTaskStatus("In Progress")}>In Progress</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setTaskStatus("Completed")}>Completed</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                {taskStatus !== "Completed" && (
+                <Button
+                  variant="link"
+                  visual="gray"
+                  size="sm"
+                  className="group h-9 gap-2 text-gray-500 transition-colors duration-300 hover:text-primary-500 hover:no-underline"
+                  onClick={() => setTaskStatus("Completed")}
+                >
+                  <Check className="size-[15px] transition-colors duration-300 group-hover:text-primary-500" />
+                  <span className="text-sm font-semibold transition-colors duration-300 group-hover:text-primary-500">
+                    Mark complete
+                  </span>
+                </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Due Date (Optional) */}
+            <div className="flex items-center gap-4">
+              <div className="w-20 shrink-0 flex flex-col justify-center">
+                <span className="text-sm font-medium text-gray-600">Due Date</span>
+                <span className="text-xs text-gray-400">(optional)</span>
+              </div>
+              <Popover open={dueDateOpen} onOpenChange={setDueDateOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    className="group h-9 gap-2 rounded-[5px] shadow-xs"
+                  >
+                    <Calendar className="size-[15px] text-gray-500" />
+                    <span className="text-sm font-semibold text-gray-800">
+                      {taskDueDate ? format(taskDueDate, "LLL d, yyyy") : "Select date"}
+                    </span>
+                    {taskDueDate && (
+                      <span
+                        role="button"
+                        aria-label="Clear due date"
+                        className="hidden opacity-50 transition-opacity duration-300 hover:opacity-100 group-hover:inline-flex"
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          setTaskDueDate(undefined)
+                        }}
+                      >
+                        <XCircle className="size-4 text-gray-500" />
+                      </span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <DropdownPopoverContent
+                  side="right"
+                  align="start"
+                  avoidCollisions={false}
+                  sideOffset={8}
+                  onOpenAutoFocus={preventDefault}
+                  onMouseUp={(event) => {
+                    const el = (event.target as HTMLElement).closest("button")
+                    if (el) el.blur()
+                  }}
+                  className="w-[330px] overflow-hidden rounded-lg border border-gray-100 bg-white p-0 shadow-xl data-[state=closed]:hidden data-[state=closed]:animate-none"
+                >
+                  <CalendarPicker
+                    minValue={new Date()}
+                    className="border-none shadow-none [&_[data-today]]:bg-transparent [&_[data-today]]:font-semibold [&_[data-today]]:text-primary-500 [&_[data-today][data-selected]]:bg-primary-500 [&_[data-today][data-selected]]:text-white"
+                    value={taskDueDate}
+                    onValueChange={(value: Date) => {
+                      setTaskDueDate(value)
+                      setDueDateOpen(false)
+                    }}
+                  />
+                </DropdownPopoverContent>
+              </Popover>
+            </div>
+
+            {/* Assigned to */}
+            <div className="flex items-center gap-4">
+              <div className="w-20 shrink-0">
+                <span className="text-sm font-medium text-gray-600">Assigned to</span>
+              </div>
+              <AvatarRoot>
+                {taskAssignees.length > 0 && (
+                  <AvatarGroup size="sm" max={3} excess excessClassName="!border-gray-300 !text-gray-500 !text-xs !font-medium !bg-white">
+                    {taskAssignees.map((member, idx) => (
+                      <div key={idx} className="group/avatar relative inline-flex flex-none">
+                        <Avatar
+                          size="sm"
+                          className="border-2 border-white hover:ring-0 active:ring-0"
+                        >
+                          <AvatarImage src={member.avatar} alt={member.name} />
+                          <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <span
+                          role="button"
+                          aria-label={`Remove ${member.name}`}
+                          className="absolute -right-1 -top-1 z-10 hidden size-4 items-center justify-center rounded-full bg-gray-700 text-white transition-colors duration-300 hover:bg-gray-900 group-hover/avatar:flex"
+                          onClick={() =>
+                            setTaskAssignees(prev =>
+                              prev.filter(a => a.username !== member.username)
+                            )
+                          }
+                        >
+                          <X className="size-2.5" />
+                        </span>
+                      </div>
+                    ))}
+                  </AvatarGroup>
+                )}
+                <AssigneePicker
+                  selected={taskAssignees}
+                  onSelectedChange={setTaskAssignees}
+                  open={assigneePopoverOpen}
+                  onOpenChange={setAssigneePopoverOpen}
+                />
+              </AvatarRoot>
+            </div>
+
+            {/* Description (Optional) */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-medium text-gray-600">Description</span>
+                <span className="text-xs text-gray-400">(optional)</span>
+              </div>
+              <Textarea
+                placeholder="Enter a description"
+                className="h-[92px] min-h-[92px] resize-none rounded-[5px]"
+                value={taskDescription}
+                onChange={(e) => setTaskDescription(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Checklist */}
+          {showChecklist && (
+            <div className="mt-4">
+              <div className="mb-2 flex h-[22px] items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium leading-5 text-gray-600">Checklist</span>
+                  <Badge>
+                    {checklistItems.filter(i => i.checked).length}/{checklistItems.length}
+                  </Badge>
+                </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <IconButton
+                      variant="ghost"
+                      visual="gray"
+                      size="sm"
+                      className="size-7 rounded-full text-gray-500 transition-colors duration-300 hover:bg-error-50 hover:text-error-500"
+                      onClick={() => {
+                        setKeepChecklistAttachments(false)
+                        setDeleteChecklistOpen(true)
+                      }}
+                    >
+                      <Trash01 className="size-[15px]" />
+                    </IconButton>
+                  </TooltipTrigger>
+                  <TooltipContent>Delete checklist</TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="border border-gray-300 rounded-[7px] shadow-xs bg-white overflow-hidden">
+                {checklistItems.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex h-[46px] items-stretch border-b border-gray-300 shadow-xs group/item transition-colors duration-300 ${
+                      dragOverChecklistIdx === idx ? "" : "hover:bg-gray-50"
+                    }`}
+                    onDragOver={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setDragOverChecklistIdx(idx)
+                    }}
+                    onDragLeave={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                        setDragOverChecklistIdx(null)
+                      }
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      setTaskDragOver(false)
+                      setDragOverChecklistIdx(null)
+                      const dropped = describeFiles(event.dataTransfer.files)
+                      if (dropped.length > 0) {
+                        setChecklistItems(prev =>
+                          prev.map((it, i) =>
+                            i === idx ? { ...it, attachments: [...it.attachments, ...dropped] } : it
+                          )
+                        )
+                      }
+                    }}
+                  >
+                    {dragOverChecklistIdx === idx ? (
+                      <div className="m-1 flex flex-1 items-center justify-center gap-2 rounded-md border-2 border-dashed border-primary-400 bg-primary-25 shadow-xs">
+                        <UploadCloud className="size-4 text-primary-400" />
+                        <span className="text-sm font-medium leading-5 text-primary-500">
+                          Drop files to attach to this item
+                        </span>
+                      </div>
+                    ) : (
+                    <>
+                    <div className="flex items-center pl-5 gap-[10px] shrink-0">
+                      <Checkbox
+                        size="sm"
+                        checked={item.checked}
+                        onCheckedChange={(checked) => {
+                          setChecklistItems(prev => prev.map((it, i) => i === idx ? { ...it, checked: checked === true } : it))
+                        }}
+                      />
+                    </div>
+                    <div className="flex flex-1 items-center px-5">
+                      <EditableRoot
+                        className="w-full"
+                        value={item.text}
+                        edit={renamingChecklistIdx === idx}
+                        activationMode="dblclick"
+                        submitMode="both"
+                        onEditChange={(details) =>
+                          setRenamingChecklistIdx(details.edit ? idx : null)
+                        }
+                        onValueChange={(details) =>
+                          setChecklistItems(prev =>
+                            prev.map((it, i) => (i === idx ? { ...it, text: details.value } : it))
+                          )
+                        }
+                      >
+                        <EditableArea>
+                          <EditableInput className="w-full bg-transparent text-xs font-normal leading-[17px] text-gray-600 shadow-none" />
+                          <EditablePreview
+                            className={`text-xs font-normal leading-[17px] ${
+                              item.checked ? "line-through text-gray-400" : "text-gray-600"
+                            }`}
+                          />
+                        </EditableArea>
+                      </EditableRoot>
+                    </div>
+                    <div
+                      className={`flex items-center justify-center gap-3.5 px-5 transition-opacity duration-300 ${
+                        checklistMenuIdx === idx ||
+                        checklistDateIdx === idx ||
+                        dateConfirmIdx === idx ||
+                        clipConfirmIdx === idx
+                          ? "opacity-100"
+                          : "opacity-0 pointer-events-none group-hover/item:pointer-events-auto group-hover/item:opacity-100"
+                      }`}
+                    >
+                      <Popover
+                        open={checklistDateIdx === idx}
+                        onOpenChange={(open) => setChecklistDateIdx(open ? idx : null)}
+                      >
+                        <Tooltip
+                          open={dateTipIdx === idx || dateConfirmIdx === idx}
+                          onOpenChange={(open) => setDateTipIdx(open ? idx : null)}
+                        >
+                        <TooltipTrigger asChild>
+                        <PopoverTrigger asChild>
+                          {item.dueDate ? (
+                            <Button
+                              variant="outlined"
+                              visual="gray"
+                              size="sm"
+                              className="group/date h-6 gap-1 rounded-md border-gray-300 bg-gray-100 px-2 text-gray-700 transition-colors duration-300 hover:border-gray-400 hover:bg-gray-200 hover:text-gray-900"
+                            >
+                              <Calendar className="size-3.5 text-gray-500 transition-colors duration-300 group-hover/date:text-gray-900" />
+                              <span className="text-xs font-medium">{item.dueDate}</span>
+                            </Button>
+                          ) : (
+                            <IconButton variant="ghost" visual="gray" size="sm" className="size-6 rounded-full p-0 text-gray-500 transition-colors duration-300 hover:bg-gray-200 hover:text-gray-900 focus:bg-transparent data-[state=open]:bg-gray-200 data-[state=open]:text-gray-900">
+                              <Calendar className="size-3.5" />
+                            </IconButton>
+                          )}
+                        </PopoverTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {dateConfirmIdx === idx ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <Check className="size-3.5 text-success-500" />
+                              Due date updated
+                            </span>
+                          ) : (
+                            "Set due date"
+                          )}
+                        </TooltipContent>
+                        </Tooltip>
+                        <PopoverContent
+                          align="end"
+                          collisionPadding={16}
+                          onMouseUp={(event) => {
+                            const el = (event.target as HTMLElement).closest("button")
+                            if (el) el.blur()
+                          }}
+                          onOpenAutoFocus={preventDefault}
+                          className="w-[330px] overflow-hidden rounded-lg border border-gray-100 bg-white p-0 shadow-xl data-[state=closed]:hidden data-[state=closed]:animate-none"
+                        >
+                          <CalendarPicker
+                            minValue={new Date()}
+                            className="border-none shadow-none [&_[data-today]]:bg-transparent [&_[data-today]]:font-semibold [&_[data-today]]:text-primary-500 [&_[data-today][data-selected]]:bg-primary-500 [&_[data-today][data-selected]]:text-white"
+                            onValueChange={(value: Date) => {
+                              setChecklistItems(prev =>
+                                prev.map((it, i) =>
+                                  i === idx ? { ...it, dueDate: format(value, "LLL d") } : it
+                                )
+                              )
+                              setChecklistDateIdx(null)
+                              setDateConfirmIdx(idx)
+                              // closing the popover returns focus to the trigger, which would
+                              // pop its tooltip open during the confirmation window
+                              requestAnimationFrame(() => {
+                                const active = document.activeElement as HTMLElement | null
+                                if (active) active.blur()
+                              })
+                              if (dateConfirmTimer.current) clearTimeout(dateConfirmTimer.current)
+                              dateConfirmTimer.current = setTimeout(() => {
+                                setDateConfirmIdx(null)
+                                setDateTipIdx(null)
+                              }, 2500)
+                            }}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <div className="relative">
+                        <Tooltip
+                          open={clipTipIdx === idx || clipConfirmIdx === idx}
+                          onOpenChange={(open) => setClipTipIdx(open ? idx : null)}
+                        >
+                        <TooltipTrigger asChild>
+                        <IconButton
+                          variant="ghost"
+                          visual="gray"
+                          size="sm"
+                          className={`size-6 rounded-full p-0 transition-colors duration-300 hover:bg-gray-200 hover:text-gray-900 focus:bg-transparent data-[state=open]:bg-gray-200 data-[state=open]:text-gray-900 ${
+                            item.attachments.length > 0
+                              ? "border border-gray-300 bg-gray-100 text-gray-700 hover:border-gray-400 hover:bg-gray-200"
+                              : "text-gray-500"
+                          }`}
+                          onClick={(event) => {
+                            event.currentTarget.blur()
+                            checklistFileTargetIdx.current = idx
+                            checklistFileInputRef.current?.click()
+                          }}
+                        >
+                          <Paperclip className="size-3.5" />
+                        </IconButton>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {clipConfirmIdx === idx ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <Check className="size-3.5 text-success-500" />
+                              Attachment added
+                            </span>
+                          ) : (
+                            "Attachments"
+                          )}
+                        </TooltipContent>
+                        </Tooltip>
+                        {item.attachments.length > 0 && (
+                          <span className="absolute -top-1.5 -right-1.5 size-4 rounded-full bg-gray-600 text-white text-[9px] flex items-center justify-center font-medium">{item.attachments.length}</span>
+                        )}
+                      </div>
+                      <DropdownMenu
+                        open={checklistMenuIdx === idx}
+                        onOpenChange={(open) => setChecklistMenuIdx(open ? idx : null)}
+                      >
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <DropdownMenuTrigger asChild>
+                              <IconButton variant="ghost" visual="gray" size="sm" className="size-6 rounded-full p-0 text-gray-500 transition-colors duration-300 hover:bg-gray-200 hover:text-gray-900 focus:bg-transparent data-[state=open]:bg-gray-200 data-[state=open]:text-gray-900">
+                                <MoreHorizontal className="size-3.5" />
+                              </IconButton>
+                            </DropdownMenuTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent>More options</TooltipContent>
+                        </Tooltip>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem onClick={() => setRenamingChecklistIdx(idx)}>
+                            <Edit03 className="h-4 w-4" /> Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <Paperclip className="h-4 w-4" /> Attachments
+                          </DropdownMenuItem>
+                          {/* only offered once the parent task itself exists */}
+                          {editingTask && (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setConvertPhase(taskPhase)
+                                setConvertAssignees([])
+                                setConvertItemIdx(idx)
+                              }}
+                            >
+                              <CornerRightUp className="h-4 w-4" /> Convert to task
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            visual="destructive"
+                            onClick={() => {
+                              // only confirm when the item carries a due date or files
+                              if (item.dueDate || item.attachments.length > 0) {
+                                setKeepChecklistAttachments(false)
+                                setDeleteChecklistIdx(idx)
+                              } else {
+                                removeChecklistItem(idx, false)
+                              }
+                            }}
+                          >
+                            <Trash01 className="h-4 w-4" /> Delete item
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    </>
+                    )}
+                  </div>
+                ))}
+                <div className="flex h-[46px] items-stretch rounded-md shadow-xs">
+                  <div className="flex items-center pl-5 gap-[10px] shrink-0 opacity-50 pointer-events-none">
+                    <Checkbox size="sm" />
+                  </div>
+                  <div className="flex flex-1 items-center px-5">
+                    <input
+                      className="w-full border-0 p-0 text-xs font-normal leading-[17px] text-gray-600 placeholder:text-gray-600 placeholder:opacity-50 bg-transparent outline-none focus:ring-0"
+                      placeholder="Add new item"
+                      value={newChecklistItem}
+                      onChange={(e) => setNewChecklistItem(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && newChecklistItem.trim()) {
+                          setChecklistItems(prev => [...prev, { text: newChecklistItem.trim(), checked: false, dueDate: "", attachments: [] }])
+                          setNewChecklistItem("")
+                        }
+                      }}
+                      onBlur={() => {
+                        if (newChecklistItem.trim()) {
+                          setChecklistItems(prev => [...prev, { text: newChecklistItem.trim(), checked: false, dueDate: "", attachments: [] }])
+                          setNewChecklistItem("")
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* File attachments */}
+          {(taskAttachments.length > 0 || showAttachments) && (
+            <div className="mt-4">
+              <div className="mb-2 flex h-[22px] items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium leading-5 text-gray-600">Attachments</span>
+                  <Badge>{taskAttachments.length}</Badge>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="size-7 rounded-full text-gray-500 transition-colors duration-300 hover:text-gray-900"
+                      >
+                        <Download01 className="size-[15px]" />
+                      </IconButton>
+                    </TooltipTrigger>
+                    <TooltipContent>Download all</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="size-7 rounded-full text-gray-500 transition-colors duration-300 hover:text-gray-900"
+                        onClick={() => setAllAttachmentsOpen(true)}
+                      >
+                        <Folder className="size-[15px]" />
+                      </IconButton>
+                    </TooltipTrigger>
+                    <TooltipContent>View files</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="size-7 rounded-full text-gray-500 transition-colors duration-300 hover:bg-error-50 hover:text-error-500"
+                        onClick={() => setDeleteAllAttachmentsOpen(true)}
+                      >
+                        <Trash01 className="size-[15px]" />
+                      </IconButton>
+                    </TooltipTrigger>
+                    <TooltipContent>Remove all</TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
+              {taskAttachments.length === 0 && !taskDragOver && (
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  className="h-auto w-full justify-center gap-2 rounded-md border-dashed py-6"
+                  onClick={() => taskFileInputRef.current?.click()}
+                >
+                  <UploadCloud className="size-4 text-gray-500" />
+                  <span className="text-sm font-medium text-gray-500">
+                    Drop files here or browse
+                  </span>
+                </Button>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                {taskAttachments.map((file, idx) => (
+                  <div
+                    key={idx}
+                    className={`relative flex items-center gap-3 overflow-hidden rounded-lg border border-gray-200 px-3 py-2.5 ${
+                      taskAttachments.length === 1 ? "col-span-2" : ""
+                    }`}
+                  >
+                    <div className="relative shrink-0">
+                      <File06 className="size-8 text-gray-400" />
+                      <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 bg-white px-0.5 text-[6px] font-bold text-error-500">PDF</span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-gray-700">{file.name}</p>
+                      <p className="truncate whitespace-nowrap text-[10px] text-gray-500">{file.size} – {file.progress}% uploaded</p>
+                    </div>
+                    <DropdownMenu>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <DropdownMenuTrigger asChild>
+                            <IconButton variant="ghost" visual="gray" size="sm" className="size-8 rounded-full text-gray-400 transition-colors duration-300 hover:text-gray-900 focus:bg-transparent data-[state=open]:bg-gray-100 data-[state=open]:text-gray-900">
+                              <MoreHorizontal className="size-4" />
+                            </IconButton>
+                          </DropdownMenuTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent>More options</TooltipContent>
+                      </Tooltip>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem
+                          visual="destructive"
+                          onClick={() => setDeleteAttachmentIdx(idx)}
+                        >
+                          <Trash01 className="h-4 w-4" /> Remove
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    {file.progress < 100 && (
+                      <span
+                        className="absolute bottom-0 left-0 h-1 rounded-full bg-primary-500"
+                        style={{ width: `${file.progress}%` }}
+                      />
+                    )}
+                  </div>
+                ))}
+                {taskDragOver && (
+                  <div className="col-span-2 flex items-center justify-center gap-2 rounded-md border-2 border-dashed border-primary-400 bg-primary-25 py-6 shadow-xs">
+                    <UploadCloud className="size-4 text-primary-400" />
+                    <span className="text-sm font-medium leading-5 text-primary-500">
+                      Drop files to attach to this task
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Drop area before any attachment exists */}
+          {taskAttachments.length === 0 && taskDragOver && (
+            <div className="mt-4 flex items-center justify-center gap-2 rounded-md border-2 border-dashed border-primary-400 bg-primary-25 py-6 shadow-xs">
+              <UploadCloud className="size-4 text-primary-400" />
+              <span className="text-sm font-medium leading-5 text-primary-500">
+                Drop files to attach to this task
+              </span>
+            </div>
+          )}
+
+          {/* Hidden file input for checklist item attachments */}
+          <input
+            ref={checklistFileInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = e.target.files
+              const target = checklistFileTargetIdx.current
+              if (files && files.length > 0 && target !== null) {
+                setChecklistItems(prev =>
+                  prev.map((it, i) =>
+                    i === target
+                      ? { ...it, attachments: [...it.attachments, ...describeFiles(files)] }
+                      : it
+                  )
+                )
+                setClipConfirmIdx(target)
+                if (clipConfirmTimer.current) clearTimeout(clipConfirmTimer.current)
+                clipConfirmTimer.current = setTimeout(() => {
+                  setClipConfirmIdx(null)
+                  setClipTipIdx(null)
+                }, 2500)
+              }
+              checklistFileTargetIdx.current = null
+              e.target.value = ""
+            }}
+          />
+
+          {/* Hidden file input */}
+          <input
+            ref={taskFileInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              addTaskFiles(e.target.files)
+              e.target.value = ""
+            }}
+          />
+
+          </div>
+          {/* Footer — subtask + attachment buttons + create (pinned) */}
+          <div className="flex items-center justify-between gap-4 px-6 py-5 shrink-0 bg-white rounded-b-lg z-10">
+            <div className="flex items-center gap-[9.36px] flex-1">
+              {!showChecklist && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <IconButton
+                      variant="outlined"
+                      visual="gray"
+                      className="size-[33px] rounded-[5.85px] shadow-xs p-0"
+                      onClick={() => setShowChecklist(true)}
+                    >
+                      <ListIcon className="size-[14px] text-gray-500" />
+                    </IconButton>
+                  </TooltipTrigger>
+                  <TooltipContent>Add checklist</TooltipContent>
+                </Tooltip>
+              )}
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <IconButton
+                        variant="outlined"
+                        visual="gray"
+                        className="size-[33px] rounded-[5.85px] shadow-xs p-0"
+                        onClick={() => setShowAttachments(true)}
+                      >
+                        <Attachment01 className="size-[14px] text-gray-500" />
+                      </IconButton>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Add attachment</TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent align="start" className="w-[180px]">
+                  <DropdownMenuItem onClick={() => taskFileInputRef.current?.click()}>
+                    <Laptop01 className="size-4 mr-2 text-gray-500" />
+                    Your computer
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <GoogleDrive1Brand className="size-4 mr-2" />
+                    Google Drive
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <DropboxBrand className="size-4 mr-2" />
+                    Dropbox
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <MsOnedriveBrand className="size-4 mr-2" />
+                    OneDrive
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <Button
+              size="sm"
+              disabled={!taskName.trim() || !taskDirty}
+              className="h-9 rounded-[5px] px-4 text-xs font-semibold disabled:opacity-50"
+              onClick={() => {
+                if (!taskName.trim()) return
+                const newTask = draftTask
+                if (editingTask) {
+                  taskListSetter(editingTask.list)(prev =>
+                    prev.map((t, i) => (i === editingTask.index ? newTask : t))
+                  )
+                  setEditingTask(null)
+                  setCreateTaskOpen(false)
+                  return
+                }
+                // a due date inside next week lands in that list, everything else in this week
+                const nextWeekStart = startOfWeek(addWeeks(new Date(), 1))
+                const nextWeekEnd = endOfWeek(addWeeks(new Date(), 1))
+                const isNextWeek =
+                  !!taskDueDate &&
+                  isWithinInterval(taskDueDate, { start: nextWeekStart, end: nextWeekEnd })
+                if (isNextWeek) {
+                  setNextWeekTasks(prev => [...prev, newTask])
+                } else {
+                  setThisWeekTasks(prev => [...prev, newTask])
+                }
+                setTaskName("")
+                setTaskDescription("")
+                setTaskDueDate(undefined)
+                setTaskAssignees([])
+                setTaskAttachments([])
+                setChecklistItems([])
+                setShowChecklist(false)
+                setTaskStatus("Not Started")
+                setTaskMilestone("None")
+                setCreateTaskOpen(false)
+              }}
+            >
+              {editingTask ? "Save" : "Add Task"}
+            </Button>
+          </div>
+          </TooltipProvider>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete checklist item confirmation */}
+      <Dialog
+        open={deleteChecklistIdx !== null}
+        onOpenChange={(open) => !open && setDeleteChecklistIdx(null)}
+      >
+        <DialogContent className="sm:max-w-[400px]">
+          {(() => {
+            const item =
+              deleteChecklistIdx !== null ? checklistItems[deleteChecklistIdx] : undefined
+            const attachments = item ? item.attachments.length : 0
+            return (
+              <>
+                <DialogTitle className="text-lg font-semibold text-gray-900">
+                  Delete checklist item?
+                </DialogTitle>
+                <p className="mt-2 text-sm text-gray-500">
+                  This will permanently delete “{item ? item.text : ""}”
+                  {attachments > 0 ? ` and its ${attachments} attachments` : ""} from this
+                  checklist.
+                </p>
+                {attachments > 0 && (
+                  <div className="mt-5 flex gap-3">
+                    <Checkbox
+                      size="sm"
+                      className="mt-0.5"
+                      checked={keepChecklistAttachments}
+                      onCheckedChange={(checked) =>
+                        setKeepChecklistAttachments(checked === true)
+                      }
+                    />
+                    <div className="flex flex-col gap-1">
+                      <span className="text-sm font-medium text-gray-700">Keep Attachments</span>
+                      <span className="text-xs text-gray-400">
+                        Attachments will no longer be linked to this checklist item but will
+                        remain available from the task.
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <div className="mt-6 flex items-center justify-end gap-3">
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    onClick={() => setDeleteChecklistIdx(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    visual="error"
+                    onClick={() => {
+                      if (deleteChecklistIdx !== null) {
+                        removeChecklistItem(deleteChecklistIdx, keepChecklistAttachments)
+                      }
+                      setDeleteChecklistIdx(null)
+                    }}
+                  >
+                    Delete Item
+                  </Button>
+                </div>
+              </>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
+      {/* Delete whole checklist confirmation */}
+      <Dialog open={deleteChecklistOpen} onOpenChange={setDeleteChecklistOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          {(() => {
+            const attachments = checklistItems.reduce((sum, it) => sum + it.attachments.length, 0)
+            return (
+              <>
+                <DialogTitle className="text-lg font-semibold text-gray-900">
+                  Delete checklist?
+                </DialogTitle>
+                <p className="mt-2 text-sm text-gray-500">
+                  This will permanently delete this checklist and its {checklistItems.length}{" "}
+                  {checklistItems.length === 1 ? "item" : "items"}
+                  {attachments > 0
+                    ? ` and ${attachments} ${attachments === 1 ? "attachment" : "attachments"}`
+                    : ""}
+                  .
+                </p>
+                {attachments > 0 && (
+                  <div className="mt-5 flex gap-3">
+                    <Checkbox
+                      size="sm"
+                      className="mt-0.5"
+                      checked={keepChecklistAttachments}
+                      onCheckedChange={(checked) => setKeepChecklistAttachments(checked === true)}
+                    />
+                    <div className="flex flex-col gap-1">
+                      <span className="text-sm font-medium text-gray-700">Keep Attachments</span>
+                      <span className="text-xs text-gray-400">
+                        Attachments will no longer be linked to this checklist but will remain
+                        available from the task.
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <div className="mt-6 flex items-center justify-end gap-3">
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    onClick={() => setDeleteChecklistOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    visual="error"
+                    onClick={() => {
+                      const removedItems = checklistItems
+                      const kept = keepChecklistAttachments
+                        ? checklistItems.flatMap(it => it.attachments)
+                        : []
+                      if (kept.length > 0) setTaskAttachments(prev => [...prev, ...kept])
+                      setChecklistItems([])
+                      setShowChecklist(false)
+                      setDeleteChecklistOpen(false)
+                      toast({
+                        variant: "success",
+                        title: "Checklist removed",
+                        action: (
+                          <ToastAction
+                            altText="Undo"
+                            className="ml-auto border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
+                            onClick={() => {
+                              setChecklistItems(removedItems)
+                              setShowChecklist(true)
+                              if (kept.length > 0) {
+                                setTaskAttachments(prev => prev.slice(0, prev.length - kept.length))
+                              }
+                            }}
+                          >
+                            Undo
+                          </ToastAction>
+                        ),
+                      })
+                    }}
+                  >
+                    Delete Checklist
+                  </Button>
+                </div>
+              </>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
+      {/* All task attachments */}
+      <Dialog open={allAttachmentsOpen} onOpenChange={setAllAttachmentsOpen}>
+        <DialogContent className="sm:max-w-[1096px] h-[85vh] p-0 gap-0 flex flex-col overflow-hidden">
+          <TooltipProvider delayDuration={300}>
+          {(() => {
+            const checklistFiles = checklistItems.flatMap(it =>
+              it.attachments.map(f => ({ file: f, source: it.text }))
+            )
+            const taskFiles = taskAttachments.map(f => ({ file: f, source: "" }))
+            const query = attachmentSearch.trim().toLowerCase()
+            const match = (entry: { file: TaskAttachment }) =>
+              entry.file.name.toLowerCase().includes(query)
+            const shownTask =
+              getFirstItem(attachmentScope) === "checklist" ? [] : taskFiles.filter(match)
+            const shownChecklist =
+              getFirstItem(attachmentScope) === "task" ? [] : checklistFiles.filter(match)
+            const total = taskFiles.length + checklistFiles.length
+
+            const card = (
+              entry: { file: TaskAttachment; source: string },
+              key: React.Key
+            ) => (
+              <div
+                key={key}
+                className={`group/file flex flex-col items-start overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xs transition-colors duration-300 hover:border-gray-300 hover:ring-1 hover:ring-gray-300 ${
+                  getFirstItem(attachmentView) === "list"
+                    ? "!flex-row w-full items-center gap-3 p-3"
+                    : "h-[220px] w-[250px]"
+                }`}
+              >
+                <div
+                  className={`relative flex items-center justify-center bg-gray-100 transition-colors duration-300 group-hover/file:bg-gray-200 ${
+                    getFirstItem(attachmentView) === "list"
+                      ? "size-10 shrink-0 rounded-md"
+                      : `w-full flex-1 self-stretch rounded-t-lg overflow-hidden ${
+                          entry.file.url ? "" : "py-[30px]"
+                        }`
+                  }`}
+                >
+                  {entry.file.url ? (
+                    <img
+                      src={entry.file.url}
+                      alt={entry.file.name}
+                      className={
+                        getFirstItem(attachmentView) === "list"
+                          ? "size-10 rounded-md object-cover"
+                          : "size-full rounded-t-lg object-cover"
+                      }
+                    />
+                  ) : getFirstItem(attachmentView) === "list" ? (
+                    <File06 className="size-5 text-gray-400" />
+                  ) : (
+                    <img src="/icons/file-icon.svg" alt="" className="size-[78px]" />
+                  )}
+                  {getFirstItem(attachmentView) === "grid" && (
+                    <div className="absolute right-[7.5px] top-2 hidden items-center gap-1.5 group-hover/file:flex">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <IconButton
+                            variant="outlined"
+                            visual="gray"
+                            className="size-[35px] rounded-[5px] border-gray-300 bg-white p-0 shadow-xs"
+                          >
+                            <Download01 className="size-[15px] text-gray-500" />
+                          </IconButton>
+                        </TooltipTrigger>
+                        <TooltipContent>Download</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <IconButton
+                            variant="outlined"
+                            visual="gray"
+                            className="size-[35px] rounded-[5px] border-gray-300 bg-white p-0 shadow-xs"
+                          >
+                            <Expand01 className="size-[15px] text-gray-500" />
+                          </IconButton>
+                        </TooltipTrigger>
+                        <TooltipContent>Preview</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  )}
+                </div>
+                <div
+                  className={
+                    getFirstItem(attachmentView) === "list"
+                      ? "min-w-0 flex-1"
+                      : "flex w-full flex-col items-start gap-1.5 px-4 py-3"
+                  }
+                >
+                  <div className="flex w-full items-start gap-8">
+                    <div className="flex min-w-0 flex-1 flex-col items-start">
+                      <p className="w-full truncate text-base font-medium leading-[19px] text-gray-black">
+                        {entry.file.name}
+                      </p>
+                      {entry.source && (
+                        <span className="w-full truncate text-[10px] font-medium capitalize leading-4 text-gray-500">
+                          {entry.source}
+                        </span>
+                      )}
+                    </div>
+                    <DropdownMenu>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <DropdownMenuTrigger asChild>
+                            <IconButton
+                              variant="ghost"
+                              visual="gray"
+                              size="sm"
+                              className="-m-1.5 size-8 shrink-0 rounded-full p-0 text-gray-600 transition-colors duration-300 hover:bg-gray-100 hover:text-gray-900 focus:bg-transparent data-[state=open]:bg-gray-100"
+                            >
+                              <MoreHorizontal className="size-5" />
+                            </IconButton>
+                          </DropdownMenuTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent>More options</TooltipContent>
+                      </Tooltip>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem>
+                          <Download01 className="h-4 w-4" /> Download
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem visual="destructive">
+                          <Trash01 className="h-4 w-4" /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <p className="w-full truncate text-xs font-medium leading-[18px] text-gray-500 opacity-50">
+                    {entry.file.size}
+                  </p>
+                </div>
+              </div>
+            )
+
+            return (
+              <>
+                {/* Header */}
+                <div className="flex items-start justify-between gap-2 border-b border-gray-200 pb-4 pl-6 pr-4 pt-5">
+                  <div className="flex min-w-0 flex-col justify-center">
+                    <div className="flex items-center gap-2">
+                      <DialogTitle className="text-lg font-semibold leading-7 text-gray-800">
+                        Task attachments
+                      </DialogTitle>
+                      <Badge>{total}</Badge>
+                    </div>
+                    <p className="truncate text-sm font-normal leading-5 text-gray-500">
+                      {taskName}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <IconButton
+                          variant="outlined"
+                          visual="gray"
+                          className="size-9 rounded-[5px] p-0 shadow-xs"
+                        >
+                          <Download01 className="size-[15px] text-gray-500" />
+                        </IconButton>
+                      </TooltipTrigger>
+                      <TooltipContent>Download all</TooltipContent>
+                    </Tooltip>
+                    <Button
+                      size="sm"
+                      className="h-9 gap-2 rounded-[5px] px-3.5 text-sm font-semibold shadow-xs"
+                      onClick={() => taskFileInputRef.current?.click()}
+                    >
+                      <UploadCloud className="size-[15px]" />
+                      Upload
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <IconButton variant="ghost" visual="gray" size="sm" className="size-9 rounded-[5px] p-0">
+                            <LinkExternal01 className="size-[18px] text-gray-500" />
+                          </IconButton>
+                        </TooltipTrigger>
+                        <TooltipContent>Open in new tab</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <DialogClose asChild>
+                            <IconButton
+                              variant="ghost"
+                              visual="gray"
+                              size="sm"
+                              className="size-9 rounded-[5px] p-0 opacity-50 transition-opacity duration-300 hover:opacity-100"
+                            >
+                              <X className="size-[18px] text-gray-500" />
+                            </IconButton>
+                          </DialogClose>
+                        </TooltipTrigger>
+                        <TooltipContent>Close</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tabs / grid view container */}
+                <div className="flex flex-1 flex-col items-start gap-3 overflow-hidden pt-4">
+                <div className="flex w-full items-center gap-3 px-6">
+                  <InputGroup className="w-[200px]">
+                    <InputLeftElement>
+                      <SearchMd className="size-4 text-gray-400" />
+                    </InputLeftElement>
+                    <Input
+                      placeholder="Search for files"
+                      className="h-10 pl-9"
+                      value={attachmentSearch}
+                      onChange={(e) => setAttachmentSearch(e.target.value)}
+                    />
+                  </InputGroup>
+                  <ToggleGroupRoot
+                    value={attachmentScope}
+                    onValueChange={(details) => details.value.length > 0 && setAttachmentScope(details.value)}
+                  >
+                    <ToggleGroupItem value="all">All files</ToggleGroupItem>
+                    <ToggleGroupItem value="task">Task files</ToggleGroupItem>
+                    <ToggleGroupItem value="checklist">Checklist files</ToggleGroupItem>
+                  </ToggleGroupRoot>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outlined" visual="gray" size="sm" className="h-10 gap-2">
+                        Format
+                        <ChevronDown className="size-4 text-gray-500" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-40">
+                      <DropdownMenuItem>PDF</DropdownMenuItem>
+                      <DropdownMenuItem>Images</DropdownMenuItem>
+                      <DropdownMenuItem>Documents</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <ToggleGroupRoot
+                    className="ml-auto gap-x-0 p-0"
+                    value={attachmentView}
+                    onValueChange={(details) => details.value.length > 0 && setAttachmentView(details.value)}
+                  >
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <ToggleGroupItem className="size-10 rounded-l-lg rounded-r-none px-0 py-0" value="grid">
+                          <Grid />
+                        </ToggleGroupItem>
+                      </TooltipTrigger>
+                      <TooltipContent>Grid view</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <ToggleGroupItem className="size-10 rounded-l-none rounded-r-lg px-0 py-0" value="list">
+                          <List />
+                        </ToggleGroupItem>
+                      </TooltipTrigger>
+                      <TooltipContent>List view</TooltipContent>
+                    </Tooltip>
+                  </ToggleGroupRoot>
+                </div>
+
+                {/* Files */}
+                <div className="w-full flex-1 overflow-y-auto px-6 pb-6">
+                  {getFirstItem(attachmentScope) !== "checklist" && shownTask.length > 0 && (
+                    <>
+                      <p className="mb-3 text-sm text-gray-500">Task files</p>
+                      {(
+                        <div
+                          className={
+                            getFirstItem(attachmentView) === "grid"
+                              ? "flex flex-wrap gap-4"
+                              : "flex flex-col gap-2"
+                          }
+                        >
+                          {shownTask.map((entry, i) => card(entry, `task-${i}`))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {getFirstItem(attachmentScope) !== "task" && shownChecklist.length > 0 && (
+                    <>
+                      <p className="mb-3 mt-6 text-sm text-gray-500">Checklist files</p>
+                      {(
+                        <div
+                          className={
+                            getFirstItem(attachmentView) === "grid"
+                              ? "flex flex-wrap gap-4"
+                              : "flex flex-col gap-2"
+                          }
+                        >
+                          {shownChecklist.map((entry, i) => card(entry, `check-${i}`))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+                </div>
+              </>
+            )
+          })()}
+          </TooltipProvider>
+        </DialogContent>
+      </Dialog>
+
+      {/* Convert checklist item to task */}
+      <Dialog
+        open={convertItemIdx !== null}
+        onOpenChange={(open) => !open && setConvertItemIdx(null)}
+      >
+        <DialogContent className="sm:max-w-[454px]">
+          {(() => {
+            const source = convertItemIdx !== null ? checklistItems[convertItemIdx] : undefined
+            const phaseHead = convertPhase.split(" ").slice(0, 2).join(" ")
+            const phaseRest = convertPhase.split(" ").slice(2).join(" ")
+            return (
+              <>
+                <DialogTitle className="text-lg font-semibold text-gray-900">
+                  New task “{source ? source.text : ""}”
+                </DialogTitle>
+                <p className="mt-1 text-sm text-gray-500">Choose where to add the new task.</p>
+
+                <div className="mt-6 flex items-center gap-4">
+                  <span className="w-28 shrink-0 text-sm font-medium text-gray-600">
+                    Scope Phase
+                  </span>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        className="h-9 w-60 gap-2 justify-start rounded-[5px] shadow-xs"
+                      >
+                        <Menu02 className="size-5 shrink-0 text-gray-500" />
+                        <span className="flex-1 truncate text-left text-sm text-gray-800">
+                          <span className="font-semibold">{phaseHead}</span>{" "}
+                          <span className="font-light leading-5">{phaseRest}</span>
+                        </span>
+                        <ChevronDown className="size-[15px] shrink-0 text-gray-500" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-60">
+                      {["Phase 1 Research", "Phase 2 Design", "Phase 3 Front-End", "Phase 4 Back-End"].map(
+                        (phase) => (
+                          <DropdownMenuItem key={phase} onClick={() => setConvertPhase(phase)}>
+                            {phase}
+                          </DropdownMenuItem>
+                        )
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                <div className="mt-5 flex items-center gap-4">
+                  <span className="w-28 shrink-0 text-sm font-medium text-gray-600">
+                    Assigned to
+                  </span>
+                  <AvatarRoot>
+                    {convertAssignees.length > 0 && (
+                      <AvatarGroup
+                        size="sm"
+                        max={3}
+                        excess
+                        excessClassName="!border-gray-300 !text-gray-500 !text-xs !font-medium !bg-white"
+                      >
+                        {convertAssignees.map((member, i) => (
+                          <Avatar
+                            key={i}
+                            size="sm"
+                            className="border-2 border-white hover:ring-0 active:ring-0"
+                          >
+                            <AvatarImage src={member.avatar} alt={member.name} />
+                            <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                        ))}
+                      </AvatarGroup>
+                    )}
+                    <AssigneePicker
+                      selected={convertAssignees}
+                      onSelectedChange={setConvertAssignees}
+                      open={convertAssigneeOpen}
+                      onOpenChange={setConvertAssigneeOpen}
+                    />
+                  </AvatarRoot>
+                </div>
+
+                <div className="mt-8 flex items-center justify-end gap-3">
+                  <Button variant="outlined" visual="gray" onClick={() => setConvertItemIdx(null)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (convertItemIdx === null || !source || !editingTask) return
+                      const list = editingTask.list
+                      const assignee = convertAssignees[0]
+                      const converted: Task = {
+                        id: `task-${Date.now()}`,
+                        name: source.text,
+                        assignee: assignee ? assignee.name : "Unassigned",
+                        avatar: assignee ? assignee.avatar : "/man.jpg",
+                        status: "Not Started",
+                        dueDate: source.dueDate,
+                        description: "",
+                        milestone: "None",
+                        attachments: source.attachments,
+                        checklist: [],
+                      }
+                      const removedIdx = convertItemIdx
+                      taskListSetter(list)(prev => [...prev, converted])
+                      setChecklistItems(prev => prev.filter((_, i) => i !== removedIdx))
+                      setConvertItemIdx(null)
+                      toast({
+                        variant: "success",
+                        title: "Checklist item converted to task",
+                        action: (
+                          <ToastAction
+                            altText="View task"
+                            className="ml-auto border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
+                            onClick={() => {
+                              const items = list === "this" ? thisWeekTasks : nextWeekTasks
+                              openTask(converted, list, items.length)
+                            }}
+                          >
+                            View task
+                          </ToastAction>
+                        ),
+                      })
+                    }}
+                  >
+                    Add Task
+                  </Button>
+                </div>
+              </>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete all attachments confirmation */}
+      <Dialog open={deleteAllAttachmentsOpen} onOpenChange={setDeleteAllAttachmentsOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogTitle className="text-lg font-semibold text-gray-900">
+            Delete all attachments?
+          </DialogTitle>
+          <p className="mt-2 text-sm text-gray-500">
+            This will permanently remove {taskAttachments.length}{" "}
+            {taskAttachments.length === 1 ? "attachment" : "attachments"} from this task.
+          </p>
+          <div className="mt-6 flex items-center justify-end gap-3">
+            <Button
+              variant="outlined"
+              visual="gray"
+              onClick={() => setDeleteAllAttachmentsOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              visual="error"
+              onClick={() => {
+                const removed = taskAttachments
+                setTaskAttachments([])
+                setShowAttachments(false)
+                setDeleteAllAttachmentsOpen(false)
+                toast({
+                  variant: "success",
+                  title: "All attachments deleted",
+                  action: (
+                    <ToastAction
+                      altText="Undo"
+                      className="ml-auto border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
+                      onClick={() => setTaskAttachments(removed)}
+                    >
+                      Undo
+                    </ToastAction>
+                  ),
+                })
+              }}
+            >
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete attachment confirmation */}
+      <Dialog
+        open={deleteAttachmentIdx !== null}
+        onOpenChange={(open) => !open && setDeleteAttachmentIdx(null)}
+      >
+        <DialogContent className="sm:max-w-[400px]">
+          {(() => {
+            const file =
+              deleteAttachmentIdx !== null ? taskAttachments[deleteAttachmentIdx] : undefined
+            return (
+              <>
+                <DialogTitle className="text-lg font-semibold text-gray-900">
+                  Delete this attachment?
+                </DialogTitle>
+                <div className="mt-4 flex items-center gap-3">
+                  <div className="relative shrink-0">
+                    <File06 className="size-8 text-gray-400" />
+                    <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 bg-white px-0.5 text-[6px] font-bold text-error-500">
+                      PDF
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-gray-700">
+                      {file ? file.name : ""}
+                    </p>
+                    <p className="text-xs text-gray-500">{file ? file.size : ""}</p>
+                  </div>
+                </div>
+                <div className="mt-6 flex items-center justify-end gap-3">
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    onClick={() => setDeleteAttachmentIdx(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    visual="error"
+                    onClick={() => {
+                      const removedIdx = deleteAttachmentIdx
+                      const removed = file
+                      setTaskAttachments(prev => prev.filter((_, i) => i !== removedIdx))
+                      setDeleteAttachmentIdx(null)
+                      toast({
+                        variant: "success",
+                        title: "Attachment deleted",
+                        action: (
+                          <ToastAction
+                            altText="Undo"
+                            className="ml-auto border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
+                            onClick={() => {
+                              if (!removed || removedIdx === null) return
+                              setTaskAttachments(prev => {
+                                const next = [...prev]
+                                next.splice(removedIdx, 0, removed)
+                                return next
+                              })
+                            }}
+                          >
+                            Undo
+                          </ToastAction>
+                        ),
+                      })
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
+
     </AuthenticatedRoute>
   )
 }
