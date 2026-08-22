@@ -77,6 +77,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   Input,
   InputGroup,
@@ -108,6 +111,8 @@ import {
   CalendarCheck01,
   Check,
   Check1,
+  CheckCircle,
+  UserCircle,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -248,6 +253,8 @@ const initialThisWeekTasks: Task[] = [
   { id: "t3", name: "Mobile Breakpoints", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
   { id: "t4", name: "Component Audit", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
   { id: "t5", name: "Empty State Copy", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "t6", name: "Motion Spec", assignee: "Devon Lane", avatar: "/man.jpg", status: "Not Started", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
+  { id: "t7", name: "Accessibility Pass", assignee: "Devon Lane", avatar: "/man.jpg", status: "In Progress", dueDate: "Jul 23, 2024", description: "", milestone: "None", attachments: [], checklist: [] },
 ]
 
 const initialNextWeekTasks: Task[] = [
@@ -293,7 +300,10 @@ interface SortableTaskRowProps {
   duplicateTask: (list: TaskListKey, index: number) => void
   deleteTask: (list: TaskListKey, index: number) => void
   onManageFiles: (task: Task, list: TaskListKey, index: number) => void
-  onToggleComplete: (list: TaskListKey, index: number, complete: boolean) => void
+  selectedIds: string[]
+  onSelectChange: (id: string, selected: boolean) => void
+  isLast: boolean
+  dragOverId: string | null
 }
 
 
@@ -302,6 +312,11 @@ interface AssigneePickerProps {
   onSelectedChange: (value: TeamMember[]) => void
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** defaults to the dashed + button used in the task dialog */
+  trigger?: React.ReactNode
+  triggerClassName?: string
+  side?: "top" | "right" | "bottom" | "left"
+  sideOffset?: number
 }
 
 const AssigneePicker = ({
@@ -309,6 +324,10 @@ const AssigneePicker = ({
   onSelectedChange,
   open,
   onOpenChange,
+  trigger,
+  triggerClassName = "!inline-flex !h-8 !w-8 !rounded-full !p-0 !text-gray-400 transition-colors duration-300 hover:!border-gray-400 hover:!text-gray-500",
+  side,
+  sideOffset,
 }: AssigneePickerProps) => {
   const [search, setSearch] = React.useState("")
 
@@ -320,14 +339,18 @@ const AssigneePicker = ({
     selected={selected}
     onSelectedChange={(value: TeamMember[]) => onSelectedChange(value)}
   >
-    <DropdownPopoverTrigger asChild className="!inline-flex !h-8 !w-8 !rounded-full !p-0 !text-gray-400 transition-colors duration-300 hover:!border-gray-400 hover:!text-gray-500">
-      <AvatarGroupButton size="sm">
-        <Plus className="h-4 w-4" />
-      </AvatarGroupButton>
+    <DropdownPopoverTrigger asChild className={triggerClassName}>
+      {trigger ?? (
+        <AvatarGroupButton size="sm">
+          <Plus className="h-4 w-4" />
+        </AvatarGroupButton>
+      )}
     </DropdownPopoverTrigger>
     <DropdownPopoverContent
+      side={side}
       align="start"
       collisionPadding={16}
+      sideOffset={sideOffset}
       className="w-72 border border-gray-100 p-0"
     >
       <DropdownCommand>
@@ -401,6 +424,141 @@ const AssigneePicker = ({
   )
 }
 
+const StickySectionBar = ({
+  children,
+}: {
+  children: (stuck: boolean) => React.ReactNode
+}) => {
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const [stuck, setStuck] = useState(false)
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    // the sentinel sits just above the bar; once it passes under the fixed nav
+    // the bar is pinned
+    const observer = new IntersectionObserver(
+      ([entry]) => setStuck(!entry.isIntersecting),
+      { rootMargin: "-117px 0px 0px 0px", threshold: 0 }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <>
+      <div ref={sentinelRef} className="h-px w-full" />
+      {children(stuck)}
+    </>
+  )
+}
+
+// Reusable dropdowns extracted from the task dialog. Default props reproduce the
+// dialog's exact markup and behaviour; the pinned bar passes its own trigger.
+const TaskStatusMenu = ({
+  value,
+  onChange,
+  trigger,
+  align = "start",
+  sideOffset,
+  contentClassName = "w-[174px]",
+}: {
+  value: string
+  onChange: (status: Task["status"]) => void
+  trigger?: React.ReactNode
+  align?: "start" | "center" | "end"
+  sideOffset?: number
+  contentClassName?: string
+}) => (
+  <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      {trigger ?? (
+        <Button
+          variant="outlined"
+          visual="gray"
+          size="sm"
+          className="w-[174px] h-9 justify-between rounded-[5px] shadow-xs"
+        >
+          <span className="text-sm font-semibold text-gray-800">{value}</span>
+          <ChevronDown className="size-[15px] text-gray-500" />
+        </Button>
+      )}
+    </DropdownMenuTrigger>
+    <DropdownMenuContent align={align} sideOffset={sideOffset} className={contentClassName}>
+      <DropdownMenuItem onClick={() => onChange("Not Started")}>Not Started</DropdownMenuItem>
+      <DropdownMenuItem onClick={() => onChange("In Progress")}>In Progress</DropdownMenuItem>
+      <DropdownMenuItem onClick={() => onChange("Completed")}>Completed</DropdownMenuItem>
+    </DropdownMenuContent>
+  </DropdownMenu>
+)
+
+const TaskDueDatePicker = ({
+  value,
+  onChange,
+  open,
+  onOpenChange,
+  trigger,
+  side = "right",
+}: {
+  value?: Date
+  onChange: (value: Date) => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  trigger?: React.ReactNode
+  side?: "top" | "right" | "bottom" | "left"
+}) => (
+  <Popover open={open} onOpenChange={onOpenChange}>
+    <PopoverTrigger asChild>
+      {trigger ?? (
+        <Button
+          variant="outlined"
+          visual="gray"
+          size="sm"
+          className="group h-9 gap-2 rounded-[5px] shadow-xs"
+        >
+          <Calendar className="size-[15px] text-gray-500" />
+          <span className="text-sm font-semibold text-gray-800">
+            {value ? format(value, "LLL d, yyyy") : "Select date"}
+          </span>
+          {value && (
+            <span
+              role="button"
+              aria-label="Clear due date"
+              className="hidden opacity-50 transition-opacity duration-300 hover:opacity-100 group-hover:inline-flex"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                onChange(undefined as unknown as Date)
+              }}
+            >
+              <XCircle className="size-4 text-gray-500" />
+            </span>
+          )}
+        </Button>
+      )}
+    </PopoverTrigger>
+    <DropdownPopoverContent
+      side={side}
+      align="start"
+      avoidCollisions={false}
+      sideOffset={8}
+      onOpenAutoFocus={preventDefault}
+      onMouseUp={(event) => {
+        const el = (event.target as HTMLElement).closest("button")
+        if (el) el.blur()
+      }}
+      className="w-[330px] overflow-hidden rounded-lg border border-gray-100 bg-white p-0 shadow-xl data-[state=closed]:hidden data-[state=closed]:animate-none"
+    >
+      <CalendarPicker
+        minValue={new Date()}
+        className="border-none shadow-none"
+        value={value}
+        onValueChange={onChange}
+      />
+    </DropdownPopoverContent>
+  </Popover>
+)
+
 const SortableTaskRow = ({
   task,
   list,
@@ -412,7 +570,10 @@ const SortableTaskRow = ({
   duplicateTask,
   deleteTask,
   onManageFiles,
-  onToggleComplete,
+  selectedIds,
+  onSelectChange,
+  isLast,
+  dragOverId,
 }: SortableTaskRowProps) => {
   const {
     attributes,
@@ -427,11 +588,15 @@ const SortableTaskRow = ({
   } = useSortable({ id: task.id, data: { list } })
   // 4px blue rule marking where the card will land
   const dropBefore = activeIndex === -1 || activeIndex > index
-  const dropLine = !isOver
-    ? ""
-    : dropBefore
-      ? "border-t-4 border-t-primary-500"
-      : "border-b-4 border-b-primary-500"
+  // hovering past the last row targets the section itself, so mark its bottom edge
+  const overSection = isLast && dragOverId === `section-${list}`
+  const dropLine = overSection
+    ? "border-b-4 border-b-primary-500"
+    : !isOver
+      ? ""
+      : dropBefore
+        ? "border-t-4 border-t-primary-500"
+        : "border-b-4 border-b-primary-500"
   const rowStyle = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -440,7 +605,7 @@ const SortableTaskRow = ({
 
   return (
 
-                              <TableRow ref={setNodeRef} style={rowStyle} className={`cursor-pointer ${isDragging ? "opacity-40" : ""} ${dropLine} ${
+                              <TableRow ref={setNodeRef} style={rowStyle} className={`cursor-pointer ${isLast ? "[&>td:first-child]:rounded-bl-lg [&>td:last-child]:rounded-br-lg" : "[&>td]:border-b [&>td]:border-gray-200"} ${isDragging ? "opacity-40" : ""} ${dropLine} ${
                                   i >= 5 ? "animate-in fade-in slide-in-from-top-1 duration-150" : ""
                                 }`} onClick={() => openTask(task, list, i)}>
                                 <TableCell className="w-[50px] py-4 pl-4 pr-0" onClick={(e) => e.stopPropagation()}>
@@ -456,9 +621,9 @@ const SortableTaskRow = ({
                                 </TableCell>
                                 <TableCell className="w-11 py-4 pl-4 pr-4" onClick={(e) => e.stopPropagation()}>
                                   <Checkbox
-                                    checked={task.status === "Completed"}
+                                    checked={selectedIds.includes(task.id)}
                                     onCheckedChange={(checked) =>
-                                      onToggleComplete(list, i, checked === true)
+                                      onSelectChange(task.id, checked === true)
                                     }
                                   />
                                 </TableCell>
@@ -477,9 +642,9 @@ const SortableTaskRow = ({
                                     }}
                                     onValueChange={(details) => renameTask(list, i, details.value)}
                                   >
-                                    <EditableArea>
-                                      <EditableInput className="w-full bg-transparent text-sm font-normal leading-5 text-gray-600 shadow-none" />
-                                      <EditablePreview className="block truncate text-sm font-normal leading-5 text-gray-600" />
+                                    <EditableArea className="w-full">
+                                      <EditableInput className="w-full truncate whitespace-nowrap bg-transparent text-sm font-normal leading-5 text-gray-600 shadow-none" />
+                                      <EditablePreview className="truncate text-sm font-normal leading-5 text-gray-600" />
                                     </EditableArea>
                                   </EditableRoot>
                                 </TableCell>
@@ -494,7 +659,7 @@ const SortableTaskRow = ({
                                 </TableCell>
                                 <TableCell className="py-4 px-6 text-sm text-gray-600 whitespace-nowrap truncate">{task.dueDate}</TableCell>
                                 <TableCell className="w-[50px] py-4 pl-4 pr-0" onClick={(e) => e.stopPropagation()}>
-                                  <IconButton visual="gray" variant="outlined" size="sm" className="rounded-full w-7 h-7 hover:bg-gray-50 transition-colors duration-300 group/attach">
+                                  <IconButton visual="gray" variant="outlined" size="sm" className="rounded-full w-7 h-7 hover:bg-gray-200 focus:bg-transparent transition-colors duration-300 group/attach">
                                     <Paperclip className="w-3 h-3 group-hover/attach:hidden" />
                                     <Plus className="w-3 h-3 text-gray-800 hidden group-hover/attach:block" />
                                   </IconButton>
@@ -502,7 +667,7 @@ const SortableTaskRow = ({
                                 <TableCell className="py-4 px-6" onClick={(e) => e.stopPropagation()}>
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                      <IconButton visual="gray" variant="ghost" size="sm" className="rounded-full data-[state=open]:bg-gray-100 transition-colors duration-300">
+                                      <IconButton visual="gray" variant="ghost" size="sm" className="rounded-full hover:bg-gray-200 focus:bg-transparent data-[state=open]:bg-gray-200 transition-colors duration-300">
                                         <MoreHorizontal className="w-4 h-4" />
                                       </IconButton>
                                     </DropdownMenuTrigger>
@@ -601,20 +766,16 @@ export default function ActiveProjectPage() {
     setChecklistItems(prev => prev.filter((_, i) => i !== index))
     toast({
       variant: "success",
-      title: (count === 0 ? (
-        "Checklist item deleted"
-      ) : keepAttachments ? (
-        <span>
-          Checklist item deleted. {count} attachments were kept in{" "}
-          <span className="underline">task files</span>
-        </span>
-      ) : (
-        `Checklist item and ${count} attachments deleted`
-      )) as unknown as string,
+      title:
+        count === 0
+          ? "Checklist item deleted"
+          : keepAttachments
+            ? `Checklist item deleted. ${count} attachments were kept in task files`
+            : `Checklist item and ${count} attachments deleted`,
       action: (
         <ToastAction
           altText="Undo"
-          className="ml-auto border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
+          className="ml-auto h-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
           onClick={() => {
             setChecklistItems(prev => {
               const next = [...prev]
@@ -633,6 +794,22 @@ export default function ActiveProjectPage() {
   }
   const [keepChecklistAttachments, setKeepChecklistAttachments] = useState(false)
   const taskBodyRef = useRef<HTMLDivElement>(null)
+  const checklistEndRef = useRef<HTMLDivElement>(null)
+
+  // only scroll when the "Add new item" row is not already fully visible
+  const revealChecklistEnd = () =>
+    requestAnimationFrame(() => {
+      const row = checklistEndRef.current
+      const body = taskBodyRef.current
+      if (!row || !body) return
+      const rowRect = row.getBoundingClientRect()
+      const bodyRect = body.getBoundingClientRect()
+      const fullyVisible =
+        rowRect.top >= bodyRect.top && rowRect.bottom <= bodyRect.bottom
+      if (!fullyVisible) {
+        row.scrollIntoView({ behavior: "smooth", block: "end" })
+      }
+    })
   const [taskDragOver, setTaskDragOver] = useState(false)
   const [thisWeekTasks, setThisWeekTasks] = useState<Task[]>(initialThisWeekTasks)
   const [nextWeekTasks, setNextWeekTasks] = useState<Task[]>(initialNextWeekTasks)
@@ -644,6 +821,36 @@ export default function ActiveProjectPage() {
   const [editingTask, setEditingTask] = useState<{ list: TaskListKey; index: number; original: Task } | null>(null)
 
   const [activeDragTask, setActiveDragTask] = useState<Task | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  // table checkboxes are multi-select, not completion
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([])
+  const [bulkAssignees, setBulkAssignees] = useState<TeamMember[]>([])
+  const [bulkAssignOpen, setBulkAssignOpen] = useState(false)
+  const [bulkAssignSearch, setBulkAssignSearch] = useState("")
+  const [bulkDueOpen, setBulkDueOpen] = useState(false)
+
+  const updateSelectedTasks = (patch: (task: Task) => Task) =>
+    allTaskSections.forEach(sec =>
+      taskListSetter(sec.key)(prev =>
+        prev.map(t => (selectedTaskIds.includes(t.id) ? patch(t) : t))
+      )
+    )
+
+  const duplicateSelectedTasks = () =>
+    allTaskSections.forEach(sec =>
+      taskListSetter(sec.key)(prev =>
+        prev.flatMap(t =>
+          selectedTaskIds.includes(t.id)
+            ? [t, { ...t, id: `task-${Date.now()}-${t.id}`, name: `${t.name} (copy)` }]
+            : [t]
+        )
+      )
+    )
+
+  const deleteSelectedTasks = () =>
+    allTaskSections.forEach(sec =>
+      taskListSetter(sec.key)(prev => prev.filter(t => !selectedTaskIds.includes(t.id)))
+    )
   // count at the moment the alert was dismissed; a different count re-shows it,
   // and the state resets on refresh so unresolved overdue tasks surface again
   const [dismissedOverdueCount, setDismissedOverdueCount] = useState<number | null>(null)
@@ -680,19 +887,21 @@ export default function ActiveProjectPage() {
     // the dragged card has pointer-events off, so hold the cursor on the document
     document.body.style.cursor = ""
     setActiveDragTask(null)
+    setDragOverId(null)
     const { active, over } = event
     if (!over || active.id === over.id) return
 
-    const findList = (id: string): "this" | "next" | null => {
-      if (thisWeekTasks.some(t => t.id === id)) return "this"
-      if (nextWeekTasks.some(t => t.id === id)) return "next"
-      return null
-    }
+    const findList = (id: string): TaskListKey | null =>
+      allTaskSections.find(section => section.items.some(t => t.id === id))?.key ?? null
+    const overId = String(over.id)
     const from = findList(String(active.id))
-    const to = findList(String(over.id)) ?? (over.data.current?.list as TaskListKey | undefined)
+    const to = overId.startsWith("section-")
+      ? (overId.slice("section-".length) as TaskListKey)
+      : (findList(overId) ?? (over.data.current?.list as TaskListKey | undefined))
     if (!from || !to) return
 
     if (from === to) {
+      if (overId.startsWith("section-")) return
       const items = allTaskSections.find(section => section.key === from)?.items ?? []
       const oldIndex = items.findIndex(t => t.id === active.id)
       const newIndex = items.findIndex(t => t.id === over.id)
@@ -721,7 +930,7 @@ export default function ActiveProjectPage() {
         action: (
           <ToastAction
             altText="Undo"
-            className="ml-auto border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
+            className="ml-auto h-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
             onClick={() => {
               taskListSetter(to)(prev => prev.filter(t => t.id !== dropped.id))
               taskListSetter(from)(prev => [...prev, { ...moved, dueDate: previousDueDate }])
@@ -762,7 +971,11 @@ export default function ActiveProjectPage() {
   const duplicateTask = (list: TaskListKey, index: number) =>
     taskListSetter(list)(prev => [
       ...prev.slice(0, index + 1),
-      { ...prev[index], name: `${prev[index].name} (copy)` },
+      {
+        ...prev[index],
+        id: `task-${Date.now()}`,
+        name: `${prev[index].name} (copy)`,
+      },
       ...prev.slice(index + 1),
     ])
 
@@ -856,7 +1069,7 @@ export default function ActiveProjectPage() {
       <div className={`flex bg-gray-50 min-h-screen transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}>
         <LeftSidebar />
 
-        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
+        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6">
           {/* Breadcrumb */}
           <Breadcrumb>
             <BreadcrumbItem>
@@ -1211,7 +1424,7 @@ export default function ActiveProjectPage() {
                 </TabsContent>
 
                 <TabsContent value="tasks">
-                  <div className="mt-6 flex flex-col items-start p-6 gap-0 bg-white border border-gray-200 shadow-xs rounded-lg">
+                  <div className="mt-6 flex flex-col items-start p-6 gap-4 bg-white border border-gray-200 shadow-xs rounded-lg">
                     <DndContext
                       sensors={dndSensors}
                       collisionDetection={closestCenter}
@@ -1224,9 +1437,13 @@ export default function ActiveProjectPage() {
                             null
                         )
                       }}
+                      onDragOver={(event) =>
+                        setDragOverId(event.over ? String(event.over.id) : null)
+                      }
                       onDragCancel={() => {
                         document.body.style.cursor = ""
                         setActiveDragTask(null)
+                        setDragOverId(null)
                       }}
                       onDragEnd={handleTaskDragEnd}
                     >
@@ -1234,7 +1451,7 @@ export default function ActiveProjectPage() {
                       dismissedOverdueCount !== overdueTasks.length && (
                       <Alert
                         variant="warning"
-                        className="mb-6 w-full gap-3 rounded-lg p-4"
+                        className="w-full gap-3 rounded-lg p-4"
                         value={dismissedOverdueCount !== overdueTasks.length}
                         onValueChange={(open) =>
                           setDismissedOverdueCount(open ? null : overdueTasks.length)
@@ -1267,6 +1484,143 @@ export default function ActiveProjectPage() {
                         <CloseButton className="text-warning-600" />
                       </Alert>
                     )}
+                    {selectedTaskIds.length > 0 && (
+                      <StickySectionBar>
+                        {(barStuck) => (
+                      <div className={`sticky top-[65px] z-30 flex items-center justify-between gap-6 bg-gray-25 py-2 shadow-xs ${
+                          barStuck
+                            ? "-mx-6 w-[calc(100%+3rem)] self-stretch border-b border-gray-200 px-6"
+                            : "w-full rounded-lg border border-gray-200 px-4"
+                        }`}>
+                        <div className="flex items-center gap-3">
+                          <Checkbox
+                            checked={
+                              allTaskSections.flatMap(sec => sec.items).length > 0 &&
+                              allTaskSections
+                                .flatMap(sec => sec.items)
+                                .every(t => selectedTaskIds.includes(t.id))
+                                ? true
+                                : selectedTaskIds.length > 0
+                                  ? "indeterminate"
+                                  : false
+                            }
+                            onCheckedChange={(checked) =>
+                              setSelectedTaskIds(
+                                checked === true
+                                  ? allTaskSections.flatMap(sec => sec.items).map(t => t.id)
+                                  : []
+                              )
+                            }
+                          />
+                          <span className="whitespace-nowrap text-sm font-medium text-gray-700">
+                            {selectedTaskIds.length} selected
+                          </span>
+                          <Button
+                            variant="link"
+                            visual="primary"
+                            className="h-auto p-0 text-sm font-medium"
+                            onClick={() => setSelectedTaskIds([])}
+                          >
+                            Clear
+                          </Button>
+                        </div>
+                        <div className="ml-auto flex items-center gap-6">
+                          <AssigneePicker
+                            selected={bulkAssignees}
+                            onSelectedChange={(value) => {
+                              setBulkAssignees(value)
+                              const first = value[0]
+                              if (first) {
+                                updateSelectedTasks(t => ({
+                                  ...t,
+                                  assignee: first.name,
+                                  avatar: first.avatar,
+                                }))
+                              }
+                            }}
+                            open={bulkAssignOpen}
+                            onOpenChange={setBulkAssignOpen}
+                            side="bottom"
+                            sideOffset={8}
+                            triggerClassName="!h-auto !w-auto !border-0 bg-transparent data-[state=open]:!ring-0 data-[state=open]:!border-0"
+                            trigger={
+                              <Button variant="link" visual="gray" className="group/act -mx-2 -my-1.5 h-auto gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-gray-500 transition-colors duration-300 hover:bg-gray-100 hover:text-gray-900 hover:no-underline">
+                                <UserCircle className="size-4 text-gray-500 transition-colors duration-300 group-hover/act:text-gray-900" />
+                                Assign to
+                              </Button>
+                            }
+                          />
+                          <TaskStatusMenu
+                            value=""
+                            onChange={(status) => updateSelectedTasks(t => ({ ...t, status }))}
+                            sideOffset={8}
+                            trigger={
+                              <Button variant="link" visual="gray" className="group/act -mx-2 -my-1.5 h-auto gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-gray-500 transition-colors duration-300 hover:bg-gray-100 hover:text-gray-900 hover:no-underline">
+                                <CheckCircle className="size-4 text-gray-500 transition-colors duration-300 group-hover/act:text-gray-900" />
+                                Status
+                              </Button>
+                            }
+                          />
+                          <TaskDueDatePicker
+                            open={bulkDueOpen}
+                            onOpenChange={setBulkDueOpen}
+                            side="bottom"
+                            onChange={(value) => {
+                              updateSelectedTasks(t => ({
+                                ...t,
+                                dueDate: format(value, "LLL d, yyyy"),
+                              }))
+                              setBulkDueOpen(false)
+                            }}
+                            trigger={
+                              <Button variant="link" visual="gray" className="group/act -mx-2 -my-1.5 h-auto gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-gray-500 transition-colors duration-300 hover:bg-gray-100 hover:text-gray-900 hover:no-underline">
+                                <Calendar className="size-4 text-gray-500 transition-colors duration-300 group-hover/act:text-gray-900" />
+                                Due Date
+                              </Button>
+                            }
+                          />
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            className="group/act -mx-2 -my-1.5 h-auto gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-gray-500 transition-colors duration-300 hover:bg-gray-100 hover:text-gray-900 hover:no-underline"
+                            onClick={() => duplicateSelectedTasks()}
+                          >
+                            <Copy07 className="size-4 text-gray-500 transition-colors duration-300 group-hover/act:text-gray-900" />
+                            Duplicate
+                          </Button>
+                          <span className="h-5 w-px bg-gray-200" />
+                          <div className="flex items-center gap-1">
+                          <IconButton variant="ghost" visual="gray" size="sm" className="size-8 rounded-full p-0 text-gray-500 transition-colors duration-300 hover:bg-gray-100 hover:text-gray-900">
+                            <Download01 className="size-4" />
+                          </IconButton>
+                          <IconButton
+                            variant="ghost"
+                            visual="gray"
+                            size="sm"
+                            className="size-8 rounded-full p-0 text-gray-500 transition-colors duration-300 hover:bg-error-50 hover:text-error-500"
+                            onClick={() => {
+                              deleteSelectedTasks()
+                              setSelectedTaskIds([])
+                            }}
+                          >
+                            <Trash01 className="size-4" />
+                          </IconButton>
+                          </div>
+                          <span className="ml-0 h-5 w-px bg-gray-200" />
+                          <IconButton
+                            variant="ghost"
+                            visual="gray"
+                            size="sm"
+                            className={`-ml-4 size-8 rounded-full p-0 text-gray-500 hover:bg-gray-100 hover:text-gray-900 ${barStuck ? "-mr-4" : "-mr-2"}`}
+                            onClick={() => setSelectedTaskIds([])}
+                          >
+                            <X className="size-4" />
+                          </IconButton>
+                        </div>
+                      </div>
+                        )}
+                      </StickySectionBar>
+                    )}
                     {taskSections.map((section) => (
                       <div key={section.key} className="contents">
                                           <div
@@ -1275,7 +1629,12 @@ export default function ActiveProjectPage() {
                             collapsedSections[section.key] ? "pb-6" : ""
                           }`}
                         >
-                        <div className="flex items-center justify-between">
+                        <StickySectionBar>
+                          {(stuck) => (
+                            <>
+                            <div className={`z-20 flex items-center justify-between bg-white pt-2 pb-4 ${
+                                selectedTaskIds.length > 0 ? "" : "sticky top-[65px]"
+                              }`}>
                           <div
                             className="flex cursor-pointer items-center gap-2"
                             onClick={() =>
@@ -1304,7 +1663,7 @@ export default function ActiveProjectPage() {
                               Add Task
                             </Button>
                           )}
-                        </div>
+                            </div>
                         <div
                           className={`grid w-full transition-all duration-300 ease-out ${
                             collapsedSections[section.key]
@@ -1313,22 +1672,39 @@ export default function ActiveProjectPage() {
                           }`}
                         >
                           <div
-                            className={`flex min-h-0 flex-col ${
+                            className={`relative flex min-h-0 flex-col ${
                               collapsedSections[section.key] ? "overflow-hidden" : ""
                             }`}
                           >
-                        <div className="bg-white border border-gray-200 shadow-xs rounded-lg overflow-hidden">
-                        <Table>
+                        <div className="bg-white border border-gray-200 shadow-xs rounded-lg [&>div]:overflow-visible [&>div]:rounded-lg">
+                        <Table className="border-separate border-spacing-0">
                           <TableHeader className="[&_tr]:border-t-0">
                             <TableRow>
-                              <TableHead className="w-[50px] py-3 pl-4 pr-0" />
-                              <TableHead className="w-11 py-3 pl-4 pr-4"><Checkbox className="opacity-0" /></TableHead>
-                              <TableHead className="w-full max-w-0 min-w-[143px] whitespace-nowrap py-3 px-6">Task</TableHead>
-                              <TableHead className="w-[105px] py-3 px-6 whitespace-nowrap">Assigned to</TableHead>
-                              <TableHead className="w-[131px] whitespace-nowrap py-3 px-6">Status</TableHead>
-                              <TableHead className="w-[131px] whitespace-nowrap py-3 px-6">Due Date</TableHead>
-                              <TableHead className="w-[52px] py-3 pr-0 pl-6" />
-                              <TableHead className="w-[75px] py-3 px-6" />
+                              <TableHead className={`z-10 ${selectedTaskIds.length > 0 ? "" : "sticky"} ${selectedTaskIds.length > 0 ? "" : "top-[117px]"} w-[50px] rounded-tl-lg bg-gray-50 bg-clip-padding py-3 pl-4 pr-0 border-b border-gray-200`} />
+                              <TableHead className={`z-10 ${selectedTaskIds.length > 0 ? "" : "sticky"} ${selectedTaskIds.length > 0 ? "" : "top-[117px]"} w-11 bg-gray-50 py-3 pl-4 pr-4 border-b border-gray-200`}><Checkbox
+                                  checked={
+                                    section.items.length > 0 &&
+                                    section.items.every(t => selectedTaskIds.includes(t.id))
+                                      ? true
+                                      : section.items.some(t => selectedTaskIds.includes(t.id))
+                                        ? "indeterminate"
+                                        : false
+                                  }
+                                  onCheckedChange={(checked) => {
+                                    const ids = section.items.map(t => t.id)
+                                    setSelectedTaskIds(prev =>
+                                      checked === true
+                                        ? [...new Set([...prev, ...ids])]
+                                        : prev.filter(id => !ids.includes(id))
+                                    )
+                                  }}
+                                /></TableHead>
+                              <TableHead className={`z-10 ${selectedTaskIds.length > 0 ? "" : "sticky"} ${selectedTaskIds.length > 0 ? "" : "top-[117px]"} w-full max-w-0 min-w-[143px] whitespace-nowrap bg-gray-50 py-3 px-6 border-b border-gray-200`}>Task</TableHead>
+                              <TableHead className={`z-10 ${selectedTaskIds.length > 0 ? "" : "sticky"} ${selectedTaskIds.length > 0 ? "" : "top-[117px]"} w-[105px] whitespace-nowrap bg-gray-50 py-3 px-6 border-b border-gray-200`}>Assigned to</TableHead>
+                              <TableHead className={`z-10 ${selectedTaskIds.length > 0 ? "" : "sticky"} ${selectedTaskIds.length > 0 ? "" : "top-[117px]"} w-[131px] whitespace-nowrap bg-gray-50 py-3 px-6 border-b border-gray-200`}>Status</TableHead>
+                              <TableHead className={`z-10 ${selectedTaskIds.length > 0 ? "" : "sticky"} ${selectedTaskIds.length > 0 ? "" : "top-[117px]"} w-[131px] whitespace-nowrap bg-gray-50 py-3 px-6 border-b border-gray-200`}>Due Date</TableHead>
+                              <TableHead className={`z-10 ${selectedTaskIds.length > 0 ? "" : "sticky"} ${selectedTaskIds.length > 0 ? "" : "top-[117px]"} w-[52px] bg-gray-50 py-3 pr-0 pl-6 border-b border-gray-200`} />
+                              <TableHead className={`z-10 ${selectedTaskIds.length > 0 ? "" : "sticky"} ${selectedTaskIds.length > 0 ? "" : "top-[117px]"} w-[75px] rounded-tr-lg bg-gray-50 bg-clip-padding py-3 px-6 border-b border-gray-200`} />
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -1349,14 +1725,24 @@ export default function ActiveProjectPage() {
                                   duplicateTask={duplicateTask}
                                   deleteTask={deleteTask}
                                   onManageFiles={openTaskFiles}
-                                  onToggleComplete={toggleTaskComplete}
+                                  selectedIds={selectedTaskIds}
+                                  onSelectChange={(id, selected) =>
+                                    setSelectedTaskIds(prev =>
+                                      selected ? [...prev, id] : prev.filter(x => x !== id)
+                                    )
+                                  }
+                                  isLast={
+                                    i ===
+                                    section.items.slice(0, sectionLimits[section.key] ?? 5).length - 1
+                                  }
+                                  dragOverId={dragOverId}
                                 />
                               ))}
                             </SortableContext>
                           </TableBody>
                         </Table>
                         </div>
-                          <div className="flex h-9 w-full items-end justify-end pb-1">
+                          <div className="absolute right-0 top-full flex justify-end pt-2">
                             {section.items.length > 5 && (
                             <div className="flex items-center">
                             <Button
@@ -1366,30 +1752,29 @@ export default function ActiveProjectPage() {
                               onClick={() =>
                                 setSectionLimits(prev => {
                                   const shown = prev[section.key] ?? 5
+                                  // expand to the whole list, collapse back to five
                                   return {
                                     ...prev,
                                     [section.key]:
-                                      shown >= section.items.length
-                                        ? 5
-                                        : Math.min(shown + 5, section.items.length),
+                                      shown >= section.items.length ? 5 : section.items.length,
                                   }
                                 })
                               }
                             >
                               {(sectionLimits[section.key] ?? 5) >= section.items.length
                                 ? "View less"
-                                : `View ${Math.min(
-                                    5,
-                                    section.items.length - (sectionLimits[section.key] ?? 5)
-                                  )} more`}
+                                : `View ${section.items.length - (sectionLimits[section.key] ?? 5)} more`}
                             </Button>
                             </div>
                             )}
                           </div>
                           </div>
                         </div>
-                      </div>
 
+                            </>
+                          )}
+                        </StickySectionBar>
+                      </div>
                       </div>
                     ))}
                     <DragOverlay>
@@ -2526,24 +2911,7 @@ export default function ActiveProjectPage() {
                 <span className="text-sm font-medium text-gray-600">Status</span>
               </div>
               <div className="flex items-start gap-3">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outlined"
-                      visual="gray"
-                      size="sm"
-                      className="w-[174px] h-9 justify-between rounded-[5px] shadow-xs"
-                    >
-                      <span className="text-sm font-semibold text-gray-800">{taskStatus}</span>
-                      <ChevronDown className="size-[15px] text-gray-500" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-[174px]">
-                    <DropdownMenuItem onClick={() => setTaskStatus("Not Started")}>Not Started</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTaskStatus("In Progress")}>In Progress</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTaskStatus("Completed")}>Completed</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <TaskStatusMenu value={taskStatus} onChange={setTaskStatus} />
                 {taskStatus !== "Completed" && (
                 <Button
                   variant="link"
@@ -2567,57 +2935,15 @@ export default function ActiveProjectPage() {
                 <span className="text-sm font-medium text-gray-600">Due Date</span>
                 <span className="text-xs text-gray-400">(optional)</span>
               </div>
-              <Popover open={dueDateOpen} onOpenChange={setDueDateOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    size="sm"
-                    className="group h-9 gap-2 rounded-[5px] shadow-xs"
-                  >
-                    <Calendar className="size-[15px] text-gray-500" />
-                    <span className="text-sm font-semibold text-gray-800">
-                      {taskDueDate ? format(taskDueDate, "LLL d, yyyy") : "Select date"}
-                    </span>
-                    {taskDueDate && (
-                      <span
-                        role="button"
-                        aria-label="Clear due date"
-                        className="hidden opacity-50 transition-opacity duration-300 hover:opacity-100 group-hover:inline-flex"
-                        onClick={(event) => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          setTaskDueDate(undefined)
-                        }}
-                      >
-                        <XCircle className="size-4 text-gray-500" />
-                      </span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <DropdownPopoverContent
-                  side="right"
-                  align="start"
-                  avoidCollisions={false}
-                  sideOffset={8}
-                  onOpenAutoFocus={preventDefault}
-                  onMouseUp={(event) => {
-                    const el = (event.target as HTMLElement).closest("button")
-                    if (el) el.blur()
-                  }}
-                  className="w-[330px] overflow-hidden rounded-lg border border-gray-100 bg-white p-0 shadow-xl data-[state=closed]:hidden data-[state=closed]:animate-none"
-                >
-                  <CalendarPicker
-                    minValue={new Date()}
-                    className="border-none shadow-none [&_[data-today]]:bg-transparent [&_[data-today]]:font-semibold [&_[data-today]]:text-primary-500 [&_[data-today][data-selected]]:bg-primary-500 [&_[data-today][data-selected]]:text-white"
-                    value={taskDueDate}
-                    onValueChange={(value: Date) => {
-                      setTaskDueDate(value)
-                      setDueDateOpen(false)
-                    }}
-                  />
-                </DropdownPopoverContent>
-              </Popover>
+              <TaskDueDatePicker
+                value={taskDueDate}
+                onChange={(value) => {
+                  setTaskDueDate(value)
+                  setDueDateOpen(false)
+                }}
+                open={dueDateOpen}
+                onOpenChange={setDueDateOpen}
+              />
             </div>
 
             {/* Assigned to */}
@@ -2749,6 +3075,7 @@ export default function ActiveProjectPage() {
                     <div className="flex items-center pl-5 gap-[10px] shrink-0">
                       <Checkbox
                         size="sm"
+                        variant="circular"
                         checked={item.checked}
                         onCheckedChange={(checked) => {
                           setChecklistItems(prev => prev.map((it, i) => i === idx ? { ...it, checked: checked === true } : it))
@@ -2896,7 +3223,7 @@ export default function ActiveProjectPage() {
                               Attachment added
                             </span>
                           ) : (
-                            "Attachments"
+                            "Attach file"
                           )}
                         </TooltipContent>
                         </Tooltip>
@@ -2918,13 +3245,88 @@ export default function ActiveProjectPage() {
                           </TooltipTrigger>
                           <TooltipContent>More options</TooltipContent>
                         </Tooltip>
-                        <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuContent align="end" className="w-48" onCloseAutoFocus={preventDefault}>
                           <DropdownMenuItem onClick={() => setRenamingChecklistIdx(idx)}>
                             <Edit03 className="h-4 w-4" /> Rename
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Paperclip className="h-4 w-4" /> Attachments
-                          </DropdownMenuItem>
+                          <DropdownMenuSub>
+                            <DropdownMenuSubTrigger>
+                              <Paperclip className="h-4 w-4" /> Attachments
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent className="w-[300px] space-y-3 p-3.5">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-lg font-semibold leading-7 text-gray-800">
+                                    Attachments
+                                  </span>
+                                  <Badge>{item.attachments.length}</Badge>
+                                </div>
+                                <IconButton
+                                  variant="ghost"
+                                  visual="gray"
+                                  size="sm"
+                                  className="size-7 rounded-md p-0 text-gray-500 transition-colors duration-300 hover:text-gray-900"
+                                  onClick={() => {
+                                    checklistFileTargetIdx.current = idx
+                                    checklistFileInputRef.current?.click()
+                                  }}
+                                >
+                                  <Folder className="size-[15px]" />
+                                </IconButton>
+                              </div>
+                              {item.attachments.map((file, fileIdx) => (
+                                <div
+                                  key={fileIdx}
+                                  className="flex items-center gap-3 rounded-lg border border-gray-200 px-3 py-2.5"
+                                >
+                                  <div className="relative shrink-0">
+                                    <File06 className="size-7 text-gray-400" />
+                                    <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 bg-white px-0.5 text-[6px] font-bold text-error-500">
+                                      PDF
+                                    </span>
+                                  </div>
+                                  <p className="truncate text-sm font-medium text-gray-700">
+                                    {file.name}
+                                  </p>
+                                </div>
+                              ))}
+                              <div
+                                className="flex flex-col items-center gap-3 rounded-lg border border-gray-200 px-3 py-5"
+                                onDragOver={(event) => event.preventDefault()}
+                                onDrop={(event) => {
+                                  event.preventDefault()
+                                  const dropped = describeFiles(event.dataTransfer.files)
+                                  if (dropped.length > 0) {
+                                    setChecklistItems(prev =>
+                                      prev.map((it, i) =>
+                                        i === idx
+                                          ? { ...it, attachments: [...it.attachments, ...dropped] }
+                                          : it
+                                      )
+                                    )
+                                  }
+                                }}
+                              >
+                                <span className="flex size-10 items-center justify-center rounded-full bg-gray-50">
+                                  <UploadCloud className="size-5 text-gray-500" />
+                                </span>
+                                <p className="text-sm text-gray-500">
+                                  Drop files or{" "}
+                                  <Button
+                                    variant="link"
+                                    visual="primary"
+                                    className="h-auto p-0 text-sm font-semibold"
+                                    onClick={() => {
+                                      checklistFileTargetIdx.current = idx
+                                      checklistFileInputRef.current?.click()
+                                    }}
+                                  >
+                                    Browse
+                                  </Button>
+                                </p>
+                              </div>
+                            </DropdownMenuSubContent>
+                          </DropdownMenuSub>
                           {/* only offered once the parent task itself exists */}
                           {editingTask && (
                             <DropdownMenuItem
@@ -2959,9 +3361,9 @@ export default function ActiveProjectPage() {
                     )}
                   </div>
                 ))}
-                <div className="flex h-[46px] items-stretch rounded-md shadow-xs">
+                <div ref={checklistEndRef} className="flex h-[46px] items-stretch rounded-md shadow-xs scroll-mb-4">
                   <div className="flex items-center pl-5 gap-[10px] shrink-0 opacity-50 pointer-events-none">
-                    <Checkbox size="sm" />
+                    <Checkbox size="sm" variant="circular" />
                   </div>
                   <div className="flex flex-1 items-center px-5">
                     <input
@@ -2973,12 +3375,14 @@ export default function ActiveProjectPage() {
                         if (e.key === "Enter" && newChecklistItem.trim()) {
                           setChecklistItems(prev => [...prev, { text: newChecklistItem.trim(), checked: false, dueDate: "", attachments: [] }])
                           setNewChecklistItem("")
+                          revealChecklistEnd()
                         }
                       }}
                       onBlur={() => {
                         if (newChecklistItem.trim()) {
                           setChecklistItems(prev => [...prev, { text: newChecklistItem.trim(), checked: false, dueDate: "", attachments: [] }])
                           setNewChecklistItem("")
+                          revealChecklistEnd()
                         }
                       }}
                     />
@@ -3384,7 +3788,7 @@ export default function ActiveProjectPage() {
                         action: (
                           <ToastAction
                             altText="Undo"
-                            className="ml-auto border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
+                            className="ml-auto h-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
                             onClick={() => {
                               setChecklistItems(removedItems)
                               setShowChecklist(true)
@@ -3821,7 +4225,7 @@ export default function ActiveProjectPage() {
                         action: (
                           <ToastAction
                             altText="View task"
-                            className="ml-auto border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
+                            className="ml-auto h-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
                             onClick={() => {
                               const items = list === "this" ? thisWeekTasks : nextWeekTasks
                               openTask(converted, list, items.length)
@@ -3873,7 +4277,7 @@ export default function ActiveProjectPage() {
                   action: (
                     <ToastAction
                       altText="Undo"
-                      className="ml-auto border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
+                      className="ml-auto h-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
                       onClick={() => setTaskAttachments(removed)}
                     >
                       Undo
@@ -3937,7 +4341,7 @@ export default function ActiveProjectPage() {
                         action: (
                           <ToastAction
                             altText="Undo"
-                            className="ml-auto border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
+                            className="ml-auto h-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
                             onClick={() => {
                               if (!removed || removedIdx === null) return
                               setTaskAttachments(prev => {
