@@ -8473,9 +8473,10 @@ export const PayoutScheduleDialog = ({
                   ))}
                 </div>
               ) : methods.length === 0 ? (
-                <div className="text-sm text-gray-500 text-center py-6">
-                  You need a verified payout method before setting up a
-                  schedule.
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-500 text-center py-6">
+                    No payout methods found.
+                  </p>
                 </div>
               ) : (
                 <>
