@@ -73,6 +73,7 @@ Login is working. Every single login regression in this repo's history happened 
 - `backend/apps/api-gateway/src/proxy/proxy.service.ts`
 - `backend/libs/shared/src/guards/**`, `backend/libs/shared/src/decorators/**`
 - Any of the six frozen env templates: `frontend/.env.{local,staging,production}.example`, `backend/.env.{local,staging,production}.example`
+- `frontend/app/(group)/active-project/[id]/page.tsx` — the active project task screen. Locked 2026-08-22. Covers the task tables, pinned section bars and column headers, the bulk-select bar, the create/edit task dialog, the checklist, the attachments views, and the components defined in this file (`AssigneePicker`, `TaskStatusMenu`, `TaskDueDatePicker`, `SortableTaskRow`, `StickySectionBar`). Every spacing, sticky offset, hover shade, and border position in this screen was set deliberately after extensive correction. No refactors, no cleanup, no restyling. Surgical edits only, and only with explicit @CTorres9800 approval.
 
 **Enforcement layers (all active, all blocking):**
 
