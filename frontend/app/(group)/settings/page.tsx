@@ -21,9 +21,16 @@ import {
 import { PhoneNumberInput } from "@/components/phone-number-input"
 import dynamic from "next/dynamic"
 import {
+  AlertTriangle,
+  Check,
   CheckCircle,
   ChevronDown,
+  ChevronRight,
   Edit01,
+  Eye,
+  EyeOff,
+  Fingerprint01,
+  Lock01,
   HelpCircle,
   Image as ImageIcon,
   Plus,
@@ -71,6 +78,7 @@ import {
   AvatarImage,
   Badge,
   Button,
+  Checkbox,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -80,6 +88,7 @@ import {
   Input,
   InputGroup,
   InputLeftAddon,
+  InputRightElement,
   Label,
   Listbox,
   ListboxButton,
@@ -202,6 +211,68 @@ export default function SettingsPage() {
       clearTimeout(unmount)
     }
   }, [isSavedAlertMounted])
+
+  const [isUpdatePasswordOpen, setIsUpdatePasswordOpen] = useState(false)
+  const [passwordForm, setPasswordForm] = useState({
+    current: "",
+    next: "",
+    confirm: "",
+  })
+  const [visiblePasswords, setVisiblePasswords] = useState({
+    current: false,
+    next: false,
+    confirm: false,
+  })
+
+  const passwordRequirements = [
+    { label: "At least 8 characters", met: passwordForm.next.length >= 8 },
+    { label: "One lowercase letter", met: /[a-z]/.test(passwordForm.next) },
+    { label: "One uppercase letter", met: /[A-Z]/.test(passwordForm.next) },
+    { label: "One number", met: /[0-9]/.test(passwordForm.next) },
+    { label: "One symbol", met: /[^A-Za-z0-9]/.test(passwordForm.next) },
+  ]
+
+  const meetsPasswordRequirements = passwordRequirements.every((req) => req.met)
+
+  const canSavePassword =
+    meetsPasswordRequirements &&
+    passwordForm.current !== "" &&
+    passwordForm.confirm === passwordForm.next
+
+  const isPasswordDirty =
+    passwordForm.current !== "" ||
+    passwordForm.next !== "" ||
+    passwordForm.confirm !== ""
+
+  const [isDiscardOpen, setIsDiscardOpen] = useState(false)
+  const [isFingerprintOpen, setIsFingerprintOpen] = useState(false)
+  const [acceptsFingerprintTerms, setAcceptsFingerprintTerms] = useState(false)
+
+  const [isFingerprintEnabled, setIsFingerprintEnabled] = useState(false)
+
+  const closeFingerprint = () => {
+    setAcceptsFingerprintTerms(false)
+    setIsFingerprintOpen(false)
+  }
+
+  const handleEnableFingerprint = () => {
+    setIsFingerprintEnabled(true)
+    setSavedAlertMessage("Successfully enabled fingerprint login")
+    setIsSavedAlertMounted(true)
+    closeFingerprint()
+  }
+
+  const closeUpdatePassword = () => {
+    setPasswordForm({ current: "", next: "", confirm: "" })
+    setVisiblePasswords({ current: false, next: false, confirm: false })
+    setIsUpdatePasswordOpen(false)
+  }
+
+  const handlePasswordSave = () => {
+    setSavedAlertMessage("Your password has been updated")
+    setIsSavedAlertMounted(true)
+    closeUpdatePassword()
+  }
 
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [showSessionsModal, setShowSessionsModal] = useState(false)
@@ -510,9 +581,14 @@ export default function SettingsPage() {
 
               {activeTab === "personal-info" && (
                 <>
-                  <h1 className="text-xl font-bold text-dark-blue-400">
-                    Personal Info
-                  </h1>
+                  <div className="flex w-[658px] flex-col items-start gap-3">
+                    <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                      Personal Info
+                    </h1>
+                    <p className="w-full text-sm text-gray-500">
+                      Manage your personal details and account information.
+                    </p>
+                  </div>
 
                   <div className="mt-6 flex items-center gap-x-6">
                     <div className="relative">
@@ -1073,14 +1149,14 @@ export default function SettingsPage() {
               )}
 
               {activeTab === "privacy" && (
-                <h1 className="text-xl font-bold text-dark-blue-400">
+                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
                   Privacy
                 </h1>
               )}
 
               {activeTab === "notifications" && (
                 <>
-                  <h1 className="text-xl font-bold text-dark-blue-400 mb-6">
+                  <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400 mb-6">
                     Notifications
                   </h1>
                   <NotificationPreferences />
@@ -1088,64 +1164,430 @@ export default function SettingsPage() {
               )}
 
               {activeTab === "tax-info" && (
-                <h1 className="text-xl font-bold text-dark-blue-400">
+                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
                   Tax Info
                 </h1>
               )}
 
-              {activeTab === "login-password" && (
+              {activeTab === "login-password" && !isUpdatePasswordOpen && (
                 <>
-                  <h1 className="text-xl font-bold text-dark-blue-400 mb-6">
-                    Login & Password
-                  </h1>
-                  <div className="bg-white rounded-xl border border-gray-200 p-6">
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                        <div>
-                          <p className="text-sm font-medium text-dark-blue-400">
-                            Password
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {user?.hasPassword
-                              ? "Password is set"
-                              : "No password set, secure your account"}
-                          </p>
-                        </div>
-                        <Button
-                          variant="outlined"
-                          visual="gray"
-                          size="sm"
-                          onClick={() => setShowPasswordModal(true)}
-                        >
-                          {user?.hasPassword ? "Change Password" : "Set Password"}
-                        </Button>
+                  <div className="flex w-[658px] flex-col items-start gap-3">
+                    <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                      Update Password
+                    </h1>
+                    <p className="w-full text-sm text-gray-500">
+                      Manage your email, password, and login preferences.
+                    </p>
+                  </div>
+
+                  <div className="relative mt-6 flex w-[658px] flex-col items-start gap-2.5">
+                    {isSavedAlertMounted && (
+                      <Alert
+                        variant="success"
+                        className={cn(
+                          "absolute left-0 top-full z-10 mt-6 w-[296px] items-center rounded-[5px] pointer-events-none transition-opacity duration-300",
+                          isSavedAlertVisible ? "opacity-100" : "opacity-0"
+                        )}
+                      >
+                        <AlertIcon>
+                          <CheckCircle className="size-5 text-success-500" />
+                        </AlertIcon>
+                        <AlertTitle className="text-success-600">
+                          {savedAlertMessage}
+                        </AlertTitle>
+                      </Alert>
+                    )}
+
+                    <Button
+                      variant="ghost"
+                      visual="gray"
+                      size="sm"
+                      onClick={() => setIsUpdatePasswordOpen(true)}
+                      className="flex h-auto w-[658px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                    >
+                      <span className="flex items-center gap-x-3">
+                        <span className="flex size-11 items-center justify-center rounded-lg border-[1.5px] border-gray-200">
+                          <Lock01 className="size-5 text-primary-500" />
+                        </span>
+                        <span className="text-sm font-medium leading-[17px] text-gray-900">
+                          Update Password
+                        </span>
+                      </span>
+                      <span className="flex size-8 items-center justify-center rounded-[5px]">
+                        <ChevronRight className="size-5 text-gray-500" />
+                      </span>
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      visual="gray"
+                      size="sm"
+                      onClick={() => setIsFingerprintOpen(true)}
+                      className="flex h-auto w-[658px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                    >
+                      <span className="flex items-center gap-x-3">
+                        <span className="flex size-11 items-center justify-center rounded-lg border-[1.5px] border-gray-200">
+                          <Fingerprint01 className="size-5 text-primary-500" />
+                        </span>
+                        <span className="text-sm font-medium leading-[17px] text-gray-900">
+                          Fingerprint Login
+                        </span>
+                        {isFingerprintEnabled && (
+                          <Badge visual="success" size="sm">
+                            Enabled
+                          </Badge>
+                        )}
+                      </span>
+                      <span className="flex size-8 items-center justify-center rounded-[5px]">
+                        <ChevronRight className="size-5 text-gray-500" />
+                      </span>
+                    </Button>
+                  </div>
+
+                </>
+              )}
+
+              {activeTab === "login-password" && isUpdatePasswordOpen && (
+                <div className="flex w-[492px] flex-col items-start gap-6">
+                  <div className="flex w-full flex-col items-start gap-3">
+                    <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                      Update Password
+                    </h1>
+                    <p className="w-full text-sm text-gray-500">
+                      Marketeq recommends avoiding using personal information in
+                      passwords and using a unique password for each account.{" "}
+                      <a href="#" className="underline">
+                        Learn more
+                      </a>
+                    </p>
+                  </div>
+
+                  <div className="flex w-full flex-col items-start gap-6">
+                    <div className="flex w-full flex-col items-start gap-6">
+                      <div className="flex w-full flex-col items-start gap-1.5">
+                        <Label size="sm">Enter Your Current Password</Label>
+                        <InputGroup className="w-full">
+                          <Input
+                            type={visiblePasswords.current ? "text" : "password"}
+                            placeholder="Type your current password"
+                            value={passwordForm.current}
+                            onChange={(e) =>
+                              setPasswordForm((prev) => ({
+                                ...prev,
+                                current: e.target.value,
+                              }))
+                            }
+                          />
+                          <InputRightElement>
+                            <IconButton
+                              variant="ghost"
+                              visual="gray"
+                              size="sm"
+                              className="size-auto bg-transparent hover:bg-transparent"
+                              onClick={() =>
+                                setVisiblePasswords((prev) => ({
+                                  ...prev,
+                                  current: !prev.current,
+                                }))
+                              }
+                            >
+                              {visiblePasswords.current ? (
+                                <Eye className="size-4 text-gray-400" />
+                              ) : (
+                                <EyeOff className="size-4 text-gray-400" />
+                              )}
+                            </IconButton>
+                          </InputRightElement>
+                        </InputGroup>
                       </div>
-                      <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                        <div>
-                          <p className="text-sm font-medium text-dark-blue-400">
-                            Active Sessions
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            Manage your active login sessions
-                          </p>
+
+                      <div className="flex w-full flex-col items-start gap-1.5">
+                        <Label size="sm">Type New Password</Label>
+                        <InputGroup className="w-full">
+                          <Input
+                            type={visiblePasswords.next ? "text" : "password"}
+                            placeholder="Type your new password"
+                            value={passwordForm.next}
+                            onChange={(e) =>
+                              setPasswordForm((prev) => ({
+                                ...prev,
+                                next: e.target.value,
+                              }))
+                            }
+                          />
+                          <InputRightElement>
+                            <IconButton
+                              variant="ghost"
+                              visual="gray"
+                              size="sm"
+                              className="size-auto bg-transparent hover:bg-transparent"
+                              onClick={() =>
+                                setVisiblePasswords((prev) => ({
+                                  ...prev,
+                                  next: !prev.next,
+                                }))
+                              }
+                            >
+                              {visiblePasswords.next ? (
+                                <Eye className="size-4 text-gray-400" />
+                              ) : (
+                                <EyeOff className="size-4 text-gray-400" />
+                              )}
+                            </IconButton>
+                          </InputRightElement>
+                        </InputGroup>
+                      </div>
+
+                      <div className="flex w-full flex-col items-start gap-1.5">
+                        <Label size="sm">Confirm New Password</Label>
+                        <InputGroup className="w-full">
+                          <Input
+                            type={visiblePasswords.confirm ? "text" : "password"}
+                            placeholder="Type your new password again"
+                            value={passwordForm.confirm}
+                            onChange={(e) =>
+                              setPasswordForm((prev) => ({
+                                ...prev,
+                                confirm: e.target.value,
+                              }))
+                            }
+                          />
+                          <InputRightElement>
+                            <IconButton
+                              variant="ghost"
+                              visual="gray"
+                              size="sm"
+                              className="size-auto bg-transparent hover:bg-transparent"
+                              onClick={() =>
+                                setVisiblePasswords((prev) => ({
+                                  ...prev,
+                                  confirm: !prev.confirm,
+                                }))
+                              }
+                            >
+                              {visiblePasswords.confirm ? (
+                                <Eye className="size-4 text-gray-400" />
+                              ) : (
+                                <EyeOff className="size-4 text-gray-400" />
+                              )}
+                            </IconButton>
+                          </InputRightElement>
+                        </InputGroup>
+                      </div>
+                    </div>
+
+                    <div className="flex w-[328px] flex-col items-start gap-3">
+                      <Label size="sm">Password Requirements</Label>
+                      <div className="flex w-full items-start gap-x-10">
+                        <div className="flex w-[173px] flex-col items-start gap-2">
+                          {passwordRequirements.slice(0, 3).map((req) => (
+                            <div
+                              key={req.label}
+                              className="flex items-center gap-x-3"
+                            >
+                              <Checkbox
+                                size="md"
+                                variant="circular"
+                                checked={req.met}
+                              />
+                              <span className="text-sm font-medium leading-5 text-gray-700">
+                                {req.label}
+                              </span>
+                            </div>
+                          ))}
                         </div>
+                        <div className="flex w-[115px] flex-col items-start gap-2">
+                          {passwordRequirements.slice(3).map((req) => (
+                            <div
+                              key={req.label}
+                              className="flex items-center gap-x-3"
+                            >
+                              <Checkbox
+                                size="md"
+                                variant="circular"
+                                checked={req.met}
+                              />
+                              <span className="text-sm font-medium leading-5 text-gray-700">
+                                {req.label}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-x-1">
+                      <span className="text-sm font-medium leading-[17px] text-gray-700">
+                        Forgot your password?
+                      </span>
+                      <a
+                        href="#"
+                        className="text-sm font-medium leading-[17px] text-primary-500 underline"
+                      >
+                        Request a new one
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="flex w-full justify-end gap-x-3">
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      onClick={() =>
+                        isPasswordDirty
+                          ? setIsDiscardOpen(true)
+                          : closeUpdatePassword()
+                      }
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handlePasswordSave}
+                      disabled={!canSavePassword}
+                    >
+                      Save Changes
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "login-password" && (
+                <Dialog open={isDiscardOpen} onOpenChange={setIsDiscardOpen}>
+                  <DialogContent
+                    className="flex max-w-[512px] flex-col items-center gap-8 p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                    dialogOverlay={
+                      <DialogOverlay className="backdrop-blur-[8px]" />
+                    }
+                  >
+                    <div className="flex w-full flex-col items-start gap-10">
+                      <div className="flex w-full flex-col items-start gap-5">
+                        <div className="flex w-full items-start justify-between gap-5">
+                          <span className="flex size-12 items-center justify-center rounded-full border-8 border-warning-50 bg-warning-100">
+                            <AlertTriangle className="size-6 text-warning-500" />
+                          </span>
+                          <IconButton
+                            variant="ghost"
+                            visual="gray"
+                            size="sm"
+                            className="rounded-[5px]"
+                            onClick={() => setIsDiscardOpen(false)}
+                          >
+                            <X className="size-5 text-gray-500" />
+                          </IconButton>
+                        </div>
+
+                        <div className="flex w-full flex-col items-start gap-2">
+                          <DialogTitle className="w-full text-lg leading-7 font-semibold text-gray-900">
+                            Unsaved changes
+                          </DialogTitle>
+                          <DialogDescription className="w-full text-sm text-gray-500">
+                            Do you want to save your password, or leave and
+                            discard changes?
+                          </DialogDescription>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-x-3">
                         <Button
                           variant="outlined"
                           visual="gray"
-                          size="sm"
-                          onClick={() => setShowSessionsModal(true)}
+                          size="lg"
+                          onClick={() => {
+                            setIsDiscardOpen(false)
+                            closeUpdatePassword()
+                          }}
                         >
-                          View Sessions
+                          Exit Without Saving
+                        </Button>
+                        <Button
+                          size="lg"
+                          onClick={() => {
+                            setIsDiscardOpen(false)
+                            handlePasswordSave()
+                          }}
+                        >
+                          Save & Exit
                         </Button>
                       </div>
                     </div>
-                  </div>
-                </>
+                  </DialogContent>
+                </Dialog>
+              )}
+
+              {activeTab === "login-password" && (
+                <Dialog
+                  open={isFingerprintOpen}
+                  onOpenChange={(open) =>
+                    open ? setIsFingerprintOpen(true) : closeFingerprint()
+                  }
+                >
+                  <DialogContent
+                    className="flex max-w-[414px] flex-col items-center gap-[55px] p-[55px] shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                    dialogOverlay={
+                      <DialogOverlay className="backdrop-blur-[8px]" />
+                    }
+                  >
+                    <div className="flex w-full flex-col items-center gap-8">
+                      <span className="flex size-20 items-center justify-center rounded-full border-[10px] border-primary-25 bg-primary-50">
+                        <Fingerprint01 className="size-11 text-primary-500" />
+                      </span>
+
+                      <div className="flex w-full flex-col items-center gap-6">
+                        <DialogTitle className="text-center text-lg leading-7 font-semibold text-gray-900">
+                          Fingerprint Login
+                        </DialogTitle>
+                        <div className="flex w-full flex-col items-center gap-2">
+                          <DialogDescription className="w-full text-center text-sm text-gray-500">
+                            Confirm your fingerprint on your device so Marketeq
+                            can verify it&apos;s you.
+                          </DialogDescription>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-center gap-x-3">
+                        <Checkbox
+                          size="md"
+                          checked={acceptsFingerprintTerms}
+                          onCheckedChange={(checked) =>
+                            setAcceptsFingerprintTerms(checked === true)
+                          }
+                        />
+                        <span className="text-sm font-medium capitalize text-gray-700">
+                          Accept{" "}
+                          <a href="#" className="underline">
+                            Terms &amp; Conditions
+                          </a>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex w-full items-start justify-center gap-x-3">
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        onClick={closeFingerprint}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={!acceptsFingerprintTerms}
+                        onClick={handleEnableFingerprint}
+                        leftIcon={<Check className="size-[15px]" />}
+                      >
+                        Enable Fingerprint Login
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               )}
 
               {activeTab === "two-factor-auth" && (
                 <>
-                  <h1 className="text-xl font-bold text-dark-blue-400 mb-6">
+                  <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400 mb-6">
                     Two-Factor Authentication
                   </h1>
                   <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -1175,56 +1617,56 @@ export default function SettingsPage() {
               )}
 
               {activeTab === "social-login" && (
-                <h1 className="text-xl font-bold text-dark-blue-400">
+                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
                   Social Login
                 </h1>
               )}
 
               {activeTab === "account-recovery" && (
-                <h1 className="text-xl font-bold text-dark-blue-400">
+                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
                   Account Recovery
                 </h1>
               )}
 
               {activeTab === "users" && (
-                <h1 className="text-xl font-bold text-dark-blue-400">
+                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
                   Users
                 </h1>
               )}
 
               {activeTab === "roles" && (
-                <h1 className="text-xl font-bold text-dark-blue-400">
+                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
                   Roles
                 </h1>
               )}
 
               {activeTab === "devices" && (
-                <h1 className="text-xl font-bold text-dark-blue-400">
+                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
                   Devices
                 </h1>
               )}
 
               {activeTab === "ip-restrictions" && (
-                <h1 className="text-xl font-bold text-dark-blue-400">
+                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
                   IP Restrictions
                 </h1>
               )}
 
               {activeTab === "integrations" && (
-                <h1 className="text-xl font-bold text-dark-blue-400">
+                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
                   Integrations
                 </h1>
               )}
 
               {activeTab === "my-apps" && (
-                <h1 className="text-xl font-bold text-dark-blue-400">
+                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
                   My Apps
                 </h1>
               )}
 
               {activeTab === "billing-overview" && (
                 <>
-                  <h1 className="text-xl font-bold text-dark-blue-400 mb-5">
+                  <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400 mb-5">
                     Overview
                   </h1>
                   <BillingOverviewContent onNavigateTab={handleBillingTabChange} />
@@ -1234,7 +1676,7 @@ export default function SettingsPage() {
               {activeTab === "billing-transactions" && (
                 <>
                   <div className="flex items-start justify-between gap-x-5 mb-5">
-                    <h1 className="text-xl font-bold text-dark-blue-400">
+                    <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
                       Transactions
                     </h1>
                     <div className="flex items-center gap-x-6">
@@ -1292,7 +1734,7 @@ export default function SettingsPage() {
 
               {activeTab === "billing-invoices" && (
                 <>
-                  <h1 className="text-xl font-bold text-dark-blue-400 mb-5">
+                  <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400 mb-5">
                     Invoices
                   </h1>
                   <BillingInvoicesContent />
@@ -1302,7 +1744,7 @@ export default function SettingsPage() {
               {activeTab === "billing-payment-methods" && (
                 <>
                   <div className="shrink-0 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-5">
-                    <h1 className="text-xl font-bold text-dark-blue-400">
+                    <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
                       Payment Methods
                     </h1>
                     <div className="flex shrink-0 flex-wrap items-center gap-6">
@@ -1329,7 +1771,7 @@ export default function SettingsPage() {
 
               {activeTab === "billing-plans" && (
                 <>
-                  <h1 className="text-xl font-bold text-dark-blue-400 mb-5">
+                  <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400 mb-5">
                     Plans
                   </h1>
                   <BillingMyPlansContent />
