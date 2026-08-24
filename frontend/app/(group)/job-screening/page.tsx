@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import { useAuth, resolveDashboardRole } from "@/contexts/auth"
+import { ROLE } from "@/types/user"
 import {
   Archive,
   Briefcase01,
@@ -86,8 +88,14 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  RadioGroup,
+  RadioGroupItem,
+  RadioGroupItemSelector,
+  HelperText,
 } from "@/components/ui"
-import { OfferDialog } from "@/components/hire-me-button"
 
 // ---------- mock data ----------
 
@@ -556,6 +564,17 @@ const jobRequirementColumns: RequirementCategoryData[][] = [
 
 export default function JobScreeningPage() {
   const router = useRouter()
+  const { user } = useAuth()
+
+  // Only clients can screen candidates
+  useEffect(() => {
+    if (!user) return
+    const role = resolveDashboardRole(user)
+    if (role && role !== ROLE.CLIENT) {
+      router.replace("/my-jobs")
+    }
+  }, [user, router])
+
   const [selectedCandidateId, setSelectedCandidateId] = useState(
     mockCandidates[0].id
   )
@@ -780,6 +799,7 @@ export default function JobScreeningPage() {
               <Button
                 size="md"
                 className="h-10 rounded-[5px] bg-primary-50 px-4 text-sm font-semibold text-primary-500 transition-colors duration-300 hover:bg-primary-100"
+                onClick={() => setHireDialogOpen(true)}
               >
                 <MagicWand01 className="size-[15px]" />
                 Magic Hire
@@ -789,6 +809,7 @@ export default function JobScreeningPage() {
                 visual="gray"
                 size="md"
                 className="h-10 rounded-[5px] border-gray-300 px-4 text-sm font-semibold text-gray-800 shadow-xs"
+                onClick={() => window.open("/job-details/c82efc8a-31fd-449e-80d1-fb178c063193", "_blank")}
               >
                 <LinkExternal01 className="size-[15px] text-gray-500" />
                 View Job Listing
@@ -1069,6 +1090,7 @@ export default function JobScreeningPage() {
                   <Button
                     size="md"
                     className="h-10 rounded-[5px] bg-primary-50 px-4 text-sm font-semibold text-primary-500 transition-colors duration-300 hover:bg-primary-100"
+                    onClick={() => setHireDialogOpen(true)}
                   >
                     <MagicWand01 className="size-[15px]" />
                     Magic Hire
@@ -1078,6 +1100,7 @@ export default function JobScreeningPage() {
                     visual="gray"
                     size="md"
                     className="h-10 rounded-[5px] border-gray-300 px-4 text-sm font-semibold text-gray-800 shadow-xs"
+                    onClick={() => window.open("/job-details/c82efc8a-31fd-449e-80d1-fb178c063193", "_blank")}
                   >
                     <LinkExternal01 className="size-[15px] text-gray-500" />
                     View Job Listing
@@ -1727,16 +1750,18 @@ export default function JobScreeningPage() {
         </div>
       </div>
 
-      {/* Hire dialog */}
-      <OfferDialog
+      {/* Magic Hire dialog */}
+      <MagicHireDialog
         open={hireDialogOpen}
         onOpenChange={setHireDialogOpen}
-        profile={null}
+        selectedRole={selectedRole}
+        roles={roles}
       />
 
       {/* Floating Notes Panel */}
       {notesOpen && selectedCandidate && (
         <FloatingNotesPanel
+          candidateName={selectedCandidate.name}
           value={candidateNotes[selectedCandidate.id] ?? ""}
           onChange={(v) => setCandidateNotes((prev) => ({ ...prev, [selectedCandidate.id]: v }))}
           onClose={() => setNotesOpen(false)}
@@ -1877,12 +1902,14 @@ function FilterSection({ title, children }: { title: string; children: React.Rea
 }
 
 function FloatingNotesPanel({
+  candidateName,
   value,
   onChange,
   onClose,
   savedPos,
   onPosChange,
 }: {
+  candidateName: string
   value: string
   onChange: (v: string) => void
   onClose: () => void
@@ -1988,7 +2015,7 @@ function FloatingNotesPanel({
 
       {/* Notes label + textarea */}
       <div className="flex flex-1 flex-col gap-1.5">
-        <Label size="sm">Notes</Label>
+        <Label size="sm">Add notes for {candidateName}</Label>
         <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -2054,6 +2081,665 @@ function PageOptionsMenu() {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+// ---------- Magic Hire modal ----------
+
+type MagicHireStep = 1 | 2 | 3 | 4 | "review" | "success"
+
+const candidateCountOptions = ["Top 1", "Top 3", "Top 5", "Unlimited", "Custom"] as const
+const contractDurations = ["3 Months", "6 Months", "1 Year", "18 Months", "2 Years", "Ongoing"] as const
+const criteriaOptions = [
+  "Match Score",
+  "Skills",
+  "Language(s)",
+  "Average Rating",
+  "Hourly Rate",
+  "Location(s)",
+  "Experience Level",
+  "Availability",
+  "Industry Knowledge",
+  "Projects Completed",
+] as const
+const durationUnits = ["weeks", "months"] as const
+const paymentMethods = [
+  { label: "Select Payment Method", value: "" },
+  { label: "Chase Bank ...4553", value: "chase-4553" },
+  { label: "Bank of America ...7821", value: "boa-7821" },
+] as const
+
+function MagicHireDialog({
+  open,
+  onOpenChange,
+  selectedRole,
+  roles,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  selectedRole: string
+  roles: { label: string; status: string; active?: boolean }[]
+}) {
+  const [step, setStep] = useState<MagicHireStep>(1)
+  const [role, setRole] = useState(selectedRole)
+  const [roleOpen, setRoleOpen] = useState(false)
+  const [candidateCount, setCandidateCount] = useState("Top 3")
+  const [customCount, setCustomCount] = useState("")
+  const [whenToHire, setWhenToHire] = useState<"immediate" | "wait">("immediate")
+  const [waitDuration, setWaitDuration] = useState("")
+  const [waitUnit, setWaitUnit] = useState<"weeks" | "months">("weeks")
+  const [waitUnitOpen, setWaitUnitOpen] = useState(false)
+  const [selectedCriteria, setSelectedCriteria] = useState<Set<string>>(new Set())
+  const [contractDuration, setContractDuration] = useState("3 Months")
+  const [workSchedule, setWorkSchedule] = useState<"part-time" | "full-time">("full-time")
+  const [startDateConfirmed, setStartDateConfirmed] = useState(true)
+  const [paymentMethod, setPaymentMethod] = useState("")
+  const [paymentOpen, setPaymentOpen] = useState(false)
+  const [criteriaExpanded, setCriteriaExpanded] = useState(false)
+
+  // Reset on close
+  useEffect(() => {
+    if (!open) {
+      setTimeout(() => {
+        setStep(1)
+        setRole(selectedRole)
+        setCandidateCount("Top 3")
+        setCustomCount("")
+        setWhenToHire("immediate")
+        setWaitDuration("")
+        setWaitUnit("weeks")
+        setSelectedCriteria(new Set())
+        setContractDuration("3 Months")
+        setWorkSchedule("full-time")
+        setStartDateConfirmed(true)
+        setPaymentMethod("")
+        setCriteriaExpanded(false)
+      }, 200)
+    }
+  }, [open, selectedRole])
+
+  const estimatedMatches = 20 - selectedCriteria.size * 2
+  const avgMatch = 97 - selectedCriteria.size * 1
+  const networkExtra = 50 - selectedCriteria.size * 3
+
+  const goNext = () => {
+    if (step === 1) setStep(2)
+    else if (step === 2) setStep(3)
+    else if (step === 3) setStep(4)
+    else if (step === 4) setStep("review")
+    else if (step === "review") setStep("success")
+  }
+
+  const goBack = () => {
+    if (step === 2) setStep(1)
+    else if (step === 3) setStep(2)
+    else if (step === 4) setStep(3)
+    else if (step === "review") setStep(4)
+  }
+
+  const stepNumber = step === 1 ? 1 : step === 2 ? 2 : step === 3 ? 3 : step === 4 ? 4 : null
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[504px] rounded-xl border-0 p-0 shadow-[0px_24px_48px_-12px_rgba(16,24,40,0.18)]">
+        <DialogTitle className="sr-only">Magic Hire</DialogTitle>
+
+        {step === "success" ? (
+          /* ---- Success screen ---- */
+          <div className="flex flex-col items-center px-8 pb-8 pt-10">
+            <IconButton
+              visual="gray"
+              variant="ghost"
+              size="md"
+              onClick={() => onOpenChange(false)}
+              className="absolute right-5 top-5 transition-colors duration-300"
+            >
+              <X className="size-5 text-gray-400" />
+            </IconButton>
+            <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-success-50">
+              <CheckCircle className="size-8 text-success-500" />
+            </div>
+            <h2 className="mb-2 text-xl font-bold text-dark-blue-400">
+              Success! Magic Hire is active.
+            </h2>
+            <p className="mb-6 text-center text-sm text-gray-500">
+              We'll verify a match against your criteria and notify you the moment a candidate is hired.
+            </p>
+
+            <div className="mb-6 w-full rounded-lg border border-gray-200 p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <span className="text-sm font-bold text-dark-blue-400">Hiring for {role}</span>
+                <Badge size="sm" className="rounded-full border border-gray-200 bg-white px-2.5 text-xs font-medium text-gray-700">{candidateCount} Candidates</Badge>
+              </div>
+
+              <p className="mb-3 text-sm font-bold text-dark-blue-400">Required Criteria ({selectedCriteria.size} filters)</p>
+              <div className="mb-5 flex flex-wrap gap-2">
+                {Array.from(selectedCriteria).map((c) => (
+                  <span key={c} className="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 bg-white px-3 py-1.5 text-xs font-medium text-primary-700">
+                    <Check className="size-3 text-primary-500" />
+                    {c}
+                  </span>
+                ))}
+              </div>
+
+              <p className="mb-3 text-sm font-bold text-dark-blue-400">Offer Terms</p>
+              <div className="grid grid-cols-2 gap-y-3">
+                <div>
+                  <p className="text-xs text-gray-500">Offer Rate</p>
+                  <p className="text-sm font-semibold text-dark-blue-400">Under $30/hr</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Contract Duration</p>
+                  <p className="text-sm font-semibold text-dark-blue-400">{contractDuration}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Work Schedule</p>
+                  <p className="text-sm font-semibold text-dark-blue-400">{workSchedule === "full-time" ? "Full Time" : "Part Time"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Start Date</p>
+                  <p className="text-sm font-semibold text-dark-blue-400">July 22, 2026</p>
+                </div>
+              </div>
+            </div>
+
+            <p className="mb-5 text-center text-xs text-gray-500">
+              You can pause or edit this Magic Hire anytime from your Settings.
+            </p>
+
+            <div className="flex w-full items-center justify-center gap-3">
+              <Button
+                variant="outlined"
+                visual="gray"
+                size="md"
+                className="h-11 rounded-lg border-gray-300 px-5 text-sm font-semibold text-gray-700 shadow-xs transition-colors duration-300"
+                onClick={() => {
+                  setStep(1)
+                  setRole("")
+                  setCandidateCount("Top 3")
+                  setCustomCount("")
+                  setWhenToHire("immediate")
+                  setWaitDuration("")
+                  setWaitUnit("weeks")
+                  setSelectedCriteria(new Set())
+                  setContractDuration("3 Months")
+                  setWorkSchedule("full-time")
+                  setStartDateConfirmed(true)
+                  setPaymentMethod("")
+                  setCriteriaExpanded(false)
+                }}
+              >
+                <Plus className="size-4" />
+                Add Role
+              </Button>
+              <Button
+                size="md"
+                className="h-11 rounded-lg px-5 text-sm font-semibold transition-colors duration-300"
+                onClick={() => onOpenChange(false)}
+              >
+                Magic Hire Settings
+              </Button>
+            </div>
+          </div>
+        ) : (
+          /* ---- Step screens ---- */
+          <div className="flex flex-col">
+            {/* Header */}
+            <div className="flex items-start justify-between px-8 pb-5 pt-7">
+              <div className="flex items-center gap-3">
+                <MagicWand01 className="size-6 text-primary-500" />
+                <div>
+                  <h2 className="text-lg font-bold text-dark-blue-400">Magic Hire</h2>
+                  <p className="text-sm text-gray-500">Automatically hire your best-matching candidates.</p>
+                </div>
+              </div>
+              <IconButton
+                visual="gray"
+                variant="ghost"
+                size="md"
+                onClick={() => onOpenChange(false)}
+                className="transition-colors duration-300"
+              >
+                <X className="size-5 text-gray-400" />
+              </IconButton>
+            </div>
+
+            {/* Step content */}
+            <div className="px-8 pb-2">
+              {step === 1 && (
+                <div className="flex flex-col gap-6">
+                  <div className="flex flex-col gap-3">
+                    <p className="text-sm font-semibold text-dark-blue-400">What role do you want to hire for</p>
+                    <Popover open={roleOpen} onOpenChange={setRoleOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="h-10 w-fit rounded-lg border-gray-300 px-4 text-sm font-medium text-gray-700 shadow-xs"
+                        >
+                          {role || "Select role"}
+                          <ChevronDown className="ml-2 size-4 text-gray-400" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-[220px] rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
+                        {roles.filter((r) => r.status !== "Closed").map((r, idx) => (
+                          <Button
+                            key={`${r.label}-${idx}`}
+                            variant="ghost"
+                            visual="gray"
+                            size="sm"
+                            onClick={() => { setRole(r.label); setRoleOpen(false) }}
+                            className="flex w-full items-center justify-start gap-2 rounded-md px-3 py-2 text-sm text-gray-700 transition-colors duration-300 hover:bg-gray-50"
+                          >
+                            {role === r.label && <Check className="size-3.5 text-primary-500" />}
+                            {r.label}
+                          </Button>
+                        ))}
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    <p className="text-sm font-semibold text-dark-blue-400">How many candidates to hire</p>
+                    <div className="flex flex-wrap gap-2">
+                      {candidateCountOptions.map((opt) => (
+                        <Button
+                          key={opt}
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => setCandidateCount(opt)}
+                          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-300 ${
+                            candidateCount === opt
+                              ? "border-primary-500 bg-primary-50 text-primary-600"
+                              : "border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                          }`}
+                        >
+                          {opt}
+                        </Button>
+                      ))}
+                    </div>
+                    {candidateCount === "Custom" && (
+                      <Input
+                        type="number"
+                        placeholder="Enter number"
+                        value={customCount}
+                        onChange={(e) => setCustomCount(e.target.value)}
+                        className="mt-1 w-32"
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {step === 2 && (
+                <div className="flex flex-col gap-4">
+                  <Label className="text-sm font-semibold text-dark-blue-400">When to hire</Label>
+                  <RadioGroup value={whenToHire} onValueChange={(v) => setWhenToHire(v as "immediate" | "wait")} className="flex flex-col gap-3">
+                    <div className="flex cursor-pointer items-center gap-3">
+                      <RadioGroupItem value="immediate" size="md" />
+                      <Label className="cursor-pointer text-sm text-dark-blue-400" onClick={() => setWhenToHire("immediate")}>As soon as candidate qualifies</Label>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="flex cursor-pointer items-center gap-3" onClick={() => setWhenToHire("wait")}>
+                        <RadioGroupItem value="wait" size="md" />
+                        <Label className="cursor-pointer text-sm text-dark-blue-400">Wait for</Label>
+                      </div>
+                      <Input
+                        placeholder="Enter duration"
+                        value={waitDuration}
+                        onChange={(e) => { setWaitDuration(e.target.value); setWhenToHire("wait") }}
+                        className="h-9 w-[120px] text-sm"
+                      />
+                      <Popover open={waitUnitOpen} onOpenChange={setWaitUnitOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            size="sm"
+                            className="h-9 rounded-lg border-gray-300 px-3 text-sm font-medium text-gray-700 shadow-xs"
+                            onClick={() => setWhenToHire("wait")}
+                          >
+                            {waitUnit}
+                            <ChevronDown className="ml-1 size-3.5 text-gray-400" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="start" className="w-[120px] rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
+                          {durationUnits.map((u) => (
+                            <Button
+                              key={u}
+                              variant="ghost"
+                              visual="gray"
+                              size="sm"
+                              onClick={() => { setWaitUnit(u); setWaitUnitOpen(false) }}
+                              className="flex w-full items-center justify-start rounded-md px-3 py-2 text-sm text-gray-700 transition-colors duration-300 hover:bg-gray-50"
+                            >
+                              {u}
+                            </Button>
+                          ))}
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    {whenToHire === "wait" && (
+                      <p className="ml-8 text-sm text-gray-500">...then hire best available candidate</p>
+                    )}
+                  </RadioGroup>
+                </div>
+              )}
+
+              {step === 3 && (
+                <div className="flex flex-col gap-5">
+                  {/* Estimated candidate size card */}
+                  <div className="rounded-lg border border-gray-200 px-5 py-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="text-sm font-semibold text-dark-blue-400">Estimated candidate size</span>
+                      <span className="size-2.5 rounded-full bg-success-500" />
+                    </div>
+                    <div className="flex items-center gap-0 text-sm text-gray-600">
+                      <span className="font-semibold text-dark-blue-400">{Math.max(estimatedMatches, 1)} {selectedCriteria.size > 0 ? "candidate matches" : "matches"}</span>
+                      <span className="mx-3 text-gray-300">|</span>
+                      <span>{avgMatch}% avg. match</span>
+                      <span className="mx-3 text-gray-300">|</span>
+                      <span>+{Math.max(networkExtra, 5)} in network</span>
+                    </div>
+                  </div>
+
+                  {/* Required criteria */}
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-dark-blue-400">Required criteria</p>
+                    <Button variant="link" size="sm" className="flex items-center gap-1.5 text-sm font-semibold text-primary-500 transition-colors duration-300 hover:text-primary-600">
+                      <MessageSquare className="size-4" />
+                      Use Smart Assistant
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {criteriaOptions.map((c) => {
+                      const isActive = selectedCriteria.has(c)
+                      return (
+                        <Button
+                          key={c}
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedCriteria((prev) => {
+                              const next = new Set(prev)
+                              next.has(c) ? next.delete(c) : next.add(c)
+                              return next
+                            })
+                          }}
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-300 ${
+                            isActive
+                              ? "border-primary-500 bg-white text-primary-700"
+                              : "border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                          }`}
+                        >
+                          {isActive ? (
+                            <Check className="size-3.5 text-primary-500" />
+                          ) : (
+                            <Plus className="size-3.5 text-gray-400" />
+                          )}
+                          {c}
+                        </Button>
+                      )
+                    })}
+                  </div>
+
+                  {/* Disclaimer */}
+                  <div className="flex items-start gap-2 text-xs text-gray-500">
+                    <svg className="mt-0.5 size-4 shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
+                    <span>These are hard requirements. A candidate missing even one selected filter will be excluded automatically, no matter how well they match the others.</span>
+                  </div>
+                </div>
+              )}
+
+              {step === 4 && (
+                <div className="flex flex-col gap-6">
+                  {/* Offer Rate + Role */}
+                  <div className="flex gap-12">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500">Offer Rate</p>
+                      <p className="text-sm font-bold text-dark-blue-400">under $30/hour</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500">Role</p>
+                      <p className="text-sm font-bold text-dark-blue-400">{role}</p>
+                    </div>
+                  </div>
+
+                  {/* Contract Duration */}
+                  <div className="flex flex-col gap-3">
+                    <p className="text-sm font-semibold text-dark-blue-400">Select Contract Duration</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {contractDurations.map((d) => (
+                        <Button
+                          key={d}
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => setContractDuration(d)}
+                          className={`rounded-lg px-4 py-2.5 text-sm font-medium transition-colors duration-300 ${
+                            contractDuration === d
+                              ? "border-primary-500 bg-primary-50 text-primary-600"
+                              : "border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                          }`}
+                        >
+                          {d}
+                        </Button>
+                      ))}
+                    </div>
+                    <Button variant="link" size="sm" className="self-end text-xs font-medium text-gray-500 transition-colors duration-300 hover:text-primary-500">
+                      Custom Duration
+                    </Button>
+                  </div>
+
+                  {/* Work Schedule */}
+                  <div className="flex flex-col gap-3">
+                    <Label className="text-sm font-semibold text-primary-500">Select Work Schedule</Label>
+                    <RadioGroup value={workSchedule} onValueChange={(v) => setWorkSchedule(v as "part-time" | "full-time")} className="grid grid-cols-2 gap-3">
+                      <RadioGroupItemSelector value="part-time" size="md" className="rounded-lg px-4 py-3 transition-colors duration-300">
+                        <div className="text-left">
+                          <Label asChild><span className="text-sm font-medium text-dark-blue-400">Part Time</span></Label>
+                          <HelperText size="sm">up to 30 hrs/week</HelperText>
+                        </div>
+                      </RadioGroupItemSelector>
+                      <RadioGroupItemSelector value="full-time" size="md" className="rounded-lg px-4 py-3 transition-colors duration-300">
+                        <div className="text-left">
+                          <Label asChild><span className="text-sm font-medium text-dark-blue-400">Full Time</span></Label>
+                          <HelperText size="sm">over 30 hrs/week</HelperText>
+                        </div>
+                      </RadioGroupItemSelector>
+                    </RadioGroup>
+                    <Button variant="link" size="sm" className="self-end text-xs font-medium text-gray-500 transition-colors duration-300 hover:text-primary-500">
+                      Custom Work Schedule
+                    </Button>
+                  </div>
+
+                  {/* Start Date */}
+                  <div className="flex flex-col gap-3">
+                    <p className="text-sm font-semibold text-primary-500">Confirm Start Date</p>
+                    <p className="text-sm text-gray-500">
+                      Based on the project scope, the anticipated start date is
+                    </p>
+                    <p className="text-sm font-bold text-dark-blue-400">Monday, July 22, 2026</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="md"
+                        className={`h-11 rounded-lg border-gray-300 text-sm font-semibold shadow-xs transition-colors duration-300 ${startDateConfirmed ? "border-primary-500 bg-primary-50 text-primary-600" : "text-gray-700"}`}
+                        onClick={() => setStartDateConfirmed(true)}
+                      >
+                        Confirm Start Date
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="md"
+                        className={`h-11 rounded-lg border-gray-300 text-sm font-semibold shadow-xs transition-colors duration-300 ${!startDateConfirmed ? "border-primary-500 bg-primary-50 text-primary-600" : "text-gray-700"}`}
+                        onClick={() => setStartDateConfirmed(false)}
+                      >
+                        Change Date
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {step === "review" && (
+                <div className="flex flex-col gap-5">
+                  {/* Summary grid */}
+                  <div className="grid grid-cols-[140px_1fr] gap-y-3 text-sm">
+                    <span className="text-gray-500">Role</span>
+                    <span className="font-bold text-dark-blue-400">{role}</span>
+                    <span className="text-gray-500">Offer Rate</span>
+                    <span className="font-semibold text-dark-blue-400">under $30/hr</span>
+                    <span className="text-gray-500">When to Hire</span>
+                    <span className="font-semibold text-dark-blue-400">{whenToHire === "immediate" ? "As soon as qualified" : `Wait ${waitDuration} ${waitUnit}`}</span>
+                    <span className="text-gray-500">How Many to Hire</span>
+                    <span className="font-semibold text-dark-blue-400">{candidateCount === "Custom" ? customCount || "1" : candidateCount.replace("Top ", "")}</span>
+                    <span className="text-gray-500">Contract Duration</span>
+                    <span className="font-semibold text-dark-blue-400">{contractDuration}</span>
+                    <span className="text-gray-500">Work Schedule</span>
+                    <span className="font-semibold text-dark-blue-400">{workSchedule === "full-time" ? "Full Time" : "Part Time"}</span>
+                    <span className="text-gray-500">Start Date</span>
+                    <span className="font-semibold text-dark-blue-400">July 22nd, 2026</span>
+                  </div>
+
+                  {/* Collapsible Required Criteria */}
+                  <div className="rounded-lg border border-gray-200">
+                    <Button
+                      variant="ghost"
+                      visual="gray"
+                      size="md"
+                      onClick={() => setCriteriaExpanded(!criteriaExpanded)}
+                      className="flex w-full items-center justify-between rounded-none px-5 py-4"
+                    >
+                      <span className="text-sm font-bold text-dark-blue-400">Required Criteria ({selectedCriteria.size} filters)</span>
+                      <ChevronDown className={`size-5 text-gray-400 transition-transform duration-200 ${criteriaExpanded ? "rotate-180" : ""}`} />
+                    </Button>
+                    {criteriaExpanded && (
+                      <div className="flex flex-wrap gap-2 px-5 pb-5">
+                        {Array.from(selectedCriteria).map((c) => (
+                          <span key={c} className="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 bg-white px-3 py-1.5 text-xs font-medium text-primary-700">
+                            <Check className="size-3 text-primary-500" />
+                            {c}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Payment method */}
+                  <div className="flex flex-col gap-3">
+                    <p className="text-sm font-bold text-dark-blue-400">Payment method</p>
+                    <Popover open={paymentOpen} onOpenChange={setPaymentOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="md"
+                          className="h-11 w-full justify-between rounded-lg border-gray-300 px-4 text-sm font-medium text-gray-700 shadow-xs"
+                        >
+                          <div className="flex items-center gap-2">
+                            <svg className="size-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2" /><path d="M2 10h20" /></svg>
+                            {paymentMethod ? paymentMethods.find((m) => m.value === paymentMethod)?.label : "Select Payment Method"}
+                          </div>
+                          <ChevronDown className="size-4 text-gray-400" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
+                        {paymentMethods.filter((m) => m.value).map((m) => (
+                          <Button
+                            key={m.value}
+                            variant="ghost"
+                            visual="gray"
+                            size="sm"
+                            onClick={() => { setPaymentMethod(m.value); setPaymentOpen(false) }}
+                            className="flex w-full items-center justify-start gap-2 rounded-md px-3 py-2.5 text-sm text-gray-700 transition-colors duration-300 hover:bg-gray-50"
+                          >
+                            <svg className="size-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2" /><path d="M2 10h20" /></svg>
+                            {m.label}
+                          </Button>
+                        ))}
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  {/* Disclaimer */}
+                  <div className="flex items-start gap-2 text-xs text-gray-500">
+                    <svg className="mt-0.5 size-4 shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
+                    <span>By activating, an offer will be sent to contractors if the conditions are met. You will only be charged the moment a match is found and hired.</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between px-8 pb-7 pt-5">
+              {stepNumber ? (
+                <span className="text-sm font-semibold text-dark-blue-400">Step {stepNumber} of 4</span>
+              ) : (
+                <span />
+              )}
+              <div className="flex items-center gap-3">
+                {step === 1 && (
+                  <Button
+                    variant="link"
+                    size="md"
+                    className="text-sm font-semibold text-primary-500 transition-colors duration-300 hover:text-primary-600"
+                  >
+                    Settings
+                  </Button>
+                )}
+                {(step === 2 || step === 3 || step === 4) && (
+                  <Button
+                    variant="link"
+                    size="md"
+                    className="text-sm font-semibold text-dark-blue-400 transition-colors duration-300 hover:text-gray-600"
+                    onClick={goBack}
+                  >
+                    Back
+                  </Button>
+                )}
+                {step === "review" && (
+                  <>
+                    <Button
+                      variant="link"
+                      size="md"
+                      className="flex items-center gap-1.5 text-sm font-semibold text-primary-500 transition-colors duration-300 hover:text-primary-600"
+                      onClick={() => setStep(1)}
+                    >
+                      <Edit03 className="size-4" />
+                      Edit
+                    </Button>
+                    <Button
+                      size="md"
+                      className="h-11 rounded-lg px-6 text-sm font-semibold transition-colors duration-300"
+                      onClick={goNext}
+                    >
+                      Activate
+                    </Button>
+                  </>
+                )}
+                {stepNumber && (
+                  <Button
+                    size="md"
+                    className="h-11 rounded-lg px-6 text-sm font-semibold transition-colors duration-300"
+                    onClick={goNext}
+                  >
+                    Next
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 

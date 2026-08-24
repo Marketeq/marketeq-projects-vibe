@@ -139,6 +139,27 @@ jobs:
             fi
           fi
 
+          # --- Section 3c: Frozen UI files (settings sidebar, nav bar, active project) ---
+          FROZEN_UI_HIT=0
+          FROZEN_UI_FILES=""
+          while IFS= read -r f; do
+            case "$f" in
+              frontend/components/settings-sidebar.tsx|\
+              frontend/app/top-most-header.tsx|\
+              "frontend/app/(group)/active-project/[id]/page.tsx")
+                FROZEN_UI_HIT=1
+                FROZEN_UI_FILES="$FROZEN_UI_FILES\n- \`$f\`" ;;
+            esac
+          done <<< "$CHANGED_FILES"
+
+          if [ "$FROZEN_UI_HIT" = "1" ]; then
+            # Only CTO can touch these files
+            PR_AUTHOR=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json author --jq '.author.login' 2>/dev/null || echo "")
+            if [ "$PR_AUTHOR" != "CTorres9800" ]; then
+              add "🔒 **Frozen UI file(s) touched:** $(echo -e "$FROZEN_UI_FILES"). These files are locked and can only be modified by @CTorres9800. Remove these changes from the PR or request CTO approval."
+            fi
+          fi
+
           # --- Section 4: Entity changes without migrations ---
           ENTITY_CHANGED=0
           MIGRATION_ADDED=0

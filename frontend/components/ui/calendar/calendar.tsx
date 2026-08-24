@@ -439,6 +439,9 @@ const RangeCalendar = ({
   )
 }
 
+const RANGE_CELL_CLASS =
+  "h-10 w-10 rounded-full transition-all duration-150 ease-out data-[selected]:bg-gray-50 data-[selected]:data-[today]:bg-gray-50 data-[selected]:rounded-none data-[selected]:data-[selection-start]:rounded-full data-[selected]:data-[selection-end]:rounded-full focus-visible:outline-none data-[focus-visible]:outline-none inline-flex data-[hovered]:bg-gray-50 data-[outside-month]:text-gray-500 data-[disabled]:text-gray-500 data-[disabled]:bg-transparent items-center justify-center data-[selected]:data-[selection-start]:bg-primary-500 data-[selected]:data-[selection-end]:bg-primary-500 data-[selected]:data-[hovered]:data-[selection-start]:bg-primary-600 data-[selected]:data-[hovered]:data-[selection-end]:bg-primary-600 data-[selected]:data-[selection-start]:text-white data-[selected]:data-[selection-end]:text-white text-sm text-gray-700 data-[today]:bg-gray-100 data-[hovered]:font-medium data-[today]:data-[selected]:data-[selection-start]:bg-primary-500 data-[today]:data-[selected]:data-[hovered]:data-[selection-start]:bg-primary-600 data-[today]:data-[selected]:data-[selection-end]:bg-primary-500 data-[today]:data-[selected]:data-[hovered]:data-[selection-end]:bg-primary-600"
+
 const DualCalendar = ({
   left,
   focusedValue,
@@ -462,16 +465,6 @@ const DualCalendar = ({
   }>({
     start: "",
     end: "",
-  })
-  const [focusedValueState, setFocusedValueState] = useControllableState<
-    Date | undefined
-  >({
-    value: focusedValue,
-    onChange: (value) => {
-      if (value) {
-        onFocusedValueChange?.(value)
-      }
-    },
   })
   // Plain useState — not useControllableState. Using useControllableState with a
   // `value` prop (controlled mode) puts `value` in useCallbackRef deps, causing setState
@@ -510,9 +503,24 @@ const DualCalendar = ({
     onValueChangeRef.current?.(newValue)
   }, [])
 
-  // Second calendar starts one month ahead and manages its own focused month independently
-  const [secondFocusedMonth, setSecondFocusedMonth] = React.useState<Date>(() =>
-    addMonths(focusedValueState ?? new Date(), 1)
+  // Single AriaRangeCalendar with visibleDuration={{ months: 2 }} — react-aria manages
+  // focus internally (uncontrolled). Changing `value` auto-navigates the calendar to show
+  // the range, so sidebar presets work without controlling focusedValue.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const calendarValue = React.useMemo(
+    () => (state ? convertToRangeValue(state) : undefined),
+    [state?.start?.getTime(), state?.end?.getTime()]
+  )
+
+  const handleAriaChange = React.useCallback(
+    (val: RangeValue<CalendarDate> | null) => {
+      if (!val) return
+      handleSelectionChange({
+        start: calendarDateToLocalDate(val.start),
+        end: calendarDateToLocalDate(val.end),
+      })
+    },
+    [handleSelectionChange]
   )
 
   const onStartDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -528,12 +536,10 @@ const DualCalendar = ({
 
     const parsedStartDate = parse(value, "LLL d, yyyy", new Date())
     if (isValid(parsedStartDate)) {
-      const nextState = {
+      handleSelectionChange({
         start: parsedStartDate,
         end: parsedEndDate,
-      }
-      handleSelectionChange(nextState)
-      setFocusedValueState(nextState.start)
+      })
     }
   }
 
@@ -551,34 +557,82 @@ const DualCalendar = ({
 
     const parsedEndDate = parse(value, "LLL d, yyyy", new Date())
     if (isValid(parsedEndDate)) {
-      const nextState = {
+      handleSelectionChange({
         start: parsedStartDate,
         end: parsedEndDate,
-      }
-      handleSelectionChange(nextState)
-      setFocusedValueState(nextState.end)
+      })
     }
   }
 
   return (
     <div className="shadow-xl h-[464px] inline-flex border bg-white rounded-lg">
       {left?.()}
-      <div className="flex-none">
-        <div className="flex h-[392px]">
-          <RangeCalendar
-            value={state}
-            onValueChange={handleSelectionChange}
-            focusedValue={focusedValueState}
-            onFocusedValueChange={setFocusedValueState}
-            className="border-r border-gray-200"
-          />
-          <RangeCalendar
-            value={state}
-            onValueChange={handleSelectionChange}
-            focusedValue={secondFocusedMonth}
-            onFocusedValueChange={setSecondFocusedMonth}
-          />
-        </div>
+      <div className="flex-none flex flex-col">
+        <AriaRangeCalendar
+          visibleDuration={{ months: 2 }}
+          value={calendarValue}
+          onChange={handleAriaChange}
+          className="flex-1"
+        >
+          <header className="flex justify-between items-center px-6 pt-5">
+            <IconButton
+              className="rounded-lg"
+              visual="gray"
+              variant="ghost"
+              asChild
+            >
+              <AriaButton slot="previous">
+                <ChevronLeft className="h-5 text-gray-500 w-5" />
+              </AriaButton>
+            </IconButton>
+            <Heading className="text-base leading-6 text-gray-700 font-semibold" />
+            <IconButton
+              className="rounded-lg"
+              visual="gray"
+              variant="ghost"
+              asChild
+            >
+              <AriaButton slot="next">
+                <ChevronRight className="h-5 text-gray-500 w-5" />
+              </AriaButton>
+            </IconButton>
+          </header>
+
+          <div className="flex">
+            <div className="w-[328px] px-6 pb-5">
+              <CalendarGrid className="mt-3 border-separate border-spacing-y-1">
+                <CalendarGridHeader className="[&_th]:p-0">
+                  {(day) => (
+                    <CalendarHeaderCell className="h-10 w-10 p-0 text-sm font-medium text-gray-700">
+                      {day}
+                    </CalendarHeaderCell>
+                  )}
+                </CalendarGridHeader>
+                <CalendarGridBody className="mt-1 [&_td]:p-0">
+                  {(date) => (
+                    <CalendarCell className={RANGE_CELL_CLASS} date={date} />
+                  )}
+                </CalendarGridBody>
+              </CalendarGrid>
+            </div>
+            <div className="w-[328px] px-6 pb-5 border-l border-gray-200">
+              <CalendarGrid offset={{ months: 1 }} className="mt-3 border-separate border-spacing-y-1">
+                <CalendarGridHeader className="[&_th]:p-0">
+                  {(day) => (
+                    <CalendarHeaderCell className="h-10 w-10 p-0 text-sm font-medium text-gray-700">
+                      {day}
+                    </CalendarHeaderCell>
+                  )}
+                </CalendarGridHeader>
+                <CalendarGridBody className="mt-1 [&_td]:p-0">
+                  {(date) => (
+                    <CalendarCell className={RANGE_CELL_CLASS} date={date} />
+                  )}
+                </CalendarGridBody>
+              </CalendarGrid>
+            </div>
+          </div>
+        </AriaRangeCalendar>
 
         <div className="border-t flex items-center justify-between px-4 h-[72px] border-gray-200">
           <div className="inline-flex items-center gap-x-3">
