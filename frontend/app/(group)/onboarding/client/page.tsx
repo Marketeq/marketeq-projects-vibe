@@ -141,7 +141,7 @@ const getClientUsernameSuggestions = ({
 
   const primarySuggestions = generateUsernameSuggestions(
     firstName ?? "",
-    lastName ?? "",
+    "",
     contextParts
   )
 
@@ -269,9 +269,9 @@ const getBudgetDefaultValue = (value?: string) => {
 }
 
 const describeYourTeamFormSchema = z.object({
-  teamName: z.string().min(1, "Team/company name is required."),
-  role: z.string().min(1, "Role/job title is required."),
-  industry: z.string().min(1, "Industry is required."),
+  teamName: z.string().min(1, "Please enter your team or company name."),
+  role: z.string().min(1, "Please enter your role or job title."),
+  industry: z.string().min(1, "Please select your industry."),
 })
 
 type DescribeYourTeamFormValues = z.infer<typeof describeYourTeamFormSchema>
@@ -755,7 +755,7 @@ const shareYourGoalsFormSchema = z
     )
   )
   .refine((data) => keys(data).some((value) => data[value]), {
-    message: "Select at least one goal.",
+    message: "Please select at least one goal.",
     path: [defaultValue.label],
   })
 
@@ -1339,8 +1339,8 @@ const InviteYourTeam = ({
 const usernameRules = z
   .string()
   .trim()
-  .min(3, "Username must be at least 3 characters.")
-  .max(24, "Username must be at most 24 characters.")
+  .min(3, "Please enter at least 3 characters.")
+  .max(24, "Please keep your username under 24 characters.")
   .regex(
     /^[a-z][a-z0-9_]*$/,
     "Username must start with a letter and contain only lowercase letters, numbers, and underscores."
@@ -1489,7 +1489,8 @@ const CreateYourUsername = ({
   const setFormValue = (value: string) => {
     setValue("username", value)
     trigger("username")
-    setUsernameCommitted(true)
+    setUsernameCommitted(false)
+    setTimeout(() => usernameInputRef.current?.focus(), 0)
   }
 
   const clearUsername = () => {
@@ -2469,21 +2470,21 @@ const outlineYourInterestsFormSchema = z
     }),
     lookingToWorkWith: z
       .array(z.string())
-      .min(1, "Enter at least one desired role or one desired skill."),
+      .min(1, "Please enter at least one desired role or skill."),
     skillsLookingFor: z
       .array(z.string())
-      .min(1, "Enter at least one desired role or one desired skill."),
+      .min(1, "Please enter at least one desired role or skill."),
   })
   .refine(
     (data) =>
       industriesOrVerticals.some((item) => data.industriesOrVerticals[item]),
     {
-      message: "Select at least one industry or vertical.",
+      message: "Please select at least one industry or vertical.",
       path: ["industriesOrVerticals"],
     }
   )
   .refine((data) => projects.some((item) => data.projects[item]), {
-    message: "Select at least one project type.",
+    message: "Please select at least one project type.",
     path: ["projects"],
   })
 
@@ -2554,13 +2555,12 @@ const OutlineYourInterests = ({
 
   const onSubmit: SubmitHandler<OutlineYourInterestsFormValues> = (values) => {
     setIsLoading(true)
-    const { firstName, lastName } = deriveClientProfileNames(user, stepData)
+    const derived = deriveClientProfileNames(user, stepData)
 
-    //const { userId, ...restStepData } = stepData || {};
     const clientData: CreateClientType = {
       ...stepData,
-      firstName: user?.firstName ?? stepData?.firstName,
-      lastName: user?.lastName ?? stepData?.lastName,
+      firstName: user?.firstName || stepData?.firstName || derived.firstName,
+      lastName: user?.lastName || stepData?.lastName || derived.lastName,
       avatarUrl: stepData?.avatarUrl ?? user?.avatarUrl ?? undefined,
       budget: values.budget,
       skills: values?.skillsLookingFor,
@@ -2586,30 +2586,42 @@ const OutlineYourInterests = ({
 
     ClientAPI.CreateClient(clientData)
       .then((response) => {
-        if (response?.status === 201 && response?.data?.user) {
+        if (response?.status === 201) {
           toggleValidation(true)
           setStep(currentStep + 1)
           setStepData(null)
-          setClientUser(response?.data?.user)
+          const returnedUser = response?.data?.user ?? response?.data
+          if (returnedUser) {
+            setClientUser(returnedUser)
+          }
         }
       })
       .catch((error) => {
+        const status = error?.response?.status
+        const msg = error?.response?.data?.message
+
+        // 422 "Client already exists" means the user already onboarded
+        // before — treat as success and advance to the final screen.
+        if (status === 422) {
+          toggleValidation(true)
+          setStep(currentStep + 1)
+          setStepData(null)
+          return
+        }
+
         if (error?.response?.data?.errors?.message) {
           toast({
             title: error?.response?.data?.errors?.message,
             variant: "destructive",
           })
-        } else if (
-          Array.isArray(error?.response?.data?.message) &&
-          error?.response?.data?.message?.length > 0
-        ) {
+        } else if (Array.isArray(msg) && msg.length > 0) {
           toast({
-            title: error?.response?.data?.message?.[0],
+            title: msg[0],
             variant: "destructive",
           })
         } else {
           toast({
-            title: error?.response?.data?.message,
+            title: msg || "Something went wrong. Please try again.",
             variant: "destructive",
           })
         }
@@ -2964,7 +2976,7 @@ const DoNext = ({
     return requiresPasswordSetup(candidate) ? "/client-dashboard" : targetRoute
   }
 
-  const handleFinish = async () => {
+  const completeOnboardingAndNavigate = async (targetRoute: string) => {
     setIsLoading(true)
 
     // Always mark onboarding as dismissed locally so AuthenticatedRoute won't bounce back
@@ -2992,8 +3004,10 @@ const DoNext = ({
     }
 
     setIsLoading(false)
-    router.push("/client-dashboard")
+    router.push(getPostOnboardingRoute(targetRoute, clientUser ?? user))
   }
+
+  const handleFinish = () => completeOnboardingAndNavigate("/client-dashboard")
 
   return (
     <div className="min-h-screen flex 2xl:pl-[480px]">
@@ -3010,7 +3024,10 @@ const DoNext = ({
           </p>
 
           <div className="mt-10 md:mt-[50px] grid md:grid-cols-2 gap-2.5 2xl:gap-5">
-            <div className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300">
+            <div
+              className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
+              onClick={() => completeOnboardingAndNavigate("/projects")}
+            >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
                   <Briefcase02 className="size-5" />
@@ -3023,7 +3040,10 @@ const DoNext = ({
               <ChevronRight className="shrink-0 size-5" />
             </div>
 
-            <div className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300">
+            <div
+              className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
+              onClick={() => completeOnboardingAndNavigate("/teams")}
+            >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
                   <Users03 className="size-5" />
@@ -3036,7 +3056,10 @@ const DoNext = ({
               <ChevronRight className="shrink-0 size-5" />
             </div>
 
-            <div className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300">
+            <div
+              className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
+              onClick={() => completeOnboardingAndNavigate("/services")}
+            >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
                   <User02 className="size-5" />
@@ -3051,17 +3074,7 @@ const DoNext = ({
 
             <div
               className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-              onClick={() => {
-                if (clientUser) {
-                  setUser(clientUser)
-                }
-                router.push(
-                  getPostOnboardingRoute(
-                    "/client-dashboard",
-                    clientUser ?? user
-                  )
-                )
-              }}
+              onClick={() => completeOnboardingAndNavigate("/publish-project")}
             >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
@@ -3213,8 +3226,8 @@ const introduceYourselfFormSchema = z.object({
       required_error: "Please select a profile photo.",
     })
     .min(1, "Please select a profile photo."),
-  firstName: z.string().min(1, "First name is required."),
-  lastName: z.string().min(1, "Last name is required."),
+  firstName: z.string().min(1, "Please enter your first name."),
+  lastName: z.string().min(1, "Please enter your last name."),
 })
 type IntroduceYourselfFormValues = z.infer<typeof introduceYourselfFormSchema>
 

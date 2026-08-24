@@ -127,6 +127,14 @@ async function fetchAllRenderEnvVars() {
 }
 
 async function replaceRenderEnvVars(entries) {
+  const minimumVarCount = baseline.renderSharedBackend.minimumVarCount || 0
+  if (minimumVarCount > 0 && entries.length < minimumVarCount) {
+    throw new Error(
+      `SAFETY: refusing to PUT ${entries.length} env vars — minimum is ${minimumVarCount}. ` +
+      `This would wipe ${minimumVarCount - entries.length} vars. Aborting.`
+    )
+  }
+
   const body = entries.map((entry) => ({
     key: entry.key,
     value: entry.value,

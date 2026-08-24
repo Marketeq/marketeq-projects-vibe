@@ -8,7 +8,6 @@ import {
   AlertCircle,
   BarChartSquare02,
   Briefcase,
-  CoinStack,
   CurrencyDollar,
   FileCheck02,
   Home03,
@@ -76,7 +75,7 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
                 <Badge
                   className="rounded-full ml-auto"
                   size="md"
-                  visual="error"
+                  visual={isActive ? "primary" : "error"}
                 >
                   {item.badge}
                 </Badge>
@@ -112,7 +111,6 @@ const buildTalentSections = (inboxBadge?: string): SidebarSection[] => [
         icon: AlertCircle,
         badge: "2",
       },
-      { href: "/billing", label: "Billing", icon: CoinStack },
       { href: "/settings", label: "Settings", icon: Settings02 },
     ],
   },
@@ -126,7 +124,6 @@ const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
       { href: "/my-contracts", label: "My Contracts", icon: FileCheck02 },
       { href: "/my-jobs", label: "My Jobs", icon: Briefcase },
       { href: "/my-team", label: "My Team", icon: Users },
-      { href: "/payments", label: "Payments", icon: CurrencyDollar },
       { href: "/stats", label: "Stats & Trends", icon: BarChartSquare02 },
     ],
   },
@@ -141,7 +138,6 @@ const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
         icon: AlertCircle,
         badge: "2",
       },
-      { href: "/billing", label: "Billing", icon: CoinStack },
       { href: "/settings", label: "Settings", icon: Settings02 },
     ],
   },

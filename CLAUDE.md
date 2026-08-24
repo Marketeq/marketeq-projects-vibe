@@ -57,6 +57,10 @@ Marketeq is a freelance marketplace platform (similar to Upwork/Fiverr) built wi
 
 ### Backend (run from `backend/`)
 ```bash
+# IMPORTANT: RabbitMQ must be running BEFORE starting services.
+# Without it, services show "online" in PM2 but fail on every request.
+lsof -i :5672 || rabbitmq-server -detached  # ensure RabbitMQ is up first
+
 # Start all services via PM2 (local dev)
 npm run dev
 
@@ -64,6 +68,13 @@ npm run dev
 npm run dev:stop
 npm run dev:status
 npm run dev:logs
+
+# MANDATORY: After starting services, health-check the actual endpoints.
+# PM2 "online" does NOT mean the service is healthy. Always verify:
+curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/health  # api-gateway
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/health  # auth-service
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3002/health  # user-service
+# All must return 200. If any returns 000, check RabbitMQ and PM2 error logs.
 
 # Build all services (run from backend/ root — npm run build:all is broken on this monorepo)
 for svc in apps/*/src/main.ts; do npx nest build "$(echo $svc | cut -d'/' -f2)"; done
@@ -230,6 +241,7 @@ CMS events use a fan-out exchange (`cms.events`); each consumer binds its own du
 ### What you MUST NEVER do:
 - **NEVER create custom UI components** — no new component files, no inline UI component functions, no wrappers, no abstractions
 - **NEVER modify Storybook components** — `frontend/components/ui/`, `frontend/components/*.tsx`, and `frontend/stories/` are READ-ONLY. You import as-is, never edit
+- **NEVER touch the active project task screen** — `frontend/app/(group)/active-project/[id]/page.tsx` is FROZEN (locked 2026-08-22). This covers the task tables, pinned section bars and column headers, the bulk-select bar, the create/edit task dialog, the checklist, the attachments views, and the components defined in that file (`AssigneePicker`, `TaskStatusMenu`, `TaskDueDatePicker`, `SortableTaskRow`, `StickySectionBar`). No refactors, no cleanup, no restyling, no spacing tweaks. Every value in it was set deliberately. Surgical edits only, and only with explicit @CTorres9800 approval
 - **NEVER use raw HTML elements** (`<input>`, `<textarea>`, `<select>`, `<button>`, `<label>`, `<dialog>`) when a design system component exists
 - **NEVER use arbitrary Tailwind values** (e.g., `text-[13.5px]`) when a standard Tailwind class exists
 - **NEVER build UI that is not composed from components in `frontend/COMPONENTS.md`**

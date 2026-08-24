@@ -188,7 +188,7 @@ EOF
             echo "status=ok" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Auto-revert bypassed merge
+      - name: Flag SOP violation (alert only, no auto-revert)
         if: steps.checks.outputs.status == 'violation'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -199,108 +199,49 @@ EOF
           BRANCH: ${{ github.ref_name }}
         run: |
           set -e
-          git config user.name  "SOP Audit Bot"
-          git config user.email "sop-audit@marketeq.local"
 
-          REVERT_BRANCH="revert/pr-${PR_NUMBER}-sop-violation"
-
-          # Loudly comment on the original PR
+          # Comment on the original PR
           gh pr comment "$PR_NUMBER" --body "$(cat <<EOF
-## 🚨 MERGED DESPITE FAILING SOP CHECKS
+## SOP Check Warning
 
-This PR was merged to \`${BRANCH}\` by @${{ github.actor }} even though one or more required checks had not succeeded:
+This PR was merged to \`${BRANCH}\` by @${{ github.actor }} with one or more required checks not passing:
 
 ${FAILED_LIST}
 
-Per Code Review SOP §6, this is an **unauthorized merge bypass**. An automatic revert PR is being opened. Only @Marketeq/code-review may decide to re-merge this work — and only after every failing check is resolved.
+**No auto-revert was performed.** CTO review is required to determine if any action is needed.
 
-🤖 Auto-flagged by \`.github/workflows/post-merge-audit.yml\`
+Auto-flagged by \`.github/workflows/post-merge-audit.yml\`
 EOF
 )"
 
-          # Create the revert branch
-          git checkout -b "$REVERT_BRANCH"
-          if ! git revert --no-edit "$COMMIT_SHA"; then
-            echo "Revert failed (likely due to follow-on commits). Opening an issue instead."
-            gh issue create \
-              --title "🚨 Cannot auto-revert PR #${PR_NUMBER} (SOP bypass) — manual action required" \
-              --label "urgent,sop-violation" \
-              --assignee "${{ steps.team.outputs.members }}" \
-              --body "Could not automatically revert commit ${COMMIT_SHA} (PR #${PR_NUMBER}) because of follow-on commits. Please manually revert. Failing checks:\n\n${FAILED_LIST}"
-            exit 1
-          fi
-
-          git push origin "$REVERT_BRANCH"
-
-          # Open the revert PR
-          gh pr create \
-            --base "$BRANCH" \
-            --head "$REVERT_BRANCH" \
-            --title "[SOP AUTO-REVERT] Revert #${PR_NUMBER} — merged despite failing checks" \
-            --reviewer "Marketeq/code-review" \
-            --body "$(cat <<EOF
-## Automatic SOP-violation revert
-
-PR #${PR_NUMBER} was merged to \`${BRANCH}\` by @${{ github.actor }} despite one or more required SOP checks failing.
-
-**Failing checks:**
-${FAILED_LIST}
-
-**Commit being reverted:** \`${COMMIT_SHA}\`
-**Merge author:** @${{ github.actor }}
-**Original PR author:** @${AUTHOR}
-
-### What this PR does
-Reverts the offending merge so \`${BRANCH}\` returns to a known-good state.
-
-### What happens next
-1. @Marketeq/code-review team merges this auto-revert PR to restore \`${BRANCH}\`
-2. The original PR #${PR_NUMBER} has been **labeled \`auto-reverted\`** — do NOT re-merge it
-3. The author must **rebase their branch** on the updated \`${BRANCH}\` and open a **new PR**
-4. The new PR must pass ALL checks (including branch freshness: zero commits behind) before merge
-5. The source branch and code are preserved — nothing is deleted
-
-### Why this exists
-Per Code Review SOP, red checks mean "do not merge". On the free GitHub org plan we cannot technically block the Merge button — so this workflow undoes bypasses post-hoc.
-
-Auto-opened by \`.github/workflows/post-merge-audit.yml\`
-EOF
-)"
-
-          # Label the original PR as auto-reverted so it's clearly dead
-          gh pr edit "$PR_NUMBER" --add-label "auto-reverted,sop-violation" 2>/dev/null || \
+          # Label the PR for tracking
+          gh pr edit "$PR_NUMBER" --add-label "sop-warning" 2>/dev/null || \
             gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/labels" \
-              -X POST -f "labels[]=auto-reverted" -f "labels[]=sop-violation" 2>/dev/null || true
+              -X POST -f "labels[]=sop-warning" 2>/dev/null || true
 
-          # Look up the source branch name for the tracking issue
+          # Open an issue for CTO review
           HEAD_BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName --jq '.headRefName' 2>/dev/null || echo "unknown")
 
-          # NOTE: We do NOT delete the source branch. The code must be preserved.
-          # The author rebases this branch and opens a new PR.
-
-          # Open an issue tracking the violation
           gh issue create \
-            --title "SOP Violation: PR #${PR_NUMBER} auto-reverted — branch was not up-to-date" \
-            --label "auto-reverted,sop-violation" \
+            --title "SOP Warning: PR #${PR_NUMBER} merged with failing checks — CTO review needed" \
+            --label "sop-warning" \
             --assignee "${{ steps.team.outputs.members }}" \
             --body "$(cat <<EOF
-## Branch Freshness Violation
+## SOP Check Warning
 
-PR #${PR_NUMBER} by @${AUTHOR} was merged to \`${BRANCH}\` while failing required checks.
+PR #${PR_NUMBER} by @${AUTHOR} was merged to \`${BRANCH}\` while one or more required checks were not passing.
 
 **Failing checks:**
 ${FAILED_LIST}
 
-**Actions taken automatically:**
-1. Revert PR opened to restore \`${BRANCH}\`
-2. Original PR labeled \`auto-reverted\`
-3. Source branch \`${HEAD_BRANCH}\` preserved (code is NOT deleted)
+**Commit:** \`${COMMIT_SHA}\`
+**Merge author:** @${{ github.actor }}
+**Source branch:** \`${HEAD_BRANCH}\`
 
-**Author must:**
-1. Rebase \`${HEAD_BRANCH}\` on the updated \`${BRANCH}\`: \`git fetch origin ${BRANCH} && git rebase origin/${BRANCH}\`
-2. Force-push the rebased branch: \`git push --force-with-lease\`
-3. Open a new PR from the rebased branch
-4. Ensure zero commits behind \`${BRANCH}\` before merging
+**CTO action required:**
+1. Review the merged code for any actual regressions
+2. If a revert is needed, do it manually
+3. Close this issue after review
 
 Auto-opened by \`.github/workflows/post-merge-audit.yml\`
 EOF

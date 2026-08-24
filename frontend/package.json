@@ -13,6 +13,7 @@
     "format:check": "prettier --check .",
     "prepare": "node -e \"if(process.env.CI) process.exit(0)\" && husky install || true",
     "types:check": "tsc",
+    "check:design-system": "bash scripts/check-design-system.sh",
     "tooling": "concurrently npm:format:check npm:lint npm:types:check",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
@@ -79,6 +80,7 @@
     "headless-stepper": "^1.11.0",
     "idb": "^8.0.3",
     "js-cookie": "^3.0.5",
+    "jspdf": "^4.2.1",
     "jwt-decode": "^4.0.0",
     "leo-profanity": "^1.8.0",
     "next": "^16.1.6",
