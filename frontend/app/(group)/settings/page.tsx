@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
+import { useDropzone } from "react-dropzone"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
@@ -19,7 +20,19 @@ import {
 } from "@/components/two-factor-setup"
 import { PhoneNumberInput } from "@/components/phone-number-input"
 import dynamic from "next/dynamic"
-import { ChevronDown, Edit01, HelpCircle, Plus, Settings02, Share06, X2 } from "@blend-metrics/icons"
+import {
+  CheckCircle,
+  ChevronDown,
+  Edit01,
+  HelpCircle,
+  Image as ImageIcon,
+  Plus,
+  Settings02,
+  Share06,
+  Trash03,
+  X,
+  X2,
+} from "@blend-metrics/icons"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,13 +63,23 @@ const BillingMyPlansContent = dynamic(
   { ssr: false }
 )
 import {
+  Alert,
+  AlertIcon,
+  AlertTitle,
   Avatar,
   AvatarFallback,
   AvatarImage,
   Badge,
   Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogTitle,
   IconButton,
   Input,
+  InputGroup,
+  InputLeftAddon,
   Label,
   Listbox,
   ListboxButton,
@@ -90,6 +113,96 @@ export default function SettingsPage() {
     languages: [] as string[],
   })
 
+  const [showAvatarModal, setShowAvatarModal] = useState(false)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [isAvatarRemoved, setIsAvatarRemoved] = useState(false)
+
+  const avatarSrc = isAvatarRemoved
+    ? ""
+    : avatarPreview ?? user?.avatarUrl ?? ""
+
+  const onAvatarDropAccepted = useCallback((files: File[]) => {
+    const file = files[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setIsAvatarRemoved(false)
+      setAvatarPreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+  }, [])
+
+  const onAvatarRemove = useCallback(() => {
+    setAvatarPreview(null)
+    setIsAvatarRemoved(true)
+  }, [])
+
+  const {
+    getInputProps: getAvatarInputProps,
+    open: openAvatarFilePicker,
+  } = useDropzone({
+    noClick: true,
+    noDrag: true,
+    multiple: false,
+    maxFiles: 1,
+    accept: { "image/*": [] },
+    onDropAccepted: onAvatarDropAccepted,
+  })
+
+  const [showLogoModal, setShowLogoModal] = useState(false)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [isLogoRemoved, setIsLogoRemoved] = useState(false)
+
+  const logoSrc = isLogoRemoved ? "" : logoPreview ?? ""
+
+  const onLogoDropAccepted = useCallback((files: File[]) => {
+    const file = files[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setIsLogoRemoved(false)
+      setLogoPreview(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+  }, [])
+
+  const onLogoRemove = useCallback(() => {
+    setLogoPreview(null)
+    setIsLogoRemoved(true)
+  }, [])
+
+  const {
+    getInputProps: getLogoInputProps,
+    open: openLogoFilePicker,
+  } = useDropzone({
+    noClick: true,
+    noDrag: true,
+    multiple: false,
+    maxFiles: 1,
+    accept: { "image/*": [] },
+    onDropAccepted: onLogoDropAccepted,
+  })
+
+  const [isSavedAlertMounted, setIsSavedAlertMounted] = useState(false)
+  const [isSavedAlertVisible, setIsSavedAlertVisible] = useState(false)
+  const [savedAlertMessage, setSavedAlertMessage] = useState("")
+
+  useEffect(() => {
+    if (!isSavedAlertMounted) return
+
+    const fadeIn = requestAnimationFrame(() => setIsSavedAlertVisible(true))
+    const fadeOut = setTimeout(() => setIsSavedAlertVisible(false), 3000)
+    const unmount = setTimeout(() => setIsSavedAlertMounted(false), 3300)
+
+    return () => {
+      cancelAnimationFrame(fadeIn)
+      clearTimeout(fadeOut)
+      clearTimeout(unmount)
+    }
+  }, [isSavedAlertMounted])
+
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [showSessionsModal, setShowSessionsModal] = useState(false)
   const [show2FASetup, setShow2FASetup] = useState(false)
@@ -99,6 +212,68 @@ export default function SettingsPage() {
     () => languagesMock.map((item) => item.label),
     []
   )
+
+  const [companyForm, setCompanyForm] = useState({
+    name: "",
+    website: "",
+    industry: "",
+    businessType: "",
+    companySize: "",
+    annualRevenue: "",
+    phone: "",
+    timeZone: "",
+  })
+
+  const handleCompanyChange = (field: string, value: string) => {
+    setCompanyForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const industryOptions = [
+    "Advertising & Marketing",
+    "Construction",
+    "Education",
+    "Finance",
+    "Healthcare",
+    "Hospitality",
+    "Manufacturing",
+    "Real Estate",
+    "Retail",
+    "Technology",
+  ]
+
+  const businessTypeOptions = [
+    "Sole Proprietorship",
+    "Partnership",
+    "LLC",
+    "Corporation",
+    "Non-Profit",
+  ]
+
+  const companySizeOptions = [
+    "1 - 10",
+    "11 - 50",
+    "51 - 200",
+    "201 - 500",
+    "501 - 1000",
+    "1000+",
+  ]
+
+  const annualRevenueOptions = [
+    "Under $1M",
+    "$1M - $10M",
+    "$10M - $50M",
+    "$50M - $100M",
+    "$100M+",
+  ]
+
+  const timeZoneOptions = [
+    "(GMT-08:00) America/Los_Angeles",
+    "(GMT-07:00) America/Denver",
+    "(GMT-06:00) America/Chicago",
+    "(GMT-05:00) America/New_York",
+    "(GMT+00:00) Europe/London",
+    "(GMT+01:00) Europe/Berlin",
+  ]
 
   const teamOptions = [
     "Engineering",
@@ -129,14 +304,75 @@ export default function SettingsPage() {
     }
   }, [user])
 
+  const isAvatarDirty = avatarPreview !== null || isAvatarRemoved
+
   const isProfileDirty = useMemo(() => {
+    if (isAvatarDirty) return true
     if (!user) return false
+
+    const rawTeam = (user as any).team ?? ""
+    const rawLang = (user as any).language ?? ""
+    const savedTeam = rawTeam
+      ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean)
+      : []
+    const savedLanguages = rawLang
+      ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean)
+      : []
+
     return (
       profileForm.firstName !== (user.firstName ?? "") ||
       profileForm.lastName !== (user.lastName ?? "") ||
-      profileForm.username !== (user.username ?? "")
+      profileForm.username !== (user.username ?? "") ||
+      profileForm.phone !== ((user as any).phone ?? "") ||
+      profileForm.jobTitle !== ((user as any).recentJobTitle ?? "") ||
+      profileForm.team.join(",") !== savedTeam.join(",") ||
+      profileForm.languages.join(",") !== savedLanguages.join(",")
     )
-  }, [profileForm, user])
+  }, [profileForm, user, isAvatarDirty])
+
+  const [hasJustSaved, setHasJustSaved] = useState(false)
+
+  useEffect(() => {
+    setHasJustSaved(false)
+  }, [profileForm, avatarPreview, isAvatarRemoved])
+
+  const areProfileActionsVisible = isProfileDirty && !hasJustSaved
+
+  const isLogoDirty = logoPreview !== null || isLogoRemoved
+
+  const isCompanyDirty = useMemo(() => {
+    if (isLogoDirty) return true
+    return Object.values(companyForm).some((value) => value !== "")
+  }, [companyForm, isLogoDirty])
+
+  const [hasJustSavedCompany, setHasJustSavedCompany] = useState(false)
+
+  useEffect(() => {
+    setHasJustSavedCompany(false)
+  }, [companyForm, logoPreview, isLogoRemoved])
+
+  const areCompanyActionsVisible = isCompanyDirty && !hasJustSavedCompany
+
+  const handleCompanySave = () => {
+    setSavedAlertMessage("Your company info has been saved")
+    setIsSavedAlertMounted(true)
+    setHasJustSavedCompany(true)
+  }
+
+  const handleCompanyCancel = () => {
+    setCompanyForm({
+      name: "",
+      website: "",
+      industry: "",
+      businessType: "",
+      companySize: "",
+      annualRevenue: "",
+      phone: "",
+      timeZone: "",
+    })
+    setLogoPreview(null)
+    setIsLogoRemoved(false)
+  }
 
   const paymentMethodsRef = useRef<BillingPaymentMethodsContentHandle | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -165,6 +401,10 @@ export default function SettingsPage() {
   }
 
   const handleProfileSave = async () => {
+    setSavedAlertMessage("Your personal info has been saved")
+    setIsSavedAlertMounted(true)
+    setHasJustSaved(true)
+
     if (!user?.id) return
 
     setIsSaving(true)
@@ -220,6 +460,8 @@ export default function SettingsPage() {
       team: rawTeam ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
       languages: rawLang ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
     })
+    setAvatarPreview(null)
+    setIsAvatarRemoved(false)
     setIsEditing(false)
   }
 
@@ -276,7 +518,7 @@ export default function SettingsPage() {
                     <div className="relative">
                       <Avatar className="size-24 border-4 border-white">
                         <AvatarImage
-                          src={user?.avatarUrl ?? ""}
+                          src={avatarSrc}
                           alt={user?.firstName ?? "User"}
                         />
                         <AvatarFallback className="text-4xl font-medium tracking-tight text-gray-300">
@@ -286,6 +528,7 @@ export default function SettingsPage() {
                       </Avatar>
                       <button
                         type="button"
+                        onClick={() => setShowAvatarModal(true)}
                         className="absolute -bottom-1 -right-1 size-[30px] rounded-full bg-white border border-gray-300 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)] flex items-center justify-center hover:bg-gray-50 transition-colors"
                       >
                         <Edit01 className="size-4 text-gray-400" />
@@ -308,6 +551,75 @@ export default function SettingsPage() {
                       </p>
                     </div>
                   </div>
+
+                  <Dialog
+                    open={showAvatarModal}
+                    onOpenChange={setShowAvatarModal}
+                  >
+                    <DialogContent
+                      className="flex max-w-[467px] flex-col items-center gap-8 p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <input hidden {...getAvatarInputProps()} />
+
+                      <div className="flex w-full flex-col items-center justify-center gap-5">
+                        <DialogTitle className="w-full text-center text-lg leading-7 font-semibold text-gray-900">
+                          Change Profile Image
+                        </DialogTitle>
+                        <DialogDescription className="sr-only">
+                          Manage your profile image.
+                        </DialogDescription>
+
+                        <Avatar className="size-[160px] border-4 border-white">
+                          <AvatarImage
+                            src={avatarSrc}
+                            alt={user?.firstName ?? "User"}
+                          />
+                          <AvatarFallback className="bg-gray-100 hover:bg-gray-100 text-[60px] leading-[44px] font-medium tracking-[-0.02em] uppercase text-gray-300">
+                            {(user?.firstName?.[0] ?? "").toUpperCase()}
+                            {(user?.lastName?.[0] ?? "").toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
+
+                      <IconButton
+                        size="sm"
+                        visual="gray"
+                        variant="ghost"
+                        className="absolute right-2.5 top-2.5"
+                        onClick={() => setShowAvatarModal(false)}
+                      >
+                        <X className="size-4 text-gray-500" />
+                      </IconButton>
+
+                      <div className="flex w-full items-start justify-center gap-x-3">
+                        <Button
+                          size="sm"
+                          visual="error"
+                          variant="ghost"
+                          className="bg-error-100"
+                          onClick={onAvatarRemove}
+                          leftIcon={<Trash03 className="size-[15px]" />}
+                        >
+                          Remove Photo
+                        </Button>
+                        <Button
+                          size="sm"
+                          visual="gray"
+                          variant="outlined"
+                          className="bg-white"
+                          onClick={openAvatarFilePicker}
+                          leftIcon={
+                            <ImageIcon className="size-[15px] text-gray-500" />
+                          }
+                        >
+                          Change Profile Image
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
 
                   <div className="mt-6 max-w-[664px] grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div className="space-y-1.5">
@@ -445,30 +757,319 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  <div className="mt-6 max-w-[664px] flex justify-end gap-x-3">
-                    <Button
-                      variant="outlined"
-                      visual="gray"
-                      size="sm"
-                      onClick={handleProfileCancel}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={handleProfileSave}
-                      disabled={isSaving || !isProfileDirty}
-                    >
-                      {isSaving ? "Saving..." : "Save Changes"}
-                    </Button>
+                  <div className="relative mt-6 max-w-[664px] h-9">
+                    {isSavedAlertMounted && (
+                      <Alert
+                        variant="success"
+                        className={cn(
+                          "absolute left-0 top-1/2 z-10 -translate-y-1/2 w-[296px] items-center rounded-[5px] pointer-events-none transition-opacity duration-300",
+                          isSavedAlertVisible ? "opacity-100" : "opacity-0"
+                        )}
+                      >
+                        <AlertIcon>
+                          <CheckCircle className="size-5 text-success-500" />
+                        </AlertIcon>
+                        <AlertTitle className="text-success-600">
+                          {savedAlertMessage}
+                        </AlertTitle>
+                      </Alert>
+                    )}
+
+                    {areProfileActionsVisible && (
+                      <div className="flex justify-end gap-x-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={handleProfileCancel}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleProfileSave}
+                          disabled={isSaving}
+                        >
+                          Save Changes
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
 
               {activeTab === "company-info" && (
-                <h1 className="text-xl font-bold text-dark-blue-400">
-                  Company Info
-                </h1>
+                <>
+                  <div className="flex flex-col gap-3">
+                    <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                      Company Info
+                    </h1>
+                    <p className="text-sm text-gray-500">
+                      Manage your company details and business information.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 space-y-1.5">
+                    <Label size="sm">Logo</Label>
+                    <div className="relative w-[228px] h-[104px] overflow-hidden rounded-[5px] border-4 border-white bg-gray-100">
+                      {logoSrc && (
+                        <img
+                          src={logoSrc}
+                          alt="Company logo"
+                          className="size-full object-cover"
+                        />
+                      )}
+                      <IconButton
+                        size="sm"
+                        visual="gray"
+                        variant="ghost"
+                        className="absolute bottom-0 right-0 size-[29px] bg-white rounded-none rounded-tl-[12px] rounded-br-[8px]"
+                        onClick={() => setShowLogoModal(true)}
+                      >
+                        <Edit01 className="size-4 text-gray-400" />
+                      </IconButton>
+                    </div>
+                  </div>
+
+                  <Dialog open={showLogoModal} onOpenChange={setShowLogoModal}>
+                    <DialogContent
+                      className="flex max-w-[467px] flex-col items-center gap-8 p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <input hidden {...getLogoInputProps()} />
+
+                      <div className="flex w-full flex-col items-center justify-center gap-5">
+                        <DialogTitle className="w-full text-center text-lg leading-7 font-semibold text-gray-900">
+                          Change Logo
+                        </DialogTitle>
+                        <DialogDescription className="sr-only">
+                          Manage your company logo.
+                        </DialogDescription>
+
+                        <div className="w-[228px] h-[104px] overflow-hidden rounded-[5px] border-4 border-white bg-gray-100">
+                          {logoSrc && (
+                            <img
+                              src={logoSrc}
+                              alt="Company logo"
+                              className="size-full object-cover"
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      <IconButton
+                        size="sm"
+                        visual="gray"
+                        variant="ghost"
+                        className="absolute right-2.5 top-2.5"
+                        onClick={() => setShowLogoModal(false)}
+                      >
+                        <X className="size-4 text-gray-500" />
+                      </IconButton>
+
+                      <div className="flex w-full items-start justify-center gap-x-3">
+                        <Button
+                          size="sm"
+                          visual="error"
+                          variant="ghost"
+                          className="bg-error-100"
+                          onClick={onLogoRemove}
+                          leftIcon={<Trash03 className="size-[15px]" />}
+                        >
+                          Remove Logo
+                        </Button>
+                        <Button
+                          size="sm"
+                          visual="gray"
+                          variant="outlined"
+                          className="bg-white"
+                          onClick={openLogoFilePicker}
+                          leftIcon={
+                            <ImageIcon className="size-[15px] text-gray-500" />
+                          }
+                        >
+                          Change Logo
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <div className="mt-6 max-w-[664px] grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="space-y-1.5">
+                      <Label size="sm">Company Name</Label>
+                      <Input
+                        placeholder="e.g. Acme Analytics"
+                        value={companyForm.name}
+                        onChange={(e) =>
+                          handleCompanyChange("name", e.target.value)
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Company Website</Label>
+                      <InputGroup>
+                        <InputLeftAddon>https://</InputLeftAddon>
+                        <Input
+                          placeholder="www.yourwebsite.com"
+                          value={companyForm.website}
+                          onChange={(e) =>
+                            handleCompanyChange("website", e.target.value)
+                          }
+                        />
+                      </InputGroup>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Industry</Label>
+                      <Listbox
+                        value={companyForm.industry}
+                        onChange={(value) =>
+                          handleCompanyChange("industry", value as string)
+                        }
+                      >
+                        <ListboxButton
+                          placeholder="Select Industry"
+                          displayValue={(val) => (val as string) || null}
+                        />
+                        <ListboxOptions>
+                          {industryOptions.map((item) => (
+                            <ListboxOption key={item} value={item}>
+                              {item}
+                            </ListboxOption>
+                          ))}
+                        </ListboxOptions>
+                      </Listbox>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Business Type</Label>
+                      <Listbox
+                        value={companyForm.businessType}
+                        onChange={(value) =>
+                          handleCompanyChange("businessType", value as string)
+                        }
+                      >
+                        <ListboxButton
+                          placeholder="Select Type"
+                          displayValue={(val) => (val as string) || null}
+                        />
+                        <ListboxOptions>
+                          {businessTypeOptions.map((item) => (
+                            <ListboxOption key={item} value={item}>
+                              {item}
+                            </ListboxOption>
+                          ))}
+                        </ListboxOptions>
+                      </Listbox>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Company Size</Label>
+                      <Listbox
+                        value={companyForm.companySize}
+                        onChange={(value) =>
+                          handleCompanyChange("companySize", value as string)
+                        }
+                      >
+                        <ListboxButton
+                          placeholder="1 - 10"
+                          displayValue={(val) => (val as string) || null}
+                        />
+                        <ListboxOptions>
+                          {companySizeOptions.map((item) => (
+                            <ListboxOption key={item} value={item}>
+                              {item}
+                            </ListboxOption>
+                          ))}
+                        </ListboxOptions>
+                      </Listbox>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Annual Revenue</Label>
+                      <Listbox
+                        value={companyForm.annualRevenue}
+                        onChange={(value) =>
+                          handleCompanyChange("annualRevenue", value as string)
+                        }
+                      >
+                        <ListboxButton
+                          placeholder="Select Revenue"
+                          displayValue={(val) => (val as string) || null}
+                        />
+                        <ListboxOptions>
+                          {annualRevenueOptions.map((item) => (
+                            <ListboxOption key={item} value={item}>
+                              {item}
+                            </ListboxOption>
+                          ))}
+                        </ListboxOptions>
+                      </Listbox>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Company Phone Number</Label>
+                      <PhoneNumberInput
+                        defaultCountry="us"
+                        value={companyForm.phone}
+                        onChange={(v) => handleCompanyChange("phone", v)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Time Zone</Label>
+                      <Listbox
+                        value={companyForm.timeZone}
+                        onChange={(value) =>
+                          handleCompanyChange("timeZone", value as string)
+                        }
+                      >
+                        <ListboxButton
+                          placeholder="(GMT-05:00) America/New_York"
+                          displayValue={(val) => (val as string) || null}
+                        />
+                        <ListboxOptions>
+                          {timeZoneOptions.map((item) => (
+                            <ListboxOption key={item} value={item}>
+                              {item}
+                            </ListboxOption>
+                          ))}
+                        </ListboxOptions>
+                      </Listbox>
+                    </div>
+                  </div>
+
+                  <div className="relative mt-6 max-w-[664px] h-9">
+                    {isSavedAlertMounted && (
+                      <Alert
+                        variant="success"
+                        className={cn(
+                          "absolute left-0 top-1/2 z-10 -translate-y-1/2 w-[296px] items-center rounded-[5px] pointer-events-none transition-opacity duration-300",
+                          isSavedAlertVisible ? "opacity-100" : "opacity-0"
+                        )}
+                      >
+                        <AlertIcon>
+                          <CheckCircle className="size-5 text-success-500" />
+                        </AlertIcon>
+                        <AlertTitle className="text-success-600">
+                          {savedAlertMessage}
+                        </AlertTitle>
+                      </Alert>
+                    )}
+
+                    {areCompanyActionsVisible && (
+                      <div className="flex justify-end gap-x-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={handleCompanyCancel}
+                        >
+                          Cancel
+                        </Button>
+                        <Button size="sm" onClick={handleCompanySave}>
+                          Save Changes
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
 
               {activeTab === "privacy" && (
