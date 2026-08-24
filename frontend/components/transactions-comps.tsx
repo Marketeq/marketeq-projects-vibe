@@ -110,6 +110,9 @@ import {
   DualCalendar,
   IconButton,
   Input,
+  InputGroup,
+  InputLeftElement,
+  InputRightElement,
   Listbox,
   ListboxButton,
   ListboxOption,
@@ -8472,12 +8475,6 @@ export const PayoutScheduleDialog = ({
                     />
                   ))}
                 </div>
-              ) : methods.length === 0 ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-gray-500 text-center py-6">
-                    No payout methods found.
-                  </p>
-                </div>
               ) : (
                 <>
                   {/* ── Primary Method (US-22/23) — Figma keeps this section's
@@ -8954,18 +8951,30 @@ export const PayoutScheduleDialog = ({
                               <Input
                                 type="number"
                                 min={1}
-                                max={249}
+                                max={250}
                                 placeholder="Enter custom amount"
                                 className="pl-6"
                                 value={reserveCustomValue}
                                 onChange={(e) => {
                                   const v = e.target.value
-                                  setReserveCustomValue(v)
+                                  if (v === "") {
+                                    setReserveCustomValue("")
+                                    return
+                                  }
                                   const n = parseInt(v)
-                                  if (!isNaN(n))
-                                    setReserveUsd(
-                                      String(Math.max(0, Math.min(249, n)))
-                                    )
+                                  if (isNaN(n)) return
+                                  // Backend caps reserveUsd at $250 inclusive
+                                  // (schedule.service.ts: reserve > 250 →
+                                  // ERR_SCHEDULE_RESERVE_EXCEEDS_MAX). Clamp
+                                  // the displayed value too, not just what
+                                  // gets submitted — otherwise the box can
+                                  // show e.g. "500" while $250 is silently
+                                  // saved instead.
+                                  const clamped = String(
+                                    Math.max(0, Math.min(250, n))
+                                  )
+                                  setReserveCustomValue(clamped)
+                                  setReserveUsd(clamped)
                                 }}
                               />
                             </div>
@@ -8984,7 +8993,7 @@ export const PayoutScheduleDialog = ({
                         )}
                         {reserveCustomOpen && (
                           <p className="text-xs text-gray-400">
-                            Custom amount needs to be under $250.
+                            Custom amount can be up to $250.
                           </p>
                         )}
                       </div>
@@ -10014,7 +10023,7 @@ export const EarningsTab = ({
     if (statusFilter) q.status = statusFilter
     if (projectId) q.projectId = projectId
     if (clientId) q.clientId = clientId
-    if (searchQuery.length >= 2) q.search = searchQuery
+    if (searchQuery.length >= 1) q.search = searchQuery
     getEarnings(q)
       .then(setEarningsResult)
       .catch((e) => {
@@ -10130,7 +10139,7 @@ export const EarningsTab = ({
           },
         ]
       : []),
-    ...(searchQuery.length >= 2
+    ...(searchQuery.length >= 1
       ? [
           {
             key: "search",
@@ -10165,7 +10174,7 @@ export const EarningsTab = ({
       endDate: dateTo,
       entryType,
       statusFilter,
-      search: searchQuery.length >= 2 ? searchQuery : "",
+      search: searchQuery.length >= 1 ? searchQuery : "",
       projectId,
       clientId,
     })
@@ -10465,7 +10474,30 @@ export const EarningsTab = ({
       </div>
 
 
-      {/* Table */}
+      {/* Table — a zero-result search replaces the whole card (header included),
+          same as Settings → Billing → Transactions (billing-transactions-content.tsx),
+          not just an empty row inside the table. */}
+      {earningsResult?.data.length === 0 && searchQuery.length >= 1 ? (
+        <div className="flex flex-col items-center py-14 gap-4">
+          <p className="text-base font-semibold text-dark-blue-400">
+            0 Results for &ldquo;{searchQuery.trim()}&rdquo;
+          </p>
+          <p className="text-sm text-gray-500 -mt-2 max-w-[380px] mx-auto text-center">
+            We couldn&apos;t find any results for your search. Try adjusting
+            your keywords or clearing your search.
+          </p>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-gray-200 rounded-[5px] text-sm font-semibold leading-5 text-dark-blue-400 transition-colors duration-300 hover:bg-gray-300"
+            onClick={() => {
+              setSearchQuery("")
+              setCurrentPage(1)
+            }}
+          >
+            Clear Search
+          </button>
+        </div>
+      ) : (
       <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
         <Table>
           <TableHeader className="bg-white [&_tr]:border-gray-200">
@@ -10497,12 +10529,12 @@ export const EarningsTab = ({
                 </TableHead>
               )}
               {viewMode === "daily" && (
-                <TableHead className="text-xs font-medium text-gray-500">
+                <TableHead className="text-xs font-medium text-gray-500 whitespace-nowrap">
                   Start Time
                 </TableHead>
               )}
               {viewMode === "daily" && (
-                <TableHead className="text-xs font-medium text-gray-500">
+                <TableHead className="text-xs font-medium text-gray-500 whitespace-nowrap">
                   End Time
                 </TableHead>
               )}
@@ -10557,34 +10589,6 @@ export const EarningsTab = ({
                   >
                     Retry
                   </button>
-                </TableCell>
-              </TableRow>
-            ) : earningsResult?.data.length === 0 && searchQuery.length >= 2 ? (
-              /* Figma: a dedicated, prominent empty state for a zero-result
-                 search — distinct from the plain filtered-empty row, and
-                 its "Clear Search" only clears the search term, not the
-                 other active filters. */
-              <TableRow>
-                <TableCell colSpan={8} className="text-center py-16">
-                  <p className="text-sm font-semibold text-dark-blue-400">
-                    0 Results for &quot;{searchQuery}&quot;
-                  </p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    We couldn&apos;t find any results for your search. Try
-                    adjusting your keywords or clearing your search.
-                  </p>
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    size="sm"
-                    className="mt-4"
-                    onClick={() => {
-                      setSearchQuery("")
-                      setCurrentPage(1)
-                    }}
-                  >
-                    Clear Search
-                  </Button>
                 </TableCell>
               </TableRow>
             ) : earningsResult?.data.length === 0 ? (
@@ -10649,12 +10653,12 @@ export const EarningsTab = ({
                       </TableCell>
                     )}
                     {viewMode === "daily" && (
-                      <TableCell className="text-sm text-gray-500">
+                      <TableCell className="text-sm text-gray-500 whitespace-nowrap">
                         {row.startTime ?? "—"}
                       </TableCell>
                     )}
                     {viewMode === "daily" && (
-                      <TableCell className="text-sm text-gray-500">
+                      <TableCell className="text-sm text-gray-500 whitespace-nowrap">
                         {row.endTime ?? "—"}
                       </TableCell>
                     )}
@@ -10733,8 +10737,10 @@ export const EarningsTab = ({
           </TableBody>
         </Table>
       </div>
+      )}
 
       {/* Figma: footer sits on the grey page bg, outside the white table card */}
+      {!(earningsResult?.data.length === 0 && searchQuery.length >= 1) && (
       <div className="flex items-center justify-between px-1 pt-3">
         <p className="text-xs text-[#22376B]">
           {earningsResult
@@ -10763,6 +10769,7 @@ export const EarningsTab = ({
           onPageChange={setCurrentPage}
         />
       </div>
+      )}
 
       {/* F-05 Entry Detail Drawer — second, self-contained instance mirroring
           OverviewTab's (US-30), since the two tabs are separate components
@@ -11409,7 +11416,7 @@ export const PayoutsTab = ({
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const hasActiveFilters =
     !!statusFilter ||
-    searchQuery.length >= 2 ||
+    searchQuery.length >= 1 ||
     dateRange !== "all_time" ||
     !!depositMethodId
 
@@ -11425,7 +11432,7 @@ export const PayoutsTab = ({
           pageSize: String(pageSize),
         })
         if (statusFilter) qs.set("status", statusFilter)
-        if (searchQuery.trim().length >= 2) qs.set("search", searchQuery.trim())
+        if (searchQuery.trim().length >= 1) qs.set("search", searchQuery.trim())
         if (dateRange === "custom" && dateFrom && dateTo) {
           qs.set("dateRange", "custom")
           qs.set("from", dateFrom)
@@ -11465,7 +11472,7 @@ export const PayoutsTab = ({
       dateTo,
       statusFilter,
       depositMethodId,
-      search: searchQuery.trim().length >= 2 ? searchQuery.trim() : "",
+      search: searchQuery.trim().length >= 1 ? searchQuery.trim() : "",
     })
   }, [onFiltersChange, dateRange, dateFrom, dateTo, statusFilter, depositMethodId, searchQuery])
 
@@ -11504,7 +11511,7 @@ export const PayoutsTab = ({
           amount={
             scheduleLoading
               ? "-"
-              : nextRunAt && balance
+              : balance
                 ? formatAmountWithCents(balance.availableBalance)
                 : "-"
           }
@@ -11533,7 +11540,12 @@ export const PayoutsTab = ({
                 <BankIcon className="size-3.5 text-[#98A2B3]" />
                 {formatPayoutMethodMask(defaultMethodLabel)}
               </span>
-            ) : undefined
+            ) : scheduleLoading ? undefined : (
+              // Keeps this card's bottom row present (same as Total Payouts
+              // This Month / Lifetime Payouts) so all three stay equal height —
+              // an absent `extra` collapses the row and shrinks the card.
+              "No deposit method"
+            )
           }
         />
         <StatCard
@@ -11700,38 +11712,65 @@ export const PayoutsTab = ({
         </Button>
 
         <div className="ml-auto">
-          <SearchField className="w-[448px]">
-            <SearchFieldInput
-              size="lg"
-              className={searchQuery ? "pr-[42px]" : undefined}
-              placeholder="Search"
+          {/* Same "Find transactions" search component as Settings → Billing →
+            Transactions (billing-transactions-content.tsx), copied here per
+            request — InputGroup with hover-expand width, not SearchField. */}
+          <InputGroup className="group/search w-[220px] transition-all duration-300 focus-within:w-[375px]">
+            <InputLeftElement>
+              <SearchMd className="size-4 text-gray-400 transition-colors duration-300 group-hover/search:text-gray-500 group-focus-within/search:!text-primary-500" />
+            </InputLeftElement>
+            <Input
+              placeholder="Find transactions"
+              className="pl-9 pr-9 transition-[border-color,width] duration-300 hover:border-primary-200 hover:shadow-[0px_0px_0px_4px_#E1EAFF] focus:!ring-0 focus:!shadow-[0px_0px_0px_4px_#E1EAFF]"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value)
                 setCurrentPage(1)
               }}
             />
-            <SearchFieldButton size="lg">
-              <SearchMd className="h-5 w-5" />
-            </SearchFieldButton>
             {searchQuery && (
-              <button
-                type="button"
-                aria-label="Clear search"
-                className="absolute right-3 inset-y-0 my-auto text-gray-400 hover:text-gray-500"
-                onClick={() => {
-                  setSearchQuery("")
-                  setCurrentPage(1)
-                }}
-              >
-                <XCircle className="size-5" />
-              </button>
+              <InputRightElement>
+                <button
+                  type="button"
+                  className="focus-visible:outline-none"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setSearchQuery("")
+                    setCurrentPage(1)
+                  }}
+                >
+                  <XCircle className="size-4 text-gray-500 opacity-50 hover:opacity-100" />
+                </button>
+              </InputRightElement>
             )}
-          </SearchField>
+          </InputGroup>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table — a zero-result search replaces the whole card (header included),
+          same as Settings → Billing → Transactions (billing-transactions-content.tsx),
+          not just an empty row inside the table. */}
+      {payouts.length === 0 && searchQuery.trim().length >= 1 ? (
+        <div className="flex flex-col items-center py-14 gap-4">
+          <p className="text-base font-semibold text-dark-blue-400">
+            0 Results for &ldquo;{searchQuery.trim()}&rdquo;
+          </p>
+          <p className="text-sm text-gray-500 -mt-2 max-w-[380px] mx-auto text-center">
+            We couldn&apos;t find any results for your search. Try adjusting
+            your keywords or clearing your search.
+          </p>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-gray-200 rounded-[5px] text-sm font-semibold leading-5 text-dark-blue-400 transition-colors duration-300 hover:bg-gray-300"
+            onClick={() => {
+              setSearchQuery("")
+              setCurrentPage(1)
+            }}
+          >
+            Clear Search
+          </button>
+        </div>
+      ) : (
       <div className="rounded-lg border border-gray-200 bg-white">
         <Table>
           <TableHeader>
@@ -11765,33 +11804,6 @@ export const PayoutsTab = ({
                   >
                     Retry
                   </button>
-                </TableCell>
-              </TableRow>
-            ) : payouts.length === 0 && searchQuery.trim().length >= 2 ? (
-              // Figma: a dedicated, prominent empty state for a zero-result
-              // search — "Clear Search" only clears the search term, not
-              // the status filter.
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-16">
-                  <p className="text-sm font-semibold text-dark-blue-400">
-                    0 Results for &quot;{searchQuery}&quot;
-                  </p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    We couldn&apos;t find any results for your search. Try
-                    adjusting your keywords or clearing your search.
-                  </p>
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    size="sm"
-                    className="mt-4"
-                    onClick={() => {
-                      setSearchQuery("")
-                      setCurrentPage(1)
-                    }}
-                  >
-                    Clear Search
-                  </Button>
                 </TableCell>
               </TableRow>
             ) : payouts.length === 0 && hasActiveFilters ? (
@@ -11876,6 +11888,7 @@ export const PayoutsTab = ({
           </TableBody>
         </Table>
       </div>
+      )}
 
       {/* Figma: pagination on grey page bg, outside the white table card */}
       {!loading && !loadError && payouts.length > 0 && (

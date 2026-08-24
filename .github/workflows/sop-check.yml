@@ -139,13 +139,14 @@ jobs:
             fi
           fi
 
-          # --- Section 3c: Frozen UI files (settings sidebar, nav bar) ---
+          # --- Section 3c: Frozen UI files (settings sidebar, nav bar, active project) ---
           FROZEN_UI_HIT=0
           FROZEN_UI_FILES=""
           while IFS= read -r f; do
             case "$f" in
               frontend/components/settings-sidebar.tsx|\
-              frontend/app/top-most-header.tsx)
+              frontend/app/top-most-header.tsx|\
+              "frontend/app/(group)/active-project/[id]/page.tsx")
                 FROZEN_UI_HIT=1
                 FROZEN_UI_FILES="$FROZEN_UI_FILES\n- \`$f\`" ;;
             esac

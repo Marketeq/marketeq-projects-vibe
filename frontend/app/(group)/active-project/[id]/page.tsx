@@ -961,9 +961,7 @@ export default function ActiveProjectPage() {
   ]
   // an empty section is hidden entirely, but This Week always stays so
   // there is somewhere to add a task from
-  const taskSections = allTaskSections.filter(
-    section => section.items.length > 0 || section.key === "this"
-  )
+  const taskSections = allTaskSections.filter(section => section.items.length > 0)
 
   const renameTask = (list: TaskListKey, index: number, name: string) =>
     taskListSetter(list)(prev => prev.map((t, i) => (i === index ? { ...t, name } : t)))
@@ -1621,6 +1619,14 @@ export default function ActiveProjectPage() {
                         )}
                       </StickySectionBar>
                     )}
+                    {taskSections.length === 0 && (
+                      <div className="flex w-full justify-end">
+                        <Button variant="outlined" visual="gray" size="sm" onClick={() => { setEditingTask(null); setCreateTaskOpen(true) }}>
+                          <Plus className="w-3 h-3" />
+                          Add Task
+                        </Button>
+                      </div>
+                    )}
                     {taskSections.map((section) => (
                       <div key={section.key} className="contents">
                                           <div
@@ -1657,7 +1663,7 @@ export default function ActiveProjectPage() {
                             </IconButton>
                             <h2 className="text-lg font-semibold text-dark-blue-400">{section.label}</h2>
                           </div>
-                          {section.key === "this" && (
+                          {section.key === taskSections[0]?.key && (
                             <Button variant="outlined" visual="gray" size="sm" onClick={() => { setEditingTask(null); setCreateTaskOpen(true) }}>
                               <Plus className="w-3 h-3" />
                               Add Task
