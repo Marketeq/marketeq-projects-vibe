@@ -542,7 +542,11 @@ export function InviteTalentFlow({
       }
   const recommendationRequest = useMemo(
     () =>
-      hasLoadedListingContext && recommendationRoleTitle
+      // Gating this on a role meant the page sat on an empty state whenever it
+      // was opened without a job listing, or with a listing that has no saved
+      // roles. The role is a filter, not a precondition: an empty one asks for
+      // unfiltered recommendations, which is what the screen should show.
+      hasLoadedListingContext
         ? {
             roleTitle: recommendationRoleTitle,
             workType: listingContext.workType,
