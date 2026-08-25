@@ -545,6 +545,18 @@ const TalentNetworkTable = ({ data }: { data: TalentMember[] }) => {
 // External Team Card (Grid view)
 // ========================
 
+const CASCADE_DELAYS = [
+  "delay-0",
+  "delay-100",
+  "delay-200",
+  "delay-300",
+  "delay-500",
+  "delay-700",
+]
+
+const cascadeDelay = (index: number) =>
+  CASCADE_DELAYS[Math.min(index, CASCADE_DELAYS.length - 1)]
+
 const ExternalTeamCard = ({
   id,
   name,
@@ -1301,10 +1313,18 @@ export default function MyTeam() {
               }
             />
           ) : isGrid ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 pt-3.5 lg:pt-6">
+            <div
+              className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 pt-3.5 lg:pt-6"
+              key={talentMembers.map((member) => member.id).join(",")}
+            >
               {talentMembers.map((member, index) => (
-                <TalentSearchCard
+                <div
                   key={member.id}
+                  className={`animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(
+                    index
+                  )}`}
+                >
+                <TalentSearchCard
                   id={member.id}
                   name={member.name}
                   handle={member.handle}
@@ -1331,6 +1351,7 @@ export default function MyTeam() {
                     })
                   }}
                 />
+                </div>
               ))}
             </div>
           ) : (
@@ -1377,14 +1398,23 @@ export default function MyTeam() {
               }
             />
           ) : isGrid ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 pt-3.5 lg:pt-6">
-              {teamMembers.map((member) => (
-                <ExternalTeamCard
+            <div
+              className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 pt-3.5 lg:pt-6"
+              key={teamMembers.map((member) => member.id).join(",")}
+            >
+              {teamMembers.map((member, index) => (
+                <div
                   key={member.id}
-                  {...member}
-                  onResend={handleResend}
-                  onCancel={handleCancel}
-                />
+                  className={`animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(
+                    index
+                  )}`}
+                >
+                  <ExternalTeamCard
+                    {...member}
+                    onResend={handleResend}
+                    onCancel={handleCancel}
+                  />
+                </div>
               ))}
             </div>
           ) : (

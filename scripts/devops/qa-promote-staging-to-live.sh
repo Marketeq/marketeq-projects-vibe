@@ -125,9 +125,14 @@ ok "Merged staging into live-mvp"
 # --- Gitleaks ----------------------------------------------------------------
 
 if command -v gitleaks >/dev/null; then
-  say "Running gitleaks"
-  if ! gitleaks detect --source "$REPO_ROOT" --config "$REPO_ROOT/.gitleaks.toml" --no-banner; then
-    err "gitleaks detected committed secrets — aborting promotion"
+  # Scope to the commits this release adds — see the fuller note in
+  # qa-promote-dev-to-staging.sh. An unscoped `gitleaks detect` walks the entire
+  # commit history and blocks every release on pre-existing findings, no matter
+  # how clean the commits being promoted are.
+  say "Running gitleaks on the promoted commits (${LIVE_SHA:0:7}..HEAD)"
+  if ! gitleaks detect --source "$REPO_ROOT" --config "$REPO_ROOT/.gitleaks.toml" \
+      --log-opts="${LIVE_SHA}..HEAD" --no-banner; then
+    err "gitleaks detected secrets in the commits being promoted — aborting promotion"
     git reset --hard origin/live-mvp
     exit 1
   fi

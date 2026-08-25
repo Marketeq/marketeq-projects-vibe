@@ -139,14 +139,15 @@ jobs:
             fi
           fi
 
-          # --- Section 3c: Frozen UI files (settings sidebar, nav bar, active project) ---
+          # --- Section 3c: Frozen UI files (settings sidebar, nav bar, active project, my jobs) ---
           FROZEN_UI_HIT=0
           FROZEN_UI_FILES=""
           while IFS= read -r f; do
             case "$f" in
               frontend/components/settings-sidebar.tsx|\
               frontend/app/top-most-header.tsx|\
-              "frontend/app/(group)/active-project/[id]/page.tsx")
+              "frontend/app/(group)/active-project/[id]/page.tsx"|\
+              "frontend/app/(group)/my-jobs/page.tsx")
                 FROZEN_UI_HIT=1
                 FROZEN_UI_FILES="$FROZEN_UI_FILES\n- \`$f\`" ;;
             esac
@@ -156,7 +157,7 @@ jobs:
             # Only CTO can touch these files
             PR_AUTHOR=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json author --jq '.author.login' 2>/dev/null || echo "")
             if [ "$PR_AUTHOR" != "CTorres9800" ]; then
-              add "🔒 **Frozen UI file(s) touched:** $(echo -e "$FROZEN_UI_FILES"). These files are locked and can only be modified by @CTorres9800. Remove these changes from the PR or request CTO approval."
+              add "🔒 **Frozen UI file(s) touched:** $(echo -e "$FROZEN_UI_FILES"). These files are locked and can only be modified by @CTorres9800. Backend/API work on the My Jobs screen belongs in \`frontend/app/(group)/my-jobs/my-jobs.data.ts\`, which is intentionally NOT frozen. Remove these changes from the PR or request CTO approval."
             fi
           fi
 
@@ -339,37 +340,36 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           MARKER="<!-- login-sentinel-comment -->"
-          BODY=$(cat <<'COMMENT'
-## 🚨 LOGIN TOUCHED — sentinel notice
+          read -r -d '' BODY <<'COMMENT' || true
+          ## 🚨 LOGIN TOUCHED — sentinel notice
 
-This PR modifies one or more files in the **login-frozen** set (SOP §1.4):
+          This PR modifies one or more files in the **login-frozen** set (SOP §1.4):
 
-- `frontend/app/sign-in/**`, `frontend/app/sign-up/**`
-- `frontend/contexts/auth.tsx`, `frontend/src/lib/api/auth.ts`, `frontend/middleware.ts`
-- `backend/apps/auth-service/**`
-- `backend/libs/shared/src/guards/**`, `backend/libs/shared/src/decorators/**`
-- `*.env.example`
+          - `frontend/app/sign-in/**`, `frontend/app/sign-up/**`
+          - `frontend/contexts/auth.tsx`, `frontend/src/lib/api/auth.ts`, `frontend/middleware.ts`
+          - `backend/apps/auth-service/**`
+          - `backend/libs/shared/src/guards/**`, `backend/libs/shared/src/decorators/**`
+          - `*.env.example`
 
-**Rule:** login is fixed once and stays fixed, bidirectionally. If login works locally it must not break on dev/staging/live. If login works on dev/staging/live it must not break locally. "Fixing" login in one environment by hardcoding a value that only works there **is the bug**, not the fix. Every regression here costs the whole team time.
+          **Rule:** login is fixed once and stays fixed, bidirectionally. If login works locally it must not break on dev/staging/live. If login works on dev/staging/live it must not break locally. "Fixing" login in one environment by hardcoding a value that only works there **is the bug**, not the fix. Every regression here costs the whole team time.
 
-**Mandatory reviewer checklist before approval:**
+          **Mandatory reviewer checklist before approval:**
 
-1. Check out this branch locally
-2. Delete your `frontend/.env.local` and `backend/.env.local`
-3. Copy the repo's `.env.example` files fresh
-4. Boot the backend and frontend locally with the standard dev commands
-5. Sign in with a **client** test account
-6. Sign in with a **talent** test account
-7. Confirm both accounts reach their dashboards without intervention
-8. If any step fails, request changes and do not merge
+          1. Check out this branch locally
+          2. Delete your `frontend/.env.local` and `backend/.env.local`
+          3. Copy the repo's `.env.example` files fresh
+          4. Boot the backend and frontend locally with the standard dev commands
+          5. Sign in with a **client** test account
+          6. Sign in with a **talent** test account
+          7. Confirm both accounts reach their dashboards without intervention
+          8. If any step fails, request changes and do not merge
 
-The PR description must also contain the four-point login confirmation from SOP §1.4. If it does not, this PR is automatically blocked by the SOP check.
+          The PR description must also contain the four-point login confirmation from SOP §1.4. If it does not, this PR is automatically blocked by the SOP check.
 
-CTO (@CTorres9800) has been auto-requested as a reviewer on this PR.
+          CTO (@CTorres9800) has been auto-requested as a reviewer on this PR.
 
-🤖 Posted by [Claude Code](https://claude.com/claude-code)
-COMMENT
-)
+          🤖 Posted by [Claude Code](https://claude.com/claude-code)
+          COMMENT
           EXISTING=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
             --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -n1)
           FULL_BODY="${MARKER}"$'\n'"${BODY}"

@@ -413,7 +413,7 @@ const RecentActivity = ({
 
   return (
     <Tabs defaultValue="Next Steps">
-      <TabsList className="w-full border-b-0">
+      <TabsList className="w-full justify-start border-b-0">
         <TabsTrigger value="Next Steps">
           Next Steps
           <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
@@ -819,7 +819,7 @@ const RightSidebarDownPart = ({
 
       <div className="mt-3">
         <Tabs defaultValue="Transactions">
-          <TabsList className="justify-center flex">
+          <TabsList className="justify-start flex">
             <TabsTrigger value="Transactions">Transactions</TabsTrigger>
             <TabsTrigger value="Invoices">
               Invoices
