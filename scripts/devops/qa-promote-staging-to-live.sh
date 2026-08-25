@@ -73,7 +73,7 @@ echo ""
 say "You are about to PROMOTE staging → live"
 say "This deploys to the PRODUCTION Render environment AND Vercel Production."
 echo ""
-git log --oneline origin/live..origin/staging | head -n 30
+git log --oneline origin/live..origin/staging | head -n 30 || true
 echo ""
 # --yes skips the prompt for non-interactive runs. Without a tty, read hits
 # EOF and set -e exits the script silently, which reads as a no-op.
