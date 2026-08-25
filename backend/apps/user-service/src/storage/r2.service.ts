@@ -66,6 +66,51 @@ export class R2Service {
   }
 
   /**
+   * Upload a buffer as a PUBLIC, long-lived CDN object and return its public
+   * URL. Added in 8f6d8c47 as a second `uploadBuffer` overload-by-accident,
+   * which made this file stop compiling (TS2393). Kept here under a distinct
+   * name rather than deleted: the capability is real and differs from
+   * uploadBuffer below, which is deliberately private/no-cache because it
+   * backs resume documents served via short-lived presigned URLs. Merging the
+   * two would have silently made private resumes publicly cacheable for a year.
+   */
+  async uploadPublicBuffer(
+    key: string,
+    buffer: Buffer,
+    contentType: string,
+  ): Promise<{ key: string; url?: string }> {
+    const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
+    if (!bucket) {
+      throw new InternalServerErrorException(
+        'CLOUDFLARE_R2_BUCKET is required to upload files',
+      );
+    }
+
+    const client = this.getClient();
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        CacheControl: 'public, max-age=31536000',
+      }),
+    );
+
+    return { key, url: this.getPublicUrl(key) };
+  }
+
+  getPublicUrl(key: string): string {
+    const publicBaseUrl = this.getEnv(
+      'CLOUDFLARE_R2_PUBLIC_URL',
+      'CLOUDFLARE_PUBLIC_URL',
+      'R2_PUBLIC_URL',
+    );
+    if (!publicBaseUrl) return key;
+    return `${publicBaseUrl.replace(/\/$/, '')}/${key}`;
+  }
+
+  /**
    * Upload an already-buffered object at a caller-chosen key.
    *
    * Unlike uploadAvatar, the caller owns the key and no public CacheControl

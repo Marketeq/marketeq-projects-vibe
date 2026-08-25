@@ -60,6 +60,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   'counter-offers': 'offers',     // offer-service counter-offer endpoints
   legal: 'legal',                  // legal-service NDA, documents, acceptance
   nda: 'legal',                    // legal-service NDA endpoints
+  resume: 'users',                  // resume upload/parse lives in user-service
 }
 
 const USER_SERVICE_V1_RESOURCES = new Set([
@@ -236,7 +237,12 @@ export class ProxyController {
       prefix = 'users'
     } else if (prefix === 'v1' && USER_SERVICE_V1_RESOURCES.has(segments[1])) {
       prefix = 'users'
-    } else if (prefix === 'v1' && (segments[1] === 'projects' || segments[1] === 'services')) {
+    } else if (
+      prefix === 'v1' &&
+      (segments[1] === 'projects' ||
+        segments[1] === 'services' ||
+        segments[1] === 'recently-viewed')
+    ) {
       prefix = 'listings'
     } else if (prefix === 'v1' && (segments[1] === 'threads' || segments[1] === 'messages')) {
       prefix = 'messages'

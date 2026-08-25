@@ -8,7 +8,7 @@ import {
   IsPositive,
   IsString,
   Min,
-} from 'class-validator';
+} from "class-validator";
 
 export class CreateCheckoutSessionDto {
   @IsUUID()
@@ -53,4 +53,12 @@ export class CreateCheckoutSessionDto {
   @IsNumber()
   @IsPositive()
   amount: number;
+
+  @IsOptional()
+  @IsString()
+  successUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  cancelUrl?: string;
 }

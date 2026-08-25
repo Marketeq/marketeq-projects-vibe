@@ -981,7 +981,7 @@ const Sidebar = ({
           (publishAttempted && !isValid) ||
           (label === "Questions" && faqModerationHasError) ||
           (label === "Project Info" && projectInfoModerationHasError)
-        const showErrorBadge = hasError && !isActive
+        const showErrorBadge = hasError
         const showWarningBadge =
           !hasError && !isValid && !isActive && stepHasStarted(index)
         return (
@@ -996,10 +996,10 @@ const Sidebar = ({
               type="button"
               className="group relative z-[1] flex w-full items-center gap-x-3 focus-visible:outline-none"
               data-ui-state={
-                isActive
-                  ? "active"
-                  : hasError
-                    ? "error"
+                hasError
+                  ? "error"
+                  : isActive
+                    ? "active"
                     : isValid
                       ? "complete"
                       : undefined
@@ -1007,10 +1007,10 @@ const Sidebar = ({
               onClick={() => setStep(index)}
             >
               <span className="size-6 shrink-0 rounded-full inline-flex justify-center items-center border-2 border-gray-300 bg-gray-50 group-data-[ui-state=complete]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=active]:border-primary-500 group-data-[ui-state=error]:border-error-500">
-                {isActive ? (
-                  <span className="size-2 rounded-full bg-primary-500" />
-                ) : hasError ? (
+                {hasError ? (
                   <Plus className="size-3.5 text-error-500" />
+                ) : isActive ? (
+                  <span className="size-2 rounded-full bg-primary-500" />
                 ) : isValid ? (
                   <Check className="size-3.5 text-white" />
                 ) : (
@@ -1992,29 +1992,29 @@ const scoreCandidateAgainstTitle = (
   return score
 }
 
-const suggestionsFromTitle = (
-  title: string,
+const suggestionsFromText = (
+  text: string,
   nodes: CategoryTreeNode[]
 ): SuggestedCategoryOption[] => {
-  const titleTokens = tokenizeForSuggestion(title)
-  if (!titleTokens.length || !nodes.length) return []
+  const tokens = tokenizeForSuggestion(text)
+  if (!tokens.length || !nodes.length) return []
 
   const scored: Array<SuggestedCategoryOption & { score: number }> = []
-  for (const categoryNode of collectSelectableCategories(nodes)) {
-    const subNames = collectCategoryDescendants(categoryNode)
-      .map((node) => node.name)
-      .filter((name): name is string => Boolean(name))
-    const candidates = subNames.length
-      ? subNames
-      : [findSuggestedSubCategory(categoryNode) ?? categoryNode.name]
-
-    for (const subCategory of candidates) {
+  for (const categoryNode of nodes) {
+    if (!isActiveCategoryNode(categoryNode) || !categoryNode.name) continue
+    const subs = (categoryNode.children ?? []).filter(isActiveCategoryNode)
+    for (const sub of subs) {
+      if (!sub.name || sub.name === categoryNode.name) continue
       const score = scoreCandidateAgainstTitle(
-        titleTokens,
-        `${categoryNode.name} ${subCategory}`
+        tokens,
+        `${categoryNode.name} ${sub.name}`
       )
       if (score > 0) {
-        scored.push({ category: categoryNode.name, subCategory, score })
+        scored.push({
+          category: categoryNode.name,
+          subCategory: sub.name,
+          score,
+        })
       }
     }
   }
@@ -2026,7 +2026,6 @@ const suggestionsFromTitle = (
     if (seenCategories.has(item.category)) continue
     seenCategories.add(item.category)
     result.push({ category: item.category, subCategory: item.subCategory })
-    if (result.length >= 3) break
   }
   return result
 }
@@ -2418,10 +2417,13 @@ const ProjectInfo = ({
         const nextCategoryOptions = getUniqueOptions(
           selectableCategories.map((node) => node.name)
         )
-        const nextSuggested = selectableCategories
+        const nextSuggested = nodes
+          .filter(isActiveCategoryNode)
           .map((node) => {
-            const subCategory = findSuggestedSubCategory(node)
-            return subCategory ? { category: node.name, subCategory } : null
+            const sub = (node.children ?? []).filter(isActiveCategoryNode)[0]
+            return sub?.name && node.name
+              ? { category: node.name, subCategory: sub.name }
+              : null
           })
           .filter((value): value is SuggestedCategoryOption => value !== null)
 
@@ -2512,26 +2514,34 @@ const ProjectInfo = ({
       ),
     [categoryValues]
   )
-  const titleBasedSuggestions = useMemo(
-    () => suggestionsFromTitle(projectInfoValues.title ?? "", categoryTree),
-    [projectInfoValues.title, categoryTree]
-  )
+  const derivedSuggestions = useMemo(() => {
+    const enteredNames = (Array.isArray(categoryValues) ? categoryValues : [])
+      .map((item) => item?.category?.trim())
+      .filter((name): name is string => Boolean(name))
+      .join(" ")
+    return suggestionsFromText(
+      `${projectType} ${enteredNames}`.trim(),
+      categoryTree
+    )
+  }, [projectType, categoryValues, categoryTree])
   const suggestedForDisplay = useMemo(() => {
-    const source = titleBasedSuggestions.length
-      ? titleBasedSuggestions
-      : suggested
-    return source
-      .filter(
-        ({ category, subCategory }) =>
-          !selectedCategoryNames.has(category) &&
-          !selectedSuggestedPairs.has(`${category}::${subCategory}`)
-      )
-      .slice(0, 3)
+    const seenCategories = new Set(selectedCategoryNames)
+    const result: SuggestedCategoryOption[] = []
+    for (const item of [...derivedSuggestions, ...suggested]) {
+      if (item.category === item.subCategory) continue
+      if (seenCategories.has(item.category)) continue
+      if (selectedSuggestedPairs.has(`${item.category}::${item.subCategory}`))
+        continue
+      seenCategories.add(item.category)
+      result.push(item)
+      if (result.length >= 3) break
+    }
+    return result
   }, [
-    titleBasedSuggestions,
+    derivedSuggestions,
+    suggested,
     selectedCategoryNames,
     selectedSuggestedPairs,
-    suggested,
   ])
 
   return (
@@ -4280,7 +4290,7 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                 )}
               />
 
-              {showMediaCountError && (
+              {showMediaCountError && !errors.additionalImages?.root && (
                 <ErrorMessage size="sm">
                   Add at least 3 additional images, or a featured video and 2
                   images, to publish.
@@ -9733,7 +9743,13 @@ function PublishProject({
                 />
                 <div className="flex-auto bg-white min-w-0 overflow-x-hidden">
                   <Header
-                    onClose={() => router.back()}
+                    onClose={() => {
+                      if (window.history.length > 1) {
+                        router.back()
+                      } else {
+                        router.push("/my-listings")
+                      }
+                    }}
                     slug={slug}
                     lastSavedAt={lastSavedAt}
                     onPublish={handlePublish}

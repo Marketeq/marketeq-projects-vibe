@@ -338,25 +338,28 @@ export default function MyListingsPage() {
                     )}
                   </div>
                 ) : viewMode === "grid" ? (
-                  <div className="grid grid-cols-4 gap-3 pt-[20px]">
+                  <div className="grid grid-cols-4 gap-4 pt-[20px]">
                     {filteredListings.map((listing) => (
-                      <article key={listing.id}>
-                        <div className="group h-[170px] relative rounded-lg overflow-hidden bg-gray-100">
+                      <article
+                        key={listing.id}
+                        className="group rounded-xl bg-white shadow-sm border border-gray-200 overflow-hidden"
+                      >
+                        <div className="h-[170px] relative overflow-hidden bg-gray-100">
                           {listing.mediaUrl ? (
                             <Image
-                              className="object-cover"
+                              className="object-cover group-hover:scale-105 transition-transform duration-300"
                               src={listing.mediaUrl}
                               alt={listing.title}
                               fill
                             />
                           ) : (
-                            <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-150">
                               <Briefcase className="size-10 text-gray-300" />
                             </div>
                           )}
                           <div
                             className={cn(
-                              "absolute inset-0 flex items-center justify-center bg-black/50 transition duration-300 cursor-pointer",
+                              "absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[2px] transition duration-300 cursor-pointer",
                               openMenuId === listing.id
                                 ? "opacity-100"
                                 : "opacity-0 group-hover:opacity-100"
@@ -391,34 +394,30 @@ export default function MyListingsPage() {
                                 {renderListingMenu(listing.id)}
                               </DropdownMenu>
                             </div>
-                            <span className="text-white text-xs leading-none font-semibold">
+                            <span className="text-white text-sm font-medium tracking-wide">
                               View Details
                             </span>
                           </div>
-                        </div>
-                        <div className="mt-2">
-                          <div className="flex items-start gap-x-3">
-                            <div className="space-y-1.5 flex-auto min-w-0">
-                              <h2
-                                className="text-sm font-semibold text-dark-blue-400 line-clamp-2 hover:underline cursor-pointer"
-                                onClick={() => goEdit(listing.id)}
-                              >
-                                {listing.title}
-                              </h2>
-                              <div className="flex items-center gap-x-1.5 mt-1.5">
-                                <Badge
-                                  size="md"
-                                  visual={statusToBadgeVisual(listing.status)}
-                                >
-                                  {listing.status}
-                                </Badge>
-                                <span className="text-xs leading-none text-dark-blue-400">
-                                  Updated{" "}
-                                  {formatRelativeTime(listing.updatedAt)}
-                                </span>
-                              </div>
-                            </div>
+                          {/* Status indicator on image */}
+                          <div className="absolute top-2.5 left-2.5 opacity-100 group-hover:opacity-0 transition-opacity duration-300">
+                            <Badge
+                              size="md"
+                              visual={statusToBadgeVisual(listing.status)}
+                            >
+                              {listing.status}
+                            </Badge>
                           </div>
+                        </div>
+                        <div className="px-3.5 py-3">
+                          <h2
+                            className="text-sm font-semibold text-dark-blue-400 line-clamp-1 hover:text-primary-500 cursor-pointer transition-colors duration-150"
+                            onClick={() => goEdit(listing.id)}
+                          >
+                            {listing.title || "Untitled Listing"}
+                          </h2>
+                          <p className="text-xs text-gray-400 mt-1.5">
+                            Updated {formatRelativeTime(listing.updatedAt)}
+                          </p>
                         </div>
                       </article>
                     ))}

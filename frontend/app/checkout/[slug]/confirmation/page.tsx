@@ -340,7 +340,13 @@ export default function ConfirmationPage() {
     offerRates.find((rate) => rate.value === selectedRateValue) ||
     offerRates.find((rate) => rate.value === "web-development") ||
     offerRates[0]
-  const hourlyRate = Number(selectedRate?.price.replace(/[^0-9.]/g, "") || 0)
+  // See checkout/[slug]/page.tsx — a custom rate has no offerRates tile, so
+  // it travels as its own param and wins over the tile price here.
+  const customRateParam = Number(searchParams.get("customRate"))
+  const hourlyRate =
+    Number.isFinite(customRateParam) && customRateParam > 0
+      ? customRateParam
+      : Number(selectedRate?.price.replace(/[^0-9.]/g, "") || 0)
   const estimatedTaxHourly = hourlyRate * 0.07
   const totalHourlyRate = hourlyRate + estimatedTaxHourly
   const monthlyHours = 160
@@ -490,11 +496,24 @@ export default function ConfirmationPage() {
       : `total one-time amount of ${formatter.format(totalDueToday)}`
 
   const updateOfferInUrl = React.useCallback(
-    (nextRate: string, nextSchedule: string, nextDuration: string) => {
+    (
+      nextRate: string,
+      nextSchedule: string,
+      nextDuration: string,
+      nextCustomRate?: string
+    ) => {
       const nextSearchParams = new URLSearchParams(searchParams.toString())
       nextSearchParams.set("rate", nextRate)
       nextSearchParams.set("schedule", nextSchedule)
       nextSearchParams.set("duration", nextDuration)
+      // Deleted, not just skipped, when the offer moves back to a predefined
+      // tile — otherwise a customRate left over from a previous edit would
+      // keep overriding the newly-picked tile's price.
+      if (nextCustomRate) {
+        nextSearchParams.set("customRate", nextCustomRate)
+      } else {
+        nextSearchParams.delete("customRate")
+      }
       router.replace(`${pathname}?${nextSearchParams.toString()}`, {
         scroll: false,
       })
@@ -1355,8 +1374,9 @@ export default function ConfirmationPage() {
             selectedRate,
             schedule,
             selectedDuration: nextDuration,
+            customRate,
           }) => {
-            updateOfferInUrl(selectedRate, schedule, nextDuration)
+            updateOfferInUrl(selectedRate, schedule, nextDuration, customRate)
           }}
           profile={{
             username: talentUsername,

@@ -1065,7 +1065,13 @@ export default function PaymentPage() {
     offerRates.find((rate) => rate.value === selectedRateValue) ||
     offerRates.find((rate) => rate.value === "web-development") ||
     offerRates[0]
-  const hourlyRate = Number(selectedRate?.price.replace(/[^0-9.]/g, "") || 0)
+  // See checkout/[slug]/page.tsx — a custom rate has no offerRates tile, so
+  // it travels as its own param and wins over the tile price here.
+  const customRateParam = Number(searchParams.get("customRate"))
+  const hourlyRate =
+    Number.isFinite(customRateParam) && customRateParam > 0
+      ? customRateParam
+      : Number(selectedRate?.price.replace(/[^0-9.]/g, "") || 0)
   const estimatedTaxHourly = hourlyRate * 0.07
   const totalHourlyRate = hourlyRate + estimatedTaxHourly
   const totalWeeks = 32
@@ -6851,7 +6857,7 @@ export default function PaymentPage() {
                             <button
                               key={bankOption.id}
                               type="button"
-                              className="flex h-[118px] items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-center shadow-sm transition hover:border-primary-300 hover:shadow-md"
+                              className="flex h-[118px] items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-center shadow-sm transition hover:border-primary-300"
                               disabled={isBankConnecting}
                               onClick={() =>
                                 handleStripeLinkBankSelect(bankOption.id)

@@ -186,7 +186,7 @@ const faqColumns = [
   ],
 ] as const
 
-function BillingOverviewContent({
+export function BillingOverviewContent({
   onNavigateTab,
 }: {
   onNavigateTab: (tab: BillingTabValue) => void
@@ -519,7 +519,7 @@ function BillingOverviewContent({
   )
 }
 
-function BillingMyPlansContent() {
+export function BillingMyPlansContent() {
   const [planTab, setPlanTab] = useState<"individual" | "team">("team")
   const [inviteThreshold, setInviteThreshold] = useState(
     inviteThresholdOptions[0]

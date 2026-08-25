@@ -18,6 +18,42 @@ export class EarningsService {
     private readonly currencySvc: CurrencyService,
   ) {}
 
+  // ─── Filter options: distinct projects/clients for this contractor ────
+  // Sourced from contract_label_cache directly (one row per contract this
+  // contractor has ever had), not from earnings rows — so the "All
+  // Projects"/"All Clients" filter dropdowns show the contractor's full
+  // project/client history regardless of the earnings table's current
+  // date-range filter, instead of only whatever happens to be on the
+  // currently-loaded page of (possibly date-filtered, possibly empty)
+  // earnings results.
+  async getFilterOptions(contractorId: string): Promise<{
+    projects: { id: string; name: string; handle: string | null }[]
+    clients: { id: string; label: string; handle: string | null }[]
+  }> {
+    const rows = await this.labelRepo.find({ where: { contractorId } });
+    const toHandle = (name: string | null) =>
+      name ? '@' + name.toLowerCase().replace(/[^a-z0-9]+/g, '') : null;
+    const projectMap = new Map<string, { name: string; handle: string | null }>();
+    const clientMap = new Map<string, { label: string; handle: string | null }>();
+    for (const r of rows) {
+      const handle = toHandle(r.clientDisplayName);
+      if (r.projectId && r.projectName) {
+        projectMap.set(r.projectId, { name: r.projectName, handle });
+      }
+      if (r.clientId && r.clientDisplayName) {
+        clientMap.set(r.clientId, { label: r.clientDisplayName, handle });
+      }
+    }
+    return {
+      projects: [...projectMap.entries()]
+        .map(([id, v]) => ({ id, name: v.name, handle: v.handle }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      clients: [...clientMap.entries()]
+        .map(([id, v]) => ({ id, label: v.label, handle: v.handle }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    };
+  }
+
   // ─── Endpoint 2: Earnings History ─────────────────────────────
   async getEarnings(contractorId: string, q: EarningsQueryDto, displayCurrency = 'USD') {
     const { startDate, endDate } = this.resolveDateRange(q);
@@ -127,7 +163,7 @@ export class EarningsService {
           date: null,
           weekRange: view === 'weekly' ? this.fmtWeek(periodStart) : null,
           month: view === 'monthly' ? this.fmtMonth(periodStart) : null,
-          project: lbl ? { id: lbl.projectId, name: lbl.projectName, clientHandle: '@' + lbl.clientDisplayName } : null,
+          project: lbl ? { id: lbl.projectId, name: lbl.projectName, clientId: lbl.clientId, clientHandle: '@' + lbl.clientDisplayName } : null,
           task: null,
           startTime: null, endTime: null,
           durationMinutes: mins,
@@ -425,7 +461,7 @@ export class EarningsService {
       id:row.id, date:view==='daily'?this.fmtDate(row.workStartAt):null,
       weekRange:view==='weekly'?this.fmtWeek(row.workStartAt):null,
       month:view==='monthly'?this.fmtMonth(row.workStartAt):null,
-      project:lbl?{id:row.projectId,name:lbl.projectName,clientHandle:'@'+lbl.clientDisplayName}:null,
+      project:lbl?{id:row.projectId,name:lbl.projectName,clientId:lbl.clientId,clientHandle:'@'+lbl.clientDisplayName}:null,
       task:view==='daily'?{id:row.taskId,name:(row as any).taskName||null}:null,
       startTime:view==='daily'?this.fmtTime(row.workStartAt):null,
       endTime:view==='daily'?this.fmtTime(row.workEndAt):null,

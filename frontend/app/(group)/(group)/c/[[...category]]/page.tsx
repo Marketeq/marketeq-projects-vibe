@@ -7587,7 +7587,7 @@ export default function Projects() {
 
             <div className="grid grid-cols-2 gap-x-8 mt-6">
               <div className="flex flex-col gap-y-8">
-                <article className="flex gap-x-6 group cursor-pointer rounded-lg hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200">
+                <article className="flex gap-x-6 group cursor-pointer rounded-lg">
                   <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0">
                     <NextImage
                       className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
@@ -7623,7 +7623,7 @@ export default function Projects() {
                     </Button>
                   </div>
                 </article>
-                <article className="flex gap-x-6 group cursor-pointer rounded-lg hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200">
+                <article className="flex gap-x-6 group cursor-pointer rounded-lg">
                   <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0">
                     <NextImage
                       className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"

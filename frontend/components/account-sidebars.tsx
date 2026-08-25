@@ -8,7 +8,6 @@ import {
   AlertCircle,
   BarChartSquare02,
   Briefcase,
-  CoinStack,
   CurrencyDollar,
   FileCheck02,
   Home03,
@@ -62,19 +61,21 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
         {section.items.map((item) => {
           const Icon = item.icon
 
+          const isActive = pathname === item.href || pathname?.startsWith(item.href + "/")
+
           return (
             <NextLink
               key={item.label}
               className={linkClass(item.href)}
               href={item.href}
             >
-              <Icon className="size-[18px] text-dark-blue-400/50" />
+              <Icon className={cn("size-[18px]", isActive ? "text-primary-500" : "text-dark-blue-400/50")} />
               {item.label}
               {item.badge && (
                 <Badge
                   className="rounded-full ml-auto"
                   size="md"
-                  visual="error"
+                  visual={isActive ? "primary" : "error"}
                 >
                   {item.badge}
                 </Badge>
@@ -110,7 +111,6 @@ const buildTalentSections = (inboxBadge?: string): SidebarSection[] => [
         icon: AlertCircle,
         badge: "2",
       },
-      { href: "/billing", label: "Billing", icon: CoinStack },
       { href: "/settings", label: "Settings", icon: Settings02 },
     ],
   },
@@ -124,14 +124,13 @@ const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
       { href: "/my-contracts", label: "My Contracts", icon: FileCheck02 },
       { href: "/my-jobs", label: "My Jobs", icon: Briefcase },
       { href: "/my-team", label: "My Team", icon: Users },
-      { href: "/payments", label: "Payments", icon: CurrencyDollar },
       { href: "/stats", label: "Stats & Trends", icon: BarChartSquare02 },
     ],
   },
   {
     label: "Account",
     items: [
-      { href: "/talent-profile", label: "Profile", icon: UserCircle },
+      { href: "/client-profile", label: "Profile", icon: UserCircle },
       { href: "/inbox", label: "Inbox", icon: Mail01, badge: inboxBadge },
       {
         href: "/notifications",
@@ -139,7 +138,6 @@ const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
         icon: AlertCircle,
         badge: "2",
       },
-      { href: "/billing", label: "Billing", icon: CoinStack },
       { href: "/settings", label: "Settings", icon: Settings02 },
     ],
   },

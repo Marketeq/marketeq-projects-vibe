@@ -84,7 +84,7 @@ export class PayoutController {
     @Request() req: any,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.magicLinkService.resendVerification(req.user.userId, id);
+    return this.magicLinkService.resendVerification(req.user.userId, id, req.user.email);
   }
 
   // Cancel a pending/queued withdrawal
@@ -104,10 +104,11 @@ export class PayoutController {
     @Request() req: any, @Query('page') page?: string, @Query('pageSize') pageSize?: string,
     @Query('status') status?: string, @Query('search') search?: string,
     @Query('dateRange') dateRange?: string, @Query('depositMethodId') depositMethodId?: string,
+    @Query('from') from?: string, @Query('to') to?: string,
   ) {
     return this.payoutService.listPayouts(
       req.user.userId, parseInt(page ?? '1', 10) || 1, parseInt(pageSize ?? '20', 10) || 20,
-      status, search, dateRange, depositMethodId,
+      status, search, dateRange, depositMethodId, from, to,
     );
   }
 
@@ -130,6 +131,7 @@ export class PayoutController {
     @Query('format') format?: string, @Query('status') status?: string,
     @Query('search') search?: string, @Query('dateRange') dateRange?: string,
     @Query('depositMethodId') depositMethodId?: string,
+    @Query('from') from?: string, @Query('to') to?: string,
   ) {
     const fmt = format === 'pdf' ? 'pdf' : 'csv';
     if (format && format !== 'csv' && format !== 'pdf') {
@@ -137,6 +139,7 @@ export class PayoutController {
     }
     const { buffer, filename, contentType } = await this.payoutService.exportPayouts(
       req.user.userId, fmt, status, search, dateRange, depositMethodId, req.user.email,
+      from, to,
     );
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

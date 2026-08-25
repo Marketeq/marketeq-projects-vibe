@@ -262,7 +262,15 @@ export function createTimerService(deps: TimerServiceDeps) {
   // ---------------------------------------------------------------------------
 
   function currentRunningSec(): number {
-    if (machine.getState() !== 'Running' || runningStartedHr == null) return 0;
+    // Deliberately does NOT also check `machine.getState() === 'Running'`:
+    // handlePostTransition() calls this to freeze the clock (accumulatedRunningSec
+    // += currentRunningSec(), closeTimeEntry()) AFTER machine.send() has already
+    // moved the FSM to the new (non-Running) state, so that check made this
+    // always return 0 at exactly the moment the real elapsed time was needed —
+    // silently zeroing every session's billable_seconds and every time_entry's
+    // duration_seconds. runningStartedHr being non-null is already the correct,
+    // sufficient signal for "there's an open running segment to measure."
+    if (runningStartedHr == null) return 0;
     const deltaNs = process.hrtime.bigint() - runningStartedHr;
     const sec = Number(deltaNs / 1_000_000_000n);
     // Phase 8: clock skew guard — monotonic clock should never go negative,
@@ -452,12 +460,19 @@ export function createTimerService(deps: TimerServiceDeps) {
       reminders.scheduleWorkReminder(runningStartedAt);
     }
 
-    // Freeze the monotonic clock when leaving Running.
+    // Freeze the monotonic clock when leaving Running. Compute the final
+    // running-segment duration ONCE, before clearing runningStartedHr, and
+    // pass it directly to closeTimeEntry() rather than letting it recompute
+    // via currentRunningSec() — by the time closeTimeEntry() ran here,
+    // runningStartedHr was already null, so it silently persisted a
+    // duration_seconds of 0 for every single time_entry, regardless of the
+    // (correct, since the fix above) session-level billable_seconds.
     if (from === 'Running' && to !== 'Running') {
-      accumulatedRunningSec += currentRunningSec();
+      const finalRunningSec = currentRunningSec();
+      accumulatedRunningSec += finalRunningSec;
+      closeTimeEntry(finalRunningSec);
       runningStartedHr = null;
       runningStartedAt = null;
-      closeTimeEntry();
       stopTickLoop();
     }
 
@@ -606,11 +621,10 @@ export function createTimerService(deps: TimerServiceDeps) {
     activeTimeEntryId = id;
   }
 
-  function closeTimeEntry() {
+  function closeTimeEntry(durationSec: number) {
     if (!activeTimeEntryId) return;
     const endedAt = Date.now();
-    const duration = currentRunningSec();
-    repos.timeEntry.close(activeTimeEntryId, endedAt, duration);
+    repos.timeEntry.close(activeTimeEntryId, endedAt, durationSec);
     activeTimeEntryId = null;
   }
 

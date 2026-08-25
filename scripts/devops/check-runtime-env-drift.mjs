@@ -134,6 +134,22 @@ async function fetchRenderEnv() {
         .filter(([key]) => Boolean(key)),
     )
 
+    const minimumVarCount = baseline.renderSharedBackend.minimumVarCount || 0
+    if (minimumVarCount > 0 && live.size < minimumVarCount) {
+      return {
+        available: true,
+        reason: "",
+        report: {
+          ok: false,
+          drift: [{ key: "__ENV_COUNT__", reason: "bulk-deletion", expected: minimumVarCount, actual: live.size }],
+          missingSecrets: [],
+          bulkDeletion: true,
+          liveCount: live.size,
+          expectedMinimum: minimumVarCount,
+        },
+      }
+    }
+
     const drift = []
     for (const [key, value] of Object.entries(baseline.renderSharedBackend.values)) {
       const actual = String(live.get(key) ?? "")
