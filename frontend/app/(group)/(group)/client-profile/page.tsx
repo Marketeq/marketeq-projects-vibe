@@ -113,6 +113,9 @@ import {
 } from "@dnd-kit/sortable"
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers"
 import { CSS } from "@dnd-kit/utilities"
+import { ProjectAPI } from "@/service/http/project"
+import { Spinner } from "@/components/ui/spinner/spinner"
+import { RecentQuestionsManager } from "@/app/(group)/my-listings/[slug]/recent-questions-manager"
 import { GripVertical2 } from "@/components/icons/grip-vertical-2"
 
 const CaseStudyBuilder = dynamic(
@@ -567,513 +570,80 @@ interface WizardValue {
   a: string
 }
 
-const SortableValueItem = ({
-  id,
-  value,
-  index,
-  onChange,
-  onDelete,
-}: {
-  id: string
-  value: { q: string; a: string }
-  index: number
-  onChange: (id: string, patch: Partial<{ q: string; a: string }>) => void
-  onDelete: (id: string) => void
-}) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id })
+const generateValueSuggestions = (
+  project: any
+): Array<{ question: string; answer: string }> => {
+  const isService = project?.listingType === "service"
+  const kind = isService ? "service" : "project"
+  const title =
+    project?.title && project.title !== "Enter Project Title"
+      ? project.title
+      : `this ${kind}`
+  const cats: string[] = project?.categories ?? []
+  const tech = [
+    ...new Set([
+      ...(project?.programmingLanguages ?? project?.skills ?? []),
+      ...(project?.tags ?? []),
+    ]),
+  ]
+    .filter(Boolean)
+    .slice(0, 6)
+  const summary: string = project?.summary || ""
+  const duration = project?.durationMonths
 
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    position: "relative" as const,
-    zIndex: isDragging ? 10 : undefined,
+  const out: Array<{ question: string; answer: string }> = []
+
+  out.push({
+    question: `What's included in ${title}?`,
+    answer:
+      summary ||
+      `This ${kind} covers everything defined in the scope and deliverables, with each phase broken down into clear tasks so you know exactly what you're getting.`,
+  })
+  if (tech.length) {
+    const last = tech[tech.length - 1]
+    const techList =
+      tech.length > 1 ? `${tech.slice(0, -1).join(", ")} and ${last}` : last
+    out.push({
+      question: `What technologies and skills are used?`,
+      answer: `This ${kind} is delivered using ${techList}.`,
+    })
   }
-
-  return (
-    <AccordionItem
-      ref={setNodeRef}
-      style={style}
-      value={id}
-      className="rounded-lg border border-gray-200 bg-white"
-    >
-      <AccordionTrigger className="w-full p-4 flex items-center gap-3 [&[data-state=open]_.closed-icons]:hidden [&[data-state=closed]_.open-icons]:hidden [&[data-state=open]_.closed-text]:hidden [&[data-state=open]_.open-text]:inline">
-        <button
-          type="button"
-          className="cursor-grab text-gray-400 hover:text-gray-600"
-          onClick={(e) => e.stopPropagation()}
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical2 />
-        </button>
-        <div className="min-w-0 flex-1 text-left">
-          <span className="text-sm font-bold text-dark-blue-400">
-            Value {index + 1}
-            <span className="closed-text">:</span>
-          </span>
-          <span className="closed-text"> </span>
-          <span className="closed-text text-sm text-dark-blue-400">
-            {value.q}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          <span className="open-icons">
-            <IconButton
-              asChild
-              variant="ghost"
-              visual="gray"
-              size="sm"
-              className="rounded-full text-gray-500 hover:text-gray-800"
-            >
-              <span>
-                <Check className="size-4" />
-              </span>
-            </IconButton>
-          </span>
-          <span className="closed-icons">
-            <IconButton
-              asChild
-              variant="ghost"
-              visual="gray"
-              size="sm"
-              className="rounded-full text-gray-500 hover:text-gray-800"
-            >
-              <span>
-                <Edit03 className="size-4" />
-              </span>
-            </IconButton>
-          </span>
-          <IconButton
-            variant="ghost"
-            visual="gray"
-            size="sm"
-            className="rounded-full text-gray-500 hover:text-gray-800"
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete(id)
-            }}
-          >
-            <Trash2 className="size-4" />
-          </IconButton>
-        </div>
-      </AccordionTrigger>
-      <DisclosureContent className="px-4 pb-4">
-        <p className="text-sm font-light text-dark-blue-400">
-          Make this clear and concise, this is what customers will see first.
-        </p>
-        <Input
-          className="mt-2"
-          value={value.q}
-          onChange={(e) => onChange(id, { q: e.target.value })}
-        />
-        <div className="mt-4">
-          <h3 className="text-sm font-bold text-dark-blue-400">Answer</h3>
-          <p className="mt-1 text-sm font-light text-dark-blue-400">
-            Provide a detailed, helpful response that fully addresses the
-            question
-          </p>
-        </div>
-        <Textarea
-          className="mt-2"
-          rows={4}
-          value={value.a}
-          onChange={(e) => onChange(id, { a: e.target.value })}
-          maxLength={300}
-        />
-        <div className="mt-1 flex items-center justify-between">
-          <Button variant="outlined" visual="gray" size="sm">
-            <Stars02 className="size-[15px]" />
-            Generate With AI
-          </Button>
-          <span className="text-xs text-gray-500">{value.a.length}/300</span>
-        </div>
-      </DisclosureContent>
-    </AccordionItem>
-  )
+  out.push({
+    question: `How long does ${title} take to complete?`,
+    answer: duration
+      ? `The estimated timeline is around ${duration} ${
+          duration === 1 ? "month" : "months"
+        }, depending on the final scope and feedback cycles.`
+      : `Timelines depend on the final scope. Once the scope is set, the estimated duration is shown in the budget breakdown.`,
+  })
+  out.push({
+    question: `How is pricing determined?`,
+    answer: `Pricing is calculated from the scope — the tasks, estimated hours, and assigned roles — and starts from the total shown at the top of the listing.`,
+  })
+  if (cats.length) {
+    out.push({
+      question: `Is this a good fit for ${cats[0]} work?`,
+      answer: `Yes — this ${kind} focuses on ${cats
+        .slice(0, 3)
+        .join(", ")} and is built for that kind of work.`,
+    })
+  }
+  out.push({
+    question: `Can the scope be customized?`,
+    answer: `Yes. Reach out before starting and the phases, tasks, and deliverables can be adjusted to fit your specific needs.`,
+  })
+  return out
 }
 
-const WorkplaceValuesEditor = ({
-  values,
-  setValues,
-  draftProjectId,
-  onRecentQuestionsChange,
-  publishAttempted = false,
-  moderationError = null,
-}: {
-  values: WizardValue[]
-  setValues: React.Dispatch<React.SetStateAction<WizardValue[]>>
-  draftProjectId: string | null
-  onRecentQuestionsChange?: (hasQuestions: boolean) => void
-  publishAttempted?: boolean
-  moderationError?: string | null
-}) => {
-  const completedValueCount = values.filter(
-    (value) => value.q.trim() && value.a.trim()
-  ).length
-  const showValueError =
-    completedValueCount < 3 && (publishAttempted || values.length > 0)
-  const [questionsTab, setQuestionsTab] = useState("Values")
-  const [recentQTab, setRecentQTab] = useState("all")
-  const [openValueId, setOpenValueId] = useState<string | null>(null)
-  const [aiOpen, setAiOpen] = useState(false)
-  const [generating, setGenerating] = useState(false)
-  const [genError, setGenError] = useState(false)
-  const [suggestions, setSuggestions] = useState<
-    Array<{ question: string; answer: string; added?: boolean }>
-  >([])
-
-
-  const remainingSlots = Math.max(0, 10 - values.length)
-  const addedCount = suggestions.filter((s) => s.added).length
-
-  const runValueGeneration = async () => {
-    if (!draftProjectId) return
-    setGenError(false)
-    setGenerating(true)
-    try {
-      // TODO: swap for the real endpoint when it exists.
-      const res = { data: [] as Array<{ question: string; answer: string }> }
-      const data = (res?.data ?? []) as Array<{
-        question: string
-        answer: string
-      }>
-      const seen = new Set<string>()
-      const deduped = data.filter((d) => {
-        const key = (d?.question ?? "").trim().toLowerCase()
-        if (!key || seen.has(key)) return false
-        seen.add(key)
-        return true
-      })
-      setSuggestions(deduped.map((d) => ({ ...d, added: false })))
-    } catch (error) {
-      console.error("Failed to generate Values", error)
-      setGenError(true)
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  const openAiValueDialog = () => {
-    setAiOpen(true)
-    void runValueGeneration()
-  }
-
-  const insertSuggestion = (idx: number) => {
-    const s = suggestions[idx]
-    if (!s || s.added || values.length >= 10) return
-    setValues((items) => [
-      ...items,
-      { id: `value-ai-${Date.now()}-${idx}`, q: s.question, a: s.answer },
-    ])
-    setSuggestions((prev) =>
-      prev.map((x, i) => (i === idx ? { ...x, added: true } : x))
-    )
-  }
-
-  const removeSuggestion = (idx: number) => {
-    const s = suggestions[idx]
-    if (!s) return
-    const key = s.question.trim().toLowerCase()
-    setValues((items) => items.filter((f) => f.q.trim().toLowerCase() !== key))
-    setSuggestions((prev) =>
-      prev.map((x, i) => (i === idx ? { ...x, added: false } : x))
-    )
-  }
-
-  const insertAllSuggestions = () => {
-    const seen = new Set(values.map((f) => f.q.trim().toLowerCase()))
-    const toAdd = suggestions
-      .filter((s) => !s.added && !seen.has(s.question.trim().toLowerCase()))
-      .slice(0, remainingSlots)
-    if (toAdd.length === 0) return
-    setValues((items) => [
-      ...items,
-      ...toAdd.map((s, i) => ({
-        id: `value-ai-all-${Date.now()}-${i}`,
-        q: s.question,
-        a: s.answer,
-      })),
-    ])
-    const addedKeys = new Set(toAdd.map((s) => s.question.trim().toLowerCase()))
-    setSuggestions((prev) =>
-      prev.map((x) =>
-        addedKeys.has(x.question.trim().toLowerCase())
-          ? { ...x, added: true }
-          : x
-      )
-    )
-  }
-
-  const handleAddValue = () => {
-    setValues((items) =>
-      items.length >= 10
-        ? items
-        : [...items, { id: `value-${Date.now()}-${items.length}`, q: "", a: "" }]
-    )
-  }
-
-  const handleValueChange = (
-    id: string,
-    patch: Partial<{ q: string; a: string }>
-  ) => {
-    setValues((items) =>
-      items.map((item) => (item.id === id ? { ...item, ...patch } : item))
-    )
-  }
-
-  const handleDeleteValue = (id: string) => {
-    setValues((items) => items.filter((item) => item.id !== id))
-  }
-
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 150, tolerance: 5 },
-    }),
-    useSensor(KeyboardSensor)
+const generateValueAnswer = (project: any, question: string): string => {
+  const match = generateValueSuggestions(project).find(
+    (s) => s.question.trim().toLowerCase() === (question || "").trim().toLowerCase()
   )
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event
-    if (over && active.id !== over.id) {
-      setValues((items) => {
-        const oldIndex = items.findIndex((i) => i.id === active.id)
-        const newIndex = items.findIndex((i) => i.id === over.id)
-        return arrayMove(items, oldIndex, newIndex)
-      })
-    }
-  }
-
+  if (match) return match.answer
+  const kind = project?.listingType === "service" ? "service" : "project"
   return (
-    <div className="flex flex-col">
-
-                <div className="mt-4 flex items-center gap-3">
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    size="sm"
-                    onClick={openAiValueDialog}
-                    disabled={!draftProjectId}
-                  >
-                    <Stars02 className="size-[15px]" />
-                    Generate With AI
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    size="sm"
-                    onClick={handleAddValue}
-                    disabled={values.length >= 10}
-                  >
-                    <Plus className="size-[15px]" />
-                    Add Value
-                  </Button>
-                </div>
-
-                {showValueError && (
-                  <ErrorMessage size="sm" className="mt-2">
-                    Please add at least 3 Values before publishing.
-                  </ErrorMessage>
-                )}
-
-                {moderationError && (
-                  <ErrorMessage size="sm" className="mt-2">
-                    {`Value content did not meet community guidelines. ${moderationError}`}
-                  </ErrorMessage>
-                )}
-
-                <Dialog open={aiOpen} onOpenChange={setAiOpen}>
-                  <DialogContent className="max-w-[640px] p-0 gap-0">
-                    <div className="px-6 pt-6 pb-4 border-b border-gray-200 flex items-start justify-between">
-                      <div className="flex items-start gap-x-2">
-                        <Stars02 className="size-5 text-dark-blue-400 shrink-0 mt-0.5" />
-                        <div>
-                          <DialogTitle>AI Generated Workplace Values</DialogTitle>
-                          <DialogDescription className="mt-1">
-                            Review and adjust your AI-generated values as needed
-                          </DialogDescription>
-                        </div>
-                      </div>
-                      <Badge
-                        className="rounded-full bg-success-50 text-success-600 shrink-0"
-                        visual="gray"
-                      >
-                        {addedCount} of {suggestions.length} added
-                      </Badge>
-                    </div>
-
-                    {remainingSlots <
-                      suggestions.filter((s) => !s.added).length && (
-                      <p className="px-6 pt-4 text-sm text-error-500">
-                        You currently have {values.length} values in total, so
-                        you can only add {remainingSlots} more
-                      </p>
-                    )}
-
-                    <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-3">
-                      {generating ? (
-                        <p className="py-8 text-center text-sm text-gray-500">
-                          Generating suggestions…
-                        </p>
-                      ) : genError ? (
-                        <div className="py-8 text-center">
-                          <p className="text-sm text-error-500">
-                            Suggestions couldn&apos;t be loaded. Try again.
-                          </p>
-                          <Button
-                            variant="outlined"
-                            visual="gray"
-                            size="sm"
-                            className="mt-3"
-                            onClick={runValueGeneration}
-                          >
-                            <Stars02 className="size-[15px]" />
-                            Retry
-                          </Button>
-                        </div>
-                      ) : suggestions.length === 0 ? (
-                        <p className="py-8 text-center text-sm text-gray-500">
-                          No suggestions available.
-                        </p>
-                      ) : (
-                        suggestions.map((s, i) => (
-                          <div
-                            key={i}
-                            className={cn(
-                              "group/svalue relative rounded-lg border p-4 transition",
-                              s.added
-                                ? "border-success-300 bg-success-25"
-                                : "border-gray-200 bg-white hover:bg-gray-50"
-                            )}
-                          >
-                            <div className="flex items-start justify-between gap-x-3">
-                              <h3
-                                className={cn(
-                                  "text-sm font-bold",
-                                  s.added
-                                    ? "text-success-700"
-                                    : "text-dark-blue-400"
-                                )}
-                              >
-                                {s.question}
-                              </h3>
-                              {s.added ? (
-                                <span className="shrink-0 inline-flex items-center gap-x-1 text-sm font-medium text-success-600">
-                                  <Check className="size-4" />
-                                  Added
-                                </span>
-                              ) : (
-                                <Button
-                                  variant="outlined"
-                                  visual="gray"
-                                  size="sm"
-                                  className="shrink-0 opacity-0 group-hover/svalue:opacity-100 transition"
-                                  onClick={() => insertSuggestion(i)}
-                                >
-                                  <Upload01 className="size-[15px]" />
-                                  Insert
-                                </Button>
-                              )}
-                            </div>
-                            <p
-                              className={cn(
-                                "mt-1 text-sm font-light",
-                                s.added
-                                  ? "text-success-700"
-                                  : "text-dark-blue-400"
-                              )}
-                            >
-                              {s.answer}
-                            </p>
-                            {s.added && (
-                              <button
-                                type="button"
-                                onClick={() => removeSuggestion(i)}
-                                className="absolute bottom-3 right-3 size-9 rounded-full border border-success-300 bg-white text-success-600 hover:border-error-300 hover:text-error-500 inline-flex items-center justify-center opacity-0 group-hover/svalue:opacity-100 transition"
-                              >
-                                <Trash2 className="size-4" />
-                              </button>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        onClick={runValueGeneration}
-                        disabled={generating}
-                      >
-                        <Stars02 className="size-[15px]" />
-                        Regenerate
-                      </Button>
-                      <Button
-                        onClick={insertAllSuggestions}
-                        disabled={
-                          generating ||
-                          remainingSlots === 0 ||
-                          suggestions.every((s) => s.added)
-                        }
-                      >
-                        Insert All ({suggestions.length})
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  modifiers={[restrictToVerticalAxis]}
-                  onDragEnd={handleDragEnd}
-                >
-                  {values.length === 0 ? (
-                    <div className="mt-4 rounded-lg border-2 border-gray-200 bg-gray-25 p-6">
-                      <h3 className="text-base font-semibold text-dark-blue-400">
-                        No Values Yet
-                      </h3>
-                      <p className="mt-1 text-sm font-light text-dark-blue-400">
-                        Add a frequently asked question, or generate suggestions
-                        with AI, to help visitors understand your project.
-                      </p>
-                    </div>
-                  ) : (
-                    <SortableContext
-                      items={values.map((f) => f.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <Accordion
-                        type="single"
-                        collapsible
-                        className="mt-4 space-y-3"
-                        value={openValueId ?? ""}
-                        onValueChange={(val) => setOpenValueId(val || null)}
-                      >
-                        {values.map((value, idx) => (
-                          <SortableValueItem
-                            key={value.id}
-                            id={value.id}
-                            value={value}
-                            index={idx}
-                            onChange={handleValueChange}
-                            onDelete={handleDeleteValue}
-                          />
-                        ))}
-                      </Accordion>
-                    </SortableContext>
-                  )}
-                </DndContext>
-    </div>
+    project?.summary ||
+    `This ${kind} is designed to address exactly that — see the description and scope for the full details.`
   )
 }
 
@@ -1753,7 +1323,6 @@ function Default() {
   const hasCompanyError = false
   // "filled" | "empty" | "error"
   const bioState: "filled" | "empty" | "error" = "filled"
-  const [valuesOpen, setValuesOpen] = useState(false)
   const [workplaceValues, setWorkplaceValues] = useState<WizardValue[]>([
     {
       id: "value-1",
@@ -1772,6 +1341,143 @@ function Default() {
     },
     { id: "value-4", q: "Diversity and inclusion", a: "" },
   ])
+  const isRealBackendId = (id: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  const [project, setProject] = useState<any>({ values: [] })
+  const persistValues = (_next: any[]) => {}
+  const saveProjectFields = (_fields: any) => {}
+  const [valuesDialogOpen, setValuesDialogOpen] = React.useState(false)
+  const [questionsTab, setQuestionsTab] = React.useState("dialog-values")
+  const [recentQTab, setRecentQTab] = React.useState("all")
+  const [openValueIndex, setOpenValueIndex] = React.useState<number | null>(
+    null
+  )
+  const handleAddValue = () => {
+    if ((project.values?.length ?? 0) >= 10) return
+    const next = [...(project.values ?? []), { question: "", answer: "" }]
+    setProject((prev: any) => ({ ...prev, values: next }))
+    setOpenValueIndex(next.length - 1)
+    saveProjectFields({ values: next })
+  }
+
+  const handleValueChange = (
+    idx: number,
+    field: "question" | "answer",
+    value: string
+  ) => {
+    const next = (project.values ?? []).map((f: any, i: number) =>
+      i === idx ? { ...f, [field]: value } : f
+    )
+    setProject((prev: any) => ({ ...prev, values: next }))
+    persistValues(next)
+  }
+
+  const handleDeleteValue = (idx: number) => {
+    const next = (project.values ?? []).filter((_: any, i: number) => i !== idx)
+    setProject((prev: any) => ({ ...prev, values: next }))
+    setOpenValueIndex(null)
+    saveProjectFields({ values: next })
+  }
+
+  const [valueSuggestions, setValueSuggestions] = React.useState<
+    Array<{ question: string; answer: string; added?: boolean }>
+  >([])
+  const [aiValueDialogOpen, setAiValueDialogOpen] = React.useState(false)
+  const [valueGenLoading, setValueGenLoading] = React.useState(false)
+  const [valueGenError, setValueGenError] = React.useState(false)
+
+  const valueRemainingSlots = Math.max(0, 10 - (project.values?.length ?? 0))
+  const valueAddedCount = valueSuggestions.filter((s) => s.added).length
+
+  const dedupeValueSuggestions = (
+    list: Array<{ question: string; answer: string }>
+  ) => {
+    const existing = new Set(
+      (project.values ?? []).map((f: any) =>
+        (f.question || "").trim().toLowerCase()
+      )
+    )
+    return list
+      .filter(
+        (s) => s?.question && !existing.has(s.question.trim().toLowerCase())
+      )
+      .map((s) => ({ question: s.question, answer: s.answer, added: false }))
+  }
+
+  const runValueGeneration = async () => {
+    setValueGenError(false)
+    // No backend draft yet — use the local heuristic directly.
+    if (!project?.id || !isRealBackendId(project.id)) {
+      setValueSuggestions(dedupeValueSuggestions(generateValueSuggestions(project)))
+      return
+    }
+    setValueGenLoading(true)
+    try {
+      const res = await ProjectAPI.SuggestFaqs(project.id)
+      const data = (res?.data ?? []) as Array<{
+        question: string
+        answer: string
+      }>
+      setValueSuggestions(dedupeValueSuggestions(data))
+    } catch {
+      setValueGenError(true)
+    } finally {
+      setValueGenLoading(false)
+    }
+  }
+
+  const openAiValueDialog = () => {
+    setAiValueDialogOpen(true)
+    runValueGeneration()
+  }
+
+  const insertValueSuggestion = (idx: number) => {
+    const s = valueSuggestions[idx]
+    if (!s || s.added || (project.values?.length ?? 0) >= 10) return
+    const next = [
+      ...(project.values ?? []),
+      { question: s.question, answer: s.answer, is_ai_generated: true },
+    ]
+    setProject((prev: any) => ({ ...prev, values: next }))
+    saveProjectFields({ values: next })
+    setValueSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: true } : x))
+    )
+  }
+
+  const removeValueSuggestion = (idx: number) => {
+    const s = valueSuggestions[idx]
+    if (!s) return
+    const q = s.question.trim().toLowerCase()
+    const next = (project.values ?? []).filter(
+      (f: any) => (f.question || "").trim().toLowerCase() !== q
+    )
+    setProject((prev: any) => ({ ...prev, values: next }))
+    saveProjectFields({ values: next })
+    setValueSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: false } : x))
+    )
+  }
+
+  const insertAllValueSuggestions = () => {
+    const slots = Math.max(0, 10 - (project.values?.length ?? 0))
+    const toAdd = valueSuggestions.filter((s) => !s.added).slice(0, slots)
+    if (toAdd.length === 0) return
+    const next = [
+      ...(project.values ?? []),
+      ...toAdd.map((s) => ({
+        question: s.question,
+        answer: s.answer,
+        is_ai_generated: true,
+      })),
+    ]
+    setProject((prev: any) => ({ ...prev, values: next }))
+    saveProjectFields({ values: next })
+    const addedSet = new Set(toAdd.map((s) => s.question))
+    setValueSuggestions((prev) =>
+      prev.map((x) => (addedSet.has(x.question) ? { ...x, added: true } : x))
+    )
+  }
   const [isTabsListStuck, setIsTabsListStuck] = useState<boolean>(false)
 
   // Auto-expand state for sections
@@ -3088,7 +2794,7 @@ function Default() {
                           variant="ghost"
                           visual="gray"
                           aria-label="Edit values"
-                          onClick={() => setValuesOpen(true)}
+                          onClick={() => setValuesDialogOpen(true)}
                         >
                           <Edit03 className="size-4" />
                         </IconButton>
@@ -6812,52 +6518,504 @@ function Default() {
             onOpenedChange={setAffiliatedTeamsOpen}
           />
 
-          {/* Workplace Values — the copied FAQ editor, opened from the Culture pencil */}
-      <Dialog open={valuesOpen} onOpenChange={setValuesOpen}>
-        <DialogContent className="max-w-[740px] p-0">
-          {/* Close button copied from the dialogs in edit-listing */}
-          <DialogClose asChild>
-            <IconButton
-              className="absolute right-[11.55px] top-[11px] text-gray-400 hover:text-gray-600"
-              variant="light"
-              visual="gray"
-            >
-              <X className="size-5" />
-            </IconButton>
-          </DialogClose>
-          <div className="flex flex-col gap-2 border-b border-gray-200 px-6 pb-4 pr-14 pt-6">
-            <DialogTitle className="text-lg font-semibold leading-7 text-dark-blue-400">
-              Workplace Values
-            </DialogTitle>
-            <p className="text-sm font-light leading-5 text-dark-blue-400">
-              Add the values that define how your team works. Drag and drop to
-              reorder them
-            </p>
-          </div>
+                        <Dialog
+                          open={valuesDialogOpen}
+                          onOpenChange={(open) => {
+                            setValuesDialogOpen(open)
+                            if (open) {
+                              setRecentQTab("all")
+                              setOpenValueIndex(null)
+                            }
+                          }}
+                        >
+                          <DialogContent className="max-w-[748px] p-0 gap-0">
+                            <Tabs
+                              value={questionsTab}
+                              onValueChange={(val) => {
+                                setQuestionsTab(val)
+                                if (val === "dialog-values") setRecentQTab("all")
+                                if (val === "dialog-recent")
+                                  setOpenValueIndex(null)
+                              }}
+                            >
+                              <div className="px-6 pt-6 pb-0">
+                                <div className="flex items-start justify-between">
+                                  <div>
+                                    <h2 className="text-lg font-bold text-dark-blue-400">
+                                      Questions
+                                    </h2>
+                                    <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                      Add the values that define how your team works. Drag and drop to
+                                      reorder them
+                                    </p>
+                                  </div>
+                                  <DialogClose asChild>
+                                    <IconButton
+                                      variant="ghost"
+                                      visual="gray"
+                                      size="sm"
+                                    >
+                                      <X className="size-5" />
+                                    </IconButton>
+                                  </DialogClose>
+                                </div>
 
-          <div className="max-h-[60vh] overflow-y-auto px-6 pb-6">
-            <WorkplaceValuesEditor
-              values={workplaceValues}
-              setValues={setWorkplaceValues}
-              draftProjectId={null}
-            />
-          </div>
+                                <TabsList className="w-full px-0 pt-4 justify-start">
+                                  <TabsTrigger value="dialog-values">
+                                    Value&apos;s
+                                  </TabsTrigger>
+                                  <TabsTrigger value="dialog-recent">
+                                    Recently Asked Questions
+                                  </TabsTrigger>
+                                </TabsList>
+                              </div>
 
-          <div className="flex items-center justify-between rounded-b-xl bg-gray-25 px-6 py-4">
-            <Button
-              variant="link"
-              visual="gray"
-              onClick={() => setValuesOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button size="sm" onClick={() => setValuesOpen(false)}>
-              Save
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+                              <ScrollArea
+                                scrollBar={<ScrollBar className="w-4 p-1" />}
+                                viewportClassName="max-h-[60vh]"
+                              >
+                              <div className="px-6 py-6">
+                                {questionsTab === "dialog-values" && (
+                                  <>
+                                    <p className="text-sm font-light text-dark-blue-400">
+                                      Write a response for each of the question
+                                      added to this project. Drag and drop Value
+                                      items to reorder them. The order you set
+                                      here will be reflected on your
+                                      project&apos;s public Value section.
+                                    </p>
 
+                                    <div className="mt-4 flex items-center gap-3">
+                                      <Button
+                                        variant="outlined"
+                                        visual="gray"
+                                        size="sm"
+                                        onClick={openAiValueDialog}
+                                      >
+                                        <Stars02 className="size-[15px]" />
+                                        Generate With AI
+                                      </Button>
+                                      <Button
+                                        variant="outlined"
+                                        visual="gray"
+                                        size="sm"
+                                        onClick={handleAddValue}
+                                      >
+                                        <Plus className="size-[15px]" />
+                                        Add Question
+                                      </Button>
+                                    </div>
+
+                                    {(project.values?.length ?? 0) >= 10 && (
+                                      <p className="mt-2 text-sm text-error-500">
+                                        You can add a maximum of 10 reorder them
+                                      </p>
+                                    )}
+
+                                    <Dialog
+                                      open={aiValueDialogOpen}
+                                      onOpenChange={setAiValueDialogOpen}
+                                    >
+                                      <DialogContent className="max-w-[640px] p-0 gap-0">
+                                        <div className="px-6 pt-6 pb-4 border-b border-gray-200 flex items-start justify-between">
+                                          <div className="flex items-start gap-x-2">
+                                            <Stars02 className="size-5 text-dark-blue-400 shrink-0 mt-0.5" />
+                                            <div>
+                                              <DialogTitle>
+                                                AI Generated Value&apos;s
+                                              </DialogTitle>
+                                              <DialogDescription className="mt-1">
+                                                Review and adjust your
+                                                AI-generated Value&apos;s as needed
+                                              </DialogDescription>
+                                            </div>
+                                          </div>
+                                          <Badge
+                                            className="rounded-full bg-success-50 text-success-600 shrink-0"
+                                            visual="gray"
+                                          >
+                                            {valueAddedCount} of{" "}
+                                            {valueSuggestions.length} added
+                                          </Badge>
+                                        </div>
+
+                                        {valueRemainingSlots <
+                                          valueSuggestions.filter((s) => !s.added)
+                                            .length && (
+                                          <p className="px-6 pt-4 text-sm text-error-500">
+                                            You currently have{" "}
+                                            {project.values?.length ?? 0} Value&apos;s
+                                            in total, so you can only add{" "}
+                                            {valueRemainingSlots} more
+                                          </p>
+                                        )}
+
+                                        <ScrollArea
+                                          scrollBar={
+                                            <ScrollBar className="w-4 p-1" />
+                                          }
+                                          viewportClassName="max-h-[420px]"
+                                        >
+                                        <div className="px-6 py-4 space-y-3">
+                                          {valueGenLoading ? (
+                                            <div className="flex flex-col items-center justify-center gap-3 py-12">
+                                              <Spinner
+                                                size={32}
+                                                strokeWidth={4}
+                                              />
+                                              <p className="text-sm text-gray-500">
+                                                Generating suggestions…
+                                              </p>
+                                            </div>
+                                          ) : valueGenError ? (
+                                            <div className="py-8 text-center">
+                                              <p className="text-sm text-error-500">
+                                                Suggestions couldn&apos;t be
+                                                loaded. Try again.
+                                              </p>
+                                              <Button
+                                                variant="outlined"
+                                                visual="gray"
+                                                size="sm"
+                                                className="mt-3"
+                                                onClick={runValueGeneration}
+                                              >
+                                                <Stars02 className="size-[15px]" />
+                                                Retry
+                                              </Button>
+                                            </div>
+                                          ) : (
+                                            valueSuggestions.map((s, i) => (
+                                              <div
+                                                key={i}
+                                                className={cn(
+                                                  "group/svalue relative rounded-lg border p-4 transition",
+                                                  s.added
+                                                    ? "border-success-300 bg-success-25"
+                                                    : "border-gray-200 bg-white hover:bg-gray-50"
+                                                )}
+                                              >
+                                                <div className="flex items-start justify-between gap-x-3">
+                                                  <h3
+                                                    className={cn(
+                                                      "text-sm font-bold",
+                                                      s.added
+                                                        ? "text-success-700"
+                                                        : "text-dark-blue-400"
+                                                    )}
+                                                  >
+                                                    {s.question}
+                                                  </h3>
+                                                  {s.added ? (
+                                                    <span className="shrink-0 inline-flex items-center gap-x-1 text-sm font-medium text-success-600">
+                                                      <Check className="size-4" />
+                                                      Added
+                                                    </span>
+                                                  ) : (
+                                                    <Button
+                                                      variant="outlined"
+                                                      visual="gray"
+                                                      size="sm"
+                                                      className="shrink-0 opacity-0 group-hover/svalue:opacity-100 transition"
+                                                      onClick={() =>
+                                                        insertValueSuggestion(i)
+                                                      }
+                                                    >
+                                                      <Upload01 className="size-[15px]" />
+                                                      Insert
+                                                    </Button>
+                                                  )}
+                                                </div>
+                                                <p
+                                                  className={cn(
+                                                    "mt-1 text-sm font-light",
+                                                    s.added
+                                                      ? "text-success-700"
+                                                      : "text-dark-blue-400"
+                                                  )}
+                                                >
+                                                  {s.answer}
+                                                </p>
+                                                {s.added && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      removeValueSuggestion(i)
+                                                    }
+                                                    className="absolute bottom-3 right-3 size-9 rounded-full border border-success-300 bg-white text-success-600 hover:border-error-300 hover:text-error-500 inline-flex items-center justify-center opacity-0 group-hover/svalue:opacity-100 transition"
+                                                  >
+                                                    <Trash2 className="size-4" />
+                                                  </button>
+                                                )}
+                                              </div>
+                                            ))
+                                          )}
+                                        </div>
+                                        </ScrollArea>
+
+                                        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                                          <Button
+                                            variant="outlined"
+                                            visual="gray"
+                                            onClick={runValueGeneration}
+                                            disabled={valueGenLoading}
+                                          >
+                                            <Stars02 className="size-[15px]" />
+                                            Regenerate
+                                          </Button>
+                                          <Button
+                                            onClick={insertAllValueSuggestions}
+                                            disabled={
+                                              valueGenLoading ||
+                                              valueRemainingSlots === 0 ||
+                                              valueSuggestions.every((s) => s.added)
+                                            }
+                                          >
+                                            Insert All ({valueSuggestions.length})
+                                          </Button>
+                                        </div>
+                                      </DialogContent>
+                                    </Dialog>
+
+                                    {!project.values ||
+                                    project.values.length === 0 ? (
+                                      <div className="mt-6 flex flex-col items-center justify-center py-10 text-center">
+                                        <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
+                                          <HelpCircle className="size-5 text-gray-400" />
+                                        </div>
+                                        <h3 className="text-sm font-semibold text-dark-blue-400">
+                                          No Value&apos;s yet
+                                        </h3>
+                                        <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
+                                          Add questions that clients commonly
+                                          ask about your project, or generate
+                                          them with AI.
+                                        </p>
+                                      </div>
+                                    ) : (
+                                      <Accordion
+                                        type="single"
+                                        collapsible
+                                        className="mt-4 space-y-3"
+                                        value={
+                                          openValueIndex !== null
+                                            ? `value-${openValueIndex}`
+                                            : ""
+                                        }
+                                        onValueChange={(val) =>
+                                          setOpenValueIndex(
+                                            val
+                                              ? Number(val.replace("value-", ""))
+                                              : null
+                                          )
+                                        }
+                                      >
+                                        {(
+                                          project.values as Array<{
+                                            question: string
+                                            answer: string
+                                          }>
+                                        ).map((value, idx) => (
+                                          <AccordionItem
+                                            key={idx}
+                                            value={`value-${idx}`}
+                                            className="rounded-lg border border-gray-200 bg-white"
+                                          >
+                                            <AccordionTrigger className="w-full p-4 flex items-center gap-3 [&[data-state=open]_.closed-icons]:hidden [&[data-state=closed]_.open-icons]:hidden [&[data-state=open]_.closed-text]:hidden [&[data-state=open]_.open-text]:inline">
+                                              <button
+                                                type="button"
+                                                className="cursor-grab text-gray-400 hover:text-gray-600"
+                                                onClick={(e) =>
+                                                  e.stopPropagation()
+                                                }
+                                              >
+                                                <GripVertical2 />
+                                              </button>
+                                              <div className="min-w-0 flex-1 text-left">
+                                                <span className="text-sm font-bold text-dark-blue-400">
+                                                  Question {idx + 1}
+                                                  <span className="closed-text">
+                                                    :
+                                                  </span>
+                                                </span>
+                                                <span className="closed-text">
+                                                  {" "}
+                                                </span>
+                                                <span className="closed-text text-sm text-dark-blue-400">
+                                                  {value.question}
+                                                </span>
+                                              </div>
+                                              <div className="flex items-center gap-1">
+                                                <span className="open-icons">
+                                                  <IconButton
+                                                    asChild
+                                                    variant="ghost"
+                                                    visual="gray"
+                                                    size="sm"
+                                                    className="rounded-full text-gray-500 hover:text-gray-800"
+                                                  >
+                                                    <span>
+                                                      <Check className="size-4" />
+                                                    </span>
+                                                  </IconButton>
+                                                </span>
+                                                <span className="closed-icons">
+                                                  <IconButton
+                                                    asChild
+                                                    variant="ghost"
+                                                    visual="gray"
+                                                    size="sm"
+                                                    className="rounded-full text-gray-500 hover:text-gray-800"
+                                                  >
+                                                    <span>
+                                                      <Edit03 className="size-4" />
+                                                    </span>
+                                                  </IconButton>
+                                                </span>
+                                                <IconButton
+                                                  variant="ghost"
+                                                  visual="gray"
+                                                  size="sm"
+                                                  className="rounded-full text-gray-500 hover:text-gray-800"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    handleDeleteValue(idx)
+                                                  }}
+                                                >
+                                                  <Trash2 className="size-4" />
+                                                </IconButton>
+                                              </div>
+                                            </AccordionTrigger>
+                                            <DisclosureContent className="px-4 pb-4">
+                                              <p className="text-sm font-light text-dark-blue-400">
+                                                Make this clear and concise,
+                                                this is what your visitors will
+                                                see first.
+                                              </p>
+                                              <Input
+                                                className="mt-2"
+                                                value={value.question}
+                                                onChange={(e) =>
+                                                  handleValueChange(
+                                                    idx,
+                                                    "question",
+                                                    e.target.value
+                                                  )
+                                                }
+                                              />
+                                              <div className="mt-4 flex items-center justify-between">
+                                                <div>
+                                                  <h3 className="text-sm font-bold text-dark-blue-400">
+                                                    Answer
+                                                  </h3>
+                                                  <p className="mt-1 text-sm font-light text-dark-blue-400">
+                                                    Provide a detailed, helpful
+                                                    response that fully
+                                                    addresses the question
+                                                  </p>
+                                                </div>
+                                                <Button
+                                                  variant="outlined"
+                                                  visual="gray"
+                                                  size="sm"
+                                                  onClick={async () => {
+                                                    if (
+                                                      !project?.id ||
+                                                      !isRealBackendId(
+                                                        project.id
+                                                      )
+                                                    ) {
+                                                      handleValueChange(
+                                                        idx,
+                                                        "answer",
+                                                        generateValueAnswer(
+                                                          project,
+                                                          value.question
+                                                        )
+                                                      )
+                                                      return
+                                                    }
+                                                    try {
+                                                      const res =
+                                                        await ProjectAPI.SuggestFaqAnswer(
+                                                          project.id,
+                                                          value.question
+                                                        )
+                                                      handleValueChange(
+                                                        idx,
+                                                        "answer",
+                                                        res?.data?.answer ||
+                                                          generateValueAnswer(
+                                                            project,
+                                                            value.question
+                                                          )
+                                                      )
+                                                    } catch {
+                                                      handleValueChange(
+                                                        idx,
+                                                        "answer",
+                                                        generateValueAnswer(
+                                                          project,
+                                                          value.question
+                                                        )
+                                                      )
+                                                    }
+                                                  }}
+                                                >
+                                                  <Stars02 className="size-[15px]" />
+                                                  Answer With AI
+                                                </Button>
+                                              </div>
+                                              <Textarea
+                                                className="mt-2"
+                                                rows={4}
+                                                value={value.answer}
+                                                onChange={(e) =>
+                                                  handleValueChange(
+                                                    idx,
+                                                    "answer",
+                                                    e.target.value.slice(0, 300)
+                                                  )
+                                                }
+                                                maxLength={300}
+                                              />
+                                              <p className="mt-1 text-right text-xs text-gray-500">
+                                                {(value.answer || "").length}/300
+                                              </p>
+                                            </DisclosureContent>
+                                          </AccordionItem>
+                                        ))}
+                                      </Accordion>
+                                    )}
+
+                                  </>
+                                )}
+
+                                {questionsTab === "dialog-recent" && (
+                                  <RecentQuestionsManager projectId={String(project.id)} />
+                                )}
+                              </div>
+                              </ScrollArea>
+                            </Tabs>
+
+                            <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
+                              <Button
+                                type="button"
+                                variant="link"
+                                visual="gray"
+                                onClick={() => setValuesDialogOpen(false)}
+                              >
+                                <X className="size-[15px]" />
+                                Cancel
+                              </Button>
+                              <Button
+                                onClick={() => setValuesDialogOpen(false)}
+                              >
+                                Save
+                              </Button>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
       <Dialog open={caseStudyOpen} onOpenChange={setCaseStudyOpen}>
             <DialogContent
               variant="unanimated"
