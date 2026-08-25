@@ -2111,85 +2111,130 @@ function Default() {
           >
             <div className="pt-6 flex gap-x-8">
               {isClientProfile && (
-                <aside className="hidden shrink-0 w-[278px] xl:block">
-                  <Card className="w-full flex-col items-stretch p-6">
-                    <Avatar className="size-[148px]" size="2xl">
-                      <AvatarImage src="/company-logo.png" alt="Company Name" />
-                      <AvatarFallback>C</AvatarFallback>
-                    </Avatar>
+                <aside className="hidden shrink-0 w-[277px] xl:block">
+                  {/* Side bar — 277px, 20px padding, 20px gap */}
+                  <Card className="w-full flex-col items-start gap-5 p-5">
+                    {/* Frame 30 — 24px gap */}
+                    <div className="flex w-full flex-col items-start gap-6">
+                      {/* Header — 16px gap */}
+                      <div className="flex w-full flex-col items-start gap-4">
+                        <Avatar className="size-[150px] border border-gray-200">
+                          <AvatarImage
+                            src="/company-logo.png"
+                            alt="Company Name"
+                          />
+                          <AvatarFallback>C</AvatarFallback>
+                        </Avatar>
 
-                    <h1 className="mt-5 text-2xl font-bold leading-8 text-dark-blue-400">
-                      Company Name
-                    </h1>
-                    <p className="mt-1 text-sm leading-5 text-gray-500">City, State</p>
-
-                    <p className="mt-4 text-sm leading-5 text-gray-500">
-                      <span className="font-semibold text-dark-blue-400">3:30 PM</span> local
-                      time
-                      <span className="block">(GMT-6)</span>
-                    </p>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {["Project Excellence", "Top Rated", "Premium Member"].map((tag) => (
-                        <Badge key={tag} visual="gray" size="lg">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-
-                    <div className="mt-5 space-y-2">
-                      {["Verified Payment Method", "Verified Contact Number"].map((item) => (
-                        <p
-                          key={item}
-                          className="flex items-center gap-x-2 text-sm font-semibold leading-5 text-primary-500"
-                        >
-                          <CheckCircle className="size-4 shrink-0" />
-                          {item}
-                        </p>
-                      ))}
-                    </div>
-
-                    <Button className="mt-5 w-full" size="lg">
-                      Message
-                    </Button>
-
-                    <NextLink
-                      className="mt-5 block text-sm font-semibold leading-5 text-dark-blue-400 hover:underline"
-                      href="#"
-                    >
-                      mywebsite.com
-                    </NextLink>
-
-                    <p className="mt-4 text-sm leading-5 text-gray-500">
-                      Member since{" "}
-                      <span className="font-semibold text-dark-blue-400">Sep 2024</span>
-                    </p>
-
-                    <h2 className="mt-5 text-base font-semibold leading-6 text-dark-blue-400">
-                      Industries
-                    </h2>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {["UX Design", "Marketing", "Graphic Design"].map((industry) => (
-                        <Badge key={industry} visual="gray" size="lg">
-                          {industry}
-                        </Badge>
-                      ))}
-                    </div>
-
-                    <dl className="mt-6 space-y-3 border-t border-gray-200 pt-5 text-sm leading-5">
-                      {[
-                        ["Company Size", "2-9 Employees"],
-                        ["Average Pay Rate", "$11.28"],
-                        ["Total Hours billed", "237"],
-                        ["Total Projects", "08"],
-                        ["Average response time", "5 hours"],
-                      ].map(([label, value]) => (
-                        <div key={label} className="flex items-baseline gap-x-2">
-                          <dt className="font-semibold text-dark-blue-400">{label}:</dt>
-                          <dd className="text-gray-500">{value}</dd>
+                        <div className="flex w-full flex-col items-start gap-0.5">
+                          <h1 className="text-xl font-semibold leading-[30px] text-dark-blue-400">
+                            Company Name
+                          </h1>
+                          <p className="text-sm leading-4 text-dark-blue-400">
+                            City, State
+                          </p>
                         </div>
-                      ))}
-                    </dl>
+
+                        <div className="flex flex-col items-start">
+                          <p className="text-sm font-bold leading-[17px] text-dark-blue-400">
+                            3:30 PM local time
+                          </p>
+                          <p className="text-xs leading-[18px] text-dark-blue-400">
+                            (GMT-6)
+                          </p>
+                        </div>
+
+                        <div className="flex w-full flex-wrap items-start gap-2">
+                          {[
+                            "Project Excellence",
+                            "Top Rated",
+                            "Premium Member",
+                          ].map((tag) => (
+                            <Badge
+                              key={tag}
+                              visual="gray"
+                              className="h-[26px] px-3 py-1"
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+
+                        <div className="flex flex-col items-start gap-1">
+                          {[
+                            "Verified Payment Method",
+                            "Verified Contact Number",
+                          ].map((item) => (
+                            <p
+                              key={item}
+                              className="flex h-6 items-center gap-2 text-xs font-semibold text-primary-500"
+                            >
+                              <CheckCircle className="size-[15px] shrink-0" />
+                              {item}
+                            </p>
+                          ))}
+                        </div>
+
+                        <Button className="w-full" size="md">
+                          Message
+                        </Button>
+
+                        <div className="flex w-full flex-col items-start gap-2">
+                          <NextLink
+                            className="flex h-9 items-center text-sm font-semibold leading-6 text-dark-blue-400 hover:underline"
+                            href="#"
+                          >
+                            mywebsite.com
+                          </NextLink>
+                          <p className="flex items-center gap-1.5 text-xs leading-[15px] text-dark-blue-400">
+                            Member since
+                            <span className="font-semibold">Sep 2024</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Industries + stats — 24px gap, 20px bottom padding */}
+                      <div className="flex w-full flex-col items-start gap-6 pb-5">
+                        <div className="flex w-full flex-col items-start gap-3">
+                          <h2 className="w-full text-sm font-bold leading-[17px] text-dark-blue-400">
+                            Industries
+                          </h2>
+                          <div className="flex w-full flex-wrap items-center gap-2">
+                            {["UX Design", "Marketing", "Graphic Design"].map(
+                              (industry) => (
+                                <Badge
+                                  key={industry}
+                                  visual="gray"
+                                  size="md"
+                                  className="bg-gray-50 px-2.5 py-0.5 text-dark-blue-400"
+                                >
+                                  {industry}
+                                </Badge>
+                              )
+                            )}
+                          </div>
+                        </div>
+
+                        <dl className="flex w-full flex-col items-start gap-2 pb-1.5">
+                          {[
+                            ["Company Size:", "2-9 Employees"],
+                            ["Average Pay Rate:", "$11.28"],
+                            ["Total Hours billed", "237"],
+                            ["Total Projects:", "08"],
+                            ["Average response time:", "5 hours"],
+                          ].map(([label, value]) => (
+                            <div key={label} className="flex items-start gap-3">
+                              <dt className="text-xs font-bold leading-6 text-dark-blue-400">
+                                {label}
+                              </dt>
+                              <dd className="text-xs leading-6 text-dark-blue-400">
+                                {value}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </div>
+                    </div>
                   </Card>
                 </aside>
               )}
@@ -4904,555 +4949,558 @@ function Default() {
                 )}
               </div>
 
-              <div className="shrink-0 flex flex-col gap-y-6 w-[289px] isolate">
-                <div
-                  className={cn(
-                    "rounded-lg z-10 transition duration-300",
-                    isClientView ? "bg-white" : showLanguagesBox ? "bg-transparent" : "space-y-6 bg-transparent",
-                    isClientView &&
-                      "top-[145px] sticky before:content-[''] before:absolute before:w-full before:top-[-32px] before:h-[40px] before:bg-gray-50",
-                    isClientView && isCardStuck &&
-                      "shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08)]"
-                  )}
-                  ref={cardRef}
-                >
+              {/* Talent right rail — hidden on the client profile, kept for reuse */}
+              {!isClientProfile && (
+                <div className="shrink-0 flex flex-col gap-y-6 w-[289px] isolate">
                   <div
                     className={cn(
-                      "p-6 relative bg-white border border-gray-200",
-                      showLanguagesBox ? "rounded-t-lg" : "rounded-lg"
+                      "rounded-lg z-10 transition duration-300",
+                      isClientView ? "bg-white" : showLanguagesBox ? "bg-transparent" : "space-y-6 bg-transparent",
+                      isClientView &&
+                        "top-[145px] sticky before:content-[''] before:absolute before:w-full before:top-[-32px] before:h-[40px] before:bg-gray-50",
+                      isClientView && isCardStuck &&
+                        "shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08)]"
                     )}
+                    ref={cardRef}
                   >
-                    <div className="flex items-center gap-x-1 justify-center">
-                      <span className="inline-flex text-sm leading-none text-dark-blue-400 font-bold items-center gap-x-1">
-                        <span
-                          className={`size-2 inline-block rounded-full ${isOwnProfile ? "bg-green-500" : "bg-gray-500"}`}
-                        />{" "}
-                        {isOwnProfile ? "Online" : "Offline"}
-                      </span>
-                      <span className="font-extralight text-sm leading-none text-dark-blue-400">
-                        {(() => {
-                          const tz = profile?.timezone
-                          if (!tz) return ""
-                          try {
-                            const now = new Date()
-                            const timeStr = now.toLocaleTimeString("en-US", {
-                              timeZone: tz,
-                              hour: "numeric",
-                              minute: "2-digit",
-                              hour12: true,
-                            })
-                            return `${timeStr} local time`
-                          } catch {
-                            return ""
-                          }
-                        })()}
-                      </span>
-                    </div>
-
-                    <div className="mt-2 flex items-center justify-center">
-                      <span className="text-sm leading-none font-extralight text-dark-blue-400">
-                        Average response time{" "}
-                        <span className="text-sm font-bold leading-none">
-                          1 hour
-                        </span>
-                      </span>
-                    </div>
-
-                    <button
-                      className="w-full mt-5 duration-300 transition focus-visible:outlin-none text-sm leading-5 font-semibold shrink-0 h-10 flex items-center justify-center gap-x-2 rounded-[5px] px-4 bg-white border-2 text-primary-500 hover:text-white hover:bg-primary-500 border-primary-500 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)]"
-                      onClick={() => {
-                        if (isOwnProfile) {
-                          router.push("/inbox")
-                          return
-                        }
-                        const currentUser = getCurrentUser()
-                        if (
-                          !currentUser?.id ||
-                          !profile?.id ||
-                          currentUser.id === profile.id
-                        )
-                          return
-                        router.push(`/inbox?participantId=${profile.id}`)
-                      }}
+                    <div
+                      className={cn(
+                        "p-6 relative bg-white border border-gray-200",
+                        showLanguagesBox ? "rounded-t-lg" : "rounded-lg"
+                      )}
                     >
-                      <MessageSquare01 className="size-[15px]" />{" "}
-                      {isOwnProfile ? "View Inbox" : "Message Me"}
-                    </button>
-                  </div>
+                      <div className="flex items-center gap-x-1 justify-center">
+                        <span className="inline-flex text-sm leading-none text-dark-blue-400 font-bold items-center gap-x-1">
+                          <span
+                            className={`size-2 inline-block rounded-full ${isOwnProfile ? "bg-green-500" : "bg-gray-500"}`}
+                          />{" "}
+                          {isOwnProfile ? "Online" : "Offline"}
+                        </span>
+                        <span className="font-extralight text-sm leading-none text-dark-blue-400">
+                          {(() => {
+                            const tz = profile?.timezone
+                            if (!tz) return ""
+                            try {
+                              const now = new Date()
+                              const timeStr = now.toLocaleTimeString("en-US", {
+                                timeZone: tz,
+                                hour: "numeric",
+                                minute: "2-digit",
+                                hour12: true,
+                              })
+                              return `${timeStr} local time`
+                            } catch {
+                              return ""
+                            }
+                          })()}
+                        </span>
+                      </div>
 
-                  {showLanguagesBox && (
-                  <div
-                    className={cn(
-                      "bg-white border-gray-200 transition-all duration-300 overflow-hidden",
-                      "border-x rounded-b-lg border-b",
-                      showLanguageSection
-                        ? "p-6 max-h-[300px] opacity-100"
-                        : "p-0 max-h-0 opacity-0"
-                    )}
-                  >
-                    {showLanguageSection && (
-                      <>
-                        {(!isClientView || hasLanguages) && (
-                          <>
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
-                                <MessageTextSquare01 className="size-[15px]" />
-                                Languages
-                              </span>
+                      <div className="mt-2 flex items-center justify-center">
+                        <span className="text-sm leading-none font-extralight text-dark-blue-400">
+                          Average response time{" "}
+                          <span className="text-sm font-bold leading-none">
+                            1 hour
+                          </span>
+                        </span>
+                      </div>
 
-                              {isEditMode && isOwnProfile && (
-                                <IconButton
-                                  className="rounded-full text-gray-500 hover:text-gray-800 size-5"
-                                  variant="ghost"
-                                  visual="gray"
-                                  onClick={() => setLanguagesOpen(true)}
-                                >
-                                  <Edit03 className="size-4" />
-                                </IconButton>
-                              )}
-                            </div>
+                      <button
+                        className="w-full mt-5 duration-300 transition focus-visible:outlin-none text-sm leading-5 font-semibold shrink-0 h-10 flex items-center justify-center gap-x-2 rounded-[5px] px-4 bg-white border-2 text-primary-500 hover:text-white hover:bg-primary-500 border-primary-500 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)]"
+                        onClick={() => {
+                          if (isOwnProfile) {
+                            router.push("/inbox")
+                            return
+                          }
+                          const currentUser = getCurrentUser()
+                          if (
+                            !currentUser?.id ||
+                            !profile?.id ||
+                            currentUser.id === profile.id
+                          )
+                            return
+                          router.push(`/inbox?participantId=${profile.id}`)
+                        }}
+                      >
+                        <MessageSquare01 className="size-[15px]" />{" "}
+                        {isOwnProfile ? "View Inbox" : "Message Me"}
+                      </button>
+                    </div>
 
-                            {hasLanguages ? (
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                {profile!.languages!.map((l: any) => (
-                                  <Badge
-                                    key={l.id ?? l.name}
-                                    className="text-gray-700"
-                                    visual="gray"
-                                    size="lg"
-                                  >
-                                    {l.name}
-                                  </Badge>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="mt-3 p-4 rounded-lg border border-gray-200 bg-gray-25">
-                                <p className="text-xs font-light text-gray-500 leading-relaxed">
-                                  Tell us what languages you speak, they&apos;ll
-                                  show up here.
-                                </p>
+                    {showLanguagesBox && (
+                    <div
+                      className={cn(
+                        "bg-white border-gray-200 transition-all duration-300 overflow-hidden",
+                        "border-x rounded-b-lg border-b",
+                        showLanguageSection
+                          ? "p-6 max-h-[300px] opacity-100"
+                          : "p-0 max-h-0 opacity-0"
+                      )}
+                    >
+                      {showLanguageSection && (
+                        <>
+                          {(!isClientView || hasLanguages) && (
+                            <>
+                              <div className="flex items-center justify-between">
+                                <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
+                                  <MessageTextSquare01 className="size-[15px]" />
+                                  Languages
+                                </span>
+
                                 {isEditMode && isOwnProfile && (
-                                  <Button
-                                    className="mt-3 w-full bg-white"
-                                    variant="outlined"
+                                  <IconButton
+                                    className="rounded-full text-gray-500 hover:text-gray-800 size-5"
+                                    variant="ghost"
                                     visual="gray"
                                     onClick={() => setLanguagesOpen(true)}
                                   >
-                                    <Plus className="size-[15px]" /> Add
-                                    Languages
-                                  </Button>
+                                    <Edit03 className="size-4" />
+                                  </IconButton>
                                 )}
                               </div>
-                            )}
-                          </>
-                        )}
 
-                        {(!isClientView || hasTimezone) && (
-                          <div
-                            className={cn(
-                              "flex items-center justify-between",
-                              !isClientView || hasLanguages ? "mt-5" : ""
-                            )}
-                          >
-                            <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
-                              <Clock className="size-[15px]" />
-                              Time Zone
-                            </span>
-
-                            <span className="text-xs leading-none font-bold text-dark-blue-400">
-                              {profile?.timezone ?? "\u2014"}
-                            </span>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  )}
-                </div>
-
-                {!isClientView && (
-                <div className="rounded-lg border border-gray-200 bg-white">
-                  <div className="p-6">
-                    <h1 className="text-sm font-bold leading-none text-dark-blue-400">
-                      Resume
-                    </h1>
-                    <p className="mt-1.5 text-xs font-light text-gray-600 leading-relaxed">
-                      Add your resume to complete your profile faster.
-                    </p>
-
-                    <input
-                      ref={resumeInputRef}
-                      type="file"
-                      accept=".pdf,.doc,.docx"
-                      className="hidden"
-                      onChange={handleResumeChange}
-                    />
-
-                    {/* Error states: failed, size-limit, unsupported, not_a_resume, nothing_found */}
-                    {(resumeStatus === "failed" || resumeStatus === "size-limit" || resumeStatus === "unsupported" || resumeStatus === "not_a_resume" || resumeStatus === "nothing_found" || resumeStatus === "name_mismatch") && (
-                      <div className="mt-4 rounded-lg border border-error-200 bg-error-25 p-6 flex flex-col items-center">
-                        <div className="size-10 rounded-full bg-error-50 inline-flex items-center justify-center">
-                          <AlertTriangle className="size-5 text-error-500" />
-                        </div>
-
-                        <p className="mt-3 text-xs font-medium text-error-600 text-center leading-relaxed">
-                          {resumeStatus === "failed" && (
-                            <>
-                              Upload failed, please try again
-                              <br />
-                              <span className="font-normal">{resumeFile?.name}</span>
+                              {hasLanguages ? (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {profile!.languages!.map((l: any) => (
+                                    <Badge
+                                      key={l.id ?? l.name}
+                                      className="text-gray-700"
+                                      visual="gray"
+                                      size="lg"
+                                    >
+                                      {l.name}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="mt-3 p-4 rounded-lg border border-gray-200 bg-gray-25">
+                                  <p className="text-xs font-light text-gray-500 leading-relaxed">
+                                    Tell us what languages you speak, they&apos;ll
+                                    show up here.
+                                  </p>
+                                  {isEditMode && isOwnProfile && (
+                                    <Button
+                                      className="mt-3 w-full bg-white"
+                                      variant="outlined"
+                                      visual="gray"
+                                      onClick={() => setLanguagesOpen(true)}
+                                    >
+                                      <Plus className="size-[15px]" /> Add
+                                      Languages
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
                             </>
                           )}
-                          {resumeStatus === "size-limit" &&
-                            "Uploaded file exceeds the size limit of 5MB. Please select a different file."}
-                          {resumeStatus === "unsupported" &&
-                            "Unsupported file type. Only PDF, DOC, and DOCX files are accepted."}
-                          {resumeStatus === "not_a_resume" &&
-                            "This doesn't look like a resume. Please upload a resume file in PDF, DOC, or DOCX format."}
-                          {resumeStatus === "nothing_found" &&
-                            "We couldn't pull any details out of this file. Please try uploading a different resume."}
-                          {resumeStatus === "name_mismatch" &&
-                            "This resume appears to belong to someone else. Please upload your own resume."}
-                        </p>
 
-                        <button
-                          type="button"
-                          className="mt-3 text-sm font-bold text-error-500 underline decoration-error-500/30 hover:decoration-error-500"
-                          onClick={resetResume}
-                        >
-                          Try again
-                        </button>
-                      </div>
-                    )}
+                          {(!isClientView || hasTimezone) && (
+                            <div
+                              className={cn(
+                                "flex items-center justify-between",
+                                !isClientView || hasLanguages ? "mt-5" : ""
+                              )}
+                            >
+                              <span className="flex items-center text-xs leading-none font-extralight text-dark-blue-400 gap-x-[5.85px]">
+                                <Clock className="size-[15px]" />
+                                Time Zone
+                              </span>
 
-                    {/* Uploading state */}
-                    {resumeStatus === "uploading" && (
-                      <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 flex items-center gap-x-3">
-                        <div className="size-10 shrink-0 rounded-full bg-primary-50 inline-flex items-center justify-center">
-                          <FileText className="size-5 text-primary-500" />
-                        </div>
-                        <div className="flex-auto min-w-0">
-                          <p className="text-xs font-medium text-dark-blue-400 truncate">
-                            {resumeFile?.name}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {resumeUploadedSize >= 1024 * 1024
-                              ? `${(resumeUploadedSize / (1024 * 1024)).toFixed(1)} MB`
-                              : `${Math.round(resumeUploadedSize / 1024)} KB`}
-                            {" \u2013 "}
-                            {resumeProgress}% uploaded
-                          </p>
-                        </div>
-                        <svg className="size-8 shrink-0 -rotate-90" viewBox="0 0 36 36">
-                          <circle cx="18" cy="18" r="15" fill="none" stroke="#E5E7EB" strokeWidth="3" />
-                          <circle
-                            cx="18" cy="18" r="15" fill="none"
-                            stroke="#3B82F6" strokeWidth="3"
-                            strokeDasharray={`${(resumeProgress / 100) * 94.25} 94.25`}
-                            strokeLinecap="round"
-                          />
-                        </svg>
-                      </div>
-                    )}
-
-                    {/* Uploaded (success) state */}
-                    {resumeStatus === "uploaded" && (
-                      <>
-                        <div className="mt-4 group/resume rounded-lg border-2 border-primary-200 bg-white p-3 flex items-center gap-x-3">
-                          <div className="size-10 shrink-0 rounded-full bg-primary-50 inline-flex items-center justify-center">
-                            <FileText className="size-5 text-primary-500" />
-                          </div>
-
-                          {/* Default: file name + date */}
-                          <div className="flex-auto min-w-0 group-hover/resume:hidden">
-                            <p className="text-xs font-bold text-dark-blue-400 truncate">
-                              {resumeFile?.name}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-0.5">
-                              Added on{" "}
-                              {(() => {
-                                if (!resumeUploadedDate) return ""
-                                const m = resumeUploadedDate.toLocaleString("en-US", { month: "long" })
-                                const d = resumeUploadedDate.getDate()
-                                const y = resumeUploadedDate.getFullYear()
-                                const sfx = ["th","st","nd","rd"]
-                                const v = d % 100
-                                const ord = sfx[(v - 20) % 10] || sfx[v] || sfx[0]
-                                return `${m} ${d}${ord}, ${y}`
-                              })()}
-                            </p>
-                          </div>
-
-                          {/* Hover: action icons */}
-                          <div className="hidden group-hover/resume:flex items-center gap-x-2 ml-auto">
-                            <TooltipProvider delayDuration={75}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="size-10 rounded-full inline-flex items-center justify-center text-primary-500 hover:bg-primary-50 transition-colors"
-                                    onClick={() => {
-                                      if (!resumeFile) return
-                                      const url = URL.createObjectURL(resumeFile)
-                                      const a = document.createElement("a")
-                                      a.href = url
-                                      a.download = resumeFile.name
-                                      a.click()
-                                      URL.revokeObjectURL(url)
-                                    }}
-                                  >
-                                    <Download01 className="size-5" />
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" visual="white" className="text-xs font-semibold text-gray-700 border border-gray-200">
-                                  Download
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-
-                            <TooltipProvider delayDuration={75}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="size-10 rounded-full inline-flex items-center justify-center text-primary-500 hover:bg-primary-50 transition-colors"
-                                    onClick={() => resumeInputRef.current?.click()}
-                                  >
-                                    <RefreshCw className="size-5" />
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" visual="white" className="text-xs font-semibold text-gray-700 border border-gray-200">
-                                  Replace
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-
-                            <TooltipProvider delayDuration={75}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="size-10 rounded-full inline-flex items-center justify-center text-error-500 hover:bg-error-50 transition-colors"
-                                    onClick={() => setResumeDeleteConfirmOpen(true)}
-                                  >
-                                    <Trash03 className="size-5" />
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" visual="white" className="text-xs font-semibold text-gray-700 border border-gray-200">
-                                  Delete
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          </div>
-                        </div>
-
-                        <p className="mt-3 text-[11px] text-gray-500 leading-relaxed">
-                          Your resume will remain private and will not be shared with any third parties.
-                        </p>
-                        <p className="mt-1 text-[11px] text-gray-500 leading-relaxed">
-                          See our{" "}
-                          <a href="/privacy-policy" className="text-primary-500 underline font-medium">
-                            Privacy Policy
-                          </a>{" "}
-                          for details.
-                        </p>
-                      </>
-                    )}
-
-                    {/* Default & dragging states */}
-                    {(resumeStatus === "idle" || resumeStatus === "dragging") && (
-                      <div
-                        className={cn(
-                          "mt-4 rounded-lg border-2 border-dashed p-6 flex flex-col items-center transition-colors",
-                          resumeStatus === "dragging"
-                            ? "border-primary-500 bg-primary-25"
-                            : "border-gray-200"
-                        )}
-                        onDragOver={(e) => {
-                          e.preventDefault()
-                          setResumeStatus("dragging")
-                        }}
-                        onDragLeave={() => setResumeStatus("idle")}
-                        onDrop={handleResumeDrop}
-                      >
-                        <div className="size-10 rounded-full bg-primary-50 inline-flex items-center justify-center">
-                          <FileText className="size-5 text-primary-500" />
-                        </div>
-
-                        <Button
-                          className="mt-3"
-                          size="md"
-                          onClick={() => resumeInputRef.current?.click()}
-                        >
-                          <Upload01 className="size-4" />
-                          Upload Resume
-                        </Button>
-
-                        <p className="mt-2 text-xs text-gray-500">
-                          or drag and drop
-                        </p>
-                        <p className="mt-1 text-xs font-medium text-gray-500">
-                          PDF, DOC, DOCX (max 5MB)
-                        </p>
-                      </div>
+                              <span className="text-xs leading-none font-bold text-dark-blue-400">
+                                {profile?.timezone ?? "\u2014"}
+                              </span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
                     )}
                   </div>
-                </div>
-                )}
 
-                {(similarProfiles.length > 0 || !isClientView) && (
-                <div className="space-y-6">
+                  {!isClientView && (
                   <div className="rounded-lg border border-gray-200 bg-white">
                     <div className="p-6">
                       <h1 className="text-sm font-bold leading-none text-dark-blue-400">
-                        Similar profiles
+                        Resume
                       </h1>
+                      <p className="mt-1.5 text-xs font-light text-gray-600 leading-relaxed">
+                        Add your resume to complete your profile faster.
+                      </p>
 
-                      {similarProfiles.length > 0 ? (
-                        <>
-                          <div className="mt-3">
-                            {similarProfiles.slice(0, 5).map((sp) => {
-                              const rateMin =
-                                sp.rateMin != null ? Number(sp.rateMin) : null
-                              const rateMax =
-                                sp.rateMax != null ? Number(sp.rateMax) : null
-                              // Ratings hidden for MVP — reintroduce with the rating system
-                              // const rating = Number(sp.rating) || 0
-                              const rate =
-                                rateMin != null &&
-                                rateMax != null &&
-                                rateMin !== rateMax
-                                  ? `$${rateMin} - $${rateMax}`
-                                  : `$${rateMin ?? (Number(sp.hourlyRate) || 0)}`
-                              return (
-                                <div
-                                  key={sp.id}
-                                  onClick={() =>
-                                    sp.username &&
-                                    router.push(
-                                      `/talent-profile?username=${sp.username}`
-                                    )
-                                  }
-                                  className={cn(
-                                    "py-3 flex items-start gap-x-2 border-b border-gray-200",
-                                    sp.username && "cursor-pointer"
-                                  )}
-                                >
-                                  <Avatar
-                                    className="hover:ring-0 active:ring-primary-100"
-                                    size="md"
-                                  >
-                                    <AvatarImage
-                                      src={sp.avatarUrl ?? undefined}
-                                      alt={sp.name}
-                                    />
-                                    <AvatarFallback>
-                                      {getInitials(sp.name)}
-                                    </AvatarFallback>
-                                  </Avatar>
+                      <input
+                        ref={resumeInputRef}
+                        type="file"
+                        accept=".pdf,.doc,.docx"
+                        className="hidden"
+                        onChange={handleResumeChange}
+                      />
 
-                                  <div className="flex-1">
-                                    <h1 className="text-sm leading-none text-dark-blue-400 font-bold">
-                                      {capitalize(sp.name.split(/\s+/)[0] || sp.name)}
-                                      {sp.username && (
-                                        <span className="text-xs font-extralight leading-none text-gray-500">
-                                          {" "}
-                                          @{sp.username}
-                                        </span>
-                                      )}
-                                    </h1>
-                                    {sp.jobTitle && (
-                                      <p className="mt-0.5 text-xs leading-none font-extralight text-dark-blue-400">
-                                        {sp.jobTitle}
-                                      </p>
-                                    )}
-                                    <div className="mt-1.5 flex items-center justify-between">
-                                      <span className="text-[13px] leading-none font-bold text-dark-blue-400">
-                                        {rate}
-                                        <span className="text-xs leading-none text-dark-blue-400 font-extralight">
-                                          /hr
-                                        </span>
-                                      </span>
-
-                                      {/* Ratings hidden for MVP — reintroduce with the rating system
-                                      {rating > 0 && (
-                                        <div className="inline-flex items-center gap-x-1">
-                                          <Star className="size-3 text-primary-500 fill-primary-500" />
-                                          <span className="font-medium leading-none text-xs text-dark-blue-400">
-                                            {rating.toFixed(1)}
-                                          </span>
-                                        </div>
-                                      )} */}
-                                    </div>
-                                  </div>
-                                </div>
-                              )
-                            })}
+                      {/* Error states: failed, size-limit, unsupported, not_a_resume, nothing_found */}
+                      {(resumeStatus === "failed" || resumeStatus === "size-limit" || resumeStatus === "unsupported" || resumeStatus === "not_a_resume" || resumeStatus === "nothing_found" || resumeStatus === "name_mismatch") && (
+                        <div className="mt-4 rounded-lg border border-error-200 bg-error-25 p-6 flex flex-col items-center">
+                          <div className="size-10 rounded-full bg-error-50 inline-flex items-center justify-center">
+                            <AlertTriangle className="size-5 text-error-500" />
                           </div>
 
-                          <div className="mt-3 flex items-center justify-center">
-                            <Button
-                              size="sm"
-                              variant="link"
-                              visual="gray"
-                              onClick={() => router.push("/talent-search")}
-                            >
-                              View More
-                            </Button>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="mt-4 p-4 rounded-lg bg-gray-25 border border-gray-200">
-                          <p className="text-xs font-light text-gray-600 leading-relaxed">
-                            Complete your profile to start seeing similar
-                            profiles here.
+                          <p className="mt-3 text-xs font-medium text-error-600 text-center leading-relaxed">
+                            {resumeStatus === "failed" && (
+                              <>
+                                Upload failed, please try again
+                                <br />
+                                <span className="font-normal">{resumeFile?.name}</span>
+                              </>
+                            )}
+                            {resumeStatus === "size-limit" &&
+                              "Uploaded file exceeds the size limit of 5MB. Please select a different file."}
+                            {resumeStatus === "unsupported" &&
+                              "Unsupported file type. Only PDF, DOC, and DOCX files are accepted."}
+                            {resumeStatus === "not_a_resume" &&
+                              "This doesn't look like a resume. Please upload a resume file in PDF, DOC, or DOCX format."}
+                            {resumeStatus === "nothing_found" &&
+                              "We couldn't pull any details out of this file. Please try uploading a different resume."}
+                            {resumeStatus === "name_mismatch" &&
+                              "This resume appears to belong to someone else. Please upload your own resume."}
                           </p>
-                          {isEditMode && isOwnProfile && (
-                            <Button
-                              className="mt-3 w-full"
-                              variant="outlined"
-                              visual="gray"
-                              onClick={() => setShowCompleteProfile(true)}
-                            >
-                              Complete My Profile
-                            </Button>
+
+                          <button
+                            type="button"
+                            className="mt-3 text-sm font-bold text-error-500 underline decoration-error-500/30 hover:decoration-error-500"
+                            onClick={resetResume}
+                          >
+                            Try again
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Uploading state */}
+                      {resumeStatus === "uploading" && (
+                        <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 flex items-center gap-x-3">
+                          <div className="size-10 shrink-0 rounded-full bg-primary-50 inline-flex items-center justify-center">
+                            <FileText className="size-5 text-primary-500" />
+                          </div>
+                          <div className="flex-auto min-w-0">
+                            <p className="text-xs font-medium text-dark-blue-400 truncate">
+                              {resumeFile?.name}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {resumeUploadedSize >= 1024 * 1024
+                                ? `${(resumeUploadedSize / (1024 * 1024)).toFixed(1)} MB`
+                                : `${Math.round(resumeUploadedSize / 1024)} KB`}
+                              {" \u2013 "}
+                              {resumeProgress}% uploaded
+                            </p>
+                          </div>
+                          <svg className="size-8 shrink-0 -rotate-90" viewBox="0 0 36 36">
+                            <circle cx="18" cy="18" r="15" fill="none" stroke="#E5E7EB" strokeWidth="3" />
+                            <circle
+                              cx="18" cy="18" r="15" fill="none"
+                              stroke="#3B82F6" strokeWidth="3"
+                              strokeDasharray={`${(resumeProgress / 100) * 94.25} 94.25`}
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                        </div>
+                      )}
+
+                      {/* Uploaded (success) state */}
+                      {resumeStatus === "uploaded" && (
+                        <>
+                          <div className="mt-4 group/resume rounded-lg border-2 border-primary-200 bg-white p-3 flex items-center gap-x-3">
+                            <div className="size-10 shrink-0 rounded-full bg-primary-50 inline-flex items-center justify-center">
+                              <FileText className="size-5 text-primary-500" />
+                            </div>
+
+                            {/* Default: file name + date */}
+                            <div className="flex-auto min-w-0 group-hover/resume:hidden">
+                              <p className="text-xs font-bold text-dark-blue-400 truncate">
+                                {resumeFile?.name}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                Added on{" "}
+                                {(() => {
+                                  if (!resumeUploadedDate) return ""
+                                  const m = resumeUploadedDate.toLocaleString("en-US", { month: "long" })
+                                  const d = resumeUploadedDate.getDate()
+                                  const y = resumeUploadedDate.getFullYear()
+                                  const sfx = ["th","st","nd","rd"]
+                                  const v = d % 100
+                                  const ord = sfx[(v - 20) % 10] || sfx[v] || sfx[0]
+                                  return `${m} ${d}${ord}, ${y}`
+                                })()}
+                              </p>
+                            </div>
+
+                            {/* Hover: action icons */}
+                            <div className="hidden group-hover/resume:flex items-center gap-x-2 ml-auto">
+                              <TooltipProvider delayDuration={75}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="size-10 rounded-full inline-flex items-center justify-center text-primary-500 hover:bg-primary-50 transition-colors"
+                                      onClick={() => {
+                                        if (!resumeFile) return
+                                        const url = URL.createObjectURL(resumeFile)
+                                        const a = document.createElement("a")
+                                        a.href = url
+                                        a.download = resumeFile.name
+                                        a.click()
+                                        URL.revokeObjectURL(url)
+                                      }}
+                                    >
+                                      <Download01 className="size-5" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" visual="white" className="text-xs font-semibold text-gray-700 border border-gray-200">
+                                    Download
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+
+                              <TooltipProvider delayDuration={75}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="size-10 rounded-full inline-flex items-center justify-center text-primary-500 hover:bg-primary-50 transition-colors"
+                                      onClick={() => resumeInputRef.current?.click()}
+                                    >
+                                      <RefreshCw className="size-5" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" visual="white" className="text-xs font-semibold text-gray-700 border border-gray-200">
+                                    Replace
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+
+                              <TooltipProvider delayDuration={75}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="size-10 rounded-full inline-flex items-center justify-center text-error-500 hover:bg-error-50 transition-colors"
+                                      onClick={() => setResumeDeleteConfirmOpen(true)}
+                                    >
+                                      <Trash03 className="size-5" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" visual="white" className="text-xs font-semibold text-gray-700 border border-gray-200">
+                                    Delete
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
+                          </div>
+
+                          <p className="mt-3 text-[11px] text-gray-500 leading-relaxed">
+                            Your resume will remain private and will not be shared with any third parties.
+                          </p>
+                          <p className="mt-1 text-[11px] text-gray-500 leading-relaxed">
+                            See our{" "}
+                            <a href="/privacy-policy" className="text-primary-500 underline font-medium">
+                              Privacy Policy
+                            </a>{" "}
+                            for details.
+                          </p>
+                        </>
+                      )}
+
+                      {/* Default & dragging states */}
+                      {(resumeStatus === "idle" || resumeStatus === "dragging") && (
+                        <div
+                          className={cn(
+                            "mt-4 rounded-lg border-2 border-dashed p-6 flex flex-col items-center transition-colors",
+                            resumeStatus === "dragging"
+                              ? "border-primary-500 bg-primary-25"
+                              : "border-gray-200"
                           )}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            setResumeStatus("dragging")
+                          }}
+                          onDragLeave={() => setResumeStatus("idle")}
+                          onDrop={handleResumeDrop}
+                        >
+                          <div className="size-10 rounded-full bg-primary-50 inline-flex items-center justify-center">
+                            <FileText className="size-5 text-primary-500" />
+                          </div>
+
+                          <Button
+                            className="mt-3"
+                            size="md"
+                            onClick={() => resumeInputRef.current?.click()}
+                          >
+                            <Upload01 className="size-4" />
+                            Upload Resume
+                          </Button>
+
+                          <p className="mt-2 text-xs text-gray-500">
+                            or drag and drop
+                          </p>
+                          <p className="mt-1 text-xs font-medium text-gray-500">
+                            PDF, DOC, DOCX (max 5MB)
+                          </p>
                         </div>
                       )}
                     </div>
                   </div>
-                </div>
-                )}
+                  )}
 
-                {!isClientView && (
-                <div className="rounded-lg border border-gray-200 bg-white">
-                  <div className="p-6">
-                    <div className="flex items-center justify-between">
-                      <h1 className="text-sm font-bold leading-none text-dark-blue-400">
-                        Affiliated Teams
-                      </h1>
-                    </div>
+                  {(similarProfiles.length > 0 || !isClientView) && (
+                  <div className="space-y-6">
+                    <div className="rounded-lg border border-gray-200 bg-white">
+                      <div className="p-6">
+                        <h1 className="text-sm font-bold leading-none text-dark-blue-400">
+                          Similar profiles
+                        </h1>
 
-                    <div className="mt-4 p-4 rounded-lg bg-gray-25 border border-gray-200">
-                      <p className="text-xs font-light text-gray-600 leading-relaxed">
-                        If you decide to join a team, those teams will be
-                        visible here.
-                      </p>
-                      {isEditMode && isOwnProfile && (
-                        <Button
-                          className="mt-3 w-full bg-white"
-                          variant="outlined"
-                          visual="gray"
-                          onClick={() => router.push("/teams")}
-                        >
-                          <Plus className="size-[15px]" /> Browse Teams
-                        </Button>
-                      )}
+                        {similarProfiles.length > 0 ? (
+                          <>
+                            <div className="mt-3">
+                              {similarProfiles.slice(0, 5).map((sp) => {
+                                const rateMin =
+                                  sp.rateMin != null ? Number(sp.rateMin) : null
+                                const rateMax =
+                                  sp.rateMax != null ? Number(sp.rateMax) : null
+                                // Ratings hidden for MVP — reintroduce with the rating system
+                                // const rating = Number(sp.rating) || 0
+                                const rate =
+                                  rateMin != null &&
+                                  rateMax != null &&
+                                  rateMin !== rateMax
+                                    ? `$${rateMin} - $${rateMax}`
+                                    : `$${rateMin ?? (Number(sp.hourlyRate) || 0)}`
+                                return (
+                                  <div
+                                    key={sp.id}
+                                    onClick={() =>
+                                      sp.username &&
+                                      router.push(
+                                        `/talent-profile?username=${sp.username}`
+                                      )
+                                    }
+                                    className={cn(
+                                      "py-3 flex items-start gap-x-2 border-b border-gray-200",
+                                      sp.username && "cursor-pointer"
+                                    )}
+                                  >
+                                    <Avatar
+                                      className="hover:ring-0 active:ring-primary-100"
+                                      size="md"
+                                    >
+                                      <AvatarImage
+                                        src={sp.avatarUrl ?? undefined}
+                                        alt={sp.name}
+                                      />
+                                      <AvatarFallback>
+                                        {getInitials(sp.name)}
+                                      </AvatarFallback>
+                                    </Avatar>
+
+                                    <div className="flex-1">
+                                      <h1 className="text-sm leading-none text-dark-blue-400 font-bold">
+                                        {capitalize(sp.name.split(/\s+/)[0] || sp.name)}
+                                        {sp.username && (
+                                          <span className="text-xs font-extralight leading-none text-gray-500">
+                                            {" "}
+                                            @{sp.username}
+                                          </span>
+                                        )}
+                                      </h1>
+                                      {sp.jobTitle && (
+                                        <p className="mt-0.5 text-xs leading-none font-extralight text-dark-blue-400">
+                                          {sp.jobTitle}
+                                        </p>
+                                      )}
+                                      <div className="mt-1.5 flex items-center justify-between">
+                                        <span className="text-[13px] leading-none font-bold text-dark-blue-400">
+                                          {rate}
+                                          <span className="text-xs leading-none text-dark-blue-400 font-extralight">
+                                            /hr
+                                          </span>
+                                        </span>
+
+                                        {/* Ratings hidden for MVP — reintroduce with the rating system
+                                        {rating > 0 && (
+                                          <div className="inline-flex items-center gap-x-1">
+                                            <Star className="size-3 text-primary-500 fill-primary-500" />
+                                            <span className="font-medium leading-none text-xs text-dark-blue-400">
+                                              {rating.toFixed(1)}
+                                            </span>
+                                          </div>
+                                        )} */}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-center">
+                              <Button
+                                size="sm"
+                                variant="link"
+                                visual="gray"
+                                onClick={() => router.push("/talent-search")}
+                              >
+                                View More
+                              </Button>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="mt-4 p-4 rounded-lg bg-gray-25 border border-gray-200">
+                            <p className="text-xs font-light text-gray-600 leading-relaxed">
+                              Complete your profile to start seeing similar
+                              profiles here.
+                            </p>
+                            {isEditMode && isOwnProfile && (
+                              <Button
+                                className="mt-3 w-full"
+                                variant="outlined"
+                                visual="gray"
+                                onClick={() => setShowCompleteProfile(true)}
+                              >
+                                Complete My Profile
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
+                  )}
+
+                  {!isClientView && (
+                  <div className="rounded-lg border border-gray-200 bg-white">
+                    <div className="p-6">
+                      <div className="flex items-center justify-between">
+                        <h1 className="text-sm font-bold leading-none text-dark-blue-400">
+                          Affiliated Teams
+                        </h1>
+                      </div>
+
+                      <div className="mt-4 p-4 rounded-lg bg-gray-25 border border-gray-200">
+                        <p className="text-xs font-light text-gray-600 leading-relaxed">
+                          If you decide to join a team, those teams will be
+                          visible here.
+                        </p>
+                        {isEditMode && isOwnProfile && (
+                          <Button
+                            className="mt-3 w-full bg-white"
+                            variant="outlined"
+                            visual="gray"
+                            onClick={() => router.push("/teams")}
+                          >
+                            <Plus className="size-[15px]" /> Browse Teams
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  )}
                 </div>
-                )}
-              </div>
+              )}
             </div>
           </div>
         </Tabs>
