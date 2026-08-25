@@ -1963,14 +1963,18 @@ function Default() {
                     </Avatar>
                     <div className="flex flex-col gap-y-0.5">
                       <span className="text-lg leading-none font-bold text-dark-blue-400">
-                        {capitalize(profile?.firstName ?? "") || "User"}{" "}
+                        {isClientProfile
+                          ? "Company Name"
+                          : capitalize(profile?.firstName ?? "") || "User"}{" "}
                         <span className="text-base font-extralight">
                           @{profile?.username ?? ""}
                         </span>
                       </span>
 
                       <span className="text-sm leading-none font-medium text-dark-blue-400">
-                        {(profile as any)?.jobTitles?.find(
+                        {isClientProfile
+                          ? ""
+                          : (profile as any)?.jobTitles?.find(
                           (j: any) => j.saveAsDefault
                         )?.jobTitle ||
                           (profile as any)?.jobTitles?.[0]?.jobTitle ||
@@ -2060,7 +2064,7 @@ function Default() {
                             onClick={() => setIsEditMode(false)}
                           >
                             <Eye className="size-[15px]" />
-                            View as Client
+                            {isClientProfile ? "Preview" : "View as Client"}
                           </Button>
                         ) : (
                           <Button
@@ -2085,37 +2089,42 @@ function Default() {
                       </>
                     )}
 
-                    <IconButton
-                      className="text-gray-500"
-                      variant="outlined"
-                      visual="gray"
-                      size="md"
-                      onClick={handleShareProfile}
-                    >
-                      <Share06 className="size-[20px]" />
-                    </IconButton>
+                    {!isClientProfile && (
+                      <IconButton
+                        className="text-gray-500"
+                        variant="outlined"
+                        visual="gray"
+                        size="md"
+                        onClick={handleShareProfile}
+                      >
+                        <Share06 className="size-[20px]" />
+                      </IconButton>
+                    )}
                   </div>
 
-                  <div className="flex items-center mt-3 gap-x-[9px]">
-                    <Clock className="size-4" />
-                    <p className="text-[12.09px] leading-none font-extralight text-dark-blue-400">
-                      {isEditMode && isOwnProfile
-                        ? "You are"
-                        : `${capitalize(profile?.firstName ?? "") || "Talent"} is`}{" "}
-                      currently{" "}
-                      <span
-                        className={cn(
-                          "font-bold",
-                          profile?.availability
-                            ? "text-success-600"
-                            : "text-gray-500"
-                        )}
-                      >
-                        {profile?.availability ? "available" : "not available"}
-                      </span>{" "}
-                      for hire
-                    </p>
-                  </div>
+                  {/* Availability — talent only */}
+                  {!isClientProfile && (
+                    <div className="flex items-center mt-3 gap-x-[9px]">
+                      <Clock className="size-4" />
+                      <p className="text-[12.09px] leading-none font-extralight text-dark-blue-400">
+                        {isEditMode && isOwnProfile
+                          ? "You are"
+                          : `${capitalize(profile?.firstName ?? "") || "Talent"} is`}{" "}
+                        currently{" "}
+                        <span
+                          className={cn(
+                            "font-bold",
+                            profile?.availability
+                              ? "text-success-600"
+                              : "text-gray-500"
+                          )}
+                        >
+                          {profile?.availability ? "available" : "not available"}
+                        </span>{" "}
+                        for hire
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
