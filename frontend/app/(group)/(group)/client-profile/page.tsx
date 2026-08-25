@@ -2289,6 +2289,7 @@ function Default() {
                 {isClientProfile && isOwnProfile && (
                   <div className="mb-4 flex justify-end">
                     <Button
+                      className="bg-white"
                       size="md"
                       variant="outlined"
                       visual="gray"
