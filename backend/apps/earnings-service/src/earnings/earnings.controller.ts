@@ -49,6 +49,17 @@ export class EarningsController {
     return { ...result, currencyFallback: fallback };
   }
 
+  // Distinct project/client options for the "All Projects"/"All Clients"
+  // filter dropdowns — sourced from the contractor's full contract history,
+  // not from whatever earnings rows the current date-range filter returns.
+  // Must be registered before ':id' — otherwise "filters" would be parsed
+  // as an :id UUID param and 400.
+  @Get('filters')
+  @HttpCode(200)
+  async getFilterOptions(@CurrentUser() user: any) {
+    return this.svc.getFilterOptions(user.id);
+  }
+
   @Get(':id')
   @HttpCode(200)
   async getDetail(@CurrentUser() user: any, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string) {

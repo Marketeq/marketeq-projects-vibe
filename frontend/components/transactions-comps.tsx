@@ -13,6 +13,7 @@ import {
   getBalance,
   getEarningDetail,
   getEarnings,
+  getEarningsFilterOptions,
   getEarningsSummary,
 } from "@/service/http/earnings"
 import { UserAPI } from "@/service/http/user"
@@ -31,7 +32,9 @@ import {
   Check,
   CheckCircle,
   ChevronDown,
+  ArrowLeft,
   ChevronLeft,
+  Zap,
   ChevronRight,
   Clock,
   Copy,
@@ -46,6 +49,7 @@ import {
   Plus,
   RefreshCcw01,
   Search,
+  SearchMd,
   Settings02,
   SlashCircle01,
   Trash01,
@@ -58,7 +62,11 @@ import {
   StripeDefault,
 } from "@blend-metrics/icons/payment-methods"
 import { type Stripe as StripeJSInstance, loadStripe } from "@stripe/stripe-js"
-import { format as formatDate, formatDistanceToNowStrict } from "date-fns"
+import {
+  format as formatDate,
+  formatDistanceToNowStrict,
+  parseISO,
+} from "date-fns"
 import { QRCodeSVG } from "qrcode.react"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import {
@@ -70,6 +78,7 @@ import {
 import { Label } from "@/components/ui/label/label"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Logo3 } from "@/components/icons"
+import { FilterEntityAvatar } from "@/components/icons/filter-entity-avatar"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
 import { useToast } from "@/components/ui"
@@ -81,6 +90,12 @@ import {
   Button,
   Card,
   Checkbox,
+  Combobox,
+  ComboboxButton,
+  ComboboxInput,
+  ComboboxOption,
+  ComboboxOptions,
+  ComboboxTrigger,
   DatePicker,
   Dialog,
   DialogClose,
@@ -92,9 +107,23 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DualCalendar,
   IconButton,
   Input,
+  InputGroup,
+  InputLeftElement,
+  InputRightElement,
+  Listbox,
+  ListboxButton,
+  ListboxOption,
+  ListboxOptions,
   NumberInput,
+  HeadlessRadioGroupItem,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  RadioGroup,
+  ScaleOutIn,
   ScrollArea,
   SearchField,
   SearchFieldButton,
@@ -174,7 +203,7 @@ const DollarSignIcon = ({ className, ...props }: SVGProps<SVGSVGElement>) => (
 // baked in (unlike @blend-metrics/icons' PayPalDefault, which draws both and
 // made a clean circular/square badge impossible — see PaypalCircleIcon and
 // getMethodIcon's PAYPAL case below for the two badge shapes this feeds).
-const PaypalIcon = ({ className }: { className?: string }) => (
+export const PaypalIcon = ({ className }: { className?: string }) => (
   <svg
     viewBox="0 0 20 20"
     className={cn("shrink-0", className)}
@@ -565,7 +594,7 @@ const CRYPTO_PROVIDER_ICON: Record<
   BINANCE: BinanceProviderIcon,
 }
 
-const CryptoProviderIcon = ({
+export const CryptoProviderIcon = ({
   provider,
   className,
 }: {
@@ -740,29 +769,24 @@ function BankLogo({
     )
   }
 
-  const initials = (bankName || "BK")
-    .split(" ")
-    .map((w: string) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase()
   return (
     <div
       style={{
         width: size,
         height: size,
         borderRadius: 8,
-        background: "#117ACA",
+        background: "white",
+        border: "1px solid #E5E7EB",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        color: "white",
-        fontWeight: 700,
-        fontSize: size * 0.35,
         flexShrink: 0,
       }}
     >
-      {initials}
+      <BankIcon
+        className="text-gray-800"
+        style={{ width: size * 0.5, height: size * 0.5 }}
+      />
     </div>
   )
 }
@@ -1204,6 +1228,72 @@ const ALL_COUNTRIES: { code: string; name: string; flag: string }[] = [
   { code: "ZM", name: "Zambia", flag: "🇿🇲" },
   { code: "ZW", name: "Zimbabwe", flag: "🇿🇼" },
 ]
+// Figma "Edit Bank Info" — seven country/region states. Asia uses the Swiss
+// flag as drawn in the design file.
+const EDIT_BANK_COUNTRIES: { code: string; name: string; flag: string }[] = [
+  { code: "US", name: "United States", flag: "🇺🇸" },
+  { code: "DE", name: "Europe", flag: "🇪🇺" },
+  { code: "IN", name: "India", flag: "🇮🇳" },
+  { code: "AU", name: "Australia", flag: "🇦🇺" },
+  { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
+  { code: "JP", name: "Japan", flag: "🇯🇵" },
+  { code: "SG", name: "Asia", flag: "🌏" },
+]
+function editBankRegion(country: string): BankRegion {
+  return country ? detectBankRegion(country) : "US"
+}
+function editBankNamePlaceholder(country: string): string {
+  switch (editBankRegion(country)) {
+    case "SEPA":
+      return "e.g. Bank of Europe"
+    case "IN":
+      return "e.g. ICICI Bank"
+    case "AU":
+      return "e.g. Westpac"
+    case "GB":
+      return "e.g. Bank of London"
+    case "JP":
+      return "e.g. 三井住友銀行 (Mitsui Sumitomo)"
+    case "SWIFT":
+      return "e.g. DBS Bank"
+    default:
+      return "e.g. Bank of America"
+  }
+}
+function editBankAccountPlaceholder(country: string): string {
+  switch (editBankRegion(country)) {
+    case "IN":
+      return "Enter valid Account Number (9-18 digits) here"
+    case "AU":
+      return "Enter 6-10 digit Account Number"
+    case "GB":
+      return "Enter 8 digit Account Number here"
+    case "JP":
+      return "Enter 7 digit Account Number"
+    case "SWIFT":
+      return "Enter your full Account Number"
+    default:
+      return "Up to 17 digits"
+  }
+}
+function createBlankEditBankForm(bankCountry = "") {
+  return {
+    bankAccountName: "",
+    bankAccountNumber: "",
+    bankAccountNumberConfirm: "",
+    bankRoutingNumber: "",
+    bankSortCode: "",
+    bankIfscCode: "",
+    bankBsbNumber: "",
+    bankInstitutionNumber: "",
+    bankTransitNumber: "",
+    bankIban: "",
+    bankSwiftBic: "",
+    bankCode: "",
+    bankBranchCode: "",
+    bankCountry,
+  }
+}
 const isValidAbaRouting = (routing: string) => {
   if (!/^\d{9}$/.test(routing)) return false
   const d = routing.split("").map(Number)
@@ -1249,6 +1339,53 @@ const isValidCnaps = (v: string) => /^\d{12}$/.test(v)
 const isValidCnAccountNumber = (v: string) => /^\d{16,19}$/.test(v)
 const isValidBik = (v: string) => /^\d{9}$/.test(v)
 const isValidRuAccountNumber = (v: string) => /^\d{20}$/.test(v)
+function isEditBankInfoComplete(form: ReturnType<typeof createBlankEditBankForm>) {
+  const region = editBankRegion(form.bankCountry)
+  if (!form.bankAccountName.trim()) return false
+  if (
+    region !== "SEPA" &&
+    form.bankAccountNumberConfirm !== form.bankAccountNumber
+  )
+    return false
+  switch (region) {
+    case "US":
+      return (
+        !!form.bankAccountNumber.trim() &&
+        isValidAbaRouting(form.bankRoutingNumber.replace(/\D/g, ""))
+      )
+    case "SEPA":
+      return isValidIban(form.bankIban) && isValidSwiftBic(form.bankSwiftBic)
+    case "IN":
+      return (
+        /^\d{9,18}$/.test(form.bankAccountNumber) &&
+        isValidIfsc(form.bankIfscCode)
+      )
+    case "AU":
+      return (
+        /^\d{6,10}$/.test(form.bankAccountNumber) &&
+        isValidBsb(form.bankBsbNumber)
+      )
+    case "GB":
+      return (
+        /^\d{8}$/.test(form.bankAccountNumber) &&
+        isValidSortCode(form.bankSortCode)
+      )
+    case "JP":
+      return (
+        isValidJpBankCode(form.bankCode) &&
+        isValidJpBranchCode(form.bankBranchCode) &&
+        /^\d{7}$/.test(form.bankAccountNumber)
+      )
+    case "SWIFT":
+      return (
+        !!form.bankAccountNumber.trim() && isValidSwiftBic(form.bankSwiftBic)
+      )
+    default:
+      return (
+        !!form.bankAccountNumber.trim() && isValidSwiftBic(form.bankSwiftBic)
+      )
+  }
+}
 
 // US-63: bank-validation.service.ts throws these exact ERR_BANK_* codes as
 // errorCode — mapped here to a friendly, field-specific checklist instead of
@@ -1869,6 +2006,80 @@ const formatMethodOptionLabel = (m: any): string => {
   return m.nickname || m.displayLabel || m.methodType
 }
 
+function splitMethodLabel(m: {
+  methodType?: string
+  nickname?: string | null
+  displayLabel?: string | null
+  paypalEmail?: string | null
+  wiseAccountId?: string | null
+  payoneerPayeeId?: string | null
+  cryptoAddress?: string | null
+  cryptoProvider?: string | null
+}): { name: string; sub: string } {
+  if (m.methodType === "PAYPAL") {
+    const email = m.paypalEmail ?? emailFromDisplayLabel(m.displayLabel)
+    return { name: m.nickname || "PayPal", sub: email ? maskEmail(email) : "" }
+  }
+  if (m.methodType === "WISE") {
+    const id = m.wiseAccountId ?? emailFromDisplayLabel(m.displayLabel)
+    return { name: m.nickname || "Wise", sub: id ? maskId(id) : "" }
+  }
+  if (m.methodType === "PAYONEER") {
+    const id = m.payoneerPayeeId ?? emailFromDisplayLabel(m.displayLabel)
+    return { name: m.nickname || "Payoneer", sub: id ? maskId(id) : "" }
+  }
+  if (m.methodType === "CRYPTO") {
+    const address = m.cryptoAddress
+      ? m.cryptoAddress.slice(0, 6) + "..." + m.cryptoAddress.slice(-4)
+      : (m.displayLabel ?? "")
+    return {
+      name: m.nickname || m.cryptoProvider || "Crypto Wallet",
+      sub: address,
+    }
+  }
+  const label = m.nickname
+    ? `${m.nickname} ${m.displayLabel?.replace("Bank ", "") || ""}`.trim()
+    : m.displayLabel || "Bank Account"
+  const maskMatch = label.match(/^(.*?)\s*(••••\d+|\.{3,4}\d+)$/)
+  if (maskMatch) {
+    return {
+      name: maskMatch[1].trim(),
+      sub: maskMatch[2].replace(/•+/g, "..."),
+    }
+  }
+  return { name: label, sub: "" }
+}
+
+function FilterMethodIcon({
+  method,
+}: {
+  method: { methodType?: string; nickname?: string | null; displayLabel?: string | null; cryptoProvider?: string | null }
+}) {
+  const wrap = (child: React.ReactNode) => (
+    <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white">
+      {child}
+    </span>
+  )
+  if (method.methodType === "PAYPAL") return wrap(<PaypalIcon className="size-5" />)
+  if (method.methodType === "WISE")
+    return wrap(<WiseGlyphV2 className="size-5" />)
+  if (method.methodType === "CRYPTO")
+    return (
+      <CryptoProviderIcon
+        provider={method.cryptoProvider || ""}
+        className="size-8"
+      />
+    )
+  if (
+    method.methodType === "MARKETEQ_DEBIT_CARD" ||
+    method.methodType === "TEQ_COIN"
+  ) {
+    return wrap(<BankIcon className="size-5 text-primary-600" />)
+  }
+  const bankName = method.nickname || method.displayLabel || ""
+  return <BankLogo bankName={bankName} size={32} />
+}
+
 // ─── Overview Tab ───────────────────────────────────────────────────────
 
 export const OverviewTab = ({
@@ -2039,22 +2250,7 @@ export const OverviewTab = ({
   // see methods.service.ts toDetailItem), so editing means full re-entry,
   // not a diff against hidden values. Starts blank whenever Edit opens on
   // an eligible (BANK_MANUAL, not-yet-verified) method.
-  const [editBankForm, setEditBankForm] = React.useState({
-    bankAccountName: "",
-    bankAccountNumber: "",
-    bankAccountNumberConfirm: "",
-    bankRoutingNumber: "",
-    bankSortCode: "",
-    bankIfscCode: "",
-    bankBsbNumber: "",
-    bankInstitutionNumber: "",
-    bankTransitNumber: "",
-    bankIban: "",
-    bankSwiftBic: "",
-    bankCode: "",
-    bankBranchCode: "",
-    bankCountry: "US",
-  })
+  const [editBankForm, setEditBankForm] = React.useState(createBlankEditBankForm)
   const [editBankError, setEditBankError] = React.useState("")
   // Dedicated "Bank Details Updated" / "Unable To Update Bank Info" screens
   // (Figma) for edits that actually touch bank fields — nickname-only edits
@@ -2803,20 +2999,24 @@ export const OverviewTab = ({
     if (!editingMethod) return
     setEditBankError("")
     try {
-      const editRegion = detectBankRegion(editBankForm.bankCountry)
+      const resolvedCountry = editBankForm.bankCountry || "US"
+      const editRegion = detectBankRegion(resolvedCountry)
       const submittingBankDetails =
         editingBankDetails &&
         (editBankForm.bankAccountNumber.trim() || editBankForm.bankIban.trim())
       const payload: any = { nickname: editingMethod.nickname ?? "" }
       if (submittingBankDetails) {
         payload.bankAccountName = editBankForm.bankAccountName
-        payload.bankCountry = editBankForm.bankCountry
-        payload.bankCurrency = bankCountryCurrency(editBankForm.bankCountry)
+        payload.bankCountry = resolvedCountry
+        payload.bankCurrency = bankCountryCurrency(resolvedCountry)
         if (editRegion !== "SEPA")
           payload.bankAccountNumber = editBankForm.bankAccountNumber
         switch (editRegion) {
           case "US":
-            payload.bankRoutingNumber = editBankForm.bankRoutingNumber
+            payload.bankRoutingNumber = editBankForm.bankRoutingNumber.replace(
+              /\D/g,
+              ""
+            )
             break
           case "GB":
             payload.bankSortCode = editBankForm.bankSortCode
@@ -3762,22 +3962,7 @@ export const OverviewTab = ({
                     onClick={() => {
                       if (defaultMethod) {
                         setEditingMethod({ ...defaultMethod })
-                        setEditBankForm({
-                          bankAccountName: "",
-                          bankAccountNumber: "",
-                          bankAccountNumberConfirm: "",
-                          bankRoutingNumber: "",
-                          bankSortCode: "",
-                          bankIfscCode: "",
-                          bankBsbNumber: "",
-                          bankInstitutionNumber: "",
-                          bankTransitNumber: "",
-                          bankIban: "",
-                          bankSwiftBic: "",
-                          bankCode: "",
-                          bankBranchCode: "",
-                          bankCountry: defaultMethod.bankCountry || "US",
-                        })
+                        setEditBankForm(createBlankEditBankForm())
                         setEditBankError("")
                         setEditBankSaveState(null)
                       }
@@ -3815,7 +4000,11 @@ export const OverviewTab = ({
                         </span>
                       )}
                     </div>
-                    <Badge visual="primary" size="sm" className="shrink-0">
+                    <Badge
+                      visual="primary"
+                      size="sm"
+                      className="shrink-0 bg-primary-50 text-primary-600"
+                    >
                       Default
                     </Badge>
                   </div>
@@ -3970,7 +4159,11 @@ export const OverviewTab = ({
                         </Badge>
                       )}
                       {m.isDefault ? (
-                        <Badge visual="primary" size="sm" className="mr-2">
+                        <Badge
+                          visual="primary"
+                          size="sm"
+                          className="mr-2 bg-primary-50 text-primary-600"
+                        >
                           Default
                         </Badge>
                       ) : m.verificationStatus === "verified" ? (
@@ -3978,7 +4171,7 @@ export const OverviewTab = ({
                           variant="link"
                           visual="gray"
                           size="sm"
-                          className="mr-2 font-semibold text-[#22376B] underline underline-offset-4"
+                          className="mr-2 font-semibold text-gray-500 underline underline-offset-4 hover:text-[#22376B]"
                           onClick={() => requestSetDefault(m)}
                         >
                           Make Default
@@ -3990,22 +4183,7 @@ export const OverviewTab = ({
                         visual="gray"
                         onClick={() => {
                           setEditingMethod({ ...m })
-                          setEditBankForm({
-                            bankAccountName: "",
-                            bankAccountNumber: "",
-                            bankAccountNumberConfirm: "",
-                            bankRoutingNumber: "",
-                            bankSortCode: "",
-                            bankIfscCode: "",
-                            bankBsbNumber: "",
-                            bankInstitutionNumber: "",
-                            bankTransitNumber: "",
-                            bankIban: "",
-                            bankSwiftBic: "",
-                            bankCode: "",
-                            bankBranchCode: "",
-                            bankCountry: m.bankCountry || "US",
-                          })
+                          setEditBankForm(createBlankEditBankForm())
                           setEditBankError("")
                           setEditBankSaveState(null)
                         }}
@@ -4029,14 +4207,23 @@ export const OverviewTab = ({
             {/* Verification Dialog */}
             {verifyState && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                <div className="bg-white rounded-xl w-full max-w-md shadow-xl overflow-hidden">
+                <div
+                  className={cn(
+                    "bg-white rounded-xl w-full shadow-xl overflow-hidden",
+                    verifyState.step === "instructions" ||
+                      verifyState.step === "amounts"
+                      ? "max-w-[700px]"
+                      : "max-w-md"
+                  )}
+                >
                   {verifyState.step === "instructions" && (
-                    <div className="p-6">
-                      <div className="flex items-center justify-between mb-4">
+                    <div className="flex flex-col">
+                      <div className="relative flex items-center gap-2 px-6 py-6 border-b border-gray-200">
                         <IconButton
                           size="sm"
                           variant="ghost"
                           visual="gray"
+                          className="text-dark-blue-400"
                           onClick={() => {
                             if (verifyState?.methodId)
                               deleteMethod(verifyState.methodId)
@@ -4048,15 +4235,16 @@ export const OverviewTab = ({
                             }))
                           }}
                         >
-                          <ChevronLeft className="size-4" />
+                          <ArrowLeft className="size-4" />
                         </IconButton>
-                        <h3 className="text-base font-semibold text-dark-blue-400">
+                        <h3 className="text-lg font-semibold text-dark-blue-400">
                           Add your bank account manually
                         </h3>
                         <IconButton
                           size="sm"
                           variant="ghost"
                           visual="gray"
+                          className="absolute right-2.5 top-2.5"
                           onClick={() => {
                             if (verifyState?.methodId)
                               deleteMethod(verifyState.methodId)
@@ -4068,11 +4256,11 @@ export const OverviewTab = ({
                           <X className="size-4" />
                         </IconButton>
                       </div>
-                      <div className="rounded-lg border border-gray-200 p-6 text-center space-y-3">
-                        <h4 className="text-base font-semibold text-dark-blue-400">
+                      <div className="flex flex-col items-center gap-5 px-10 py-[50px] text-center max-h-[282px] overflow-y-auto">
+                        <h4 className="text-lg font-semibold text-dark-blue-400">
                           Please verify your bank account
                         </h4>
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-dark-blue-400">
                           We sent two deposits (between $0.01 and $0.99) to your
                           account ending in{" "}
                           <strong>{verifyState.displayLabel}</strong>. It can
@@ -4088,9 +4276,9 @@ export const OverviewTab = ({
                           call <strong>800-529-7465</strong>
                         </p>
                       </div>
-                      <div className="flex items-center justify-between mt-4">
+                      <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200">
                         <button
-                          className="text-sm text-primary-600 flex items-center gap-1"
+                          className="text-xs font-semibold text-primary-500 flex items-center gap-2"
                           onClick={() =>
                             toast({
                               title: "Use Instant Verification",
@@ -4098,9 +4286,10 @@ export const OverviewTab = ({
                             })
                           }
                         >
-                          ⚡ Use Instant Verification
+                          <Zap className="size-3.5" />
+                          Use Instant Verification
                         </button>
-                        <div className="flex gap-2">
+                        <div className="flex gap-3">
                           <Button
                             variant="outlined"
                             visual="gray"
@@ -4116,7 +4305,7 @@ export const OverviewTab = ({
                               }))
                             }}
                           >
-                            ← Back
+                            Back
                           </Button>
                           <Button
                             variant="filled"
@@ -4135,52 +4324,46 @@ export const OverviewTab = ({
                     </div>
                   )}
                   {verifyState.step === "amounts" && (
-                    <div className="p-6">
-                      <div className="flex items-center justify-between mb-4">
+                    <div className="flex flex-col">
+                      <div className="relative flex items-center gap-2 px-6 py-6 border-b border-gray-200">
                         <IconButton
                           size="sm"
                           variant="ghost"
                           visual="gray"
+                          className="text-dark-blue-400"
                           onClick={() =>
                             setVerifyState((s) =>
                               s ? { ...s, step: "instructions" } : null
                             )
                           }
                         >
-                          <ChevronLeft className="size-4" />
+                          <ArrowLeft className="size-4" />
                         </IconButton>
-                        <h3 className="text-base font-semibold text-dark-blue-400">
+                        <h3 className="text-lg font-semibold text-dark-blue-400">
                           Add your bank account manually
                         </h3>
                         <IconButton
                           size="sm"
                           variant="ghost"
                           visual="gray"
+                          className="absolute right-2.5 top-2.5"
                           onClick={() => setVerifyState(null)}
                         >
                           <X className="size-4" />
                         </IconButton>
                       </div>
-                      <div className="rounded-lg border border-gray-200 p-6 space-y-4">
-                        <h4 className="text-base font-semibold text-dark-blue-400 text-center">
-                          Please verify your bank account
-                        </h4>
-                        <p className="text-sm text-gray-500 text-center">
-                          Enter the two micro deposit amounts we sent to your
-                          account ending in{" "}
-                          <strong>{verifyState.displayLabel}</strong>. The
-                          deposits are sent from "Marketeq".
-                        </p>
-                        {process.env.NODE_ENV === "development" && (
-                          <p className="text-xs text-primary-500 bg-primary-50 rounded px-2 py-1 text-center">
-                            Dev mode: check DB for amounts —{" "}
-                            <code>
-                              SELECT amount_1_cents, amount_2_cents FROM
-                              deposit_method_verification ORDER BY created_at
-                              DESC LIMIT 1;
-                            </code>
+                      <div className="flex flex-col gap-8 px-[50px] py-[50px] max-h-[278px] overflow-y-auto">
+                        <div className="flex flex-col items-center gap-5 px-[90px] text-center">
+                          <h4 className="text-lg font-semibold text-dark-blue-400">
+                            Please verify your bank account
+                          </h4>
+                          <p className="text-sm text-dark-blue-400">
+                            Enter the two micro deposit amounts we sent to your
+                            account ending in{" "}
+                            <strong>{verifyState.displayLabel}</strong>. The
+                            deposits are sent from "Marketeq".
                           </p>
-                        )}
+                        </div>
                         {/* AC-05.04/05.05: hidden on first visit, shown after a failed attempt (EC-09) */}
                         {typeof verifyState.attemptsLeft === "number" && (
                           <p
@@ -4198,13 +4381,13 @@ export const OverviewTab = ({
                             remaining.
                           </p>
                         )}
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-xs text-gray-500 mb-1 block">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1">
+                            <label className="text-sm font-medium text-dark-blue-400 mb-1.5 block">
                               1st Deposit
                             </label>
                             <input
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                              className="w-full border border-gray-300 rounded-[5px] px-3.5 py-2.5 text-base shadow-xs"
                               placeholder="e.g. 7 (cents)"
                               value={microAmounts.amount1}
                               onChange={(e) =>
@@ -4215,12 +4398,12 @@ export const OverviewTab = ({
                               }
                             />
                           </div>
-                          <div>
-                            <label className="text-xs text-gray-500 mb-1 block">
+                          <div className="flex-1">
+                            <label className="text-sm font-medium text-dark-blue-400 mb-1.5 block">
                               2nd Deposit
                             </label>
                             <input
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                              className="w-full border border-gray-300 rounded-[5px] px-3.5 py-2.5 text-base shadow-xs"
                               placeholder="e.g. 39 (cents)"
                               value={microAmounts.amount2}
                               onChange={(e) =>
@@ -4233,12 +4416,11 @@ export const OverviewTab = ({
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2 mt-4">
+                      <div className="flex items-center justify-end gap-3 px-6 py-3 border-t border-gray-200">
                         <Button
                           variant="outlined"
                           visual="gray"
                           size="sm"
-                          className="flex-1"
                           onClick={() => setVerifyState(null)}
                         >
                           Cancel
@@ -4247,7 +4429,6 @@ export const OverviewTab = ({
                           variant="filled"
                           visual="primary"
                           size="sm"
-                          className="flex-1"
                           onClick={handleVerifyMicroDeposits}
                           disabled={
                             !microAmounts.amount1.trim() ||
@@ -4271,9 +4452,9 @@ export const OverviewTab = ({
                         Verifying Your Account...
                       </h4>
                       <div className="flex justify-center">
-                        <div className="size-8 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+                        <div className="size-14 border-[3px] border-primary-100 border-t-primary-600 rounded-full animate-spin" />
                       </div>
-                      <p className="text-sm text-gray-400">
+                      <p className="text-sm text-dark-blue-400">
                         We're verifying your bank account. This may take up to
                         30 seconds.
                       </p>
@@ -4281,16 +4462,6 @@ export const OverviewTab = ({
                   )}
                   {verifyState.step === "success" && (
                     <div className="p-6 space-y-4">
-                      <div className="flex items-center justify-end">
-                        <IconButton
-                          size="sm"
-                          variant="ghost"
-                          visual="gray"
-                          onClick={() => setVerifyState(null)}
-                        >
-                          <X className="size-4" />
-                        </IconButton>
-                      </div>
                       <div className="text-center py-4 space-y-3">
                         <div className="flex flex-col items-center gap-1">
                           <BankLogo bankName={verifyState.bankName} size={80} />
@@ -4343,7 +4514,7 @@ export const OverviewTab = ({
                         visual="gray"
                         size="sm"
                         className="w-full"
-                        leftIcon={<ChevronLeft className="size-4" />}
+                        leftIcon={<ArrowLeft className="size-4" />}
                         onClick={() => {
                           setVerifyState(null)
                           setShowAddMethod(true)
@@ -4365,18 +4536,32 @@ export const OverviewTab = ({
                           ? "Connection Failed"
                           : "Verification Failed"}
                       </h4>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-dark-blue-400">
                         {verifyState.source === "stripe"
                           ? verifyState.errorMessage ||
                             "We couldn't verify your bank at this time. This may be due to a temporary network issue or incorrect information."
                           : "We couldn't verify your bank at this time. Please check your deposit amounts and try again."}
                       </p>
-                      <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        {/* Same fix as the success screen above — reopen the picker
+                          instead of just closing everything. */}
+                        <Button
+                          variant="link"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => {
+                            setVerifyState(null)
+                            setShowAddMethod(true)
+                            setAddForm((f) => ({ ...f, methodType: "PICK" }))
+                            fetchMethods()
+                          }}
+                        >
+                          Back to Deposit Methods
+                        </Button>
                         <Button
                           variant="outlined"
                           visual="gray"
                           size="sm"
-                          className="w-full"
                           leftIcon={<RefreshCcw01 className="size-4" />}
                           onClick={() => {
                             if (verifyState.source === "stripe") {
@@ -4390,23 +4575,6 @@ export const OverviewTab = ({
                           }}
                         >
                           Retry
-                        </Button>
-                        {/* Same fix as the success screen above — reopen the picker
-                          instead of just closing everything. */}
-                        <Button
-                          variant="link"
-                          visual="gray"
-                          size="sm"
-                          className="w-full"
-                          leftIcon={<ChevronLeft className="size-4" />}
-                          onClick={() => {
-                            setVerifyState(null)
-                            setShowAddMethod(true)
-                            setAddForm((f) => ({ ...f, methodType: "PICK" }))
-                            fetchMethods()
-                          }}
-                        >
-                          Back to Deposit Methods
                         </Button>
                       </div>
                     </div>
@@ -4722,7 +4890,17 @@ export const OverviewTab = ({
                                 "Transfer in 1–3 business days",
                                 "Charges flat $1–$2 per withdrawal",
                               ],
-                              icon: <WiseIconV2 className="size-5" />,
+                              // Same bare-glyph-in-square-chip treatment as
+                              // Connected Accounts' getMethodIcon WISE case —
+                              // not the circular green badge (WiseIconV2 on
+                              // its own here double-wraps inside the default
+                              // circular wrapper below).
+                              icon: (
+                                <div className="size-9 rounded-lg border border-gray-200 bg-white flex items-center justify-center shrink-0">
+                                  <WiseGlyphV2 className="w-1/2 h-1/2" />
+                                </div>
+                              ),
+                              selfContained: true,
                             },
                             {
                               type: "PAYONEER",
@@ -4855,13 +5033,15 @@ export const OverviewTab = ({
                           <X className="size-4" />
                         </IconButton>
                       </div>
-                      <div className="py-10 text-center space-y-5">
-                        <div className="mx-auto size-12 rounded-full bg-primary-50 flex items-center justify-center">
-                          <BankIcon className="size-6 text-primary-600" />
+                      <div className="py-10 space-y-5">
+                        <div className="flex items-center gap-4">
+                          <BankIcon className="size-14 shrink-0 text-dark-blue-400" />
+                          <h3 className="text-base font-semibold text-dark-blue-400">
+                            Securely connect your bank account.
+                          </h3>
                         </div>
-                        <p className="text-sm text-gray-500 px-4">
-                          You'll be securely connected to your bank through
-                          Stripe. Your banking credentials are never shared with
+                        <p className="text-xs text-gray-400">
+                          Your banking credentials are never shared with
                           Marketeq.
                         </p>
                         <Button
@@ -5427,7 +5607,7 @@ export const OverviewTab = ({
                               onClick={() =>
                                 setAddForm((f) => ({
                                   ...f,
-                                  methodType: "PICK",
+                                  methodType: "BANK_CONNECT_CONFIRM",
                                 }))
                               }
                             >
@@ -5447,20 +5627,22 @@ export const OverviewTab = ({
                             </IconButton>
                           </div>
                           <div className="space-y-3">
-                            <div className="relative">
-                              <label className="text-xs text-gray-500 mb-1 block">
-                                Country
-                              </label>
-                              <div className="relative">
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm"
+                            <Combobox
+                              className="w-full"
+                              value={selectedCountry ?? null}
+                              onChange={(country) => {
+                                if (country) selectCountry(country.code)
+                              }}
+                            >
+                              <ComboboxTrigger className="flex flex-col gap-y-1">
+                                <Label size="xs" className="text-gray-500">
+                                  Country
+                                </Label>
+                                <ComboboxInput
+                                  className="pl-3 pr-8 py-2 text-sm"
                                   placeholder="Select country"
-                                  value={
-                                    addForm.bankCountryOpen
-                                      ? addForm.bankCountrySearch
-                                      : selectedCountry
-                                        ? `${selectedCountry.flag} ${selectedCountry.name}`
-                                        : ""
+                                  displayValue={(c: typeof selectedCountry) =>
+                                    c ? `${c.flag} ${c.name}` : ""
                                   }
                                   onFocus={() =>
                                     setAddForm((f) => ({
@@ -5486,32 +5668,31 @@ export const OverviewTab = ({
                                     }))
                                   }
                                 />
-                                <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 text-gray-400" />
-                              </div>
-                              {addForm.bankCountryOpen && (
-                                <div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-                                  {filteredCountries.length === 0 ? (
-                                    <p className="text-xs text-gray-400 text-center py-4">
-                                      No countries found
-                                    </p>
-                                  ) : (
-                                    filteredCountries.map((c) => (
-                                      <button
-                                        key={c.code}
-                                        type="button"
-                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-50"
-                                        onClick={() => selectCountry(c.code)}
-                                      >
-                                        <span>{c.flag}</span>{" "}
-                                        <span className="text-dark-blue-400">
-                                          {c.name}
-                                        </span>
-                                      </button>
-                                    ))
-                                  )}
-                                </div>
-                              )}
-                            </div>
+                                <ComboboxButton align="right">
+                                  <Search className="size-3.5 text-gray-400" />
+                                </ComboboxButton>
+                              </ComboboxTrigger>
+                              <ScaleOutIn show={addForm.bankCountryOpen}>
+                                <ComboboxOptions>
+                                  <ScrollArea viewportClassName="max-h-56">
+                                    {filteredCountries.length === 0 ? (
+                                      <p className="text-xs text-gray-400 text-center py-4">
+                                        No countries found
+                                      </p>
+                                    ) : (
+                                      filteredCountries.map((c) => (
+                                        <ComboboxOption key={c.code} value={c}>
+                                          <span>{c.flag}</span>{" "}
+                                          <span className="text-dark-blue-400">
+                                            {c.name}
+                                          </span>
+                                        </ComboboxOption>
+                                      ))
+                                    )}
+                                  </ScrollArea>
+                                </ComboboxOptions>
+                              </ScaleOutIn>
+                            </Combobox>
                             {OFAC_BLOCKED_COUNTRIES.has(
                               addForm.bankCountry.toUpperCase()
                             ) && (
@@ -5521,11 +5702,11 @@ export const OverviewTab = ({
                               </p>
                             )}
                             <div>
-                              <label className="text-xs text-gray-500 mb-1 block">
+                              <Label size="xs" className="text-gray-500 mb-1 block">
                                 Bank Name
-                              </label>
-                              <input
-                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                              </Label>
+                              <Input
+                                className="w-full px-3 py-2 text-sm"
                                 placeholder="e.g. Bank of America"
                                 value={addForm.bankAccountName}
                                 onChange={(e) =>
@@ -5537,11 +5718,11 @@ export const OverviewTab = ({
                               />
                             </div>
                             <div>
-                              <label className="text-xs text-gray-500 mb-1 block">
+                              <Label size="xs" className="text-gray-500 mb-1 block">
                                 Account Holder Name
-                              </label>
-                              <input
-                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                              </Label>
+                              <Input
+                                className="w-full px-3 py-2 text-sm"
                                 placeholder="John Doe"
                                 value={addForm.nickname}
                                 onChange={(e) =>
@@ -5554,23 +5735,26 @@ export const OverviewTab = ({
                             </div>
                             {region === "US" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   Account Type
-                                </label>
-                                <select
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Select
                                   value={addForm.accountType}
-                                  onChange={(e) =>
+                                  onValueChange={(accountType) =>
                                     setAddForm((f) => ({
                                       ...f,
-                                      accountType: e.target.value,
+                                      accountType,
                                     }))
                                   }
                                 >
-                                  <option value="">Select</option>
-                                  <option value="CHECKING">Checking</option>
-                                  <option value="SAVINGS">Savings</option>
-                                </select>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="CHECKING">Checking</SelectItem>
+                                    <SelectItem value="SAVINGS">Savings</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               </div>
                             )}
 
@@ -5581,11 +5765,11 @@ export const OverviewTab = ({
                               region !== "GCC" && (
                                 <>
                                   <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">
+                                    <Label size="xs" className="text-gray-500 mb-1 block">
                                       Account Number
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                    </Label>
+                                    <Input
+                                      className="w-full px-3 py-2 text-sm"
                                       placeholder="Up to 17 digits"
                                       value={addForm.bankAccountNumber}
                                       onChange={(e) =>
@@ -5599,11 +5783,11 @@ export const OverviewTab = ({
                                   <div>
                                     {/* SCR-02: anti-typo protection — a mistyped account number sends
                                 funds nowhere recoverable, so it must be entered twice. */}
-                                    <label className="text-xs text-gray-500 mb-1 block">
+                                    <Label size="xs" className="text-gray-500 mb-1 block">
                                       Confirm Account Number
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                    </Label>
+                                    <Input
+                                      className="w-full px-3 py-2 text-sm"
                                       placeholder="Re-enter account number"
                                       value={addForm.bankAccountNumberConfirm}
                                       onChange={(e) =>
@@ -5628,11 +5812,11 @@ export const OverviewTab = ({
 
                             {region === "US" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   Bank Routing Number
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="9-digit ABA routing number"
                                   value={addForm.bankRoutingNumber}
                                   onChange={(e) =>
@@ -5654,11 +5838,11 @@ export const OverviewTab = ({
                             )}
                             {region === "GB" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   Sort Code
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="6 digits, e.g. 12-34-56"
                                   value={addForm.bankSortCode}
                                   onChange={(e) =>
@@ -5678,11 +5862,11 @@ export const OverviewTab = ({
                             )}
                             {region === "IN" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   IFSC Code
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm uppercase"
                                   placeholder="e.g. HDFC0001234"
                                   value={addForm.bankIfscCode}
                                   onChange={(e) =>
@@ -5702,11 +5886,11 @@ export const OverviewTab = ({
                             )}
                             {region === "AU" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   BSB Number
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="6 digits, e.g. 123-456"
                                   value={addForm.bankBsbNumber}
                                   onChange={(e) =>
@@ -5727,11 +5911,11 @@ export const OverviewTab = ({
                             {region === "CA" && (
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
                                     Institution Number
-                                  </label>
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
                                     placeholder="3 digits"
                                     value={addForm.bankInstitutionNumber}
                                     onChange={(e) =>
@@ -5751,11 +5935,11 @@ export const OverviewTab = ({
                                     )}
                                 </div>
                                 <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
                                     Transit Number
-                                  </label>
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
                                     placeholder="5 digits"
                                     value={addForm.bankTransitNumber}
                                     onChange={(e) =>
@@ -5779,11 +5963,11 @@ export const OverviewTab = ({
                             {region === "JP" && (
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
                                     Bank Code
-                                  </label>
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
                                     placeholder="4 digits"
                                     value={addForm.bankCode}
                                     onChange={(e) =>
@@ -5801,11 +5985,11 @@ export const OverviewTab = ({
                                     )}
                                 </div>
                                 <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
                                     Branch Code
-                                  </label>
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
                                     placeholder="3 digits"
                                     value={addForm.bankBranchCode}
                                     onChange={(e) =>
@@ -5828,11 +6012,11 @@ export const OverviewTab = ({
                             )}
                             {region === "MX" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   CLABE
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="18-digit CLABE"
                                   value={addForm.bankClabe}
                                   onChange={(e) =>
@@ -5852,11 +6036,11 @@ export const OverviewTab = ({
                             )}
                             {region === "CN" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   CNAPS Code
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="12 digits"
                                   value={addForm.bankCnapsCode}
                                   onChange={(e) =>
@@ -5876,11 +6060,11 @@ export const OverviewTab = ({
                             )}
                             {region === "RU" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   BIK
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm"
                                   placeholder="9 digits"
                                   value={addForm.bankBik}
                                   onChange={(e) =>
@@ -5900,11 +6084,11 @@ export const OverviewTab = ({
                             )}
                             {(region === "SEPA" || region === "GCC") && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   IBAN
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm uppercase"
                                   placeholder="e.g. DE89370400440532013000"
                                   value={addForm.bankIban}
                                   onChange={(e) =>
@@ -5926,11 +6110,11 @@ export const OverviewTab = ({
                               region === "BACS" ||
                               region === "SWIFT") && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   SWIFT/BIC Code
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm uppercase"
                                   placeholder="e.g. DEUTDEFF"
                                   value={addForm.bankSwiftBic}
                                   onChange={(e) =>
@@ -5950,11 +6134,11 @@ export const OverviewTab = ({
                             )}
                             {region === "SEPA" && (
                               <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <Label size="xs" className="text-gray-500 mb-1 block">
                                   SWIFT/BIC Code (optional)
-                                </label>
-                                <input
-                                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
+                                </Label>
+                                <Input
+                                  className="w-full px-3 py-2 text-sm uppercase"
                                   placeholder="e.g. DEUTDEFF"
                                   value={addForm.bankSwiftBic}
                                   onChange={(e) =>
@@ -5973,15 +6157,14 @@ export const OverviewTab = ({
                               </div>
                             )}
 
-                            <label className="flex items-start gap-2 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                className="mt-0.5 accent-primary-600"
+                            <div className="flex items-start gap-2">
+                              <Checkbox
+                                className="mt-0.5"
                                 checked={addForm.bankConsent}
-                                onChange={(e) =>
+                                onCheckedChange={(checked) =>
                                   setAddForm((f) => ({
                                     ...f,
-                                    bankConsent: e.target.checked,
+                                    bankConsent: checked as boolean,
                                   }))
                                 }
                               />
@@ -5992,7 +6175,7 @@ export const OverviewTab = ({
                                 will comply with applicable local laws and
                                 banking regulations.
                               </span>
-                            </label>
+                            </div>
                           </div>
                           <div className="flex gap-2 mt-5">
                             <Button
@@ -6773,12 +6956,12 @@ export const OverviewTab = ({
                 }}
               >
                 <div
-                  className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl max-h-[85vh] overflow-y-auto relative"
+                  className="bg-white rounded-xl w-full max-w-md shadow-xl relative"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {editBankSaveState === "success" ? (
                     /* Figma "Bank Details Updated" */
-                    <div className="text-center py-4">
+                    <div className="text-center p-6">
                       <IconButton
                         size="sm"
                         variant="ghost"
@@ -6806,7 +6989,7 @@ export const OverviewTab = ({
                     </div>
                   ) : editBankSaveState === "error" ? (
                     /* Figma "Unable To Update Bank Info" */
-                    <div className="text-center py-4">
+                    <div className="text-center p-6">
                       <IconButton
                         size="sm"
                         variant="ghost"
@@ -6878,522 +7061,601 @@ export const OverviewTab = ({
                         </Button>
                       </div>
                     </div>
-                  ) : (
+                  ) : editingBankDetails ? (
                     <>
-                      <h3 className="text-base font-semibold text-dark-blue-400 mb-4">
-                        Edit Account
-                      </h3>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">
-                            Account
-                          </label>
-                          <p className="text-sm font-medium text-dark-blue-400">
-                            {editingMethod.displayLabel}
-                          </p>
+                      <div className="flex items-center justify-between border-b border-gray-200 p-3">
+                        <div className="flex items-center gap-x-3">
+                          <IconButton
+                            variant="ghost"
+                            visual="gray"
+                            size="md"
+                            className="text-dark-blue-400"
+                            onClick={() => {
+                              setEditingMethod(null)
+                              setEditBankSaveState(null)
+                            }}
+                          >
+                            <ArrowLeft className="size-5" />
+                          </IconButton>
+                          <h2 className="text-lg font-semibold leading-7 text-dark-blue-400">
+                            Edit Bank Info
+                          </h2>
                         </div>
-                        <div>
-                          <label className="text-xs text-gray-500 mb-1 block">
-                            Nickname (optional)
-                          </label>
-                          <input
-                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                            placeholder="e.g. My Chase Savings"
-                            value={editingMethod.nickname ?? ""}
-                            onChange={(e) =>
-                              setEditingMethod((m: any) => ({
-                                ...m,
-                                nickname: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-
-                        {/* US-59: bank details are re-entered fresh, never pre-filled — the
-                      backend never returns raw account numbers back out (security). */}
-                        {editingBankDetails ? (
-                          (() => {
-                            const editRegion = detectBankRegion(
-                              editBankForm.bankCountry
-                            )
-                            return (
-                              <div className="space-y-3 pt-2 border-t border-gray-200">
-                                <p className="text-xs text-gray-500">
-                                  To correct your bank account details, re-enter
-                                  them below. This restarts verification — two
-                                  small deposits will arrive within 2 business
-                                  days. Leave blank to keep your current
-                                  (unverified) details.
-                                </p>
-                                <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
-                                    Country
-                                  </label>
-                                  <select
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                    value={editBankForm.bankCountry}
-                                    onChange={(e) =>
-                                      setEditBankForm((f) => ({
-                                        ...f,
-                                        bankCountry: e.target.value,
-                                        bankAccountNumber: "",
-                                        bankAccountNumberConfirm: "",
-                                        bankRoutingNumber: "",
-                                        bankSortCode: "",
-                                        bankIfscCode: "",
-                                        bankBsbNumber: "",
-                                        bankInstitutionNumber: "",
-                                        bankTransitNumber: "",
-                                        bankIban: "",
-                                        bankSwiftBic: "",
-                                        bankCode: "",
-                                        bankBranchCode: "",
-                                      }))
-                                    }
-                                  >
-                                    <option value="US">🇺🇸 United States</option>
-                                    <option value="DE">🇪🇺 Europe</option>
-                                    <option value="IN">🇮🇳 India</option>
-                                    <option value="AU">🇦🇺 Australia</option>
-                                    <option value="GB">
-                                      🇬🇧 United Kingdom
-                                    </option>
-                                    <option value="JP">🇯🇵 Japan</option>
-                                    <option value="SG">🌏 Asia</option>
-                                  </select>
-                                </div>
-                                <div>
-                                  <label className="text-xs text-gray-500 mb-1 block">
-                                    Bank Name
-                                  </label>
-                                  <input
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                    placeholder="e.g. Bank of America"
-                                    value={editBankForm.bankAccountName}
-                                    onChange={(e) =>
-                                      setEditBankForm((f) => ({
-                                        ...f,
-                                        bankAccountName: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                </div>
-                                {editRegion !== "SEPA" && (
-                                  <>
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        Account Number
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                        placeholder="Up to 17 digits"
-                                        value={editBankForm.bankAccountNumber}
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankAccountNumber: e.target.value,
-                                          }))
-                                        }
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        Confirm Account Number
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                        placeholder="Re-enter account number"
-                                        value={
-                                          editBankForm.bankAccountNumberConfirm
-                                        }
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankAccountNumberConfirm:
-                                              e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      {editBankForm.bankAccountNumberConfirm
-                                        .length > 0 &&
-                                        editBankForm.bankAccountNumberConfirm !==
-                                          editBankForm.bankAccountNumber && (
-                                          <p className="text-xs text-red-500 mt-1">
-                                            Account numbers don't match.
-                                          </p>
-                                        )}
-                                    </div>
-                                  </>
-                                )}
-                                {editRegion === "US" && (
-                                  <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">
-                                      Routing Number
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                      placeholder="9-digit ABA routing number"
-                                      value={editBankForm.bankRoutingNumber}
-                                      onChange={(e) =>
-                                        setEditBankForm((f) => ({
-                                          ...f,
-                                          bankRoutingNumber: e.target.value,
-                                        }))
-                                      }
-                                    />
-                                    {editBankForm.bankRoutingNumber.length >
-                                      0 &&
-                                      !isValidAbaRouting(
-                                        editBankForm.bankRoutingNumber
-                                      ) && (
-                                        <p className="text-xs text-red-500 mt-1">
-                                          Invalid routing number.
-                                        </p>
-                                      )}
-                                  </div>
-                                )}
-                                {editRegion === "GB" && (
-                                  <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">
-                                      Sort Code
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                      placeholder="6 digits, e.g. 12-34-56"
-                                      value={editBankForm.bankSortCode}
-                                      onChange={(e) =>
-                                        setEditBankForm((f) => ({
-                                          ...f,
-                                          bankSortCode: e.target.value,
-                                        }))
-                                      }
-                                    />
-                                    {editBankForm.bankSortCode.length > 0 &&
-                                      !isValidSortCode(
-                                        editBankForm.bankSortCode
-                                      ) && (
-                                        <p className="text-xs text-red-500 mt-1">
-                                          Sort code must be 6 digits.
-                                        </p>
-                                      )}
-                                  </div>
-                                )}
-                                {editRegion === "IN" && (
-                                  <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">
-                                      IFSC Code
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
-                                      placeholder="e.g. HDFC0001234"
-                                      value={editBankForm.bankIfscCode}
-                                      onChange={(e) =>
-                                        setEditBankForm((f) => ({
-                                          ...f,
-                                          bankIfscCode: e.target.value,
-                                        }))
-                                      }
-                                    />
-                                    {editBankForm.bankIfscCode.length > 0 &&
-                                      !isValidIfsc(
-                                        editBankForm.bankIfscCode
-                                      ) && (
-                                        <p className="text-xs text-red-500 mt-1">
-                                          Invalid IFSC code.
-                                        </p>
-                                      )}
-                                  </div>
-                                )}
-                                {editRegion === "AU" && (
-                                  <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">
-                                      BSB Number
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                      placeholder="6 digits, e.g. 123-456"
-                                      value={editBankForm.bankBsbNumber}
-                                      onChange={(e) =>
-                                        setEditBankForm((f) => ({
-                                          ...f,
-                                          bankBsbNumber: e.target.value,
-                                        }))
-                                      }
-                                    />
-                                    {editBankForm.bankBsbNumber.length > 0 &&
-                                      !isValidBsb(
-                                        editBankForm.bankBsbNumber
-                                      ) && (
-                                        <p className="text-xs text-red-500 mt-1">
-                                          BSB must be 6 digits.
-                                        </p>
-                                      )}
-                                  </div>
-                                )}
-                                {editRegion === "CA" && (
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        Institution Number
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                        placeholder="3 digits"
-                                        value={
-                                          editBankForm.bankInstitutionNumber
-                                        }
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankInstitutionNumber:
-                                              e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      {editBankForm.bankInstitutionNumber
-                                        .length > 0 &&
-                                        !isValidCaInstitution(
-                                          editBankForm.bankInstitutionNumber
-                                        ) && (
-                                          <p className="text-xs text-red-500 mt-1">
-                                            Must be 3 digits.
-                                          </p>
-                                        )}
-                                    </div>
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        Transit Number
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                        placeholder="5 digits"
-                                        value={editBankForm.bankTransitNumber}
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankTransitNumber: e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      {editBankForm.bankTransitNumber.length >
-                                        0 &&
-                                        !isValidCaTransit(
-                                          editBankForm.bankTransitNumber
-                                        ) && (
-                                          <p className="text-xs text-red-500 mt-1">
-                                            Must be 5 digits.
-                                          </p>
-                                        )}
-                                    </div>
-                                  </div>
-                                )}
-                                {editRegion === "JP" && (
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        Bank Code
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                        placeholder="4 digits"
-                                        value={editBankForm.bankCode}
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankCode: e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      {editBankForm.bankCode.length > 0 &&
-                                        !isValidJpBankCode(
-                                          editBankForm.bankCode
-                                        ) && (
-                                          <p className="text-xs text-red-500 mt-1">
-                                            4 digits required.
-                                          </p>
-                                        )}
-                                    </div>
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        Branch Code
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                                        placeholder="3 digits"
-                                        value={editBankForm.bankBranchCode}
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankBranchCode: e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      {editBankForm.bankBranchCode.length > 0 &&
-                                        !isValidJpBranchCode(
-                                          editBankForm.bankBranchCode
-                                        ) && (
-                                          <p className="text-xs text-red-500 mt-1">
-                                            3 digits required.
-                                          </p>
-                                        )}
-                                    </div>
-                                  </div>
-                                )}
-                                {editRegion === "SEPA" && (
-                                  <>
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        IBAN
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
-                                        placeholder="Enter your full IBAN (starts with country code, e.g., DE...)"
-                                        value={editBankForm.bankIban}
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankIban: e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      {editBankForm.bankIban.length > 0 &&
-                                        !isValidIban(editBankForm.bankIban) && (
-                                          <p className="text-xs text-red-500 mt-1">
-                                            Invalid IBAN.
-                                          </p>
-                                        )}
-                                    </div>
-                                    <div>
-                                      <label className="text-xs text-gray-500 mb-1 block">
-                                        SWIFT/BIC Number (optional)
-                                      </label>
-                                      <input
-                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
-                                        placeholder="Enter 8 or 11 character SWIFT/BIC Code"
-                                        value={editBankForm.bankSwiftBic}
-                                        onChange={(e) =>
-                                          setEditBankForm((f) => ({
-                                            ...f,
-                                            bankSwiftBic: e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      {editBankForm.bankSwiftBic.length > 0 &&
-                                        !isValidSwiftBic(
-                                          editBankForm.bankSwiftBic
-                                        ) && (
-                                          <p className="text-xs text-red-500 mt-1">
-                                            Invalid SWIFT/BIC code.
-                                          </p>
-                                        )}
-                                    </div>
-                                  </>
-                                )}
-                                {editRegion === "SWIFT" && (
-                                  <div>
-                                    <label className="text-xs text-gray-500 mb-1 block">
-                                      SWIFT Code
-                                    </label>
-                                    <input
-                                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm uppercase"
-                                      placeholder="Enter 8 or 11 character SWIFT/BIC Code"
-                                      value={editBankForm.bankSwiftBic}
-                                      onChange={(e) =>
-                                        setEditBankForm((f) => ({
-                                          ...f,
-                                          bankSwiftBic: e.target.value,
-                                        }))
-                                      }
-                                    />
-                                    {editBankForm.bankSwiftBic.length > 0 &&
-                                      !isValidSwiftBic(
-                                        editBankForm.bankSwiftBic
-                                      ) && (
-                                        <p className="text-xs text-red-500 mt-1">
-                                          Invalid SWIFT/BIC code.
-                                        </p>
-                                      )}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })()
-                        ) : editingMethod.methodType === "BANK_MANUAL" &&
-                          editingMethod.verificationStatus === "verified" ? (
-                          <p className="text-xs text-gray-400 pt-2 border-t border-gray-200">
-                            This account is verified and its bank details can't
-                            be changed here — remove it and add a new one
-                            instead.
-                          </p>
-                        ) : null}
-
-                        {editBankError && (
-                          <p className="text-sm text-red-600">
-                            {editBankError}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex gap-2 mt-5">
-                        <Button
-                          variant="outlined"
+                        <IconButton
+                          className="text-gray-500"
+                          variant="ghost"
                           visual="gray"
-                          size="sm"
-                          className="flex-1"
-                          onClick={() => setEditingMethod(null)}
+                          size="md"
+                          onClick={() => {
+                            setEditingMethod(null)
+                            setEditBankSaveState(null)
+                          }}
                         >
-                          Cancel
-                        </Button>
-                        <Button
-                          variant="filled"
-                          visual="primary"
-                          size="sm"
-                          className="flex-1"
-                          disabled={(() => {
-                            if (!editingBankDetails) return false
-                            const editRegion = detectBankRegion(
-                              editBankForm.bankCountry
-                            )
-                            const touchedBankDetails =
-                              editBankForm.bankAccountNumber.trim().length >
-                                0 || editBankForm.bankIban.trim().length > 0
-                            if (!touchedBankDetails) return false
-                            return (
-                              !editBankForm.bankAccountName.trim() ||
-                              (editRegion !== "SEPA" &&
-                                editBankForm.bankAccountNumberConfirm !==
-                                  editBankForm.bankAccountNumber) ||
-                              (editRegion === "US" &&
-                                !isValidAbaRouting(
-                                  editBankForm.bankRoutingNumber
-                                )) ||
-                              (editRegion === "GB" &&
-                                !isValidSortCode(editBankForm.bankSortCode)) ||
-                              (editRegion === "IN" &&
-                                !isValidIfsc(editBankForm.bankIfscCode)) ||
-                              (editRegion === "AU" &&
-                                !isValidBsb(editBankForm.bankBsbNumber)) ||
-                              (editRegion === "CA" &&
-                                (!isValidCaInstitution(
-                                  editBankForm.bankInstitutionNumber
-                                ) ||
-                                  !isValidCaTransit(
-                                    editBankForm.bankTransitNumber
-                                  ))) ||
-                              (editRegion === "JP" &&
-                                (!isValidJpBankCode(editBankForm.bankCode) ||
+                          <X className="size-5" />
+                        </IconButton>
+                      </div>
+                      <div className="p-6">
+                        <div className="space-y-3">
+                          <div className="space-y-1.5">
+                            <Label size="sm" htmlFor="edit-bank-country">
+                              Country
+                            </Label>
+                            <Listbox
+                              value={editBankForm.bankCountry}
+                              onChange={(code: string) =>
+                                setEditBankForm(createBlankEditBankForm(code))
+                              }
+                            >
+                              <ListboxButton placeholder="Select country">
+                                {({ value }) => {
+                                  const selected = EDIT_BANK_COUNTRIES.find(
+                                    (c) => c.code === value
+                                  )
+                                  return selected ? (
+                                    <span className="flex items-center gap-2">
+                                      <span>{selected.flag}</span>
+                                      <span>{selected.name}</span>
+                                    </span>
+                                  ) : null
+                                }}
+                              </ListboxButton>
+                              <ListboxOptions>
+                                {EDIT_BANK_COUNTRIES.map((country) => (
+                                  <ListboxOption
+                                    key={country.code}
+                                    value={country.code}
+                                  >
+                                    <span>{country.flag}</span>
+                                    <span>{country.name}</span>
+                                  </ListboxOption>
+                                ))}
+                              </ListboxOptions>
+                            </Listbox>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label size="sm" htmlFor="edit-bank-name">
+                              Bank Name
+                            </Label>
+                            <Input
+                              id="edit-bank-name"
+                              type="text"
+                              placeholder={editBankNamePlaceholder(
+                                editBankForm.bankCountry
+                              )}
+                              value={editBankForm.bankAccountName}
+                              onChange={(e) =>
+                                setEditBankForm((f) => ({
+                                  ...f,
+                                  bankAccountName: e.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                          {editBankRegion(editBankForm.bankCountry) ===
+                            "US" && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-account-number"
+                                >
+                                  Account Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-account-number"
+                                  type="text"
+                                  placeholder={editBankAccountPlaceholder(
+                                    editBankForm.bankCountry
+                                  )}
+                                  value={editBankForm.bankAccountNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankAccountNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-routing-number"
+                                >
+                                  Bank Routing Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-routing-number"
+                                  type="text"
+                                  placeholder="xxxx-xxxx-x"
+                                  value={editBankForm.bankRoutingNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankRoutingNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankRoutingNumber.length > 0 &&
+                                  !isValidAbaRouting(
+                                    editBankForm.bankRoutingNumber.replace(
+                                      /\D/g,
+                                      ""
+                                    )
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid routing number.
+                                    </p>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) ===
+                            "SEPA" && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label size="sm" htmlFor="edit-bank-iban">
+                                  IBAN Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-iban"
+                                  type="text"
+                                  placeholder="Enter your full IBAN (starts with country code, e.g., DE...)"
+                                  value={editBankForm.bankIban}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankIban: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankIban.length > 0 &&
+                                  !isValidIban(editBankForm.bankIban) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid IBAN.
+                                    </p>
+                                  )}
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label size="sm" htmlFor="edit-bank-swift">
+                                  SWIFT / BIC Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-swift"
+                                  type="text"
+                                  placeholder="Enter 8 or 11 character SWIFT / BIC Code"
+                                  value={editBankForm.bankSwiftBic}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankSwiftBic: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankSwiftBic.length > 0 &&
+                                  !isValidSwiftBic(
+                                    editBankForm.bankSwiftBic
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid SWIFT / BIC code.
+                                    </p>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) ===
+                            "IN" && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-account-number-in"
+                                >
+                                  Account Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-account-number-in"
+                                  type="text"
+                                  placeholder={editBankAccountPlaceholder("IN")}
+                                  value={editBankForm.bankAccountNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankAccountNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label size="sm" htmlFor="edit-bank-ifsc">
+                                  IFSC Code
+                                </Label>
+                                <Input
+                                  id="edit-bank-ifsc"
+                                  type="text"
+                                  placeholder="Enter 11 character IFSC Code (e.g. ICIC0001234)"
+                                  value={editBankForm.bankIfscCode}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankIfscCode: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankIfscCode.length > 0 &&
+                                  !isValidIfsc(editBankForm.bankIfscCode) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid IFSC code.
+                                    </p>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) ===
+                            "AU" && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-account-number-au"
+                                >
+                                  Account Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-account-number-au"
+                                  type="text"
+                                  placeholder={editBankAccountPlaceholder("AU")}
+                                  value={editBankForm.bankAccountNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankAccountNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label size="sm" htmlFor="edit-bank-bsb">
+                                  BSB Code
+                                </Label>
+                                <Input
+                                  id="edit-bank-bsb"
+                                  type="text"
+                                  placeholder="Enter 6 digit BSB Code (e.g. 062-000)"
+                                  value={editBankForm.bankBsbNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankBsbNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankBsbNumber.length > 0 &&
+                                  !isValidBsb(editBankForm.bankBsbNumber) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid BSB code.
+                                    </p>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) ===
+                            "GB" && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-account-number-gb"
+                                >
+                                  Account Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-account-number-gb"
+                                  type="text"
+                                  placeholder={editBankAccountPlaceholder("GB")}
+                                  value={editBankForm.bankAccountNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankAccountNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label size="sm" htmlFor="edit-bank-sort-code">
+                                  Sort Code
+                                </Label>
+                                <Input
+                                  id="edit-bank-sort-code"
+                                  type="text"
+                                  placeholder="Enter 6 digit Sort Code here (e.g. 20-00-00)"
+                                  value={editBankForm.bankSortCode}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankSortCode: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankSortCode.length > 0 &&
+                                  !isValidSortCode(
+                                    editBankForm.bankSortCode
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Sort code must be 6 digits.
+                                    </p>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) ===
+                            "JP" && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-code-jp"
+                                >
+                                  Bank Code
+                                </Label>
+                                <Input
+                                  id="edit-bank-code-jp"
+                                  type="text"
+                                  placeholder="Enter 4 digit Bank Code here"
+                                  value={editBankForm.bankCode}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankCode: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankCode.length > 0 &&
+                                  !isValidJpBankCode(editBankForm.bankCode) && (
+                                    <p className="text-xs text-red-500">
+                                      Bank code must be 4 digits.
+                                    </p>
+                                  )}
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-branch-code-jp"
+                                >
+                                  Branch Code
+                                </Label>
+                                <Input
+                                  id="edit-bank-branch-code-jp"
+                                  type="text"
+                                  placeholder="Enter 3 digit Branch Code here"
+                                  value={editBankForm.bankBranchCode}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankBranchCode: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankBranchCode.length > 0 &&
                                   !isValidJpBranchCode(
                                     editBankForm.bankBranchCode
-                                  ))) ||
-                              (editRegion === "SEPA" &&
-                                !isValidIban(editBankForm.bankIban)) ||
-                              (editRegion === "SWIFT" &&
-                                !isValidSwiftBic(editBankForm.bankSwiftBic))
-                            )
-                          })()}
-                          onClick={() => setConfirmEditSave(true)}
-                        >
-                          Save Changes
-                        </Button>
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Branch code must be 3 digits.
+                                    </p>
+                                  )}
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-account-number-jp"
+                                >
+                                  Account Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-account-number-jp"
+                                  type="text"
+                                  placeholder={editBankAccountPlaceholder("JP")}
+                                  value={editBankForm.bankAccountNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankAccountNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankAccountNumber.length > 0 &&
+                                  !/^\d{7}$/.test(
+                                    editBankForm.bankAccountNumber
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Account number must be 7 digits.
+                                    </p>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) ===
+                            "SWIFT" && (
+                            <>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-account-number-asia"
+                                >
+                                  Account Number
+                                </Label>
+                                <Input
+                                  id="edit-bank-account-number-asia"
+                                  type="text"
+                                  placeholder={editBankAccountPlaceholder("SG")}
+                                  value={editBankForm.bankAccountNumber}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankAccountNumber: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label size="sm" htmlFor="edit-bank-swift-asia">
+                                  Swift Code
+                                </Label>
+                                <Input
+                                  id="edit-bank-swift-asia"
+                                  type="text"
+                                  placeholder="Enter 8 or 11 character SWIFT/BIC Code"
+                                  value={editBankForm.bankSwiftBic}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankSwiftBic: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankSwiftBic.length > 0 &&
+                                  !isValidSwiftBic(
+                                    editBankForm.bankSwiftBic
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Invalid SWIFT / BIC code.
+                                    </p>
+                                  )}
+                              </div>
+                            </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) !==
+                            "SEPA" && (
+                            <div className="space-y-1.5">
+                              <Label
+                                size="sm"
+                                htmlFor="edit-bank-account-number-confirm"
+                              >
+                                Confirm Account Number
+                              </Label>
+                              <Input
+                                id="edit-bank-account-number-confirm"
+                                type="text"
+                                placeholder="Re-enter account number"
+                                value={editBankForm.bankAccountNumberConfirm}
+                                onChange={(e) =>
+                                  setEditBankForm((f) => ({
+                                    ...f,
+                                    bankAccountNumberConfirm: e.target.value,
+                                  }))
+                                }
+                              />
+                              {editBankForm.bankAccountNumberConfirm.length >
+                                0 &&
+                                editBankForm.bankAccountNumberConfirm !==
+                                  editBankForm.bankAccountNumber && (
+                                  <p className="text-xs text-red-500">
+                                    Account numbers do not match.
+                                  </p>
+                                )}
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-12 flex items-center justify-end gap-x-2">
+                          <Button
+                            type="button"
+                            variant="outlined"
+                            visual="gray"
+                            onClick={() => setEditingMethod(null)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            disabled={!isEditBankInfoComplete(editBankForm)}
+                            onClick={() => setConfirmEditSave(true)}
+                          >
+                            Save
+                          </Button>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="p-6">
+                        <h3 className="text-base font-semibold text-dark-blue-400 mb-4">
+                          Edit Account
+                        </h3>
+                        <div className="space-y-3">
+                          <div>
+                            <Label size="sm">Account</Label>
+                            <p className="text-sm font-medium text-dark-blue-400">
+                              {editingMethod.displayLabel}
+                            </p>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label size="sm" htmlFor="edit-account-nickname">
+                              Nickname (optional)
+                            </Label>
+                            <Input
+                              id="edit-account-nickname"
+                              type="text"
+                              placeholder="e.g. My Chase Savings"
+                              value={editingMethod.nickname ?? ""}
+                              onChange={(e) =>
+                                setEditingMethod((m: any) => ({
+                                  ...m,
+                                  nickname: e.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                          {editingMethod.methodType === "BANK_MANUAL" &&
+                          editingMethod.verificationStatus === "verified" ? (
+                            <p className="text-xs text-gray-400 pt-2 border-t border-gray-200">
+                              This account is verified and its bank details
+                              can&apos;t be changed here — remove it and add a
+                              new one instead.
+                            </p>
+                          ) : null}
+                          {editBankError && (
+                            <p className="text-sm text-red-600">
+                              {editBankError}
+                            </p>
+                          )}
+                        </div>
+                        <div className="mt-12 flex items-center justify-end gap-x-2">
+                          <Button
+                            type="button"
+                            variant="outlined"
+                            visual="gray"
+                            onClick={() => setEditingMethod(null)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={() => setConfirmEditSave(true)}
+                          >
+                            Save
+                          </Button>
+                        </div>
                       </div>
                     </>
                   )}
@@ -7578,7 +7840,7 @@ export const OverviewTab = ({
                           <button
                             type="button"
                             className="text-sm font-semibold text-[#22376B] underline underline-offset-4"
-                            onClick={() => router.push("/billing")}
+                            onClick={() => router.push("/settings?tab=billing-overview")}
                           >
                             Manage
                           </button>
@@ -8213,11 +8475,6 @@ export const PayoutScheduleDialog = ({
                     />
                   ))}
                 </div>
-              ) : methods.length === 0 ? (
-                <div className="text-sm text-gray-500 text-center py-6">
-                  You need a verified payout method before setting up a
-                  schedule.
-                </div>
               ) : (
                 <>
                   {/* ── Primary Method (US-22/23) — Figma keeps this section's
@@ -8694,18 +8951,30 @@ export const PayoutScheduleDialog = ({
                               <Input
                                 type="number"
                                 min={1}
-                                max={249}
+                                max={250}
                                 placeholder="Enter custom amount"
                                 className="pl-6"
                                 value={reserveCustomValue}
                                 onChange={(e) => {
                                   const v = e.target.value
-                                  setReserveCustomValue(v)
+                                  if (v === "") {
+                                    setReserveCustomValue("")
+                                    return
+                                  }
                                   const n = parseInt(v)
-                                  if (!isNaN(n))
-                                    setReserveUsd(
-                                      String(Math.max(0, Math.min(249, n)))
-                                    )
+                                  if (isNaN(n)) return
+                                  // Backend caps reserveUsd at $250 inclusive
+                                  // (schedule.service.ts: reserve > 250 →
+                                  // ERR_SCHEDULE_RESERVE_EXCEEDS_MAX). Clamp
+                                  // the displayed value too, not just what
+                                  // gets submitted — otherwise the box can
+                                  // show e.g. "500" while $250 is silently
+                                  // saved instead.
+                                  const clamped = String(
+                                    Math.max(0, Math.min(250, n))
+                                  )
+                                  setReserveCustomValue(clamped)
+                                  setReserveUsd(clamped)
                                 }}
                               />
                             </div>
@@ -8724,7 +8993,7 @@ export const PayoutScheduleDialog = ({
                         )}
                         {reserveCustomOpen && (
                           <p className="text-xs text-gray-400">
-                            Custom amount needs to be under $250.
+                            Custom amount can be up to $250.
                           </p>
                         )}
                       </div>
@@ -9329,7 +9598,7 @@ function TablePagination({
   )
 }
 
-// US-23: chip labels must match the dateRange <SelectItem> copy verbatim.
+// US-23: chip labels must match the date-range picker copy verbatim.
 const EARNINGS_DATE_RANGE_LABELS: Record<string, string> = {
   all_time: "All Time",
   today: "Today",
@@ -9339,15 +9608,318 @@ const EARNINGS_DATE_RANGE_LABELS: Record<string, string> = {
   this_month: "This Month",
   last_month: "Last Month",
   this_year: "This Year",
+  last_year: "Last Year",
+  custom: "Custom range",
+}
+
+const DATE_PRESET_TO_API: Record<string, string> = {
+  "all time": "all_time",
+  today: "today",
+  yesterday: "yesterday",
+  "this week": "this_week",
+  "last week": "last_week",
+  "this month": "this_month",
+  "last month": "last_month",
+  "this year": "this_year",
+  "last year": "last_year",
+  "custom range": "custom",
+}
+
+const DATE_API_TO_PRESET: Record<string, string> = {
+  all_time: "all time",
+  today: "today",
+  yesterday: "yesterday",
+  this_week: "this week",
+  last_week: "last week",
+  this_month: "this month",
+  last_month: "last month",
+  this_year: "this year",
+  last_year: "last year",
+  custom: "custom range",
+}
+
+// Read-only design system rule (CLAUDE.md): components/ui/calendar/calendar.tsx
+// is Storybook source, never edited. DualCalendar's own Sidebar preset buttons
+// only scroll the visible month (no "select this preset's actual date range"
+// behavior) — so the preset list and the "Custom range" option live here
+// instead, composed from DualCalendar's own onCancel/onApply/value props
+// (all present, unmodified, in the exported component) rather than by adding
+// new props to the read-only file. Non-custom presets commit immediately
+// (see DateRangeFilterPopoverContent) so DualCalendar never needs a
+// preset-derived starting range.
+
+const DATE_PRESET_RADIO_ITEMS = [
+  "today", "yesterday", "this week", "last week", "this month",
+  "last month", "this year", "last year", "all time", "custom range",
+]
+
+function DateRangeSidebar({
+  preset,
+  onPresetChange,
+}: {
+  preset: string
+  onPresetChange: (preset: string) => void
+}) {
+  return (
+    <RadioGroup
+      value={preset}
+      onValueChange={onPresetChange}
+      className="flex flex-col items-start gap-1 w-[192px] py-3 px-4 border-r border-gray-200"
+    >
+      {DATE_PRESET_RADIO_ITEMS.map((item) => (
+        // Figma "_Date picker list item": plain text row, no visible radio
+        // circle — @/components/ui's styled RadioGroupItem always discards
+        // its children (renders only a bare indicator dot), so this uses the
+        // unstyled HeadlessRadioGroupItem primitive instead, styled to match
+        // the spec directly (10px/16px padding, 14px medium, #F9FAFB when
+        // checked).
+        <HeadlessRadioGroupItem
+          key={item}
+          value={item}
+          className="w-full text-left rounded-md flex items-center h-10 py-2.5 px-4 text-sm font-medium text-gray-700 capitalize data-[state=checked]:bg-gray-50 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-100"
+        >
+          {item}
+        </HeadlessRadioGroupItem>
+      ))}
+    </RadioGroup>
+  )
+}
+
+// Composed entirely from DualCalendar's own existing, unmodified props
+// (value/onCancel/onApply). Non-custom presets commit immediately without
+// ever touching DualCalendar, so it only mounts for "custom range" — and
+// stays mounted for the life of the popover (no key-forced remount). An
+// earlier version remounted DualCalendar on every preset click via
+// key={preset}, which raced Radix RadioGroup's roving-focus management on
+// the sidebar underneath it and caused a "Maximum update depth exceeded"
+// loop.
+function DateRangeFilterPopoverContent({
+  dateRange,
+  dateFrom,
+  dateTo,
+  defaultPreset,
+  onCommit,
+  onCancel,
+}: {
+  dateRange: string
+  dateFrom: string
+  dateTo: string
+  defaultPreset: string
+  onCommit: (apiDateRange: string, from: string, to: string) => void
+  onCancel: () => void
+}) {
+  const initialPreset = DATE_API_TO_PRESET[dateRange] ?? defaultPreset
+  const [preset, setPreset] = React.useState(initialPreset)
+
+  const handlePresetChange = React.useCallback((next: string) => {
+    setPreset(next)
+    if (next === "custom range") return
+    onCommit(DATE_PRESET_TO_API[next] ?? "all_time", "", "")
+  }, [onCommit])
+
+  // DualCalendar re-renders on its own internal state (e.g. every date
+  // click), which re-invokes the left() render-prop below. Memoizing the
+  // sidebar element keeps that a no-op reconciliation instead of handing
+  // Radix's RadioGroup a brand-new element/child tree on every keystroke —
+  // the latter was the actual cause of the "Maximum update depth exceeded"
+  // crash (Radix's roving-focus bookkeeping re-firing in a loop).
+  const sidebar = React.useMemo(
+    () => <DateRangeSidebar preset={preset} onPresetChange={handlePresetChange} />,
+    [preset, handlePresetChange]
+  )
+
+  if (preset !== "custom range") {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 shadow-xl">
+        {sidebar}
+      </div>
+    )
+  }
+
+  return (
+    <DualCalendar
+      value={
+        dateFrom && dateTo
+          ? { start: parseISO(dateFrom), end: parseISO(dateTo) }
+          : undefined
+      }
+      onCancel={onCancel}
+      onApply={(applied) => {
+        if (!applied) return
+        onCommit("custom", formatDate(applied.start, "yyyy-MM-dd"), formatDate(applied.end, "yyyy-MM-dd"))
+      }}
+      left={() => sidebar}
+    />
+  )
 }
 
 export interface EarningsFilters {
   dateRange: string
+  startDate?: string
+  endDate?: string
   entryType: string
   statusFilter: string
   search: string
   projectId: string
   clientId: string
+}
+
+const FILTER_CHIP_CLASS =
+  "h-9 gap-x-2 bg-white text-sm font-medium text-gray-800 hover:bg-white"
+
+const FILTER_SELECT_CHIP_CLASS =
+  "h-9 w-auto bg-white px-3.5 py-0 text-sm font-medium text-gray-800 data-[placeholder]:text-gray-800 [&>span]:text-sm [&>span]:font-medium [&>span]:text-gray-800 [&>svg]:size-4 [&>svg]:text-gray-800"
+
+function toAtHandle(value?: string | null) {
+  if (!value) return ""
+  const trimmed = value.trim()
+  if (!trimmed) return ""
+  if (trimmed.startsWith("@")) return trimmed
+  return "@" + trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "")
+}
+
+function FilterSearchMenu({
+  label,
+  searchPlaceholder,
+  value,
+  onValueChange,
+  items,
+  layout = "stacked",
+}: {
+  label: string
+  searchPlaceholder: string
+  value: string
+  onValueChange: (id: string) => void
+  items: {
+    id: string
+    title: string
+    handle?: string | null
+    avatarUrl?: string | null
+    icon?: React.ReactNode
+  }[]
+  layout?: "stacked" | "inline"
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState("")
+  const inputRef = React.useRef<HTMLInputElement>(null)
+  const selected = items.find((item) => item.id === value)
+  const q = query.trim().toLowerCase()
+  const filtered =
+    q === ""
+      ? items
+      : items.filter((item) => {
+          const extra = item.handle ?? ""
+          return (
+            item.title.toLowerCase().includes(q) ||
+            extra.toLowerCase().includes(q)
+          )
+        })
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) setQuery("")
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          variant="outlined"
+          visual="gray"
+          size="sm"
+          className={FILTER_CHIP_CLASS}
+        >
+          {selected?.title ?? label}
+          <ChevronDown className="size-4 text-gray-800" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        onOpenAutoFocus={(e) => {
+          e.preventDefault()
+          inputRef.current?.focus()
+        }}
+        className="z-[80] w-[300px] overflow-hidden rounded-xl border border-gray-200 bg-white p-0 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]"
+      >
+        <div className="flex items-center gap-2 border-b border-gray-200 px-3.5 py-2.5">
+          <Search className="size-4 shrink-0 text-gray-400" />
+          <input
+            ref={inputRef}
+            className="m-0 h-5 w-full border-none bg-transparent p-0 text-sm text-gray-900 shadow-none outline-none ring-0 placeholder:text-gray-400 focus:border-transparent focus:outline-none focus:ring-0 focus:shadow-none"
+            placeholder={searchPlaceholder}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <ScrollArea viewportClassName="max-h-[280px]">
+          <div className="py-1">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-4 text-sm text-gray-400">No matches</p>
+            ) : (
+              filtered.map((item) => {
+                const subtitle =
+                  layout === "inline"
+                    ? (item.handle ?? "")
+                    : toAtHandle(item.handle) || toAtHandle(item.title)
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={cn(
+                      "flex w-full items-center gap-3 px-3.5 py-2 text-left hover:bg-gray-50",
+                      item.id === value && "bg-gray-50"
+                    )}
+                    onClick={() => {
+                      onValueChange(item.id === value ? "" : item.id)
+                      setOpen(false)
+                    }}
+                  >
+                    {item.icon ? (
+                      item.icon
+                    ) : item.avatarUrl ? (
+                      <Avatar className="size-8 shrink-0">
+                        <AvatarImage src={item.avatarUrl} alt={item.title} />
+                        <AvatarFallback className="bg-transparent p-0">
+                          <FilterEntityAvatar />
+                        </AvatarFallback>
+                      </Avatar>
+                    ) : (
+                      <FilterEntityAvatar />
+                    )}
+                    {layout === "inline" ? (
+                      <span className="min-w-0 truncate text-sm">
+                        <span className="font-medium text-gray-800">
+                          {item.title}
+                        </span>
+                        {subtitle ? (
+                          <span className="font-normal text-gray-500">
+                            {" "}
+                            {subtitle}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span className="min-w-0 leading-[1.2]">
+                        <span className="block truncate text-sm font-semibold text-gray-900">
+                          {item.title}
+                        </span>
+                        {subtitle ? (
+                          <span className="block truncate text-xs font-normal text-gray-400">
+                            {subtitle}
+                          </span>
+                        ) : null}
+                      </span>
+                    )}
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 export const EarningsTab = ({
@@ -9368,6 +9940,9 @@ export const EarningsTab = ({
   const [earningsError, setEarningsError] = React.useState(false)
   // US-24.02 QA spec: default/reset date range is "this_month", not "all_time".
   const [dateRange, setDateRange] = React.useState("this_month")
+  const [dateFrom, setDateFrom] = React.useState("")
+  const [dateTo, setDateTo] = React.useState("")
+  const [datePickerOpen, setDatePickerOpen] = React.useState(false)
   const [entryType, setEntryType] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState("")
   const [projectId, setProjectId] = React.useState("")
@@ -9375,19 +9950,14 @@ export const EarningsTab = ({
   const [dateSortOrder, setDateSortOrder] = React.useState<"asc" | "desc">(
     "desc"
   )
-  // Figma "All Projects"/"All Clients" — options accumulated from loaded rows
-  // (no dedicated filter-options endpoint yet).
-  const projectOptionsRef = React.useRef(
-    new Map<string, { id: string; name: string }>()
-  )
-  const clientOptionsRef = React.useRef(
-    new Map<string, { id: string; label: string }>()
-  )
+  // Figma "All Projects"/"All Clients" — options fetched from
+  // GET /earnings/filters (see the useEffect below), covering the
+  // contractor's full contract history.
   const [projectOptions, setProjectOptions] = React.useState<
-    { id: string; name: string }[]
+    { id: string; name: string; handle?: string | null }[]
   >([])
   const [clientOptions, setClientOptions] = React.useState<
-    { id: string; label: string }[]
+    { id: string; label: string; handle?: string | null }[]
   >([])
 
   // US-30 (F-05 Entry Detail Drawer), opened from history rows here too — a
@@ -9444,11 +10014,16 @@ export const EarningsTab = ({
       sortBy: "workStartAt",
       sortOrder: dateSortOrder,
     }
+    if (dateRange === "custom" && dateFrom && dateTo) {
+      q.dateRange = "custom"
+      q.startDate = dateFrom
+      q.endDate = dateTo
+    }
     if (entryType) q.entryType = entryType
     if (statusFilter) q.status = statusFilter
     if (projectId) q.projectId = projectId
     if (clientId) q.clientId = clientId
-    if (searchQuery.length >= 2) q.search = searchQuery
+    if (searchQuery.length >= 1) q.search = searchQuery
     getEarnings(q)
       .then(setEarningsResult)
       .catch((e) => {
@@ -9459,6 +10034,8 @@ export const EarningsTab = ({
   }, [
     viewMode,
     dateRange,
+    dateFrom,
+    dateTo,
     currentPage,
     entryType,
     statusFilter,
@@ -9472,43 +10049,21 @@ export const EarningsTab = ({
     loadEarnings()
   }, [loadEarnings])
 
-  // Grow All Projects / All Clients option lists from each page of results.
+  // All Projects / All Clients option lists — fetched once from the
+  // contractor's full contract history (GET /earnings/filters), not derived
+  // from whichever earnings rows the current date-range filter happens to
+  // return. The old row-derived approach meant the dropdown was empty
+  // whenever the active filters returned zero rows (e.g. default "This
+  // Month" filter on an account with no earnings this month), even though
+  // the contractor has real project/client history outside that window.
   useEffect(() => {
-    if (!earningsResult?.data?.length) return
-    let changed = false
-    for (const row of earningsResult.data) {
-      if (row.project?.id && row.project.name) {
-        if (!projectOptionsRef.current.has(row.project.id)) {
-          projectOptionsRef.current.set(row.project.id, {
-            id: row.project.id,
-            name: row.project.name,
-          })
-          changed = true
-        }
-      }
-      if (row.project?.clientId && row.project.clientHandle) {
-        if (!clientOptionsRef.current.has(row.project.clientId)) {
-          clientOptionsRef.current.set(row.project.clientId, {
-            id: row.project.clientId,
-            label: row.project.clientHandle,
-          })
-          changed = true
-        }
-      }
-    }
-    if (changed) {
-      setProjectOptions(
-        [...projectOptionsRef.current.values()].sort((a, b) =>
-          a.name.localeCompare(b.name)
-        )
-      )
-      setClientOptions(
-        [...clientOptionsRef.current.values()].sort((a, b) =>
-          a.label.localeCompare(b.label)
-        )
-      )
-    }
-  }, [earningsResult])
+    getEarningsFilterOptions()
+      .then((opts) => {
+        setProjectOptions(opts.projects)
+        setClientOptions(opts.clients)
+      })
+      .catch((e) => console.error("Failed to load project/client filter options:", e))
+  }, [])
 
   // US-23/US-24: chips + Clear All. dateRange excluded — "this_month" is the
   // default and isn't a contractor-applied filter to display as a chip.
@@ -9521,9 +10076,14 @@ export const EarningsTab = ({
       ? [
           {
             key: "dateRange",
-            label: EARNINGS_DATE_RANGE_LABELS[dateRange] ?? dateRange,
+            label:
+              dateRange === "custom" && dateFrom && dateTo
+                ? `${formatDate(parseISO(dateFrom), "LLL d, yyyy")} – ${formatDate(parseISO(dateTo), "LLL d, yyyy")}`
+                : (EARNINGS_DATE_RANGE_LABELS[dateRange] ?? dateRange),
             onRemove: () => {
               setDateRange("this_month")
+              setDateFrom("")
+              setDateTo("")
               setCurrentPage(1)
             },
           },
@@ -9579,7 +10139,7 @@ export const EarningsTab = ({
           },
         ]
       : []),
-    ...(searchQuery.length >= 2
+    ...(searchQuery.length >= 1
       ? [
           {
             key: "search",
@@ -9595,6 +10155,8 @@ export const EarningsTab = ({
   const hasActiveFilters = activeFilterChips.length > 0
   const clearAllFilters = React.useCallback(() => {
     setDateRange("this_month")
+    setDateFrom("")
+    setDateTo("")
     setEntryType("")
     setStatusFilter("")
     setProjectId("")
@@ -9608,15 +10170,19 @@ export const EarningsTab = ({
   useEffect(() => {
     onFiltersChange?.({
       dateRange,
+      startDate: dateFrom,
+      endDate: dateTo,
       entryType,
       statusFilter,
-      search: searchQuery.length >= 2 ? searchQuery : "",
+      search: searchQuery.length >= 1 ? searchQuery : "",
       projectId,
       clientId,
     })
   }, [
     onFiltersChange,
     dateRange,
+    dateFrom,
+    dateTo,
     entryType,
     statusFilter,
     searchQuery,
@@ -9773,68 +10339,74 @@ export const EarningsTab = ({
           <ToggleGroupItem value="monthly">Monthly</ToggleGroupItem>
         </ToggleGroupRoot>
 
-        <Select
-          value={dateRange}
-          onValueChange={(v) => {
-            setDateRange(v)
-            setCurrentPage(1)
-          }}
-        >
-          <SelectTrigger className="h-9 w-auto min-w-[110px]">
-            <Calendar className="size-4 mr-1" />
-            <SelectValue placeholder="All Time" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all_time">All Time</SelectItem>
-            <SelectItem value="today">Today</SelectItem>
-            <SelectItem value="yesterday">Yesterday</SelectItem>
-            <SelectItem value="this_week">This Week</SelectItem>
-            <SelectItem value="last_week">Last Week</SelectItem>
-            <SelectItem value="this_month">This Month</SelectItem>
-            <SelectItem value="last_month">Last Month</SelectItem>
-            <SelectItem value="this_year">This Year</SelectItem>
-          </SelectContent>
-        </Select>
+        <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outlined"
+              visual="gray"
+              size="sm"
+              className={FILTER_CHIP_CLASS}
+            >
+              <Calendar className="size-4 text-gray-800" />
+              {dateRange === "custom" && dateFrom && dateTo
+                ? `${formatDate(parseISO(dateFrom), "LLL d, yyyy")} – ${formatDate(parseISO(dateTo), "LLL d, yyyy")}`
+                : (EARNINGS_DATE_RANGE_LABELS[dateRange] ?? "This Month")}
+              <ChevronDown className="size-4 text-gray-800" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            className="w-auto border-0 bg-transparent p-0 shadow-none"
+            align="start"
+            collisionPadding={16}
+          >
+            {datePickerOpen ? (
+              <DateRangeFilterPopoverContent
+                dateRange={dateRange}
+                dateFrom={dateFrom}
+                dateTo={dateTo}
+                defaultPreset="this month"
+                onCancel={() => setDatePickerOpen(false)}
+                onCommit={(next, from, to) => {
+                  setDateRange(next)
+                  setDateFrom(from)
+                  setDateTo(to)
+                  setCurrentPage(1)
+                  setDatePickerOpen(false)
+                }}
+              />
+            ) : null}
+          </PopoverContent>
+        </Popover>
 
-        <Select
-          value={projectId || "all-projects"}
-          onValueChange={(v) => {
-            setProjectId(v === "all-projects" ? "" : v)
+        <FilterSearchMenu
+          label="All Projects"
+          searchPlaceholder="Find projects"
+          value={projectId}
+          onValueChange={(id) => {
+            setProjectId(id)
             setCurrentPage(1)
           }}
-        >
-          <SelectTrigger className="h-9 w-auto min-w-[120px]">
-            <SelectValue placeholder="All Projects" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all-projects">All Projects</SelectItem>
-            {projectOptions.map((p) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          items={projectOptions.map((p) => ({
+            id: p.id,
+            title: p.name,
+            handle: p.handle,
+          }))}
+        />
 
-        <Select
-          value={clientId || "all-clients"}
-          onValueChange={(v) => {
-            setClientId(v === "all-clients" ? "" : v)
+        <FilterSearchMenu
+          label="All Clients"
+          searchPlaceholder="Find clients"
+          value={clientId}
+          onValueChange={(id) => {
+            setClientId(id)
             setCurrentPage(1)
           }}
-        >
-          <SelectTrigger className="h-9 w-auto min-w-[110px]">
-            <SelectValue placeholder="All Clients" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all-clients">All Clients</SelectItem>
-            {clientOptions.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          items={clientOptions.map((c) => ({
+            id: c.id,
+            title: c.label,
+            handle: c.handle,
+          }))}
+        />
 
         <Select
           value={entryType || "all-entry-types"}
@@ -9843,7 +10415,7 @@ export const EarningsTab = ({
             setCurrentPage(1)
           }}
         >
-          <SelectTrigger className="h-9 w-auto min-w-[130px]">
+          <SelectTrigger className={cn(FILTER_SELECT_CHIP_CLASS, "min-w-[130px]")}>
             <SelectValue placeholder="All Entry Types" />
           </SelectTrigger>
           <SelectContent>
@@ -9860,7 +10432,7 @@ export const EarningsTab = ({
             setCurrentPage(1)
           }}
         >
-          <SelectTrigger className="h-9 w-auto min-w-[110px]">
+          <SelectTrigger className={cn(FILTER_SELECT_CHIP_CLASS, "min-w-[110px]")}>
             <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
           <SelectContent>
@@ -9876,6 +10448,7 @@ export const EarningsTab = ({
               <Search className="size-4" />
             </SearchFieldButton>
             <SearchFieldInput
+              className={searchQuery ? "pr-9" : undefined}
               placeholder="Find transactions"
               value={searchQuery}
               onChange={(e) => {
@@ -9883,33 +10456,48 @@ export const EarningsTab = ({
                 setCurrentPage(1)
               }}
             />
+            {searchQuery && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                className="absolute right-2.5 inset-y-0 my-auto text-gray-400 hover:text-gray-600"
+                onClick={() => {
+                  setSearchQuery("")
+                  setCurrentPage(1)
+                }}
+              >
+                <XCircle className="size-4" />
+              </button>
+            )}
           </SearchField>
         </div>
       </div>
 
-      {/* US-23/US-24: active filter chips + Clear All */}
-      {hasActiveFilters && (
-        <div className="flex flex-wrap items-center gap-2">
-          {activeFilterChips.map((chip) => (
-            <button
-              key={chip.key}
-              onClick={chip.onRemove}
-              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-25 px-3 py-1 text-xs font-medium text-dark-blue-400 hover:bg-gray-50"
-            >
-              {chip.label}
-              <X className="size-3 text-gray-400" />
-            </button>
-          ))}
+
+      {/* Table — a zero-result search replaces the whole card (header included),
+          same as Settings → Billing → Transactions (billing-transactions-content.tsx),
+          not just an empty row inside the table. */}
+      {earningsResult?.data.length === 0 && searchQuery.length >= 1 ? (
+        <div className="flex flex-col items-center py-14 gap-4">
+          <p className="text-base font-semibold text-dark-blue-400">
+            0 Results for &ldquo;{searchQuery.trim()}&rdquo;
+          </p>
+          <p className="text-sm text-gray-500 -mt-2 max-w-[380px] mx-auto text-center">
+            We couldn&apos;t find any results for your search. Try adjusting
+            your keywords or clearing your search.
+          </p>
           <button
-            onClick={clearAllFilters}
-            className="text-xs font-medium text-primary-600 hover:underline"
+            type="button"
+            className="inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-gray-200 rounded-[5px] text-sm font-semibold leading-5 text-dark-blue-400 transition-colors duration-300 hover:bg-gray-300"
+            onClick={() => {
+              setSearchQuery("")
+              setCurrentPage(1)
+            }}
           >
-            Clear All
+            Clear Search
           </button>
         </div>
-      )}
-
-      {/* Table */}
+      ) : (
       <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
         <Table>
           <TableHeader className="bg-white [&_tr]:border-gray-200">
@@ -9941,12 +10529,12 @@ export const EarningsTab = ({
                 </TableHead>
               )}
               {viewMode === "daily" && (
-                <TableHead className="text-xs font-medium text-gray-500">
+                <TableHead className="text-xs font-medium text-gray-500 whitespace-nowrap">
                   Start Time
                 </TableHead>
               )}
               {viewMode === "daily" && (
-                <TableHead className="text-xs font-medium text-gray-500">
+                <TableHead className="text-xs font-medium text-gray-500 whitespace-nowrap">
                   End Time
                 </TableHead>
               )}
@@ -10001,34 +10589,6 @@ export const EarningsTab = ({
                   >
                     Retry
                   </button>
-                </TableCell>
-              </TableRow>
-            ) : earningsResult?.data.length === 0 && searchQuery.length >= 2 ? (
-              /* Figma: a dedicated, prominent empty state for a zero-result
-                 search — distinct from the plain filtered-empty row, and
-                 its "Clear Search" only clears the search term, not the
-                 other active filters. */
-              <TableRow>
-                <TableCell colSpan={8} className="text-center py-16">
-                  <p className="text-sm font-semibold text-dark-blue-400">
-                    0 Results for &quot;{searchQuery}&quot;
-                  </p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    We couldn&apos;t find any results for your search. Try
-                    adjusting your keywords or clearing your search.
-                  </p>
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    size="sm"
-                    className="mt-4"
-                    onClick={() => {
-                      setSearchQuery("")
-                      setCurrentPage(1)
-                    }}
-                  >
-                    Clear Search
-                  </Button>
                 </TableCell>
               </TableRow>
             ) : earningsResult?.data.length === 0 ? (
@@ -10093,23 +10653,18 @@ export const EarningsTab = ({
                       </TableCell>
                     )}
                     {viewMode === "daily" && (
-                      <TableCell className="text-sm text-gray-500">
+                      <TableCell className="text-sm text-gray-500 whitespace-nowrap">
                         {row.startTime ?? "—"}
                       </TableCell>
                     )}
                     {viewMode === "daily" && (
-                      <TableCell className="text-sm text-gray-500">
+                      <TableCell className="text-sm text-gray-500 whitespace-nowrap">
                         {row.endTime ?? "—"}
                       </TableCell>
                     )}
                     {viewMode === "daily" && (
                       <TableCell className="text-sm text-gray-500">
                         <div>{row.durationLabel}</div>
-                        {row.entryType === "manual" && (
-                          <Badge visual="warning" size="sm" className="mt-1">
-                            Manual
-                          </Badge>
-                        )}
                       </TableCell>
                     )}
                     {viewMode === "weekly" && (
@@ -10143,11 +10698,6 @@ export const EarningsTab = ({
                         {row.status === "paid" && (
                           <Badge visual="success" size="sm">
                             Paid
-                          </Badge>
-                        )}
-                        {row.status === "confirmed" && (
-                          <Badge visual="primary" size="sm">
-                            Confirmed
                           </Badge>
                         )}
                         {row.status === "failed" && (
@@ -10187,8 +10737,10 @@ export const EarningsTab = ({
           </TableBody>
         </Table>
       </div>
+      )}
 
       {/* Figma: footer sits on the grey page bg, outside the white table card */}
+      {!(earningsResult?.data.length === 0 && searchQuery.length >= 1) && (
       <div className="flex items-center justify-between px-1 pt-3">
         <p className="text-xs text-[#22376B]">
           {earningsResult
@@ -10217,6 +10769,7 @@ export const EarningsTab = ({
           onPageChange={setCurrentPage}
         />
       </div>
+      )}
 
       {/* F-05 Entry Detail Drawer — second, self-contained instance mirroring
           OverviewTab's (US-30), since the two tabs are separate components
@@ -10707,10 +11260,14 @@ export interface PayoutDepositStatus {
 
 export interface PayoutsFilters {
   dateRange: string
+  dateFrom?: string
+  dateTo?: string
   statusFilter: string
   depositMethodId: string
   search: string
 }
+
+const PAYOUT_DATE_RANGE_LABELS = EARNINGS_DATE_RANGE_LABELS
 
 export const PayoutsTab = ({
   onDepositStatusChange,
@@ -10728,6 +11285,9 @@ export const PayoutsTab = ({
   // resolvePayoutDateRange/depositMethodId in payout.service.ts) instead of
   // the previously-removed inert selectors.
   const [dateRange, setDateRange] = useState("all_time")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
+  const [datePickerOpen, setDatePickerOpen] = useState(false)
   const [depositMethodId, setDepositMethodId] = useState("")
   const [accountOptions, setAccountOptions] = useState<DepositMethodOption[]>(
     []
@@ -10856,7 +11416,7 @@ export const PayoutsTab = ({
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const hasActiveFilters =
     !!statusFilter ||
-    searchQuery.length >= 2 ||
+    searchQuery.length >= 1 ||
     dateRange !== "all_time" ||
     !!depositMethodId
 
@@ -10872,8 +11432,14 @@ export const PayoutsTab = ({
           pageSize: String(pageSize),
         })
         if (statusFilter) qs.set("status", statusFilter)
-        if (searchQuery.trim().length >= 2) qs.set("search", searchQuery.trim())
-        if (dateRange !== "all_time") qs.set("dateRange", dateRange)
+        if (searchQuery.trim().length >= 1) qs.set("search", searchQuery.trim())
+        if (dateRange === "custom" && dateFrom && dateTo) {
+          qs.set("dateRange", "custom")
+          qs.set("from", dateFrom)
+          qs.set("to", dateTo)
+        } else if (dateRange !== "all_time") {
+          qs.set("dateRange", dateRange)
+        }
         if (depositMethodId) qs.set("depositMethodId", depositMethodId)
         const res = await payoutFetch(`/payouts?${qs.toString()}`)
         const data = await res.json()
@@ -10890,7 +11456,7 @@ export const PayoutsTab = ({
         if (!silent) setLoading(false)
       }
     },
-    [currentPage, statusFilter, searchQuery, dateRange, depositMethodId]
+    [currentPage, statusFilter, searchQuery, dateRange, dateFrom, dateTo, depositMethodId]
   )
 
   useEffect(() => {
@@ -10902,11 +11468,13 @@ export const PayoutsTab = ({
   useEffect(() => {
     onFiltersChange?.({
       dateRange,
+      dateFrom,
+      dateTo,
       statusFilter,
       depositMethodId,
-      search: searchQuery.trim().length >= 2 ? searchQuery.trim() : "",
+      search: searchQuery.trim().length >= 1 ? searchQuery.trim() : "",
     })
-  }, [onFiltersChange, dateRange, statusFilter, depositMethodId, searchQuery])
+  }, [onFiltersChange, dateRange, dateFrom, dateTo, statusFilter, depositMethodId, searchQuery])
 
   // AC-29.01/29.02/29.03: poll every 15s (no flicker — silent refetch) as long as
   // any row on this page hasn't reached a terminal status. No SSE/WebSocket infra
@@ -10943,7 +11511,7 @@ export const PayoutsTab = ({
           amount={
             scheduleLoading
               ? "-"
-              : nextRunAt && balance
+              : balance
                 ? formatAmountWithCents(balance.availableBalance)
                 : "-"
           }
@@ -10972,7 +11540,12 @@ export const PayoutsTab = ({
                 <BankIcon className="size-3.5 text-[#98A2B3]" />
                 {formatPayoutMethodMask(defaultMethodLabel)}
               </span>
-            ) : undefined
+            ) : scheduleLoading ? undefined : (
+              // Keeps this card's bottom row present (same as Total Payouts
+              // This Month / Lifetime Payouts) so all three stay equal height —
+              // an absent `extra` collapses the row and shrinks the card.
+              "No deposit method"
+            )
           }
         />
         <StatCard
@@ -11042,47 +11615,64 @@ export const PayoutsTab = ({
       {/* Filters Row — Status, Date Range, and Account are all real, server-side
           filters wired to the fetch (see payout.service.ts listPayouts). */}
       <div className="flex items-center gap-3 flex-wrap">
-        <Select
-          value={dateRange}
-          onValueChange={(v) => {
-            setDateRange(v)
-            setCurrentPage(1)
-          }}
-        >
-          <SelectTrigger className="h-9 w-auto min-w-[110px]">
-            <Calendar className="size-4 mr-1" />
-            <SelectValue placeholder="All Time" />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(EARNINGS_DATE_RANGE_LABELS)
-              .filter(([v]) => v !== "yesterday" && v !== "last_week")
-              .map(([v, label]) => (
-                <SelectItem key={v} value={v}>
-                  {label}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
+        <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outlined"
+              visual="gray"
+              size="sm"
+              className={FILTER_CHIP_CLASS}
+            >
+              <Calendar className="size-4 text-gray-800" />
+              {dateRange === "custom" && dateFrom && dateTo
+                ? `${formatDate(parseISO(dateFrom), "LLL d, yyyy")} – ${formatDate(parseISO(dateTo), "LLL d, yyyy")}`
+                : (PAYOUT_DATE_RANGE_LABELS[dateRange] ?? "All Time")}
+              <ChevronDown className="size-4 text-gray-800" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            className="w-auto border-0 bg-transparent p-0 shadow-none"
+            align="start"
+            collisionPadding={16}
+          >
+            {datePickerOpen ? (
+            <DateRangeFilterPopoverContent
+              dateRange={dateRange}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              defaultPreset="all time"
+              onCancel={() => setDatePickerOpen(false)}
+              onCommit={(next, from, to) => {
+                setDateRange(next)
+                setDateFrom(from)
+                setDateTo(to)
+                setCurrentPage(1)
+                setDatePickerOpen(false)
+              }}
+            />
+            ) : null}
+          </PopoverContent>
+        </Popover>
 
-        <Select
-          value={depositMethodId || "all-accounts"}
-          onValueChange={(v) => {
-            setDepositMethodId(v === "all-accounts" ? "" : v)
+        <FilterSearchMenu
+          label="All Accounts"
+          searchPlaceholder="Find accounts"
+          layout="inline"
+          value={depositMethodId}
+          onValueChange={(id) => {
+            setDepositMethodId(id)
             setCurrentPage(1)
           }}
-        >
-          <SelectTrigger className="h-9 w-auto min-w-[150px]">
-            <SelectValue placeholder="All Accounts" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all-accounts">All Accounts</SelectItem>
-            {accountOptions.map((m) => (
-              <SelectItem key={m.id} value={m.id}>
-                {formatMethodOptionLabel(m)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          items={accountOptions.map((m) => {
+            const { name, sub } = splitMethodLabel(m)
+            return {
+              id: m.id,
+              title: name,
+              handle: sub,
+              icon: <FilterMethodIcon method={m} />,
+            }
+          })}
+        />
 
         <Select
           value={statusFilter || "all-statuses"}
@@ -11091,7 +11681,7 @@ export const PayoutsTab = ({
             setCurrentPage(1)
           }}
         >
-          <SelectTrigger className="h-9 w-auto min-w-[160px]">
+          <SelectTrigger className={cn(FILTER_SELECT_CHIP_CLASS, "min-w-[160px]")}>
             <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
           <SelectContent>
@@ -11104,111 +11694,89 @@ export const PayoutsTab = ({
           </SelectContent>
         </Select>
 
-        {hasActiveFilters && (
-          <>
-            {dateRange !== "all_time" && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
-                {EARNINGS_DATE_RANGE_LABELS[dateRange] ?? dateRange}
-                <button
-                  onClick={() => {
-                    setDateRange("all_time")
-                    setCurrentPage(1)
-                  }}
-                  className="hover:text-gray-900"
-                >
-                  <X className="size-3" />
-                </button>
-              </div>
-            )}
-            {depositMethodId && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
-                {accountOptions.find((m) => m.id === depositMethodId)
-                  ?.nickname ||
-                  accountOptions.find((m) => m.id === depositMethodId)
-                    ?.displayLabel ||
-                  "Account"}
-                <button
-                  onClick={() => {
-                    setDepositMethodId("")
-                    setCurrentPage(1)
-                  }}
-                  className="hover:text-gray-900"
-                >
-                  <X className="size-3" />
-                </button>
-              </div>
-            )}
-            {statusFilter && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
-                {PAYOUT_STATUS_FILTER_OPTIONS.find(
-                  (o) => o.value === statusFilter
-                )?.label ?? statusFilter}
-                <button
-                  onClick={() => {
-                    setStatusFilter("")
-                    setCurrentPage(1)
-                  }}
-                  className="hover:text-gray-900"
-                >
-                  <X className="size-3" />
-                </button>
-              </div>
-            )}
-            {searchQuery.length >= 2 && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
-                {`"${searchQuery}"`}
-                <button
-                  onClick={() => {
-                    setSearchQuery("")
-                    setCurrentPage(1)
-                  }}
-                  className="hover:text-gray-900"
-                >
-                  <X className="size-3" />
-                </button>
-              </div>
-            )}
-            <Button
-              variant="link"
-              size="sm"
-              onClick={() => {
-                setStatusFilter("")
-                setSearchQuery("")
-                setDateRange("all_time")
-                setDepositMethodId("")
-                setCurrentPage(1)
-              }}
-            >
-              Clear All
-            </Button>
-          </>
-        )}
+        <Button
+          variant="link"
+          size="sm"
+          className="shrink-0 font-semibold text-primary-600"
+          onClick={() => {
+            setStatusFilter("")
+            setSearchQuery("")
+            setDateRange("all_time")
+            setDateFrom("")
+            setDateTo("")
+            setDepositMethodId("")
+            setCurrentPage(1)
+          }}
+        >
+          Clear All
+        </Button>
 
         <div className="ml-auto">
-          <SearchField>
-            <SearchFieldButton>
-              <Search className="size-4" />
-            </SearchFieldButton>
-            <SearchFieldInput
+          {/* Same "Find transactions" search component as Settings → Billing →
+            Transactions (billing-transactions-content.tsx), copied here per
+            request — InputGroup with hover-expand width, not SearchField. */}
+          <InputGroup className="group/search w-[220px] transition-all duration-300 focus-within:w-[375px]">
+            <InputLeftElement>
+              <SearchMd className="size-4 text-gray-400 transition-colors duration-300 group-hover/search:text-gray-500 group-focus-within/search:!text-primary-500" />
+            </InputLeftElement>
+            <Input
               placeholder="Find transactions"
+              className="pl-9 pr-9 transition-[border-color,width] duration-300 hover:border-primary-200 hover:shadow-[0px_0px_0px_4px_#E1EAFF] focus:!ring-0 focus:!shadow-[0px_0px_0px_4px_#E1EAFF]"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value)
                 setCurrentPage(1)
               }}
             />
-          </SearchField>
+            {searchQuery && (
+              <InputRightElement>
+                <button
+                  type="button"
+                  className="focus-visible:outline-none"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setSearchQuery("")
+                    setCurrentPage(1)
+                  }}
+                >
+                  <XCircle className="size-4 text-gray-500 opacity-50 hover:opacity-100" />
+                </button>
+              </InputRightElement>
+            )}
+          </InputGroup>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table — a zero-result search replaces the whole card (header included),
+          same as Settings → Billing → Transactions (billing-transactions-content.tsx),
+          not just an empty row inside the table. */}
+      {payouts.length === 0 && searchQuery.trim().length >= 1 ? (
+        <div className="flex flex-col items-center py-14 gap-4">
+          <p className="text-base font-semibold text-dark-blue-400">
+            0 Results for &ldquo;{searchQuery.trim()}&rdquo;
+          </p>
+          <p className="text-sm text-gray-500 -mt-2 max-w-[380px] mx-auto text-center">
+            We couldn&apos;t find any results for your search. Try adjusting
+            your keywords or clearing your search.
+          </p>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-gray-200 rounded-[5px] text-sm font-semibold leading-5 text-dark-blue-400 transition-colors duration-300 hover:bg-gray-300"
+            onClick={() => {
+              setSearchQuery("")
+              setCurrentPage(1)
+            }}
+          >
+            Clear Search
+          </button>
+        </div>
+      ) : (
       <div className="rounded-lg border border-gray-200 bg-white">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Amount</TableHead>
-              <TableHead>Method</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>External Account</TableHead>
               <TableHead>Initiated on</TableHead>
               <TableHead>Est. Arrival</TableHead>
               <TableHead className="w-10"></TableHead>
@@ -11218,7 +11786,7 @@ export const PayoutsTab = ({
             {loading ? (
               [...Array(5)].map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={6}>
+                  <TableCell colSpan={5}>
                     <div className="h-5 bg-gray-100 rounded animate-pulse" />
                   </TableCell>
                 </TableRow>
@@ -11226,7 +11794,7 @@ export const PayoutsTab = ({
             ) : loadError ? (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={5}
                   className="text-center py-6 text-sm text-red-600"
                 >
                   {loadError}{" "}
@@ -11238,37 +11806,10 @@ export const PayoutsTab = ({
                   </button>
                 </TableCell>
               </TableRow>
-            ) : payouts.length === 0 && searchQuery.trim().length >= 2 ? (
-              // Figma: a dedicated, prominent empty state for a zero-result
-              // search — "Clear Search" only clears the search term, not
-              // the status filter.
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-16">
-                  <p className="text-sm font-semibold text-dark-blue-400">
-                    0 Results for &quot;{searchQuery}&quot;
-                  </p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    We couldn&apos;t find any results for your search. Try
-                    adjusting your keywords or clearing your search.
-                  </p>
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    size="sm"
-                    className="mt-4"
-                    onClick={() => {
-                      setSearchQuery("")
-                      setCurrentPage(1)
-                    }}
-                  >
-                    Clear Search
-                  </Button>
-                </TableCell>
-              </TableRow>
             ) : payouts.length === 0 && hasActiveFilters ? (
               // EC-51: "no results for this filter" is distinct from "no history at all"
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-10">
+                <TableCell colSpan={5} className="text-center py-10">
                   <p className="text-sm text-gray-500">
                     No results for this filter.
                   </p>
@@ -11277,6 +11818,8 @@ export const PayoutsTab = ({
                     onClick={() => {
                       setStatusFilter("")
                       setDateRange("all_time")
+                      setDateFrom("")
+                      setDateTo("")
                       setDepositMethodId("")
                       setCurrentPage(1)
                     }}
@@ -11289,7 +11832,7 @@ export const PayoutsTab = ({
               // AC-27.01: empty state distinct from an error state
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={5}
                   className="text-center py-10 text-sm text-gray-400"
                 >
                   No payouts yet. Your completed payouts will appear here.
@@ -11297,7 +11840,6 @@ export const PayoutsTab = ({
               </TableRow>
             ) : (
               payouts.map((row) => {
-                const badge = getPayoutStatusBadge(row.status)
                 return (
                   <TableRow
                     key={row.id}
@@ -11313,19 +11855,6 @@ export const PayoutsTab = ({
                         <span className="text-sm text-gray-500">
                           {row.methodLabel ?? row.methodType ?? "—"}
                         </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <Badge visual={badge.visual} size="sm">
-                          {badge.label}
-                        </Badge>
-                        {/* AC-27.06: visually distinguish scheduled from manual payouts */}
-                        {row.trigger === "scheduled" && (
-                          <Badge visual="gray" size="sm">
-                            Scheduled
-                          </Badge>
-                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-gray-500">
@@ -11359,6 +11888,7 @@ export const PayoutsTab = ({
           </TableBody>
         </Table>
       </div>
+      )}
 
       {/* Figma: pagination on grey page bg, outside the white table card */}
       {!loading && !loadError && payouts.length > 0 && (

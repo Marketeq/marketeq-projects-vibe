@@ -510,9 +510,29 @@ export class PayoutService {
     };
   }
 
+  private parsePayoutDateParam(value?: string): Date | null {
+    if (!value) return null;
+    const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    if (day) {
+      return new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])));
+    }
+    const d = new Date(value);
+    return Number.isFinite(d.getTime()) ? d : null;
+  }
+
   // Figma "All Time" date-range filter — resolves against p.createdAt (the
   // "Initiated on" column), same field the table itself is sorted by.
-  private resolvePayoutDateRange(dateRange?: string): { from: Date | null; to: Date | null } {
+  private resolvePayoutDateRange(
+    dateRange?: string, fromIso?: string, toIso?: string,
+  ): { from: Date | null; to: Date | null } {
+    if (dateRange === 'custom' || ((!dateRange || dateRange === 'custom') && (fromIso || toIso))) {
+      const from = this.parsePayoutDateParam(fromIso);
+      const toStart = this.parsePayoutDateParam(toIso);
+      const to = toStart
+        ? new Date(Date.UTC(toStart.getUTCFullYear(), toStart.getUTCMonth(), toStart.getUTCDate() + 1))
+        : null;
+      return { from, to };
+    }
     if (!dateRange || dateRange === 'all_time') return { from: null, to: null };
     const now = new Date();
     const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -541,6 +561,11 @@ export class PayoutService {
       }
       case 'this_year':
         return { from: new Date(Date.UTC(now.getUTCFullYear(), 0, 1)), to: null };
+      case 'last_year': {
+        const lastStart = new Date(Date.UTC(now.getUTCFullYear() - 1, 0, 1));
+        const thisStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+        return { from: lastStart, to: thisStart };
+      }
       default:
         return { from: null, to: null };
     }
@@ -549,7 +574,7 @@ export class PayoutService {
   // ─── US-27: GET /v1/payouts — paginated history list ──────────
   async listPayouts(
     contractorId: string, page: number, pageSize: number, status?: string, search?: string,
-    dateRange?: string, depositMethodId?: string,
+    dateRange?: string, depositMethodId?: string, fromIso?: string, toIso?: string,
   ) {
     const clampedSize = Math.min(Math.max(pageSize, 1), 50);
     const clampedPage = Math.max(page, 1);
@@ -564,7 +589,7 @@ export class PayoutService {
       qb.andWhere('p.status = :status', { status });
     }
 
-    const { from, to } = this.resolvePayoutDateRange(dateRange);
+    const { from, to } = this.resolvePayoutDateRange(dateRange, fromIso, toIso);
     if (from) qb.andWhere('p.createdAt >= :from', { from });
     if (to) qb.andWhere('p.createdAt < :to', { to });
 
@@ -602,6 +627,7 @@ export class PayoutService {
   async exportPayouts(
     contractorId: string, format: 'csv' | 'pdf', status?: string, search?: string,
     dateRange?: string, depositMethodId?: string, contractorName?: string,
+    fromIso?: string, toIso?: string,
   ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
     const qb = this.payoutRepo.createQueryBuilder('p')
       .leftJoinAndSelect('p.depositMethod', 'dm')
@@ -610,7 +636,7 @@ export class PayoutService {
     if (status && Object.values(PayoutStatus).includes(status as PayoutStatus)) {
       qb.andWhere('p.status = :status', { status });
     }
-    const { from, to } = this.resolvePayoutDateRange(dateRange);
+    const { from, to } = this.resolvePayoutDateRange(dateRange, fromIso, toIso);
     if (from) qb.andWhere('p.createdAt >= :from', { from });
     if (to) qb.andWhere('p.createdAt < :to', { to });
     if (depositMethodId) qb.andWhere('p.depositMethodId = :depositMethodId', { depositMethodId });

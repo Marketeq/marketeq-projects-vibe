@@ -20,7 +20,7 @@ function getRandomInt(max: number): number {
 
 export function generateUsernameSuggestions(
   firstName: string,
-  lastName: string,
+  _lastName: string,
   recentJobTitleOrEmail = ""
 ): string[] {
   const clean = (value: string) =>
@@ -30,12 +30,9 @@ export function generateUsernameSuggestions(
       .trim()
 
   const f = clean(firstName)
-  const l = clean(lastName)
-  const lInitial = l.charAt(0)
 
-  // Extract tokens from all source material (teamName, role, email)
+  // Extract tokens from all source material (jobTitle, role, email)
   const sourceValue = (recentJobTitleOrEmail || "").toLowerCase()
-  // Split on @ to get email local part, but also keep the full string for non-email tokens
   const sourceLocal = ((sourceValue || "").split("@")[0] || "").toLowerCase()
   const allSourceText = sourceValue.split("@")[0] || sourceValue
   const sourceTextTokens = Array.from(
@@ -50,10 +47,10 @@ export function generateUsernameSuggestions(
   )
 
   const sourceText =
-    sourceTextTokens.find((token) => token !== f && token !== l) || ""
+    sourceTextTokens.find((token) => token !== f) || ""
   const secondarySourceText =
     sourceTextTokens.find(
-      (token) => token !== sourceText && token !== f && token !== l
+      (token) => token !== sourceText && token !== f
     ) || ""
   const num = sourceNumberTokens[0] || String(10 + getRandomInt(90))
   const num2 = String(10 + getRandomInt(90))
@@ -68,37 +65,29 @@ export function generateUsernameSuggestions(
     if (seen.has(normalized)) return
 
     if (f && normalized.indexOf(f) !== normalized.lastIndexOf(f)) return
-    if (l && normalized.indexOf(l) !== normalized.lastIndexOf(l)) return
     if (/(\d{2,})\1/.test(normalized) || /(\d)\1{2,}/.test(normalized)) return
 
     seen.add(normalized)
     suggestions.push(normalized)
   }
 
-  // Name-based combinations
+  // First name based
   add(f)
-  add(l)
-  add(`${f}${lInitial}`)
   add(`${f}${num}`)
-  add(`${f}${num}${lInitial}`)
-  add(`${f}${l}`)
-  add(`${f}${l}${num}`)
-  add(`${l}${f}`)
-  add(`${l}${num}`)
 
-  // Name + source combinations
+  // First name + job title/source combinations
   add(`${f}${sourceText}`)
   add(`${sourceText}${f}`)
   add(`${sourceText}${f}${num}`)
   add(`${f}${sourceText}${num}`)
   add(sourceText)
-  add(`${sourceText}${l}`)
-  add(`${f}${sourceText}${lInitial}`)
   add(`${f}${sourceText}${secondarySourceText}`)
 
-  // Source token combinations (for cases where name is empty)
+  // Source token combinations
   for (const token of sourceTextTokens) {
     add(token)
+    add(`${f}${token}`)
+    add(`${token}${f}`)
     add(`${token}${num}`)
     add(`${token}${num2}`)
   }
@@ -118,7 +107,7 @@ export function generateUsernameSuggestions(
 
   // If still not enough, add random suffix variations
   if (suggestions.length < 6) {
-    const bases = [f, l, sourceText, emailClean].filter(
+    const bases = [f, sourceText, emailClean].filter(
       (b) => b && b.length >= 2
     )
     for (const base of bases) {
@@ -129,11 +118,6 @@ export function generateUsernameSuggestions(
   }
 
   return suggestions
-    .sort((a, b) => {
-      const aHasLast = l ? a.includes(l) || a.endsWith(lInitial) : false
-      const bHasLast = l ? b.includes(l) || b.endsWith(lInitial) : false
-      if (aHasLast !== bHasLast) return aHasLast ? -1 : 1
-      return a.length - b.length
-    })
+    .sort((a, b) => a.length - b.length)
     .slice(0, 20)
 }

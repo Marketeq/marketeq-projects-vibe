@@ -23,6 +23,7 @@ import {
   IconButton, Input, RadioGroup, RadioGroupItem,
 } from "@/components/ui"
 import { PayoneerDefault } from "@blend-metrics/icons/payment-methods"
+import { PaypalIcon, CryptoProviderIcon } from "@/components/transactions-comps"
 import { getBalance, type BalanceResponse } from "@/service/http/earnings"
 import { getPublicAuthUrl, getPublicApiUrl } from "@/lib/runtime-urls"
 
@@ -110,23 +111,12 @@ function resolveErrorMessage(data: { errorCode?: string; message?: string; avail
   return (data.errorCode && ERROR_MESSAGES[data.errorCode]) ?? data.message ?? fallback
 }
 
-// Real PayPal "P" glyph — bare paths, no background card, no border rect
-// baked in (unlike @blend-metrics/icons' PayPalDefault) — matches the
-// square Connected Accounts chip treatment in transactions-comps.tsx.
-const PaypalGlyph = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 20 20" className={cn("shrink-0", className)} fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M15.2152 6.07227C15.7026 8.9721 13.4666 11.4636 10.5566 11.4636H8.85299C8.51235 11.4636 8.22318 11.7073 8.16874 12.0387L7.61459 15.4082L7.45161 16.4062C7.42302 16.5836 7.55919 16.7444 7.7412 16.7444H9.99339C10.2903 16.7444 10.5424 16.5288 10.5883 16.2384L10.6112 16.1204L11.0328 13.5306L11.061 13.3778C11.1063 13.0868 11.359 12.8712 11.6558 12.8712H12.0288C14.5947 12.8712 16.6134 11.83 17.1962 8.86243C17.4408 7.6216 17.3129 6.58444 16.6634 5.85614C16.4676 5.63499 16.2247 5.45184 15.9426 5.30322C15.9822 5.5658 16.0069 5.84 16.0069 5.9765C16.0057 5.99623 16.0057 6.01596 16.0057 6.03569" fill="#009CDE"/>
-    <path d="M15.2152 6.07227C15.7026 8.9721 13.4666 11.4636 10.5566 11.4636H8.85299C8.51235 11.4636 8.22318 11.7073 8.16874 12.0387L7.61459 15.4082L7.45161 16.4062C7.42302 16.5836 7.55919 16.7444 7.7412 16.7444H9.99339C10.2903 16.7444 10.5424 16.5288 10.5883 16.2384L10.6112 16.1204L11.0328 13.5306L11.061 13.3778C11.1063 13.0868 11.359 12.8712 11.6558 12.8712H12.0288C14.5947 12.8712 16.6134 11.83 17.1962 8.86243C17.4408 7.6216 17.3129 6.58444 16.6634 5.85614C16.4676 5.63499 16.2247 5.45184 15.9426 5.30322" fill="#012169"/>
-    <path d="M8.08685 6.10433C8.14012 5.77551 8.35299 5.51197 8.63155 5.37796C8.75699 5.31804 8.89663 5.28449 9.04217 5.28449H13.4408C13.9647 5.28449 14.4534 5.32006 14.9 5.39494C15.028 5.41638 15.1524 5.44135 15.2732 5.46986C15.394 5.49706 15.5112 5.52794 15.6248 5.5625C15.6816 5.57998 15.7373 5.59835 15.7921 5.61758C16.0059 5.69328 16.2046 5.78194 16.3862 5.88626C16.6014 4.63976 16.3844 3.79245 15.7025 3.02186C14.9503 2.17061 13.5895 1.80322 11.8447 1.80322H6.79596C6.4541 1.80322 6.16267 2.04688 6.10938 2.37886L4.0034 15.5323C3.96341 15.7808 4.15653 16.0055 4.40862 16.0055H7.51663L8.08685 6.10433Z" fill="#003087"/>
-  </svg>
-)
-
-function methodIcon(methodType: string) {
-  switch (methodType) {
+function methodIcon(m: { methodType: string; displayLabel: string | null }) {
+  switch (m.methodType) {
     case "PAYPAL":
       return (
         <div className="size-10 rounded-lg border border-gray-200 bg-white flex items-center justify-center shrink-0">
-          <PaypalGlyph className="w-1/2 h-1/2" />
+          <PaypalIcon className="w-1/2 h-1/2" />
         </div>
       )
     case "PAYONEER":
@@ -135,6 +125,11 @@ function methodIcon(methodType: string) {
           <PayoneerDefault className="w-full h-full" />
         </div>
       )
+    case "CRYPTO":
+      // Generic crypto wallet glyph, not a per-provider brand icon — this
+      // dialog's method list doesn't carry cryptoProvider, only displayLabel,
+      // so passing "" always hits CryptoProviderIcon's own fallback box.
+      return <CryptoProviderIcon provider="" className="size-10" />
     default:
       return (
         <div className="size-10 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center shrink-0">
@@ -762,10 +757,9 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
                               methodId === m.id ? "border-primary-500 ring-1 ring-primary-500" : "border-gray-200 hover:border-gray-300")}
                           >
                             <RadioGroupItem value={m.id} id={`wf-method-${m.id}`} />
-                            {methodIcon(m.methodType)}
+                            {methodIcon(m)}
                             <div className="flex-auto min-w-0">
                               <div className="text-sm font-semibold text-dark-blue-400 break-words">{label}</div>
-                              {m.isDefault && <div className="text-xs text-primary-600 mt-0.5">Default</div>}
                             </div>
                           </label>
                         )

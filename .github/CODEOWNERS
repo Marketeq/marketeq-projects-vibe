@@ -48,10 +48,11 @@
 # ----- CRITICAL: publish-project flow (save & exit) -----
 /frontend/app/publish-project/                      @CTorres9800 @Marketeq/code-review
 
-# ----- CRITICAL: top-level layout and header -----
+# ----- CRITICAL: top-level layout, header, and settings sidebar -----
 /frontend/app/top-most-header.tsx                   @CTorres9800 @Marketeq/code-review
 /frontend/app/layout.tsx                            @CTorres9800 @Marketeq/code-review
 /frontend/middleware.ts                             @CTorres9800 @Marketeq/code-review
+/frontend/components/settings-sidebar.tsx           @CTorres9800 @Marketeq/code-review
 
 # ----- Shared UI components -----
 /frontend/components/listing-card.tsx               @Marketeq/code-review

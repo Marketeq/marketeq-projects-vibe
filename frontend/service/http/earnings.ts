@@ -117,6 +117,21 @@ export async function getEarnings(query: EarningsQuery = {}): Promise<EarningsLi
   return res.data
 }
 
+export interface EarningsFilterOptions {
+  projects: { id: string; name: string; handle?: string | null }[]
+  clients: { id: string; label: string; handle?: string | null }[]
+}
+
+// Distinct project/client options for the "All Projects"/"All Clients" filter
+// dropdowns — sourced from the contractor's full contract history, not
+// derived from whatever earnings rows the currently-applied date filter
+// happens to return (which was previously empty whenever the date range had
+// no earnings, even though the contractor has real project/client history).
+export async function getEarningsFilterOptions(): Promise<EarningsFilterOptions> {
+  const res = await earningsAxios.get("/earnings/filters")
+  return res.data
+}
+
 export interface EarningDetailLineItem {
   label: string
   amount: string
