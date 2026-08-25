@@ -1358,10 +1358,10 @@ function Default() {
   const [teamExpanded, setTeamExpanded] = React.useState(false)
   const [phoneDialogOpen, setPhoneDialogOpen] = React.useState(false)
   const [phoneValue, setPhoneValue] = React.useState("")
-  const [phoneTouched, setPhoneTouched] = React.useState(false)
+  const [phoneSaveAttempted, setPhoneSaveAttempted] = React.useState(false)
   const [websiteDialogOpen, setWebsiteDialogOpen] = React.useState(false)
   const [websiteValue, setWebsiteValue] = React.useState("")
-  const [websiteTouched, setWebsiteTouched] = React.useState(false)
+  const [websiteSaveAttempted, setWebsiteSaveAttempted] = React.useState(false)
   const [valuesDialogOpen, setValuesDialogOpen] = React.useState(false)
   const [questionsTab, setQuestionsTab] = React.useState("dialog-values")
   const [recentQTab, setRecentQTab] = React.useState("all")
@@ -7074,7 +7074,7 @@ function Default() {
         open={phoneDialogOpen}
         onOpenChange={(open) => {
           setPhoneDialogOpen(open)
-          if (!open) setPhoneTouched(false)
+          if (!open) setPhoneSaveAttempted(false)
         }}
       >
         <DialogContent className="max-w-[740px] p-0 gap-0">
@@ -7101,12 +7101,9 @@ function Default() {
               <PhoneNumberInput
                 defaultCountry="us"
                 value={phoneValue}
-                onChange={(v) => {
-                  setPhoneValue(v)
-                  setPhoneTouched(true)
-                }}
+                onChange={(v) => setPhoneValue(v)}
               />
-              {phoneTouched && !isPhoneValid(phoneValue) && (
+              {phoneSaveAttempted && !isPhoneValid(phoneValue) && (
                 <ErrorMessage size="sm" className="mt-1.5">
                   Please enter a valid phone number
                 </ErrorMessage>
@@ -7124,8 +7121,14 @@ function Default() {
             </Button>
             <Button
               size="sm"
-              disabled={!isPhoneValid(phoneValue)}
-              onClick={() => setPhoneDialogOpen(false)}
+              onClick={() => {
+                if (!isPhoneValid(phoneValue)) {
+                  setPhoneSaveAttempted(true)
+                  return
+                }
+
+                setPhoneDialogOpen(false)
+              }}
             >
               <Send01 className="size-[15px]" /> Send Link
             </Button>
@@ -7138,7 +7141,7 @@ function Default() {
         open={websiteDialogOpen}
         onOpenChange={(open) => {
           setWebsiteDialogOpen(open)
-          if (!open) setWebsiteTouched(false)
+          if (!open) setWebsiteSaveAttempted(false)
         }}
       >
         <DialogContent className="max-w-[740px] p-0 gap-0">
@@ -7166,15 +7169,14 @@ function Default() {
                   className="rounded-l-none"
                   type="text"
                   placeholder="website.com"
-                  isInvalid={websiteTouched && !isWebsiteValid(websiteValue)}
+                  isInvalid={
+                    websiteSaveAttempted && !isWebsiteValid(websiteValue)
+                  }
                   value={websiteValue}
-                  onChange={(event) => {
-                    setWebsiteValue(event.target.value)
-                    setWebsiteTouched(true)
-                  }}
+                  onChange={(event) => setWebsiteValue(event.target.value)}
                 />
               </InputGroup>
-              {websiteTouched && !isWebsiteValid(websiteValue) && (
+              {websiteSaveAttempted && !isWebsiteValid(websiteValue) && (
                 <ErrorMessage size="sm" className="mt-1.5">
                   Invalid website url
                 </ErrorMessage>
@@ -7192,8 +7194,14 @@ function Default() {
             </Button>
             <Button
               size="sm"
-              disabled={!isWebsiteValid(websiteValue)}
-              onClick={() => setWebsiteDialogOpen(false)}
+              onClick={() => {
+                if (!isWebsiteValid(websiteValue)) {
+                  setWebsiteSaveAttempted(true)
+                  return
+                }
+
+                setWebsiteDialogOpen(false)
+              }}
             >
               Save
             </Button>
