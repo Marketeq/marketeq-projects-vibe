@@ -1988,7 +1988,10 @@ function Default() {
                       tabsListVariants({
                         className:
                           "bg-transparent justify-start w-full group-data-[status=stuck]/list:border-b-0 group-data-[status=stuck]/list:mt-3 inline-flex group-data-[status=unstuck]/list:hidden",
-                      })
+                      }),
+                      // The client profile keeps its tabs in the right column,
+                      // so the pinned bar never shows them.
+                      isClientProfile && "hidden"
                     )}
                   >
                     {isClientProfile ? (
