@@ -39,6 +39,7 @@ import { Grid, List, SortAs } from "@/components/icons"
 import { InviteWindow, InviteWindowTrigger } from "@/components/invite-window"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
+import { talentToCardProps } from "@/src/lib/api/talent-users"
 import { TalentSearchCard } from "@/components/talent-search-card"
 import { useToast } from "@/components/ui"
 import {
@@ -231,7 +232,7 @@ function buildAccountColumns(
       cell: (info) => {
         const val = info.getValue()
         return val ? (
-          <span className="text-sm text-dark-blue-400">{val}</span>
+          <span className="text-sm capitalize text-dark-blue-400">{val}</span>
         ) : (
           <span className="text-sm text-gray-300">&mdash;</span>
         )
@@ -409,7 +410,7 @@ const talentColumns = [
               </NextLink>
               <span className="text-xs text-gray-400">{row.handle}</span>
             </div>
-            <span className="text-sm text-gray-500">{row.role}</span>
+            <span className="text-sm capitalize text-gray-500">{row.role}</span>
           </div>
         </div>
       )
@@ -545,6 +546,18 @@ const TalentNetworkTable = ({ data }: { data: TalentMember[] }) => {
 // External Team Card (Grid view)
 // ========================
 
+const CASCADE_DELAYS = [
+  "delay-0",
+  "delay-100",
+  "delay-200",
+  "delay-300",
+  "delay-500",
+  "delay-700",
+]
+
+const cascadeDelay = (index: number) =>
+  CASCADE_DELAYS[Math.min(index, CASCADE_DELAYS.length - 1)]
+
 const ExternalTeamCard = ({
   id,
   name,
@@ -562,7 +575,7 @@ const ExternalTeamCard = ({
   const isPending = status === "pending"
 
   return (
-    <article className="relative grid rounded-lg p-5 lg:py-[35px] lg:px-[30px] bg-white border border-gray-200 shadow-[0px_2px_5px_0px_theme(colors.black/.04)]">
+    <article className="relative flex flex-1 flex-col rounded-lg p-5 lg:py-[35px] lg:px-[30px] bg-white border border-gray-200 shadow-[0px_2px_5px_0px_theme(colors.black/.04)]">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <IconButton
@@ -616,7 +629,7 @@ const ExternalTeamCard = ({
           <h2 className="text-[13px] leading-[15.73px] lg:text-base text-center lg:leading-[19.36px] font-bold text-[#122A4B] mt-3 lg:mt-[17px]">
             {name}
           </h2>
-          <p className="text-[11px] leading-[13.31px] lg:text-sm text-center font-light lg:leading-[16.94px] text-[#585C65] mt-1">
+          <p className="text-[11px] leading-[13.31px] lg:text-sm text-center font-light lg:leading-[16.94px] capitalize text-[#585C65] mt-1">
             {role}
           </p>
           {company && (
@@ -633,7 +646,7 @@ const ExternalTeamCard = ({
         </>
       )}
 
-      <div className="lg:h-[90px] h-[63px] relative self-end mt-3 lg:mt-[25px]">
+      <div className="lg:h-[90px] h-[63px] relative w-full mt-auto pt-3 lg:pt-[25px]">
         <NextImage
           className="object-contain"
           src="/alliance.png"
@@ -688,229 +701,6 @@ const SortDropdown = () => (
 // ========================
 
 // Common female first names for gender inference
-const FEMALE_NAMES = new Set([
-  "mary",
-  "patricia",
-  "jennifer",
-  "linda",
-  "barbara",
-  "elizabeth",
-  "susan",
-  "jessica",
-  "sarah",
-  "karen",
-  "lisa",
-  "nancy",
-  "betty",
-  "margaret",
-  "sandra",
-  "ashley",
-  "dorothy",
-  "kimberly",
-  "emily",
-  "donna",
-  "michelle",
-  "carol",
-  "amanda",
-  "melissa",
-  "deborah",
-  "stephanie",
-  "rebecca",
-  "sharon",
-  "laura",
-  "cynthia",
-  "kathleen",
-  "amy",
-  "angela",
-  "shirley",
-  "anna",
-  "brenda",
-  "pamela",
-  "emma",
-  "nicole",
-  "helen",
-  "samantha",
-  "katherine",
-  "christine",
-  "debra",
-  "rachel",
-  "carolyn",
-  "janet",
-  "catherine",
-  "maria",
-  "heather",
-  "diane",
-  "ruth",
-  "julie",
-  "olivia",
-  "joyce",
-  "virginia",
-  "victoria",
-  "kelly",
-  "lauren",
-  "christina",
-  "joan",
-  "evelyn",
-  "judith",
-  "megan",
-  "andrea",
-  "cheryl",
-  "hannah",
-  "jacqueline",
-  "martha",
-  "gloria",
-  "teresa",
-  "ann",
-  "sara",
-  "madison",
-  "frances",
-  "kathryn",
-  "janice",
-  "jean",
-  "abigail",
-  "alice",
-  "judy",
-  "sophia",
-  "grace",
-  "denise",
-  "amber",
-  "doris",
-  "marilyn",
-  "danielle",
-  "beverly",
-  "isabella",
-  "theresa",
-  "diana",
-  "natalie",
-  "brittany",
-  "charlotte",
-  "marie",
-  "kayla",
-  "alexis",
-  "lori",
-  "alicia",
-  "jenny",
-  "nadia",
-  "priya",
-  "aisha",
-  "fatima",
-  "mei",
-  "yuki",
-  "sofia",
-  "elena",
-  "rosa",
-  "carmen",
-  "lucia",
-  "nina",
-  "tanya",
-  "svetlana",
-  "ingrid",
-  "bianca",
-  "valentina",
-  "ngozi",
-  "amara",
-  "zara",
-])
-
-function inferGender(firstName: string): "women" | "men" {
-  return FEMALE_NAMES.has(firstName.toLowerCase()) ? "women" : "men"
-}
-
-const SYSTEM_GENERATED_USERNAME_REGEX = /^user_[a-f0-9]{8,}$/i
-
-const toTitleWords = (value: string) =>
-  value
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(" ")
-
-function getReadableNameFromUser(u: any): string {
-  // Prefer explicit onboarding/profile names first.
-  const fullName = [u.firstName, u.lastName].filter(Boolean).join(" ").trim()
-  if (fullName) return fullName
-
-  const explicitName =
-    u.displayName ?? u.fullName ?? u.name ?? u.profileName ?? ""
-  if (typeof explicitName === "string" && explicitName.trim()) {
-    return explicitName.trim()
-  }
-
-  const username = typeof u.username === "string" ? u.username.trim() : ""
-  if (username && !SYSTEM_GENERATED_USERNAME_REGEX.test(username)) {
-    return username
-  }
-
-  const email = typeof u.email === "string" ? u.email : ""
-  const localPart = email.split("@")[0] ?? ""
-  const normalized = localPart
-    .replace(/[._-]+/g, " ")
-    .replace(/\d+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-  if (normalized) {
-    return toTitleWords(normalized)
-  }
-
-  return "Team Member"
-}
-
-function mapUserToTalent(u: any, index: number): TalentMember {
-  const firstName = u.firstName ?? ""
-  const lastName = u.lastName ?? ""
-  const name = getReadableNameFromUser(u)
-  const rateMin = u.rateMin ? `$${Math.round(Number(u.rateMin))}` : "$50"
-  const rateMax = u.rateMax ? `$${Math.round(Number(u.rateMax))}` : "$100"
-
-  // Calculate years of experience from work history
-  let yearsExp = 3
-  if (u.experience?.length) {
-    const earliest = u.experience.reduce((min: string, e: any) => {
-      const d = e.startDate ?? e.start_date
-      return d && d < min ? d : min
-    }, new Date().toISOString())
-    yearsExp = Math.max(
-      1,
-      Math.round(
-        (Date.now() - new Date(earliest).getTime()) /
-          (365.25 * 24 * 60 * 60 * 1000)
-      )
-    )
-  }
-
-  const skills = (u.skills ?? []).map((s: any) => s.name).filter(Boolean)
-
-  // Assign gender-appropriate profile photo if none provided
-  const gender = inferGender(firstName || u.username || "")
-  const photoIndex = ((index * 7 + 13) % 90) + 1 // deterministic spread across 1-90
-  const fallbackAvatar = `https://randomuser.me/api/portraits/${gender}/${photoIndex}.jpg`
-
-  return {
-    id: u.id,
-    username: u.username ?? "",
-    name,
-    // Hide auto-generated usernames like user_abc12345 from UI handles.
-    handle:
-      u.username && !SYSTEM_GENERATED_USERNAME_REGEX.test(u.username)
-        ? `@${u.username}`
-        : "",
-    role: u.role ?? u.industry ?? "Freelancer",
-    avatarSrc: u.avatarUrl || fallbackAvatar,
-    rating: 4.0 + Math.round(Math.random() * 10) / 10,
-    experience: `${yearsExp} years of experience`,
-    country: u.location ?? "United States",
-    localTime:
-      new Date().toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      }) + " local time",
-    rate: `${rateMin} - ${rateMax}`,
-    skills,
-  }
-}
-
 function EmptyState({
   icon: Icon = User01,
   title,
@@ -1112,7 +902,27 @@ export default function MyTeam() {
     UserAPI.listUsers(20)
       .then((res) => {
         const users = Array.isArray(res?.data) ? res.data : []
-        setTalentMembers(users.map((u, i) => mapUserToTalent(u, i)))
+        setTalentMembers(
+          users.map((u, i) => {
+            // Master mapper: first-name-only names, non-blank handles and
+            // profile-resolved job titles all come from here.
+            const card = talentToCardProps(u, i)
+            return {
+              id: card.id,
+              username: card.username,
+              name: card.name,
+              handle: card.handle,
+              role: card.role,
+              avatarSrc: card.photo,
+              rating: card.rating,
+              experience: card.experience,
+              country: card.country,
+              localTime: card.localTime,
+              rate: card.rate,
+              skills: card.skills,
+            }
+          })
+        )
       })
       .catch(() => {})
       .finally(() => setIsLoading(false))
@@ -1301,10 +1111,18 @@ export default function MyTeam() {
               }
             />
           ) : isGrid ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 pt-3.5 lg:pt-6">
+            <div
+              className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 pt-3.5 lg:pt-6"
+              key={talentMembers.map((member) => member.id).join(",")}
+            >
               {talentMembers.map((member, index) => (
-                <TalentSearchCard
+                <div
                   key={member.id}
+                  className={`animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(
+                    index
+                  )}`}
+                >
+                <TalentSearchCard
                   id={member.id}
                   name={member.name}
                   handle={member.handle}
@@ -1331,6 +1149,7 @@ export default function MyTeam() {
                     })
                   }}
                 />
+                </div>
               ))}
             </div>
           ) : (
@@ -1377,14 +1196,23 @@ export default function MyTeam() {
               }
             />
           ) : isGrid ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 pt-3.5 lg:pt-6">
-              {teamMembers.map((member) => (
-                <ExternalTeamCard
+            <div
+              className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 pt-3.5 lg:pt-6"
+              key={teamMembers.map((member) => member.id).join(",")}
+            >
+              {teamMembers.map((member, index) => (
+                <div
                   key={member.id}
-                  {...member}
-                  onResend={handleResend}
-                  onCancel={handleCancel}
-                />
+                  className={`flex h-full animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(
+                    index
+                  )}`}
+                >
+                  <ExternalTeamCard
+                    {...member}
+                    onResend={handleResend}
+                    onCancel={handleCancel}
+                  />
+                </div>
               ))}
             </div>
           ) : (

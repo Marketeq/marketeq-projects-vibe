@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   Calendar,
-  Download,
+  CalendarCheck01,
+  ChevronDown,
   Lightbulb01,
   Settings02,
 } from "@blend-metrics/icons"
@@ -51,10 +52,14 @@ export default function TransactionsPage() {
   // schedule/balance/methods once on mount, and PayoutScheduleDialog is a sibling
   // (not a child), so there's otherwise no way to tell it to refetch after a save.
   const [overviewRefreshKey, setOverviewRefreshKey] = useState(0)
+  // Bumped when "Add New Deposit Method" is clicked from inside
+  // PayoutScheduleDialog (a sibling, not a child, of OverviewTab) — tells
+  // OverviewTab to open its own Add Deposit Method modal without a full remount.
+  const [openAddMethodSignal, setOpenAddMethodSignal] = useState(0)
   // Populated by EarningsTab via onFiltersChange — Export reuses whatever the
   // contractor currently has the earnings table filtered to, rather than always
   // exporting the full unfiltered dataset regardless of what's on screen.
-  const [earningsFilters, setEarningsFilters] = useState<EarningsFilters>({ dateRange: "this_month", entryType: "", statusFilter: "", search: "" })
+  const [earningsFilters, setEarningsFilters] = useState<EarningsFilters>({ dateRange: "this_month", entryType: "", statusFilter: "", search: "", projectId: "", clientId: "" })
   // Populated by PayoutsTab via onFiltersChange — same reasoning as
   // earningsFilters above, just for the Payouts tab's own filter set.
   const [payoutsFilters, setPayoutsFilters] = useState<PayoutsFilters>({ dateRange: "all_time", statusFilter: "", depositMethodId: "", search: "" })
@@ -87,14 +92,21 @@ export default function TransactionsPage() {
         const params = new URLSearchParams({ format })
         if (isPayouts) {
           if (payoutsFilters.dateRange && payoutsFilters.dateRange !== "all_time") params.set("dateRange", payoutsFilters.dateRange)
+          if (payoutsFilters.dateFrom) params.set("from", payoutsFilters.dateFrom)
+          if (payoutsFilters.dateTo) params.set("to", payoutsFilters.dateTo)
           if (payoutsFilters.statusFilter) params.set("status", payoutsFilters.statusFilter)
           if (payoutsFilters.depositMethodId) params.set("depositMethodId", payoutsFilters.depositMethodId)
           if (payoutsFilters.search) params.set("search", payoutsFilters.search)
         } else {
           params.set("currency", "USD")
           if (earningsFilters.dateRange) params.set("dateRange", earningsFilters.dateRange)
+          if (earningsFilters.startDate) params.set("startDate", earningsFilters.startDate)
+          if (earningsFilters.endDate) params.set("endDate", earningsFilters.endDate)
           if (earningsFilters.entryType) params.set("entryType", earningsFilters.entryType)
           if (earningsFilters.statusFilter) params.set("status", earningsFilters.statusFilter)
+          if (earningsFilters.projectId) params.set("projectId", earningsFilters.projectId)
+          if (earningsFilters.clientId) params.set("clientId", earningsFilters.clientId)
+          if (earningsFilters.search) params.set("search", earningsFilters.search)
         }
         const url = `${getPublicApiUrl()}/v1/${isPayouts ? "payouts" : "earnings"}/export?${params.toString()}`
         const res = await fetch(url, { credentials: "include" })
@@ -189,16 +201,17 @@ export default function TransactionsPage() {
                   {activeTab === "earnings" && (
                     <>
                       <Button
-                        variant="ghost"
+                        className="underline text-[#22376B]"
+                        variant="link"
                         visual="gray"
                         size="sm"
-                        leftIcon={<Calendar className="size-4" />}
+                        leftIcon={<CalendarCheck01 className="size-4 text-[#22376B]" />}
                         onClick={() => setActiveTab("payouts")}
                       >
                         View Deposit Schedule
                       </Button>
                       <Button
-                        className="bg-white border-2 ml-3 border-primary-500 text-primary-500"
+                        className="bg-white border-2 border-primary-500 text-primary-500"
                         variant="outlined"
                         visual="primary"
                         size="sm"
@@ -254,12 +267,12 @@ export default function TransactionsPage() {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
-                        className="bg-white"
+                        className="h-9 bg-white px-5 text-sm font-semibold text-[#1F2937]"
                         variant="outlined"
                         visual="gray"
                         size="sm"
                         disabled={exporting}
-                        rightIcon={<Download className="size-4" />}
+                        rightIcon={<ChevronDown className="size-4 text-[#667085]" />}
                       >
                         {exporting ? "Exporting…" : "Export"}
                       </Button>
@@ -294,6 +307,7 @@ export default function TransactionsPage() {
                   onNavigateTab={setActiveTab}
                   onEditPayoutSchedule={() => setShowPayoutSchedule(true)}
                   onOpenHelp={() => setShowHelp(true)}
+                  openAddMethodSignal={openAddMethodSignal}
                 />
               </TabsContent>
 
@@ -312,6 +326,7 @@ export default function TransactionsPage() {
           open={showPayoutSchedule}
           onOpenChange={setShowPayoutSchedule}
           onSaved={() => setOverviewRefreshKey((k) => k + 1)}
+          onAddNewMethod={() => setOpenAddMethodSignal((k) => k + 1)}
         />
         <HelpSupportDialog open={showHelp} onOpenChange={setShowHelp} />
         <AddManualTimeDialog

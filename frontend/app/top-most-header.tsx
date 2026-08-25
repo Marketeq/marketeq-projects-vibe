@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   hasCompletedClientOnboarding,
   hasCompletedTalentOnboarding,
+  resolveDashboardRole,
   useAuth,
 } from "@/contexts/auth"
 import { useAutocomplete } from "@/libs/autocomplete"
@@ -970,7 +971,10 @@ const Notifications = () => {
               <div className="py-3.5 grid">
                 <button
                   className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium"
-                  onClick={() => router.push("/notifications")}
+                  onClick={() => {
+                    setOpen(false)
+                    router.push("/notifications")
+                  }}
                 >
                   View All
                 </button>
@@ -984,9 +988,6 @@ const Notifications = () => {
                 >
                   <div className="px-2">
                     {(() => {
-                      const unreadThreads = inboxThreads.filter(
-                        (t) => t.hasUnread
-                      )
                       if (inboxLoading && inboxThreads.length === 0) {
                         return (
                           <div className="px-3 py-6 text-sm text-gray-500">
@@ -994,14 +995,14 @@ const Notifications = () => {
                           </div>
                         )
                       }
-                      if (unreadThreads.length === 0) {
+                      if (inboxThreads.length === 0) {
                         return (
                           <div className="px-3 py-6 text-sm text-gray-500">
-                            No unread messages
+                            No messages
                           </div>
                         )
                       }
-                      return unreadThreads
+                      return inboxThreads
                         .slice(0, 8)
                         .map(renderInboxThreadItem)
                     })()}
@@ -1508,12 +1509,36 @@ const SearchBar = () => {
   )
 }
 
-const PATHNAMES = ["/talent-dashboard", "/client-dashboard", "/talent-profile"]
+const PATHNAMES = [
+  "/talent-dashboard",
+  "/client-dashboard",
+  "/talent-profile",
+  "/client-profile",
+]
+
+// Pages with sidebar navigation that should use tighter header padding (24px)
+const HAS_SIDEBAR_NAV = [
+  "/talent-dashboard",
+  "/client-dashboard",
+  "/inbox",
+  "/earnings",
+  "/my-listings",
+  "/my-contracts",
+  "/my-jobs",
+  "/time-tracking",
+  "/reports",
+  "/invoices",
+  "/payments",
+  "/notifications",
+  "/complete-profile",
+  "/settings",
+]
 
 // Pages that have a secondary nav bar below the primary nav — shadow should only appear on the secondary nav, not the primary
 const HAS_SECONDARY_NAV = [
   "/",
   "/talent-profile",
+  "/client-profile",
   "/my-team",
   "/favorite-projects",
   "/favorite-talent",
@@ -1570,13 +1595,15 @@ export const TopMostHeader = ({
 
   // Show shadow: always on pages without secondary nav, or when secondary nav is hidden (scrolled away)
   const showNavShadow = !hasSecondaryNav || secondaryNavHidden
+  const hasSidebarNav = HAS_SIDEBAR_NAV.includes(pathname)
 
   return (
     <div
       className={cn(
         // Keep the primary nav pinned to the viewport so iOS/macOS overscroll
         // bounce only affects page content, not the header itself.
-        "fixed inset-x-0 top-0 px-3.5 md:px-6 lg:px-[50px] bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 z-50",
+        "fixed inset-x-0 top-0 px-3.5 md:px-6 bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 z-50",
+        !hasSidebarNav && "lg:px-[50px]",
         showNavShadow
           ? "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]"
           : "shadow-none",
@@ -1701,7 +1728,13 @@ export const TopMostHeader = ({
               <DropdownMenuItem
                 onSelect={() => {
                   setMenuOpen(false)
-                  router.push("/talent-profile")
+                  // A client account sees the client profile; the talent
+                  // profile is only for talent accounts.
+                  router.push(
+                    resolveDashboardRole(user) === ROLE.CLIENT
+                      ? "/client-profile"
+                      : "/talent-profile"
+                  )
                 }}
               >
                 <User className="size-4" />
@@ -1761,7 +1794,7 @@ export const TopMostHeader = ({
               <DropdownMenuItem
                 onSelect={() => {
                   setMenuOpen(false)
-                  router.push("/billing")
+                  router.push("/settings?tab=billing-overview")
                 }}
               >
                 <CoinStack className="size-4" />
@@ -1770,7 +1803,7 @@ export const TopMostHeader = ({
               <DropdownMenuItem
                 onSelect={() => {
                   setMenuOpen(false)
-                  router.push("/settings")
+                  router.push("/settings?tab=personal-info")
                 }}
               >
                 <Settings className="size-4" />
@@ -1780,8 +1813,11 @@ export const TopMostHeader = ({
               <DropdownMenuItem
                 onClick={async () => {
                   setMenuOpen(false)
-                  const newType =
-                    user?.accountType === "TALENT" ? "client" : "talent"
+                  const isTalent =
+                    user?.accountType?.toUpperCase() === "TALENT" ||
+                    user?.userType?.toLowerCase() === "talent" ||
+                    user?.role?.toUpperCase() === "TALENT"
+                  const newType = isTalent ? "client" : "talent"
                   const newRole =
                     newType === "talent" ? ROLE.TALENT : ROLE.CLIENT
                   // Optimistically update local user so the dropdown label flips immediately,

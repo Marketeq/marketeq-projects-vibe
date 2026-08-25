@@ -1,15 +1,15 @@
 name: Login Change Gate
 
-# Dedicated gate for login/auth files on dev-main.
-# This workflow exists because GitHub branch protection and rulesets
-# require a paid plan on private repos. It acts as a hard block:
-# any PR targeting dev-main that touches login files MUST have explicit
-# repo-owner approval before it can pass CI.
+# ABSOLUTE HARD BLOCK — Login files are PERMANENTLY LOCKED.
+# Nobody except @CTorres9800 (CTO) may modify login/auth files.
+# Any PR to dev-main, staging, or live that touches login files
+# is blocked unless @CTorres9800 is the author or has approved.
+# No ticket, no feature request, no justification overrides this.
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
-    branches: [dev-main]
+    branches: [dev-main, staging, live]
 
 permissions:
   contents: read

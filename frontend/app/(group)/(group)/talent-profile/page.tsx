@@ -8,7 +8,7 @@ import React, {
   useRef,
   useState,
 } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
 import { ClientAPI } from "@/service/http/client"
@@ -110,6 +110,11 @@ interface SimilarProfile {
 }
 
 import NextLink from "@/components/next-link"
+import {
+  ReadMoreLess,
+  ReadMoreLessComp,
+  ReadMoreLessRoot,
+} from "@/components/read-more-less"
 import { SaveTalentButton } from "@/components/save-talent-button"
 import {
   ShowMoreLess,
@@ -176,6 +181,7 @@ import {
   tabsListVariants,
 } from "@/components/ui"
 import { ScrollBar } from "@/components/ui"
+import { Checkbox } from "@/components/ui/checkbox"
 
 const variants: Variants = {
   expanded: {
@@ -389,62 +395,6 @@ function LineClampText({
   )
 }
 
-// 2-line clamp for work-experience descriptions. Clamps inline (line-clamp
-// utilities are purged from the baked CSS) and shows Read More / View Less only
-// when the text ACTUALLY overflows 2 lines — measured via ResizeObserver so it's
-// accurate and stays correct on resize (not a flaky measure-on-mount, and not a
-// char-count guess that mis-fires on text that fits within 2 lines).
-function ClampedDescription({ text }: { text: string }) {
-  const [expanded, setExpanded] = useState(false)
-  const [overflowing, setOverflowing] = useState(false)
-  const ref = useRef<HTMLParagraphElement>(null)
-
-  useEffect(() => {
-    // Only measure while collapsed (clamp applied); when expanded there's no
-    // clamp, so keep the last "overflowing" value to preserve View Less.
-    if (expanded) return
-    const el = ref.current
-    if (!el) return
-    const measure = () =>
-      setOverflowing(el.scrollHeight > el.clientHeight + 1)
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [text, expanded])
-
-  return (
-    <div className="mt-3">
-      <p
-        ref={ref}
-        className="text-sm font-extralight text-gray-700 break-words leading-relaxed"
-        style={
-          expanded
-            ? undefined
-            : {
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-                overflowWrap: "anywhere",
-              }
-        }
-      >
-        {text}
-      </p>
-      {overflowing && (
-        <button
-          type="button"
-          className="mt-1 text-sm font-semibold text-gray-700 hover:text-gray-900 focus-visible:outline-none"
-          onClick={() => setExpanded((v) => !v)}
-        >
-          {expanded ? "View Less" : "...Read More"}
-        </button>
-      )}
-    </div>
-  )
-}
-
 export default function TalentProfilePage() {
   return (
     <Suspense>
@@ -454,9 +404,10 @@ export default function TalentProfilePage() {
 }
 
 function Default() {
-  const { user, isLoading: isAuthLoading } = useAuth()
+  const { user, isLoading: isAuthLoading, openAuthModal, setPendingRedirect } = useAuth()
   const { toggle: openInviteWindow } = useInviteWindowStore()
   const router = useRouter()
+  const pathname = usePathname()
   const handleShareProfile = () => {
     const base =
       typeof window !== "undefined" ? window.location.origin : ""
@@ -467,6 +418,38 @@ function Default() {
   }
   const searchParams = useSearchParams()
   const usernameParam = searchParams.get("username")
+  // Re-applying the signed-out hire prompt on top of dev-main's
+  // canHire-free restructure: the Hire Me button renders for everyone now
+  // (no gate to re-add — that removal was deliberate), but a signed-out
+  // click must open the sign-in modal instead of the Hire Me modal itself.
+  // event.preventDefault() stops Radix's DialogTrigger — HireMeButton wraps
+  // its trigger Button in <DialogTrigger asChild>, which composes the
+  // child's own onClick first and only opens if the event wasn't
+  // defaultPrevented. pendingRedirect carries the query string (not just
+  // the bare pathname AuthenticatedRoute.tsx uses) so sign-in returns to
+  // this exact profile, matching auth-modal.tsx's router.push(pendingRedirect).
+  const handleHireButtonClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    // isLoading defaults true until /user/me resolves — same race
+    // my-listings/[slug]/page.tsx already guards with `!isAuthLoading`.
+    // dev-main removed this page's own render-time gate on purpose, so
+    // there's no "wait for auth" state to fall back on except this
+    // handler. preventDefault here rather than falling through: a
+    // signed-in user's click during this window is a one-time no-op that
+    // works normally a moment later once isLoading resolves; letting the
+    // click through instead would show the real Hire Me flow to a
+    // visitor who may turn out to be signed out, discovered only after
+    // they've filled in a rate and duration — a worse failure than one
+    // inert click. Do not "simplify" this into falling through.
+    if (isAuthLoading) {
+      event.preventDefault()
+      return
+    }
+    if (user?.id) return
+    event.preventDefault()
+    const query = searchParams.toString()
+    setPendingRedirect(`${pathname}${query ? `?${query}` : ""}`)
+    openAuthModal("sign-in")
+  }
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(true)
   const [showCompleteProfile, setShowCompleteProfile] = useState(false)
@@ -474,7 +457,7 @@ function Default() {
   const [resumeFile, setResumeFile] = useState<File | null>(null)
   const [resumeUploadedDate, setResumeUploadedDate] = useState<Date | null>(null)
   const [resumeStatus, setResumeStatus] = useState<
-    "idle" | "dragging" | "uploading" | "summary" | "uploaded" | "failed" | "size-limit" | "unsupported" | "not_a_resume" | "nothing_found"
+    "idle" | "dragging" | "uploading" | "summary" | "uploaded" | "failed" | "size-limit" | "unsupported" | "not_a_resume" | "nothing_found" | "name_mismatch"
   >("idle")
   const [resumeLoadingMessage, setResumeLoadingMessage] = useState("Reading your resume...")
 
@@ -493,7 +476,7 @@ function Default() {
     type: "work" | "education" | "certification"
     existingId: string
     existing: { label: string; detail: string }
-    incoming: { label: string; detail: string }
+    incoming: { label: string; detail: string; company?: string; startDate?: string; endDate?: string; degree?: string; fieldOfStudy?: string; issuer?: string }
   }
   const [resumeConflicts, setResumeConflicts] = useState<ResumeConflict[]>([])
   const [resumeConflictOpen, setResumeConflictOpen] = useState(false)
@@ -589,6 +572,12 @@ function Default() {
 
       // Set summary for display
       setResumeSummary(additions)
+
+      // Name mismatch guard: if the resume belongs to someone else, block auto-apply
+      if (data.nameMismatch) {
+        setResumeStatus("name_mismatch")
+        return
+      }
 
       // Apply additions immediately (per docs: additive is applied on arrival)
       try {
@@ -789,7 +778,6 @@ function Default() {
   const isOwnProfile = Boolean(
     user?.id && profile?.id && user.id === profile.id
   )
-  const canHire = !isAuthLoading && Boolean(user?.id)
 
   const refreshProfile = useCallback(() => {
     if (!profile?.id) return
@@ -933,6 +921,19 @@ function Default() {
   const tabsListRef = useRef<HTMLDivElement>(null)
   const [isCardStuck, setIsCardStuck] = useState<boolean>(false)
   const [isTabsListStuck, setIsTabsListStuck] = useState<boolean>(false)
+
+  // The profile's pinned bar takes the top of the viewport, so the secondary
+  // nav stays out of the way for as long as the bar is up, even when the user
+  // scrolls back up. The shell in marketplace-secondary-nav.tsx reads this.
+  useEffect(() => {
+    if (!isTabsListStuck) return
+
+    document.documentElement.dataset.pinnedBar = "active"
+
+    return () => {
+      delete document.documentElement.dataset.pinnedBar
+    }
+  }, [isTabsListStuck])
 
   // Auto-expand state for sections
   const [autoExpandPortfolio, setAutoExpandPortfolio] = useState<boolean>(false)
@@ -1458,7 +1459,10 @@ function Default() {
                           </>
                         ) : (
                           <>
-                            {canHire && <HireMeButton profile={profile} />}
+                            <HireMeButton
+                              profile={profile}
+                              buttonProps={{ onClick: handleHireButtonClick }}
+                            />
 
                             <SaveTalentButton userId={profile?.id} />
                           </>
@@ -1765,7 +1769,10 @@ function Default() {
                       </>
                     ) : (
                       <>
-                        {canHire && <HireMeButton profile={profile} />}
+                        <HireMeButton
+                          profile={profile}
+                          buttonProps={{ onClick: handleHireButtonClick }}
+                        />
 
                         <SaveTalentButton userId={profile?.id} />
                       </>
@@ -2721,7 +2728,10 @@ function Default() {
                                                     )}
                                                 </div>
                                                 <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
-                                                  {exp.company}
+                                                  {exp.company
+                                                    ? exp.company.charAt(0).toUpperCase() +
+                                                      exp.company.slice(1)
+                                                    : ""}
                                                 </p>
                                                 <div className="mt-1.5 inline-flex items-center gap-x-2">
                                                   <span className="text-xs leading-none text-dark-blue-400">
@@ -2738,9 +2748,35 @@ function Default() {
                                                 </div>
 
                                                 {exp.description && (
-                                                  <ClampedDescription
-                                                    text={exp.description}
-                                                  />
+                                                  <ReadMoreLessRoot>
+                                                    <ReadMoreLessComp
+                                                      max={52}
+                                                      text={exp.description}
+                                                    >
+                                                      {({
+                                                        readMore,
+                                                        text,
+                                                        toggle,
+                                                      }) => (
+                                                        <>
+                                                          <p className="mt-3 text-sm leading-none font-extralight text-gray-700 break-words">
+                                                            {text}{" "}
+                                                            <Button
+                                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
+                                                              size="sm"
+                                                              variant="link"
+                                                              visual="gray"
+                                                              onClick={toggle}
+                                                            >
+                                                              {readMore
+                                                                ? null
+                                                                : "...Read More"}
+                                                            </Button>
+                                                          </p>
+                                                        </>
+                                                      )}
+                                                    </ReadMoreLessComp>
+                                                  </ReadMoreLessRoot>
                                                 )}
                                                 {Array.isArray(exp.skills) && exp.skills.length > 0 && (
                                                   <div className="mt-3 flex flex-wrap gap-2">
@@ -4678,7 +4714,7 @@ function Default() {
                     />
 
                     {/* Error states: failed, size-limit, unsupported, not_a_resume, nothing_found */}
-                    {(resumeStatus === "failed" || resumeStatus === "size-limit" || resumeStatus === "unsupported" || resumeStatus === "not_a_resume" || resumeStatus === "nothing_found") && (
+                    {(resumeStatus === "failed" || resumeStatus === "size-limit" || resumeStatus === "unsupported" || resumeStatus === "not_a_resume" || resumeStatus === "nothing_found" || resumeStatus === "name_mismatch") && (
                       <div className="mt-4 rounded-lg border border-error-200 bg-error-25 p-6 flex flex-col items-center">
                         <div className="size-10 rounded-full bg-error-50 inline-flex items-center justify-center">
                           <AlertTriangle className="size-5 text-error-500" />
@@ -4700,6 +4736,8 @@ function Default() {
                             "This doesn't look like a resume. Please upload a resume file in PDF, DOC, or DOCX format."}
                           {resumeStatus === "nothing_found" &&
                             "We couldn't pull any details out of this file. Please try uploading a different resume."}
+                          {resumeStatus === "name_mismatch" &&
+                            "This resume appears to belong to someone else. Please upload your own resume."}
                         </p>
 
                         <button
@@ -5591,55 +5629,93 @@ function Default() {
 
       {/* Update current information conflict dialog */}
       <Dialog open={resumeConflictOpen} onOpenChange={setResumeConflictOpen}>
-        <DialogContent className="max-w-[620px] max-h-[80vh] rounded-[12px] p-0 flex flex-col">
+        <DialogContent
+          className="max-w-[620px] max-h-[80vh] rounded-[12px] p-0 flex flex-col"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
           <DialogTitle className="sr-only">Update Current Information</DialogTitle>
           <DialogDescription className="sr-only">Choose which entries to update with resume data</DialogDescription>
           <div className="px-8 pt-8 pb-4 shrink-0">
             <h2 className="text-xl font-bold text-dark-blue-400">
               Update Current Information?
             </h2>
-            <p className="mt-1 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-gray-600">
               We found work history and education entries that already exist in your profile. You can keep your current information or replace it with information from your resume.
             </p>
           </div>
 
           <div className="px-8 pb-4 overflow-y-auto flex-1 min-h-0">
-            <div className="space-y-4">
-              {resumeConflicts.map((conflict) => (
-                <label
-                  key={conflict.existingId}
-                  className="flex items-start gap-x-3 rounded-lg border border-gray-200 p-4 cursor-pointer hover:bg-gray-50 transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    className="mt-1 size-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500"
-                    checked={resumeConflictChecked[conflict.existingId] ?? true}
-                    onChange={(e) => {
-                      setResumeConflictChecked((prev) => ({
-                        ...prev,
-                        [conflict.existingId]: e.target.checked,
-                      }))
-                    }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <span className="inline-block rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 mb-2">
-                      {conflict.type === "work" ? "Work History" : conflict.type === "education" ? "Education" : "Certification"}
-                    </span>
-                    <div className="grid grid-cols-2 gap-x-4">
-                      <div>
-                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Current</p>
-                        <p className="text-sm font-bold text-dark-blue-400">{conflict.existing.label}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{conflict.existing.detail}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">From Resume</p>
-                        <p className="text-sm font-bold text-dark-blue-400">{conflict.incoming.label}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{conflict.incoming.detail}</p>
+            <div className="rounded-lg border border-gray-200">
+              {(() => {
+                let lastType = ""
+                return resumeConflicts.map((conflict) => {
+                  const showHeader = conflict.type !== lastType
+                  lastType = conflict.type
+                  return (
+                    <div key={conflict.existingId} className="px-5">
+                      {showHeader && (
+                        <p className="pt-4 pb-2 text-xs font-semibold text-primary-500">
+                          {conflict.type === "work"
+                            ? "Replace this work history"
+                            : conflict.type === "education"
+                            ? "Replace this education"
+                            : "Replace this certification"}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-x-3 py-3">
+                        <RefreshCw className="size-4 text-gray-400 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-dark-blue-400">
+                            {conflict.incoming.label}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {conflict.type === "work" && (
+                              <>
+                                {conflict.incoming.company}
+                                {conflict.incoming.startDate && (
+                                  <>
+                                    {" "}&middot;{" "}
+                                    <span className="font-bold">
+                                      {conflict.incoming.startDate} - {conflict.incoming.endDate || "Present"}
+                                    </span>
+                                  </>
+                                )}
+                              </>
+                            )}
+                            {conflict.type === "education" && (
+                              <>
+                                {conflict.incoming.degree}
+                                {conflict.incoming.fieldOfStudy && (
+                                  <>
+                                    {" "}&middot;{" "}
+                                    <span className="font-bold">{conflict.incoming.fieldOfStudy}</span>
+                                  </>
+                                )}
+                              </>
+                            )}
+                            {conflict.type === "certification" && (
+                              <>{conflict.incoming.issuer || conflict.incoming.detail}</>
+                            )}
+                          </p>
+                        </div>
+                        <label className="flex items-center gap-x-2 shrink-0 cursor-pointer">
+                          <span className="text-sm text-gray-600">Apply Update</span>
+                          <Checkbox
+                            checked={resumeConflictChecked[conflict.existingId] ?? true}
+                            onCheckedChange={(checked) => {
+                              setResumeConflictChecked((prev) => ({
+                                ...prev,
+                                [conflict.existingId]: !!checked,
+                              }))
+                            }}
+                          />
+                        </label>
                       </div>
                     </div>
-                  </div>
-                </label>
-              ))}
+                  )
+                })
+              })()}
             </div>
           </div>
 
@@ -5649,7 +5725,6 @@ function Default() {
               visual="gray"
               onClick={() => {
                 setResumeConflictOpen(false)
-                // Show summary dialog as receipt after declining conflicts
                 setResumeStatus("summary")
               }}
             >
@@ -5675,7 +5750,6 @@ function Default() {
                   console.error("Failed to apply conflict resolutions:", err)
                 } finally {
                   setResumeConflictOpen(false)
-                  // Show summary dialog as receipt after conflict resolution
                   setResumeStatus("summary")
                 }
               }}

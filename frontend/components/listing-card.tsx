@@ -261,11 +261,11 @@ function ProjectListingCard({
     const showServiceBadge = gridVariantIndex === 0 || gridVariantIndex === 3
 
     return (
-      <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 ">
+      <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] ">
         <div className="flex items-start justify-between gap-4">
           <NextLink
             href={computedHref}
-            className="max-w-[195px] text-[16px] font-bold leading-normal text-dark-blue-400 focus-visible:outline-none hover:underline"
+            className="max-w-[195px] line-clamp-2 text-[16px] font-bold leading-normal text-dark-blue-400 focus-visible:outline-none hover:underline"
           >
             {title || "The Ultimate Mobile App Experience"}
           </NextLink>
@@ -346,7 +346,7 @@ function ProjectListingCard({
           </NextLink>
         </div>
 
-        <p className="mt-4 text-sm font-light leading-normal text-dark-blue-400">
+        <p className="mt-4 line-clamp-2 text-sm font-light leading-normal text-dark-blue-400">
           {jobDescription}
         </p>
 
@@ -438,7 +438,7 @@ function ProjectListingCard({
     const jobSkills = ["Visual Design", "Tailwind CSS", "Next.js", "E-commerce"]
 
     return (
-      <article className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 ">
+      <article className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] ">
         <div className="p-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0 flex-1">
@@ -487,7 +487,7 @@ function ProjectListingCard({
             </div>
           </div>
 
-          <p className="mt-4 text-sm font-light leading-normal text-dark-blue-400">
+          <p className="mt-4 line-clamp-2 text-sm font-light leading-normal text-dark-blue-400">
             {jobDescription}
           </p>
 
@@ -609,7 +609,7 @@ function ProjectListingCard({
   }
 
   return (
-    <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 ">
+    <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] ">
       <NextLink
         href={computedHref}
         className="block focus-visible:outline-none group/card"
@@ -617,7 +617,7 @@ function ProjectListingCard({
         <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
           {mediaUrl ? (
             <NextImage
-              className="object-cover"
+              className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
               src={mediaUrl}
               alt={title}
               fill
@@ -767,7 +767,7 @@ function TeamListingCard({
     memberAvatars && memberAvatars.length > 0 ? memberAvatars : ["/woman.jpg"]
 
   return (
-    <article className="h-full flex flex-col p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200 ">
+    <article className="h-full flex flex-col p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white ">
       <div className="flex items-start justify-between">
         <AvatarGroup
           max={3}

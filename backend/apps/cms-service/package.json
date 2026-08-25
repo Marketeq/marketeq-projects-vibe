@@ -36,5 +36,9 @@
     "sass": "^1.99.0",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.3.0"
+  },
+  "overrides": {
+    "drizzle-kit": "0.23.2",
+    "drizzle-orm": "0.32.1"
   }
 }

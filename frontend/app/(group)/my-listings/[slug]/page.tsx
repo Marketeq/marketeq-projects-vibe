@@ -562,6 +562,82 @@ const DEFAULT_SUGGESTED_CATEGORIES: SuggestedCategoryOption[] = [
   { category: "Data Science", subCategory: "Machine Learning" },
 ]
 
+const SUGGESTION_STOPWORDS = new Set([
+  "the", "and", "for", "with", "your", "our", "that", "this", "from", "into",
+  "over", "you", "are", "was", "will", "can", "get", "all", "new", "use",
+  "per", "via",
+])
+
+const tokenizeForSuggestion = (text: string): string[] =>
+  text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 3 && !SUGGESTION_STOPWORDS.has(token))
+
+const scoreCandidateAgainstTitle = (
+  titleTokens: string[],
+  candidateText: string
+): number => {
+  const candidateTokens = tokenizeForSuggestion(candidateText)
+  let score = 0
+  for (const candidateToken of candidateTokens) {
+    for (const titleToken of titleTokens) {
+      if (candidateToken === titleToken) {
+        score += 2
+        break
+      }
+      if (
+        candidateToken.length >= 4 &&
+        titleToken.length >= 4 &&
+        (candidateToken.includes(titleToken) ||
+          titleToken.includes(candidateToken))
+      ) {
+        score += 1
+        break
+      }
+    }
+  }
+  return score
+}
+
+const suggestionsFromText = (
+  text: string,
+  nodes: CategoryTreeNode[]
+): SuggestedCategoryOption[] => {
+  const tokens = tokenizeForSuggestion(text)
+  if (!tokens.length || !nodes.length) return []
+
+  const scored: Array<SuggestedCategoryOption & { score: number }> = []
+  for (const categoryNode of nodes) {
+    if (!isActiveCategoryNode(categoryNode) || !categoryNode.name) continue
+    const subs = (categoryNode.children ?? []).filter(isActiveCategoryNode)
+    for (const sub of subs) {
+      if (!sub.name || sub.name === categoryNode.name) continue
+      const score = scoreCandidateAgainstTitle(
+        tokens,
+        `${categoryNode.name} ${sub.name}`
+      )
+      if (score > 0) {
+        scored.push({
+          category: categoryNode.name,
+          subCategory: sub.name,
+          score,
+        })
+      }
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score)
+  const seenCategories = new Set<string>()
+  const result: SuggestedCategoryOption[] = []
+  for (const item of scored) {
+    if (seenCategories.has(item.category)) continue
+    seenCategories.add(item.category)
+    result.push({ category: item.category, subCategory: item.subCategory })
+  }
+  return result
+}
+
 type CategoryRow = {
   category: string
   subCategories: string[]
@@ -1547,6 +1623,12 @@ export default function ProjectDetails() {
           project.subcategories?.length > 0 ||
           project.tags?.length > 0
         ),
+        (project.tags || []).length < 3,
+        Math.max(
+          project.skills?.length ?? 0,
+          project.programmingLanguages?.length ?? 0
+        ) < 3,
+        (project.industries || []).length < 1,
         !project.faqs || project.faqs.length === 0,
       ].some(Boolean)
     : false
@@ -1567,6 +1649,12 @@ export default function ProjectDetails() {
           project.subcategories?.length > 0 ||
           project.tags?.length > 0
         ) && "project details",
+        (project.tags || []).length < 3 && "at least 3 tags",
+        Math.max(
+          project.skills?.length ?? 0,
+          project.programmingLanguages?.length ?? 0
+        ) < 3 && "at least 3 skills",
+        (project.industries || []).length < 1 && "at least 1 industry",
         !(
           Array.isArray(project.deliverables) &&
           project.deliverables.length > 0
@@ -1574,6 +1662,21 @@ export default function ProjectDetails() {
         (!project.faqs || project.faqs.length === 0) && "FAQ's",
       ].filter(Boolean) as string[])
     : []
+
+  const projectDetailsHasError =
+    SHOW_PUBLISH_VALIDATION &&
+    ((project.tags || []).length < 3 ||
+      Math.max(
+        project.skills?.length ?? 0,
+        project.programmingLanguages?.length ?? 0
+      ) < 3 ||
+      (project.industries || []).length < 1 ||
+      !(
+        project.programmingLanguages?.length > 0 ||
+        project.developmentTech?.length > 0 ||
+        project.subcategories?.length > 0 ||
+        project.tags?.length > 0
+      ))
 
   const missingPublishImages =
     SHOW_PUBLISH_VALIDATION &&
@@ -1960,6 +2063,10 @@ export default function ProjectDetails() {
     [project, isOnline]
   )
 
+  const isOwnerMember = (m: any) =>
+    m?.role === "owner" ||
+    (!!ownerId && String(m?.id ?? m?.userId ?? "") === ownerId)
+
   const projectAssignees = React.useMemo(() => {
     const team = Array.isArray((project as any)?.team) ? (project as any).team : []
     const ids = Array.isArray((project as any)?.teamMemberIds)
@@ -1970,6 +2077,7 @@ export default function ProjectDetails() {
         const mid = String(m.id || m.userId || "")
         return m.role === "owner" || mid === ownerId || ids.includes(mid)
       })
+      .sort((a: any, b: any) => (isOwnerMember(a) ? 0 : 1) - (isOwnerMember(b) ? 0 : 1))
       .map((m: any) => ({
         id: String(m.id || m.userId || ""),
         firstName: m.firstName || m.name || "User",
@@ -1984,10 +2092,12 @@ export default function ProjectDetails() {
     const ids = Array.isArray((project as any)?.teamMemberIds)
       ? (project as any).teamMemberIds.map(String)
       : []
-    return team.filter((m: any) => {
-      const mid = String(m.id || m.userId || "")
-      return m.role === "owner" || mid === ownerId || ids.includes(mid)
-    })
+    return team
+      .filter((m: any) => {
+        const mid = String(m.id || m.userId || "")
+        return m.role === "owner" || mid === ownerId || ids.includes(mid)
+      })
+      .sort((a: any, b: any) => (isOwnerMember(a) ? 0 : 1) - (isOwnerMember(b) ? 0 : 1))
   }, [project, ownerId])
 
   const confirmRemoveMember = async (deactivateInstead: boolean) => {
@@ -2306,10 +2416,13 @@ export default function ProjectDetails() {
         const nextCategoryOptions = getUniqueOptions(
           selectableCategories.map((node) => node.name)
         )
-        const nextSuggested = selectableCategories
+        const nextSuggested = nodes
+          .filter(isActiveCategoryNode)
           .map((node) => {
-            const subCategory = findSuggestedSubCategory(node)
-            return subCategory ? { category: node.name, subCategory } : null
+            const sub = (node.children ?? []).filter(isActiveCategoryNode)[0]
+            return sub?.name && node.name
+              ? { category: node.name, subCategory: sub.name }
+              : null
           })
           .filter((value): value is SuggestedCategoryOption => value !== null)
 
@@ -2520,16 +2633,36 @@ export default function ProjectDetails() {
     [infoCategories]
   )
 
-  const suggestedForDisplay = React.useMemo(
-    () =>
-      suggested
-        .filter(
-          ({ category, subCategory }) =>
-            !selectedSuggestedPairs.has(`${category}::${subCategory}`)
-        )
-        .slice(0, 3),
-    [selectedCategoryNames, selectedSuggestedPairs, suggested]
-  )
+  const derivedSuggestions = React.useMemo(() => {
+    const enteredNames = infoCategories
+      .map((c) => c.category?.trim())
+      .filter((name): name is string => Boolean(name))
+      .join(" ")
+    return suggestionsFromText(
+      `${infoProjectType} ${enteredNames}`.trim(),
+      categoryTree
+    )
+  }, [infoProjectType, infoCategories, categoryTree])
+
+  const suggestedForDisplay = React.useMemo(() => {
+    const seenCategories = new Set(selectedCategoryNames)
+    const result: SuggestedCategoryOption[] = []
+    for (const item of [...derivedSuggestions, ...suggested]) {
+      if (item.category === item.subCategory) continue
+      if (seenCategories.has(item.category)) continue
+      if (selectedSuggestedPairs.has(`${item.category}::${item.subCategory}`))
+        continue
+      seenCategories.add(item.category)
+      result.push(item)
+      if (result.length >= 3) break
+    }
+    return result
+  }, [
+    derivedSuggestions,
+    suggested,
+    selectedCategoryNames,
+    selectedSuggestedPairs,
+  ])
 
   // Persist a partial update to the backend so edits are saved to the DB.
   // If no backend draft exists yet, create one first, get the real UUID,
@@ -5353,7 +5486,14 @@ export default function ProjectDetails() {
                           project.developmentTech?.length > 0 ||
                           project.subcategories?.length > 0 ||
                           project.tags?.length > 0 ? (
-                            <div className="mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                            <div
+                              className={cn(
+                                "mt-6 border gap-x-[50px] rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]",
+                                publishAttempted && projectDetailsHasError
+                                  ? "border-error-300 bg-error-25"
+                                  : "border-gray-200 bg-white"
+                              )}
+                            >
                               <div className="p-6 border-b border-gray-200">
                                 <div className="flex items-start justify-between">
                                   <h2 className="text-xl leading-none font-bold text-dark-blue-400">
@@ -6058,6 +6198,7 @@ export default function ProjectDetails() {
                                     label: "Industry",
                                     desc: "Add up to 5 industries that align with your project scope for targeted visibility.",
                                     max: 5,
+                                    min: 1,
                                     value: detailsIndustry,
                                     onChange: setDetailsIndustry,
                                     placeholder: "Add Industries",
@@ -6069,6 +6210,7 @@ export default function ProjectDetails() {
                                     label: "Tags",
                                     desc: "Add up to 10 tags that align with your project scope for targeted visibility.",
                                     max: 10,
+                                    min: 3,
                                     value: detailsTags,
                                     onChange: setDetailsTags,
                                     placeholder: "Add Tags",
@@ -6080,6 +6222,7 @@ export default function ProjectDetails() {
                                     label: "Skills",
                                     desc: "List up to 10 key skills or proficiencies required to implement this template effectively.",
                                     max: 10,
+                                    min: 3,
                                     value: detailsSkills,
                                     onChange: setDetailsSkills,
                                     placeholder: "Add Skills",
@@ -6193,6 +6336,13 @@ export default function ProjectDetails() {
                                       </TagsInputContext>
                                       <TagsInputHiddenInput />
                                     </TagsInputRoot>
+                                    {field.min != null &&
+                                      field.value.length < field.min && (
+                                        <p className="mt-1.5 text-xs text-error-500">
+                                          Please add at least {field.min}{" "}
+                                          {field.label.toLowerCase()}
+                                        </p>
+                                      )}
                                   </div>
                                 ))}
 
@@ -6489,7 +6639,11 @@ export default function ProjectDetails() {
                                                     </InputLeftElement>
                                                   </InputGroup>
                                                   {leadSearch && (
-                                                    <div className="mt-1 rounded-lg border border-gray-100 bg-white shadow-lg max-h-[240px] overflow-y-auto">
+                                                    <ScrollArea
+                                                      className="mt-1 rounded-lg border border-gray-100 bg-white shadow-lg"
+                                                      scrollBar={<ScrollBar className="w-4 p-1" />}
+                                                      viewportClassName="max-h-[240px]"
+                                                    >
                                                       {candidates.length > 0 ? (
                                                         candidates.map(
                                                           (m: any) => (
@@ -6544,7 +6698,7 @@ export default function ProjectDetails() {
                                                           No matching members.
                                                         </div>
                                                       )}
-                                                    </div>
+                                                    </ScrollArea>
                                                   )}
                                                 </>
                                               )}
@@ -6720,7 +6874,11 @@ export default function ProjectDetails() {
                                       </DropdownMenu>
                                     </div>
 
-                                    <div className="mt-6 max-h-[40vh] overflow-y-auto">
+                                    <ScrollArea
+                                      className="mt-6"
+                                      scrollBar={<ScrollBar className="w-4 p-1" />}
+                                      viewportClassName="max-h-[40vh]"
+                                    >
                                       <Table>
                                         <TableHeader>
                                           <TableRow className="hover:bg-transparent">
@@ -6970,7 +7128,7 @@ export default function ProjectDetails() {
                                           )}
                                         </TableBody>
                                       </Table>
-                                    </div>
+                                    </ScrollArea>
                                   </TabsContent>
                                 </Tabs>
                               </div>
@@ -7075,82 +7233,87 @@ export default function ProjectDetails() {
                           {(project.faqs?.length > 0 ||
                             project.recentQuestions?.length > 0) && (
                             <>
-                              {onlineTeam.length > 0 && (
-                              <div className="absolute right-12 top-11 pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
-                                {onlineTeam.length === 1 ? (
-                                  <>
-                                    <Avatar size="md">
-                                      <AvatarImage
-                                        src={onlineTeam[0].avatarUrl || "/man.jpg"}
-                                        alt={
-                                          onlineTeam[0].firstName || "Team member"
-                                        }
-                                      />
-                                      <AvatarFallback>
-                                        {(onlineTeam[0].firstName ?? "T").charAt(0)}
-                                      </AvatarFallback>
-                                    </Avatar>
+                              {!isOwnerViewing && (
+                              <div className="relative mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
+                                {onlineTeam.length > 0 && (
+                                <div
+                                  style={{
+                                    top: onlineTeam.length === 1 ? -20 : -52,
+                                    right: 24,
+                                  }}
+                                  className="absolute pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]"
+                                >
+                                  {onlineTeam.length === 1 ? (
+                                    <>
+                                      <Avatar size="md">
+                                        <AvatarImage
+                                          src={onlineTeam[0].avatarUrl || "/man.jpg"}
+                                          alt={
+                                            onlineTeam[0].firstName || "Team member"
+                                          }
+                                        />
+                                        <AvatarFallback>
+                                          {(onlineTeam[0].firstName ?? "T").charAt(0)}
+                                        </AvatarFallback>
+                                      </Avatar>
 
-                                    <div className="flex flex-col items-start gap-y-2">
-                                      <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
-                                        {onlineTeam[0].firstName ||
-                                          onlineTeam[0].username}{" "}
-                                        {onlineTeam[0].username && (
-                                          <span className="text-xs leading-none text-extralight text-gray-500">
-                                            @{onlineTeam[0].username}
+                                      <div className="flex flex-col items-start gap-y-2">
+                                        <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                          {onlineTeam[0].firstName ||
+                                            onlineTeam[0].username}{" "}
+                                          {onlineTeam[0].username && (
+                                            <span className="text-xs leading-none text-extralight text-gray-500">
+                                              @{onlineTeam[0].username}
+                                            </span>
+                                          )}
+                                        </span>
+
+                                        <div className="flex items-center gap-x-1">
+                                          <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                                          <span className="text-xs leading-none text-dark-blue-400">
+                                            Online
                                           </span>
-                                        )}
+                                        </div>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div className="flex flex-col items-center gap-y-2">
+                                      <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                        Live Chat
                                       </span>
+
+                                      <AvatarGroup size="sm" max={3} excess>
+                                        {onlineTeam.map((m: any, i: number) => (
+                                          <Avatar
+                                            key={m.username ?? i}
+                                            className="border-2 border-white hover:ring-0 active:ring-0"
+                                            size="sm"
+                                          >
+                                            {m.avatarUrl ? (
+                                              <AvatarImage
+                                                src={m.avatarUrl}
+                                                alt={m.firstName}
+                                              />
+                                            ) : null}
+                                            <AvatarFallback>
+                                              {(m.firstName || "?")
+                                                .charAt(0)
+                                                .toUpperCase()}
+                                            </AvatarFallback>
+                                          </Avatar>
+                                        ))}
+                                      </AvatarGroup>
 
                                       <div className="flex items-center gap-x-1">
                                         <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
                                         <span className="text-xs leading-none text-dark-blue-400">
-                                          Online
+                                          {onlineTeam.length} team members online
                                         </span>
                                       </div>
                                     </div>
-                                  </>
-                                ) : (
-                                  <div className="flex flex-col items-center gap-y-2">
-                                    <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
-                                      Live Chat
-                                    </span>
-
-                                    <AvatarGroup size="sm" max={3} excess>
-                                      {onlineTeam.map((m: any, i: number) => (
-                                        <Avatar
-                                          key={m.username ?? i}
-                                          className="border-2 border-white hover:ring-0 active:ring-0"
-                                          size="sm"
-                                        >
-                                          {m.avatarUrl ? (
-                                            <AvatarImage
-                                              src={m.avatarUrl}
-                                              alt={m.firstName}
-                                            />
-                                          ) : null}
-                                          <AvatarFallback>
-                                            {(m.firstName || "?")
-                                              .charAt(0)
-                                              .toUpperCase()}
-                                          </AvatarFallback>
-                                        </Avatar>
-                                      ))}
-                                    </AvatarGroup>
-
-                                    <div className="flex items-center gap-x-1">
-                                      <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
-                                      <span className="text-xs leading-none text-dark-blue-400">
-                                        {onlineTeam.length} team members online
-                                      </span>
-                                    </div>
-                                  </div>
+                                  )}
+                                </div>
                                 )}
-                              </div>
-                              )}
-
-                              {!isOwnerViewing && (
-                              <div className="mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
                                 <Label
                                   className="font-semibold inline-flex items-center gap-x-2"
                                   size="md"
@@ -7617,7 +7780,11 @@ export default function ProjectDetails() {
                                 </TabsList>
                               </div>
 
-                              <div className="px-6 py-6 max-h-[60vh] overflow-y-auto">
+                              <ScrollArea
+                                scrollBar={<ScrollBar className="w-4 p-1" />}
+                                viewportClassName="max-h-[60vh]"
+                              >
+                              <div className="px-6 py-6">
                                 {questionsTab === "dialog-faqs" && (
                                   <>
                                     <p className="text-sm font-light text-dark-blue-400">
@@ -7693,7 +7860,13 @@ export default function ProjectDetails() {
                                           </p>
                                         )}
 
-                                        <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-3">
+                                        <ScrollArea
+                                          scrollBar={
+                                            <ScrollBar className="w-4 p-1" />
+                                          }
+                                          viewportClassName="max-h-[420px]"
+                                        >
+                                        <div className="px-6 py-4 space-y-3">
                                           {faqGenLoading ? (
                                             <div className="flex flex-col items-center justify-center gap-3 py-12">
                                               <Spinner
@@ -7788,6 +7961,7 @@ export default function ProjectDetails() {
                                             ))
                                           )}
                                         </div>
+                                        </ScrollArea>
 
                                         <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
                                           <Button
@@ -8031,6 +8205,7 @@ export default function ProjectDetails() {
                                   <RecentQuestionsManager projectId={String(project.id)} />
                                 )}
                               </div>
+                              </ScrollArea>
                             </Tabs>
 
                             <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
@@ -9803,7 +9978,7 @@ export default function ProjectDetails() {
                           <Avatar
                             key={m.userId ?? m.username ?? i}
                             size="sm"
-                            className="border-2 border-white"
+                            className="border-2 border-white hover:ring-0 active:ring-0"
                           >
                             {m.avatarUrl && (
                               <AvatarImage
@@ -9852,7 +10027,7 @@ export default function ProjectDetails() {
                     </div>
                   ) : (
                     <div className="group relative w-fit">
-                      <Avatar size="sm" className="border-2 border-white">
+                      <Avatar size="sm" className="border-2 border-white hover:ring-0 active:ring-0">
                         {user?.avatarUrl && (
                           <AvatarImage
                             src={user.avatarUrl}
@@ -10342,6 +10517,8 @@ export default function ProjectDetails() {
             </Card>
           </div>
         </div>
+
+        <div className="pb-[100px]" />
       </div>
 
       <MarketplaceFooter />

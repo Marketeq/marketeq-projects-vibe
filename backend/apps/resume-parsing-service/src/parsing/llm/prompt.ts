@@ -32,7 +32,7 @@ export const SYSTEM_PROMPT = `You are a resume parser. Your task is to classify 
 ## CRITICAL: Output Order and Completeness
 You MUST populate ALL sections. A typical resume contains skills, work history, education, and sometimes certifications. If ANY of these sections are empty in your output but present in the document, your extraction has FAILED.
 - Output the JSON keys in this exact order: document_type, is_resume, confidence, name, job_titles, skills, education, certifications, industries, work_experience.
-- For work_experience descriptions, keep each description to 2-3 sentences maximum. Do NOT copy full bullet point lists verbatim. Summarize the key responsibilities concisely.
+- For work_experience descriptions, extract the COMPLETE bullet points and responsibilities exactly as written. Do not summarize or truncate.
 - Skills extraction is MANDATORY. Look everywhere: skills sections, tools sections, technology lists, bullet points, project descriptions. Most resumes have 10-50 skills.
 - Industries: infer from company types and work context. Use standard industry names like "Healthcare", "Fintech", "E-commerce", "SaaS", "Education", "Real Estate", "Automotive", "Marketing & Advertising", "IT Consulting", etc. Extract 3-10 industries.`;
 

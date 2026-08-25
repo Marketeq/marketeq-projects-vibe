@@ -3,6 +3,7 @@ import {
   ConflictException,
   UnprocessableEntityException,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -26,6 +27,26 @@ const AI_PHASE_CAP_HAS_SCOPE  = 10;
 const AI_PHASE_CAP_NO_SCOPE   = 8;
 const AI_TASK_CAP_HAS_SCOPE   = 16;
 const AI_TASK_CAP_NO_SCOPE    = 12;
+
+export interface GeneratedScopeTaskInput {
+  taskName: string;
+  roleTitle: string;
+  location?: string | null;
+  experienceLevel?: string | null;
+  workSchedule?: string | null;
+  customHours?: number | null;
+  customFrequency?: string | null;
+  estimatedHours: number;
+}
+
+export interface GeneratedScopePhaseInput {
+  phaseName: string;
+  phaseType?: string | null;
+  recurrenceSchedule?: string | null;
+  recurrenceCount?: number | null;
+  durationDays?: number | null;
+  tasks: GeneratedScopeTaskInput[];
+}
 
 @Injectable()
 export class JobListingScopeService {
@@ -186,23 +207,7 @@ export class JobListingScopeService {
   // Runs in a single transaction — if anything fails the scope is unchanged.
   async applyAiGeneratedScope(
     listingId: string,
-    rawPhases: Array<{
-      phaseName:           string;
-      phaseType?:          string;
-      recurrenceSchedule?: string;
-      recurrenceCount?:    number;
-      durationDays?:       number;
-      tasks:               Array<{
-        taskName:        string;
-        roleTitle:       string;
-        location?:       string;
-        experienceLevel?: string;
-        workSchedule?:   string;
-        customHours?:    number;
-        customFrequency?: string;
-        estimatedHours:  number;
-      }>;
-    }>,
+    rawPhases: GeneratedScopePhaseInput[],
     hasScope: boolean,
   ): Promise<JobListingPhase[]> {
     const phaseCap = hasScope ? AI_PHASE_CAP_HAS_SCOPE : AI_PHASE_CAP_NO_SCOPE;
@@ -261,6 +266,23 @@ export class JobListingScopeService {
     });
   }
 
+  async applyGeneratedScopeAndRecalculate(
+    listingId: string,
+    rawPhases: GeneratedScopePhaseInput[],
+    hasScope: boolean,
+  ): Promise<{ phases: JobListingPhase[]; totalBudgetUsdCents: number }> {
+    const phases = await this.applyAiGeneratedScope(listingId, rawPhases, hasScope);
+    const totalBudgetUsdCents = await this.budgetService.recalculateAndPersist(listingId, phases);
+
+    await this.listingRepo.update(listingId, {
+      budgetAmountUsdCents: totalBudgetUsdCents,
+      lastActivityAt: new Date(),
+      staleWarningSent: false,
+    });
+
+    return { phases, totalBudgetUsdCents };
+  }
+
   // ── applySmartAssistantScopeEdit ───────────────────────────────────────────
   // Called when the client submits the "I want to change..." field in Step 4.
   // Deletes all existing phases/tasks and re-inserts the AI-updated scope in a
@@ -268,23 +290,7 @@ export class JobListingScopeService {
   // Budget and timeline are recalculated on the new scope before returning.
   async applySmartAssistantScopeEdit(
     listing: JobListing,
-    updatedScope: Array<{
-      phaseName:           string;
-      phaseType?:          string;
-      recurrenceSchedule?: string;
-      recurrenceCount?:    number;
-      durationDays?:       number;
-      tasks:               Array<{
-        taskName:        string;
-        roleTitle:       string;
-        location?:       string;
-        experienceLevel?: string;
-        workSchedule?:   string;
-        customHours?:    number;
-        customFrequency?: string;
-        estimatedHours:  number;
-      }>;
-    }>,
+    updatedScope: GeneratedScopePhaseInput[],
     command: string,
   ): Promise<{ phases: JobListingPhase[]; totalBudgetUsdCents: number }> {
     // Snapshot current scope before replacing (for history entry).
@@ -323,6 +329,56 @@ export class JobListingScopeService {
     await this.listingRepo.update(listing.id, {
       smartAssistantHistory: history as any,
       budgetAmountUsdCents:  totalBudgetUsdCents,
+      lastActivityAt: new Date(),
+      staleWarningSent: false,
+    });
+
+    return { phases: savedPhases, totalBudgetUsdCents };
+  }
+
+  async restoreSmartAssistantScopeEdit(
+    listing: JobListing,
+    historyId: string,
+  ): Promise<{ phases: JobListingPhase[]; totalBudgetUsdCents: number }> {
+    const entry = (listing.smartAssistantHistory ?? []).find(
+      (item) => item.id === historyId && item.field === 'scope',
+    );
+
+    if (!entry) {
+      throw new NotFoundException({
+        code: 'JL_SMART_ASSISTANT_HISTORY_NOT_FOUND',
+        message: 'Smart Assistant scope history entry not found.',
+      });
+    }
+
+    const savedPhases = await this.applyAiGeneratedScope(
+      listing.id,
+      entry.after as GeneratedScopePhaseInput[],
+      true,
+    );
+
+    const totalBudgetUsdCents = await this.budgetService.recalculateAndPersist(
+      listing.id,
+      savedPhases,
+    );
+
+    const historyEntry: SmartAssistantHistoryEntry = {
+      id: uuidv4(),
+      field: 'scope',
+      before: entry.before,
+      after: savedPhases,
+      command: `restore:${historyId}`,
+      createdAt: new Date().toISOString(),
+    };
+
+    const history = [...(listing.smartAssistantHistory ?? []), historyEntry];
+    if (history.length > 20) history.splice(0, history.length - 20);
+
+    await this.listingRepo.update(listing.id, {
+      smartAssistantHistory: history as any,
+      budgetAmountUsdCents: totalBudgetUsdCents,
+      lastActivityAt: new Date(),
+      staleWarningSent: false,
     });
 
     return { phases: savedPhases, totalBudgetUsdCents };
@@ -333,6 +389,68 @@ export class JobListingScopeService {
   // The phases are NOT persisted in job_listing_phases — they are returned as
   // read-only display data in the GET /v1/job-listings/:id response.
   // isInherited: true signals the frontend to render them as non-editable.
+  async undoLatestSmartAssistantScopeEdit(
+    listing: JobListing,
+    historyId: string,
+  ): Promise<{ phases: JobListingPhase[]; totalBudgetUsdCents: number }> {
+    const history = [...(listing.smartAssistantHistory ?? [])];
+    const latest = history[history.length - 1];
+
+    if (!latest || latest.id !== historyId || latest.field !== 'scope') {
+      throw new ConflictException({
+        code: 'JL_SMART_ASSISTANT_UNDO_NOT_AVAILABLE',
+        message: 'Only the most recent Smart Assistant scope edit can be undone.',
+      });
+    }
+
+    const savedPhases = await this.applyAiGeneratedScope(
+      listing.id,
+      latest.before as GeneratedScopePhaseInput[],
+      true,
+    );
+
+    const totalBudgetUsdCents = await this.budgetService.recalculateAndPersist(
+      listing.id,
+      savedPhases,
+    );
+
+    history.pop();
+
+    await this.listingRepo.update(listing.id, {
+      smartAssistantHistory: history as any,
+      budgetAmountUsdCents: totalBudgetUsdCents,
+      lastActivityAt: new Date(),
+      staleWarningSent: false,
+    });
+
+    return { phases: savedPhases, totalBudgetUsdCents };
+  }
+
+  async replaceLatestSmartAssistantScopeHistoryAfter(
+    listing: JobListing,
+    historyId: string,
+    after: JobListingPhase[],
+  ): Promise<void> {
+    const history = [...(listing.smartAssistantHistory ?? [])];
+    const latest = history[history.length - 1];
+
+    if (!latest || latest.id !== historyId || latest.field !== 'scope') {
+      throw new ConflictException({
+        code: 'JL_SMART_ASSISTANT_RETRY_NOT_AVAILABLE',
+        message: 'Only the most recent Smart Assistant scope edit can be retried.',
+      });
+    }
+
+    latest.after = after;
+    latest.createdAt = new Date().toISOString();
+
+    await this.listingRepo.update(listing.id, {
+      smartAssistantHistory: history as any,
+      lastActivityAt: new Date(),
+      staleWarningSent: false,
+    });
+  }
+
   async loadInheritedScope(contractId: string): Promise<any[]> {
     try {
       const response = await firstValueFrom(

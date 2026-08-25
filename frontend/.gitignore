@@ -8,7 +8,7 @@ app/(group)/inbox/figma-refs/
 /.pnp
 .pnp.js
 .yarn/install-state.gz
-/package-lock.json
+
 
 # testing
 /coverage

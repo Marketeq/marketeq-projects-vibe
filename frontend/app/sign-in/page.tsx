@@ -157,7 +157,7 @@ export default function SignIn() {
         const destination = redirectTarget
           ? nextRoute
           : resolveDashboardRoute(nextUser)
-        router.push(destination)
+        router.replace(destination)
         reset()
       } else {
         toast({ title: "Invalid response from server", variant: "destructive" })
@@ -230,7 +230,7 @@ export default function SignIn() {
           const destination = redirectTarget
             ? nextRoute
             : resolveDashboardRoute(nextUser)
-          router.push(destination)
+          router.replace(destination)
           reset()
         }
       })
@@ -447,13 +447,13 @@ export default function SignIn() {
               <div className="grid md:grid-cols-2 mt-10 md:mt-[50px] gap-3 items-center">
                 <GoogleLoginButton
                   onSuccess={(user) =>
-                    router.push(redirectTarget ? nextRoute : resolveDashboardRoute(user))
+                    router.replace(redirectTarget ? nextRoute : resolveDashboardRoute(user))
                   }
                 />
 
                 <LinkedInLoginButton
                   onSuccess={(user) =>
-                    router.push(redirectTarget ? nextRoute : resolveDashboardRoute(user))
+                    router.replace(redirectTarget ? nextRoute : resolveDashboardRoute(user))
                   }
                 />
               </div>

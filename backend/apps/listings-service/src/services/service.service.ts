@@ -40,7 +40,10 @@ export class ServicesService {
     if (item.publishedSnapshot) {
       Object.assign(item, item.publishedSnapshot);
     }
-    const team = await this.userProfileClient.hydrateTeam(item.teamMemberIds);
+    const team = await this.userProfileClient.hydrateTeam(
+      item.teamMemberIds,
+      item.userId,
+    );
     return { ...item, team };
   }
 
