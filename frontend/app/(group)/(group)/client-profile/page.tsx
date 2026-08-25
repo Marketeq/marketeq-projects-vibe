@@ -1355,6 +1355,7 @@ function Default() {
   const [project, setProject] = useState<any>({ values: [] })
   const persistValues = (_next: any[]) => {}
   const saveProjectFields = (_fields: any) => {}
+  const [teamExpanded, setTeamExpanded] = React.useState(false)
   const [phoneDialogOpen, setPhoneDialogOpen] = React.useState(false)
   const [phoneValue, setPhoneValue] = React.useState("")
   const [phoneTouched, setPhoneTouched] = React.useState(false)
@@ -1494,6 +1495,19 @@ function Default() {
     )
   }
   const [isTabsListStuck, setIsTabsListStuck] = useState<boolean>(false)
+
+  // The profile's pinned bar takes the top of the viewport, so the secondary
+  // nav stays out of the way for as long as the bar is up, even when the user
+  // scrolls back up. The shell in marketplace-secondary-nav.tsx reads this.
+  useEffect(() => {
+    if (!isTabsListStuck) return
+
+    document.documentElement.dataset.pinnedBar = "active"
+
+    return () => {
+      delete document.documentElement.dataset.pinnedBar
+    }
+  }, [isTabsListStuck])
 
   // Auto-expand state for sections
   const [autoExpandPortfolio, setAutoExpandPortfolio] = useState<boolean>(false)
@@ -2583,13 +2597,24 @@ function Default() {
                           <div className="flex flex-col items-start gap-1">
                             {["Verified Payment Method", "Verified Contact Number"].map(
                               (item) => (
-                                <p
-                                  key={item}
-                                  className="flex h-6 items-center gap-2 text-xs font-semibold text-primary-500"
-                                >
-                                  <CheckVerified02 className="size-[15px] shrink-0" />
-                                  {item}
-                                </p>
+                                <div key={item} className="flex items-center gap-[7px]">
+                                  <p className="flex h-6 items-center gap-2 text-xs font-semibold text-primary-500">
+                                    <CheckVerified02 className="size-[15px] shrink-0" />
+                                    {item}
+                                  </p>
+                                  {isEditMode && item === "Verified Contact Number" && (
+                                    <IconButton
+                                      className="shrink-0 rounded-full text-gray-500"
+                                      size="sm"
+                                      variant="ghost"
+                                      visual="gray"
+                                      aria-label="Edit contact number"
+                                      onClick={() => setPhoneDialogOpen(true)}
+                                    >
+                                      <Edit03 className="size-4" />
+                                    </IconButton>
+                                  )}
+                                </div>
                               )
                             )}
                           </div>
@@ -2643,6 +2668,7 @@ function Default() {
                                 variant="ghost"
                                 visual="gray"
                                 aria-label="Edit website"
+                                onClick={() => setWebsiteDialogOpen(true)}
                               >
                                 <Edit03 className="size-4" />
                               </IconButton>
@@ -2854,7 +2880,7 @@ function Default() {
                         <Switch defaultChecked />
                       </div>
                       <div className="grid w-full grid-cols-3 gap-10">
-                        {Array.from({ length: 6 }).map((_, index) => (
+                        {Array.from({ length: teamExpanded ? 10 : 6 }).map((_, index) => (
                           <div
                             key={index}
                             className="group flex flex-col items-start justify-center gap-2 rounded-[7px] bg-white p-3 transition-colors hover:bg-gray-50"
@@ -2902,8 +2928,9 @@ function Default() {
                         className="text-xs font-semibold text-gray-500"
                         variant="link"
                         visual="gray"
+                        onClick={() => setTeamExpanded((prev) => !prev)}
                       >
-                        See all (10)
+                        {teamExpanded ? "View less" : "See all (10)"}
                       </Button>
                     </Card>
                   </TabsContent>
