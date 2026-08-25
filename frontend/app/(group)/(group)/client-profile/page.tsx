@@ -2857,7 +2857,7 @@ function Default() {
                         {Array.from({ length: 6 }).map((_, index) => (
                           <div
                             key={index}
-                            className="flex flex-col items-start justify-center gap-2 rounded-[7px] bg-white p-3"
+                            className="group flex flex-col items-start justify-center gap-2 rounded-[7px] bg-white p-3 transition-colors hover:bg-gray-50"
                           >
                             <div className="flex w-full items-start gap-2">
                               <Avatar className="size-10 border border-gray-200">
@@ -2869,6 +2869,26 @@ function Default() {
                                 <p className="w-full truncate text-xs font-medium leading-[18px]">
                                   Founder &amp; CEO
                                 </p>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                <IconButton
+                                  className="rounded-full text-gray-500"
+                                  size="sm"
+                                  variant="ghost"
+                                  visual="gray"
+                                  aria-label="Edit team member"
+                                >
+                                  <Edit03 className="size-4" />
+                                </IconButton>
+                                <IconButton
+                                  className="rounded-full text-error-500"
+                                  size="sm"
+                                  variant="ghost"
+                                  visual="error"
+                                  aria-label="Remove team member"
+                                >
+                                  <Trash01 className="size-4" />
+                                </IconButton>
                               </div>
                             </div>
                             <p className="w-full text-xs font-light leading-[18px] text-dark-blue-400">
