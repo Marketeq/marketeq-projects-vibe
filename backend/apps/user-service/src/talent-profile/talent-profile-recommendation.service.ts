@@ -393,17 +393,23 @@ export class TalentProfileRecommendationService {
     const requestedRole = this.normalizeTitle(roleTitle);
     if (!requestedRole) return true;
 
-    return (profile.jobTitles ?? []).some((title) => {
-      const headline =
-        typeof title === "string" ? title : (title.headline ?? "");
-      const normalizedHeadline = this.normalizeTitle(headline);
+    const headlines = (profile.jobTitles ?? [])
+      .map((title) => (typeof title === "string" ? title : (title.headline ?? "")))
+      .map((headline) => this.normalizeTitle(headline))
+      .filter((headline) => headline.length > 0);
 
-      return (
-        normalizedHeadline === requestedRole ||
-        normalizedHeadline.includes(requestedRole) ||
-        requestedRole.includes(normalizedHeadline)
-      );
-    });
+    // A profile with no job title on file carries no signal either way, so the
+    // role filter lets it through rather than disqualifying it outright. Every
+    // other filter here already treats "nothing to compare" as a pass, and
+    // ranking still sorts genuine title matches above these.
+    if (!headlines.length) return true;
+
+    return headlines.some(
+      (headline) =>
+        headline === requestedRole ||
+        headline.includes(requestedRole) ||
+        requestedRole.includes(headline),
+    );
   }
 
   private scheduleMatches(profile: TalentProfile, schedule: string): boolean {
