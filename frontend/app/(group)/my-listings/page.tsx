@@ -339,27 +339,10 @@ export default function MyListingsPage() {
                   </div>
                 ) : viewMode === "grid" ? (
                   <div className="grid grid-cols-4 gap-4 pt-[20px]">
-                    {/* New listing card */}
-                    <article
-                      className="cursor-pointer group"
-                      onClick={() => setShowNewListingDialog(true)}
-                    >
-                      <div className="h-[170px] relative rounded-xl overflow-hidden bg-gray-100 border-2 border-dashed border-gray-300 group-hover:border-primary-400 transition-colors duration-200 flex items-center justify-center">
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="size-10 rounded-full bg-primary-500 group-hover:bg-primary-600 transition-colors duration-200 flex items-center justify-center shadow-sm">
-                            <Plus className="size-5 text-white" />
-                          </div>
-                          <span className="text-xs font-medium text-gray-500 group-hover:text-primary-500 transition-colors duration-200">
-                            New Listing
-                          </span>
-                        </div>
-                      </div>
-                    </article>
-
                     {filteredListings.map((listing) => (
                       <article
                         key={listing.id}
-                        className="group rounded-xl bg-white shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow duration-200"
+                        className="group rounded-xl bg-white shadow-sm border border-gray-200 overflow-hidden"
                       >
                         <div className="h-[170px] relative overflow-hidden bg-gray-100">
                           {listing.mediaUrl ? (

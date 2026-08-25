@@ -883,7 +883,7 @@ function CategorySpotlightCard({
     <NextLink
       href={`/c/${category.slug}`}
       className={cn(
-        "group relative rounded-lg p-5 lg:p-[30px] overflow-hidden flex items-center bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] border border-[#122A4B]/[.15] min-h-[140px] hover:shadow-md transition-shadow",
+        "group relative rounded-lg p-5 lg:p-[30px] overflow-hidden flex items-center bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] border border-[#122A4B]/[.15] min-h-[140px]",
         className
       )}
     >

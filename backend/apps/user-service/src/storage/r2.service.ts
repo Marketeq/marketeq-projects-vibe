@@ -65,7 +65,16 @@ export class R2Service {
     return { key, url };
   }
 
-  async uploadBuffer(
+  /**
+   * Upload a buffer as a PUBLIC, long-lived CDN object and return its public
+   * URL. Added in 8f6d8c47 as a second `uploadBuffer` overload-by-accident,
+   * which made this file stop compiling (TS2393). Kept here under a distinct
+   * name rather than deleted: the capability is real and differs from
+   * uploadBuffer below, which is deliberately private/no-cache because it
+   * backs resume documents served via short-lived presigned URLs. Merging the
+   * two would have silently made private resumes publicly cacheable for a year.
+   */
+  async uploadPublicBuffer(
     key: string,
     buffer: Buffer,
     contentType: string,
@@ -184,15 +193,6 @@ export class R2Service {
       client,
       new GetObjectCommand({ Bucket: bucket, Key: key }),
       { expiresIn: expiresInSeconds },
-    );
-  }
-
-  async deleteObject(key: string): Promise<void> {
-    const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
-    if (!bucket) return;
-    const client = this.getClient();
-    await client.send(
-      new DeleteObjectCommand({ Bucket: bucket, Key: key }),
     );
   }
 

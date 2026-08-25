@@ -35,6 +35,9 @@ export class Certification {
   @Column({ nullable: true })
   credentialUrl?: string;
 
+  @Column({ nullable: true })
+  issuerLogoUrl?: string;
+
   @Column({ type: 'text', array: true, nullable: true })
   skills?: string[];
 

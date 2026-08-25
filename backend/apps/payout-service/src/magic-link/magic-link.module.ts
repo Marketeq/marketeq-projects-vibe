@@ -8,13 +8,14 @@ import { MagicLinkVerification } from '../entities/magic-link-verification.entit
 import { PayoutRequest } from '../entities/payout-request.entity';
 import { DepositMethod } from '../entities/deposit-method.entity';
 import { PublishersModule } from '../publishers/publishers.module';
+import { BrevoMailService } from '../notifications/brevo-mail.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([MagicLinkToken, MagicLinkVerification, PayoutRequest, DepositMethod]),
     PublishersModule,
   ],
-  providers: [MagicLinkService],
+  providers: [MagicLinkService, BrevoMailService],
   exports: [MagicLinkService],
 })
 export class MagicLinkModule {}

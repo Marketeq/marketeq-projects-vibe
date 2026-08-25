@@ -57,6 +57,10 @@ Marketeq is a freelance marketplace platform (similar to Upwork/Fiverr) built wi
 
 ### Backend (run from `backend/`)
 ```bash
+# IMPORTANT: RabbitMQ must be running BEFORE starting services.
+# Without it, services show "online" in PM2 but fail on every request.
+lsof -i :5672 || rabbitmq-server -detached  # ensure RabbitMQ is up first
+
 # Start all services via PM2 (local dev)
 npm run dev
 
@@ -64,6 +68,13 @@ npm run dev
 npm run dev:stop
 npm run dev:status
 npm run dev:logs
+
+# MANDATORY: After starting services, health-check the actual endpoints.
+# PM2 "online" does NOT mean the service is healthy. Always verify:
+curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/health  # api-gateway
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/health  # auth-service
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3002/health  # user-service
+# All must return 200. If any returns 000, check RabbitMQ and PM2 error logs.
 
 # Build all services (run from backend/ root — npm run build:all is broken on this monorepo)
 for svc in apps/*/src/main.ts; do npx nest build "$(echo $svc | cut -d'/' -f2)"; done
@@ -215,6 +226,33 @@ CMS events use a fan-out exchange (`cms.events`); each consumer binds its own du
 - **Storage**: Cloudflare R2
 - **Auth**: JWT + Passport (Google, LinkedIn OAuth); cookies `access_token` / `refresh_token` / `session_id`
 - **Deployment**: Render (backend), Vercel (frontend)
+
+## Frontend Design System (ABSOLUTE LAW — ZERO EXCEPTIONS)
+
+**`frontend/COMPONENTS.md` is the ONLY source of allowed UI components. Every component in it comes from Storybook. Storybook is the single source of truth for all UI.**
+
+### What you MUST do:
+- **READ `frontend/COMPONENTS.md` before writing ANY frontend UI** — every time, no shortcuts
+- **ONLY use components listed in `frontend/COMPONENTS.md`** — base UI, shared modules, and page layouts
+- **Import components exactly as they are** — from `@/components/ui`, `@/components/*.tsx`, or `@/stories/*.stories.tsx`
+- **Match Storybook page layouts exactly** when building pages — Storybook stories are the layout source of truth
+- **Run `npm run storybook`** to see how components look and behave before using them
+
+### What you MUST NEVER do:
+- **NEVER create custom UI components** — no new component files, no inline UI component functions, no wrappers, no abstractions
+- **NEVER modify Storybook components** — `frontend/components/ui/`, `frontend/components/*.tsx`, and `frontend/stories/` are READ-ONLY. You import as-is, never edit
+- **NEVER touch the active project task screen** — `frontend/app/(group)/active-project/[id]/page.tsx` is FROZEN (locked 2026-08-22). This covers the task tables, pinned section bars and column headers, the bulk-select bar, the create/edit task dialog, the checklist, the attachments views, and the components defined in that file (`AssigneePicker`, `TaskStatusMenu`, `TaskDueDatePicker`, `SortableTaskRow`, `StickySectionBar`). No refactors, no cleanup, no restyling, no spacing tweaks. Every value in it was set deliberately, **including every transition and animation** (section collapse, folder row slide, row reveal, drag states, toast/tooltip timing) — do not retime or remove them. The ONLY permitted change is backend wiring: replacing seeded data with API calls and hooking up no-op handlers, without altering any class name, element, or transition. Anything else requires explicit @CTorres9800 approval
+- **NEVER use raw HTML elements** (`<input>`, `<textarea>`, `<select>`, `<button>`, `<label>`, `<dialog>`) when a design system component exists
+- **NEVER use arbitrary Tailwind values** (e.g., `text-[13.5px]`) when a standard Tailwind class exists
+- **NEVER build UI that is not composed from components in `frontend/COMPONENTS.md`**
+
+### If a component you need does not exist in COMPONENTS.md:
+1. Stop. Do not build it.
+2. Ask the user what component to use.
+3. The user will either point you to an existing component you missed, or approve a new addition to Storybook (which is their decision, not yours).
+
+### Violation = Automatic Rejection
+Any code that creates custom UI components, modifies Storybook source, or uses elements not in COMPONENTS.md is automatically rejected.
 
 ## Code Standards (non-negotiable)
 - TypeScript strict mode everywhere

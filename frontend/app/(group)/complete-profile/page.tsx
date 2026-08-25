@@ -876,6 +876,10 @@ export const StatusDialog = ({
           variant="unanimated"
           className="shadow-[0px_20px_24px_-4px_rgba(16,24,40,.08)] max-w-[451px] bottom-5 right-5 duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-bottom-5 data-[state=open]:slide-in-from-bottom-5"
         >
+          <ScrollArea
+            viewportStyle={{ maxHeight: "calc(100vh - 88px)" }}
+            scrollBar={<ScrollBar className="w-4 p-1" />}
+          >
           <div className="border border-gray-200 overflow-hidden rounded-[10px]">
             <div className="p-6 bg-white border-gray-200 flex items-center gap-x-[18px] border-b">
               <div className="flex-auto space-y-2">
@@ -984,6 +988,7 @@ export const StatusDialog = ({
               )}
             </div>
           </div>
+          </ScrollArea>
 
           <div className="flex items-center justify-end mt-3">
             <DialogClose className="group text-gray-400 transition duration-300 hover:opacity-50 focus-visible:outline-none size-11 shrink-0 rounded-full bg-white border border-gray-300 hover:border-gray-500 hover:text-gray-950 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] inline-flex items-center justify-center">

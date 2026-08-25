@@ -18,6 +18,9 @@ import {
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
 import { InviteWindow, useInviteWindowStore } from "@/components/invite-window"
+import { ListingCard } from "@/components/listing-card"
+import { projectDetailsUrl } from "@/src/lib/listing-urls"
+import { ProjectDiscoverySections } from "@/components/project-discovery-sections"
 import { LightboxVideoPlayer } from "./lightbox-video-player"
 import { countryOf } from "@/lib/geo"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
@@ -691,6 +694,43 @@ const formatChatTime = (iso?: string) =>
       })
     : ""
 
+const US_STATE_CODES = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL",
+  "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT",
+  "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
+  "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC",
+])
+const COUNTRY_LABELS: Record<string, string> = {
+  "united states": "United States",
+  usa: "United States",
+  "united kingdom": "United Kingdom",
+  uk: "United Kingdom",
+  canada: "Canada",
+  vietnam: "Vietnam",
+  india: "India",
+  pakistan: "Pakistan",
+  australia: "Australia",
+  germany: "Germany",
+  france: "France",
+  spain: "Spain",
+  netherlands: "Netherlands",
+  brazil: "Brazil",
+}
+const formatMemberLocation = (loc?: string | null): string | null => {
+  if (!loc) return null
+  const raw = String(loc).trim()
+  if (!raw) return null
+  const stateMatch = raw.match(/,\s*([A-Za-z]{2})\.?$/)
+  if (stateMatch && US_STATE_CODES.has(stateMatch[1].toUpperCase())) {
+    return "United States"
+  }
+  const lower = raw.toLowerCase()
+  for (const [name, label] of Object.entries(COUNTRY_LABELS)) {
+    if (lower === name || lower.includes(name)) return label
+  }
+  return raw
+}
+
 const toVideoThumb = (raw?: string | null): string => {
   if (!raw) return ""
   const yt = raw.match(
@@ -835,6 +875,30 @@ const Shimmer = ({ className }: { className?: string }) => (
     <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
   </div>
 )
+
+const listingCollaborators = (item: any): string[] => {
+  const candidates =
+    item?.teamAvatars ??
+    item?.teamMembers ??
+    item?.collaborators ??
+    item?.assignedUsers ??
+    item?.providers ??
+    []
+  if (!Array.isArray(candidates)) return []
+  return candidates
+    .map((member: any) =>
+      typeof member === "string"
+        ? member
+        : member?.avatarUrl ??
+          member?.avatar_url ??
+          member?.avatar ??
+          member?.photo ??
+          member?.image ??
+          member?.profileImageUrl
+    )
+    .filter((avatarUrl: any): avatarUrl is string => Boolean(avatarUrl))
+    .slice(0, 4)
+}
 
 export default function ProjectDetails({
   isPreview = false,
@@ -994,16 +1058,18 @@ export default function ProjectDetails({
         isOnline: true,
       })
     }
-    return base
+    const isOwnerMember = (m: any) =>
+      m?.role === "owner" ||
+      (!!ownerId && String(m?.userId ?? m?.id ?? "") === ownerId)
+    return [...base].sort(
+      (a, b) => (isOwnerMember(a) ? 0 : 1) - (isOwnerMember(b) ? 0 : 1)
+    )
   }, [project, user, ownerProfile, projectOwnerId])
 
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [isFavorited, setIsFavorited] = React.useState(false)
   const [selectedPeriod, setSelectedPeriod] = React.useState("week")
   const [activeAnchor, setActiveAnchor] = React.useState("Description")
-  const [relatedSearches, setRelatedSearches] = React.useState<string[]>([])
-  const [recommendedProjects, setRecommendedProjects] = React.useState<any[]>([])
-  const [recentlyViewed, setRecentlyViewed] = React.useState<any[]>([])
 
   // --- Sidebar pricing (docs §01, §14) ---
   const sidebarPricing = React.useMemo(() => {
@@ -1124,6 +1190,10 @@ export default function ProjectDetails({
   }, [project?.id])
 
   const handleFavoriteToggle = async (pressed: boolean) => {
+    if (!user?.id) {
+      openAuthModal("sign-in")
+      return
+    }
     setIsFavorited(pressed)
     const itemId = String(project.id)
     const type = project.listingType === "service" ? "service" : "project"
@@ -1401,35 +1471,15 @@ export default function ProjectDetails({
     fetchProject()
   }, [params.slug, router])
 
-  // Fetch related data + track view when project loads
+  // Track view when project loads — skip in owner preview
   React.useEffect(() => {
     if (!project?.id || isPreview) return
     const apiBase = getPublicApiUrl() || "http://localhost:4000"
-
-    // Related searches from project metadata
-    fetch(`${apiBase}/v1/projects/${project.id}/related-searches`)
-      .then((r) => r.ok ? r.json() : [])
-      .then(setRelatedSearches)
-      .catch(() => {})
-
-    // Recommended projects (JWT required — best effort)
-    fetch(`${apiBase}/v1/recently-viewed/recommended`, { credentials: "include" })
-      .then((r) => r.ok ? r.json() : [])
-      .then(setRecommendedProjects)
-      .catch(() => {})
-
-    // Recently viewed (JWT required — best effort)
-    fetch(`${apiBase}/v1/recently-viewed`, { credentials: "include" })
-      .then((r) => r.ok ? r.json() : [])
-      .then(setRecentlyViewed)
-      .catch(() => {})
-
-    // Track this view (fire and forget)
     fetch(`${apiBase}/v1/recently-viewed/${project.id}`, {
       method: "POST",
       credentials: "include",
     }).catch(() => {})
-  }, [project?.id])
+  }, [project?.id, isPreview])
 
   // Scroll to top when page loads
   React.useEffect(() => {
@@ -2371,7 +2421,7 @@ export default function ProjectDetails({
                             const allLocations = Array.from(
                               new Set(
                                 members
-                                  .map((m) => m.location)
+                                  .map((m) => formatMemberLocation(m.location))
                                   .filter((l): l is string => !!l)
                               )
                             )
@@ -2537,80 +2587,85 @@ export default function ProjectDetails({
                           Questions
                         </h1>
 
-                        {onlineTeam.length > 0 && (
-                        <div className="absolute right-12 top-11 pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
-                          {onlineTeam.length === 1 ? (
-                            <>
-                              <Avatar size="md">
-                                <AvatarImage
-                                  src={onlineTeam[0].avatarUrl || "/man.jpg"}
-                                  alt={onlineTeam[0].firstName || "Team member"}
-                                />
-                                <AvatarFallback>
-                                  {(onlineTeam[0].firstName ?? "T").charAt(0)}
-                                </AvatarFallback>
-                              </Avatar>
+                        {!isOwnerViewing && (
+                        <div className="relative mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
+                          {!isPreview && onlineTeam.length > 0 && (
+                          <div
+                            style={{
+                              top: onlineTeam.length === 1 ? -20 : -52,
+                              right: 24,
+                            }}
+                            className="absolute pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]"
+                          >
+                            {onlineTeam.length === 1 ? (
+                              <>
+                                <Avatar size="md">
+                                  <AvatarImage
+                                    src={onlineTeam[0].avatarUrl || "/man.jpg"}
+                                    alt={onlineTeam[0].firstName || "Team member"}
+                                  />
+                                  <AvatarFallback>
+                                    {(onlineTeam[0].firstName ?? "T").charAt(0)}
+                                  </AvatarFallback>
+                                </Avatar>
 
-                              <div className="flex flex-col items-start gap-y-2">
-                                <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
-                                  {onlineTeam[0].firstName ||
-                                    onlineTeam[0].username}{" "}
-                                  {onlineTeam[0].username && (
-                                    <span className="text-xs leading-none text-extralight text-gray-500">
-                                      @{onlineTeam[0].username}
+                                <div className="flex flex-col items-start gap-y-2">
+                                  <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                    {onlineTeam[0].firstName ||
+                                      onlineTeam[0].username}{" "}
+                                    {onlineTeam[0].username && (
+                                      <span className="text-xs leading-none text-extralight text-gray-500">
+                                        @{onlineTeam[0].username}
+                                      </span>
+                                    )}
+                                  </span>
+
+                                  <div className="flex items-center gap-x-1">
+                                    <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                                    <span className="text-xs leading-none text-dark-blue-400">
+                                      Online
                                     </span>
-                                  )}
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex flex-col items-center gap-y-2">
+                                <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                  Live Chat
                                 </span>
+
+                                <AvatarGroup size="sm" max={3} excess>
+                                  {onlineTeam.map((m: any, i: number) => (
+                                    <Avatar
+                                      key={m.username ?? i}
+                                      className="border-2 border-white hover:ring-0 active:ring-0"
+                                      size="sm"
+                                    >
+                                      {m.avatarUrl ? (
+                                        <AvatarImage
+                                          src={m.avatarUrl}
+                                          alt={m.firstName}
+                                        />
+                                      ) : null}
+                                      <AvatarFallback>
+                                        {(m.firstName || "?")
+                                          .charAt(0)
+                                          .toUpperCase()}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                  ))}
+                                </AvatarGroup>
 
                                 <div className="flex items-center gap-x-1">
                                   <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
                                   <span className="text-xs leading-none text-dark-blue-400">
-                                    Online
+                                    {onlineTeam.length} team members online
                                   </span>
                                 </div>
                               </div>
-                            </>
-                          ) : (
-                            <div className="flex flex-col items-center gap-y-2">
-                              <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
-                                Live Chat
-                              </span>
-
-                              <AvatarGroup size="sm" max={3} excess>
-                                {onlineTeam.map((m: any, i: number) => (
-                                  <Avatar
-                                    key={m.username ?? i}
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
-                                    size="sm"
-                                  >
-                                    {m.avatarUrl ? (
-                                      <AvatarImage
-                                        src={m.avatarUrl}
-                                        alt={m.firstName}
-                                      />
-                                    ) : null}
-                                    <AvatarFallback>
-                                      {(m.firstName || "?")
-                                        .charAt(0)
-                                        .toUpperCase()}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                ))}
-                              </AvatarGroup>
-
-                              <div className="flex items-center gap-x-1">
-                                <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
-                                <span className="text-xs leading-none text-dark-blue-400">
-                                  {onlineTeam.length} team members online
-                                </span>
-                              </div>
-                            </div>
+                            )}
+                          </div>
                           )}
-                        </div>
-                        )}
-
-                        {!isOwnerViewing && (
-                        <div className="mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
                           <Label
                             className="font-semibold inline-flex items-center gap-x-2"
                             size="md"
@@ -5359,7 +5414,7 @@ export default function ProjectDetails({
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <AvatarGroup size="sm" excess>
+                        <AvatarGroup size="sm" excess reverse={false}>
                           {currentTeam.map((m: any, i: number) => (
                             <Avatar
                               key={m.username ?? i}
@@ -5419,7 +5474,7 @@ export default function ProjectDetails({
                                       </span>
                                     </div>
                                     <span className="text-[10px] font-light text-white">
-                                      {m.location ||
+                                      {formatMemberLocation(m.location) ||
                                         m.skills?.[0] ||
                                         "Team Member"}
                                     </span>
@@ -5568,7 +5623,12 @@ export default function ProjectDetails({
             <InviteWindow />
             <div className="h-[50px] rounded-b-lg bg-gray-50 flex items-center justify-evenly">
               {project.reportButtonEnabled !== false && (
-                <div className="inline-flex items-center gap-x-2">
+                <div
+                  className="inline-flex items-center gap-x-2 cursor-pointer"
+                  onClick={() => {
+                    if (!user?.id) openAuthModal("sign-in")
+                  }}
+                >
                   <Flag className="size-[15px] text-gray-500" />
                   <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
                     Report
@@ -5664,422 +5724,7 @@ export default function ProjectDetails({
 
       <div className="pb-[100px]" />
 
-      {/* Similar Projects — full-width section */}
-      <div className="-mx-5 px-5 md:-mx-10 md:px-10 lg:-mx-[100px] lg:px-[100px] pt-[100px] pb-[50px] bg-gray-50 border-t border-gray-200">
-        <div>
-          <div className="space-y-6">
-            <div className="flex items-end justify-between">
-              <div className="space-y-2">
-                <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
-                  Similar Projects
-                </h1>
-
-                <p className="text-lg font-light text-dark-blue-400 leading-none">
-                  Users who have viewed this project have also expressed
-                  interest in these as well
-                </p>
-              </div>
-
-              <Button
-                variant="link"
-                visual="gray"
-                size="lg"
-                className="underline"
-              >
-                View More
-              </Button>
-            </div>
-
-            {(project?.similarProjects ?? []).length > 0 ? (
-            <div className="gap-5 grid grid-cols-4">
-              {(project?.similarProjects ?? []).slice(0, 4).map((sp: any) => (
-                <article
-                  key={sp.id}
-                  className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
-                >
-                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                    <NextLink href={`/project-details/${sp.slug}`}>
-                      <NextImage
-                        className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                        src={sp.thumbnail || "/dashboard.png"}
-                        alt={sp.title}
-                        fill
-                        sizes="33vw"
-                      />
-                    </NextLink>
-                  </div>
-
-                  <div className="mt-3 flex items-start gap-x-3">
-                    <NextLink
-                      href={`/project-details/${sp.slug}`}
-                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                    >
-                      {sp.title}
-                    </NextLink>
-
-                    {(sp.rating > 0 || sp.averageRating > 0) && (
-                    <div className="inline-flex items-center gap-x-1">
-                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                        {sp.rating || sp.averageRating} <span className="font-extralight">({sp.reviewCount ?? 0})</span>
-                      </span>
-                    </div>
-                    )}
-                  </div>
-
-                  {sp.shortDescription && (
-                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                    {sp.shortDescription}
-                  </p>
-                  )}
-
-                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                    {sp.duration && (
-                    <div className="flex items-center gap-x-[6.4px]">
-                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-
-                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                        Starting from {sp.duration}
-                      </span>
-                    </div>
-                    )}
-
-                    {sp.budget != null && (
-                    <div className="flex items-center gap-x-[6.4px]">
-                      <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                        ${Number(sp.budget).toLocaleString()} budget
-                      </span>
-                    </div>
-                    )}
-                  </div>
-
-                  <div className="mt-5 flex items-end justify-end">
-                    <FavoriteRoot>
-                      {({ pressed }) => (
-                        <TooltipProvider delayDuration={75}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="inline-block">
-                                <Favorite />
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {pressed ? (
-                                <span className="inline-flex items-center gap-x-1">
-                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                  Saved
-                                </span>
-                              ) : (
-                                "Save to favorites"
-                              )}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </FavoriteRoot>
-                  </div>
-                </article>
-              ))}
-            </div>
-            ) : (
-              <p className="text-sm text-gray-500 py-4">No similar projects found.</p>
-            )}
-          </div>
-
-          {/* Recommended Projects */}
-          {recommendedProjects.length > 0 && (
-          <div className="space-y-6 mt-[50px]">
-            <div className="flex items-end justify-between">
-              <div className="space-y-2">
-                <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
-                  Recommended Projects
-                </h1>
-
-                <p className="text-lg font-light text-dark-blue-400 leading-none">
-                  These projects are recommended based on your recent searches
-                  and browsing history
-                </p>
-              </div>
-
-              <Button
-                variant="link"
-                visual="gray"
-                size="lg"
-                className="underline"
-              >
-                View More
-              </Button>
-            </div>
-
-            <div className="gap-5 grid grid-cols-4">
-              {recommendedProjects.slice(0, 4).map((rp: any) => (
-                <article
-                  key={rp.id}
-                  className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
-                >
-                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                    <NextLink href={`/project-details/${rp.slug}`}>
-                      <NextImage
-                        className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                        src={rp.thumbnail || "/dashboard.png"}
-                        alt={rp.title}
-                        fill
-                        sizes="33vw"
-                      />
-                    </NextLink>
-                  </div>
-
-                  <div className="mt-3 flex items-start gap-x-3">
-                    <NextLink
-                      href={`/project-details/${rp.slug}`}
-                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                    >
-                      {rp.title}
-                    </NextLink>
-
-                    {(rp.rating > 0 || rp.averageRating > 0) && (
-                    <div className="inline-flex items-center gap-x-1">
-                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                        {rp.rating || rp.averageRating} <span className="font-extralight">({rp.reviewCount ?? 0})</span>
-                      </span>
-                    </div>
-                    )}
-                  </div>
-
-                  {rp.shortDescription && (
-                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                    {rp.shortDescription}
-                  </p>
-                  )}
-
-                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                    {rp.duration && (
-                    <div className="flex items-center gap-x-[6.4px]">
-                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-
-                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                        Starting from {rp.duration}
-                      </span>
-                    </div>
-                    )}
-
-                    {rp.budget != null && (
-                    <div className="flex items-center gap-x-[6.4px]">
-                      <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                        ${Number(rp.budget).toLocaleString()} budget
-                      </span>
-                    </div>
-                    )}
-                  </div>
-
-                  <div className="mt-5 flex items-end justify-end">
-                    <FavoriteRoot>
-                      {({ pressed }) => (
-                        <TooltipProvider delayDuration={75}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="inline-block">
-                                <Favorite />
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {pressed ? (
-                                <span className="inline-flex items-center gap-x-1">
-                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                  Saved
-                                </span>
-                              ) : (
-                                "Save to favorites"
-                              )}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </FavoriteRoot>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-          )}
-
-          {/* More Ways to Explore */}
-          <div className="mt-[50px]">
-            <h1 className="text-[28px] font-bold leading-none text-dark-blue-400">
-              More Ways to Explore
-            </h1>
-
-            <Tabs className="mt-5" defaultValue="Related Categories">
-              <RadixTabs.List className="flex items-center gap-x-3">
-                <TabsTrigger
-                  variant="unstyled"
-                  className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                  value="Related Categories"
-                  showUnderline={false}
-                >
-                  Related Categories
-                </TabsTrigger>
-                <TabsTrigger
-                  variant="unstyled"
-                  className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                  value="Related Skills"
-                  showUnderline={false}
-                >
-                  Related Skills
-                </TabsTrigger>
-              </RadixTabs.List>
-
-              <TabsContent value="Related Categories">
-                <div className="mt-5 py-5 flex items-start justify-between">
-                  {(() => {
-                    const cats = project?.relatedCategories ?? []
-                    const allCats = [...(project?.categories ?? []), ...cats]
-                    const unique = Array.from(new Set(allCats)).filter(Boolean)
-                    // Split into 4 columns
-                    const colSize = Math.max(Math.ceil(unique.length / 4), 2)
-                    const columns = [0, 1, 2, 3].map(i => unique.slice(i * colSize, (i + 1) * colSize))
-                    const headers = [
-                      project?.category ?? "Categories",
-                      ...(project?.subcategories?.slice(0, 3) ?? ["Subcategories", "Related", "More"])
-                    ]
-                    return columns.map((col, ci) => (
-                      <div key={ci} className="flex flex-col gap-y-3 items-start">
-                        <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                          {headers[ci] ?? "Categories"}
-                        </h2>
-                        {col.map((cat: string, i: number) => (
-                          <Button key={i} variant="link" className="text-dark-blue-400">
-                            {cat}
-                          </Button>
-                        ))}
-                      </div>
-                    ))
-                  })()}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="Related Skills">
-                <div className="mt-5 py-5 flex items-start justify-between">
-                  {(() => {
-                    const skills = project?.relatedSkills ?? []
-                    const allSkills = [
-                      ...(project?.skills ?? []),
-                      ...(project?.programmingLanguages ?? []),
-                      ...(project?.developmentTech ?? []),
-                      ...skills,
-                    ]
-                    const unique = Array.from(new Set(allSkills)).filter(Boolean)
-                    const colSize = Math.max(Math.ceil(unique.length / 4), 2)
-                    const columns = [0, 1, 2, 3].map(i => unique.slice(i * colSize, (i + 1) * colSize))
-                    const headers = ["Skills", "Technologies", "Tools", "More"]
-                    return columns.map((col, ci) => (
-                      <div key={ci} className="flex flex-col gap-y-3 items-start">
-                        <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                          {headers[ci]}
-                        </h2>
-                        {col.map((skill: string, i: number) => (
-                          <Button key={i} variant="link" className="text-dark-blue-400">
-                            {skill}
-                          </Button>
-                        ))}
-                      </div>
-                    ))
-                  })()}
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
-
-          {/* Related Searches */}
-          <div className="mt-[50px]">
-            <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-              Related Searches
-            </h1>
-
-            <div className="mt-6 flex flex-wrap gap-3">
-              {relatedSearches.map((label, i) => (
-                <Badge
-                  key={i}
-                  className="h-auto py-[4.6px] px-[13.81px] border-[1.5px] border-gray-300"
-                  visual="gray"
-                  size="lg"
-                >
-                  {label}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Recently Viewed */}
-        {recentlyViewed.length > 0 && (
-        <div className="max-w-[1240px] mx-auto py-[35px]">
-          <div className="flex items-center justify-between">
-            <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
-              Recently Viewed
-            </h1>
-
-            <Button variant="link" visual="gray">
-              View All
-            </Button>
-          </div>
-
-          <div className="mt-[29px] grid grid-cols-3 gap-x-[42px] gap-y-10">
-            {recentlyViewed.map((rv: any) => (
-              <NextLink key={rv.id} href={`/project-details/${rv.slug}`}>
-                <article className="flex items-start gap-x-6">
-                  <div className="relative size-[100px] overflow-hidden rounded-lg shrink-0">
-                    <NextImage
-                      className="object-cover"
-                      src={rv.thumbnail || "/dashboard.png"}
-                      alt={rv.title}
-                      sizes="25vw"
-                      fill
-                    />
-                  </div>
-
-                  <div className="pr-[45.54px]">
-                    <h1 className="cursor-pointer hover:underline transition duration-300 text-base font-bold leading-none line-clamp-2 text-dark-blue-400">
-                      {rv.title}
-                    </h1>
-
-                    {rv.shortDescription && (
-                    <p className="mt-2 text-sm font-light text-dark-blue-400 line-clamp-2">
-                      {rv.shortDescription}
-                    </p>
-                    )}
-
-                    <div className="mt-3 flex items-center gap-x-3">
-                      {rv.budget != null && (
-                      <span className="text-sm font-medium leading-none text-dark-blue-400">
-                        Starting at ${Number(rv.budget).toLocaleString()}
-                      </span>
-                      )}
-
-                      {rv.budget != null && rv.duration && (
-                      <span className="inline-block shrink-0 rounded-full size-1 bg-gray-300" />
-                      )}
-
-                      {rv.duration && (
-                      <span className="text-sm font-medium leading-none text-dark-blue-400">
-                        {rv.duration}
-                      </span>
-                      )}
-                    </div>
-                  </div>
-                </article>
-              </NextLink>
-            ))}
-          </div>
-        </div>
-        )}
-
-      </div>
+      <ProjectDiscoverySections project={project} />
 
       {/* Ready to Work CTA — only for unauthenticated users */}
       {!user && (

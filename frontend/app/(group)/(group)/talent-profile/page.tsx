@@ -8,7 +8,7 @@ import React, {
   useRef,
   useState,
 } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
 import { ClientAPI } from "@/service/http/client"
@@ -691,9 +691,10 @@ export default function TalentProfilePage() {
 }
 
 function Default() {
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading, openAuthModal, setPendingRedirect } = useAuth()
   const { toggle: openInviteWindow } = useInviteWindowStore()
   const router = useRouter()
+  const pathname = usePathname()
   const handleShareProfile = () => {
     const base =
       typeof window !== "undefined" ? window.location.origin : ""
@@ -704,6 +705,38 @@ function Default() {
   }
   const searchParams = useSearchParams()
   const usernameParam = searchParams.get("username")
+  // Re-applying the signed-out hire prompt on top of dev-main's
+  // canHire-free restructure: the Hire Me button renders for everyone now
+  // (no gate to re-add — that removal was deliberate), but a signed-out
+  // click must open the sign-in modal instead of the Hire Me modal itself.
+  // event.preventDefault() stops Radix's DialogTrigger — HireMeButton wraps
+  // its trigger Button in <DialogTrigger asChild>, which composes the
+  // child's own onClick first and only opens if the event wasn't
+  // defaultPrevented. pendingRedirect carries the query string (not just
+  // the bare pathname AuthenticatedRoute.tsx uses) so sign-in returns to
+  // this exact profile, matching auth-modal.tsx's router.push(pendingRedirect).
+  const handleHireButtonClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    // isLoading defaults true until /user/me resolves — same race
+    // my-listings/[slug]/page.tsx already guards with `!isAuthLoading`.
+    // dev-main removed this page's own render-time gate on purpose, so
+    // there's no "wait for auth" state to fall back on except this
+    // handler. preventDefault here rather than falling through: a
+    // signed-in user's click during this window is a one-time no-op that
+    // works normally a moment later once isLoading resolves; letting the
+    // click through instead would show the real Hire Me flow to a
+    // visitor who may turn out to be signed out, discovered only after
+    // they've filled in a rate and duration — a worse failure than one
+    // inert click. Do not "simplify" this into falling through.
+    if (isAuthLoading) {
+      event.preventDefault()
+      return
+    }
+    if (user?.id) return
+    event.preventDefault()
+    const query = searchParams.toString()
+    setPendingRedirect(`${pathname}${query ? `?${query}` : ""}`)
+    openAuthModal("sign-in")
+  }
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(true)
   const [showCompleteProfile, setShowCompleteProfile] = useState(false)
@@ -1166,6 +1199,19 @@ function Default() {
   const tabsListRef = useRef<HTMLDivElement>(null)
   const [isCardStuck, setIsCardStuck] = useState<boolean>(false)
   const [isTabsListStuck, setIsTabsListStuck] = useState<boolean>(false)
+
+  // The profile's pinned bar takes the top of the viewport, so the secondary
+  // nav stays out of the way for as long as the bar is up, even when the user
+  // scrolls back up. The shell in marketplace-secondary-nav.tsx reads this.
+  useEffect(() => {
+    if (!isTabsListStuck) return
+
+    document.documentElement.dataset.pinnedBar = "active"
+
+    return () => {
+      delete document.documentElement.dataset.pinnedBar
+    }
+  }, [isTabsListStuck])
 
   // Auto-expand state for sections
   const [autoExpandPortfolio, setAutoExpandPortfolio] = useState<boolean>(false)
@@ -1691,7 +1737,10 @@ function Default() {
                           </>
                         ) : (
                           <>
-                            <HireMeButton profile={profile} />
+                            <HireMeButton
+                              profile={profile}
+                              buttonProps={{ onClick: handleHireButtonClick }}
+                            />
 
                             <SaveTalentButton userId={profile?.id} />
                           </>
@@ -1998,7 +2047,10 @@ function Default() {
                       </>
                     ) : (
                       <>
-                        <HireMeButton profile={profile} />
+                        <HireMeButton
+                          profile={profile}
+                          buttonProps={{ onClick: handleHireButtonClick }}
+                        />
 
                         <SaveTalentButton userId={profile?.id} />
                       </>
@@ -2953,7 +3005,10 @@ function Default() {
                                                     )}
                                                 </div>
                                                 <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
-                                                  {exp.company}
+                                                  {exp.company
+                                                    ? exp.company.charAt(0).toUpperCase() +
+                                                      exp.company.slice(1)
+                                                    : ""}
                                                 </p>
                                                 <div className="mt-1.5 inline-flex items-center gap-x-2">
                                                   <span className="text-xs leading-none text-dark-blue-400">
