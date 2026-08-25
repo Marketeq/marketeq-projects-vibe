@@ -2127,7 +2127,7 @@ function Default() {
             {/* Back to Listings — top left, above the sidebar and content */}
             {isClientProfile && (
               <Button
-                className="gap-2 pt-6 text-sm font-semibold text-dark-blue-400 hover:no-underline"
+                className="gap-2 pt-6 text-sm font-semibold text-dark-blue-400"
                 variant="link"
                 visual="gray"
                 leftIcon={<ArrowLeft className="size-4" />}
