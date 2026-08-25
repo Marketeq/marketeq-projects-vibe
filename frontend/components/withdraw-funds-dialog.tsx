@@ -23,7 +23,7 @@ import {
   IconButton, Input, RadioGroup, RadioGroupItem,
 } from "@/components/ui"
 import { PayoneerDefault } from "@blend-metrics/icons/payment-methods"
-import { PaypalIcon, CryptoProviderIcon } from "@/components/transactions-comps"
+import { PaypalIcon, CryptoProviderIcon, formatMethodOptionLabel } from "@/components/transactions-comps"
 import { getBalance, type BalanceResponse } from "@/service/http/earnings"
 import { getPublicAuthUrl, getPublicApiUrl } from "@/lib/runtime-urls"
 
@@ -748,7 +748,7 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
                   ) : (
                     <RadioGroup value={methodId ?? undefined} onValueChange={setMethodId} className="space-y-3">
                       {methods.map((m) => {
-                        const label = m.nickname || m.displayLabel || m.methodType
+                        const label = formatMethodOptionLabel(m)
                         return (
                           <label
                             key={m.id}
@@ -789,7 +789,7 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
                   />
                   <SummaryTile
                     icon={<Bank className="size-5" />}
-                    value={method ? (method.nickname || method.displayLabel || method.methodType) : "—"}
+                    value={method ? formatMethodOptionLabel(method) : "—"}
                     label="Deposit Account"
                   />
                   <SummaryTile
