@@ -419,21 +419,13 @@ function InviteTalentShellFooter({
           ) : (
             <>
               <span>You&apos;re out of invites.</span>
-              <button
-                type="button"
-                className="font-semibold text-primary-500"
-                onClick={onBuyMore}
-              >
+              <Button type="button" variant="link" onClick={onBuyMore}>
                 Buy more
-              </button>
+              </Button>
               <span>for one-time use, or</span>
-              <button
-                type="button"
-                className="font-semibold text-primary-500"
-                onClick={onUpgradePlan}
-              >
+              <Button type="button" variant="link" onClick={onUpgradePlan}>
                 Upgrade your plan
-              </button>
+              </Button>
               <span>for ongoing invites.</span>
             </>
           )}
@@ -1354,12 +1346,9 @@ export function InviteTalentFlow({
                 </span>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className="font-semibold text-primary-500 hover:underline"
-                    >
+                    <Button type="button" variant="link">
                       How it works?
-                    </button>
+                    </Button>
                   </PopoverTrigger>
                   <PopoverContent className="isolate z-[100] w-[340px] rounded-[8px] border-gray-200 bg-white p-4 text-[13px] leading-5 text-gray-500 shadow-[0px_24px_48px_-12px_rgba(16,24,40,.18)]">
                     <h2 className="text-[14px] font-semibold leading-none text-dark-blue-400">
@@ -1431,14 +1420,16 @@ export function InviteTalentFlow({
                         <PopoverContent className="isolate z-[100] w-[180px] rounded-[8px] border-gray-200 bg-white p-2 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
                           <div className="space-y-1">
                             {roleOptions.map((role) => (
-                              <button
+                              <Button
                                 key={role.id}
                                 type="button"
-                                className="flex w-full rounded-[6px] px-2 py-2 text-left text-[14px] font-medium text-dark-blue-400 hover:bg-gray-50"
+                                variant="ghost"
+                                visual="gray"
+                                className="h-auto w-full justify-start rounded-[6px] px-2 py-2 text-left text-[14px] font-medium text-dark-blue-400 hover:bg-gray-50"
                                 onClick={() => handleRoleChange(role)}
                               >
                                 {role.label}
-                              </button>
+                              </Button>
                             ))}
                           </div>
                         </PopoverContent>
@@ -1981,13 +1972,13 @@ export function InviteTalentFlow({
                   </Button>
                   <p className="mt-4 text-center text-[13px] font-light leading-normal text-gray-500">
                     Do you want to upgrade your plan?{" "}
-                    <button
+                    <Button
                       type="button"
-                      className="font-semibold text-primary-500"
+                      variant="link"
                       onClick={() => setInvitePurchaseMode("upgrade")}
                     >
                       Upgrade My Plan
-                    </button>
+                    </Button>
                   </p>
                 </>
               ) : (
@@ -2082,13 +2073,13 @@ export function InviteTalentFlow({
                   </Button>
                   <p className="mt-4 text-center text-[13px] font-light leading-normal text-gray-500">
                     Do you want to buy more invites?{" "}
-                    <button
+                    <Button
                       type="button"
-                      className="font-semibold text-primary-500"
+                      variant="link"
                       onClick={() => setInvitePurchaseMode("buy")}
                     >
                       Buy more
-                    </button>
+                    </Button>
                   </p>
                 </>
               )}
@@ -2138,21 +2129,25 @@ export function InviteTalentFlow({
                           <div>
                             <Label>Number of invites</Label>
                             <div className="mt-2 flex h-12 rounded-[5px] border border-gray-200 bg-white">
-                              <button
-                                className="w-12 border-r border-gray-200 text-gray-400"
+                              <Button
+                                className="h-auto w-12 rounded-none border-r border-gray-200 px-0 text-gray-400"
+                                variant="ghost"
+                                visual="gray"
                                 type="button"
                               >
                                 -
-                              </button>
+                              </Button>
                               <div className="grid flex-1 place-items-center text-[18px] text-dark-blue-400">
                                 {getPlanInviteCount(selectedPlan)}
                               </div>
-                              <button
-                                className="w-12 border-l border-gray-200 text-gray-500"
+                              <Button
+                                className="h-auto w-12 rounded-none border-l border-gray-200 px-0 text-gray-500"
+                                variant="ghost"
+                                visual="gray"
                                 type="button"
                               >
                                 +
-                              </button>
+                              </Button>
                             </div>
                           </div>
                           <div>
