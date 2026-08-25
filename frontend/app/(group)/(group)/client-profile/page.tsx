@@ -6560,14 +6560,6 @@ function Default() {
                                   </DialogClose>
                                 </div>
 
-                                <TabsList className="w-full px-0 pt-4 justify-start">
-                                  <TabsTrigger value="dialog-values">
-                                    Value&apos;s
-                                  </TabsTrigger>
-                                  <TabsTrigger value="dialog-recent">
-                                    Recently Asked Questions
-                                  </TabsTrigger>
-                                </TabsList>
                               </div>
 
                               <ScrollArea
