@@ -328,19 +328,29 @@ function InviteTalentShellHeader({
 }: InviteTalentShellHeaderProps) {
   return (
     <div className="shrink-0 border-b border-gray-200 bg-white">
-      <div className="flex w-full items-start justify-between px-8 py-3 md:px-[70px]">
+      <div className="flex w-full items-start justify-between py-[15px] pl-[32px] pr-[17px]">
         <div>
-          <h1 className="text-[22px] font-bold leading-tight text-gray-black">
+          <h1 className="text-[24px] font-bold leading-none text-dark-blue-400">
             {title}
           </h1>
-          <p className="mt-1 text-[13px] font-light leading-normal text-gray-black">
+          <p className="mt-3 text-[14px] font-light leading-normal text-gray-500">
             {description}
           </p>
         </div>
 
-        <IconButton variant="ghost" visual="gray" size="sm" onClick={onClose}>
-          <X className="size-6 text-gray-500" />
-        </IconButton>
+        <div className="flex items-center gap-3">
+          <IconButton variant="outlined" visual="gray" size="md">
+            <HelpCircle className="size-[18px]" />
+          </IconButton>
+          <IconButton
+            variant="ghost"
+            visual="gray"
+            size="md"
+            onClick={onClose}
+          >
+            <X className="size-[18px]" />
+          </IconButton>
+        </div>
       </div>
     </div>
   )
@@ -352,7 +362,7 @@ type InviteTalentSideCardProps = {
 
 function InviteTalentSideCard({ children }: InviteTalentSideCardProps) {
   return (
-    <Card className="flex-col items-stretch justify-start rounded-[8px] border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0">
+    <Card className="relative z-0 h-fit w-full max-w-[294px] flex-col items-stretch justify-start self-start rounded-[8px] border border-gray-200 bg-white p-5 shadow-none transition-none hover:border-gray-200 hover:ring-0">
       {children}
     </Card>
   )
@@ -518,7 +528,7 @@ function InviteTalentShellFooter({
 }: InviteTalentShellFooterProps) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white">
-      <div className="flex w-full items-center justify-between gap-4 px-8 py-3 md:px-[70px]">
+      <div className="flex w-full items-center justify-between gap-4 py-[15px] pl-[32px] pr-[17px]">
         <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 text-[14px] font-medium leading-normal text-gray-500">
           <HelpCircle className="size-4" />
           {hasAnyInvites ? (
@@ -1457,14 +1467,14 @@ export function InviteTalentFlow({
           </div>
         ) : null}
         <InviteTalentShellHeader
-          title="Invite Additional Talent"
+          title="Invite Talent"
           description="Send up to 30 invites to fill your open roles. The more invites you send out now, the faster you can start your project."
           onClose={() => router.back()}
         />
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1760px] px-10 py-5 pb-[88px]">
-            <div className="flex items-center justify-between gap-4 pb-5">
+          <div className="w-full px-[75px] py-[50px] pb-[88px]">
+            <div className="flex items-center justify-between gap-4 border-b border-gray-200 pb-6">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[14px] leading-normal">
                 <span className="font-medium text-dark-blue-400">
                   {isLoadingTalents
@@ -1504,6 +1514,7 @@ export function InviteTalentFlow({
                 className="shrink-0"
                 onClick={() => setShowFilters((current) => !current)}
               >
+                <FilterLines className="size-4" />
                 {showFilters ? "Hide Filters" : "Show Filters"}
               </Button>
             </div>
@@ -1514,13 +1525,13 @@ export function InviteTalentFlow({
               </div>
             ) : null}
 
-            <div className="mt-2 grid gap-x-6 gap-y-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="mt-4 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-10">
               {showFilters ? (
-                <div className="flex flex-wrap items-center justify-between gap-3 xl:col-span-2">
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-4 xl:col-span-2">
                   <div className="flex flex-wrap items-center gap-3">
                     <div className="inline-flex items-center gap-2 rounded-[8px] bg-gray-100 px-3 py-2">
                       <span className="text-[14px] font-medium leading-normal text-dark-blue-400">
-                        Filter Scope:
+                        Selected Role:
                       </span>
                       <Popover
                         open={isRoleOpen}
@@ -1899,7 +1910,7 @@ export function InviteTalentFlow({
                 <InviteTalentSideCard>
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h2 className="text-[15px] font-semibold leading-none text-dark-blue-400">
+                      <h2 className="text-[16px] font-semibold leading-none text-dark-blue-400">
                         Apply Filters to Your Team
                       </h2>
                       <p className="mt-2.5 text-[13px] font-light leading-[1.45] text-gray-500">
