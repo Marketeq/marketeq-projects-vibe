@@ -30,6 +30,9 @@ import {
   Check,
   CheckCircle,
   CheckVerified02,
+  Bank,
+  Phone,
+  Trash01,
   HelpCircle,
   ChevronDown,
   ChevronUp,
@@ -1212,6 +1215,14 @@ function Default() {
   // stay available for reuse and for edit mode.
   const isClientProfile = true
   const showProjectHistory = true
+
+  // Sidebar state. Swap these for real profile data when the API lands:
+  // logo present -> filled, absent -> empty, hasCompanyError -> error.
+  const companyLogo = profile?.avatarUrl ?? ""
+  const companyWebsite = "mywebsite.com"
+  const companyIndustries = ["UX Design", "Marketing", "Graphic Design"]
+  const hasVerifications = true
+  const hasCompanyError = false
   // "filled" | "empty" | "error"
   const bioState: "filled" | "empty" | "error" = "filled"
   const [isTabsListStuck, setIsTabsListStuck] = useState<boolean>(false)
@@ -2158,109 +2169,301 @@ function Default() {
             <div className="pt-6 flex gap-x-8">
               {isClientProfile && (
                 <aside className="hidden shrink-0 w-[277px] xl:block">
-                  {/* Side bar — 277px, 20px padding, 20px gap */}
+                  {/* Side bar — 277px, 20px padding, 20px gap. Four states:
+                      default (outsider), edit mode, empty and error. */}
                   <Card className="w-full flex-col items-start gap-5 p-5">
-                    {/* Frame 30 — 24px gap */}
                     <div className="flex w-full flex-col items-start gap-6">
                       {/* Header — 16px gap */}
                       <div className="flex w-full flex-col items-start gap-4">
-                        <Avatar className="size-[150px] border border-gray-200">
-                          <AvatarImage
-                            src="/company-logo.png"
-                            alt="Company Name"
-                          />
-                          <AvatarFallback>C</AvatarFallback>
-                        </Avatar>
+                        {/* Avatar. In edit mode the controls only appear on hover. */}
+                        <div className="group relative size-[150px] shrink-0">
+                          {companyLogo ? (
+                            <>
+                              <Avatar className="size-[150px] border border-gray-200">
+                                <AvatarImage src={companyLogo} alt="Company Name" />
+                                <AvatarFallback>CT</AvatarFallback>
+                              </Avatar>
+                              {isEditMode && (
+                                <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 rounded-full bg-black/75 opacity-0 transition-opacity duration-300 group-hover:pointer-events-auto group-hover:opacity-100">
+                                  <IconButton
+                                    className="size-[37px] rounded-full bg-error-100 text-error-500 hover:bg-error-200"
+                                    variant="light"
+                                    visual="error"
+                                    aria-label="Remove logo"
+                                  >
+                                    <Trash01 className="size-[13px]" />
+                                  </IconButton>
+                                  <IconButton
+                                    className="size-[37px] rounded-full bg-white text-gray-700 hover:bg-white"
+                                    variant="light"
+                                    visual="gray"
+                                    aria-label="Replace logo"
+                                  >
+                                    <Edit03 className="size-[13px]" />
+                                  </IconButton>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div
+                              className={cn(
+                                "group relative flex size-[148px] items-center justify-center rounded-full border-[3px] border-white",
+                                hasCompanyError ? "bg-error-50" : "bg-gray-100"
+                              )}
+                            >
+                              <span className="text-[55px] font-medium uppercase leading-none tracking-tight text-gray-300">
+                                ct
+                              </span>
+                              {/* Upload only shows on hover, same as the edit controls */}
+                              <Button
+                                className={cn(
+                                  "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 gap-2 rounded-full px-[14px] py-2 text-xs opacity-0 shadow-xs transition-opacity duration-300 group-hover:opacity-100",
+                                  hasCompanyError
+                                    ? "border-error-200 bg-error-25 text-error-500"
+                                    : "bg-white text-gray-800"
+                                )}
+                                variant="outlined"
+                                visual="gray"
+                              >
+                                <Upload01 className="size-[15px]" /> Upload Image
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        {hasCompanyError && !companyLogo && (
+                          <p className="text-xs leading-[18px] text-error-500">
+                            Please upload your company logo.
+                          </p>
+                        )}
 
                         <div className="flex w-full flex-col items-start gap-0.5">
-                          <h1 className="text-xl font-semibold leading-[30px] text-dark-blue-400">
-                            Company Name
-                          </h1>
-                          <p className="text-sm leading-4 text-dark-blue-400">
-                            City, State
-                          </p>
-                        </div>
-
-                        <div className="flex flex-col items-start">
-                          <p className="text-sm font-bold leading-[17px] text-dark-blue-400">
-                            3:30 PM local time
-                          </p>
-                          <p className="text-xs leading-[18px] text-dark-blue-400">
-                            (GMT-6)
-                          </p>
-                        </div>
-
-                        <div className="flex w-full flex-wrap items-start gap-2">
-                          {[
-                            "Project Excellence",
-                            "Top Rated",
-                            "Premium Member",
-                          ].map((tag) => (
-                            <Badge
-                              key={tag}
-                              visual="gray"
-                              className="h-[26px] px-3 py-1"
+                          <div className="flex items-start gap-1">
+                            <h1
+                              className={cn(
+                                "text-xl font-semibold leading-[30px]",
+                                hasCompanyError ? "text-error-500" : "text-dark-blue-400"
+                              )}
                             >
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-
-                        <div className="flex flex-col items-start gap-1">
-                          {[
-                            "Verified Payment Method",
-                            "Verified Contact Number",
-                          ].map((item) => (
-                            <p
-                              key={item}
-                              className="flex h-6 items-center gap-2 text-xs font-semibold text-primary-500"
-                            >
-                              <CheckVerified02 className="size-[15px] shrink-0" />
-                              {item}
+                              Company Name
+                            </h1>
+                            {isEditMode && (
+                              <Button
+                                className="size-9 shrink-0 rounded-full p-0 text-gray-500"
+                                variant="ghost"
+                                visual="gray"
+                                aria-label="Edit company name"
+                              >
+                                <Edit03 className="size-4" />
+                              </Button>
+                            )}
+                          </div>
+                          {hasCompanyError && (
+                            <p className="text-xs leading-[18px] text-error-500">
+                              Please enter company name and location
                             </p>
-                          ))}
-                        </div>
+                          )}
 
-                        <Button className="w-full" size="md">
-                          Message
-                        </Button>
-
-                        <div className="flex w-full flex-col items-start gap-2">
-                          <NextLink
-                            className="flex h-9 items-center text-sm font-semibold leading-6 text-dark-blue-400 hover:underline"
-                            href="#"
-                          >
-                            mywebsite.com
-                          </NextLink>
-                          <p className="flex items-center gap-1.5 text-xs leading-[15px] text-dark-blue-400">
-                            Member since
-                            <span className="font-semibold">Sep 2024</span>
-                          </p>
+                          <div className="flex items-start gap-0.5">
+                            <p
+                              className={cn(
+                                "text-sm leading-4",
+                                hasCompanyError ? "text-error-500" : "text-dark-blue-400"
+                              )}
+                            >
+                              City, State
+                            </p>
+                            {isEditMode && (
+                              <Button
+                                className="h-[18px] w-9 shrink-0 rounded-full p-0 text-gray-500"
+                                variant="ghost"
+                                visual="gray"
+                                aria-label="Edit location"
+                              >
+                                <Edit03 className="size-4" />
+                              </Button>
+                            )}
+                          </div>
+                          {hasCompanyError && (
+                            <p className="text-xs leading-[18px] text-error-500">
+                              Please add your City and State
+                            </p>
+                          )}
                         </div>
                       </div>
 
-                      {/* Industries + stats — 24px gap, 20px bottom padding */}
-                      <div className="flex w-full flex-col items-start gap-6 pb-5">
-                        <div className="flex w-full flex-col items-start gap-3">
-                          <h2 className="w-full text-sm font-bold leading-[17px] text-dark-blue-400">
-                            Industries
-                          </h2>
-                          <div className="flex w-full flex-wrap items-center gap-2">
-                            {["UX Design", "Marketing", "Graphic Design"].map(
-                              (industry) => (
-                                <Badge
-                                  key={industry}
-                                  visual="gray"
-                                  size="md"
-                                  className="bg-gray-50 px-2.5 py-0.5 text-dark-blue-400"
-                                >
-                                  {industry}
+                      <div className="flex flex-col items-start">
+                        <p className="text-sm font-bold leading-[17px] text-dark-blue-400">
+                          3:30 PM local time
+                        </p>
+                        <p className="text-xs leading-[18px] text-dark-blue-400">(GMT-6)</p>
+                      </div>
+
+                      {/* Verified badges when present; otherwise the verify prompts */}
+                      {hasVerifications ? (
+                        <>
+                          <div className="flex w-full flex-wrap items-start gap-2">
+                            {["Project Excellence", "Top Rated", "Premium Member"].map(
+                              (tag) => (
+                                <Badge key={tag} visual="gray" className="h-[26px] px-3 py-1">
+                                  {tag}
                                 </Badge>
                               )
                             )}
                           </div>
+                          <div className="flex flex-col items-start gap-1">
+                            {["Verified Payment Method", "Verified Contact Number"].map(
+                              (item) => (
+                                <p
+                                  key={item}
+                                  className="flex h-6 items-center gap-2 text-xs font-semibold text-primary-500"
+                                >
+                                  <CheckVerified02 className="size-[15px] shrink-0" />
+                                  {item}
+                                </p>
+                              )
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex w-full flex-col items-start gap-1">
+                          <Button
+                            className="gap-2 text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30"
+                            variant="link"
+                          >
+                            <Phone className="size-[15px]" /> Verify Phone Number
+                          </Button>
+                          <Button
+                            className="gap-2 text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30"
+                            variant="link"
+                          >
+                            <Bank className="size-[15px]" /> Verify Payment Method
+                          </Button>
                         </div>
+                      )}
 
+                      {/* Owners see View Inbox; visitors see Message */}
+                      {isOwnProfile ? (
+                        <Button
+                          className="w-full gap-2 border-2 border-primary-500 bg-white text-primary-500"
+                          size="md"
+                          variant="outlined"
+                        >
+                          <MessageSquare01 className="size-[15px]" /> View Inbox
+                        </Button>
+                      ) : (
+                        <Button className="w-full" size="md">
+                          Message
+                        </Button>
+                      )}
+
+                      <div className="flex w-full flex-col items-start gap-2">
+                        {companyWebsite ? (
+                          <div className="flex items-center gap-[7px]">
+                            <NextLink
+                              className="flex h-9 items-center text-sm font-semibold leading-6 text-dark-blue-400 hover:underline"
+                              href="#"
+                            >
+                              {companyWebsite}
+                            </NextLink>
+                            {isEditMode && (
+                              <Button
+                                className="size-9 shrink-0 rounded-full p-0 text-gray-500"
+                                variant="ghost"
+                                visual="gray"
+                                aria-label="Edit website"
+                              >
+                                <Edit03 className="size-4" />
+                              </Button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-start gap-1">
+                            <Button
+                              className={cn(
+                                "gap-2 text-sm font-semibold hover:no-underline",
+                                hasCompanyError ? "text-error-600" : "text-dark-blue-400"
+                              )}
+                              variant="link"
+                              visual="gray"
+                            >
+                              <Plus className="size-[15px]" /> Add Website
+                            </Button>
+                            {hasCompanyError && (
+                              <p className="text-xs leading-[18px] text-error-500">
+                                Please add your website.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        <p className="flex items-center gap-1.5 text-xs leading-[15px] text-dark-blue-400">
+                          Member since
+                          <span className="font-semibold">Sep 2024</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex w-full flex-col items-start gap-6 pb-5">
+                      {companyIndustries.length > 0 ? (
+                        <div className="flex w-full flex-col items-start gap-3">
+                          <div className="flex w-full items-center gap-3">
+                            <h2 className="flex-1 text-sm font-bold leading-[17px] text-dark-blue-400">
+                              Industries
+                            </h2>
+                            {isEditMode && (
+                              <div className="flex shrink-0 items-center gap-1">
+                                <Button
+                                  className="size-9 rounded-full p-0 text-gray-500"
+                                  variant="ghost"
+                                  visual="gray"
+                                  aria-label="Add industry"
+                                >
+                                  <Plus className="size-[18px]" />
+                                </Button>
+                                <Button
+                                  className="size-9 rounded-full p-0 text-gray-500"
+                                  variant="ghost"
+                                  visual="gray"
+                                  aria-label="Edit industries"
+                                >
+                                  <Edit03 className="size-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex w-full flex-wrap items-center gap-2">
+                            {companyIndustries.map((industry) => (
+                              <Badge
+                                key={industry}
+                                visual="gray"
+                                size="md"
+                                className="bg-gray-50 px-2.5 py-0.5 text-dark-blue-400"
+                              >
+                                {industry}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-start gap-1">
+                          <Button
+                            className={cn(
+                              "gap-2 text-sm font-semibold hover:no-underline",
+                              hasCompanyError ? "text-error-600" : "text-dark-blue-400"
+                            )}
+                            variant="link"
+                            visual="gray"
+                          >
+                            <Plus className="size-[15px]" /> Add Industries
+                          </Button>
+                          {hasCompanyError && (
+                            <p className="text-xs leading-[18px] text-error-500">
+                              Please add at least 1 industry.
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {hasVerifications && (
                         <dl className="flex w-full flex-col items-start gap-2 pb-1.5">
                           {[
                             ["Company Size", "2-9 Employees"],
@@ -2273,13 +2476,11 @@ function Default() {
                               <dt className="text-xs font-bold leading-6 text-dark-blue-400">
                                 {label}
                               </dt>
-                              <dd className="text-xs leading-6 text-dark-blue-400">
-                                {value}
-                              </dd>
+                              <dd className="text-xs leading-6 text-dark-blue-400">{value}</dd>
                             </div>
                           ))}
                         </dl>
-                      </div>
+                      )}
                     </div>
                   </Card>
                 </aside>
