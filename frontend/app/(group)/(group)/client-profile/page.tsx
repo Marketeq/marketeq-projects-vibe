@@ -1783,6 +1783,25 @@ function Default() {
   const hasCompanyError = false
   // "filled" | "empty" | "error"
   const bioState: "filled" | "empty" | "error" = "filled"
+  const [valuesOpen, setValuesOpen] = useState(false)
+  const [workplaceValues, setWorkplaceValues] = useState<WizardValue[]>([
+    {
+      id: "value-1",
+      q: "Dedication to every client's success",
+      a: "",
+    },
+    {
+      id: "value-2",
+      q: "Innovation that matters - for our company and the world",
+      a: "",
+    },
+    {
+      id: "value-3",
+      q: "Trust and personal responsibility in all relationships",
+      a: "",
+    },
+    { id: "value-4", q: "Diversity and inclusion", a: "" },
+  ])
   const [isTabsListStuck, setIsTabsListStuck] = useState<boolean>(false)
 
   // Auto-expand state for sections
@@ -3093,14 +3112,16 @@ function Default() {
                         <p className="flex-1 text-xl font-bold text-dark-blue-400">
                           Our workplace values
                         </p>
-                        <Button
-                          className="size-9 shrink-0 rounded-full p-0 text-gray-500"
+                        <IconButton
+                          className="shrink-0 rounded-full text-gray-500"
+                          size="sm"
                           variant="ghost"
                           visual="gray"
                           aria-label="Edit values"
+                          onClick={() => setValuesOpen(true)}
                         >
                           <Edit03 className="size-4" />
-                        </Button>
+                        </IconButton>
                       </div>
                       <Accordion className="flex w-full flex-col gap-4" type="single" collapsible>
                         {[
@@ -6821,7 +6842,43 @@ function Default() {
             onOpenedChange={setAffiliatedTeamsOpen}
           />
 
-          <Dialog open={caseStudyOpen} onOpenChange={setCaseStudyOpen}>
+          {/* Workplace Values — the copied FAQ editor, opened from the Culture pencil */}
+      <Dialog open={valuesOpen} onOpenChange={setValuesOpen}>
+        <DialogContent className="max-w-[740px] p-0">
+          <div className="flex flex-col gap-2 border-b border-gray-200 px-6 pt-6 pb-4">
+            <DialogTitle className="text-lg font-semibold leading-7 text-dark-blue-400">
+              Workplace Values
+            </DialogTitle>
+            <p className="text-sm font-light leading-5 text-dark-blue-400">
+              Add the values that define how your team works. Drag and drop to
+              reorder them
+            </p>
+          </div>
+
+          <div className="max-h-[60vh] overflow-y-auto px-6 pb-6">
+            <WorkplaceValuesEditor
+              values={workplaceValues}
+              setValues={setWorkplaceValues}
+              draftProjectId={null}
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-b-xl bg-gray-25 px-6 py-4">
+            <Button
+              variant="link"
+              visual="gray"
+              onClick={() => setValuesOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button size="sm" onClick={() => setValuesOpen(false)}>
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={caseStudyOpen} onOpenChange={setCaseStudyOpen}>
             <DialogContent
               variant="unanimated"
               className="inset-0 h-full z-[100] bg-white p-0 overflow-y-auto"
