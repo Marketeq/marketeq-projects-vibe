@@ -1205,6 +1205,8 @@ function Default() {
   // stay available for reuse and for edit mode.
   const isClientProfile = true
   const showProjectHistory = true
+  // "filled" | "empty" | "error"
+  const bioState: "filled" | "empty" | "error" = "filled"
   const [isTabsListStuck, setIsTabsListStuck] = useState<boolean>(false)
 
   // Auto-expand state for sections
@@ -1995,7 +1997,7 @@ function Default() {
                       </>
                     ) : (
                       <>
-                      {(!isClientView || hasPortfolio) && (
+                      {!isClientProfile && (!isClientView || hasPortfolio) && (
                         <TabsTrigger value="Portfolio" asChild>
                           <NextLink href="#portfolio">Portfolio</NextLink>
                         </TabsTrigger>
@@ -2261,6 +2263,82 @@ function Default() {
                     </TabsTrigger>
                   </TabsList>
                 )}
+
+                {/* Company Bio — first section under the tabs. Three states. */}
+                {isClientProfile && (
+                  <div className="mb-6" id="about">
+                    {bioState === "filled" ? (
+                      <Card className="w-full items-start gap-6 rounded-lg p-6">
+                        <p className="flex-1 text-sm font-light leading-[34px] text-gray-700">
+                          Empowering businesses through technology innovation since
+                          2018. Trusted by 50+ global clients. At{" "}
+                          <span className="font-bold">Company Name</span>, our mission
+                          is to simplify business challenges with cutting-edge
+                          solutions tailored for SMEs and enterprises alike. With
+                          expertise spanning software development, IT consulting, and
+                          digital transformation, we have successfully completed 200+
+                          projects.
+                        </p>
+                        <Button
+                          className="size-9 shrink-0 rounded-full p-0 text-gray-500"
+                          variant="ghost"
+                          visual="gray"
+                          aria-label="Edit bio"
+                        >
+                          <Edit03 className="size-4" />
+                        </Button>
+                      </Card>
+                    ) : (
+                      <>
+                        <div
+                          className={cn(
+                            "flex w-full items-start justify-center gap-[75px] rounded-lg border p-6",
+                            bioState === "error"
+                              ? "border-error-200 bg-error-25"
+                              : "border-gray-200 bg-white"
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              "flex min-w-0 flex-1 flex-col items-start gap-3",
+                              bioState === "error"
+                                ? "text-error-500"
+                                : "text-dark-blue-400"
+                            )}
+                          >
+                            <p className="w-full text-lg font-semibold leading-7">
+                              Company Bio
+                            </p>
+                            <p className="w-full text-sm font-light">
+                              Build a strong overview that helps clients understand who
+                              you are, what you do, and the value you bring. This is
+                              your space to create a real connection and show what
+                              makes you worth working with.
+                            </p>
+                          </div>
+                          <Button
+                            className={cn(
+                              "shrink-0 gap-2 bg-white px-[14px] py-2 text-xs",
+                              bioState === "error"
+                                ? "border-error-300 text-error-500"
+                                : "border-gray-300 text-gray-800"
+                            )}
+                            variant="outlined"
+                            visual="gray"
+                            leftIcon={<Plus className="size-[15px]" />}
+                          >
+                            Add Bio
+                          </Button>
+                        </div>
+                        {bioState === "error" && (
+                          <p className="mt-4 text-sm leading-5 text-error-500">
+                            Please add your company bio.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
                 {isEditMode &&
                   isOwnProfile &&
                   (() => {
@@ -2392,580 +2470,40 @@ function Default() {
 
                 {(!isClientView || hasSkills) && (
                 <LazySection minHeight={300}>
-                  <div
-                    className="mt-6 p-6 bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[137.5px]"
-                    id="skills"
-                  >
-                    <div className="flex items-center justify-between">
-                      <h1 className="text-xl leading-none font-bold text-dark-blue-400">
-                        Skills
-                      </h1>
-                      {isEditMode &&
-                        isOwnProfile &&
-                        dedupedSkills.length > 0 && (
-                          <IconButton
-                            className="rounded-full text-gray-500 hover:text-gray-800"
-                            variant="ghost"
-                            visual="gray"
-                            onClick={() => setSkillsOpen(true)}
-                          >
-                            <Edit03 className="size-4" />
-                          </IconButton>
-                        )}
-                    </div>
-
-                    {dedupedSkills.length > 0 ? (
-                      <ShowMoreLessRoot
-                        value={autoExpandSkills}
-                        onValueChange={setAutoExpandSkills}
-                      >
-                        {({ isShowing, setIsShowing, ref, scrollHeight }) => (
-                          <>
-                            <div
-                              ref={ref}
-                              className="[interpolate-size:allow-keywords] flex gap-3 mt-6 flex-wrap overflow-hidden transition-[height] duration-300"
-                              style={{
-                                height: isShowing
-                                  ? "auto"
-                                  : scrollHeight
-                                    ? toPxIfNumber(scrollHeight)
-                                    : "auto",
-                              }}
-                            >
-                              <ShowMoreLess max={22}>
-                                {dedupedSkills.map((skill) => (
-                                  <Badge
-                                    key={skill.id}
-                                    className="text-gray-700"
-                                    visual="gray"
-                                    size="lg"
-                                  >
-                                    {skill.name}
-                                  </Badge>
-                                ))}
-                              </ShowMoreLess>
-                            </div>
-
-                            {dedupedSkills.length > 22 && (
-                              <div className="mt-6 flex items-center justify-center">
-                                <Button
-                                  variant="link"
-                                  visual="gray"
-                                  onClick={() => setIsShowing((prev) => !prev)}
-                                >
-                                  {isShowing ? "View Less" : "View More"}
-                                </Button>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </ShowMoreLessRoot>
-                    ) : (
-                      <div className="mt-2 flex items-start justify-between gap-x-4">
-                        <div className="flex-auto min-w-0">
-                          <p className="text-sm font-light text-gray-600 leading-relaxed">
-                            Showcase your expertise and the strengths that set
-                            you apart. Highlight the skills that define your work
-                            so the right clients can recognize your value and
-                            find you faster.
-                          </p>
-                        </div>
-                        {isEditMode && isOwnProfile && (
-                          <Button
-                            variant="outlined"
-                            visual="gray"
-                            className="shrink-0 bg-white -mt-7"
-                            onClick={() => setSkillsOpen(true)}
-                          >
-                            <Plus className="size-[15px]" /> Add Skills
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </LazySection>
-                )}
-
-                {showOverviewSection && (
-                <LazySection minHeight={300}>
-                  <div className="mt-6 scroll-mt-[137.5px]" id="overview">
-                    {showOverviewBio && (
+                  {/* skills — hidden on the client profile, kept for edit mode */}
+                  {!isClientProfile && (
                     <div
-                      className={cn(
-                        "p-6 bg-white border border-gray-200 space-y-6",
-                        showOverviewFeatured ? "rounded-t-lg" : "rounded-lg"
-                      )}
+                      className="mt-6 p-6 bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] scroll-mt-[137.5px]"
+                      id="skills"
                     >
-                      {(() => {
-                        const bioText = profile?.bio || profile?.overview
-                        const hasBio = Boolean(bioText)
-                        return (
-                          <>
-                            <div className="flex items-center justify-between">
-                              <h1 className="text-xl font-bold text-dark-blue-400 leading-none">
-                                Overview
-                              </h1>
-                              {isEditMode &&
-                                isOwnProfile &&
-                                (hasBio ? (
-                                  <IconButton
-                                    className="rounded-full text-gray-500 hover:text-gray-800"
-                                    variant="ghost"
-                                    visual="gray"
-                                    onClick={() => setOverviewOpen(true)}
-                                  >
-                                    <Edit03 className="size-4" />
-                                  </IconButton>
-                                ) : (
-                                  <Button
-                                    variant="outlined"
-                                    visual="gray"
-                                    onClick={() => setOverviewOpen(true)}
-                                  >
-                                    <Plus className="size-[15px]" /> Add Bio
-                                  </Button>
-                                ))}
-                            </div>
-
-                            {hasBio ? (
-                              <LineClampText
-                                text={bioText as string}
-                                lines={3}
-                                className="text-sm font-extralight text-gray-700 leading-relaxed"
-                                toggleClassName="mt-6"
-                                expandLabel="View More"
-                                collapseLabel="View Less"
-                              />
-                            ) : (
-                              <p className="text-sm font-light text-gray-600 leading-relaxed">
-                                Build a strong &ldquo;About Me&rdquo; that helps
-                                clients understand who you are, what you do, and
-                                the value you bring. This is your space to create
-                                a real connection and show what makes you worth
-                                working with.
-                              </p>
-                            )}
-                          </>
-                        )
-                      })()}
-                    </div>
-                    )}
-
-                    {showOverviewFeatured && (
-                    <Tabs
-                      value={effectiveFeaturedTab}
-                      onValueChange={setFeaturedTab}
-                      className={cn(
-                        "p-6 min-h-[134px] border-x border-b border-gray-200 bg-white",
-                        showOverviewBio
-                          ? "rounded-b-lg"
-                          : "rounded-lg border-t"
-                      )}
-                    >
-                      {(!isClientView || visibleFeaturedTabs.length > 1) && (
-                      <RadixTabs.List className="flex items-center gap-x-3">
-                        {!isClientView && (
-                        <TabsTrigger
-                          variant="unstyled"
-                          showUnderline={false}
-                          value="Featured Clients"
-                          className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                        >
-                          Featured Clients
-                        </TabsTrigger>
-                        )}
-                        {(!isClientView || hasCertifications) && (
-                        <TabsTrigger
-                          variant="unstyled"
-                          showUnderline={false}
-                          value="Certifications"
-                          className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                        >
-                          Certifications
-                        </TabsTrigger>
-                        )}
-                        {(!isClientView || hasIndustries) && (
-                        <TabsTrigger
-                          variant="unstyled"
-                          showUnderline={false}
-                          value="Industry Expertise"
-                          className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                        >
-                          Industry Expertise
-                        </TabsTrigger>
-                        )}
-                        {isEditMode &&
-                          isOwnProfile &&
-                          featuredTab === "Industry Expertise" &&
-                          profile?.industries &&
-                          profile.industries.length > 0 && (
-                            <div className="ml-auto flex items-center gap-x-1">
-                              <IconButton
-                                className="rounded-full text-gray-500 hover:text-gray-800"
-                                variant="ghost"
-                                visual="gray"
-                                onClick={() => setIndustriesOpen(true)}
-                              >
-                                <Plus className="size-4" />
-                              </IconButton>
-                              <IconButton
-                                className="rounded-full text-gray-500 hover:text-gray-800"
-                                variant="ghost"
-                                visual="gray"
-                                onClick={() => setIndustriesOpen(true)}
-                              >
-                                <Edit03 className="size-4" />
-                              </IconButton>
-                            </div>
-                          )}
-                        {isEditMode &&
-                          isOwnProfile &&
-                          featuredTab === "Certifications" &&
-                          profile?.certifications &&
-                          profile.certifications.length > 0 && (
-                            <Button
-                              variant="outlined"
-                              visual="gray"
-                              className="ml-auto shrink-0 bg-white"
-                              onClick={() => {
-                                setCertEditIdx(undefined)
-                                setCertificationsOpen(true)
-                              }}
-                            >
-                              <Plus className="size-[15px]" /> Add Certification
-                            </Button>
-                          )}
-                      </RadixTabs.List>
-                      )}
-
-                      {!isClientView && (
-                      <TabsContent value="Featured Clients">
-                        <div className="mt-6 p-6 rounded-lg bg-gray-25 border border-gray-200">
-                          <div className="flex items-start justify-between gap-x-4">
-                            <div className="flex-auto min-w-0">
-                              <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
-                                Featured Clients
-                              </h2>
-                              <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
-                                Your featured clients will appear here as you
-                                start working on projects, services, and add
-                                work history to your profile. These clients are
-                                automatically generated based on your past
-                                projects, services, and roles, and aren&apos;t
-                                directly editable.
-                              </p>
-                            </div>
-                            {isEditMode && isOwnProfile && (
-                              <Button
-                                variant="outlined"
-                                visual="gray"
-                                className="shrink-0 bg-white"
-                                onClick={() => setWorkExperienceOpen(true)}
-                                disabled={atWorkExperienceLimit}
-                                title={
-                                  atWorkExperienceLimit
-                                    ? "You've reached the 30-entry limit for work experience."
-                                    : undefined
-                                }
-                              >
-                                <Plus className="size-[15px]" /> Add Work History
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </TabsContent>
-                      )}
-                      <TabsContent value="Certifications">
-                        {profile?.certifications &&
-                        profile.certifications.length > 0 ? (
-                          <div className="pt-6 flex items-center flex-wrap gap-x-6 gap-y-3">
-                            {profile.certifications.map((cert) => {
-                              const brand = getCertificationBrandFromUrl(
-                                cert.credentialUrl
-                              )
-                              return (
-                                <div
-                                  key={cert.id}
-                                  className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-2"
-                                >
-                                  {brand?.type === "component" && (
-                                    <brand.Icon className="size-6 shrink-0" />
-                                  )}
-                                  {brand?.type === "remote-svg" && (
-                                    <img
-                                      src={brand.url}
-                                      alt={brand.name}
-                                      width={24}
-                                      height={24}
-                                      className="size-6 shrink-0"
-                                      loading="lazy"
-                                      data-fallback="0"
-                                      onError={(e) => {
-                                        const el = e.currentTarget
-                                        if (el.dataset.fallback === "0") {
-                                          el.dataset.fallback = "1"
-                                          el.src = brand.faviconUrl
-                                        } else {
-                                          el.style.display = "none"
-                                        }
-                                      }}
-                                    />
-                                  )}
-                                  <span className="capitalize">
-                                    {cert.name}
-                                  </span>
-                                  {isEditMode && isOwnProfile && (
-                                    <IconButton
-                                      className="rounded-full text-gray-400 hover:text-gray-600"
-                                      variant="ghost"
-                                      visual="gray"
-                                      onClick={() => {
-                                        setCertEditIdx(String(cert.id))
-                                        setCertificationsOpen(true)
-                                      }}
-                                    >
-                                      <Edit03 className="size-4" />
-                                    </IconButton>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        ) : (
-                          <div className="mt-4 p-6 rounded-lg bg-gray-25 border border-gray-200">
-                            <div className="flex items-start justify-between gap-x-4">
-                              <div className="flex-auto min-w-0">
-                                <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
-                                  Certifications
-                                </h2>
-                                <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
-                                  Add the certifications that validate your
-                                  expertise so clients can trust your
-                                  qualifications.
-                                </p>
-                              </div>
-                              {isEditMode && isOwnProfile && (
-                                <Button
-                                  variant="outlined"
-                                  visual="gray"
-                                  className="shrink-0 bg-white"
-                                  onClick={() => {
-                                    setCertEditIdx(undefined)
-                                    setCertificationsOpen(true)
-                                  }}
-                                >
-                                  <Plus className="size-[15px]" /> Add
-                                  Certification
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </TabsContent>
-                      <TabsContent value="Industry Expertise">
-                        {profile?.industries &&
-                        profile.industries.length > 0 ? (
-                          <div className="pt-6 flex items-center flex-wrap gap-3">
-                            {profile.industries.map((ind) => (
-                              <Badge key={ind.id} size="lg" visual="gray">
-                                {ind.industry}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="mt-4 p-6 rounded-lg bg-gray-25 border border-gray-200">
-                            <div className="flex items-start justify-between gap-x-4">
-                              <div className="flex-auto min-w-0">
-                                <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
-                                  Industry Expertise
-                                </h2>
-                                <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
-                                  Highlight the industries you specialize in so
-                                  clients in those spaces can find you.
-                                </p>
-                              </div>
-                              {isEditMode && isOwnProfile && (
-                                <Button
-                                  variant="outlined"
-                                  visual="gray"
-                                  className="shrink-0 bg-white"
-                                  onClick={() => setIndustriesOpen(true)}
-                                >
-                                  <Plus className="size-[15px]" /> Add Industry
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </TabsContent>
-                    </Tabs>
-                    )}
-                  </div>
-                </LazySection>
-                )}
-
-                {!isClientView && (
-                <LazySection minHeight={400}>
-                  <div
-                    className="mt-6 p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
-                    id="offers"
-                  >
-                    <h1 className="text-xl font-bold leading-none text-dark-blue-400">
-                      My Offers
-                    </h1>
-
-                    <Tabs defaultValue="Projects" className="mt-6">
                       <div className="flex items-center justify-between">
-                        <RadixTabs.List className="inline-flex items-center gap-x-3">
-                          <TabsTrigger
-                            variant="unstyled"
-                            showUnderline={false}
-                            value="Projects"
-                            className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                          >
-                            Projects
-                          </TabsTrigger>
-                          <TabsTrigger
-                            variant="unstyled"
-                            showUnderline={false}
-                            value="Services"
-                            className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                          >
-                            Services
-                          </TabsTrigger>
-                        </RadixTabs.List>
-
-                        {isEditMode && isOwnProfile && (
-                          <Button
-                            variant="link"
-                            visual="gray"
-                            onClick={() => setListingsModalStep("empty")}
-                          >
-                            <Edit03 className="size-[15px]" /> Edit Listings
-                          </Button>
-                        )}
+                        <h1 className="text-xl leading-none font-bold text-dark-blue-400">
+                          Skills
+                        </h1>
+                        {isEditMode &&
+                          isOwnProfile &&
+                          dedupedSkills.length > 0 && (
+                            <IconButton
+                              className="rounded-full text-gray-500 hover:text-gray-800"
+                              variant="ghost"
+                              visual="gray"
+                              onClick={() => setSkillsOpen(true)}
+                            >
+                              <Edit03 className="size-4" />
+                            </IconButton>
+                          )}
                       </div>
 
-                      <TabsContent value="Projects">
-                        <div className="mt-6 p-6 rounded-lg bg-gray-25 border border-gray-200">
-                          <div className="flex items-start justify-between gap-x-4">
-                            <div className="flex-auto min-w-0">
-                              <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
-                                Projects
-                              </h2>
-                              <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
-                                Your project offers will be displayed here as you create your own listings or join existing projects in the marketplace. These offers help you gain visibility, attract clients, and help create more opportunities.
-                              </p>
-                            </div>
-                            {isEditMode && isOwnProfile && (
-                              <Button
-                                variant="outlined"
-                                visual="gray"
-                                className="shrink-0 bg-white"
-                                onClick={() => goToPublishProject("project")}
-                              >
-                                <Plus className="size-[15px]" /> Add Project
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </TabsContent>
-
-                      <TabsContent value="Services">
-                        <div className="mt-6 p-6 rounded-lg bg-gray-25 border border-gray-200">
-                          <div className="flex items-start justify-between gap-x-4">
-                            <div className="flex-auto min-w-0">
-                              <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
-                                Services
-                              </h2>
-                              <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
-                                Your service offers will be displayed here as you create your own listings or join existing services in the marketplace. These offers help you gain visibility, attract clients, and help create more opportunities.
-                              </p>
-                            </div>
-                            {isEditMode && isOwnProfile && (
-                              <Button
-                                variant="outlined"
-                                visual="gray"
-                                className="shrink-0 bg-white"
-                                onClick={() => goToPublishProject("service")}
-                              >
-                                <Plus className="size-[15px]" /> Add Service
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </TabsContent>
-                    </Tabs>
-                  </div>
-                </LazySection>
-                )}
-
-                {showBackgroundSection && (
-                <LazySection minHeight={400}>
-                  <div
-                    className="mt-6 p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
-                    id="background"
-                  >
-                    <div className="flex items-center justify-between">
-                      <h1 className="text-xl leading-none font-bold text-dark-blue-400">
-                        Background
-                      </h1>
-                      {isEditMode && isOwnProfile && (
-                        <IconButton
-                          className="rounded-full text-gray-500 hover:text-gray-800"
-                          variant="ghost"
-                          visual="gray"
-                          onClick={() =>
-                            backgroundActiveTab === "Education"
-                              ? setEducationOpen(true)
-                              : setWorkExperienceOpen(true)
-                          }
-                        >
-                          <Edit03 className="size-4" />
-                        </IconButton>
-                      )}
-                    </div>
-
-                    <Tabs
-                      value={effectiveBackgroundTab}
-                      onValueChange={setBackgroundActiveTab}
-                      className="mt-6"
-                    >
-                      {(!isClientView || visibleBackgroundTabs.length > 1) && (
-                      <RadixTabs.List className="inline-flex items-center gap-x-3">
-                        {(!isClientView || hasWorkExperience) && (
-                        <TabsTrigger
-                          variant="unstyled"
-                          showUnderline={false}
-                          value="Work Experience"
-                          className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                        >
-                          Work Experience
-                        </TabsTrigger>
-                        )}
-                        {(!isClientView || hasEducation) && (
-                        <TabsTrigger
-                          variant="unstyled"
-                          showUnderline={false}
-                          value="Education"
-                          className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                        >
-                          Education
-                        </TabsTrigger>
-                        )}
-                      </RadixTabs.List>
-                      )}
-
-                      <TabsContent value="Work Experience">
+                      {dedupedSkills.length > 0 ? (
                         <ShowMoreLessRoot
-                          value={autoExpandWorkExperience}
-                          onValueChange={setAutoExpandWorkExperience}
+                          value={autoExpandSkills}
+                          onValueChange={setAutoExpandSkills}
                         >
-                          {({ isShowing, setIsShowing, scrollHeight, ref }) => (
+                          {({ isShowing, setIsShowing, ref, scrollHeight }) => (
                             <>
                               <div
                                 ref={ref}
-                                className="[interpolate-size:allow-keywords] mt-6 overflow-hidden transition-[height] duration-300"
+                                className="[interpolate-size:allow-keywords] flex gap-3 mt-6 flex-wrap overflow-hidden transition-[height] duration-300"
                                 style={{
                                   height: isShowing
                                     ? "auto"
@@ -2974,102 +2512,968 @@ function Default() {
                                       : "auto",
                                 }}
                               >
-                                <ShowMoreLessComp max={4}>
-                                  {profile?.experience &&
-                                  profile.experience.length > 0 ? (
-                                    [...profile.experience]
-                                      .sort((a: any, b: any) => {
-                                        const aCurrent =
-                                          a.isCurrentRole || !a.endDate
-                                        const bCurrent =
-                                          b.isCurrentRole || !b.endDate
-                                        if (aCurrent !== bCurrent)
-                                          return aCurrent ? -1 : 1
-                                        return (b.startDate || "").localeCompare(
-                                          a.startDate || ""
-                                        )
-                                      })
-                                      .map((exp: any, idx: number) => {
-                                        const months = [
-                                          "January",
-                                          "February",
-                                          "March",
-                                          "April",
-                                          "May",
-                                          "June",
-                                          "July",
-                                          "August",
-                                          "September",
-                                          "October",
-                                          "November",
-                                          "December",
-                                        ]
-                                        const fmtDate = (d: string | null) => {
-                                          if (!d) return "Present"
-                                          const [y, m] = d.split("-")
-                                          return `${months[parseInt(m, 10) - 1]} ${y}`
-                                        }
-                                        const toDate = (d: string) => {
-                                          const [y, m, day] = d.split("-")
-                                          return new Date(
-                                            Number(y),
-                                            Number(m) - 1,
-                                            Number(day || 1)
+                                <ShowMoreLess max={22}>
+                                  {dedupedSkills.map((skill) => (
+                                    <Badge
+                                      key={skill.id}
+                                      className="text-gray-700"
+                                      visual="gray"
+                                      size="lg"
+                                    >
+                                      {skill.name}
+                                    </Badge>
+                                  ))}
+                                </ShowMoreLess>
+                              </div>
+
+                              {dedupedSkills.length > 22 && (
+                                <div className="mt-6 flex items-center justify-center">
+                                  <Button
+                                    variant="link"
+                                    visual="gray"
+                                    onClick={() => setIsShowing((prev) => !prev)}
+                                  >
+                                    {isShowing ? "View Less" : "View More"}
+                                  </Button>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </ShowMoreLessRoot>
+                      ) : (
+                        <div className="mt-2 flex items-start justify-between gap-x-4">
+                          <div className="flex-auto min-w-0">
+                            <p className="text-sm font-light text-gray-600 leading-relaxed">
+                              Showcase your expertise and the strengths that set
+                              you apart. Highlight the skills that define your work
+                              so the right clients can recognize your value and
+                              find you faster.
+                            </p>
+                          </div>
+                          {isEditMode && isOwnProfile && (
+                            <Button
+                              variant="outlined"
+                              visual="gray"
+                              className="shrink-0 bg-white -mt-7"
+                              onClick={() => setSkillsOpen(true)}
+                            >
+                              <Plus className="size-[15px]" /> Add Skills
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </LazySection>
+                )}
+
+                {showOverviewSection && (
+                <LazySection minHeight={300}>
+                  {/* overview — hidden on the client profile, kept for edit mode */}
+                  {!isClientProfile && (
+                    <div className="mt-6 scroll-mt-[137.5px]" id="overview">
+                      {showOverviewBio && (
+                      <div
+                        className={cn(
+                          "p-6 bg-white border border-gray-200 space-y-6",
+                          showOverviewFeatured ? "rounded-t-lg" : "rounded-lg"
+                        )}
+                      >
+                        {(() => {
+                          const bioText = profile?.bio || profile?.overview
+                          const hasBio = Boolean(bioText)
+                          return (
+                            <>
+                              <div className="flex items-center justify-between">
+                                <h1 className="text-xl font-bold text-dark-blue-400 leading-none">
+                                  Overview
+                                </h1>
+                                {isEditMode &&
+                                  isOwnProfile &&
+                                  (hasBio ? (
+                                    <IconButton
+                                      className="rounded-full text-gray-500 hover:text-gray-800"
+                                      variant="ghost"
+                                      visual="gray"
+                                      onClick={() => setOverviewOpen(true)}
+                                    >
+                                      <Edit03 className="size-4" />
+                                    </IconButton>
+                                  ) : (
+                                    <Button
+                                      variant="outlined"
+                                      visual="gray"
+                                      onClick={() => setOverviewOpen(true)}
+                                    >
+                                      <Plus className="size-[15px]" /> Add Bio
+                                    </Button>
+                                  ))}
+                              </div>
+
+                              {hasBio ? (
+                                <LineClampText
+                                  text={bioText as string}
+                                  lines={3}
+                                  className="text-sm font-extralight text-gray-700 leading-relaxed"
+                                  toggleClassName="mt-6"
+                                  expandLabel="View More"
+                                  collapseLabel="View Less"
+                                />
+                              ) : (
+                                <p className="text-sm font-light text-gray-600 leading-relaxed">
+                                  Build a strong &ldquo;About Me&rdquo; that helps
+                                  clients understand who you are, what you do, and
+                                  the value you bring. This is your space to create
+                                  a real connection and show what makes you worth
+                                  working with.
+                                </p>
+                              )}
+                            </>
+                          )
+                        })()}
+                      </div>
+                      )}
+
+                      {showOverviewFeatured && (
+                      <Tabs
+                        value={effectiveFeaturedTab}
+                        onValueChange={setFeaturedTab}
+                        className={cn(
+                          "p-6 min-h-[134px] border-x border-b border-gray-200 bg-white",
+                          showOverviewBio
+                            ? "rounded-b-lg"
+                            : "rounded-lg border-t"
+                        )}
+                      >
+                        {(!isClientView || visibleFeaturedTabs.length > 1) && (
+                        <RadixTabs.List className="flex items-center gap-x-3">
+                          {!isClientView && (
+                          <TabsTrigger
+                            variant="unstyled"
+                            showUnderline={false}
+                            value="Featured Clients"
+                            className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                          >
+                            Featured Clients
+                          </TabsTrigger>
+                          )}
+                          {(!isClientView || hasCertifications) && (
+                          <TabsTrigger
+                            variant="unstyled"
+                            showUnderline={false}
+                            value="Certifications"
+                            className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                          >
+                            Certifications
+                          </TabsTrigger>
+                          )}
+                          {(!isClientView || hasIndustries) && (
+                          <TabsTrigger
+                            variant="unstyled"
+                            showUnderline={false}
+                            value="Industry Expertise"
+                            className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                          >
+                            Industry Expertise
+                          </TabsTrigger>
+                          )}
+                          {isEditMode &&
+                            isOwnProfile &&
+                            featuredTab === "Industry Expertise" &&
+                            profile?.industries &&
+                            profile.industries.length > 0 && (
+                              <div className="ml-auto flex items-center gap-x-1">
+                                <IconButton
+                                  className="rounded-full text-gray-500 hover:text-gray-800"
+                                  variant="ghost"
+                                  visual="gray"
+                                  onClick={() => setIndustriesOpen(true)}
+                                >
+                                  <Plus className="size-4" />
+                                </IconButton>
+                                <IconButton
+                                  className="rounded-full text-gray-500 hover:text-gray-800"
+                                  variant="ghost"
+                                  visual="gray"
+                                  onClick={() => setIndustriesOpen(true)}
+                                >
+                                  <Edit03 className="size-4" />
+                                </IconButton>
+                              </div>
+                            )}
+                          {isEditMode &&
+                            isOwnProfile &&
+                            featuredTab === "Certifications" &&
+                            profile?.certifications &&
+                            profile.certifications.length > 0 && (
+                              <Button
+                                variant="outlined"
+                                visual="gray"
+                                className="ml-auto shrink-0 bg-white"
+                                onClick={() => {
+                                  setCertEditIdx(undefined)
+                                  setCertificationsOpen(true)
+                                }}
+                              >
+                                <Plus className="size-[15px]" /> Add Certification
+                              </Button>
+                            )}
+                        </RadixTabs.List>
+                        )}
+
+                        {!isClientView && (
+                        <TabsContent value="Featured Clients">
+                          <div className="mt-6 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                            <div className="flex items-start justify-between gap-x-4">
+                              <div className="flex-auto min-w-0">
+                                <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
+                                  Featured Clients
+                                </h2>
+                                <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                                  Your featured clients will appear here as you
+                                  start working on projects, services, and add
+                                  work history to your profile. These clients are
+                                  automatically generated based on your past
+                                  projects, services, and roles, and aren&apos;t
+                                  directly editable.
+                                </p>
+                              </div>
+                              {isEditMode && isOwnProfile && (
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  className="shrink-0 bg-white"
+                                  onClick={() => setWorkExperienceOpen(true)}
+                                  disabled={atWorkExperienceLimit}
+                                  title={
+                                    atWorkExperienceLimit
+                                      ? "You've reached the 30-entry limit for work experience."
+                                      : undefined
+                                  }
+                                >
+                                  <Plus className="size-[15px]" /> Add Work History
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </TabsContent>
+                        )}
+                        <TabsContent value="Certifications">
+                          {profile?.certifications &&
+                          profile.certifications.length > 0 ? (
+                            <div className="pt-6 flex items-center flex-wrap gap-x-6 gap-y-3">
+                              {profile.certifications.map((cert) => {
+                                const brand = getCertificationBrandFromUrl(
+                                  cert.credentialUrl
+                                )
+                                return (
+                                  <div
+                                    key={cert.id}
+                                    className="inline-flex text-sm leading-none font-medium text-dark-blue-400 items-center gap-x-2"
+                                  >
+                                    {brand?.type === "component" && (
+                                      <brand.Icon className="size-6 shrink-0" />
+                                    )}
+                                    {brand?.type === "remote-svg" && (
+                                      <img
+                                        src={brand.url}
+                                        alt={brand.name}
+                                        width={24}
+                                        height={24}
+                                        className="size-6 shrink-0"
+                                        loading="lazy"
+                                        data-fallback="0"
+                                        onError={(e) => {
+                                          const el = e.currentTarget
+                                          if (el.dataset.fallback === "0") {
+                                            el.dataset.fallback = "1"
+                                            el.src = brand.faviconUrl
+                                          } else {
+                                            el.style.display = "none"
+                                          }
+                                        }}
+                                      />
+                                    )}
+                                    <span className="capitalize">
+                                      {cert.name}
+                                    </span>
+                                    {isEditMode && isOwnProfile && (
+                                      <IconButton
+                                        className="rounded-full text-gray-400 hover:text-gray-600"
+                                        variant="ghost"
+                                        visual="gray"
+                                        onClick={() => {
+                                          setCertEditIdx(String(cert.id))
+                                          setCertificationsOpen(true)
+                                        }}
+                                      >
+                                        <Edit03 className="size-4" />
+                                      </IconButton>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            <div className="mt-4 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                              <div className="flex items-start justify-between gap-x-4">
+                                <div className="flex-auto min-w-0">
+                                  <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
+                                    Certifications
+                                  </h2>
+                                  <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                                    Add the certifications that validate your
+                                    expertise so clients can trust your
+                                    qualifications.
+                                  </p>
+                                </div>
+                                {isEditMode && isOwnProfile && (
+                                  <Button
+                                    variant="outlined"
+                                    visual="gray"
+                                    className="shrink-0 bg-white"
+                                    onClick={() => {
+                                      setCertEditIdx(undefined)
+                                      setCertificationsOpen(true)
+                                    }}
+                                  >
+                                    <Plus className="size-[15px]" /> Add
+                                    Certification
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </TabsContent>
+                        <TabsContent value="Industry Expertise">
+                          {profile?.industries &&
+                          profile.industries.length > 0 ? (
+                            <div className="pt-6 flex items-center flex-wrap gap-3">
+                              {profile.industries.map((ind) => (
+                                <Badge key={ind.id} size="lg" visual="gray">
+                                  {ind.industry}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mt-4 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                              <div className="flex items-start justify-between gap-x-4">
+                                <div className="flex-auto min-w-0">
+                                  <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
+                                    Industry Expertise
+                                  </h2>
+                                  <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                                    Highlight the industries you specialize in so
+                                    clients in those spaces can find you.
+                                  </p>
+                                </div>
+                                {isEditMode && isOwnProfile && (
+                                  <Button
+                                    variant="outlined"
+                                    visual="gray"
+                                    className="shrink-0 bg-white"
+                                    onClick={() => setIndustriesOpen(true)}
+                                  >
+                                    <Plus className="size-[15px]" /> Add Industry
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </TabsContent>
+                      </Tabs>
+                      )}
+                    </div>
+                  )}
+                </LazySection>
+                )}
+
+                {!isClientView && (
+                <LazySection minHeight={400}>
+                  {/* offers — hidden on the client profile, kept for edit mode */}
+                  {!isClientProfile && (
+                    <div
+                      className="mt-6 p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
+                      id="offers"
+                    >
+                      <h1 className="text-xl font-bold leading-none text-dark-blue-400">
+                        My Offers
+                      </h1>
+
+                      <Tabs defaultValue="Projects" className="mt-6">
+                        <div className="flex items-center justify-between">
+                          <RadixTabs.List className="inline-flex items-center gap-x-3">
+                            <TabsTrigger
+                              variant="unstyled"
+                              showUnderline={false}
+                              value="Projects"
+                              className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                            >
+                              Projects
+                            </TabsTrigger>
+                            <TabsTrigger
+                              variant="unstyled"
+                              showUnderline={false}
+                              value="Services"
+                              className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                            >
+                              Services
+                            </TabsTrigger>
+                          </RadixTabs.List>
+
+                          {isEditMode && isOwnProfile && (
+                            <Button
+                              variant="link"
+                              visual="gray"
+                              onClick={() => setListingsModalStep("empty")}
+                            >
+                              <Edit03 className="size-[15px]" /> Edit Listings
+                            </Button>
+                          )}
+                        </div>
+
+                        <TabsContent value="Projects">
+                          <div className="mt-6 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                            <div className="flex items-start justify-between gap-x-4">
+                              <div className="flex-auto min-w-0">
+                                <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
+                                  Projects
+                                </h2>
+                                <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                                  Your project offers will be displayed here as you create your own listings or join existing projects in the marketplace. These offers help you gain visibility, attract clients, and help create more opportunities.
+                                </p>
+                              </div>
+                              {isEditMode && isOwnProfile && (
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  className="shrink-0 bg-white"
+                                  onClick={() => goToPublishProject("project")}
+                                >
+                                  <Plus className="size-[15px]" /> Add Project
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </TabsContent>
+
+                        <TabsContent value="Services">
+                          <div className="mt-6 p-6 rounded-lg bg-gray-25 border border-gray-200">
+                            <div className="flex items-start justify-between gap-x-4">
+                              <div className="flex-auto min-w-0">
+                                <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
+                                  Services
+                                </h2>
+                                <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                                  Your service offers will be displayed here as you create your own listings or join existing services in the marketplace. These offers help you gain visibility, attract clients, and help create more opportunities.
+                                </p>
+                              </div>
+                              {isEditMode && isOwnProfile && (
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  className="shrink-0 bg-white"
+                                  onClick={() => goToPublishProject("service")}
+                                >
+                                  <Plus className="size-[15px]" /> Add Service
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </TabsContent>
+                      </Tabs>
+                    </div>
+                  )}
+                </LazySection>
+                )}
+
+                {showBackgroundSection && (
+                <LazySection minHeight={400}>
+                  {/* background — hidden on the client profile, kept for edit mode */}
+                  {!isClientProfile && (
+                    <div
+                      className="mt-6 p-6 rounded-lg bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 scroll-mt-[137.5px]"
+                      id="background"
+                    >
+                      <div className="flex items-center justify-between">
+                        <h1 className="text-xl leading-none font-bold text-dark-blue-400">
+                          Background
+                        </h1>
+                        {isEditMode && isOwnProfile && (
+                          <IconButton
+                            className="rounded-full text-gray-500 hover:text-gray-800"
+                            variant="ghost"
+                            visual="gray"
+                            onClick={() =>
+                              backgroundActiveTab === "Education"
+                                ? setEducationOpen(true)
+                                : setWorkExperienceOpen(true)
+                            }
+                          >
+                            <Edit03 className="size-4" />
+                          </IconButton>
+                        )}
+                      </div>
+
+                      <Tabs
+                        value={effectiveBackgroundTab}
+                        onValueChange={setBackgroundActiveTab}
+                        className="mt-6"
+                      >
+                        {(!isClientView || visibleBackgroundTabs.length > 1) && (
+                        <RadixTabs.List className="inline-flex items-center gap-x-3">
+                          {(!isClientView || hasWorkExperience) && (
+                          <TabsTrigger
+                            variant="unstyled"
+                            showUnderline={false}
+                            value="Work Experience"
+                            className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                          >
+                            Work Experience
+                          </TabsTrigger>
+                          )}
+                          {(!isClientView || hasEducation) && (
+                          <TabsTrigger
+                            variant="unstyled"
+                            showUnderline={false}
+                            value="Education"
+                            className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                          >
+                            Education
+                          </TabsTrigger>
+                          )}
+                        </RadixTabs.List>
+                        )}
+
+                        <TabsContent value="Work Experience">
+                          <ShowMoreLessRoot
+                            value={autoExpandWorkExperience}
+                            onValueChange={setAutoExpandWorkExperience}
+                          >
+                            {({ isShowing, setIsShowing, scrollHeight, ref }) => (
+                              <>
+                                <div
+                                  ref={ref}
+                                  className="[interpolate-size:allow-keywords] mt-6 overflow-hidden transition-[height] duration-300"
+                                  style={{
+                                    height: isShowing
+                                      ? "auto"
+                                      : scrollHeight
+                                        ? toPxIfNumber(scrollHeight)
+                                        : "auto",
+                                  }}
+                                >
+                                  <ShowMoreLessComp max={4}>
+                                    {profile?.experience &&
+                                    profile.experience.length > 0 ? (
+                                      [...profile.experience]
+                                        .sort((a: any, b: any) => {
+                                          const aCurrent =
+                                            a.isCurrentRole || !a.endDate
+                                          const bCurrent =
+                                            b.isCurrentRole || !b.endDate
+                                          if (aCurrent !== bCurrent)
+                                            return aCurrent ? -1 : 1
+                                          return (b.startDate || "").localeCompare(
+                                            a.startDate || ""
                                           )
-                                        }
-                                        const calcDuration = (
-                                          start: string,
-                                          end: string | null
-                                        ) => {
-                                          const s = toDate(start)
-                                          const e = end ? toDate(end) : new Date()
-                                          let totalMonths =
-                                            (e.getFullYear() -
-                                              s.getFullYear()) *
-                                              12 +
-                                            (e.getMonth() - s.getMonth())
-                                          const yrs = Math.floor(
-                                            totalMonths / 12
+                                        })
+                                        .map((exp: any, idx: number) => {
+                                          const months = [
+                                            "January",
+                                            "February",
+                                            "March",
+                                            "April",
+                                            "May",
+                                            "June",
+                                            "July",
+                                            "August",
+                                            "September",
+                                            "October",
+                                            "November",
+                                            "December",
+                                          ]
+                                          const fmtDate = (d: string | null) => {
+                                            if (!d) return "Present"
+                                            const [y, m] = d.split("-")
+                                            return `${months[parseInt(m, 10) - 1]} ${y}`
+                                          }
+                                          const toDate = (d: string) => {
+                                            const [y, m, day] = d.split("-")
+                                            return new Date(
+                                              Number(y),
+                                              Number(m) - 1,
+                                              Number(day || 1)
+                                            )
+                                          }
+                                          const calcDuration = (
+                                            start: string,
+                                            end: string | null
+                                          ) => {
+                                            const s = toDate(start)
+                                            const e = end ? toDate(end) : new Date()
+                                            let totalMonths =
+                                              (e.getFullYear() -
+                                                s.getFullYear()) *
+                                                12 +
+                                              (e.getMonth() - s.getMonth())
+                                            const yrs = Math.floor(
+                                              totalMonths / 12
+                                            )
+                                            const mos = totalMonths % 12
+                                            const parts = []
+                                            if (yrs > 0)
+                                              parts.push(
+                                                `${yrs} yr${yrs > 1 ? "s" : ""}`
+                                              )
+                                            if (mos > 0)
+                                              parts.push(
+                                                `${mos} mo${mos > 1 ? "s" : ""}`
+                                              )
+                                            return parts.join(" ") || "< 1 mo"
+                                          }
+                                          return (
+                                            <div
+                                              key={exp.id || idx}
+                                              className="flex gap-x-6"
+                                            >
+                                              <div className="relative flex flex-col items-center">
+                                                <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-gray-50 overflow-hidden relative">
+                                                  <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
+                                                    {exp.company?.charAt(0) ||
+                                                      "W"}
+                                                  </span>
+                                                  {(() => {
+                                                    if (exp.companyLogoUrl) {
+                                                      return (
+                                                        <NextImage
+                                                          key={exp.companyLogoUrl}
+                                                          src={exp.companyLogoUrl}
+                                                          alt={exp.company || ""}
+                                                          width={45}
+                                                          height={45}
+                                                          className="object-contain relative"
+                                                        />
+                                                      )
+                                                    }
+                                                    const brand =
+                                                      getCompanyBrandFromName(
+                                                        exp.company
+                                                      )
+                                                    if (
+                                                      brand?.type === "component"
+                                                    ) {
+                                                      return (
+                                                        <brand.Icon className="size-9 relative bg-gray-50" />
+                                                      )
+                                                    }
+                                                    if (
+                                                      brand?.type === "remote-svg"
+                                                    ) {
+                                                      return (
+                                                        <img
+                                                          key={brand.url}
+                                                          src={brand.url}
+                                                          alt={
+                                                            exp.company ||
+                                                            brand.name
+                                                          }
+                                                          width={36}
+                                                          height={36}
+                                                          className="object-contain size-9 relative bg-gray-50"
+                                                          loading="lazy"
+                                                          data-fallback="0"
+                                                          onError={(e) => {
+                                                            const el =
+                                                              e.currentTarget
+                                                            if (
+                                                              el.dataset
+                                                                .fallback === "0"
+                                                            ) {
+                                                              el.dataset.fallback =
+                                                                "1"
+                                                              el.src =
+                                                                brand.faviconUrl
+                                                            } else {
+                                                              el.style.display =
+                                                                "none"
+                                                            }
+                                                          }}
+                                                        />
+                                                      )
+                                                    }
+                                                    return null
+                                                  })()}
+                                                </div>
+
+                                                {idx <
+                                                  (profile.experience?.length ??
+                                                    0) -
+                                                    1 && (
+                                                  <div className="absolute flex py-1.5 justify-center top-[55px] inset-x-0 bottom-0">
+                                                    <span className="inline-block border-dashed border-[1.5px] border-gray-200" />
+                                                  </div>
+                                                )}
+                                              </div>
+
+                                              <div className="flex-auto min-w-0">
+                                                <div className="pb-8">
+                                                  <div className="flex items-center justify-between">
+                                                    <h1 className="text-base font-bold text-dark-blue-400 leading-none">
+                                                      {exp.title}
+                                                    </h1>
+                                                    {isEditMode &&
+                                                      isOwnProfile && (
+                                                        <div className="flex items-center">
+                                                          <IconButton
+                                                            variant="ghost"
+                                                            visual="gray"
+                                                            className="rounded-full text-gray-400 hover:text-gray-800"
+                                                            type="button"
+                                                            onClick={() => {
+                                                              setWorkExpEditIdx(
+                                                                String(exp.id)
+                                                              )
+                                                              setWorkExperienceOpen(
+                                                                true
+                                                              )
+                                                            }}
+                                                          >
+                                                            <Edit03 className="size-4" />
+                                                          </IconButton>
+                                                          <IconButton
+                                                            variant="ghost"
+                                                            visual="gray"
+                                                            className="rounded-full text-error-500 hover:bg-error-100"
+                                                            type="button"
+                                                            onClick={() =>
+                                                              handleDeleteWorkExperience(
+                                                                exp.id
+                                                              )
+                                                            }
+                                                          >
+                                                            <Trash03 className="size-4" />
+                                                          </IconButton>
+                                                        </div>
+                                                      )}
+                                                  </div>
+                                                  <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
+                                                    {exp.company
+                                                      ? exp.company.charAt(0).toUpperCase() +
+                                                        exp.company.slice(1)
+                                                      : ""}
+                                                  </p>
+                                                  <div className="mt-1.5 inline-flex items-center gap-x-2">
+                                                    <span className="text-xs leading-none text-dark-blue-400">
+                                                      {fmtDate(exp.startDate)} -{" "}
+                                                      {fmtDate(exp.endDate)}
+                                                    </span>
+                                                    <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
+                                                    <span className="text-xs leading-none font-semibold text-dark-blue-400">
+                                                      {calcDuration(
+                                                        exp.startDate,
+                                                        exp.endDate
+                                                      )}
+                                                    </span>
+                                                  </div>
+
+                                                  {exp.description && (
+                                                    <ReadMoreLessRoot>
+                                                      <ReadMoreLessComp
+                                                        max={52}
+                                                        text={exp.description}
+                                                      >
+                                                        {({
+                                                          readMore,
+                                                          text,
+                                                          toggle,
+                                                        }) => (
+                                                          <>
+                                                            <p className="mt-3 text-sm leading-none font-extralight text-gray-700 break-words">
+                                                              {text}{" "}
+                                                              <Button
+                                                                className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
+                                                                size="sm"
+                                                                variant="link"
+                                                                visual="gray"
+                                                                onClick={toggle}
+                                                              >
+                                                                {readMore
+                                                                  ? null
+                                                                  : "...Read More"}
+                                                              </Button>
+                                                            </p>
+                                                          </>
+                                                        )}
+                                                      </ReadMoreLessComp>
+                                                    </ReadMoreLessRoot>
+                                                  )}
+                                                  {Array.isArray(exp.skills) && exp.skills.length > 0 && (
+                                                    <div className="mt-3 flex flex-wrap gap-2">
+                                                      {exp.skills.map((skill: string, sIdx: number) => (
+                                                        <Badge
+                                                          key={`${exp.id || idx}-${sIdx}`}
+                                                          className="text-gray-700"
+                                                          visual="gray"
+                                                          size="sm"
+                                                        >
+                                                          {skill}
+                                                        </Badge>
+                                                      ))}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            </div>
                                           )
-                                          const mos = totalMonths % 12
-                                          const parts = []
-                                          if (yrs > 0)
-                                            parts.push(
-                                              `${yrs} yr${yrs > 1 ? "s" : ""}`
-                                            )
-                                          if (mos > 0)
-                                            parts.push(
-                                              `${mos} mo${mos > 1 ? "s" : ""}`
-                                            )
-                                          return parts.join(" ") || "< 1 mo"
-                                        }
-                                        return (
-                                          <div
-                                            key={exp.id || idx}
-                                            className="flex gap-x-6"
-                                          >
-                                            <div className="relative flex flex-col items-center">
-                                              <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-gray-50 overflow-hidden relative">
+                                        })
+                                    ) : (
+                                      <div className="p-6 rounded-lg bg-gray-25 border border-gray-200">
+                                        <div className="flex items-start justify-between gap-x-4">
+                                          <div className="flex-auto min-w-0">
+                                            <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
+                                              Work Experience
+                                            </h2>
+                                            <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                                              Add your work experience to show
+                                              where you&apos;ve worked and the
+                                              impact you&apos;ve made. This gives
+                                              clients more context around your
+                                              background and expertise.
+                                            </p>
+                                          </div>
+                                          {isEditMode && isOwnProfile && (
+                                            <Button
+                                              variant="outlined"
+                                              visual="gray"
+                                              className="shrink-0 bg-white"
+                                              onClick={() =>
+                                                setWorkExperienceOpen(true)
+                                              }
+                                              disabled={atWorkExperienceLimit}
+                                              title={
+                                                atWorkExperienceLimit
+                                                  ? "You've reached the 30-entry limit for work experience."
+                                                  : undefined
+                                              }
+                                            >
+                                              <Plus className="size-[15px]" /> Add
+                                              Work Experience
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </ShowMoreLessComp>
+                                </div>
+
+                                {(profile?.experience?.length ?? 0) > 4 && (
+                                  <div className="flex mt-6 items-center justify-center">
+                                    <Button
+                                      variant="link"
+                                      visual="gray"
+                                      onClick={() =>
+                                        setIsShowing((prev) => !prev)
+                                      }
+                                    >
+                                      {isShowing
+                                        ? "View Less"
+                                        : `${(profile?.experience?.length ?? 0) - 4} More...`}
+                                    </Button>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </ShowMoreLessRoot>
+                        </TabsContent>
+
+                        <TabsContent value="Education">
+                          <ShowMoreLessRoot
+                            value={autoExpandEducation}
+                            onValueChange={setAutoExpandEducation}
+                          >
+                            {({ isShowing, setIsShowing, scrollHeight, ref }) => (
+                              <>
+                                <div
+                                  ref={ref}
+                                  className="[interpolate-size:allow-keywords] mt-6 overflow-hidden transition-[height] duration-300"
+                                  style={{
+                                    height: isShowing
+                                      ? "auto"
+                                      : scrollHeight
+                                        ? toPxIfNumber(scrollHeight)
+                                        : "auto",
+                                  }}
+                                >
+                                  <ShowMoreLessComp max={4}>
+                                    {profile?.education &&
+                                    profile.education.length > 0 ? (
+                                      [...profile.education]
+                                        .sort((a: any, b: any) => {
+                                          const aCurrent =
+                                            a.currentlyStudying || !a.endYear
+                                          const bCurrent =
+                                            b.currentlyStudying || !b.endYear
+                                          if (aCurrent !== bCurrent)
+                                            return aCurrent ? -1 : 1
+                                          return (
+                                            (b.startYear ?? 0) -
+                                              (a.startYear ?? 0) ||
+                                            (b.startMonth ?? 0) -
+                                              (a.startMonth ?? 0)
+                                          )
+                                        })
+                                        .map((edu: any, idx: number) => {
+                                          const months = [
+                                            "January",
+                                            "February",
+                                            "March",
+                                            "April",
+                                            "May",
+                                            "June",
+                                            "July",
+                                            "August",
+                                            "September",
+                                            "October",
+                                            "November",
+                                            "December",
+                                          ]
+                                          const fmtYearMonth = (
+                                            year?: number | null,
+                                            month?: number | null
+                                          ) => {
+                                            if (!year) return "Present"
+                                            if (!month) return String(year)
+                                            return `${months[month - 1]} ${year}`
+                                          }
+                                          return (
+                                            <div
+                                              key={edu.id || idx}
+                                              className="flex pb-5 items-start gap-x-6"
+                                            >
+                                              <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
                                                 <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
-                                                  {exp.company?.charAt(0) ||
-                                                    "W"}
+                                                  {edu.school?.charAt(0) || "E"}
                                                 </span>
                                                 {(() => {
-                                                  if (exp.companyLogoUrl) {
+                                                  if (edu.institutionLogoUrl) {
                                                     return (
                                                       <NextImage
-                                                        key={exp.companyLogoUrl}
-                                                        src={exp.companyLogoUrl}
-                                                        alt={exp.company || ""}
-                                                        width={45}
-                                                        height={45}
-                                                        className="object-contain relative"
+                                                        key={edu.institutionLogoUrl}
+                                                        src={
+                                                          edu.institutionLogoUrl
+                                                        }
+                                                        alt={edu.school || ""}
+                                                        fill
+                                                        sizes="55px"
+                                                        className="object-contain p-1 relative"
                                                       />
                                                     )
                                                   }
                                                   const brand =
                                                     getCompanyBrandFromName(
-                                                      exp.company
+                                                      edu.school,
+                                                      { faviconTld: "edu" }
                                                     )
                                                   if (
                                                     brand?.type === "component"
@@ -3086,7 +3490,7 @@ function Default() {
                                                         key={brand.url}
                                                         src={brand.url}
                                                         alt={
-                                                          exp.company ||
+                                                          edu.school ||
                                                           brand.name
                                                         }
                                                         width={36}
@@ -3117,445 +3521,131 @@ function Default() {
                                                 })()}
                                               </div>
 
-                                              {idx <
-                                                (profile.experience?.length ??
-                                                  0) -
-                                                  1 && (
-                                                <div className="absolute flex py-1.5 justify-center top-[55px] inset-x-0 bottom-0">
-                                                  <span className="inline-block border-dashed border-[1.5px] border-gray-200" />
-                                                </div>
-                                              )}
-                                            </div>
-
-                                            <div className="flex-auto min-w-0">
-                                              <div className="pb-8">
-                                                <div className="flex items-center justify-between">
-                                                  <h1 className="text-base font-bold text-dark-blue-400 leading-none">
-                                                    {exp.title}
+                                              <div className="flex-auto">
+                                                <div className="flex items-start justify-between">
+                                                  <h1 className="text-base leading-none font-bold text-dark-blue-400">
+                                                    {edu.school}
                                                   </h1>
-                                                  {isEditMode &&
-                                                    isOwnProfile && (
-                                                      <div className="flex items-center">
-                                                        <IconButton
-                                                          variant="ghost"
-                                                          visual="gray"
-                                                          className="rounded-full text-gray-400 hover:text-gray-800"
-                                                          type="button"
-                                                          onClick={() => {
-                                                            setWorkExpEditIdx(
-                                                              String(exp.id)
-                                                            )
-                                                            setWorkExperienceOpen(
-                                                              true
-                                                            )
-                                                          }}
-                                                        >
-                                                          <Edit03 className="size-4" />
-                                                        </IconButton>
-                                                        <IconButton
-                                                          variant="ghost"
-                                                          visual="gray"
-                                                          className="rounded-full text-error-500 hover:bg-error-100"
-                                                          type="button"
-                                                          onClick={() =>
-                                                            handleDeleteWorkExperience(
-                                                              exp.id
-                                                            )
-                                                          }
-                                                        >
-                                                          <Trash03 className="size-4" />
-                                                        </IconButton>
-                                                      </div>
-                                                    )}
-                                                </div>
-                                                <p className="text-[13px] mt-1.5 leading-none text-dark-blue-400">
-                                                  {exp.company
-                                                    ? exp.company.charAt(0).toUpperCase() +
-                                                      exp.company.slice(1)
-                                                    : ""}
-                                                </p>
-                                                <div className="mt-1.5 inline-flex items-center gap-x-2">
-                                                  <span className="text-xs leading-none text-dark-blue-400">
-                                                    {fmtDate(exp.startDate)} -{" "}
-                                                    {fmtDate(exp.endDate)}
-                                                  </span>
-                                                  <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                                  <span className="text-xs leading-none font-semibold text-dark-blue-400">
-                                                    {calcDuration(
-                                                      exp.startDate,
-                                                      exp.endDate
-                                                    )}
-                                                  </span>
-                                                </div>
-
-                                                {exp.description && (
-                                                  <ReadMoreLessRoot>
-                                                    <ReadMoreLessComp
-                                                      max={52}
-                                                      text={exp.description}
-                                                    >
-                                                      {({
-                                                        readMore,
-                                                        text,
-                                                        toggle,
-                                                      }) => (
-                                                        <>
-                                                          <p className="mt-3 text-sm leading-none font-extralight text-gray-700 break-words">
-                                                            {text}{" "}
-                                                            <Button
-                                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                                              size="sm"
-                                                              variant="link"
-                                                              visual="gray"
-                                                              onClick={toggle}
-                                                            >
-                                                              {readMore
-                                                                ? null
-                                                                : "...Read More"}
-                                                            </Button>
-                                                          </p>
-                                                        </>
-                                                      )}
-                                                    </ReadMoreLessComp>
-                                                  </ReadMoreLessRoot>
-                                                )}
-                                                {Array.isArray(exp.skills) && exp.skills.length > 0 && (
-                                                  <div className="mt-3 flex flex-wrap gap-2">
-                                                    {exp.skills.map((skill: string, sIdx: number) => (
-                                                      <Badge
-                                                        key={`${exp.id || idx}-${sIdx}`}
-                                                        className="text-gray-700"
+                                                  {isEditMode && isOwnProfile && (
+                                                    <div className="flex items-center">
+                                                      <IconButton
+                                                        variant="ghost"
                                                         visual="gray"
-                                                        size="sm"
+                                                        className="rounded-full text-gray-400 hover:text-gray-800"
+                                                        type="button"
+                                                        onClick={() => {
+                                                          setEduEditIdx(
+                                                            String(edu.id)
+                                                          )
+                                                          setEducationOpen(true)
+                                                        }}
                                                       >
-                                                        {skill}
-                                                      </Badge>
-                                                    ))}
-                                                  </div>
-                                                )}
-                                              </div>
-                                            </div>
-                                          </div>
-                                        )
-                                      })
-                                  ) : (
-                                    <div className="p-6 rounded-lg bg-gray-25 border border-gray-200">
-                                      <div className="flex items-start justify-between gap-x-4">
-                                        <div className="flex-auto min-w-0">
-                                          <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
-                                            Work Experience
-                                          </h2>
-                                          <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
-                                            Add your work experience to show
-                                            where you&apos;ve worked and the
-                                            impact you&apos;ve made. This gives
-                                            clients more context around your
-                                            background and expertise.
-                                          </p>
-                                        </div>
-                                        {isEditMode && isOwnProfile && (
-                                          <Button
-                                            variant="outlined"
-                                            visual="gray"
-                                            className="shrink-0 bg-white"
-                                            onClick={() =>
-                                              setWorkExperienceOpen(true)
-                                            }
-                                            disabled={atWorkExperienceLimit}
-                                            title={
-                                              atWorkExperienceLimit
-                                                ? "You've reached the 30-entry limit for work experience."
-                                                : undefined
-                                            }
-                                          >
-                                            <Plus className="size-[15px]" /> Add
-                                            Work Experience
-                                          </Button>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-                                </ShowMoreLessComp>
-                              </div>
-
-                              {(profile?.experience?.length ?? 0) > 4 && (
-                                <div className="flex mt-6 items-center justify-center">
-                                  <Button
-                                    variant="link"
-                                    visual="gray"
-                                    onClick={() =>
-                                      setIsShowing((prev) => !prev)
-                                    }
-                                  >
-                                    {isShowing
-                                      ? "View Less"
-                                      : `${(profile?.experience?.length ?? 0) - 4} More...`}
-                                  </Button>
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </ShowMoreLessRoot>
-                      </TabsContent>
-
-                      <TabsContent value="Education">
-                        <ShowMoreLessRoot
-                          value={autoExpandEducation}
-                          onValueChange={setAutoExpandEducation}
-                        >
-                          {({ isShowing, setIsShowing, scrollHeight, ref }) => (
-                            <>
-                              <div
-                                ref={ref}
-                                className="[interpolate-size:allow-keywords] mt-6 overflow-hidden transition-[height] duration-300"
-                                style={{
-                                  height: isShowing
-                                    ? "auto"
-                                    : scrollHeight
-                                      ? toPxIfNumber(scrollHeight)
-                                      : "auto",
-                                }}
-                              >
-                                <ShowMoreLessComp max={4}>
-                                  {profile?.education &&
-                                  profile.education.length > 0 ? (
-                                    [...profile.education]
-                                      .sort((a: any, b: any) => {
-                                        const aCurrent =
-                                          a.currentlyStudying || !a.endYear
-                                        const bCurrent =
-                                          b.currentlyStudying || !b.endYear
-                                        if (aCurrent !== bCurrent)
-                                          return aCurrent ? -1 : 1
-                                        return (
-                                          (b.startYear ?? 0) -
-                                            (a.startYear ?? 0) ||
-                                          (b.startMonth ?? 0) -
-                                            (a.startMonth ?? 0)
-                                        )
-                                      })
-                                      .map((edu: any, idx: number) => {
-                                        const months = [
-                                          "January",
-                                          "February",
-                                          "March",
-                                          "April",
-                                          "May",
-                                          "June",
-                                          "July",
-                                          "August",
-                                          "September",
-                                          "October",
-                                          "November",
-                                          "December",
-                                        ]
-                                        const fmtYearMonth = (
-                                          year?: number | null,
-                                          month?: number | null
-                                        ) => {
-                                          if (!year) return "Present"
-                                          if (!month) return String(year)
-                                          return `${months[month - 1]} ${year}`
-                                        }
-                                        return (
-                                          <div
-                                            key={edu.id || idx}
-                                            className="flex pb-5 items-start gap-x-6"
-                                          >
-                                            <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
-                                              <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
-                                                {edu.school?.charAt(0) || "E"}
-                                              </span>
-                                              {(() => {
-                                                if (edu.institutionLogoUrl) {
-                                                  return (
-                                                    <NextImage
-                                                      key={edu.institutionLogoUrl}
-                                                      src={
-                                                        edu.institutionLogoUrl
-                                                      }
-                                                      alt={edu.school || ""}
-                                                      fill
-                                                      sizes="55px"
-                                                      className="object-contain p-1 relative"
-                                                    />
-                                                  )
-                                                }
-                                                const brand =
-                                                  getCompanyBrandFromName(
-                                                    edu.school,
-                                                    { faviconTld: "edu" }
-                                                  )
-                                                if (
-                                                  brand?.type === "component"
-                                                ) {
-                                                  return (
-                                                    <brand.Icon className="size-9 relative bg-gray-50" />
-                                                  )
-                                                }
-                                                if (
-                                                  brand?.type === "remote-svg"
-                                                ) {
-                                                  return (
-                                                    <img
-                                                      key={brand.url}
-                                                      src={brand.url}
-                                                      alt={
-                                                        edu.school ||
-                                                        brand.name
-                                                      }
-                                                      width={36}
-                                                      height={36}
-                                                      className="object-contain size-9 relative bg-gray-50"
-                                                      loading="lazy"
-                                                      data-fallback="0"
-                                                      onError={(e) => {
-                                                        const el =
-                                                          e.currentTarget
-                                                        if (
-                                                          el.dataset
-                                                            .fallback === "0"
-                                                        ) {
-                                                          el.dataset.fallback =
-                                                            "1"
-                                                          el.src =
-                                                            brand.faviconUrl
-                                                        } else {
-                                                          el.style.display =
-                                                            "none"
+                                                        <Edit03 className="size-4" />
+                                                      </IconButton>
+                                                      <IconButton
+                                                        variant="ghost"
+                                                        visual="gray"
+                                                        className="rounded-full text-error-500 hover:bg-error-100"
+                                                        type="button"
+                                                        onClick={() =>
+                                                          handleDeleteEducation(
+                                                            edu.id
+                                                          )
                                                         }
-                                                      }}
-                                                    />
-                                                  )
-                                                }
-                                                return null
-                                              })()}
-                                            </div>
-
-                                            <div className="flex-auto">
-                                              <div className="flex items-start justify-between">
-                                                <h1 className="text-base leading-none font-bold text-dark-blue-400">
-                                                  {edu.school}
-                                                </h1>
-                                                {isEditMode && isOwnProfile && (
-                                                  <div className="flex items-center">
-                                                    <IconButton
-                                                      variant="ghost"
-                                                      visual="gray"
-                                                      className="rounded-full text-gray-400 hover:text-gray-800"
-                                                      type="button"
-                                                      onClick={() => {
-                                                        setEduEditIdx(
-                                                          String(edu.id)
-                                                        )
-                                                        setEducationOpen(true)
-                                                      }}
-                                                    >
-                                                      <Edit03 className="size-4" />
-                                                    </IconButton>
-                                                    <IconButton
-                                                      variant="ghost"
-                                                      visual="gray"
-                                                      className="rounded-full text-error-500 hover:bg-error-100"
-                                                      type="button"
-                                                      onClick={() =>
-                                                        handleDeleteEducation(
-                                                          edu.id
-                                                        )
-                                                      }
-                                                    >
-                                                      <Trash03 className="size-4" />
-                                                    </IconButton>
-                                                  </div>
-                                                )}
-                                              </div>
-                                              <div className="mt-1.5 flex items-center gap-x-2">
-                                                {edu.degree && (
+                                                      >
+                                                        <Trash03 className="size-4" />
+                                                      </IconButton>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                                <div className="mt-1.5 flex items-center gap-x-2">
+                                                  {edu.degree && (
+                                                    <span className="text-dark-blue-400 text-xs leading-none">
+                                                      {edu.degree}
+                                                    </span>
+                                                  )}
+                                                  {edu.degree && edu.fieldOfStudy && (
+                                                    <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
+                                                  )}
+                                                  {edu.fieldOfStudy && (
+                                                    <span className="text-dark-blue-400 font-semibold text-xs leading-none">
+                                                      {edu.fieldOfStudy}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <div className="mt-1.5">
                                                   <span className="text-dark-blue-400 text-xs leading-none">
-                                                    {edu.degree}
+                                                    {fmtYearMonth(edu.startYear, edu.startMonth)} -{" "}
+                                                    {edu.currentlyStudying
+                                                      ? "Present"
+                                                      : fmtYearMonth(edu.endYear, edu.endMonth)}
                                                   </span>
-                                                )}
-                                                {edu.degree && edu.fieldOfStudy && (
-                                                  <span className="shrink-0 bg-gray-300 size-1 rounded-full inline-block" />
-                                                )}
-                                                {edu.fieldOfStudy && (
-                                                  <span className="text-dark-blue-400 font-semibold text-xs leading-none">
-                                                    {edu.fieldOfStudy}
-                                                  </span>
-                                                )}
-                                              </div>
-                                              <div className="mt-1.5">
-                                                <span className="text-dark-blue-400 text-xs leading-none">
-                                                  {fmtYearMonth(edu.startYear, edu.startMonth)} -{" "}
-                                                  {edu.currentlyStudying
-                                                    ? "Present"
-                                                    : fmtYearMonth(edu.endYear, edu.endMonth)}
-                                                </span>
+                                                </div>
                                               </div>
                                             </div>
+                                          )
+                                        })
+                                    ) : (
+                                      <div className="p-6 rounded-lg bg-gray-25 border border-gray-200">
+                                        <div className="flex items-start justify-between gap-x-4">
+                                          <div className="flex-auto min-w-0">
+                                            <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
+                                              Education
+                                            </h2>
+                                            <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
+                                              Add your education to highlight your
+                                              academic background and the
+                                              qualifications that support your
+                                              expertise.
+                                            </p>
                                           </div>
-                                        )
-                                      })
-                                  ) : (
-                                    <div className="p-6 rounded-lg bg-gray-25 border border-gray-200">
-                                      <div className="flex items-start justify-between gap-x-4">
-                                        <div className="flex-auto min-w-0">
-                                          <h2 className="text-lg font-bold text-dark-blue-400 leading-none">
-                                            Education
-                                          </h2>
-                                          <p className="mt-2 text-sm font-light text-gray-600 leading-relaxed">
-                                            Add your education to highlight your
-                                            academic background and the
-                                            qualifications that support your
-                                            expertise.
-                                          </p>
+                                          {isEditMode && isOwnProfile && (
+                                            <Button
+                                              variant="outlined"
+                                              visual="gray"
+                                              className="shrink-0 bg-white"
+                                              onClick={() =>
+                                                setEducationOpen(true)
+                                              }
+                                            >
+                                              <Plus className="size-[15px]" /> Add
+                                              Education
+                                            </Button>
+                                          )}
                                         </div>
-                                        {isEditMode && isOwnProfile && (
-                                          <Button
-                                            variant="outlined"
-                                            visual="gray"
-                                            className="shrink-0 bg-white"
-                                            onClick={() =>
-                                              setEducationOpen(true)
-                                            }
-                                          >
-                                            <Plus className="size-[15px]" /> Add
-                                            Education
-                                          </Button>
-                                        )}
                                       </div>
-                                    </div>
-                                  )}
-                                </ShowMoreLessComp>
-                              </div>
+                                    )}
+                                  </ShowMoreLessComp>
+                                </div>
 
-                              <div
-                                className={cn(
-                                  "flex items-center justify-start",
-                                  isShowing && "justify-center"
-                                )}
-                              >
-                                {(profile?.education?.length ?? 0) > 4 && (
-                                  <Button
-                                    size="sm"
-                                    variant="link"
-                                    visual="gray"
-                                    onClick={() =>
-                                      setIsShowing((prev) => !prev)
-                                    }
-                                  >
-                                    {isShowing
-                                      ? "View Less"
-                                      : `${(profile?.education?.length ?? 0) - 4} More...`}
-                                  </Button>
-                                )}
-                              </div>
-                            </>
-                          )}
-                        </ShowMoreLessRoot>
-                      </TabsContent>
-                    </Tabs>
-                  </div>
+                                <div
+                                  className={cn(
+                                    "flex items-center justify-start",
+                                    isShowing && "justify-center"
+                                  )}
+                                >
+                                  {(profile?.education?.length ?? 0) > 4 && (
+                                    <Button
+                                      size="sm"
+                                      variant="link"
+                                      visual="gray"
+                                      onClick={() =>
+                                        setIsShowing((prev) => !prev)
+                                      }
+                                    >
+                                      {isShowing
+                                        ? "View Less"
+                                        : `${(profile?.education?.length ?? 0) - 4} More...`}
+                                    </Button>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </ShowMoreLessRoot>
+                        </TabsContent>
+                      </Tabs>
+                    </div>
+                  )}
                 </LazySection>
                 )}
 
