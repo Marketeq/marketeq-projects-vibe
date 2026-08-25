@@ -67,6 +67,7 @@ import {
   Upload01,
   User,
   X,
+  X2,
   XCircle,
 } from "@blend-metrics/icons"
 import * as RadixTabs from "@radix-ui/react-tabs"
@@ -122,11 +123,495 @@ import { ProjectAPI } from "@/service/http/project"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { RecentQuestionsManager } from "@/app/(group)/my-listings/[slug]/recent-questions-manager"
 import { GripVertical2 } from "@/components/icons/grip-vertical-2"
+import { Controller, SubmitHandler, useForm, useWatch } from "react-hook-form"
+import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { useControllableState } from "@/utils/hooks"
+import { hookFormHasError } from "@/utils/functions"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 
 const CaseStudyBuilder = dynamic(
   () => import("@/components/case-study-builder"),
   { ssr: false }
 )
+
+// ============================================================
+// CompanyIndustriesDialog
+//
+// Copied from IndustryExpertiseDialog in components/edit-profile-modals.tsx.
+// That one is the talent version and is shared with the talent profile, so it
+// is left untouched. This copy carries company wording and the ten industry
+// ceiling from the design.
+// ============================================================
+
+const MAX_COMPANY_INDUSTRIES = 10
+
+const companyIndustriesFormSchema = z.object({
+  industries: z
+    .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
+    .min(1, "Please at least provide 1 industry")
+    .max(
+      MAX_COMPANY_INDUSTRIES,
+      `You have reached the maximum limit of ${MAX_COMPANY_INDUSTRIES} industries`
+    ),
+})
+
+type CompanyIndustriesFormValues = z.infer<typeof companyIndustriesFormSchema>
+
+const companyIndustriesFormDefaultValue: CompanyIndustriesFormValues = {
+  industries: [],
+}
+
+const sameIndustryNameSet = (
+  a: { name: string }[] | undefined,
+  b: { name: string }[] | undefined
+): boolean => {
+  const normalize = (items: { name: string }[] | undefined) =>
+    Array.from(
+      new Set((items ?? []).map((item) => item.name.trim().toLowerCase()))
+    ).sort()
+  const left = normalize(a)
+  const right = normalize(b)
+  return (
+    left.length === right.length &&
+    left.every((name, index) => name === right[index])
+  )
+}
+
+const CompanyIndustriesDialog = ({
+  opened,
+  onOpenedChange,
+  trigger: triggerProp,
+  defaultValue,
+  onValueChange,
+  value: valueProp,
+  profile,
+  onSaved,
+}: {
+  opened?: boolean
+  onOpenedChange?: (open: boolean) => void
+  trigger?: (options: {
+    open: boolean
+    toggle: () => void
+    formValues: CompanyIndustriesFormValues
+  }) => React.ReactNode
+  defaultValue?: CompanyIndustriesFormValues
+  value?: CompanyIndustriesFormValues
+  onValueChange?: (value: CompanyIndustriesFormValues) => void
+  profile?: any
+  onSaved?: () => void
+}) => {
+  const { user } = useAuth()
+  const userId = profile?.id ?? user?.id ?? ""
+  const [value, setValueFn] = useControllableState({
+    defaultValue: defaultValue ? defaultValue : companyIndustriesFormDefaultValue,
+    value: valueProp,
+    onChange: onValueChange,
+  })
+  const [open, setOpen] = useControllableState({
+    defaultValue: false,
+    value: opened,
+    onChange: onOpenedChange,
+  })
+  const {
+    control,
+    formState: { isValid, errors, isSubmitting },
+    handleSubmit,
+    setValue,
+    trigger,
+  } = useForm<CompanyIndustriesFormValues>({
+    resolver: zodResolver(companyIndustriesFormSchema),
+  })
+  const selected = useWatch({ control, name: "industries" })
+  const savedIndustries: { name: string }[] = (profile?.industries ?? []).map(
+    (i: any) => ({ name: i.industry ?? "" })
+  )
+  const hasChanges = !sameIndustryNameSet(selected, savedIndustries)
+  const atLimit = (selected?.length ?? 0) >= MAX_COMPANY_INDUSTRIES
+  const [query, setQuery] = useState("")
+  const [filteredExpertise, setFilteredExpertise] = useState<
+    { id: number | string; name: string }[]
+  >([])
+
+  const fetchIndustries = useCallback(async (q: string) => {
+    try {
+      const res = await fetch(
+        `${getPublicApiUrl()}/autocomplete/industries?q=${encodeURIComponent(q)}`
+      )
+      if (!res.ok) return
+      const data = await res.json()
+      const entries: { id?: string; label: string }[] = Array.isArray(data)
+        ? data
+        : (data.entries ?? data.results ?? [])
+      setFilteredExpertise(
+        entries.map((e) => ({ id: e.id ?? e.label, name: e.label }))
+      )
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => fetchIndustries(query), 300)
+    return () => clearTimeout(timer)
+  }, [query, fetchIndustries])
+  const onRemove = (index: number) => {
+    setValue(
+      "industries",
+      selected?.filter((_, i) => i !== index)
+    )
+    trigger()
+  }
+  useEffect(() => {
+    if (open && profile?.industries?.length) {
+      const mapped = profile.industries.map((ind: any, i: number) => ({
+        id: ind.id ?? i + 1,
+        name: ind.industry ?? "",
+      }))
+      setValue("industries", mapped)
+    }
+  }, [open, profile?.industries])
+
+  const onSubmit: SubmitHandler<CompanyIndustriesFormValues> = async (
+    values
+  ) => {
+    setOpen(false)
+    setValueFn(values)
+    if (userId) {
+      ;(async () => {
+        try {
+          if (profile?.industries?.length) {
+            await Promise.all(
+              profile.industries.map((ind: any) =>
+                UserAPI.removeIndustry(String(ind.id))
+              )
+            )
+          }
+          await Promise.all(
+            values.industries.map((ind) =>
+              UserAPI.addIndustry({ industry: ind.name })
+            )
+          )
+        } catch {}
+        onSaved?.()
+      })()
+    }
+  }
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      {triggerProp?.({
+        open,
+        toggle: () => setOpen((prev) => !prev),
+        formValues: value,
+      })}
+      <DialogContent className="max-w-[700px] rounded-[12px] p-0">
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <div className="border-b border-gray-200 p-6 pb-[50px]">
+            <div className="flex items-start gap-x-2">
+              <div className="flex-auto">
+                <h1 className="text-lg text-dark-blue-400 leading-7 font-semibold">
+                  Industry Expertise
+                </h1>
+                <p className="text-sm font-light text-dark-blue-400">
+                  Let us know which industries your company works in
+                </p>
+              </div>
+
+              <DialogClose type="button" asChild>
+                <IconButton variant="ghost" visual="gray">
+                  <X className="size-5" />
+                </IconButton>
+              </DialogClose>
+            </div>
+
+            <Controller
+              name="industries"
+              control={control}
+              render={({ field: { value, onChange } }) => (
+                <Combobox
+                  multiple
+                  className="mt-8 w-auto"
+                  value={value}
+                  onChange={(next: { id: number | string; name: string }[]) => {
+                    // The ceiling is enforced here so the extra pick never
+                    // lands, rather than saving an over-long list and failing
+                    // validation afterwards.
+                    if (next.length > MAX_COMPANY_INDUSTRIES) return
+                    onChange(next)
+                  }}
+                >
+                  <ComboboxTrigger>
+                    <ComboboxInput
+                      className="w-full"
+                      size="lg"
+                      displayValue={(industry: { id: number; name: string }) =>
+                        industry.name
+                      }
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="Search for industries"
+                      invalid={hookFormHasError({ errors, name: "industries" })}
+                    />
+                    <ComboboxButton>
+                      <SearchMd className="h-4 w-4" />
+                    </ComboboxButton>
+                  </ComboboxTrigger>
+                  <ScaleOutIn afterLeave={() => setQuery("")}>
+                    <ComboboxOptions>
+                      <ScrollArea viewportClassName="max-h-[304px]">
+                        {filteredExpertise.map((industry) => (
+                          <ComboboxOption key={industry.id} value={industry}>
+                            {industry.name}
+                          </ComboboxOption>
+                        ))}
+                      </ScrollArea>
+                    </ComboboxOptions>
+                  </ScaleOutIn>
+                </Combobox>
+              )}
+            />
+
+            {atLimit ? (
+              <ErrorMessage className="mt-1.5" size="sm">
+                You have reached the maximum limit of {MAX_COMPANY_INDUSTRIES}{" "}
+                industries
+              </ErrorMessage>
+            ) : (
+              <HookFormErrorMessage
+                errors={errors}
+                name="industries"
+                render={({ message }) => (
+                  <ErrorMessage className="mt-1.5" size="sm">
+                    {message}
+                  </ErrorMessage>
+                )}
+              />
+            )}
+
+            <div className="mt-3 flex gap-3 flex-wrap">
+              {selected?.map((expertise, index) => (
+                <Badge visual="primary" key={expertise.id}>
+                  {expertise.name}
+                  <button
+                    className="focus-visible:outline-none"
+                    onClick={() => onRemove(index)}
+                  >
+                    <X2 className="size-2" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          </div>
+          <div className="py-4 px-6 flex items-center justify-between">
+            <DialogClose asChild>
+              <Button variant="link" visual="gray" type="button">
+                <X className="size-[15px]" />
+                Cancel
+              </Button>
+            </DialogClose>
+
+            <Button
+              disabled={!isValid || isSubmitting || !hasChanges}
+              loading={isSubmitting}
+            >
+              Save
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+const COUNTRIES: string[] = [
+  "Afghanistan",
+  "Albania",
+  "Algeria",
+  "Andorra",
+  "Angola",
+  "Antigua and Barbuda",
+  "Argentina",
+  "Armenia",
+  "Australia",
+  "Austria",
+  "Azerbaijan",
+  "Bahamas",
+  "Bahrain",
+  "Bangladesh",
+  "Barbados",
+  "Belarus",
+  "Belgium",
+  "Belize",
+  "Benin",
+  "Bhutan",
+  "Bolivia",
+  "Bosnia and Herzegovina",
+  "Botswana",
+  "Brazil",
+  "Brunei",
+  "Bulgaria",
+  "Burkina Faso",
+  "Burundi",
+  "Cambodia",
+  "Cameroon",
+  "Canada",
+  "Cape Verde",
+  "Central African Republic",
+  "Chad",
+  "Chile",
+  "China",
+  "Colombia",
+  "Comoros",
+  "Congo",
+  "Costa Rica",
+  "Croatia",
+  "Cuba",
+  "Cyprus",
+  "Czech Republic",
+  "Denmark",
+  "Djibouti",
+  "Dominica",
+  "Dominican Republic",
+  "Ecuador",
+  "Egypt",
+  "El Salvador",
+  "Estonia",
+  "Eswatini",
+  "Ethiopia",
+  "Fiji",
+  "Finland",
+  "France",
+  "Gabon",
+  "Gambia",
+  "Georgia",
+  "Germany",
+  "Ghana",
+  "Greece",
+  "Grenada",
+  "Guatemala",
+  "Guinea",
+  "Guyana",
+  "Haiti",
+  "Honduras",
+  "Hungary",
+  "Iceland",
+  "India",
+  "Indonesia",
+  "Iran",
+  "Iraq",
+  "Ireland",
+  "Israel",
+  "Italy",
+  "Jamaica",
+  "Japan",
+  "Jordan",
+  "Kazakhstan",
+  "Kenya",
+  "Kuwait",
+  "Kyrgyzstan",
+  "Laos",
+  "Latvia",
+  "Lebanon",
+  "Lesotho",
+  "Liberia",
+  "Libya",
+  "Liechtenstein",
+  "Lithuania",
+  "Luxembourg",
+  "Madagascar",
+  "Malawi",
+  "Malaysia",
+  "Maldives",
+  "Mali",
+  "Malta",
+  "Mauritania",
+  "Mauritius",
+  "Mexico",
+  "Moldova",
+  "Monaco",
+  "Mongolia",
+  "Montenegro",
+  "Morocco",
+  "Mozambique",
+  "Myanmar",
+  "Namibia",
+  "Nepal",
+  "Netherlands",
+  "New Zealand",
+  "Nicaragua",
+  "Niger",
+  "Nigeria",
+  "North Macedonia",
+  "Norway",
+  "Oman",
+  "Pakistan",
+  "Panama",
+  "Papua New Guinea",
+  "Paraguay",
+  "Peru",
+  "Philippines",
+  "Poland",
+  "Portugal",
+  "Qatar",
+  "Romania",
+  "Russia",
+  "Rwanda",
+  "Samoa",
+  "San Marino",
+  "Saudi Arabia",
+  "Senegal",
+  "Serbia",
+  "Seychelles",
+  "Sierra Leone",
+  "Singapore",
+  "Slovakia",
+  "Slovenia",
+  "Somalia",
+  "South Africa",
+  "South Korea",
+  "South Sudan",
+  "Spain",
+  "Sri Lanka",
+  "Sudan",
+  "Suriname",
+  "Sweden",
+  "Switzerland",
+  "Syria",
+  "Taiwan",
+  "Tajikistan",
+  "Tanzania",
+  "Thailand",
+  "Togo",
+  "Tonga",
+  "Trinidad and Tobago",
+  "Tunisia",
+  "Turkey",
+  "Turkmenistan",
+  "Uganda",
+  "Ukraine",
+  "United Arab Emirates",
+  "United Kingdom",
+  "United States of America",
+  "Uruguay",
+  "Uzbekistan",
+  "Vanuatu",
+  "Vatican City",
+  "Venezuela",
+  "Vietnam",
+  "Yemen",
+  "Zambia",
+  "Zimbabwe",
+]
+
+const US_STATES: string[] = [
+  "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
+  "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho",
+  "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine",
+  "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi",
+  "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey",
+  "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio",
+  "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina",
+  "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia",
+  "Washington", "West Virginia", "Wisconsin", "Wyoming",
+]
 
 const PORTFOLIO_SAMPLE_IMG = "/Adobe-banner.png"
 
@@ -438,6 +923,13 @@ import {
   AvatarImage,
   Badge,
   Button,
+  Combobox,
+  ComboboxButton,
+  ComboboxInput,
+  ComboboxOption,
+  ComboboxOptions,
+  ComboboxTrigger,
+  ScaleOutIn,
   Carousel,
   CarouselContent,
   CarouselItem,
@@ -466,6 +958,7 @@ import {
   InputLeftAddon,
   InputLeftElement,
   InputRightElement,
+  Label,
   Listbox,
   ListboxButton,
   ListboxOption,
@@ -1358,6 +1851,20 @@ function Default() {
   const [teamExpanded, setTeamExpanded] = React.useState(false)
   const [phoneDialogOpen, setPhoneDialogOpen] = React.useState(false)
   const [phoneValue, setPhoneValue] = React.useState("")
+  const [companyNameDialogOpen, setCompanyNameDialogOpen] =
+    React.useState(false)
+  const [companyNameValue, setCompanyNameValue] = React.useState("")
+  const [bioDialogOpen, setBioDialogOpen] = React.useState(false)
+  const [bioValue, setBioValue] = React.useState("")
+  const [logoDialogOpen, setLogoDialogOpen] = React.useState(false)
+  const [logoPreview, setLogoPreview] = React.useState("")
+  const logoFileRef = React.useRef<HTMLInputElement>(null)
+  const [locationDialogOpen, setLocationDialogOpen] = React.useState(false)
+  const [countryQuery, setCountryQuery] = React.useState("")
+  const [locationCountry, setLocationCountry] = React.useState("")
+  const [locationState, setLocationState] = React.useState("")
+  const [locationCity, setLocationCity] = React.useState("")
+  const [locationZip, setLocationZip] = React.useState("")
   const [phoneSaveAttempted, setPhoneSaveAttempted] = React.useState(false)
   const [websiteDialogOpen, setWebsiteDialogOpen] = React.useState(false)
   const [websiteValue, setWebsiteValue] = React.useState("")
@@ -2472,6 +2979,7 @@ function Default() {
                                     variant="light"
                                     visual="error"
                                     aria-label="Remove logo"
+                                    onClick={() => setLogoDialogOpen(true)}
                                   >
                                     <Trash01 className="size-[13px]" />
                                   </IconButton>
@@ -2480,6 +2988,7 @@ function Default() {
                                     variant="light"
                                     visual="gray"
                                     aria-label="Replace logo"
+                                    onClick={() => setLogoDialogOpen(true)}
                                   >
                                     <Edit03 className="size-[13px]" />
                                   </IconButton>
@@ -2506,6 +3015,7 @@ function Default() {
                                 )}
                                 variant="outlined"
                                 visual="gray"
+                                onClick={() => setLogoDialogOpen(true)}
                               >
                                 <Upload01 className="size-[15px]" /> Upload Image
                               </Button>
@@ -2535,6 +3045,7 @@ function Default() {
                                 variant="ghost"
                                 visual="gray"
                                 aria-label="Edit company name"
+                                onClick={() => setCompanyNameDialogOpen(true)}
                               >
                                 <Edit03 className="size-4" />
                               </IconButton>
@@ -2562,6 +3073,7 @@ function Default() {
                                 variant="ghost"
                                 visual="gray"
                                 aria-label="Edit location"
+                                onClick={() => setLocationDialogOpen(true)}
                               >
                                 <Edit03 className="size-4" />
                               </IconButton>
@@ -2595,44 +3107,35 @@ function Default() {
                             )}
                           </div>
                           <div className="flex flex-col items-start gap-1">
-                            {["Verified Payment Method", "Verified Contact Number"].map(
-                              (item) => (
-                                <div key={item} className="flex items-center gap-[7px]">
-                                  <p className="flex h-6 items-center gap-2 text-xs font-semibold text-primary-500">
-                                    <CheckVerified02 className="size-[15px] shrink-0" />
-                                    {item}
-                                  </p>
-                                  {isEditMode && item === "Verified Contact Number" && (
-                                    <IconButton
-                                      className="shrink-0 rounded-full text-gray-500"
-                                      size="sm"
-                                      variant="ghost"
-                                      visual="gray"
-                                      aria-label="Edit contact number"
-                                      onClick={() => setPhoneDialogOpen(true)}
-                                    >
-                                      <Edit03 className="size-4" />
-                                    </IconButton>
-                                  )}
-                                </div>
-                              )
-                            )}
+                            <Button
+                              className="text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30"
+                              variant="link"
+                            >
+                              Verified Payment Method
+                            </Button>
+                            <Button
+                              className="text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30"
+                              variant="link"
+                              onClick={() => setPhoneDialogOpen(true)}
+                            >
+                              Verified Contact Number
+                            </Button>
                           </div>
                         </>
                       ) : (
                         <div className="flex w-full flex-col items-start gap-1">
                           <Button
-                            className="gap-2 text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30"
+                            className="text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30"
                             variant="link"
                             onClick={() => setPhoneDialogOpen(true)}
                           >
-                            <Phone className="size-[15px]" /> Verify Phone Number
+                            Verify Phone Number
                           </Button>
                           <Button
-                            className="gap-2 text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30"
+                            className="text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30"
                             variant="link"
                           >
-                            <Bank className="size-[15px]" /> Verify Payment Method
+                            Verify Payment Method
                           </Button>
                         </div>
                       )}
@@ -2716,6 +3219,7 @@ function Default() {
                                   variant="ghost"
                                   visual="gray"
                                   aria-label="Add industry"
+                                  onClick={() => setIndustriesOpen(true)}
                                 >
                                   <Plus className="size-[18px]" />
                                 </IconButton>
@@ -2725,6 +3229,7 @@ function Default() {
                                   variant="ghost"
                                   visual="gray"
                                   aria-label="Edit industries"
+                                  onClick={() => setIndustriesOpen(true)}
                                 >
                                   <Edit03 className="size-4" />
                                 </IconButton>
@@ -3051,6 +3556,7 @@ function Default() {
                             variant="ghost"
                             visual="gray"
                             aria-label="Edit bio"
+                            onClick={() => setBioDialogOpen(true)}
                           >
                             <Edit03 className="size-4" />
                           </Button>
@@ -6541,7 +7047,7 @@ function Default() {
             profile={profile}
             onSaved={refreshProfile}
           />
-          <IndustryExpertiseDialog
+          <CompanyIndustriesDialog
             opened={industriesOpen}
             onOpenedChange={setIndustriesOpen}
             profile={profile}
@@ -7069,6 +7575,343 @@ function Default() {
                             </div>
                           </DialogContent>
                         </Dialog>
+      {/* Company Name */}
+      <Dialog open={companyNameDialogOpen} onOpenChange={setCompanyNameDialogOpen}>
+        <DialogContent className="max-w-[740px] p-0 gap-0">
+          <div className="px-6 pt-6 pb-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <DialogTitle className="text-lg font-bold text-dark-blue-400">
+                  Company Name
+                </DialogTitle>
+                <p className="mt-1 text-sm font-light text-dark-blue-400">
+                  Give your company an identity on Marketeq.
+                </p>
+              </div>
+              <DialogClose asChild>
+                <IconButton variant="ghost" visual="gray" size="sm">
+                  <X className="size-5" />
+                </IconButton>
+              </DialogClose>
+            </div>
+
+            <div className="mt-6">
+              <Input
+                placeholder="Enter your company name.."
+                value={companyNameValue}
+                onChange={(event) => setCompanyNameValue(event.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
+            <Button
+              variant="link"
+              visual="gray"
+              onClick={() => setCompanyNameDialogOpen(false)}
+            >
+              <X className="size-[15px]" /> Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!companyNameValue.trim()}
+              onClick={() => setCompanyNameDialogOpen(false)}
+            >
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Company Bio */}
+      <Dialog open={bioDialogOpen} onOpenChange={setBioDialogOpen}>
+        <DialogContent className="max-w-[740px] p-0 gap-0">
+          <div className="px-6 pt-6 pb-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <DialogTitle className="text-lg font-bold text-dark-blue-400">
+                  Company Bio
+                </DialogTitle>
+                <p className="mt-1 text-sm font-light text-dark-blue-400">
+                  Create a connection and let clients feel like they already
+                  know you!
+                </p>
+              </div>
+              <DialogClose asChild>
+                <IconButton variant="ghost" visual="gray" size="sm">
+                  <X className="size-5" />
+                </IconButton>
+              </DialogClose>
+            </div>
+
+            <div className="mt-6">
+              <Textarea
+                className="min-h-[320px]"
+                placeholder="Enter your bio here..."
+                value={bioValue}
+                onChange={(event) => setBioValue(event.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
+            <Button
+              variant="link"
+              visual="gray"
+              onClick={() => setBioDialogOpen(false)}
+            >
+              <X className="size-[15px]" /> Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!bioValue.trim()}
+              onClick={() => setBioDialogOpen(false)}
+            >
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Location */}
+      <Dialog
+        open={locationDialogOpen}
+        onOpenChange={(open) => {
+          setLocationDialogOpen(open)
+          if (!open) setCountryQuery("")
+        }}
+      >
+        <DialogContent className="max-w-[740px] p-0 gap-0">
+          <div className="px-6 pt-6 pb-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <DialogTitle className="text-lg font-bold text-dark-blue-400">
+                  Location
+                </DialogTitle>
+                <p className="mt-1 text-sm font-light text-dark-blue-400">
+                  Help talent and clients know where you&apos;re located
+                </p>
+              </div>
+              <DialogClose asChild>
+                <IconButton variant="ghost" visual="gray" size="sm">
+                  <X className="size-5" />
+                </IconButton>
+              </DialogClose>
+            </div>
+
+            <div className="mt-6 space-y-1.5">
+              <Label size="sm" htmlFor="company-country">
+                Country/Region
+              </Label>
+              <Combobox
+                value={locationCountry}
+                onChange={(next: string) => setLocationCountry(next ?? "")}
+              >
+                <ComboboxTrigger>
+                  <ComboboxInput
+                    className="w-full"
+                    id="company-country"
+                    size="lg"
+                    displayValue={(country: string) => country ?? ""}
+                    onChange={(event) => setCountryQuery(event.target.value)}
+                    placeholder="Search country or region"
+                  />
+                  <ComboboxButton>
+                    <SearchMd className="h-4 w-4" />
+                  </ComboboxButton>
+                </ComboboxTrigger>
+                <ScaleOutIn afterLeave={() => setCountryQuery("")}>
+                  <ComboboxOptions>
+                    <ScrollArea viewportClassName="max-h-[304px]">
+                      {COUNTRIES.filter((country) =>
+                        country.toLowerCase().includes(countryQuery.toLowerCase())
+                      ).map((country) => (
+                        <ComboboxOption key={country} value={country}>
+                          {country}
+                        </ComboboxOption>
+                      ))}
+                    </ScrollArea>
+                  </ComboboxOptions>
+                </ScaleOutIn>
+              </Combobox>
+            </div>
+
+            {/* State, city and zipcode stay out of reach until a country is
+                picked, the way the empty state reads in the design. */}
+            <div className="mt-5 grid grid-cols-3 gap-x-3">
+              <div className="space-y-1.5">
+                <Label size="sm" htmlFor="company-state">
+                  State
+                </Label>
+                <Listbox
+                  value={locationState}
+                  onChange={setLocationState}
+                  disabled={!locationCountry}
+                >
+                  <ListboxButton placeholder="State" />
+                  <ListboxOptions>
+                    {US_STATES.map((state) => (
+                      <ListboxOption key={state} value={state}>
+                        {state}
+                      </ListboxOption>
+                    ))}
+                  </ListboxOptions>
+                </Listbox>
+              </div>
+              <div className="space-y-1.5">
+                <Label size="sm" htmlFor="company-city">
+                  City
+                </Label>
+                <Input
+                  id="company-city"
+                  placeholder="Marketown"
+                  disabled={!locationCountry}
+                  value={locationCity}
+                  onChange={(event) => setLocationCity(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label size="sm" htmlFor="company-zipcode">
+                  Zipcode
+                </Label>
+                <Input
+                  id="company-zipcode"
+                  placeholder="12345"
+                  disabled={!locationCountry}
+                  value={locationZip}
+                  onChange={(event) =>
+                    setLocationZip(event.target.value.replace(/[^\d-]/g, ""))
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
+            <Button
+              variant="link"
+              visual="gray"
+              onClick={() => setLocationDialogOpen(false)}
+            >
+              <X className="size-[15px]" /> Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!locationCountry}
+              onClick={() => setLocationDialogOpen(false)}
+            >
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Company Logo */}
+      <Dialog open={logoDialogOpen} onOpenChange={setLogoDialogOpen}>
+        <DialogContent className="max-w-[740px] p-0 gap-0">
+          <div className="px-6 pt-6 pb-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <DialogTitle className="text-lg font-bold text-dark-blue-400">
+                  Add Your Company Logo
+                </DialogTitle>
+                <p className="mt-1 text-sm font-light text-dark-blue-400">
+                  A clear, icon-only logo helps your company stand out.
+                </p>
+              </div>
+              <DialogClose asChild>
+                <IconButton variant="ghost" visual="gray" size="sm">
+                  <X className="size-5" />
+                </IconButton>
+              </DialogClose>
+            </div>
+
+            <div className="mt-6 space-y-1.5">
+              <Label size="sm">Company Logo</Label>
+              <div className="flex items-center gap-6">
+                <div className="flex size-[104px] shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+                  {logoPreview ? (
+                    <NextImage
+                      className="size-full object-contain"
+                      src={logoPreview}
+                      alt="Company logo"
+                      width={104}
+                      height={104}
+                    />
+                  ) : (
+                    <span className="text-[40px] font-bold leading-none text-gray-200">
+                      A.
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-col items-start gap-2">
+                  {logoPreview ? (
+                    <>
+                      <Button
+                        className="rounded-full"
+                        variant="light"
+                        onClick={() => logoFileRef.current?.click()}
+                      >
+                        <RefreshCw className="size-[15px]" /> Change Logo
+                      </Button>
+                      <Button
+                        className="rounded-full bg-white"
+                        variant="outlined"
+                        visual="gray"
+                        onClick={() => setLogoPreview("")}
+                      >
+                        Remove Logo
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        className="rounded-full"
+                        variant="light"
+                        onClick={() => logoFileRef.current?.click()}
+                      >
+                        <Upload01 className="size-[15px]" /> Upload Logo
+                      </Button>
+                      <p className="text-sm font-light text-dark-blue-400">
+                        SVG Preferred, PNG, or JPG (300&times;300px)
+                      </p>
+                    </>
+                  )}
+                </div>
+                <input
+                  className="hidden"
+                  ref={logoFileRef}
+                  type="file"
+                  accept="image/svg+xml,image/png,image/jpeg"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (file) setLogoPreview(URL.createObjectURL(file))
+                    event.target.value = ""
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
+            <Button
+              variant="link"
+              visual="gray"
+              onClick={() => setLogoDialogOpen(false)}
+            >
+              <X className="size-[15px]" /> Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!logoPreview}
+              onClick={() => setLogoDialogOpen(false)}
+            >
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Phone Verification */}
       <Dialog
         open={phoneDialogOpen}
