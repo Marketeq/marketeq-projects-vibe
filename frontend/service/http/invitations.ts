@@ -27,6 +27,12 @@ interface InvitationsAPIType {
   acceptInvitation: (
     inviteToken: string
   ) => ReturnType<typeof AxiosRequest.post<AcceptInvitationResponse>>
+  shareProjectLink: (dto: {
+    emails: string[]
+    projectUrl: string
+    projectTitle?: string
+    message?: string
+  }) => ReturnType<typeof AxiosRequest.post>
 }
 
 export const InvitationsAPI: InvitationsAPIType = {
@@ -70,5 +76,9 @@ export const InvitationsAPI: InvitationsAPIType = {
     return AxiosRequest.post(`${INVITATIONS_BASE}/accept`, {
       token: inviteToken,
     })
+  },
+
+  shareProjectLink: (dto) => {
+    return AxiosRequest.post(`${INVITATIONS_BASE}/share-link`, dto)
   },
 }

@@ -16,6 +16,7 @@ import {
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ProjectsService } from './projects.service';
 import { Project } from './entities/project.entity';
+import { ReportProjectDto } from './dto/report-project.dto';
 import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
 
 @Controller('v1/projects')
@@ -47,6 +48,30 @@ export class ProjectsController {
     @Query('limit') limit?: string,
   ) {
     return this.service.getRelatedSearches(id, limit ? parseInt(limit, 10) : 60);
+  }
+
+  @Get(':id/related-terms')
+  getRelatedTerms(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getRelatedTerms(id);
+  }
+
+  @Get(':id/similar')
+  getSimilarById(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getSimilarById(id);
+  }
+
+  @Post(':id/report')
+  @UseGuards(JwtAuthGuard)
+  report(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReportProjectDto,
+    @Req() req: any,
+  ) {
+    return this.service.reportProject(
+      id,
+      dto,
+      req.user?.sub ?? req.user?.id ?? req.user?.userId,
+    );
   }
 
   @Get(':id/questions')

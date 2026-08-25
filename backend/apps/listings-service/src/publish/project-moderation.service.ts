@@ -121,6 +121,53 @@ export class ProjectModerationService {
     return undefined;
   }
 
+  async moderateImageUrl(
+    projectId: string,
+    imageUrl: string,
+    authToken?: string,
+  ): Promise<ProjectModerationResult> {
+    try {
+      const imageResponse = await this.httpService.axiosRef.post(
+        `${this.moderationBaseUrl}/api/moderate/media`,
+        {
+          contentId: projectId,
+          mediaType: 'image',
+          mediaUrl: imageUrl,
+        },
+        this.authConfig(authToken),
+      );
+      const imageStatus = imageResponse?.data?.status;
+      if (imageStatus === 'rejected') {
+        // Prefer 'reason' from the moderation service, fallback to 'message', then generic
+        const reasonParts = [
+          imageResponse?.data?.reason,
+          imageResponse?.data?.debug?.rejectCode
+            ? `code=${imageResponse.data.debug.rejectCode}`
+            : undefined,
+          imageResponse?.data?.debug?.step
+            ? `step=${imageResponse.data.debug.step}`
+            : undefined,
+          imageResponse?.data?.message,
+        ].filter(Boolean);
+        const reason = reasonParts.join(' | ') || 'Image rejected by moderation';
+        return { status: 'rejected', reason };
+      }
+      if (imageStatus === 'pending_review') {
+        return {
+          status: 'pending_review',
+          reason:
+            imageResponse?.data?.reason ||
+            imageResponse?.data?.message ||
+            'Image moderation is pending review',
+        };
+      }
+      return { status: 'approved' };
+    } catch (err) {
+      this.logger.error(`Image moderation failed for project ${projectId}:`, err);
+      throw new ModerationUnavailableError('Image moderation failed');
+    }
+  }
+
   async moderateProject(
     projectId: string,
     input: ProjectModerationInput,
@@ -128,47 +175,13 @@ export class ProjectModerationService {
   ): Promise<ProjectModerationResult> {
     // 1. Moderate image if imageUrl is provided
     if (input.imageUrl) {
-      try {
-        const imageResponse = await this.httpService.axiosRef.post(
-          `${this.moderationBaseUrl}/api/moderate/media`,
-          {
-            contentId: projectId,
-            mediaType: 'image',
-            mediaUrl: input.imageUrl,
-          },
-          this.authConfig(authToken),
-        );
-        const imageStatus = imageResponse?.data?.status;
-        if (imageStatus === 'rejected') {
-          // Prefer 'reason' from the moderation service, fallback to 'message', then generic
-          const reasonParts = [
-            imageResponse?.data?.reason,
-            imageResponse?.data?.debug?.rejectCode
-              ? `code=${imageResponse.data.debug.rejectCode}`
-              : undefined,
-            imageResponse?.data?.debug?.step
-              ? `step=${imageResponse.data.debug.step}`
-              : undefined,
-            imageResponse?.data?.message,
-          ].filter(Boolean);
-          const reason = reasonParts.join(' | ') || 'Image rejected by moderation';
-          return {
-            status: 'rejected',
-            reason,
-          };
-        }
-        if (imageStatus === 'pending_review') {
-          return {
-            status: 'pending_review',
-            reason:
-              imageResponse?.data?.reason ||
-              imageResponse?.data?.message ||
-              'Image moderation is pending review',
-          };
-        }
-      } catch (err) {
-        this.logger.error(`Image moderation failed for project ${projectId}:`, err);
-        throw new ModerationUnavailableError('Image moderation failed');
+      const imageResult = await this.moderateImageUrl(
+        projectId,
+        input.imageUrl,
+        authToken,
+      );
+      if (imageResult.status !== 'approved') {
+        return imageResult;
       }
     }
 

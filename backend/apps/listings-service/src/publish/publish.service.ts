@@ -1,5 +1,4 @@
 import {
-  BadGatewayException,
   BadRequestException,
   ForbiddenException,
   HttpException,
@@ -334,26 +333,6 @@ export class PublishService {
     }
 
     return moderatedProject;
-  }
-
-  private handleModerationError(error: unknown, projectId?: string): void {
-    if (error instanceof ModerationUnavailableError) {
-      throw new ServiceUnavailableException({
-        message:
-          'Content moderation is currently unavailable. Project was saved but not published.',
-        projectId,
-        status: 'publish_blocked',
-      });
-    }
-
-    if (error instanceof ModerationInvalidResponseError) {
-      throw new BadGatewayException({
-        message:
-          'Content moderation returned an invalid response. Please retry publishing.',
-        projectId,
-        status: 'publish_blocked',
-      });
-    }
   }
 
   private normalizeOptionalVideoUrl(
@@ -1051,22 +1030,45 @@ export class PublishService {
         });
       }
 
-      const moderationInput = this.toModerationInput({
-        title: project.title,
-        shortDescription: project.shortDescription,
-        fullDescription: project.fullDescription,
-        categories: project.categories,
-        subCategories: project.subCategories,
-        categorySelections: project.categorySelections,
-        tags: project.tags,
-        faqs: project.faqs,
-      });
-
-      const moderationResult = await this.projectModerationService.moderateProject(
-        project.id!,
-        moderationInput,
-        authToken,
+      // Moderate every visible image (featured + gallery), not just the
+      // cover — a rejected image anywhere in the listing must block publish.
+      const hiddenSet = new Set(media?.hiddenImages ?? []);
+      const imageUrls = Array.from(
+        new Set(
+          [media?.featuredImage, ...(media?.additionalImages ?? [])].filter(
+            (url): url is string =>
+              !!url && url.trim().length > 0 && !hiddenSet.has(url),
+          ),
+        ),
       );
+      for (const url of imageUrls) {
+        const imageResult =
+          await this.projectModerationService.moderateImageUrl(
+            project.id!,
+            url,
+            authToken,
+          );
+        if (imageResult.status !== 'approved') {
+          return await this.applyModerationDecision(project.id!, imageResult);
+        }
+      }
+
+      const moderationResult =
+        await this.projectModerationService.moderateProject(
+          project.id!,
+          this.toModerationInput({
+            title: project.title,
+            shortDescription: project.shortDescription,
+            fullDescription: project.fullDescription,
+            categories: project.categories,
+            subCategories: project.subCategories,
+            categorySelections: project.categorySelections,
+            tags: project.tags,
+            faqs: project.faqs,
+            imageUrl: null,
+          }),
+          authToken,
+        );
 
       return await this.applyModerationDecision(project.id!, moderationResult);
     } catch (error) {
@@ -1075,9 +1077,17 @@ export class PublishService {
         error instanceof ModerationInvalidResponseError
       ) {
         await this.markPublishBlocked(project.id);
+        throw new ServiceUnavailableException({
+          message:
+            'Content moderation is currently unavailable. Project was saved but not published.',
+          projectId: project.id,
+          status: 'publish_blocked',
+        });
       }
 
-      this.handleModerationError(error, project.id);
+      // Re-throw moderation rejections (BadRequestException from
+      // applyModerationDecision) and any other HttpException so the client
+      // sees the actual rejection reason instead of a generic 500.
       this.throwIfHttpException(error);
       throw new InternalServerErrorException('Failed to publish project');
     }
@@ -1264,7 +1274,9 @@ export class PublishService {
       featured,
       ...additionalImages.filter((url) => !hiddenSet.has(url)),
     ].filter((url): url is string => Boolean(url && url.trim()));
-    await this.projectRepository.update(projectId, { mediaUrls: galleryUrls });
+    if (project.status !== 'published') {
+      await this.projectRepository.update(projectId, { mediaUrls: galleryUrls });
+    }
     if (!existingMedia) {
       return this.mediaRepository.create({
         projectId,
@@ -1288,10 +1300,8 @@ export class PublishService {
     },
     dto: CreateMediaDto,
   ): Promise<Media> {
-    let moderationContext: 'image' | 'video' = 'image';
-
     try {
-      await this.ensureProjectOwnership(dto.projectId, userId);
+      const project = await this.ensureProjectOwnership(dto.projectId, userId);
 
       if (files.additionalImages && files.additionalImages.length > 8) {
         throw new BadRequestException('You can upload a maximum of 8 images.');
@@ -1300,34 +1310,6 @@ export class PublishService {
       const existingMedia = await this.mediaRepository.find({
         projectId: dto.projectId,
       });
-
-      if (files.featuredImage && !this.shouldSkipModeration) {
-        const featuredImageModeration =
-          await this.projectModerationService.moderateUploadedImage(
-            dto.projectId,
-            files.featuredImage,
-          );
-
-        if (featuredImageModeration.status !== 'approved') {
-          const reason =
-            featuredImageModeration.reason ??
-            'Featured image failed moderation.';
-
-          if (featuredImageModeration.status === 'pending_review') {
-            throw new BadRequestException(
-              `Featured image is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
-            );
-          }
-
-          throw new BadRequestException(
-            `Project rejected: image violates moderation policy. ${reason}`.trim(),
-          );
-        }
-      } else if (files.featuredImage) {
-        this.logger.warn(
-          `Skipping image moderation for project ${dto.projectId} (SKIP_CONTENT_MODERATION=true)`,
-        );
-      }
 
       const resolvedVideoUrl = this.normalizeOptionalVideoUrl(
         dto.videoUrl ??
@@ -1338,27 +1320,6 @@ export class PublishService {
       let persistedVideoUrl: string | null = null;
 
       if (uploadedFeaturedVideo) {
-        moderationContext = 'video';
-        if (!this.shouldSkipModeration) {
-          const videoModeration =
-            await this.projectModerationService.moderateUploadedVideo(
-              dto.projectId,
-              uploadedFeaturedVideo,
-            );
-
-          if (videoModeration.status !== 'approved') {
-            const reason = videoModeration.reason ?? 'Featured video failed moderation.';
-            if (videoModeration.status === 'pending_review') {
-              throw new BadRequestException(
-                `Featured video is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
-              );
-            }
-            throw new BadRequestException(
-              `Project rejected: video violates moderation policy. ${reason}`.trim(),
-            );
-          }
-        }
-
         const featuredVideoUpload =
           await this.cloudflareStorageService.uploadProjectMedia(
             dto.projectId,
@@ -1366,28 +1327,6 @@ export class PublishService {
           );
         persistedVideoUrl = featuredVideoUpload.url;
       } else if (resolvedVideoUrl) {
-        moderationContext = 'video';
-        const videoUnchanged = existingMedia?.featuredVideo === resolvedVideoUrl;
-        if (!videoUnchanged && !this.shouldSkipModeration) {
-          const videoModeration =
-            await this.projectModerationService.moderateVideoUrl(
-              dto.projectId,
-              resolvedVideoUrl,
-            );
-
-          if (videoModeration.status !== 'approved') {
-            const reason = videoModeration.reason ?? 'Featured video failed moderation.';
-            if (videoModeration.status === 'pending_review') {
-              throw new BadRequestException(
-                `Featured video is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
-              );
-            }
-            throw new BadRequestException(
-              `Project rejected: video violates moderation policy. ${reason}`.trim(),
-            );
-          }
-        }
-
         persistedVideoUrl = resolvedVideoUrl;
       }
 
@@ -1466,40 +1405,22 @@ export class PublishService {
           (url) => !hiddenSet.has(url),
         ),
       ].filter((url): url is string => Boolean(url && url.trim()));
-      if (galleryUrls.length > 0) {
-        await this.projectRepository.update(dto.projectId, {
-          mediaUrls: galleryUrls,
-        });
-      } else if (clearFeatured) {
-        await this.projectRepository.update(dto.projectId, {
-          mediaUrls: [],
-        });
+      if (project.status !== 'published') {
+        if (galleryUrls.length > 0) {
+          await this.projectRepository.update(dto.projectId, {
+            mediaUrls: galleryUrls,
+          });
+        } else if (clearFeatured) {
+          await this.projectRepository.update(dto.projectId, {
+            mediaUrls: [],
+          });
+        }
       }
 
       return { ...media, url: featuredImageUrl } as Media;
     } catch (error) {
       console.log('err', error);
       this.throwIfHttpException(error);
-      if (error instanceof ModerationUnavailableError) {
-        throw new ServiceUnavailableException({
-          message:
-            moderationContext === 'video'
-              ? 'Video moderation is currently unavailable. Please retry media upload.'
-              : 'Image moderation is currently unavailable. Please retry media upload.',
-          projectId: dto.projectId,
-          status: 'publish_blocked',
-        });
-      }
-      if (error instanceof ModerationInvalidResponseError) {
-        throw new BadGatewayException({
-          message:
-            moderationContext === 'video'
-              ? 'Video moderation returned an invalid response. Please retry media upload.'
-              : 'Image moderation returned an invalid response. Please retry media upload.',
-          projectId: dto.projectId,
-          status: 'publish_blocked',
-        });
-      }
       if (error instanceof Error && error.message) {
         throw new InternalServerErrorException(error.message);
       }
