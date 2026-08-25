@@ -1972,7 +1972,7 @@ function Default() {
                     className={cn(
                       tabsListVariants({
                         className:
-                          "bg-transparent justify-start w-full group-data-[status=stuck]/list:border-b-0 group-data-[status=stuck]/list:mt-3 inline-flex",
+                          "bg-transparent justify-start w-full group-data-[status=stuck]/list:border-b-0 group-data-[status=stuck]/list:mt-3 inline-flex group-data-[status=unstuck]/list:hidden",
                       })
                     )}
                   >
