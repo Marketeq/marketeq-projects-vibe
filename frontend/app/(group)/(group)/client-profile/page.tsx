@@ -466,6 +466,7 @@ import {
   TooltipTrigger,
   buttonVariants,
   tabsListVariants,
+  Card,
 } from "@/components/ui"
 import { ScrollBar } from "@/components/ui"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -1198,6 +1199,11 @@ function Default() {
   const cardRef = useRef<HTMLDivElement>(null)
   const tabsListRef = useRef<HTMLDivElement>(null)
   const [isCardStuck, setIsCardStuck] = useState<boolean>(false)
+  // Client profile view. Everything the talent profile renders is kept in
+  // place behind this flag so the modals, edit fields and existing sections
+  // stay available for reuse and for edit mode.
+  const isClientProfile = true
+  const showProjectHistory = true
   const [isTabsListStuck, setIsTabsListStuck] = useState<boolean>(false)
 
   // Auto-expand state for sections
@@ -1966,42 +1972,63 @@ function Default() {
                       })
                     )}
                   >
-                    {(!isClientView || hasPortfolio) && (
-                      <TabsTrigger value="Portfolio" asChild>
-                        <NextLink href="#portfolio">Portfolio</NextLink>
-                      </TabsTrigger>
-                    )}
-                    {(!isClientView || hasSkills) && (
-                      <TabsTrigger value="Skills" asChild>
-                        <NextLink href="#skills">Skills</NextLink>
-                      </TabsTrigger>
-                    )}
-                    {showOverviewSection && (
-                      <TabsTrigger value="Overview" asChild>
-                        <NextLink href="#overview">Overview</NextLink>
-                      </TabsTrigger>
-                    )}
-                    {!isClientView && (
-                      <TabsTrigger value="Offers" asChild>
-                        <NextLink href="#offers">Offers</NextLink>
-                      </TabsTrigger>
-                    )}
-                    {(!isClientView || hasWorkExperience) && (
-                      <TabsTrigger value="Work Experience" asChild>
-                        <NextLink href="#background">Work Experience</NextLink>
-                      </TabsTrigger>
-                    )}
-                    {(!isClientView || hasEducation) && (
-                      <TabsTrigger value="Education" asChild>
-                        <NextLink href="#education">Education</NextLink>
-                      </TabsTrigger>
-                    )}
-                    {!isClientView && (
-                      <TabsTrigger value="Project History" asChild>
-                        <NextLink href="#project-history">
-                          Project History
-                        </NextLink>
-                      </TabsTrigger>
+                    {isClientProfile ? (
+                      <>
+                        <TabsTrigger value="About" asChild>
+                          <NextLink href="#about">About</NextLink>
+                        </TabsTrigger>
+                        <TabsTrigger value="Culture" asChild>
+                          <NextLink href="#culture">Culture</NextLink>
+                        </TabsTrigger>
+                        <TabsTrigger value="Team" asChild>
+                          <NextLink href="#team">Team</NextLink>
+                        </TabsTrigger>
+                        <TabsTrigger value="Spending Insights" asChild>
+                          <NextLink href="#spending-insights">
+                            Spending Insights
+                          </NextLink>
+                        </TabsTrigger>
+                      </>
+                    ) : (
+                      <>
+                      {(!isClientView || hasPortfolio) && (
+                        <TabsTrigger value="Portfolio" asChild>
+                          <NextLink href="#portfolio">Portfolio</NextLink>
+                        </TabsTrigger>
+                      )}
+                      {(!isClientView || hasSkills) && (
+                        <TabsTrigger value="Skills" asChild>
+                          <NextLink href="#skills">Skills</NextLink>
+                        </TabsTrigger>
+                      )}
+                      {showOverviewSection && (
+                        <TabsTrigger value="Overview" asChild>
+                          <NextLink href="#overview">Overview</NextLink>
+                        </TabsTrigger>
+                      )}
+                      {!isClientView && (
+                        <TabsTrigger value="Offers" asChild>
+                          <NextLink href="#offers">Offers</NextLink>
+                        </TabsTrigger>
+                      )}
+                      {(!isClientView || hasWorkExperience) && (
+                        <TabsTrigger value="Work Experience" asChild>
+                          <NextLink href="#background">Work Experience</NextLink>
+                        </TabsTrigger>
+                      )}
+                      {(!isClientView || hasEducation) && (
+                        <TabsTrigger value="Education" asChild>
+                          <NextLink href="#education">Education</NextLink>
+                        </TabsTrigger>
+                      )}
+                      {!isClientView && (
+                        <TabsTrigger value="Project History" asChild>
+                          <NextLink href="#project-history">
+                            Project History
+                          </NextLink>
+                        </TabsTrigger>
+                      )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -2083,6 +2110,89 @@ function Default() {
             id="portfolio"
           >
             <div className="pt-6 flex gap-x-8">
+              {isClientProfile && (
+                <aside className="hidden shrink-0 w-[278px] xl:block">
+                  <Card className="w-full flex-col items-stretch p-6">
+                    <Avatar className="size-[148px]" size="2xl">
+                      <AvatarImage src="/company-logo.png" alt="Company Name" />
+                      <AvatarFallback>C</AvatarFallback>
+                    </Avatar>
+
+                    <h1 className="mt-5 text-2xl font-bold leading-8 text-dark-blue-400">
+                      Company Name
+                    </h1>
+                    <p className="mt-1 text-sm leading-5 text-gray-500">City, State</p>
+
+                    <p className="mt-4 text-sm leading-5 text-gray-500">
+                      <span className="font-semibold text-dark-blue-400">3:30 PM</span> local
+                      time
+                      <span className="block">(GMT-6)</span>
+                    </p>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {["Project Excellence", "Top Rated", "Premium Member"].map((tag) => (
+                        <Badge key={tag} visual="gray" size="lg">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+
+                    <div className="mt-5 space-y-2">
+                      {["Verified Payment Method", "Verified Contact Number"].map((item) => (
+                        <p
+                          key={item}
+                          className="flex items-center gap-x-2 text-sm font-semibold leading-5 text-primary-500"
+                        >
+                          <CheckCircle className="size-4 shrink-0" />
+                          {item}
+                        </p>
+                      ))}
+                    </div>
+
+                    <Button className="mt-5 w-full" size="lg">
+                      Message
+                    </Button>
+
+                    <NextLink
+                      className="mt-5 block text-sm font-semibold leading-5 text-dark-blue-400 hover:underline"
+                      href="#"
+                    >
+                      mywebsite.com
+                    </NextLink>
+
+                    <p className="mt-4 text-sm leading-5 text-gray-500">
+                      Member since{" "}
+                      <span className="font-semibold text-dark-blue-400">Sep 2024</span>
+                    </p>
+
+                    <h2 className="mt-5 text-base font-semibold leading-6 text-dark-blue-400">
+                      Industries
+                    </h2>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {["UX Design", "Marketing", "Graphic Design"].map((industry) => (
+                        <Badge key={industry} visual="gray" size="lg">
+                          {industry}
+                        </Badge>
+                      ))}
+                    </div>
+
+                    <dl className="mt-6 space-y-3 border-t border-gray-200 pt-5 text-sm leading-5">
+                      {[
+                        ["Company Size", "2-9 Employees"],
+                        ["Average Pay Rate", "$11.28"],
+                        ["Total Hours billed", "237"],
+                        ["Total Projects", "08"],
+                        ["Average response time", "5 hours"],
+                      ].map(([label, value]) => (
+                        <div key={label} className="flex items-baseline gap-x-2">
+                          <dt className="font-semibold text-dark-blue-400">{label}:</dt>
+                          <dd className="text-gray-500">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </Card>
+                </aside>
+              )}
               <div className="flex-auto min-w-0">
                 {isEditMode &&
                   isOwnProfile &&
@@ -3382,8 +3492,9 @@ function Default() {
                 </LazySection>
                 )}
 
-                {/* Project History + Reviews — hidden until backed by real data */}
-                {false && (
+                {/* Project History + Reviews. The empty states inside are
+                    kept for later use. */}
+                {showProjectHistory && (
                 <LazySection minHeight={400}>
                   <div
                     className="mt-6 scroll-mt-[137.5px]"
