@@ -1927,7 +1927,7 @@ function Default() {
         )}
 
         <Tabs
-          className="mt-6"
+          className={isClientProfile ? undefined : "mt-6"}
           value={activeTab}
           onValueChange={(val) => {
             setActiveTab(val)
@@ -2127,7 +2127,7 @@ function Default() {
             {/* Back to Listings — top left, above the sidebar and content */}
             {isClientProfile && (
               <Button
-                className="gap-2 pt-6 text-sm font-semibold text-dark-blue-400"
+                className="gap-2 text-sm font-semibold text-dark-blue-400"
                 variant="link"
                 visual="gray"
                 leftIcon={<ArrowLeft className="size-4" />}
@@ -3853,8 +3853,8 @@ function Default() {
 
                 {/* Project History + Reviews. The empty states inside are
                     kept for later use. */}
-                {showProjectHistory &&
-                  (!isClientProfile || activeTab === "About") && (
+                {/* Always visible. The tabs control the first section only. */}
+                {showProjectHistory && (
                 <LazySection minHeight={400}>
                   <div
                     className="mt-6 scroll-mt-[137.5px]"
