@@ -1942,7 +1942,14 @@ function Default() {
             ref={tabsListRef}
           >
             <div className="max-w-[1440px] mx-auto px-[100px]">
-              <div className="contents group-data-[status=stuck]/list:pt-3 group-data-[status=stuck]/list:flex items-center max-w-[1240px] mx-auto">
+              <div
+                className={cn(
+                  "contents group-data-[status=stuck]/list:pt-3 group-data-[status=stuck]/list:flex items-center max-w-[1240px] mx-auto",
+                  // The hidden tab row used to supply the bar's bottom
+                  // spacing, so match the top padding instead.
+                  isClientProfile && "group-data-[status=stuck]/list:pb-3"
+                )}
+              >
                 <div className="flex-auto contents group-data-[status=stuck]/list:block">
                   <div className="hidden items-center gap-x-3 group-data-[status=stuck]/list:flex">
                     <Avatar
@@ -2278,6 +2285,28 @@ function Default() {
                 </aside>
               )}
               <div className="flex-auto min-w-0">
+                {/* Edit Profile / Preview — sits above the tabs, right aligned */}
+                {isClientProfile && isOwnProfile && (
+                  <div className="mb-4 flex justify-end">
+                    <Button
+                      size="md"
+                      variant="outlined"
+                      visual="gray"
+                      onClick={() => setIsEditMode(!isEditMode)}
+                    >
+                      {isEditMode ? (
+                        <>
+                          <Eye className="size-[15px]" /> Preview
+                        </>
+                      ) : (
+                        <>
+                          <Edit03 className="size-[15px]" /> Edit Profile
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+
                 {/* Page tabs. Separate from the pinned bar's TabsList above,
                     which is left untouched. */}
                 {isClientProfile && (
