@@ -2270,202 +2270,203 @@ function Default() {
                     which is left untouched. */}
                 {isClientProfile && (
                   <TabsList className="mb-6 w-full justify-start border-b border-gray-200 bg-transparent p-0">
-                    <TabsTrigger value="About" asChild>
-                      <NextLink href="#about">About</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Culture" asChild>
-                      <NextLink href="#culture">Culture</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Team" asChild>
-                      <NextLink href="#team">Team</NextLink>
-                    </TabsTrigger>
-                    <TabsTrigger value="Spending Insights" asChild>
-                      <NextLink href="#spending-insights">Spending Insights</NextLink>
+                    {/* Plain tabs. No anchors, no scrolling. */}
+                    <TabsTrigger value="About">About</TabsTrigger>
+                    <TabsTrigger value="Culture">Culture</TabsTrigger>
+                    <TabsTrigger value="Team">Team</TabsTrigger>
+                    <TabsTrigger value="Spending Insights">
+                      Spending Insights
                     </TabsTrigger>
                   </TabsList>
                 )}
 
                 {/* Culture / Team / Spending Insights panels. Real tabs, not anchors. */}
-                {isClientProfile && activeTab === "Culture" && (
-                  <Card className="mb-6 w-full flex-col items-stretch gap-6 rounded-lg p-6">
-                    <div className="flex w-full items-start justify-between">
-                      <p className="flex-1 text-xl font-bold text-dark-blue-400">
-                        Our workplace values
-                      </p>
-                      <Button
-                        className="size-9 shrink-0 rounded-full p-0 text-gray-500"
-                        variant="ghost"
-                        visual="gray"
-                        aria-label="Edit values"
-                      >
-                        <Edit03 className="size-4" />
-                      </Button>
-                    </div>
-                    <Accordion className="flex w-full flex-col gap-4" type="single" collapsible>
-                      {[
-                        "Dedication to every client's success",
-                        "Innovation that matters - for our company and the world",
-                        "Trust and personal responsibility in all relationships",
-                        "Diversity and inclusion",
-                      ].map((value, index) => (
-                        <AccordionItem
-                          key={value}
-                          className="w-full rounded-lg border border-gray-300 bg-white"
-                          value={`value-${index}`}
+                {isClientProfile && (
+                  <TabsContent value="Culture">
+                    <Card className="mb-6 w-full flex-col items-stretch gap-6 rounded-lg p-6">
+                      <div className="flex w-full items-start justify-between">
+                        <p className="flex-1 text-xl font-bold text-dark-blue-400">
+                          Our workplace values
+                        </p>
+                        <Button
+                          className="size-9 shrink-0 rounded-full p-0 text-gray-500"
+                          variant="ghost"
+                          visual="gray"
+                          aria-label="Edit values"
                         >
-                          <AccordionTrigger className="flex w-full items-center gap-2 px-5 py-3 text-left text-base font-semibold leading-tight text-dark-blue-400">
-                            {value}
-                          </AccordionTrigger>
-                          <AccordionContent className="px-5 pb-3 text-sm font-light text-dark-blue-400" />
-                        </AccordionItem>
-                      ))}
-                    </Accordion>
-                  </Card>
+                          <Edit03 className="size-4" />
+                        </Button>
+                      </div>
+                      <Accordion className="flex w-full flex-col gap-4" type="single" collapsible>
+                        {[
+                          "Dedication to every client's success",
+                          "Innovation that matters - for our company and the world",
+                          "Trust and personal responsibility in all relationships",
+                          "Diversity and inclusion",
+                        ].map((value, index) => (
+                          <AccordionItem
+                            key={value}
+                            className="w-full rounded-lg border border-gray-300 bg-white"
+                            value={`value-${index}`}
+                          >
+                            <AccordionTrigger className="flex w-full items-center gap-2 px-5 py-3 text-left text-base font-semibold leading-tight text-dark-blue-400">
+                              {value}
+                            </AccordionTrigger>
+                            <AccordionContent className="px-5 pb-3 text-sm font-light text-dark-blue-400" />
+                          </AccordionItem>
+                        ))}
+                      </Accordion>
+                    </Card>
+                  </TabsContent>
                 )}
 
-                {isClientProfile && activeTab === "Team" && (
-                  <Card className="mb-6 w-full flex-col items-end gap-4 rounded-lg px-[23px] py-6">
-                    <div className="flex w-full items-start justify-center gap-[75px] border-b border-gray-200 pb-4">
-                      <div className="flex min-w-0 flex-1 flex-col items-start gap-1 text-dark-blue-400">
-                        <p className="w-full text-lg font-semibold capitalize">
-                          Team visibility
-                        </p>
-                        <p className="text-sm font-light">
-                          Show your team on your public profile.
-                        </p>
-                      </div>
-                      <Switch defaultChecked />
-                    </div>
-                    <div className="grid w-full grid-cols-3 gap-10">
-                      {Array.from({ length: 6 }).map((_, index) => (
-                        <div
-                          key={index}
-                          className="flex flex-col items-start justify-center gap-2 rounded-[7px] bg-white p-3"
-                        >
-                          <div className="flex w-full items-start gap-2">
-                            <Avatar className="size-10 border border-gray-200">
-                              <AvatarImage src="/man.jpg" alt="Chris" />
-                              <AvatarFallback>C</AvatarFallback>
-                            </Avatar>
-                            <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-dark-blue-400">
-                              <p className="text-sm font-bold">Chris</p>
-                              <p className="w-full truncate text-xs font-medium leading-[18px]">
-                                Founder &amp; CEO
-                              </p>
-                            </div>
-                          </div>
-                          <p className="w-full text-xs font-light leading-[18px] text-dark-blue-400">
-                            Chris is a seasoned UX leader with a passion for crafting
-                            intuitive digital experiences.
+                {isClientProfile && (
+                  <TabsContent value="Team">
+                    <Card className="mb-6 w-full flex-col items-end gap-4 rounded-lg px-[23px] py-6">
+                      <div className="flex w-full items-start justify-center gap-[75px] border-b border-gray-200 pb-4">
+                        <div className="flex min-w-0 flex-1 flex-col items-start gap-1 text-dark-blue-400">
+                          <p className="w-full text-lg font-semibold capitalize">
+                            Team visibility
+                          </p>
+                          <p className="text-sm font-light">
+                            Show your team on your public profile.
                           </p>
                         </div>
-                      ))}
-                    </div>
-                    <Button
-                      className="text-xs font-semibold text-gray-500"
-                      variant="link"
-                      visual="gray"
-                    >
-                      See all (10)
-                    </Button>
-                  </Card>
-                )}
-
-                {isClientProfile && activeTab === "Spending Insights" && (
-                  <Card className="mb-6 w-full items-start justify-between gap-6 rounded-lg p-6">
-                    <div className="flex flex-col items-start justify-end gap-6">
-                      <div className="flex items-center gap-1 rounded-lg border border-gray-100 bg-gray-50 p-1">
-                        {["Spending Trends", "Most Hired tasks"].map((label, index) => (
-                          <Button
-                            key={label}
-                            className={cn(
-                              "rounded-md px-3 py-2 text-sm",
-                              index === 1
-                                ? "bg-white text-gray-700 shadow-sm"
-                                : "text-gray-500"
-                            )}
-                            variant="ghost"
-                            visual="gray"
+                        <Switch defaultChecked />
+                      </div>
+                      <div className="grid w-full grid-cols-3 gap-10">
+                        {Array.from({ length: 6 }).map((_, index) => (
+                          <div
+                            key={index}
+                            className="flex flex-col items-start justify-center gap-2 rounded-[7px] bg-white p-3"
                           >
-                            {label}
-                          </Button>
+                            <div className="flex w-full items-start gap-2">
+                              <Avatar className="size-10 border border-gray-200">
+                                <AvatarImage src="/man.jpg" alt="Chris" />
+                                <AvatarFallback>C</AvatarFallback>
+                              </Avatar>
+                              <div className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-dark-blue-400">
+                                <p className="text-sm font-bold">Chris</p>
+                                <p className="w-full truncate text-xs font-medium leading-[18px]">
+                                  Founder &amp; CEO
+                                </p>
+                              </div>
+                            </div>
+                            <p className="w-full text-xs font-light leading-[18px] text-dark-blue-400">
+                              Chris is a seasoned UX leader with a passion for crafting
+                              intuitive digital experiences.
+                            </p>
+                          </div>
                         ))}
                       </div>
-                      <div className="flex items-start gap-4">
-                        <div className="size-40 shrink-0 rounded-full border-[24px] border-gray-100" />
-                        <div className="flex flex-col items-start gap-3">
-                          {[
-                            ["Software Development", "$28.50"],
-                            ["Software Development", "$28.50"],
-                            ["Software Development", "$28.50"],
-                            ["Software Development", "$28.50"],
-                          ].map(([label, amount], index) => (
-                            <div key={index} className="flex w-full flex-col items-start gap-1">
-                              <div className="flex items-start gap-2">
-                                <span className="mt-0.5 h-3.5 w-2 shrink-0 rounded-full bg-gray-300" />
-                                <p className="text-xs leading-[18px] text-gray-600">{label}</p>
-                              </div>
-                              <p className="text-sm font-semibold leading-5 text-dark-blue-400">
-                                {amount}
-                              </p>
-                            </div>
+                      <Button
+                        className="text-xs font-semibold text-gray-500"
+                        variant="link"
+                        visual="gray"
+                      >
+                        See all (10)
+                      </Button>
+                    </Card>
+                  </TabsContent>
+                )}
+
+                {isClientProfile && (
+                  <TabsContent value="Spending Insights">
+                    <Card className="mb-6 w-full items-start justify-between gap-6 rounded-lg p-6">
+                      <div className="flex flex-col items-start justify-end gap-6">
+                        <div className="flex items-center gap-1 rounded-lg border border-gray-100 bg-gray-50 p-1">
+                          {["Spending Trends", "Most Hired tasks"].map((label, index) => (
+                            <Button
+                              key={label}
+                              className={cn(
+                                "rounded-md px-3 py-2 text-sm",
+                                index === 1
+                                  ? "bg-white text-gray-700 shadow-sm"
+                                  : "text-gray-500"
+                              )}
+                              variant="ghost"
+                              visual="gray"
+                            >
+                              {label}
+                            </Button>
                           ))}
+                        </div>
+                        <div className="flex items-start gap-4">
+                          <div className="size-40 shrink-0 rounded-full border-[24px] border-gray-100" />
+                          <div className="flex flex-col items-start gap-3">
+                            {[
+                              ["Software Development", "$28.50"],
+                              ["Software Development", "$28.50"],
+                              ["Software Development", "$28.50"],
+                              ["Software Development", "$28.50"],
+                            ].map(([label, amount], index) => (
+                              <div key={index} className="flex w-full flex-col items-start gap-1">
+                                <div className="flex items-start gap-2">
+                                  <span className="mt-0.5 h-3.5 w-2 shrink-0 rounded-full bg-gray-300" />
+                                  <p className="text-xs leading-[18px] text-gray-600">{label}</p>
+                                </div>
+                                <p className="text-sm font-semibold leading-5 text-dark-blue-400">
+                                  {amount}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-start gap-[31px]">
-                      {[
-                        [
-                          ["Total spend By Client", "$63,750"],
-                          ["Total Projects", "08"],
-                          ["Average Pay Rate", "$28.50"],
-                          ["Total Hours Billed", "123"],
-                        ],
-                        [
-                          ["Rehire Rate", "72%"],
-                          ["Completed Projects", "08"],
-                          ["On-time Payments", "90%"],
-                          ["Talent Satisfaction", "4.8/5"],
-                        ],
-                      ].map((column, columnIndex) => (
-                        <div
-                          key={columnIndex}
-                          className="flex w-[175px] flex-col items-start gap-6"
-                        >
-                          {column.map(([label, value]) => (
-                            <div
-                              key={label}
-                              className="flex w-full flex-col items-start gap-1 px-1"
-                            >
-                              <div className="flex w-full items-center justify-between">
-                                <p className="text-sm font-medium leading-5 text-dark-blue-400">
-                                  {label}
-                                </p>
-                                <HelpCircle className="size-4 shrink-0 text-gray-400" />
+                      <div className="flex items-start gap-[31px]">
+                        {[
+                          [
+                            ["Total spend By Client", "$63,750"],
+                            ["Total Projects", "08"],
+                            ["Average Pay Rate", "$28.50"],
+                            ["Total Hours Billed", "123"],
+                          ],
+                          [
+                            ["Rehire Rate", "72%"],
+                            ["Completed Projects", "08"],
+                            ["On-time Payments", "90%"],
+                            ["Talent Satisfaction", "4.8/5"],
+                          ],
+                        ].map((column, columnIndex) => (
+                          <div
+                            key={columnIndex}
+                            className="flex w-[175px] flex-col items-start gap-6"
+                          >
+                            {column.map(([label, value]) => (
+                              <div
+                                key={label}
+                                className="flex w-full flex-col items-start gap-1 px-1"
+                              >
+                                <div className="flex w-full items-center justify-between">
+                                  <p className="text-sm font-medium leading-5 text-dark-blue-400">
+                                    {label}
+                                  </p>
+                                  <HelpCircle className="size-4 shrink-0 text-gray-400" />
+                                </div>
+                                <div className="flex items-center gap-6">
+                                  <p className="text-xl font-semibold text-dark-blue-400">
+                                    {value}
+                                  </p>
+                                  {label === "Rehire Rate" && (
+                                    <span className="text-[13px] font-semibold text-success-500">
+                                      High
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              <div className="flex items-center gap-6">
-                                <p className="text-xl font-semibold text-dark-blue-400">
-                                  {value}
-                                </p>
-                                {label === "Rehire Rate" && (
-                                  <span className="text-[13px] font-semibold text-success-500">
-                                    High
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  </TabsContent>
                 )}
 
 
                 {/* Company Bio — first section under the About tab. Three states. */}
                 {isClientProfile && activeTab === "About" && (
-                  <div className="mb-6" id="about">
+                  <div className="mb-6">
                     {bioState === "filled" ? (
                       <Card className="w-full items-start gap-6 rounded-lg p-6">
                         <p className="flex-1 text-sm font-light leading-[34px] text-gray-700">
