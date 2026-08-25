@@ -21,6 +21,7 @@ import NextImage from "./next-image"
 import NextLink from "./next-link"
 import {
   Button,
+  CircularProgress,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -71,6 +72,10 @@ interface TalentSearchCardProps {
   /** When true, replaces favorite icon with an options menu (for saved/favorites views) */
   showOptionsMenu?: boolean
   onRemove?: () => void
+  variant?: "card" | "compact"
+  matchScore?: number
+  availability?: string
+  level?: string
 }
 
 /**
@@ -144,8 +149,190 @@ export const TalentSearchCard = ({
   imageLoading = "lazy",
   showOptionsMenu = false,
   onRemove,
+  variant = "card",
+  matchScore,
+  availability,
+  level,
 }: TalentSearchCardProps) => {
   const { containerRef, visibleCount } = useVisibleSkills(skillsList)
+  const normalizedMatchScore =
+    typeof matchScore === "number"
+      ? Math.max(0, Math.min(100, Math.round(matchScore)))
+      : undefined
+
+  if (variant === "compact") {
+    const visibleSkills = skillsList.slice(0, 3)
+    const hiddenSkillCount = Math.max(
+      0,
+      skillsList.length - visibleSkills.length
+    )
+    const compactRate = rate.split("-")[0]?.trim() || rate.trim()
+    const compactRating = Number.isFinite(rating) ? rating : 0
+    const roundedRating = Math.round(compactRating)
+    const hasRatingSummary = compactRating > 0 || projects > 0
+
+    return (
+      <article className="border-b border-gray-200 bg-white py-5">
+        <div className="grid min-w-0 grid-cols-[118px_minmax(0,1fr)_auto] items-start gap-5">
+          <div className="flex w-[118px] shrink-0 flex-col items-center justify-start">
+            <NextLink
+              href={profileHref}
+              className="relative block h-[84px] w-[84px] rounded-full"
+            >
+              {typeof normalizedMatchScore === "number" ? (
+                <CircularProgress
+                  aria-label={`${normalizedMatchScore}% match`}
+                  className="absolute inset-0"
+                  size={84}
+                  strokeWidth={4}
+                  value={normalizedMatchScore}
+                  trackClassName="stroke-gray-100"
+                />
+              ) : null}
+              <span className="absolute inset-[4px] overflow-hidden rounded-full bg-gray-100">
+                {photo ? (
+                  <NextImage
+                    src={photo}
+                    sizes="76px"
+                    fill
+                    loading={imageLoading}
+                    className="object-cover"
+                    alt={name}
+                  />
+                ) : (
+                  <span className="grid h-full w-full place-items-center text-[24px] font-bold text-dark-blue-400">
+                    {name.charAt(0)}
+                  </span>
+                )}
+              </span>
+              {typeof normalizedMatchScore !== "number" ? (
+                <span className="absolute inset-0 rounded-full border-[4px] border-gray-100" />
+              ) : null}
+            </NextLink>
+
+            {typeof normalizedMatchScore === "number" ? (
+              <span className="mt-2 text-[11px] font-semibold leading-normal text-dark-blue-400">
+                {normalizedMatchScore}% match
+              </span>
+            ) : null}
+          </div>
+
+          <div className="min-w-0">
+            <NextLink
+              href={profileHref}
+              className="flex flex-wrap items-center gap-x-1 gap-y-1 hover:underline"
+            >
+              <span className="text-[13px] font-bold leading-none text-dark-blue-400">
+                {name}
+              </span>
+              <span className="text-[13px] font-light leading-none text-gray-500">
+                {handle}
+              </span>
+            </NextLink>
+
+            <div className="mt-1 text-[12px] font-semibold leading-normal text-dark-blue-400">
+              {role}
+            </div>
+            {experience ? (
+              <div className="mt-0.5 text-[11px] font-light leading-normal text-gray-500">
+                {experience}
+              </div>
+            ) : null}
+
+            {hasRatingSummary ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {compactRating > 0 ? (
+                  <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold leading-none text-dark-blue-400">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        className={
+                          star <= roundedRating
+                            ? "size-3 fill-dark-blue-400 text-dark-blue-400"
+                            : "size-3 fill-gray-200 text-gray-200"
+                        }
+                      />
+                    ))}
+                    {compactRating.toFixed(2)}
+                  </span>
+                ) : null}
+                {projects > 0 ? (
+                  <span className="text-[11px] font-semibold leading-none text-dark-blue-400">
+                    {projects} projects
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="mt-2 flex flex-wrap gap-2">
+              {typeof normalizedMatchScore !== "number" ||
+              normalizedMatchScore >= 80 ? (
+                <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
+                  Top Match
+                </span>
+              ) : null}
+              {availability ? (
+                <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
+                  {availability}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
+              {compactRate ? (
+                <span className="shrink-0 whitespace-nowrap text-dark-blue-400">
+                  <span className="text-[18px] font-bold leading-none">
+                    {compactRate}
+                  </span>
+                  <span className="text-[12px] font-light leading-none">
+                    /hr
+                  </span>
+                </span>
+              ) : null}
+              {skillsList.length > 0 ? (
+                <span className="shrink-0 whitespace-nowrap text-[12px] font-semibold leading-normal text-dark-blue-400">
+                  {skillsList.length} Matching Skills
+                </span>
+              ) : null}
+              {visibleSkills.map((skill, index) => (
+                <span
+                  key={`${skill}-${index}`}
+                  className="shrink-0 whitespace-nowrap rounded-full bg-gray-100 px-2.5 py-0.5 text-[12px] font-semibold leading-5 text-gray-500"
+                >
+                  {skill}
+                </span>
+              ))}
+              {hiddenSkillCount > 0 ? (
+                <span className="flex basis-full">
+                  <NextLink
+                    href={profileHref ? `${profileHref}#skills` : "#"}
+                    className="inline-flex shrink-0 items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-[12px] font-semibold leading-5 text-dark-blue-400 hover:underline"
+                  >
+                    + {hiddenSkillCount} More...
+                  </NextLink>
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          {level || country ? (
+            <div className="mt-1 flex shrink-0 items-center gap-2">
+              {level ? (
+                <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
+                  {level}
+                </span>
+              ) : null}
+              {country ? (
+                <span className="rounded-[5px] border border-gray-200 bg-white px-2 py-[3px] text-[12px] font-semibold leading-5 text-dark-blue-400">
+                  {country}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </article>
+    )
+  }
 
   const handleFavoriteToggle = useCallback(
     async (pressed: boolean) => {

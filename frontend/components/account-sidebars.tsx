@@ -130,7 +130,7 @@ const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
   {
     label: "Account",
     items: [
-      { href: "/talent-profile", label: "Profile", icon: UserCircle },
+      { href: "/client-profile", label: "Profile", icon: UserCircle },
       { href: "/inbox", label: "Inbox", icon: Mail01, badge: inboxBadge },
       {
         href: "/notifications",

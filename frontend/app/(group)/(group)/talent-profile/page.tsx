@@ -1200,6 +1200,19 @@ function Default() {
   const [isCardStuck, setIsCardStuck] = useState<boolean>(false)
   const [isTabsListStuck, setIsTabsListStuck] = useState<boolean>(false)
 
+  // The profile's pinned bar takes the top of the viewport, so the secondary
+  // nav stays out of the way for as long as the bar is up, even when the user
+  // scrolls back up. The shell in marketplace-secondary-nav.tsx reads this.
+  useEffect(() => {
+    if (!isTabsListStuck) return
+
+    document.documentElement.dataset.pinnedBar = "active"
+
+    return () => {
+      delete document.documentElement.dataset.pinnedBar
+    }
+  }, [isTabsListStuck])
+
   // Auto-expand state for sections
   const [autoExpandPortfolio, setAutoExpandPortfolio] = useState<boolean>(false)
   const [autoExpandSkills, setAutoExpandSkills] = useState<boolean>(false)
