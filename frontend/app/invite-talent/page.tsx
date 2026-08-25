@@ -43,10 +43,13 @@ import {
   Visa,
   Wire,
 } from "@/components/icons/payment-icons"
-import { TalentSearchCard } from "@/components/talent-search-card"
 import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
   Badge,
   Button,
+  CircularProgress,
   Card,
   Checkbox,
   Dialog,
@@ -361,24 +364,131 @@ type InviteTalentCandidateRowProps = {
 function InviteTalentCandidateRow({
   candidate,
 }: InviteTalentCandidateRowProps) {
+  const visibleSkills = candidate.skills.slice(0, 6)
+  const hiddenSkillCount = Math.max(
+    0,
+    candidate.skills.length - visibleSkills.length
+  )
+
   return (
-    <TalentSearchCard
-      id={candidate.id}
-      name={candidate.name}
-      handle={candidate.handle}
-      role={candidate.title}
-      photo={candidate.avatar}
-      rate={candidate.hourlyRate}
-      experience={candidate.experience}
-      country={candidate.location}
-      rating={candidate.rating}
-      projects={candidate.projects}
-      skills={candidate.skills}
-      availability={candidate.availability}
-      level={candidate.level}
-      matchScore={candidate.match}
-      variant="compact"
-    />
+    <div className="border-b border-gray-200 py-5 first:pt-0">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 gap-4">
+          <div className="flex w-[96px] shrink-0 flex-col items-center justify-center">
+            <div className="relative h-[86px] w-[86px]">
+              <CircularProgress
+                size={86}
+                strokeWidth={5}
+                value={candidate.match}
+                className="absolute inset-0 text-primary-500"
+                trackClassName="stroke-transparent"
+              />
+              <Avatar
+                containerClassName="absolute inset-0 grid place-items-center"
+                className="size-[66px] hover:ring-0 active:ring-0"
+              >
+                <AvatarImage src={candidate.avatar} alt={candidate.name} />
+                <AvatarFallback>{candidate.name.charAt(0)}</AvatarFallback>
+              </Avatar>
+            </div>
+
+            <span className="mt-2 text-[11px] font-medium leading-normal text-dark-blue-400">
+              {candidate.match}% match
+            </span>
+            {/* Every field below is optional on a real profile, so each one
+                renders only when it has a value rather than leaving a hole. */}
+            {candidate.hourlyRate ? (
+              <span className="mt-1 inline-flex items-end gap-0.5 text-dark-blue-400">
+                <span className="text-[20px] font-bold leading-none">
+                  {candidate.hourlyRate}
+                </span>
+                <span className="text-[14px] font-light leading-none">
+                  /hr
+                </span>
+              </span>
+            ) : null}
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-1 gap-y-1">
+              <span className="text-[16px] font-bold leading-none text-dark-blue-400">
+                {candidate.name}
+              </span>
+              <span className="text-[16px] font-light leading-none text-gray-500">
+                {candidate.handle}
+              </span>
+            </div>
+
+            {candidate.title ? (
+              <div className="mt-2 text-[14px] font-semibold leading-normal text-dark-blue-400">
+                {candidate.title}
+              </div>
+            ) : null}
+            {candidate.experience ? (
+              <div className="mt-1 text-[14px] font-light leading-normal text-gray-500">
+                {candidate.experience}
+              </div>
+            ) : null}
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Badge
+                visual="gray"
+                className="rounded-[5px] border border-gray-200 bg-white px-2 py-[5px]"
+              >
+                Top Match
+              </Badge>
+              {candidate.availability ? (
+                <Badge
+                  visual="gray"
+                  className="rounded-[5px] border border-gray-200 bg-white px-2 py-[5px]"
+                >
+                  {candidate.availability}
+                </Badge>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2 pt-1">
+          {candidate.location ? (
+            <Badge visual="gray" className="border border-gray-200 bg-white">
+              <span className="text-[14px]">🇺🇸</span>
+              {candidate.location}
+            </Badge>
+          ) : null}
+          {candidate.level ? (
+            <Badge visual="gray" className="border border-gray-200 bg-white">
+              {candidate.level}
+            </Badge>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-2 flex">
+        {/* 96px left column + 16px gutter to align with main text column */}
+        <div className="w-[112px] shrink-0" />
+        <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-hidden">
+          <span className="mr-1 shrink-0 whitespace-nowrap text-[14px] font-semibold leading-normal text-dark-blue-400">
+            {candidate.skillsMatch}
+          </span>
+          {visibleSkills.map((skill, index) => (
+            <Badge
+              key={`${candidate.id}-${skill}-${index}`}
+              visual="gray"
+              className="shrink-0 whitespace-nowrap bg-gray-100 text-dark-blue-400"
+            >
+              <Check className="size-3.5 text-primary-500" />
+              {skill}
+            </Badge>
+          ))}
+          {hiddenSkillCount > 0 ? (
+            <span className="shrink-0 whitespace-nowrap text-[14px] font-semibold leading-normal text-dark-blue-400">
+              + {hiddenSkillCount} more...
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -641,7 +751,7 @@ export function InviteTalentFlow({
           title:
             card.role && card.role !== "Marketing Technologist"
               ? card.role
-              : roleFilter,
+              : roleFilter || card.role,
           experience,
           location,
           level,
