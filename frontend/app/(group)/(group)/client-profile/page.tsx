@@ -96,7 +96,10 @@ import dynamic from "next/dynamic"
 import {
   DndContext,
   closestCenter,
+  KeyboardSensor,
+  MouseSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -485,6 +488,7 @@ import {
   Card,
   Textarea,
   DisclosureContent,
+  ErrorMessage,
   Switch,
 } from "@/components/ui"
 import { ScrollBar } from "@/components/ui"
@@ -556,6 +560,12 @@ const Shimmer = ({ className }: { className?: string }) => (
     <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
   </div>
 )
+
+interface WizardValue {
+  id: string
+  q: string
+  a: string
+}
 
 const SortableValueItem = ({
   id,
@@ -687,6 +697,413 @@ const SortableValueItem = ({
         </div>
       </DisclosureContent>
     </AccordionItem>
+  )
+}
+
+const WorkplaceValuesEditor = ({
+  values,
+  setValues,
+  draftProjectId,
+  onRecentQuestionsChange,
+  publishAttempted = false,
+  moderationError = null,
+}: {
+  values: WizardValue[]
+  setValues: React.Dispatch<React.SetStateAction<WizardValue[]>>
+  draftProjectId: string | null
+  onRecentQuestionsChange?: (hasQuestions: boolean) => void
+  publishAttempted?: boolean
+  moderationError?: string | null
+}) => {
+  const completedValueCount = values.filter(
+    (value) => value.q.trim() && value.a.trim()
+  ).length
+  const showValueError =
+    completedValueCount < 3 && (publishAttempted || values.length > 0)
+  const [questionsTab, setQuestionsTab] = useState("Values")
+  const [recentQTab, setRecentQTab] = useState("all")
+  const [openValueId, setOpenValueId] = useState<string | null>(null)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState(false)
+  const [suggestions, setSuggestions] = useState<
+    Array<{ question: string; answer: string; added?: boolean }>
+  >([])
+
+
+  const remainingSlots = Math.max(0, 10 - values.length)
+  const addedCount = suggestions.filter((s) => s.added).length
+
+  const runValueGeneration = async () => {
+    if (!draftProjectId) return
+    setGenError(false)
+    setGenerating(true)
+    try {
+      // TODO: swap for the real endpoint when it exists.
+      const res = { data: [] as Array<{ question: string; answer: string }> }
+      const data = (res?.data ?? []) as Array<{
+        question: string
+        answer: string
+      }>
+      const seen = new Set<string>()
+      const deduped = data.filter((d) => {
+        const key = (d?.question ?? "").trim().toLowerCase()
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      setSuggestions(deduped.map((d) => ({ ...d, added: false })))
+    } catch (error) {
+      console.error("Failed to generate Values", error)
+      setGenError(true)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const openAiValueDialog = () => {
+    setAiOpen(true)
+    void runValueGeneration()
+  }
+
+  const insertSuggestion = (idx: number) => {
+    const s = suggestions[idx]
+    if (!s || s.added || values.length >= 10) return
+    setValues((items) => [
+      ...items,
+      { id: `value-ai-${Date.now()}-${idx}`, q: s.question, a: s.answer },
+    ])
+    setSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: true } : x))
+    )
+  }
+
+  const removeSuggestion = (idx: number) => {
+    const s = suggestions[idx]
+    if (!s) return
+    const key = s.question.trim().toLowerCase()
+    setValues((items) => items.filter((f) => f.q.trim().toLowerCase() !== key))
+    setSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: false } : x))
+    )
+  }
+
+  const insertAllSuggestions = () => {
+    const seen = new Set(values.map((f) => f.q.trim().toLowerCase()))
+    const toAdd = suggestions
+      .filter((s) => !s.added && !seen.has(s.question.trim().toLowerCase()))
+      .slice(0, remainingSlots)
+    if (toAdd.length === 0) return
+    setValues((items) => [
+      ...items,
+      ...toAdd.map((s, i) => ({
+        id: `value-ai-all-${Date.now()}-${i}`,
+        q: s.question,
+        a: s.answer,
+      })),
+    ])
+    const addedKeys = new Set(toAdd.map((s) => s.question.trim().toLowerCase()))
+    setSuggestions((prev) =>
+      prev.map((x) =>
+        addedKeys.has(x.question.trim().toLowerCase())
+          ? { ...x, added: true }
+          : x
+      )
+    )
+  }
+
+  const handleAddValue = () => {
+    setValues((items) =>
+      items.length >= 10
+        ? items
+        : [...items, { id: `value-${Date.now()}-${items.length}`, q: "", a: "" }]
+    )
+  }
+
+  const handleValueChange = (
+    id: string,
+    patch: Partial<{ q: string; a: string }>
+  ) => {
+    setValues((items) =>
+      items.map((item) => (item.id === id ? { ...item, ...patch } : item))
+    )
+  }
+
+  const handleDeleteValue = (id: string) => {
+    setValues((items) => items.filter((item) => item.id !== id))
+  }
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 150, tolerance: 5 },
+    }),
+    useSensor(KeyboardSensor)
+  )
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      setValues((items) => {
+        const oldIndex = items.findIndex((i) => i.id === active.id)
+        const newIndex = items.findIndex((i) => i.id === over.id)
+        return arrayMove(items, oldIndex, newIndex)
+      })
+    }
+  }
+
+  return (
+    <ScrollArea
+      className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+      viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
+      scrollBar={<ScrollBar className="w-4 p-1" />}
+    >
+      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-[41.45px]">
+        <div className="flex-auto min-w-0">
+          <RadixTabs.Root defaultValue="Values">
+            <RadixTabs.List className="inline-flex items-end gap-4 border-b border-b-gray-200 w-full">
+              <RadixTabs.Trigger
+                value="Values"
+                className="inline-flex items-center justify-center px-1 pb-2 pt-px text-sm font-semibold text-gray-500 data-[state=active]:text-primary-500 border-b-2 border-transparent data-[state=active]:border-primary-500 focus-visible:outline-none"
+              >
+                Value&apos;s
+              </RadixTabs.Trigger>
+            </RadixTabs.List>
+
+            <RadixTabs.Content
+              value="Values"
+              className="focus-visible:outline-none"
+            >
+              <p className="mt-4 text-sm font-light text-dark-blue-400">
+                Write a response for each of the question added to this project.
+                Drag and drop Value items to reorder them. The order you set here
+                will be reflected on your project&apos;s public Value page.
+              </p>
+
+              <div className="mt-4 flex items-center gap-3">
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  onClick={openAiValueDialog}
+                  disabled={!draftProjectId}
+                >
+                  <Stars02 className="size-[15px]" />
+                  Generate With AI
+                </Button>
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  onClick={handleAddValue}
+                  disabled={values.length >= 10}
+                >
+                  <Plus className="size-[15px]" />
+                  Add Value
+                </Button>
+              </div>
+
+              {showValueError && (
+                <ErrorMessage size="sm" className="mt-2">
+                  Please add at least 3 Values before publishing.
+                </ErrorMessage>
+              )}
+
+              {moderationError && (
+                <ErrorMessage size="sm" className="mt-2">
+                  {`Value content did not meet community guidelines. ${moderationError}`}
+                </ErrorMessage>
+              )}
+
+              <Dialog open={aiOpen} onOpenChange={setAiOpen}>
+                <DialogContent className="max-w-[640px] p-0 gap-0">
+                  <div className="px-6 pt-6 pb-4 border-b border-gray-200 flex items-start justify-between">
+                    <div className="flex items-start gap-x-2">
+                      <Stars02 className="size-5 text-dark-blue-400 shrink-0 mt-0.5" />
+                      <div>
+                        <DialogTitle>AI Generated Value&apos;s</DialogTitle>
+                        <DialogDescription className="mt-1">
+                          Review and adjust your AI-generated Value&apos;s as needed
+                        </DialogDescription>
+                      </div>
+                    </div>
+                    <Badge
+                      className="rounded-full bg-success-50 text-success-600 shrink-0"
+                      visual="gray"
+                    >
+                      {addedCount} of {suggestions.length} added
+                    </Badge>
+                  </div>
+
+                  {remainingSlots <
+                    suggestions.filter((s) => !s.added).length && (
+                    <p className="px-6 pt-4 text-sm text-error-500">
+                      You currently have {values.length} Value&apos;s in total, so
+                      you can only add {remainingSlots} more
+                    </p>
+                  )}
+
+                  <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-3">
+                    {generating ? (
+                      <p className="py-8 text-center text-sm text-gray-500">
+                        Generating suggestions…
+                      </p>
+                    ) : genError ? (
+                      <div className="py-8 text-center">
+                        <p className="text-sm text-error-500">
+                          Suggestions couldn&apos;t be loaded. Try again.
+                        </p>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="mt-3"
+                          onClick={runValueGeneration}
+                        >
+                          <Stars02 className="size-[15px]" />
+                          Retry
+                        </Button>
+                      </div>
+                    ) : suggestions.length === 0 ? (
+                      <p className="py-8 text-center text-sm text-gray-500">
+                        No suggestions available.
+                      </p>
+                    ) : (
+                      suggestions.map((s, i) => (
+                        <div
+                          key={i}
+                          className={cn(
+                            "group/svalue relative rounded-lg border p-4 transition",
+                            s.added
+                              ? "border-success-300 bg-success-25"
+                              : "border-gray-200 bg-white hover:bg-gray-50"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-x-3">
+                            <h3
+                              className={cn(
+                                "text-sm font-bold",
+                                s.added
+                                  ? "text-success-700"
+                                  : "text-dark-blue-400"
+                              )}
+                            >
+                              {s.question}
+                            </h3>
+                            {s.added ? (
+                              <span className="shrink-0 inline-flex items-center gap-x-1 text-sm font-medium text-success-600">
+                                <Check className="size-4" />
+                                Added
+                              </span>
+                            ) : (
+                              <Button
+                                variant="outlined"
+                                visual="gray"
+                                size="sm"
+                                className="shrink-0 opacity-0 group-hover/svalue:opacity-100 transition"
+                                onClick={() => insertSuggestion(i)}
+                              >
+                                <Upload01 className="size-[15px]" />
+                                Insert
+                              </Button>
+                            )}
+                          </div>
+                          <p
+                            className={cn(
+                              "mt-1 text-sm font-light",
+                              s.added
+                                ? "text-success-700"
+                                : "text-dark-blue-400"
+                            )}
+                          >
+                            {s.answer}
+                          </p>
+                          {s.added && (
+                            <button
+                              type="button"
+                              onClick={() => removeSuggestion(i)}
+                              className="absolute bottom-3 right-3 size-9 rounded-full border border-success-300 bg-white text-success-600 hover:border-error-300 hover:text-error-500 inline-flex items-center justify-center opacity-0 group-hover/svalue:opacity-100 transition"
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      onClick={runValueGeneration}
+                      disabled={generating}
+                    >
+                      <Stars02 className="size-[15px]" />
+                      Regenerate
+                    </Button>
+                    <Button
+                      onClick={insertAllSuggestions}
+                      disabled={
+                        generating ||
+                        remainingSlots === 0 ||
+                        suggestions.every((s) => s.added)
+                      }
+                    >
+                      Insert All ({suggestions.length})
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                modifiers={[restrictToVerticalAxis]}
+                onDragEnd={handleDragEnd}
+              >
+                {values.length === 0 ? (
+                  <div className="mt-4 rounded-lg border-2 border-gray-200 bg-gray-25 p-6">
+                    <h3 className="text-base font-semibold text-dark-blue-400">
+                      No Values Yet
+                    </h3>
+                    <p className="mt-1 text-sm font-light text-dark-blue-400">
+                      Add a frequently asked question, or generate suggestions
+                      with AI, to help visitors understand your project.
+                    </p>
+                  </div>
+                ) : (
+                  <SortableContext
+                    items={values.map((f) => f.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <Accordion
+                      type="single"
+                      collapsible
+                      className="mt-4 space-y-3"
+                      value={openValueId ?? ""}
+                      onValueChange={(val) => setOpenValueId(val || null)}
+                    >
+                      {values.map((value, idx) => (
+                        <SortableValueItem
+                          key={value.id}
+                          id={value.id}
+                          value={value}
+                          index={idx}
+                          onChange={handleValueChange}
+                          onDelete={handleDeleteValue}
+                        />
+                      ))}
+                    </Accordion>
+                  </SortableContext>
+                )}
+              </DndContext>
+            </RadixTabs.Content>
+
+          </RadixTabs.Root>
+        </div>
+      </div>
+    </ScrollArea>
   )
 }
 
