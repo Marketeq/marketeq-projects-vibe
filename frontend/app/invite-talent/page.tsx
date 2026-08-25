@@ -70,6 +70,7 @@ import {
   SearchField,
   SearchFieldButton,
   SearchFieldInput,
+  StepIndicator,
   Switch,
   useToast,
 } from "@/components/ui"
@@ -518,7 +519,7 @@ function InviteTalentShellFooter({
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white">
       <div className="flex w-full items-center justify-between gap-4 px-8 py-3 md:px-[70px]">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 text-[13px] font-medium leading-normal text-gray-500">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 text-[14px] font-medium leading-normal text-gray-500">
           <HelpCircle className="size-4" />
           {hasAnyInvites ? (
             <span>
@@ -539,6 +540,18 @@ function InviteTalentShellFooter({
               <span>for ongoing invites.</span>
             </>
           )}
+        </div>
+
+        <div className="hidden items-center justify-center gap-3 self-center lg:flex">
+          <StepIndicator index={0} />
+          <span className="text-[16px] font-semibold leading-none text-dark-blue-400">
+            Invitation
+          </span>
+          <span className="w-[48px] border-t-2 border-dashed border-gray-300" />
+          <StepIndicator index={1} disabled />
+          <span className="text-[16px] font-semibold leading-none text-gray-300">
+            Checkout
+          </span>
         </div>
 
         <div className="shrink-0">
