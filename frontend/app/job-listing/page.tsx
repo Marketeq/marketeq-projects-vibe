@@ -864,7 +864,7 @@ const Empty = ({
 
   if (status !== "needs_update" && isJobListingFlow) {
     const jobsPage = (
-      <div className="relative flex-auto bg-gray-25 px-8 py-10">
+      <div className="relative flex-auto bg-gray-50 px-8 py-10">
         <div className="mx-auto grid max-w-[1180px] gap-6 xl:grid-cols-[minmax(0,1fr)_322px]">
           <div className="min-w-0 space-y-5">
             <div className="flex items-center justify-between gap-4">
@@ -1031,10 +1031,12 @@ const Empty = ({
                 {JOB_INVITE_MATCHES.map((talent) => {
                   const isSelected = selectedTalentIds.includes(talent.id);
                   return (
-                    <button
+                    <Button
                       key={talent.id}
+                      variant="link"
+                      visual="gray"
                       type="button"
-                      className="flex w-full items-start gap-5 py-6 text-left"
+                      className="h-auto w-full items-start justify-start gap-5 whitespace-normal py-6 text-left font-normal text-inherit hover:no-underline"
                       onClick={() => toggleTalentInvite(talent.id)}
                     >
                       <span className="mt-2 size-16 shrink-0 rounded-full border-4 border-gray-200 bg-gray-50" />
@@ -1087,7 +1089,7 @@ const Empty = ({
                       >
                         {isSelected ? <Check className="size-4" /> : null}
                       </span>
-                    </button>
+                    </Button>
                   );
                 })}
               </div>
@@ -1209,7 +1211,7 @@ const Empty = ({
       ];
 
       return (
-        <div className="relative flex-auto overflow-hidden bg-gray-25">
+        <div className="relative flex-auto overflow-hidden bg-gray-50">
           <div className="pointer-events-none opacity-50">{jobsPage}</div>
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-900/40 px-6">
             <Card className="block w-full max-w-[760px] rounded-[16px] bg-white p-0 shadow-lg hover:border-gray-200 hover:ring-0">
@@ -1290,18 +1292,20 @@ const Empty = ({
                     </p>
                     <div className="mt-6 inline-flex rounded-[8px] border border-gray-200 bg-white p-1">
                       {(["monthly", "annual"] as const).map((cycle) => (
-                        <button
+                        <Button
                           key={cycle}
+                          variant="ghost"
+                          visual="gray"
                           type="button"
                           className={cn(
-                            "rounded-[8px] px-5 py-2 text-sm font-semibold capitalize text-gray-500",
+                            "rounded-[8px] px-5 capitalize text-gray-500",
                             billingCycle === cycle &&
-                              "bg-primary-50 text-primary-500",
+                              "bg-primary-50 text-primary-500 hover:bg-primary-50",
                           )}
                           onClick={() => setBillingCycle(cycle)}
                         >
                           {cycle}
-                        </button>
+                        </Button>
                       ))}
                     </div>
                     <RadioGroup
@@ -1393,7 +1397,7 @@ const Empty = ({
       ];
 
       return (
-        <div className="relative flex-auto overflow-hidden bg-gray-25">
+        <div className="relative flex-auto overflow-hidden bg-gray-50">
           <div className="pointer-events-none opacity-50">{jobsPage}</div>
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-900/40 px-6">
             <Card className="block w-full max-w-[760px] rounded-[16px] bg-white p-0 shadow-lg hover:border-gray-200 hover:ring-0">
@@ -1412,18 +1416,20 @@ const Empty = ({
                 </h2>
                 <div className="mt-6 inline-flex rounded-[8px] border border-gray-200 bg-white p-1">
                   {(["monthly", "annual"] as const).map((cycle) => (
-                    <button
+                    <Button
                       key={cycle}
+                      variant="ghost"
+                      visual="gray"
                       type="button"
                       className={cn(
-                        "rounded-[8px] px-5 py-2 text-sm font-semibold capitalize text-gray-500",
+                        "rounded-[8px] px-5 capitalize text-gray-500",
                         billingCycle === cycle &&
-                          "bg-primary-50 text-primary-500",
+                          "bg-primary-50 text-primary-500 hover:bg-primary-50",
                       )}
                       onClick={() => setBillingCycle(cycle)}
                     >
                       {cycle}
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 <RadioGroup
@@ -1509,7 +1515,7 @@ const Empty = ({
       ];
 
       return (
-        <div className="flex flex-auto flex-col bg-gray-25">
+        <div className="flex flex-auto flex-col bg-gray-50">
           <div className="border-b border-gray-200 bg-white px-8 py-5">
             <div className="mx-auto flex w-full max-w-[1120px] items-center gap-3">
               <Lock01 className="size-5 text-primary-500" />
@@ -1555,9 +1561,11 @@ const Empty = ({
                           </p>
                         </div>
                         <div className="flex items-center rounded-[8px] border border-gray-200">
-                          <button
+                          <Button
+                            variant="ghost"
+                            visual="gray"
                             type="button"
-                            className="px-4 py-3 text-lg font-semibold text-dark-blue-400"
+                            className="h-auto px-4 py-3 text-lg text-dark-blue-400"
                             onClick={() =>
                               setTopUpInvites((value) =>
                                 Math.max(100, value - 100),
@@ -1565,19 +1573,21 @@ const Empty = ({
                             }
                           >
                             -
-                          </button>
+                          </Button>
                           <span className="border-x border-gray-200 px-6 py-3 text-sm font-semibold text-gray-black">
                             {topUpInvites}
                           </span>
-                          <button
+                          <Button
+                            variant="ghost"
+                            visual="gray"
                             type="button"
-                            className="px-4 py-3 text-lg font-semibold text-dark-blue-400"
+                            className="h-auto px-4 py-3 text-lg text-dark-blue-400"
                             onClick={() =>
                               setTopUpInvites((value) => value + 100)
                             }
                           >
                             +
-                          </button>
+                          </Button>
                         </div>
                       </div>
                       <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -2147,8 +2157,10 @@ const Sidebar = () => {
             <Tooltip>
               <div className="flex flex-col">
                 <TooltipTrigger asChild>
-                  <button
-                    className="group flex items-center justify-between focus-visible:outline-none hover:bg-gray-100 disabled:hover:bg-transparent rounded-md px-3 py-2"
+                  <Button
+                    variant="ghost"
+                    visual="gray"
+                    className="group h-auto justify-between gap-x-0 whitespace-normal rounded-md px-3 hover:bg-gray-100 disabled:pointer-events-auto disabled:opacity-100 disabled:hover:bg-transparent"
                     data-ui-state={
                       isActive
                         ? "active"
@@ -2171,7 +2183,7 @@ const Sidebar = () => {
                     </span>
 
                     <Lock01 className="size-[18px] text-gray-300 shrink-0 group-data-[ui-state=disabled]:inline-block hidden" />
-                  </button>
+                  </Button>
                 </TooltipTrigger>
 
                 <TooltipContent className="max-w-[138px]">
@@ -2247,13 +2259,15 @@ const Sidebar = () => {
                           key={i}
                         >
                           {field.label === "Task Name" ? (
-                            <button
+                            <Button
+                              variant="link"
+                              visual="gray"
                               type="button"
-                              className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none"
+                              className="text-sm font-normal leading-6 text-gray-500 hover:text-dark-blue-400 hover:no-underline"
                               onClick={() => setTaskSearchDialogOpen(true)}
                             >
                               {field.label}
-                            </button>
+                            </Button>
                           ) : (
                             <span className="text-sm leading-6 text-gray-500">
                               {field.label}
@@ -2301,8 +2315,10 @@ const Sidebar = () => {
         <TooltipProvider key={label}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                className="group flex items-center justify-between focus-visible:outline-none hover:bg-gray-100 disabled:hover:bg-transparent rounded-md px-3 py-2"
+              <Button
+                variant="ghost"
+                visual="gray"
+                className="group h-auto justify-between gap-x-0 whitespace-normal rounded-md px-3 hover:bg-gray-100 disabled:pointer-events-auto disabled:opacity-100 disabled:hover:bg-transparent"
                 data-ui-state="disabled"
                 disabled
               >
@@ -2316,7 +2332,7 @@ const Sidebar = () => {
                 </span>
 
                 <Lock01 className="size-[18px] text-gray-300 shrink-0 inline-block" />
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent className="max-w-[138px]">
               Please complete the current step first
@@ -4442,7 +4458,13 @@ const ProjectInfo = ({
                           What type of work is this?
                         </p>
 
-                        <div className="grid gap-4 md:grid-cols-2">
+                        <RadioGroup
+                          className="grid gap-4 md:grid-cols-2"
+                          value={workTypeChoice ?? ""}
+                          onValueChange={(value) =>
+                            setWorkTypeChoice(value as WorkTypeChoice)
+                          }
+                        >
                           {[
                             {
                               value: "project",
@@ -4458,19 +4480,14 @@ const ProjectInfo = ({
                               icon: <RefreshCcw05 className="size-5" />,
                             },
                           ].map((option) => (
-                            <button
+                            <HeadlessRadioGroupItem
                               key={option.value}
-                              type="button"
+                              value={option.value}
                               className={cn(
                                 "flex items-center gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
                                 workTypeChoice === option.value &&
                                   "border-primary-500",
                               )}
-                              onClick={() =>
-                                setWorkTypeChoice(
-                                  option.value as WorkTypeChoice,
-                                )
-                              }
                             >
                               <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
                                 {option.icon}
@@ -4490,9 +4507,9 @@ const ProjectInfo = ({
                                     "border-[5px] border-primary-500",
                                 )}
                               />
-                            </button>
+                            </HeadlessRadioGroupItem>
                           ))}
-                        </div>
+                        </RadioGroup>
                       </div>
                     ) : null}
                   </>
@@ -5069,8 +5086,10 @@ const ProjectInfo = ({
                           asChild
                           key={category}
                         >
-                          <button
+                          <Button
+                            variant="link"
                             type="button"
+                            className="hover:no-underline"
                             onClick={() => {
                               const indexToUpdate = activeCategoryIndex;
 
@@ -5100,7 +5119,7 @@ const ProjectInfo = ({
                           >
                             {category} / {subCategory}
                             <Plus2 className="size-3 opacity-50 hover:opacity-100" />
-                          </button>
+                          </Button>
                         </Badge>
                       ))}
                     </div>
@@ -5135,9 +5154,11 @@ const ProjectInfo = ({
                           "Ongoing design, dev support, or multi-phase work",
                       },
                     ].map((option) => (
-                      <button
+                      <Button
                         key={option.label}
-                        className="rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none"
+                        variant="outlined"
+                        visual="gray"
+                        className="block h-auto w-full whitespace-normal rounded-lg border-gray-200 bg-white p-4 text-left font-normal shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:bg-white"
                         type="button"
                       >
                         <span className="block text-sm leading-5 font-semibold text-dark-blue-400">
@@ -5146,16 +5167,17 @@ const ProjectInfo = ({
                         <span className="mt-1 block text-xs leading-[18px] text-gray-500">
                           {option.description}
                         </span>
-                      </button>
+                      </Button>
                     ))}
                   </div>
 
-                  <button
-                    className="text-sm leading-5 font-semibold text-primary-500 focus-visible:outline-none"
+                  <Button
+                    variant="link"
+                    className="text-sm leading-5 hover:no-underline"
                     type="button"
                   >
                     Other
-                  </button>
+                  </Button>
                 </div>
 
                 <div id="publish-project-industry-field" className="hidden">
@@ -5698,8 +5720,10 @@ const ProjectInfo = ({
                             key={index}
                             asChild
                           >
-                            <button
+                            <Button
+                              variant="link"
                               type="button"
+                              className="hover:no-underline"
                               onClick={() => {
                                 const next = projectInfoValues.skills
                                   ? [
@@ -5717,7 +5741,7 @@ const ProjectInfo = ({
                             >
                               {suggestedSkill}
                               <Plus2 className="size-3 opacity-50 hover:opacity-100" />
-                            </button>
+                            </Button>
                           </Badge>
                         ),
                       )}
@@ -6300,17 +6324,20 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                       />
                     )}
 
-                    <button
-                      className="inline-flex items-center gap-2 rounded-md border border-error-300 px-3 py-2 text-sm font-medium text-error-600 hover:bg-error-50 focus-visible:outline-none"
+                    <Button
+                      variant="outlined"
+                      visual="error"
+                      size="sm"
+                      className="gap-2 rounded-md px-3 font-medium text-error-600 hover:bg-error-50"
                       type="button"
+                      leftIcon={<Trash01 className="size-4" />}
                       onClick={() => {
                         setValue("featuredVideo", "");
                         isValid ? trigger("featuredVideo") : noop();
                       }}
                     >
-                      <Trash01 className="size-4" />
                       Remove video
-                    </button>
+                    </Button>
                   </div>
                 );
               })()}
@@ -7217,13 +7244,15 @@ const RowDragHandleCell = ({ rowId }: { rowId: string }) => {
     id: rowId,
   });
   return (
-    <button
-      className="focus-visible:outline-none transition duration-300 group-hover/row:opacity-100 opacity-0 text-gray-900/50 hover:text-gray-900"
+    <Button
+      variant="link"
+      visual="gray"
+      className="opacity-0 text-gray-900/50 group-hover/row:opacity-100 hover:text-gray-900"
       {...attributes}
       {...listeners}
     >
       <GripVertical2 />
-    </button>
+    </Button>
   );
 };
 
@@ -7313,14 +7342,15 @@ const columns = [
   columnHelper.accessor("duration", {
     cell: ({ getValue, table, row: { index } }) => (
       <TableCell className="py-4 px-6">
-        <button
-          className="focus-visible:outline-none"
+        <Button
+          variant="link"
+          className="font-normal text-inherit hover:no-underline"
           type="button"
           onClick={() => table.options.meta?.openDurationDialog(index)}
         >
           {getValue().value}{" "}
           {formatDurationUnit(getValue().value, getValue().type)}
-        </button>
+        </Button>
       </TableCell>
     ),
     header: "Duration",
@@ -8271,9 +8301,10 @@ const ProjectScope = ({
 
                               <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
                                 Phase {numberToWord(index)}{" "}
-                                <button
+                                <Button
+                                  variant="link"
                                   type="button"
-                                  className="font-light hover:underline focus-visible:outline-none"
+                                  className="font-light text-inherit"
                                   onClick={() =>
                                     dispatch({
                                       type: "EDIT",
@@ -8282,7 +8313,7 @@ const ProjectScope = ({
                                   }
                                 >
                                   {phaseName}
-                                </button>
+                                </Button>
                               </span>
                             </div>
 
@@ -8364,9 +8395,10 @@ const ProjectScope = ({
                                   Phase {numberToWord(index)}
                                 </span>{" "}
                                 {phaseName ? (
-                                  <button
+                                  <Button
+                                    variant="link"
                                     type="button"
-                                    className="text-lg leading-8 font-semibold text-gray-900 hover:underline focus-visible:outline-none"
+                                    className="text-lg leading-8 text-gray-900"
                                     onClick={() =>
                                       dispatch({
                                         type: "EDIT",
@@ -8375,11 +8407,15 @@ const ProjectScope = ({
                                     }
                                   >
                                     {phaseName}
-                                  </button>
+                                  </Button>
                                 ) : (
-                                  <button
+                                  <Button
+                                    variant="link"
                                     type="button"
-                                    className="focus-visible:outline-none inline-flex items-center gap-x-2"
+                                    className="hover:no-underline"
+                                    leftIcon={
+                                      <Edit03 className="size-[15px] text-gray-800" />
+                                    }
                                     onClick={() =>
                                       dispatch({
                                         type: "EDIT",
@@ -8387,11 +8423,10 @@ const ProjectScope = ({
                                       })
                                     }
                                   >
-                                    <Edit03 className="size-[15px] text-gray-800" />
                                     <span className="inline-block text-sm leading-5 font-semibold text-gray-800">
                                       Edit Phase Name
                                     </span>
-                                  </button>
+                                  </Button>
                                 )}
                                 <div className="inline-block md:hidden">
                                   <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
@@ -11318,13 +11353,14 @@ const ProjectScopeEditStep = ({
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <button
+                          <Button
+                            variant="link"
                             type="button"
                             aria-label="Show budget calculator details"
-                            className="inline-flex focus-visible:outline-none"
+                            className="text-inherit"
                           >
                             <HelpCircle className="size-4" />
-                          </button>
+                          </Button>
                         </TooltipTrigger>
                         <TooltipContent>
                           Estimated budget updates from scope, schedule, and
@@ -11371,13 +11407,14 @@ const ProjectScopeEditStep = ({
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <button
+                          <Button
+                            variant="link"
                             type="button"
                             aria-label="Show timeline calculator details"
-                            className="inline-flex focus-visible:outline-none"
+                            className="text-inherit"
                           >
                             <HelpCircle className="size-4" />
-                          </button>
+                          </Button>
                         </TooltipTrigger>
                         <TooltipContent>
                           Timeline updates from phase and task durations.
@@ -11462,14 +11499,15 @@ const ProjectScopeEditStep = ({
                   >
                     <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
                       <div className="flex min-w-0 items-center gap-x-4">
-                        <button
+                        <Button
+                          variant="link"
                           type="button"
                           aria-label={
                             isExpanded
                               ? `Collapse ${phaseName}`
                               : `Expand ${phaseName}`
                           }
-                          className="focus-visible:outline-none"
+                          className="text-inherit"
                           onClick={() => togglePhase(phaseName)}
                         >
                           <ChevronDown
@@ -11478,7 +11516,7 @@ const ProjectScopeEditStep = ({
                               isExpanded && "rotate-180",
                             )}
                           />
-                        </button>
+                        </Button>
                         <Input
                           className="h-9 border-0 bg-transparent px-0 text-lg leading-7 font-semibold text-gray-black shadow-none"
                           value={phaseName}
@@ -11563,13 +11601,14 @@ const ProjectScopeEditStep = ({
                                 }
                               />
                               <div>
-                                <button
+                                <Button
+                                  variant="link"
                                   type="button"
-                                  className="text-left text-sm leading-5 text-gray-600 focus-visible:outline-none"
+                                  className="justify-start text-left text-sm font-normal leading-5 text-gray-600 hover:no-underline"
                                   onClick={() => openRoleEditor(phaseName, row)}
                                 >
                                   {row.role}
-                                </button>
+                                </Button>
                                 <p className="text-xs leading-[18px] text-gray-400">
                                   {formatProjectRowSchedule(row)}
                                 </p>
@@ -11584,13 +11623,15 @@ const ProjectScopeEditStep = ({
                               />
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <button
+                                  <Button
+                                    variant="outlined"
+                                    visual="gray"
                                     type="button"
-                                    className="inline-flex h-7 w-max items-center gap-x-1 rounded-[5px] border border-dashed border-gray-300 bg-gray-50 px-2 text-xs leading-[18px] text-gray-700 focus-visible:outline-none"
+                                    className="h-7 w-max gap-x-1 border-dashed border-gray-300 bg-gray-50 px-2 text-xs font-normal leading-[18px] text-gray-700 shadow-none"
+                                    rightIcon={<ChevronDown className="size-3" />}
                                   >
                                     {row.experience}
-                                    <ChevronDown className="size-3" />
-                                  </button>
+                                  </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="start">
                                   {EXPERIENCE_LEVELS.map((experience) => (
@@ -12528,14 +12569,16 @@ const ReviewEditableTags = ({
               className="gap-1 border border-gray-200 bg-white pr-1"
             >
               {item}
-              <button
+              <Button
+                variant="link"
+                visual="gray"
                 type="button"
-                className="inline-flex size-4 items-center justify-center rounded-full text-gray-400 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                className="size-4 rounded-full text-gray-400 hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500"
                 aria-label={`Remove ${item}`}
                 onClick={() => removeValue(item)}
               >
                 <X2 className="size-3" />
-              </button>
+              </Button>
             </Badge>
           ))
         ) : (
@@ -12877,13 +12920,15 @@ const FinalServiceReviewStep = ({
                   { value: "yes" as const, label: "Yes, Include NDA" },
                   { value: "no" as const, label: "No NDA" },
                 ].map((option) => (
-                  <button
+                  <Button
                     key={option.value}
+                    variant="outlined"
+                    visual="gray"
                     type="button"
                     className={cn(
-                      "inline-flex h-9 items-center rounded-full border border-gray-300 bg-white px-4 text-sm leading-5 font-semibold text-dark-blue-400 focus-visible:outline-none",
+                      "h-9 rounded-full border-gray-300 bg-white px-4 text-sm leading-5 text-dark-blue-400 shadow-none",
                       ndaChoice === option.value &&
-                        "border-primary-500 bg-primary-50 text-primary-700",
+                        "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50",
                     )}
                     onClick={() => {
                       setNdaChoice(option.value);
@@ -12894,7 +12939,7 @@ const FinalServiceReviewStep = ({
                     }}
                   >
                     {option.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
               {ndaChoice === "yes" ? (
@@ -12947,25 +12992,29 @@ const FinalServiceReviewStep = ({
               <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                 <div className="flex flex-wrap gap-2">
                   {roleOptions.map((role) => (
-                    <button
+                    <Button
                       key={role}
+                      variant="outlined"
+                      visual="gray"
                       type="button"
                       className={cn(
-                        "h-8 rounded-full border border-gray-300 bg-white px-3 text-xs leading-[18px] font-semibold text-dark-blue-400",
+                        "h-8 rounded-full border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-none",
                         selectedRole === role &&
-                          "border-primary-500 bg-primary-50 text-primary-700",
+                          "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50",
                       )}
                       onClick={() => setSelectedRole(role)}
                     >
                       {role}
-                    </button>
+                    </Button>
                   ))}
-                  <button
+                  <Button
+                    variant="outlined"
+                    visual="gray"
                     type="button"
-                    className="h-8 rounded-full border border-gray-300 bg-white px-3 text-xs leading-[18px] font-semibold text-dark-blue-400"
+                    className="h-8 rounded-full border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-none"
                   >
                     + 5 More
-                  </button>
+                  </Button>
                 </div>
 
                 <div className="mt-5">
@@ -12990,14 +13039,16 @@ const FinalServiceReviewStep = ({
                         className="border border-gray-200 bg-white"
                       >
                         {skill}
-                        <button
+                        <Button
+                          variant="link"
+                          visual="gray"
                           type="button"
                           className="ml-2 text-gray-400"
                           onClick={() => removeSkill(skill)}
                           aria-label={`Remove ${skill}`}
                         >
                           <X className="size-3" />
-                        </button>
+                        </Button>
                       </Badge>
                     ))}
                     <Button
@@ -13058,8 +13109,8 @@ const FinalServiceReviewStep = ({
                 </p>
               ) : null}
               <div className="mt-[280px] rounded-[5px] border border-gray-300 bg-white p-3 shadow-xs">
-                <textarea
-                  className="h-10 w-full resize-none text-sm leading-5 text-gray-500 focus-visible:outline-none"
+                <Textarea
+                  className="h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-gray-500 shadow-none focus:border-0 focus:ring-0 focus-visible:outline-none"
                   placeholder="I want to change..."
                   value={serviceAssistant.message}
                   onChange={(event) =>
@@ -13334,13 +13385,15 @@ const FinalProjectReviewStep = ({
                   { value: "yes" as const, label: "Yes, Include NDA" },
                   { value: "no" as const, label: "No NDA" },
                 ].map((option) => (
-                  <button
+                  <Button
                     key={option.value}
+                    variant="outlined"
+                    visual="gray"
                     type="button"
                     className={cn(
-                      "inline-flex h-9 items-center rounded-full border border-gray-300 bg-white px-4 text-sm leading-5 font-semibold text-dark-blue-400 focus-visible:outline-none",
+                      "h-9 rounded-full border-gray-300 bg-white px-4 text-sm leading-5 text-dark-blue-400 shadow-none",
                       ndaChoice === option.value &&
-                        "border-primary-500 bg-primary-50 text-primary-700",
+                        "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50",
                     )}
                     onClick={() => {
                       setNdaChoice(option.value);
@@ -13351,7 +13404,7 @@ const FinalProjectReviewStep = ({
                     }}
                   >
                     {option.label}
-                  </button>
+                  </Button>
                 ))}
               </div>
               {ndaChoice === "yes" ? (
@@ -13404,25 +13457,29 @@ const FinalProjectReviewStep = ({
               <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                 <div className="flex flex-wrap gap-2">
                   {roleOptions.map((role) => (
-                    <button
+                    <Button
                       key={role}
+                      variant="outlined"
+                      visual="gray"
                       type="button"
                       className={cn(
-                        "h-8 rounded-full border border-gray-300 bg-white px-3 text-xs leading-[18px] font-semibold text-dark-blue-400",
+                        "h-8 rounded-full border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-none",
                         selectedRole === role &&
-                          "border-primary-500 bg-primary-50 text-primary-700",
+                          "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50",
                       )}
                       onClick={() => setSelectedRole(role)}
                     >
                       {role}
-                    </button>
+                    </Button>
                   ))}
-                  <button
+                  <Button
+                    variant="outlined"
+                    visual="gray"
                     type="button"
-                    className="h-8 rounded-full border border-gray-300 bg-white px-3 text-xs leading-[18px] font-semibold text-dark-blue-400"
+                    className="h-8 rounded-full border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-none"
                   >
                     + 5 More
-                  </button>
+                  </Button>
                 </div>
 
                 <div className="mt-5">
@@ -13447,14 +13504,16 @@ const FinalProjectReviewStep = ({
                         className="border border-gray-200 bg-white"
                       >
                         {skill}
-                        <button
+                        <Button
+                          variant="link"
+                          visual="gray"
                           type="button"
                           className="ml-2 text-gray-400"
                           onClick={() => removeSkill(skill)}
                           aria-label={`Remove ${skill}`}
                         >
                           <X className="size-3" />
-                        </button>
+                        </Button>
                       </Badge>
                     ))}
                     <Button
@@ -13515,8 +13574,8 @@ const FinalProjectReviewStep = ({
                 </p>
               ) : null}
               <div className="mt-[280px] rounded-[5px] border border-gray-300 bg-white p-3 shadow-xs">
-                <textarea
-                  className="h-10 w-full resize-none text-sm leading-5 text-gray-500 focus-visible:outline-none"
+                <Textarea
+                  className="h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-gray-500 shadow-none focus:border-0 focus:ring-0 focus-visible:outline-none"
                   placeholder="I want to change..."
                   value={projectAssistant.message}
                   onChange={(event) =>
@@ -14356,9 +14415,10 @@ const ServiceScopeEditStep = ({
                     >
                       <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
                         <div className="flex min-w-0 items-center gap-x-4">
-                          <button
+                          <Button
+                            variant="link"
                             type="button"
-                            className="focus-visible:outline-none"
+                            className="text-inherit"
                             onClick={() => togglePhase(phase.name)}
                           >
                             <ChevronDown
@@ -14367,7 +14427,7 @@ const ServiceScopeEditStep = ({
                                 isExpanded && "rotate-180",
                               )}
                             />
-                          </button>
+                          </Button>
                           <h2 className="text-lg leading-7 font-semibold text-gray-black">
                             {phase.name}{" "}
                             <span className="font-normal text-gray-500">
@@ -14437,9 +14497,11 @@ const ServiceScopeEditStep = ({
                               </DropdownMenu>
                             </div>
                           ) : (
-                            <button
+                            <Button
+                              variant="link"
+                              visual="gray"
                               type="button"
-                              className="hidden items-center gap-x-2 text-sm leading-5 font-semibold text-dark-blue-400 focus-visible:outline-none md:inline-flex"
+                              className="hidden gap-x-2 text-sm leading-5 text-dark-blue-400 hover:no-underline md:inline-flex"
                               onClick={() => toggleServicePhaseNote(phase.name)}
                             >
                               {phase.statusKind === "ongoing" ? (
@@ -14448,7 +14510,7 @@ const ServiceScopeEditStep = ({
                                 <Clock className="size-4 text-success-500" />
                               )}
                               {phase.status}
-                            </button>
+                            </Button>
                           )}
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -14505,15 +14567,16 @@ const ServiceScopeEditStep = ({
                                 {row.task}
                               </span>
                               <div>
-                                <button
+                                <Button
+                                  variant="link"
                                   type="button"
-                                  className="text-left text-sm leading-5 text-gray-600 focus-visible:outline-none"
+                                  className="justify-start text-left text-sm font-normal leading-5 text-gray-600 hover:no-underline"
                                   onClick={() =>
                                     openServiceRoleEditor(phase.name, row)
                                   }
                                 >
                                   {row.role}
-                                </button>
+                                </Button>
                                 <p className="text-xs leading-[18px] text-gray-400">
                                   {formatServiceRowSchedule(row)}
                                 </p>
@@ -14528,13 +14591,15 @@ const ServiceScopeEditStep = ({
                               />
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <button
+                                  <Button
+                                    variant="outlined"
+                                    visual="gray"
                                     type="button"
-                                    className="inline-flex h-7 w-max items-center gap-x-1 rounded-[5px] border border-dashed border-gray-300 bg-gray-50 px-2 text-xs leading-[18px] text-gray-700 focus-visible:outline-none"
+                                    className="h-7 w-max gap-x-1 border-dashed border-gray-300 bg-gray-50 px-2 text-xs font-normal leading-[18px] text-gray-700 shadow-none"
+                                    rightIcon={<ChevronDown className="size-3" />}
                                   >
                                     {row.experience}
-                                    <ChevronDown className="size-3" />
-                                  </button>
+                                  </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="start">
                                   {EXPERIENCE_LEVELS.map((experience) => (
@@ -14791,16 +14856,18 @@ const ServiceScopeEditStep = ({
               </Label>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
+                  <Button
+                    variant="outlined"
+                    visual="gray"
                     type="button"
                     className={cn(
-                      "mt-2 flex h-11 w-full items-center justify-between rounded-[5px] border border-gray-300 bg-white px-3 text-left text-sm leading-5 shadow-xs focus-visible:outline-none",
+                      "mt-2 h-11 w-full justify-between border-gray-300 bg-white px-3 text-left text-sm font-normal leading-5",
                       newPhaseType ? "text-dark-blue-400" : "text-gray-400",
                     )}
+                    rightIcon={<ChevronDown className="size-4 text-gray-500" />}
                   >
                     {selectedPhaseTypeLabel}
-                    <ChevronDown className="size-4 text-gray-500" />
-                  </button>
+                  </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-[360px]">
                   {serviceScopePhaseTypeOptions.map((option) => {
@@ -15119,14 +15186,16 @@ const ExistingContractFinalReviewStep = ({
                       className="border border-gray-200 bg-white"
                     >
                       {skill}
-                      <button
+                      <Button
+                        variant="link"
+                        visual="gray"
                         type="button"
                         className="ml-2 text-gray-400"
                         onClick={() => removeSkill(skill)}
                         aria-label={`Remove ${skill}`}
                       >
                         <X className="size-3" />
-                      </button>
+                      </Button>
                     </Badge>
                   ))}
                   <Button
@@ -16818,7 +16887,7 @@ function PublishProject({
             <MediaProvider value={mediaMethods}>
               <JobListingDraftProvider value={jobListingDraftValue}>
                 <ProjectScopeProvider value={projectScopeValue}>
-                  <div className="flex-auto bg-white min-w-0 overflow-x-hidden">
+                  <div className="flex-auto bg-gray-50 min-w-0 overflow-x-hidden">
                     <Header onSaveExit={toggleIsSaveExitDialogOpen} />
                     <SaveExitDialog
                       open={isSaveExitDialogOpen}

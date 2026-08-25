@@ -1321,8 +1321,8 @@ export function InviteTalentFlow({
   ])
 
   return (
-    <div className="h-screen bg-gray-25">
-      <div className="flex h-screen flex-col bg-gray-25">
+    <div className="h-screen bg-gray-50">
+      <div className="flex h-screen flex-col bg-gray-50">
         {inviteSuccessMessage ? (
           <div
             className="fixed left-1/2 top-8 z-[60] flex min-h-[52px] w-[min(420px,calc(100vw-48px))] -translate-x-1/2 items-center gap-4 rounded-[5px] bg-success-500 px-6 py-3 text-white shadow-[0px_6px_16px_0px_rgba(0,0,0,.12)]"
@@ -2097,7 +2097,7 @@ export function InviteTalentFlow({
         </Dialog>
 
         {inviteCheckoutMode ? (
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-25 scrollbar-none">
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-50 scrollbar-none">
             <div className="flex h-16 items-center border-b border-gray-200 bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.08)]">
               <div className="mx-auto flex w-[min(1140px,calc(100vw-48px))] items-center gap-6 text-[18px] font-semibold leading-none text-dark-blue-400">
                 <Logo3 className="h-[18.81px] w-[128px] shrink-0" />
