@@ -27,6 +27,7 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
+import { ScopeBuilder } from "@/components/scope-builder"
 import {
   Alert,
   AlertContent,
@@ -824,6 +825,15 @@ export default function ActiveProjectPage() {
   const [dragOverId, setDragOverId] = useState<string | null>(null)
   // table checkboxes are multi-select, not completion
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([])
+  const [showAllFolders, setShowAllFolders] = useState(false)
+  const [scopePhases, setScopePhases] = useState<any[] | undefined>(undefined)
+  const scopeTeamMembers = sampleMembers.map((m, i) => ({
+    id: String(i + 1),
+    firstName: m.name.split(" ")[0],
+    username: m.username,
+    avatarUrl: m.avatar,
+    role: m.role,
+  }))
   const [bulkAssignees, setBulkAssignees] = useState<TeamMember[]>([])
   const [bulkAssignOpen, setBulkAssignOpen] = useState(false)
   const [bulkAssignSearch, setBulkAssignSearch] = useState("")
@@ -1969,92 +1979,12 @@ export default function ActiveProjectPage() {
 
                 <TabsContent value="scope">
                   <div className="mt-6 bg-white border border-gray-200 shadow-xs rounded-lg p-6">
-                    <div className="flex items-center justify-between mb-6">
-                      <h2 className="text-xl font-semibold text-dark-blue-400">Project Scope</h2>
-                      <Button variant="outlined" visual="gray" size="sm">
-                        <Plus className="size-[15px]" />
-                        Add Phase
-                      </Button>
-                    </div>
-
-                    <Accordion type="multiple" defaultValue={["phase-0", "phase-1"]}>
-                      {[
-                        {
-                          name: "Discovery & Planning",
-                          tasks: [
-                            { task: "Stakeholder interviews", role: "UX Researcher", location: "Remote", experience: "Senior", duration: "1 week" },
-                            { task: "Competitive analysis", role: "Product Designer", location: "Remote", experience: "Mid", duration: "3 days" },
-                            { task: "Requirements documentation", role: "Business Analyst", location: "Remote", experience: "Senior", duration: "1 week" },
-                          ],
-                        },
-                        {
-                          name: "Design & Prototyping",
-                          tasks: [
-                            { task: "Wireframe creation", role: "UX Designer", location: "Remote", experience: "Senior", duration: "2 weeks" },
-                            { task: "High-fidelity mockups", role: "UI Designer", location: "Remote", experience: "Senior", duration: "2 weeks" },
-                            { task: "Interactive prototype", role: "UI Designer", location: "Remote", experience: "Mid", duration: "1 week" },
-                            { task: "Design system setup", role: "UI Designer", location: "Remote", experience: "Senior", duration: "1 week" },
-                          ],
-                        },
-                        {
-                          name: "Development",
-                          tasks: [
-                            { task: "Frontend architecture", role: "Frontend Developer", location: "Remote", experience: "Senior", duration: "1 week" },
-                            { task: "Backend API development", role: "Backend Developer", location: "Remote", experience: "Senior", duration: "3 weeks" },
-                            { task: "Database schema design", role: "Backend Developer", location: "Remote", experience: "Senior", duration: "1 week" },
-                          ],
-                        },
-                      ].map((phase, index) => (
-                        <AccordionItem key={index} value={`phase-${index}`} asChild>
-                          <div className="rounded-lg border border-gray-200 shadow-sm mb-4">
-                            <div className="mb-3 flex items-center justify-between px-3 pt-3">
-                              <div className="inline-flex items-center gap-x-3.5 min-w-0">
-                                <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
-                                  <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                </AccordionTrigger>
-                                <span className="text-base font-semibold leading-7 text-gray-900">
-                                  Phase {index + 1}{" "}
-                                  <span className="font-light">{phase.name}</span>
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Badge visual="gray" className="rounded-full">{phase.tasks.length} tasks</Badge>
-                                <IconButton variant="ghost" visual="gray" size="sm">
-                                  <MoreHorizontal className="size-4" />
-                                </IconButton>
-                                <IconButton variant="ghost" visual="gray" size="sm">
-                                  <Plus className="size-4" />
-                                </IconButton>
-                              </div>
-                            </div>
-                            <DisclosureContent className="overflow-auto">
-                              <Table>
-                                <TableHeader className="[&_tr]:border-t-0">
-                                  <TableRow>
-                                    <TableHead className="py-3 px-6">Task</TableHead>
-                                    <TableHead className="py-3 px-6">Role</TableHead>
-                                    <TableHead className="py-3 px-6">Location</TableHead>
-                                    <TableHead className="py-3 px-6">Experience</TableHead>
-                                    <TableHead className="py-3 px-6">Duration</TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {phase.tasks.map((t, ti) => (
-                                    <TableRow key={ti}>
-                                      <TableCell className="py-4 px-6 text-sm text-gray-600">{t.task}</TableCell>
-                                      <TableCell className="py-4 px-6 text-sm text-gray-600">{t.role}</TableCell>
-                                      <TableCell className="py-4 px-6 text-sm text-gray-600">{t.location}</TableCell>
-                                      <TableCell className="py-4 px-6 text-sm text-gray-600">{t.experience}</TableCell>
-                                      <TableCell className="py-4 px-6 text-sm text-gray-600">{t.duration}</TableCell>
-                                    </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                            </DisclosureContent>
-                          </div>
-                        </AccordionItem>
-                      ))}
-                    </Accordion>
+                    <ScopeBuilder
+                      embedded
+                      phases={scopePhases}
+                      onPhasesChange={setScopePhases}
+                      teamMembers={scopeTeamMembers}
+                    />
                   </div>
                 </TabsContent>
 
@@ -2269,7 +2199,7 @@ export default function ActiveProjectPage() {
                         <Button variant="outlined" visual="gray" size="sm" leftIcon={<FilterLines className="size-[15px]" />}>
                           Filters
                         </Button>
-                        <ToggleGroupRoot className="p-0 gap-x-0">
+                        <ToggleGroupRoot defaultValue={["grid"]} className="p-0 gap-x-0">
                           <ToggleGroupItem className="size-10 py-0 px-0 rounded-l-lg rounded-r-none" value="grid">
                             <Grid />
                           </ToggleGroupItem>
@@ -2300,8 +2230,43 @@ export default function ActiveProjectPage() {
                           </div>
                         </div>
                       ))}
-                      <div className="flex items-center justify-center px-6 py-5 bg-gray-100 border border-gray-200 shadow-[0px_1px_5px_rgba(16,24,40,0.02)] rounded-lg cursor-pointer hover:bg-gray-50 transition-colors duration-300 h-16">
-                        <span className="text-sm font-medium text-gray-800 text-center">+ 3</span>
+                      <div
+                        className="flex items-center justify-center px-6 py-5 bg-gray-100 border border-gray-200 shadow-[0px_1px_5px_rgba(16,24,40,0.02)] rounded-lg cursor-pointer hover:bg-gray-50 transition-colors duration-300 h-16"
+                        onClick={() => setShowAllFolders(prev => !prev)}
+                      >
+                        <span className="text-sm font-medium text-gray-800 text-center">
+                          {showAllFolders ? "Less" : "+ 3"}
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      className={`grid transition-all duration-300 ease-out ${
+                        showAllFolders
+                          ? "mt-4 grid-rows-[1fr] opacity-100"
+                          : "mt-0 grid-rows-[0fr] opacity-0"
+                      }`}
+                    >
+                      <div className="overflow-hidden">
+                      <div className="flex items-center gap-4">
+                        {[
+                          { name: "Wireframes", count: 4 },
+                          { name: "Brand Assets", count: 6 },
+                          { name: "User Testing", count: 2 },
+                        ].map((folder) => (
+                          <div key={folder.name} className="flex-1 flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 shadow-[0px_1px_5px_rgba(16,24,40,0.02)] rounded-lg cursor-pointer hover:bg-gray-50 transition-colors duration-300 h-16">
+                            <div className="flex items-center justify-center size-10 bg-white rounded-[5px]">
+                              <img src="/icons/folder.svg" alt="" className="w-9 h-8" />
+                            </div>
+                            <div className="flex flex-col gap-0.5">
+                              <p className="text-sm font-medium text-gray-800 leading-5">{folder.name}</p>
+                              <p className="text-xs text-gray-500 capitalize leading-5">{folder.count} Files</p>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="invisible flex items-center justify-center px-6 py-5 h-16">
+                          <span className="text-sm font-medium">+ 3</span>
+                        </div>
+                      </div>
                       </div>
                     </div>
 
