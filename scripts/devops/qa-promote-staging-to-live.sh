@@ -24,7 +24,14 @@
 
 set -euo pipefail
 
-DRY_RUN=${1:-}
+DRY_RUN=""
+ASSUME_YES=0
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN="--dry-run" ;;
+    --yes) ASSUME_YES=1 ;;
+  esac
+done
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || { echo "❌ Not in a git repo"; exit 1; })
 cd "$REPO_ROOT"
 
@@ -68,10 +75,16 @@ say "This deploys to the PRODUCTION Render environment AND Vercel Production."
 echo ""
 git log --oneline origin/live..origin/staging | head -n 30
 echo ""
-read -r -p "Type 'PROMOTE TO PRODUCTION' to confirm: " CONFIRM
-if [ "$CONFIRM" != "PROMOTE TO PRODUCTION" ]; then
-  err "Aborted."
-  exit 1
+# --yes skips the prompt for non-interactive runs. Without a tty, read hits
+# EOF and set -e exits the script silently, which reads as a no-op.
+if [ "${ASSUME_YES:-0}" = "1" ]; then
+  say "Confirmation supplied via --yes"
+else
+  read -r -p "Type 'PROMOTE TO PRODUCTION' to confirm: " CONFIRM || CONFIRM=""
+  if [ "$CONFIRM" != "PROMOTE TO PRODUCTION" ]; then
+    err "Aborted."
+    exit 1
+  fi
 fi
 
 # --- Checkout live and merge --------------------------------------------
