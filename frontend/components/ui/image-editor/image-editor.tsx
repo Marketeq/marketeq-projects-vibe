@@ -213,6 +213,7 @@ const renderEditedImageFile = async ({
 export const PictureEditor = ({
   onValueChange,
   startingPoint,
+  skipEditStep = false,
 }: {
   onValueChange?: (files: readonly FileWithPath[] | undefined) => void
   startingPoint: (options: {
@@ -222,6 +223,14 @@ export const PictureEditor = ({
     onRemove: () => void
     onEdit: () => void
   }) => React.ReactNode
+  /**
+   * Skip straight back to "ideal" after a drop instead of opening this
+   * component's own round, avatar-framed "editing" dialog — for callers
+   * (case-study section images) that drive editing through their own
+   * modal instead, since this one can't zoom/rotate a rectangular image
+   * correctly and has no way to persist the result.
+   */
+  skipEditStep?: boolean
 }) => {
   const [state, send] = useStateMachine("ideal", {
     ideal: {
@@ -259,7 +268,7 @@ export const PictureEditor = ({
       maxFiles: 1,
       onDropAccepted: () => {
         reset()
-        send("EDIT")
+        send(skipEditStep ? "TOGGLE" : "EDIT")
       },
       onDropRejected: reset,
       validator: (file) => {
@@ -409,6 +418,18 @@ export const PictureEditor = ({
     <>
       {startingPoint({
         open: () => {
+          // skipEditStep callers (case-study section images) drive their
+          // own add/replace/remove/edit UI entirely through the returned
+          // dataUrl/onRemove/onEdit — they never want this component's own
+          // avatar-styled "removing"/"editing" dialogs. Without this branch,
+          // `open()` would permanently route to `send("REMOVE")` (opening
+          // this component's own dialog instead of the file picker) the
+          // moment `dataUrl` first becomes truthy, making every later
+          // add/replace click here a no-op from the caller's perspective.
+          if (skipEditStep) {
+            open()
+            return
+          }
           if (dataUrl) {
             send("REMOVE")
           } else {
@@ -912,7 +933,7 @@ export const ImageEditor = ({
         error?.response?.data?.reason ||
         error?.message ||
         "We couldn't save that image. Please try again."
-      window.alert(message)
+      console.warn("[image-editor] save failed:", message)
     } finally {
       setIsSaving(false)
     }

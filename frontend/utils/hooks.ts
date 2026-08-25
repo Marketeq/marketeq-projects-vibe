@@ -319,7 +319,7 @@ export function useStateMachine<M>(
 
 export function useClickOutside<T extends HTMLElement>(
   refs: React.RefObject<T | null>[],
-  onClickOutside?: () => void
+  onClickOutside?: (event: MouseEvent | TouchEvent) => void
 ) {
   const onClickOutsideOption = useCallbackRef(onClickOutside)
 
@@ -329,7 +329,7 @@ export function useClickOutside<T extends HTMLElement>(
         const { target } = event
         target &&
           !refs.some((ref) => ref.current?.contains(target as Node)) &&
-          onClickOutsideOption()
+          onClickOutsideOption(event)
       }
       document.addEventListener("mousedown", handler)
       document.addEventListener("touchstart", handler)

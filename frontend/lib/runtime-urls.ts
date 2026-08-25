@@ -109,6 +109,14 @@ export const getPublicListingsUrl = (): string =>
     )
   )
 
+// portfolio-service's case-studies/media controllers are mounted at root
+// (/case-studies, /media) and aren't yet reachable through api-gateway's
+// proxy (which only forwards a legacy /portfolio/* prefix to this service).
+// Until that gateway route exists, talk to portfolio-service directly.
+export const getPublicPortfolioUrl = (): string =>
+  normalizePublicUrl(
+    firstNonEmpty(process.env.NEXT_PUBLIC_PORTFOLIO_URL)
+  ) || "http://localhost:3015"
 export const getPublicLegalUrl = (): string =>
   normalizePublicUrl(
     firstNonEmpty(

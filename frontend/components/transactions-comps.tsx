@@ -1976,7 +1976,7 @@ const emailFromDisplayLabel = (
 // Shared "Name masked-detail" formatter for method dropdowns/rows outside
 // OverviewTab (e.g. PayoutScheduleDialog) that don't have getMethodLabel's
 // full {name, sub} split — same masking rules, single display string.
-const formatMethodOptionLabel = (m: any): string => {
+export const formatMethodOptionLabel = (m: any): string => {
   if (m.methodType === "PAYPAL") {
     const email = m.paypalEmail ?? emailFromDisplayLabel(m.displayLabel)
     return [m.nickname || "PayPal", email ? maskEmail(email) : ""]
@@ -2003,7 +2003,13 @@ const formatMethodOptionLabel = (m: any): string => {
       .filter(Boolean)
       .join(" ")
   }
-  return m.nickname || m.displayLabel || m.methodType
+  // Bank methods (and anything else without a dedicated branch above): a
+  // nickname must not swallow the masked account number — combine them,
+  // same as splitMethodLabel() below does for this exact case.
+  if (m.nickname) {
+    return `${m.nickname} ${m.displayLabel?.replace("Bank ", "") || ""}`.trim()
+  }
+  return m.displayLabel || m.methodType
 }
 
 function splitMethodLabel(m: {
@@ -4461,7 +4467,20 @@ export const OverviewTab = ({
                     </div>
                   )}
                   {verifyState.step === "success" && (
-                    <div className="p-6 space-y-4">
+                    <div className="p-6 space-y-4 relative">
+                      <IconButton
+                        size="sm"
+                        variant="ghost"
+                        visual="gray"
+                        className="absolute right-2.5 top-2.5"
+                        onClick={() => {
+                          setVerifyState(null)
+                          setShowAddMethod(false)
+                          fetchMethods()
+                        }}
+                      >
+                        <X className="size-4" />
+                      </IconButton>
                       <div className="text-center py-4 space-y-3">
                         <div className="flex flex-col items-center gap-1">
                           <BankLogo bankName={verifyState.bankName} size={80} />
