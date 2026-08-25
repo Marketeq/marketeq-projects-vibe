@@ -6907,8 +6907,12 @@ function Default() {
         </Tabs>
       </div>
 
-      {/* Edit Profile Modals */}
-      {isOwnProfile && (
+      {/* Edit Profile Modals
+          The edit affordances that open these render on isEditMode, so the
+          dialogs have to mount on the same condition. Gating them on
+          isOwnProfile alone left the pencils clickable with nothing behind
+          them whenever the profile had not resolved as the viewer's own. */}
+      {(isOwnProfile || isEditMode) && (
         <>
           <AvailabilityDialog
             opened={availabilityOpen}
