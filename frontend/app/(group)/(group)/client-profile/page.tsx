@@ -1,6 +1,7 @@
 "use client"
 
 import React, {
+  type CSSProperties,
   Suspense,
   useCallback,
   useEffect,
@@ -30,9 +31,11 @@ import {
   Check,
   CheckCircle,
   CheckVerified02,
+  Stars02,
   Bank,
   Phone,
   Trash01,
+  Trash2,
   HelpCircle,
   ChevronDown,
   ChevronUp,
@@ -103,8 +106,11 @@ import {
   arrayMove,
   rectSortingStrategy,
   useSortable,
+  verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers"
 import { CSS } from "@dnd-kit/utilities"
+import { GripVertical2 } from "@/components/icons/grip-vertical-2"
 
 const CaseStudyBuilder = dynamic(
   () => import("@/components/case-study-builder"),
@@ -477,6 +483,8 @@ import {
   AccordionItem,
   AccordionTrigger,
   Card,
+  Textarea,
+  DisclosureContent,
   Switch,
 } from "@/components/ui"
 import { ScrollBar } from "@/components/ui"
@@ -548,6 +556,139 @@ const Shimmer = ({ className }: { className?: string }) => (
     <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
   </div>
 )
+
+const SortableValueItem = ({
+  id,
+  value,
+  index,
+  onChange,
+  onDelete,
+}: {
+  id: string
+  value: { q: string; a: string }
+  index: number
+  onChange: (id: string, patch: Partial<{ q: string; a: string }>) => void
+  onDelete: (id: string) => void
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    position: "relative" as const,
+    zIndex: isDragging ? 10 : undefined,
+  }
+
+  return (
+    <AccordionItem
+      ref={setNodeRef}
+      style={style}
+      value={id}
+      className="rounded-lg border border-gray-200 bg-white"
+    >
+      <AccordionTrigger className="w-full p-4 flex items-center gap-3 [&[data-state=open]_.closed-icons]:hidden [&[data-state=closed]_.open-icons]:hidden [&[data-state=open]_.closed-text]:hidden [&[data-state=open]_.open-text]:inline">
+        <button
+          type="button"
+          className="cursor-grab text-gray-400 hover:text-gray-600"
+          onClick={(e) => e.stopPropagation()}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical2 />
+        </button>
+        <div className="min-w-0 flex-1 text-left">
+          <span className="text-sm font-bold text-dark-blue-400">
+            Value {index + 1}
+            <span className="closed-text">:</span>
+          </span>
+          <span className="closed-text"> </span>
+          <span className="closed-text text-sm text-dark-blue-400">
+            {value.q}
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="open-icons">
+            <IconButton
+              asChild
+              variant="ghost"
+              visual="gray"
+              size="sm"
+              className="rounded-full text-gray-500 hover:text-gray-800"
+            >
+              <span>
+                <Check className="size-4" />
+              </span>
+            </IconButton>
+          </span>
+          <span className="closed-icons">
+            <IconButton
+              asChild
+              variant="ghost"
+              visual="gray"
+              size="sm"
+              className="rounded-full text-gray-500 hover:text-gray-800"
+            >
+              <span>
+                <Edit03 className="size-4" />
+              </span>
+            </IconButton>
+          </span>
+          <IconButton
+            variant="ghost"
+            visual="gray"
+            size="sm"
+            className="rounded-full text-gray-500 hover:text-gray-800"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete(id)
+            }}
+          >
+            <Trash2 className="size-4" />
+          </IconButton>
+        </div>
+      </AccordionTrigger>
+      <DisclosureContent className="px-4 pb-4">
+        <p className="text-sm font-light text-dark-blue-400">
+          Make this clear and concise, this is what customers will see first.
+        </p>
+        <Input
+          className="mt-2"
+          value={value.q}
+          onChange={(e) => onChange(id, { q: e.target.value })}
+        />
+        <div className="mt-4">
+          <h3 className="text-sm font-bold text-dark-blue-400">Answer</h3>
+          <p className="mt-1 text-sm font-light text-dark-blue-400">
+            Provide a detailed, helpful response that fully addresses the
+            question
+          </p>
+        </div>
+        <Textarea
+          className="mt-2"
+          rows={4}
+          value={value.a}
+          onChange={(e) => onChange(id, { a: e.target.value })}
+          maxLength={300}
+        />
+        <div className="mt-1 flex items-center justify-between">
+          <Button variant="outlined" visual="gray" size="sm">
+            <Stars02 className="size-[15px]" />
+            Generate With AI
+          </Button>
+          <span className="text-xs text-gray-500">{value.a.length}/300</span>
+        </div>
+      </DisclosureContent>
+    </AccordionItem>
+  )
+}
 
 const LazySection = ({
   children,
