@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useCallback, useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { ProjectAPI } from "@/service/http/project"
 import { cn } from "@/utils/functions"
 import { useClickOutside } from "@/utils/hooks"
@@ -22,6 +23,7 @@ import {
 } from "@blend-metrics/icons"
 import { Extension, isAtStartOfNode, isNodeActive } from "@tiptap/core"
 import ImageExtension from "@tiptap/extension-image"
+import TextAlignExtension from "@tiptap/extension-text-align"
 import UnderlineExtension from "@tiptap/extension-underline"
 import { Editor, EditorContent, useEditor, useEditorState } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
@@ -571,6 +573,7 @@ const RichTextToolbar = ({
   getSelectionSnapshot,
   isPinned,
   onTogglePinned,
+  variant = "full",
 }: {
   editor: Editor | null
   className?: string
@@ -582,6 +585,13 @@ const RichTextToolbar = ({
   getSelectionSnapshot: () => { from: number; to: number } | null
   isPinned: boolean
   onTogglePinned: () => void
+  /**
+   * "simple" drops the image button, Smart Assistant shortcut, and
+   * pin/lock toggle — just heading, bold/italic/underline/strike, align,
+   * and lists. Used by the case-study editor (Figma: text editor toolbar),
+   * which is local-only and has no image-in-text or Smart Assistant flow.
+   */
+  variant?: "full" | "simple"
 }) => {
   const toolbarState = useEditorState({
     editor,
@@ -598,6 +608,9 @@ const RichTextToolbar = ({
         bulletList: currentEditor.isActive("bulletList"),
         orderedList: currentEditor.isActive("orderedList"),
         heading: getCurrentHeadingLabel(currentEditor),
+        alignLeft: currentEditor.isActive({ textAlign: "left" }),
+        alignCenter: currentEditor.isActive({ textAlign: "center" }),
+        alignRight: currentEditor.isActive({ textAlign: "right" }),
       }
     },
   })
@@ -769,7 +782,7 @@ const RichTextToolbar = ({
             side="bottom"
             align="start"
             sideOffset={6}
-            className="min-w-[152px]"
+            className="z-[120] min-w-[152px]"
           >
             <DropdownMenuItem
               onSelect={() => handleHeadingChange("Normal Text")}
@@ -888,6 +901,75 @@ const RichTextToolbar = ({
         <TooltipProvider delayDuration={75}>
           <Tooltip>
             <Toggle
+              pressed={toolbarState.alignLeft}
+              onPressedChange={() =>
+                editor.chain().focus().setTextAlign("left").run()
+              }
+              asChild
+            >
+              <TooltipTrigger
+                data-rich-text-command="align-left"
+                onMouseDown={preventToolbarFocusChange}
+                className="inline-flex h-[25px] shrink-0 focus-visible:outline-none justify-center items-center rounded-[4px] hover:bg-white/15 data-[state=on]:bg-white/15 text-gray-50/50 hover:text-white/75 data-[state=on]:text-white data-[state=on]:hover:text-white transition duration-300"
+              >
+                <ToLeft />
+              </TooltipTrigger>
+            </Toggle>
+            <TooltipContent side="top" visual="white" sideOffset={9.14}>
+              Left Align ⌘+Shift+L
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <TooltipProvider delayDuration={75}>
+          <Tooltip>
+            <Toggle
+              pressed={toolbarState.alignCenter}
+              onPressedChange={() =>
+                editor.chain().focus().setTextAlign("center").run()
+              }
+              asChild
+            >
+              <TooltipTrigger
+                data-rich-text-command="align-center"
+                onMouseDown={preventToolbarFocusChange}
+                className="inline-flex h-[25px] shrink-0 focus-visible:outline-none justify-center items-center rounded-[4px] hover:bg-white/15 data-[state=on]:bg-white/15 text-gray-50/50 hover:text-white/75 data-[state=on]:text-white data-[state=on]:hover:text-white transition duration-300"
+              >
+                <ToCenter />
+              </TooltipTrigger>
+            </Toggle>
+            <TooltipContent side="top" visual="white" sideOffset={9.14}>
+              Center Align ⌘+Shift+C
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <TooltipProvider delayDuration={75}>
+          <Tooltip>
+            <Toggle
+              pressed={toolbarState.alignRight}
+              onPressedChange={() =>
+                editor.chain().focus().setTextAlign("right").run()
+              }
+              asChild
+            >
+              <TooltipTrigger
+                data-rich-text-command="align-right"
+                onMouseDown={preventToolbarFocusChange}
+                className="inline-flex h-[25px] shrink-0 focus-visible:outline-none justify-center items-center rounded-[4px] hover:bg-white/15 data-[state=on]:bg-white/15 text-gray-50/50 hover:text-white/75 data-[state=on]:text-white data-[state=on]:hover:text-white transition duration-300"
+              >
+                <ToRight />
+              </TooltipTrigger>
+            </Toggle>
+            <TooltipContent side="top" visual="white" sideOffset={9.14}>
+              Right Align ⌘+Shift+R
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+      <span className="h-4 inline-block w-px bg-white/20" />
+      <div className="inline-flex px-2 items-center gap-x-1">
+        <TooltipProvider delayDuration={75}>
+          <Tooltip>
+            <Toggle
               pressed={toolbarState.bulletList}
               onPressedChange={handleBulletListToggle}
               asChild
@@ -926,65 +1008,69 @@ const RichTextToolbar = ({
           </Tooltip>
         </TooltipProvider>
       </div>
-      <span className="h-4 inline-block w-px bg-white/20" />
-      <div className="inline-flex px-2 items-center">
-        <TooltipProvider delayDuration={75}>
-          <Tooltip>
-            <TooltipTrigger
+      {variant === "full" && (
+        <>
+          <span className="h-4 inline-block w-px bg-white/20" />
+          <div className="inline-flex px-2 items-center">
+            <TooltipProvider delayDuration={75}>
+              <Tooltip>
+                <TooltipTrigger
+                  type="button"
+                  data-rich-text-command="image"
+                  onMouseDown={preventToolbarFocusChange}
+                  className="inline-flex size-[25px] shrink-0 focus-visible:outline-none justify-center items-center rounded-[4px] hover:bg-white/15 text-gray-50/50 hover:text-white/75 disabled:cursor-wait disabled:opacity-50 transition duration-300"
+                  onClick={onInsertImage}
+                  disabled={isUploadingImage}
+                >
+                  <ImageIcon className="size-4" />
+                </TooltipTrigger>
+                <TooltipContent side="top" visual="white" sideOffset={9.14}>
+                  {imageTooltipLabel}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <span className="h-4 inline-block w-px bg-white/20" />
+          <div className="inline-flex pl-2 items-center">
+            <button
               type="button"
-              data-rich-text-command="image"
               onMouseDown={preventToolbarFocusChange}
-              className="inline-flex size-[25px] shrink-0 focus-visible:outline-none justify-center items-center rounded-[4px] hover:bg-white/15 text-gray-50/50 hover:text-white/75 disabled:cursor-wait disabled:opacity-50 transition duration-300"
-              onClick={onInsertImage}
-              disabled={isUploadingImage}
+              className="inline-flex h-[25px] shrink-0 items-center justify-center gap-x-1 rounded-[4px] px-2 text-xs leading-none text-white/75 hover:bg-white/15 hover:text-white active:bg-white/15 active:text-white transition duration-300 focus-visible:outline-none"
             >
-              <ImageIcon className="size-4" />
-            </TooltipTrigger>
-            <TooltipContent side="top" visual="white" sideOffset={9.14}>
-              {imageTooltipLabel}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-      <span className="h-4 inline-block w-px bg-white/20" />
-      <div className="inline-flex pl-2 items-center">
-        <button
-          type="button"
-          onMouseDown={preventToolbarFocusChange}
-          className="inline-flex h-[25px] shrink-0 items-center justify-center gap-x-1 rounded-[4px] px-2 text-xs leading-none text-white/75 hover:bg-white/15 hover:text-white active:bg-white/15 active:text-white transition duration-300 focus-visible:outline-none"
-        >
-          <MagicWand01 className="size-4 shrink-0" />
-          <span className="whitespace-nowrap">Edit with Smart Assistant</span>
-        </button>
-      </div>
-      <span className="h-4 inline-block w-px bg-white/20" />
-      <div className="inline-flex pl-2 items-center">
-        <TooltipProvider delayDuration={75}>
-          <Tooltip>
-            <TooltipTrigger
-              type="button"
-              data-rich-text-command="toggle-pin"
-              onMouseDown={preventToolbarFocusChange}
-              className={cn(
-                "inline-flex size-[25px] shrink-0 focus-visible:outline-none justify-center items-center rounded-[4px] transition duration-300",
-                isPinned
-                  ? "bg-white/15 text-white hover:text-white"
-                  : "text-gray-50/50 hover:bg-white/15 hover:text-white/75"
-              )}
-              onClick={onTogglePinned}
-            >
-              {isPinned ? (
-                <Lock01 className="size-4" />
-              ) : (
-                <LockUnlocked01 className="size-4" />
-              )}
-            </TooltipTrigger>
-            <TooltipContent side="top" visual="white" sideOffset={9.14}>
-              {pinTooltipLabel}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
+              <MagicWand01 className="size-4 shrink-0" />
+              <span className="whitespace-nowrap">Edit with Smart Assistant</span>
+            </button>
+          </div>
+          <span className="h-4 inline-block w-px bg-white/20" />
+          <div className="inline-flex pl-2 items-center">
+            <TooltipProvider delayDuration={75}>
+              <Tooltip>
+                <TooltipTrigger
+                  type="button"
+                  data-rich-text-command="toggle-pin"
+                  onMouseDown={preventToolbarFocusChange}
+                  className={cn(
+                    "inline-flex size-[25px] shrink-0 focus-visible:outline-none justify-center items-center rounded-[4px] transition duration-300",
+                    isPinned
+                      ? "bg-white/15 text-white hover:text-white"
+                      : "text-gray-50/50 hover:bg-white/15 hover:text-white/75"
+                  )}
+                  onClick={onTogglePinned}
+                >
+                  {isPinned ? (
+                    <Lock01 className="size-4" />
+                  ) : (
+                    <LockUnlocked01 className="size-4" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent side="top" visual="white" sideOffset={9.14}>
+                  {pinTooltipLabel}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -1002,6 +1088,8 @@ const ActiveEditor = ({
   initialFocusPoint,
   stickyToolbar = false,
   stickyToolbarActions,
+  onUploadImage,
+  toolbarVariant = "full",
 }: {
   defaultValue: string
   editorClassName?: string
@@ -1018,6 +1106,16 @@ const ActiveEditor = ({
   } | null
   stickyToolbar?: boolean
   stickyToolbarActions?: React.ReactNode
+  /**
+   * Overrides how a selected File becomes the URL stored in the doc. When
+   * omitted, falls back to the network upload below (ProjectAPI). Callers
+   * that must never hit the network — e.g. the case-study editor, which is
+   * entirely localStorage-backed — pass a local-only resolver such as
+   * `uploadCaseStudyImage` (URL.createObjectURL, no request).
+   */
+  onUploadImage?: (file: File) => Promise<string>
+  /** See RichTextEditor's toolbarVariant — passed straight through. */
+  toolbarVariant?: "full" | "simple"
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -1180,13 +1278,19 @@ const ActiveEditor = ({
         allowBase64: true,
       }),
       UnderlineExtension,
+      TextAlignExtension.configure({ types: ["heading", "paragraph"] }),
     ],
     immediatelyRender: false,
     content: defaultValue || "",
     editorProps: {
       attributes: {
+        // overflow-hidden (not overflow-x-hidden alone): per the CSS overflow
+        // spec, setting only one axis to hidden forces the other, unset axis
+        // to compute as auto — that was producing a phantom vertical
+        // scrollbar on headings whenever wrapped text came within a
+        // sub-pixel of the box height.
         class: cn(
-          "rich-text-content focus:outline-none w-full max-w-full min-w-0 overflow-x-hidden break-words [overflow-wrap:anywhere] [word-break:break-word]",
+          "rich-text-content focus:outline-none w-full max-w-full min-w-0 overflow-hidden break-words [overflow-wrap:anywhere] [word-break:break-word]",
           editorClassName
         ),
       },
@@ -1418,7 +1522,6 @@ const ActiveEditor = ({
 
     const range = selection.getRangeAt(0)
     const rect = range.getBoundingClientRect()
-    const containerRect = containerRef.current.getBoundingClientRect()
 
     if (!rect.width && !rect.height) {
       if (!hasFontMenuAnchorSelection) {
@@ -1427,14 +1530,16 @@ const ActiveEditor = ({
       return
     }
 
-    // Position toolbar 49px above the selection top, but clamp so it
-    // never goes above the visible viewport (e.g. when Select All pushes
-    // the selection start off-screen).
-    const idealTop = rect.top - containerRect.top - 49
-    const minVisibleTop = -containerRect.top + 8 // 8px below viewport top
+    // Portaled to document.body and rendered with position: fixed, so
+    // these are viewport coordinates straight from getBoundingClientRect —
+    // no container offset to subtract. Position toolbar 49px above the
+    // selection top, clamped so it never goes above the visible viewport
+    // (e.g. when Select All pushes the selection start off-screen).
+    const idealTop = rect.top - 49
+    const minVisibleTop = 8 // 8px below viewport top
     setFloatingToolbarPosition({
       top: Math.max(idealTop, minVisibleTop),
-      left: rect.left - containerRect.left,
+      left: rect.left,
     })
   }, [editor, hasFontMenuAnchorSelection])
 
@@ -1711,14 +1816,20 @@ const ActiveEditor = ({
         )
       }
 
-      const formData = new FormData()
-      formData.append("file", preparedUpload.file)
+      let imageSource: string
 
-      const response = await ProjectAPI.UploadRichTextImage(formData)
-      const imageSource = response?.data?.url
+      if (onUploadImage) {
+        imageSource = await onUploadImage(preparedUpload.file)
+      } else {
+        const formData = new FormData()
+        formData.append("file", preparedUpload.file)
 
-      if (typeof imageSource !== "string" || !imageSource.length) {
-        throw new Error("Image upload did not return a valid URL.")
+        const response = await ProjectAPI.UploadRichTextImage(formData)
+        imageSource = response?.data?.url
+
+        if (typeof imageSource !== "string" || !imageSource.length) {
+          throw new Error("Image upload did not return a valid URL.")
+        }
       }
 
       if (preparedUpload.wasResized) {
@@ -1730,7 +1841,7 @@ const ActiveEditor = ({
 
       return imageSource
     },
-    [toast]
+    [toast, onUploadImage]
   )
 
   const removeImageAtPos = useCallback(
@@ -1808,7 +1919,7 @@ const ActiveEditor = ({
       }
 
       if (!file.type.startsWith("image/")) {
-        window.alert("Please choose an image file.")
+        console.warn("[rich-text-editor] Please choose an image file.")
         uploadActionRef.current = null
         return
       }
@@ -1865,7 +1976,10 @@ const ActiveEditor = ({
           error?.response?.data?.reason ||
           error?.message ||
           "We couldn't upload that image. Please try again."
-        window.alert(message)
+        // Non-blocking: a native alert() here would steal focus/block the
+        // event loop, which can be misread as an outside-interaction by
+        // Radix's Dialog dismissable layer and close the surrounding editor.
+        console.warn("[rich-text-editor] image upload failed:", message)
       } finally {
         if (typeof window !== "undefined" && scrollPositionRef.current) {
           window.scrollTo(
@@ -2090,6 +2204,27 @@ const ActiveEditor = ({
     }
   }, [hoveredImage, refreshHoveredImageAtPos])
 
+  // The floating toolbar is portaled to document.body and positioned with
+  // `position: fixed`, so it no longer scrolls along with its trigger text
+  // automatically — reposition it on any ancestor scroll (capture phase
+  // catches scrollable containers, which don't bubble) or viewport resize.
+  // Depends on presence only (not the position value) so it doesn't
+  // re-subscribe on every scroll-driven position update.
+  const hasFloatingToolbar = floatingToolbarPosition !== null
+  useEffect(() => {
+    if (!hasFloatingToolbar || isToolbarPinned) {
+      return
+    }
+
+    window.addEventListener("resize", updateFloatingToolbarPosition)
+    window.addEventListener("scroll", updateFloatingToolbarPosition, true)
+
+    return () => {
+      window.removeEventListener("resize", updateFloatingToolbarPosition)
+      window.removeEventListener("scroll", updateFloatingToolbarPosition, true)
+    }
+  }, [hasFloatingToolbar, isToolbarPinned, updateFloatingToolbarPosition])
+
   // Clear the font menu anchor when text is no longer selected
   // and the font menu is closed
   useEffect(() => {
@@ -2134,8 +2269,8 @@ const ActiveEditor = ({
         <div
           className={cn(
             stickyToolbar
-              ? "sticky top-0 z-20 flex items-center justify-between w-full bg-white px-3 py-2 border-b border-gray-200 rounded-t-xl"
-              : "absolute left-0 -top-[51px] z-20 inline-flex",
+              ? "sticky top-0 z-50 flex items-center justify-between w-full bg-white px-3 py-2 border-b border-gray-200 rounded-t-xl"
+              : "absolute left-0 -top-[51px] z-50 inline-flex",
             toolbarClassName
           )}
         >
@@ -2149,6 +2284,7 @@ const ActiveEditor = ({
             getSelectionSnapshot={() => fontMenuSelectionRef.current}
             isPinned={isToolbarPinned}
             onTogglePinned={() => handleToolbarPinnedChange(false)}
+            variant={toolbarVariant}
           />
           {stickyToolbar && stickyToolbarActions ? (
             <div className="flex items-center gap-x-1.5 shrink-0 ml-3">
@@ -2160,33 +2296,38 @@ const ActiveEditor = ({
       {editor &&
       !isToolbarPinned &&
       shouldKeepToolbarVisible &&
-      floatingToolbarPosition ? (
-        <div
-          className={cn(
-            "absolute z-20 inline-flex origin-bottom-left",
-            isFontMenuOpen
-              ? "will-change-auto"
-              : "will-change-[left,top,opacity] motion-safe:transition-[left,top,opacity] motion-safe:duration-200 motion-safe:ease-out"
-          )}
-          style={{
-            top: floatingToolbarPosition.top,
-            left: floatingToolbarPosition.left,
-          }}
-        >
-          <RichTextToolbar
-            editor={editor}
-            className={toolbarClassName}
-            isUploadingImage={isUploadingImage}
-            onInsertImage={handleInsertImage}
-            isFontMenuOpen={isFontMenuOpen}
-            onFontMenuOpenChange={handleFontMenuOpenChange}
-            onFontMenuTriggerMouseDown={handleFontMenuTriggerMouseDown}
-            getSelectionSnapshot={() => fontMenuSelectionRef.current}
-            isPinned={isToolbarPinned}
-            onTogglePinned={() => handleToolbarPinnedChange(true)}
-          />
-        </div>
-      ) : null}
+      floatingToolbarPosition &&
+      typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className={cn(
+                "fixed z-[110] inline-flex origin-bottom-left",
+                isFontMenuOpen
+                  ? "will-change-auto"
+                  : "will-change-[left,top,opacity] motion-safe:transition-[left,top,opacity] motion-safe:duration-200 motion-safe:ease-out"
+              )}
+              style={{
+                top: floatingToolbarPosition.top,
+                left: floatingToolbarPosition.left,
+              }}
+            >
+              <RichTextToolbar
+                editor={editor}
+                className={toolbarClassName}
+                isUploadingImage={isUploadingImage}
+                onInsertImage={handleInsertImage}
+                isFontMenuOpen={isFontMenuOpen}
+                onFontMenuOpenChange={handleFontMenuOpenChange}
+                onFontMenuTriggerMouseDown={handleFontMenuTriggerMouseDown}
+                getSelectionSnapshot={() => fontMenuSelectionRef.current}
+                isPinned={isToolbarPinned}
+                onTogglePinned={() => handleToolbarPinnedChange(true)}
+                variant={toolbarVariant}
+              />
+            </div>,
+            document.body
+          )
+        : null}
       {hoveredImage ? (
         <RichTextImageToolbar
           alignment={hoveredImage.alignment}
@@ -2263,6 +2404,9 @@ const RichTextEditor = ({
   fullscreenHelperText,
   fullscreenCharacterCount,
   fullscreenMaxCharacterCount,
+  onUploadImage,
+  hideImageButton = false,
+  toolbarVariant = "full",
 }: {
   defaultValue?: string
   placeholder?: string
@@ -2277,6 +2421,17 @@ const RichTextEditor = ({
   fullscreenHelperText?: string
   fullscreenCharacterCount?: number
   fullscreenMaxCharacterCount?: number
+  /** See ActiveEditor's onUploadImage — passed straight through. */
+  onUploadImage?: (file: File) => Promise<string>
+  /** Hides the floating "Add image" button in the top-right corner. */
+  hideImageButton?: boolean
+  /**
+   * "simple" renders the floating text toolbar without the image button,
+   * Smart Assistant shortcut, or pin/lock toggle — just heading,
+   * bold/italic/underline/strike, align, and lists (Figma: case-study
+   * text editor toolbar). Defaults to "full" everywhere else.
+   */
+  toolbarVariant?: "full" | "simple"
 }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [internalFullscreenOpen, setInternalFullscreenOpen] = useState(false)
@@ -2454,9 +2609,31 @@ const RichTextEditor = ({
     }
   }, [defaultValue, isEditing, isFullscreenOpen, syncHistoryVersion])
 
-  useClickOutside([containerRef], () => {
+  useClickOutside([containerRef], (event) => {
     if (!isEditing || isFullscreenOpen || typeof document === "undefined")
       return
+
+    // The floating selection toolbar (bold/italic/align/etc.) is portaled to
+    // document.body, outside containerRef, so a click on any of its buttons
+    // looks like an "outside" click. Without this guard, mousedown on a
+    // toolbar button flips isEditing back to false before the button's own
+    // click handler runs, unmounting the live editor mid-click — the
+    // toolbar appears but nothing on it ever does anything.
+    //
+    // Checked against Element, not HTMLElement: every toolbar button's
+    // clickable surface is mostly an inline SVG icon, and SVG elements
+    // (SVGPathElement, SVGSVGElement, ...) do not extend HTMLElement — only
+    // Element. Gating on HTMLElement meant a mousedown that landed on the
+    // icon itself (the common case) always fell through this guard and hit
+    // setIsEditing(false) below, unmounting the editor before the button's
+    // own click handler ever ran.
+    const target = event.target
+    if (
+      target instanceof Element &&
+      target.closest("[data-rich-text-editor-toolbar='true']")
+    ) {
+      return
+    }
 
     const activeElement = document.activeElement
     if (
@@ -2517,11 +2694,13 @@ const RichTextEditor = ({
         handleEditorUpdate(html)
       }}
       onBlur={handleBlur}
+      onUploadImage={onUploadImage}
+      toolbarVariant={toolbarVariant}
     />
   ) : (
     <div
       className={cn(
-        "rich-text-content focus:outline-none w-full max-w-full min-w-0 overflow-x-hidden break-words [overflow-wrap:anywhere] [word-break:break-word]",
+        "rich-text-content focus:outline-none w-full max-w-full min-w-0 overflow-hidden break-words [overflow-wrap:anywhere] [word-break:break-word]",
         contentClassName
       )}
       dangerouslySetInnerHTML={{
@@ -2574,6 +2753,8 @@ const RichTextEditor = ({
         handleEditorUpdate(html)
       }}
       onBlur={handleBlur}
+      onUploadImage={onUploadImage}
+      toolbarVariant={toolbarVariant}
     />
   )
 
@@ -2585,28 +2766,32 @@ const RichTextEditor = ({
       className={cn("relative min-w-0 cursor-text", className)}
       onClick={handleClick}
     >
-      <div className="absolute right-3 top-3 z-10 flex items-center gap-x-1.5">
-        <TooltipProvider delayDuration={75}>
-          <Tooltip>
-            <TooltipTrigger
-              type="button"
-              onClick={handleImageButtonClick}
-              className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
-            >
-              <ImageIcon className="size-4" />
-            </TooltipTrigger>
-            <TooltipContent side="top" visual="white" sideOffset={8}>
-              Add image
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        {allowFullscreen ? (
-          <FullscreenToggleButton
-            isFullscreen={false}
-            onClick={handleFullscreenToggle}
-          />
-        ) : null}
-      </div>
+      {hideImageButton && !allowFullscreen ? null : (
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-x-1.5">
+          {hideImageButton ? null : (
+            <TooltipProvider delayDuration={75}>
+              <Tooltip>
+                <TooltipTrigger
+                  type="button"
+                  onClick={handleImageButtonClick}
+                  className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white/95 text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
+                >
+                  <ImageIcon className="size-4" />
+                </TooltipTrigger>
+                <TooltipContent side="top" visual="white" sideOffset={8}>
+                  Add image
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {allowFullscreen ? (
+            <FullscreenToggleButton
+              isFullscreen={false}
+              onClick={handleFullscreenToggle}
+            />
+          ) : null}
+        </div>
+      )}
       {editorSurface}
       {allowFullscreen ? (
         <Dialog
