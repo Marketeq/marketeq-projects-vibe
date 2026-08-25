@@ -33,10 +33,8 @@ import {
   Clock,
   Edit03,
   Eye,
-  EyeOff,
   FileText,
   Heart,
-  Image01,
   MapPin,
   MarkerPin02,
   MessageSquare01,
@@ -84,28 +82,12 @@ import { LikeDislike } from "@/components/like-dislike"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import dynamic from "next/dynamic"
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core"
-import {
-  SortableContext,
-  arrayMove,
-  rectSortingStrategy,
-  useSortable,
-} from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
+import { CaseStudyGrid } from "@/components/case-study/case-study-grid"
 
-const CaseStudyBuilder = dynamic(
-  () => import("@/components/case-study-builder"),
+const CaseStudyEditor = dynamic(
+  () => import("@/components/case-study/case-study-editor"),
   { ssr: false }
 )
-
-const PORTFOLIO_SAMPLE_IMG = "/Adobe-banner.png"
 
 const getInitials = (name?: string | null): string => {
   const parts = (name ?? "").trim().split(/\s+/).filter(Boolean)
@@ -127,275 +109,6 @@ interface SimilarProfile {
   rating: number
 }
 
-type PortfolioCardState = "filled" | "hidden" | "empty"
-interface PortfolioCardItem {
-  id: string
-  state: PortfolioCardState
-  img?: string
-}
-
-const SortablePortfolioCard = ({
-  card,
-  onOpenBuilder,
-  onToggleHide,
-  onDelete,
-}: {
-  card: PortfolioCardItem
-  onOpenBuilder: () => void
-  onToggleHide: () => void
-  onDelete: () => void
-}) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: card.id })
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  }
-  const stop =
-    (fn: () => void) => (e: React.MouseEvent) => {
-      e.stopPropagation()
-      fn()
-    }
-  return (
-    <article
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className={cn(
-        "group relative h-[200px] select-none touch-none overflow-hidden rounded-lg border border-gray-200 bg-gray-100 cursor-grab active:cursor-grabbing",
-        isDragging && "z-10 opacity-70 shadow-lg"
-      )}
-    >
-      {card.state === "empty" ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
-          <Image01 className="size-10 text-gray-300" />
-        </div>
-      ) : (
-        <img
-          src={card.img}
-          alt="Portfolio"
-          draggable={false}
-          className={cn(
-            "h-full w-full object-cover",
-            card.state === "hidden" && "opacity-40"
-          )}
-        />
-      )}
-
-      <div className="absolute inset-0 flex items-center justify-center gap-x-3 bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/50 group-hover:opacity-100">
-        {card.state === "empty" ? (
-          <Button
-            type="button"
-            visual="gray"
-            className="bg-white"
-            onClick={stop(onOpenBuilder)}
-          >
-            <Upload className="size-[15px]" /> Add Case Study
-          </Button>
-        ) : (
-          <>
-            <IconButton
-              type="button"
-              variant="ghost"
-              visual="gray"
-              className="rounded-full bg-white/90 text-gray-700 hover:bg-white"
-              onClick={stop(onOpenBuilder)}
-            >
-              <Edit03 className="size-4" />
-            </IconButton>
-            <IconButton
-              type="button"
-              variant="ghost"
-              visual="gray"
-              className="rounded-full bg-white/90 text-gray-700 hover:bg-white"
-              onClick={stop(onToggleHide)}
-            >
-              {card.state === "hidden" ? (
-                <Eye className="size-4" />
-              ) : (
-                <EyeOff className="size-4" />
-              )}
-            </IconButton>
-            <IconButton
-              type="button"
-              variant="ghost"
-              visual="gray"
-              className="rounded-full bg-white/90 text-error-500 hover:bg-white"
-              onClick={stop(onDelete)}
-            >
-              <Trash03 className="size-4" />
-            </IconButton>
-          </>
-        )}
-      </div>
-      {card.state !== "empty" && (
-        <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-          <svg
-            viewBox="0 0 46 6"
-            className="w-11"
-            fill="#ffffff"
-            fillOpacity="0.65"
-            aria-hidden="true"
-          >
-            {[1, 5].map((cy) =>
-              Array.from({ length: 12 }, (_, i) => 1 + i * 4).map((cx) => (
-                <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.3" />
-              ))
-            )}
-          </svg>
-        </div>
-      )}
-    </article>
-  )
-}
-
-const PortfolioAddCard = ({
-  onOpenBuilder,
-}: {
-  onOpenBuilder: () => void
-}) => (
-  <article className="group relative h-[200px] overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
-    <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
-      <Image01 className="size-10 text-gray-300" />
-    </div>
-    <div className="absolute inset-0 flex items-center justify-center gap-x-3 bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/50 group-hover:opacity-100">
-      <Button
-        type="button"
-        visual="gray"
-        className="bg-white"
-        onClick={onOpenBuilder}
-      >
-        <Upload className="size-[15px]" /> Add Case Study
-      </Button>
-    </div>
-  </article>
-)
-
-const PortfolioCards = ({
-  portfolio,
-  onOpenBuilder,
-}: {
-  portfolio?: { id: string | number; imageUrl?: string | null }[]
-  onOpenBuilder: () => void
-}) => {
-  const [cards, setCards] = useState<PortfolioCardItem[]>(() =>
-    portfolio && portfolio.length > 0
-      ? portfolio.map((item) => ({
-          id: String(item.id),
-          state: "filled" as const,
-          img: item.imageUrl ?? PORTFOLIO_SAMPLE_IMG,
-        }))
-      : [
-          { id: "p1", state: "filled", img: PORTFOLIO_SAMPLE_IMG },
-          { id: "p2", state: "hidden", img: PORTFOLIO_SAMPLE_IMG },
-          { id: "p3", state: "empty" },
-        ]
-  )
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
-  )
-  const onDragEnd = (e: DragEndEvent) => {
-    const { active, over } = e
-    if (over && active.id !== over.id) {
-      setCards((prev) => {
-        const movable = prev.filter((c) => c.state !== "empty")
-        const fixed = prev.filter((c) => c.state === "empty")
-        const oldIndex = movable.findIndex((c) => c.id === active.id)
-        const newIndex = movable.findIndex((c) => c.id === over.id)
-        if (oldIndex === -1 || newIndex === -1) return prev
-        return [...arrayMove(movable, oldIndex, newIndex), ...fixed]
-      })
-    }
-  }
-
-  const sortableCards = cards.filter((c) => c.state !== "empty")
-  const emptyCards = cards.filter((c) => c.state === "empty")
-  return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={onDragEnd}
-    >
-      <SortableContext
-        items={sortableCards.map((c) => c.id)}
-        strategy={rectSortingStrategy}
-      >
-        <ShowMoreLessRoot>
-          {({ isShowing, setIsShowing, ref, scrollHeight }) => (
-            <>
-              <div
-                ref={ref}
-                className="grid grid-cols-3 gap-6 overflow-hidden [interpolate-size:allow-keywords] transition-[height] duration-500"
-                style={{
-                  height: isShowing
-                    ? "auto"
-                    : scrollHeight
-                      ? toPxIfNumber(scrollHeight)
-                      : "auto",
-                }}
-              >
-                <ShowMoreLess max={3}>
-                  {[
-                    ...sortableCards.map((card) => (
-                      <SortablePortfolioCard
-                        key={card.id}
-                        card={card}
-                        onOpenBuilder={onOpenBuilder}
-                        onToggleHide={() =>
-                          setCards((prev) =>
-                            prev.map((c) =>
-                              c.id === card.id
-                                ? {
-                                    ...c,
-                                    state:
-                                      c.state === "hidden"
-                                        ? "filled"
-                                        : "hidden",
-                                  }
-                                : c
-                            )
-                          )
-                        }
-                        onDelete={() =>
-                          setCards((prev) =>
-                            prev.filter((c) => c.id !== card.id)
-                          )
-                        }
-                      />
-                    )),
-                    ...emptyCards.map((card) => (
-                      <PortfolioAddCard
-                        key={card.id}
-                        onOpenBuilder={onOpenBuilder}
-                      />
-                    )),
-                  ]}
-                </ShowMoreLess>
-              </div>
-
-              {cards.length > 3 && (
-                <div className="my-6">
-                  <div className="flex items-center gap-x-1">
-                    <span className="flex-auto inline-block h-px bg-gray-200" />
-                    <Button
-                      variant="link"
-                      visual="gray"
-                      onClick={() => setIsShowing((prev) => !prev)}
-                    >
-                      {isShowing ? "View Less" : "View More"}
-                    </Button>
-                    <span className="flex-auto inline-block h-px bg-gray-200" />
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </ShowMoreLessRoot>
-      </SortableContext>
-    </DndContext>
-  )
-}
 import NextLink from "@/components/next-link"
 import { SaveTalentButton } from "@/components/save-talent-button"
 import {
@@ -1189,6 +902,15 @@ function Default() {
   const [certEditIdx, setCertEditIdx] = useState<string | undefined>()
   const [affiliatedTeamsOpen, setAffiliatedTeamsOpen] = useState(false)
   const [caseStudyOpen, setCaseStudyOpen] = useState(false)
+  const [editingCaseStudyId, setEditingCaseStudyId] = useState<
+    string | undefined
+  >(undefined)
+  // Bumped whenever the case study editor Dialog closes so CaseStudyGrid
+  // (key={caseStudyGridKey}) remounts and re-reads localStorage — the grid's
+  // useCaseStudyStore instance has no way to know about writes the editor
+  // made through its own separate instance of the same hook.
+  const [caseStudyGridKey, setCaseStudyGridKey] = useState(0)
+
   const [featuredTab, setFeaturedTab] = useState("Featured Clients")
   const WORK_EXPERIENCE_LIMIT = 30
   const atWorkExperienceLimit =
@@ -2211,13 +1933,14 @@ function Default() {
                     )
                   })()}
 
-                {(!isClientView || hasPortfolio) && (
-                  <PortfolioCards
-                    key={profile?.portfolio?.length ? "real" : "demo"}
-                    portfolio={profile?.portfolio}
-                    onOpenBuilder={() => setCaseStudyOpen(true)}
-                  />
-                )}
+                <CaseStudyGrid
+                  key={caseStudyGridKey}
+                  canCreate={!isClientView}
+                  onOpenEditor={(caseStudyId) => {
+                    setEditingCaseStudyId(caseStudyId)
+                    setCaseStudyOpen(true)
+                  }}
+                />
 
                 {(!isClientView || hasSkills) && (
                 <LazySection minHeight={300}>
@@ -5503,15 +5226,34 @@ function Default() {
             onOpenedChange={setAffiliatedTeamsOpen}
           />
 
-          <Dialog open={caseStudyOpen} onOpenChange={setCaseStudyOpen}>
+          <Dialog
+            open={caseStudyOpen}
+            onOpenChange={(open) => {
+              setCaseStudyOpen(open)
+              if (!open) {
+                setEditingCaseStudyId(undefined)
+                setCaseStudyGridKey((k) => k + 1)
+              }
+            }}
+            modal={false}
+          >
             <DialogContent
               variant="unanimated"
               className="inset-0 h-full z-[100] bg-white p-0 overflow-y-auto"
             >
               <DialogTitle className="sr-only">Case Study Builder</DialogTitle>
-              <CaseStudyBuilder
-                onClose={() => setCaseStudyOpen(false)}
-                onSave={() => setCaseStudyOpen(false)}
+              <CaseStudyEditor
+                caseStudyId={editingCaseStudyId}
+                onClose={() => {
+                  setCaseStudyOpen(false)
+                  setEditingCaseStudyId(undefined)
+                  setCaseStudyGridKey((k) => k + 1)
+                }}
+                onPublished={() => {
+                  setCaseStudyOpen(false)
+                  setEditingCaseStudyId(undefined)
+                  setCaseStudyGridKey((k) => k + 1)
+                }}
               />
             </DialogContent>
           </Dialog>
