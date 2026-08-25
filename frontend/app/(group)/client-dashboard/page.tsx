@@ -15,7 +15,10 @@ import {
   ChevronRight,
   Clock,
   Download,
+  Bank,
   Edit03,
+  Phone,
+  UserCircle,
   MapPin,
   MoreHorizontal,
   Plus,
@@ -55,6 +58,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  CircularProgress,
 } from "@/components/ui"
 
 type DashboardProfile = {
@@ -633,6 +637,22 @@ const RightSidebarUpPart = ({
     ? profile.lookingToWorkWith
     : []
   const rating = profile?.clientSuccessRating ?? null
+
+  // Profile completion drives the card CTA: below 100 it reads
+  // "Complete My Profile" and shows the progress ring; at 100 it becomes
+  // "Edit My Profile" and the ring is hidden.
+  const completionChecks = [
+    Boolean(displayUser?.avatarUrl),
+    Boolean(fullName),
+    Boolean(username),
+    Boolean(jobTitle),
+    Boolean(location),
+    Boolean(bio),
+    interests.length > 0,
+  ]
+  const profileCompletion = Math.round(
+    (completionChecks.filter(Boolean).length / completionChecks.length) * 100
+  )
   const memberSince = displayUser?.createdAt
     ? new Date(displayUser.createdAt).toLocaleDateString("en-US", {
         month: "short",
@@ -681,14 +701,59 @@ const RightSidebarUpPart = ({
         <div className="mt-5">
           <NextLink href="/complete-profile">
             <Button
-              className="w-full text-dark-blue-400 rounded-full"
+              className="w-full gap-2 rounded-[4px] border-2 border-primary-500 text-primary-500"
               size="md"
               variant="outlined"
             >
-              <Edit03 className="size-[15px]" /> Edit Profile
+              {profileCompletion === 100 ? (
+                <>
+                  <Edit03 className="size-[15px]" /> Edit My Profile
+                </>
+              ) : (
+                <>
+                  <UserCircle className="size-[15px]" /> Complete My Profile
+                </>
+              )}
             </Button>
           </NextLink>
         </div>
+
+        {profileCompletion < 100 && (
+          <div className="mt-5 flex flex-col gap-3">
+            <div className="flex items-start gap-4">
+              <div className="relative size-[50px] shrink-0">
+                <CircularProgress
+                  className="absolute inset-0 text-primary-500"
+                  size={50}
+                  strokeWidth={5}
+                  value={profileCompletion}
+                />
+                <span className="absolute inset-0 flex items-center justify-center text-[11px] font-medium text-gray-700">
+                  {profileCompletion}%
+                </span>
+              </div>
+              <p className="flex-1 text-[13px] font-light text-dark-blue-400">
+                Companies with completed profiles are 3 times more likely to
+                attract top talent.
+              </p>
+            </div>
+
+            <div className="flex flex-col items-start gap-2">
+              <Button
+                className="gap-2 text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30"
+                variant="link"
+              >
+                <Phone className="size-[15px]" /> Verify Phone Number
+              </Button>
+              <Button
+                className="gap-2 text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30"
+                variant="link"
+              >
+                <Bank className="size-[15px]" /> Verify Payment Method
+              </Button>
+            </div>
+          </div>
+        )}
 
         <div className="mt-5 flex flex-col gap-y-2">
           {jobTitle && (
