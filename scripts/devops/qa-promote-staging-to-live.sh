@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # ============================================================================
-# QA Promotion Script — staging → live-mvp
+# QA Promotion Script — staging → live
 # ============================================================================
-# Promotes a QA-signed-off staging build to production (live-mvp).
+# Promotes a QA-signed-off staging build to production (live).
 # Per DEVOPS_SOP §7, QA runs this script AFTER testing on the staging
-# environment is complete. Pushing to live-mvp triggers BOTH a Vercel
+# environment is complete. Pushing to live triggers BOTH a Vercel
 # production deploy AND the single Render backend redeploy in lockstep
 # (DEVOPS_SOP §3).
 #
@@ -12,10 +12,10 @@
 #   1. Verifies you are on a clean working tree
 #   2. Fetches origin
 #   3. Requires you to confirm the staging SHA you are promoting
-#   4. Checks out live-mvp, merges staging with live-mvp winning on
+#   4. Checks out live, merges staging with live winning on
 #      production env templates
 #   5. Runs gitleaks locally
-#   6. Pushes live-mvp
+#   6. Pushes live
 #   7. Creates a GitHub Release tagged with the date
 #
 # Usage:
@@ -46,27 +46,27 @@ ok "Clean and authenticated"
 
 git fetch origin --prune
 git rev-parse --verify origin/staging   >/dev/null || { err "origin/staging missing"; exit 1; }
-git rev-parse --verify origin/live-mvp >/dev/null || { err "origin/live-mvp missing"; exit 1; }
+git rev-parse --verify origin/live >/dev/null || { err "origin/live missing"; exit 1; }
 
 STAGING_SHA=$(git rev-parse origin/staging)
-LIVE_SHA=$(git rev-parse origin/live-mvp)
+LIVE_SHA=$(git rev-parse origin/live)
 say "origin/staging    @ ${STAGING_SHA:0:7}"
-say "origin/live-mvp  @ ${LIVE_SHA:0:7}"
+say "origin/live  @ ${LIVE_SHA:0:7}"
 
-AHEAD=$(git rev-list --count origin/live-mvp..origin/staging)
+AHEAD=$(git rev-list --count origin/live..origin/staging)
 if [ "$AHEAD" -eq 0 ]; then
-  ok "live-mvp already up to date with staging. Nothing to promote."
+  ok "live already up to date with staging. Nothing to promote."
   exit 0
 fi
-say "staging has $AHEAD commit(s) ahead of live-mvp"
+say "staging has $AHEAD commit(s) ahead of live"
 
 # --- Explicit human confirmation ---------------------------------------------
 
 echo ""
-say "You are about to PROMOTE staging → live-mvp"
+say "You are about to PROMOTE staging → live"
 say "This deploys to the PRODUCTION Render environment AND Vercel Production."
 echo ""
-git log --oneline origin/live-mvp..origin/staging | head -n 30
+git log --oneline origin/live..origin/staging | head -n 30
 echo ""
 read -r -p "Type 'PROMOTE TO PRODUCTION' to confirm: " CONFIRM
 if [ "$CONFIRM" != "PROMOTE TO PRODUCTION" ]; then
@@ -74,17 +74,17 @@ if [ "$CONFIRM" != "PROMOTE TO PRODUCTION" ]; then
   exit 1
 fi
 
-# --- Checkout live-mvp and merge --------------------------------------------
+# --- Checkout live and merge --------------------------------------------
 
-say "Checking out live-mvp"
-if git show-ref --verify --quiet refs/heads/live-mvp; then
-  git checkout live-mvp
-  git reset --hard origin/live-mvp
+say "Checking out live"
+if git show-ref --verify --quiet refs/heads/live; then
+  git checkout live
+  git reset --hard origin/live
 else
-  git checkout -b live-mvp origin/live-mvp
+  git checkout -b live origin/live
 fi
 
-MERGE_MSG="chore(release): promote staging @ ${STAGING_SHA:0:7} to live-mvp $(date +%Y-%m-%d)"
+MERGE_MSG="chore(release): promote staging @ ${STAGING_SHA:0:7} to live $(date +%Y-%m-%d)"
 
 if [ "$DRY_RUN" = "--dry-run" ]; then
   warn "DRY RUN — previewing merge"
@@ -95,10 +95,10 @@ if [ "$DRY_RUN" = "--dry-run" ]; then
 fi
 
 if ! git merge --no-commit --no-ff origin/staging -m "$MERGE_MSG"; then
-  warn "Merge had conflicts — resolving with live-mvp wins on production env files"
+  warn "Merge had conflicts — resolving with live wins on production env files"
 fi
 
-# live-mvp wins on production env/config files
+# live wins on production env/config files
 PROTECTED_FILES=(
   "frontend/.env.production.example"
   "backend/.env.production.example"
@@ -120,7 +120,7 @@ if git diff --name-only --diff-filter=U | grep -q .; then
 fi
 
 git commit --no-edit -m "$MERGE_MSG" || true
-ok "Merged staging into live-mvp"
+ok "Merged staging into live"
 
 # --- Gitleaks ----------------------------------------------------------------
 
@@ -133,7 +133,7 @@ if command -v gitleaks >/dev/null; then
   if ! gitleaks detect --source "$REPO_ROOT" --config "$REPO_ROOT/.gitleaks.toml" \
       --log-opts="${LIVE_SHA}..HEAD" --no-banner; then
     err "gitleaks detected secrets in the commits being promoted — aborting promotion"
-    git reset --hard origin/live-mvp
+    git reset --hard origin/live
     exit 1
   fi
   ok "gitleaks clean"
@@ -141,8 +141,8 @@ fi
 
 # --- Push + tag --------------------------------------------------------------
 
-say "Pushing live-mvp"
-git push origin live-mvp
+say "Pushing live"
+git push origin live
 ok "Pushed"
 
 TAG="release-$(date +%Y-%m-%d-%H%M)"
@@ -156,11 +156,11 @@ gh release create "$TAG" \
   --notes "$(cat <<EOF
 ## Release $TAG
 
-Promoted \`staging\` @ \`${STAGING_SHA:0:7}\` to \`live-mvp\`.
+Promoted \`staging\` @ \`${STAGING_SHA:0:7}\` to \`live\`.
 
 ### Commits
 \`\`\`
-$(git log --oneline origin/live-mvp~1..origin/live-mvp | head -n 50)
+$(git log --oneline origin/live~1..origin/live | head -n 50)
 \`\`\`
 
 🤖 Created by \`qa-promote-staging-to-live.sh\`
