@@ -2243,6 +2243,24 @@ function Default() {
                 </aside>
               )}
               <div className="flex-auto min-w-0">
+                {/* Page tabs. Separate from the pinned bar's TabsList above,
+                    which is left untouched. */}
+                {isClientProfile && (
+                  <TabsList className="w-full justify-start border-b border-gray-200 bg-transparent p-0">
+                    <TabsTrigger value="About" asChild>
+                      <NextLink href="#about">About</NextLink>
+                    </TabsTrigger>
+                    <TabsTrigger value="Culture" asChild>
+                      <NextLink href="#culture">Culture</NextLink>
+                    </TabsTrigger>
+                    <TabsTrigger value="Team" asChild>
+                      <NextLink href="#team">Team</NextLink>
+                    </TabsTrigger>
+                    <TabsTrigger value="Spending Insights" asChild>
+                      <NextLink href="#spending-insights">Spending Insights</NextLink>
+                    </TabsTrigger>
+                  </TabsList>
+                )}
                 {isEditMode &&
                   isOwnProfile &&
                   (() => {
