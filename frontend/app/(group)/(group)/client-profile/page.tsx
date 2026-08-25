@@ -2247,14 +2247,15 @@ function Default() {
                               Company Name
                             </h1>
                             {isEditMode && (
-                              <Button
-                                className="size-9 shrink-0 rounded-full p-0 text-gray-500"
+                              <IconButton
+                                className="shrink-0 rounded-full text-gray-500"
+                                size="sm"
                                 variant="ghost"
                                 visual="gray"
                                 aria-label="Edit company name"
                               >
                                 <Edit03 className="size-4" />
-                              </Button>
+                              </IconButton>
                             )}
                           </div>
                           {hasCompanyError && (
@@ -2273,14 +2274,15 @@ function Default() {
                               City, State
                             </p>
                             {isEditMode && (
-                              <Button
-                                className="h-[18px] w-9 shrink-0 rounded-full p-0 text-gray-500"
+                              <IconButton
+                                className="-my-[9px] shrink-0 rounded-full text-gray-500"
+                                size="sm"
                                 variant="ghost"
                                 visual="gray"
                                 aria-label="Edit location"
                               >
                                 <Edit03 className="size-4" />
-                              </Button>
+                              </IconButton>
                             )}
                           </div>
                           {hasCompanyError && (
@@ -2366,14 +2368,15 @@ function Default() {
                               {companyWebsite}
                             </NextLink>
                             {isEditMode && (
-                              <Button
-                                className="size-9 shrink-0 rounded-full p-0 text-gray-500"
+                              <IconButton
+                                className="shrink-0 rounded-full text-gray-500"
+                                size="sm"
                                 variant="ghost"
                                 visual="gray"
                                 aria-label="Edit website"
                               >
                                 <Edit03 className="size-4" />
-                              </Button>
+                              </IconButton>
                             )}
                           </div>
                         ) : (
@@ -2411,22 +2414,24 @@ function Default() {
                             </h2>
                             {isEditMode && (
                               <div className="flex shrink-0 items-center gap-1">
-                                <Button
-                                  className="size-9 rounded-full p-0 text-gray-500"
+                                <IconButton
+                                  className="rounded-full text-gray-500"
+                                  size="sm"
                                   variant="ghost"
                                   visual="gray"
                                   aria-label="Add industry"
                                 >
                                   <Plus className="size-[18px]" />
-                                </Button>
-                                <Button
-                                  className="size-9 rounded-full p-0 text-gray-500"
+                                </IconButton>
+                                <IconButton
+                                  className="rounded-full text-gray-500"
+                                  size="sm"
                                   variant="ghost"
                                   visual="gray"
                                   aria-label="Edit industries"
                                 >
                                   <Edit03 className="size-4" />
-                                </Button>
+                                </IconButton>
                               </div>
                             )}
                           </div>
