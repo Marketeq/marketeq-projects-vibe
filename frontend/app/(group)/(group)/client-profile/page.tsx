@@ -2127,12 +2127,12 @@ function Default() {
             {/* Back to Listings — top left, above the sidebar and content */}
             {isClientProfile && (
               <Button
-                className="gap-2 text-sm font-semibold text-dark-blue-400"
+                className="group gap-2 text-sm font-semibold text-dark-blue-400"
                 variant="link"
                 visual="gray"
-                leftIcon={<ArrowLeft className="size-4" />}
                 onClick={() => router.push("/my-listings")}
               >
+                <ArrowLeft className="size-[15px] transition duration-300 group-hover:-translate-x-[4px]" />{" "}
                 Back to Listings
               </Button>
             )}
@@ -2546,21 +2546,32 @@ function Default() {
                   (() => {
                     const steps = [
                       {
-                        label: "Add Your Bio",
-                        description:
-                          "Share what drives you and let clients connect on a personal level.",
+                        label: isClientProfile
+                          ? "Add Your Company Name"
+                          : "Add Your Bio",
+                        description: isClientProfile
+                          ? "Establish your company\u2019s identity on Marketeq"
+                          : "Share what drives you and let clients connect on a personal level.",
                         done: !!(profile?.bio || profile?.overview),
                         action: () => setOverviewOpen(true),
                       },
                       {
-                        label: "Add Your Skills",
-                        description: "Let clients know what you're great at.",
+                        label: isClientProfile
+                          ? "Add Your Company Logo"
+                          : "Add Your Skills",
+                        description: isClientProfile
+                          ? "Make your company instantly recognizable."
+                          : "Let clients know what you're great at.",
                         done: (profile?.skills?.length ?? 0) > 0,
                         action: () => setSkillsOpen(true),
                       },
                       {
-                        label: "Add Work Experience",
-                        description: "Show clients your professional history.",
+                        label: isClientProfile
+                          ? "Add Team Members"
+                          : "Add Work Experience",
+                        description: isClientProfile
+                          ? "Showcase your team members."
+                          : "Show clients your professional history.",
                         done: (profile?.experience?.length ?? 0) > 0,
                         action: () => {
                           setActiveTab("Work Experience")
@@ -2602,11 +2613,14 @@ function Default() {
                         <div className="flex items-start">
                           <div className="flex-auto">
                             <h1 className="text-[20px] leading-none font-bold text-dark-blue-400">
-                              Ready to Get Hired?
+                              {isClientProfile
+                                ? "Let's get your company noticed"
+                                : "Ready to Get Hired?"}
                             </h1>
                             <p className="text-base font-light mt-1 text-dark-blue-400">
-                              Clients are 4x more likely to hire users with
-                              completed profiles!
+                              {isClientProfile
+                                ? "A complete profile gets 3x more client views."
+                                : "Clients are 4x more likely to hire users with completed profiles!"}
                             </p>
                           </div>
                         </div>
