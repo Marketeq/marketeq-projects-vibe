@@ -1925,6 +1925,190 @@ function Default() {
               setBackgroundActiveTab("Work Experience")
           }}
         >
+          <TabsList
+            className="group/list p-0 bg-transparent data-[status=stuck]:border-b data-[status=stuck]:border-gray-200 z-50 transition duration-300 top-0 sticky block data-[status=stuck]:bg-white border-0"
+            data-status={isTabsListStuck ? "stuck" : "unstuck"}
+            ref={tabsListRef}
+          >
+            <div className="max-w-[1440px] mx-auto px-[100px]">
+              <div className="contents group-data-[status=stuck]/list:pt-3 group-data-[status=stuck]/list:flex items-center max-w-[1240px] mx-auto">
+                <div className="flex-auto contents group-data-[status=stuck]/list:block">
+                  <div className="hidden items-center gap-x-3 group-data-[status=stuck]/list:flex">
+                    <Avatar
+                      className="hover:ring-0 active:ring-primary-100"
+                      size="lg"
+                    >
+                      <AvatarImage
+                        src={profile?.avatarUrl ?? ""}
+                        alt={profile?.firstName ?? "User"}
+                      />
+                      <AvatarFallback>
+                        {getInitials(
+                          `${profile?.firstName ?? ""} ${
+                            profile?.lastName ?? ""
+                          }`
+                        )}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col gap-y-0.5">
+                      <span className="text-lg leading-none font-bold text-dark-blue-400">
+                        {capitalize(profile?.firstName ?? "") || "User"}{" "}
+                        <span className="text-base font-extralight">
+                          @{profile?.username ?? ""}
+                        </span>
+                      </span>
+
+                      <span className="text-sm leading-none font-medium text-dark-blue-400">
+                        {(profile as any)?.jobTitles?.find(
+                          (j: any) => j.saveAsDefault
+                        )?.jobTitle ||
+                          (profile as any)?.jobTitles?.[0]?.jobTitle ||
+                          profile?.recentJobTitle ||
+                          ""}
+                      </span>
+                    </div>
+                  </div>
+                  <div
+                    className={cn(
+                      tabsListVariants({
+                        className:
+                          "bg-transparent justify-start w-full group-data-[status=stuck]/list:border-b-0 group-data-[status=stuck]/list:mt-3 inline-flex",
+                      })
+                    )}
+                  >
+                    {isClientProfile ? (
+                      <>
+                        <TabsTrigger value="About" asChild>
+                          <NextLink href="#about">About</NextLink>
+                        </TabsTrigger>
+                        <TabsTrigger value="Culture" asChild>
+                          <NextLink href="#culture">Culture</NextLink>
+                        </TabsTrigger>
+                        <TabsTrigger value="Team" asChild>
+                          <NextLink href="#team">Team</NextLink>
+                        </TabsTrigger>
+                        <TabsTrigger value="Spending Insights" asChild>
+                          <NextLink href="#spending-insights">
+                            Spending Insights
+                          </NextLink>
+                        </TabsTrigger>
+                      </>
+                    ) : (
+                      <>
+                      {(!isClientView || hasPortfolio) && (
+                        <TabsTrigger value="Portfolio" asChild>
+                          <NextLink href="#portfolio">Portfolio</NextLink>
+                        </TabsTrigger>
+                      )}
+                      {(!isClientView || hasSkills) && (
+                        <TabsTrigger value="Skills" asChild>
+                          <NextLink href="#skills">Skills</NextLink>
+                        </TabsTrigger>
+                      )}
+                      {showOverviewSection && (
+                        <TabsTrigger value="Overview" asChild>
+                          <NextLink href="#overview">Overview</NextLink>
+                        </TabsTrigger>
+                      )}
+                      {!isClientView && (
+                        <TabsTrigger value="Offers" asChild>
+                          <NextLink href="#offers">Offers</NextLink>
+                        </TabsTrigger>
+                      )}
+                      {(!isClientView || hasWorkExperience) && (
+                        <TabsTrigger value="Work Experience" asChild>
+                          <NextLink href="#background">Work Experience</NextLink>
+                        </TabsTrigger>
+                      )}
+                      {(!isClientView || hasEducation) && (
+                        <TabsTrigger value="Education" asChild>
+                          <NextLink href="#education">Education</NextLink>
+                        </TabsTrigger>
+                      )}
+                      {!isClientView && (
+                        <TabsTrigger value="Project History" asChild>
+                          <NextLink href="#project-history">
+                            Project History
+                          </NextLink>
+                        </TabsTrigger>
+                      )}
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-3 group-data-[status=stuck]/list:block hidden">
+                  <div className="flex items-center gap-x-3">
+                    {isOwnProfile ? (
+                      <>
+                        {isEditMode ? (
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            size="md"
+                            onClick={() => setIsEditMode(false)}
+                          >
+                            <Eye className="size-[15px]" />
+                            View as Client
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            size="md"
+                            onClick={() => setIsEditMode(true)}
+                          >
+                            <Edit03 className="size-[15px]" />
+                            Edit Profile
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <HireMeButton
+                          profile={profile}
+                          buttonProps={{ onClick: handleHireButtonClick }}
+                        />
+
+                        <SaveTalentButton userId={profile?.id} />
+                      </>
+                    )}
+
+                    <IconButton
+                      className="text-gray-500"
+                      variant="outlined"
+                      visual="gray"
+                      size="md"
+                      onClick={handleShareProfile}
+                    >
+                      <Share06 className="size-[20px]" />
+                    </IconButton>
+                  </div>
+
+                  <div className="flex items-center mt-3 gap-x-[9px]">
+                    <Clock className="size-4" />
+                    <p className="text-[12.09px] leading-none font-extralight text-dark-blue-400">
+                      {isEditMode && isOwnProfile
+                        ? "You are"
+                        : `${capitalize(profile?.firstName ?? "") || "Talent"} is`}{" "}
+                      currently{" "}
+                      <span
+                        className={cn(
+                          "font-bold",
+                          profile?.availability
+                            ? "text-success-600"
+                            : "text-gray-500"
+                        )}
+                      >
+                        {profile?.availability ? "available" : "not available"}
+                      </span>{" "}
+                      for hire
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabsList>
           <div
             className="max-w-[1440px] mx-auto px-[100px] scroll-mt-[137.5px]"
             id="portfolio"
@@ -2059,190 +2243,6 @@ function Default() {
                 </aside>
               )}
               <div className="flex-auto min-w-0">
-              <TabsList
-                className="group/list p-0 bg-transparent data-[status=stuck]:border-b data-[status=stuck]:border-gray-200 z-50 transition duration-300 top-0 sticky block data-[status=stuck]:bg-white border-0"
-                data-status={isTabsListStuck ? "stuck" : "unstuck"}
-                ref={tabsListRef}
-              >
-                <div className="max-w-[1440px] mx-auto px-[100px]">
-                  <div className="contents group-data-[status=stuck]/list:pt-3 group-data-[status=stuck]/list:flex items-center max-w-[1240px] mx-auto">
-                    <div className="flex-auto contents group-data-[status=stuck]/list:block">
-                      <div className="hidden items-center gap-x-3 group-data-[status=stuck]/list:flex">
-                        <Avatar
-                          className="hover:ring-0 active:ring-primary-100"
-                          size="lg"
-                        >
-                          <AvatarImage
-                            src={profile?.avatarUrl ?? ""}
-                            alt={profile?.firstName ?? "User"}
-                          />
-                          <AvatarFallback>
-                            {getInitials(
-                              `${profile?.firstName ?? ""} ${
-                                profile?.lastName ?? ""
-                              }`
-                            )}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-col gap-y-0.5">
-                          <span className="text-lg leading-none font-bold text-dark-blue-400">
-                            {capitalize(profile?.firstName ?? "") || "User"}{" "}
-                            <span className="text-base font-extralight">
-                              @{profile?.username ?? ""}
-                            </span>
-                          </span>
-
-                          <span className="text-sm leading-none font-medium text-dark-blue-400">
-                            {(profile as any)?.jobTitles?.find(
-                              (j: any) => j.saveAsDefault
-                            )?.jobTitle ||
-                              (profile as any)?.jobTitles?.[0]?.jobTitle ||
-                              profile?.recentJobTitle ||
-                              ""}
-                          </span>
-                        </div>
-                      </div>
-                      <div
-                        className={cn(
-                          tabsListVariants({
-                            className:
-                              "bg-transparent justify-start w-full group-data-[status=stuck]/list:border-b-0 group-data-[status=stuck]/list:mt-3 inline-flex",
-                          })
-                        )}
-                      >
-                        {isClientProfile ? (
-                          <>
-                            <TabsTrigger value="About" asChild>
-                              <NextLink href="#about">About</NextLink>
-                            </TabsTrigger>
-                            <TabsTrigger value="Culture" asChild>
-                              <NextLink href="#culture">Culture</NextLink>
-                            </TabsTrigger>
-                            <TabsTrigger value="Team" asChild>
-                              <NextLink href="#team">Team</NextLink>
-                            </TabsTrigger>
-                            <TabsTrigger value="Spending Insights" asChild>
-                              <NextLink href="#spending-insights">
-                                Spending Insights
-                              </NextLink>
-                            </TabsTrigger>
-                          </>
-                        ) : (
-                          <>
-                          {(!isClientView || hasPortfolio) && (
-                            <TabsTrigger value="Portfolio" asChild>
-                              <NextLink href="#portfolio">Portfolio</NextLink>
-                            </TabsTrigger>
-                          )}
-                          {(!isClientView || hasSkills) && (
-                            <TabsTrigger value="Skills" asChild>
-                              <NextLink href="#skills">Skills</NextLink>
-                            </TabsTrigger>
-                          )}
-                          {showOverviewSection && (
-                            <TabsTrigger value="Overview" asChild>
-                              <NextLink href="#overview">Overview</NextLink>
-                            </TabsTrigger>
-                          )}
-                          {!isClientView && (
-                            <TabsTrigger value="Offers" asChild>
-                              <NextLink href="#offers">Offers</NextLink>
-                            </TabsTrigger>
-                          )}
-                          {(!isClientView || hasWorkExperience) && (
-                            <TabsTrigger value="Work Experience" asChild>
-                              <NextLink href="#background">Work Experience</NextLink>
-                            </TabsTrigger>
-                          )}
-                          {(!isClientView || hasEducation) && (
-                            <TabsTrigger value="Education" asChild>
-                              <NextLink href="#education">Education</NextLink>
-                            </TabsTrigger>
-                          )}
-                          {!isClientView && (
-                            <TabsTrigger value="Project History" asChild>
-                              <NextLink href="#project-history">
-                                Project History
-                              </NextLink>
-                            </TabsTrigger>
-                          )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="space-y-3 group-data-[status=stuck]/list:block hidden">
-                      <div className="flex items-center gap-x-3">
-                        {isOwnProfile ? (
-                          <>
-                            {isEditMode ? (
-                              <Button
-                                variant="outlined"
-                                visual="gray"
-                                size="md"
-                                onClick={() => setIsEditMode(false)}
-                              >
-                                <Eye className="size-[15px]" />
-                                View as Client
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="outlined"
-                                visual="gray"
-                                size="md"
-                                onClick={() => setIsEditMode(true)}
-                              >
-                                <Edit03 className="size-[15px]" />
-                                Edit Profile
-                              </Button>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                            <HireMeButton
-                              profile={profile}
-                              buttonProps={{ onClick: handleHireButtonClick }}
-                            />
-
-                            <SaveTalentButton userId={profile?.id} />
-                          </>
-                        )}
-
-                        <IconButton
-                          className="text-gray-500"
-                          variant="outlined"
-                          visual="gray"
-                          size="md"
-                          onClick={handleShareProfile}
-                        >
-                          <Share06 className="size-[20px]" />
-                        </IconButton>
-                      </div>
-
-                      <div className="flex items-center mt-3 gap-x-[9px]">
-                        <Clock className="size-4" />
-                        <p className="text-[12.09px] leading-none font-extralight text-dark-blue-400">
-                          {isEditMode && isOwnProfile
-                            ? "You are"
-                            : `${capitalize(profile?.firstName ?? "") || "Talent"} is`}{" "}
-                          currently{" "}
-                          <span
-                            className={cn(
-                              "font-bold",
-                              profile?.availability
-                                ? "text-success-600"
-                                : "text-gray-500"
-                            )}
-                          >
-                            {profile?.availability ? "available" : "not available"}
-                          </span>{" "}
-                          for hire
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </TabsList>
                 {isEditMode &&
                   isOwnProfile &&
                   (() => {
