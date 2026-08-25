@@ -866,7 +866,7 @@ const WorkplaceValuesEditor = ({
                 value="Values"
                 className="inline-flex items-center justify-center px-1 pb-2 pt-px text-sm font-semibold text-gray-500 data-[state=active]:text-primary-500 border-b-2 border-transparent data-[state=active]:border-primary-500 focus-visible:outline-none"
               >
-                Value&apos;s
+                values
               </RadixTabs.Trigger>
             </RadixTabs.List>
 
@@ -921,9 +921,9 @@ const WorkplaceValuesEditor = ({
                     <div className="flex items-start gap-x-2">
                       <Stars02 className="size-5 text-dark-blue-400 shrink-0 mt-0.5" />
                       <div>
-                        <DialogTitle>AI Generated Value&apos;s</DialogTitle>
+                        <DialogTitle>AI Generated Workplace Values</DialogTitle>
                         <DialogDescription className="mt-1">
-                          Review and adjust your AI-generated Value&apos;s as needed
+                          Review and adjust your AI-generated values as needed
                         </DialogDescription>
                       </div>
                     </div>
@@ -938,7 +938,7 @@ const WorkplaceValuesEditor = ({
                   {remainingSlots <
                     suggestions.filter((s) => !s.added).length && (
                     <p className="px-6 pt-4 text-sm text-error-500">
-                      You currently have {values.length} Value&apos;s in total, so
+                      You currently have {values.length} values in total, so
                       you can only add {remainingSlots} more
                     </p>
                   )}
