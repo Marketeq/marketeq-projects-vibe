@@ -6542,7 +6542,7 @@ function Default() {
                                 <div className="flex items-start justify-between">
                                   <div>
                                     <h2 className="text-lg font-bold text-dark-blue-400">
-                                      Questions
+                                      Workplace Values
                                     </h2>
                                     <p className="mt-1 text-sm font-light text-dark-blue-400">
                                       Add the values that define how your team works. Drag and drop to
@@ -6570,11 +6570,8 @@ function Default() {
                                 {questionsTab === "dialog-values" && (
                                   <>
                                     <p className="text-sm font-light text-dark-blue-400">
-                                      Write a response for each of the question
-                                      added to this project. Drag and drop Value
-                                      items to reorder them. The order you set
-                                      here will be reflected on your
-                                      project&apos;s public Value section.
+                                      State what your team believes in — this is
+                                      what clients and talent will see.
                                     </p>
 
                                     <div className="mt-4 flex items-center gap-3">
@@ -6594,13 +6591,13 @@ function Default() {
                                         onClick={handleAddValue}
                                       >
                                         <Plus className="size-[15px]" />
-                                        Add Question
+                                        Add Value
                                       </Button>
                                     </div>
 
                                     {(project.values?.length ?? 0) >= 10 && (
                                       <p className="mt-2 text-sm text-error-500">
-                                        You can add a maximum of 10 reorder them
+                                        You can add a maximum of 10 values
                                       </p>
                                     )}
 
@@ -6614,11 +6611,11 @@ function Default() {
                                             <Stars02 className="size-5 text-dark-blue-400 shrink-0 mt-0.5" />
                                             <div>
                                               <DialogTitle>
-                                                AI Generated Value&apos;s
+                                                AI Generated Workplace Values
                                               </DialogTitle>
                                               <DialogDescription className="mt-1">
                                                 Review and adjust your
-                                                AI-generated Value&apos;s as needed
+                                                AI-generated values as needed
                                               </DialogDescription>
                                             </div>
                                           </div>
@@ -6636,7 +6633,7 @@ function Default() {
                                             .length && (
                                           <p className="px-6 pt-4 text-sm text-error-500">
                                             You currently have{" "}
-                                            {project.values?.length ?? 0} Value&apos;s
+                                            {project.values?.length ?? 0} values
                                             in total, so you can only add{" "}
                                             {valueRemainingSlots} more
                                           </p>
@@ -6776,7 +6773,7 @@ function Default() {
                                           <HelpCircle className="size-5 text-gray-400" />
                                         </div>
                                         <h3 className="text-sm font-semibold text-dark-blue-400">
-                                          No Value&apos;s yet
+                                          No values yet
                                         </h3>
                                         <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
                                           Add questions that clients commonly
