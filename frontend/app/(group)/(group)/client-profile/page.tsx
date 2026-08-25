@@ -2362,7 +2362,7 @@ function Default() {
                       ))}
                     </div>
                     <Button
-                      className="text-xs font-semibold text-gray-500 hover:no-underline"
+                      className="text-xs font-semibold text-gray-500"
                       variant="link"
                       visual="gray"
                     >
