@@ -2285,41 +2285,40 @@ function Default() {
                 </aside>
               )}
               <div className="flex-auto min-w-0">
-                {/* Edit Profile / Preview — sits above the tabs, right aligned */}
-                {isClientProfile && isOwnProfile && (
-                  <div className="mb-4 flex justify-end">
-                    <Button
-                      className="bg-white"
-                      size="md"
-                      variant="outlined"
-                      visual="gray"
-                      onClick={() => setIsEditMode(!isEditMode)}
-                    >
-                      {isEditMode ? (
-                        <>
-                          <Eye className="size-[15px]" /> Preview
-                        </>
-                      ) : (
-                        <>
-                          <Edit03 className="size-[15px]" /> Edit Profile
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                )}
-
-                {/* Page tabs. Separate from the pinned bar's TabsList above,
-                    which is left untouched. */}
+                {/* Tabs and the Edit Profile button share one row, so the
+                    button never pushes the content down. */}
                 {isClientProfile && (
-                  <TabsList className="mb-6 w-full justify-start border-b border-gray-200 bg-transparent p-0">
-                    {/* Plain tabs. No anchors, no scrolling. */}
-                    <TabsTrigger value="About">About</TabsTrigger>
-                    <TabsTrigger value="Culture">Culture</TabsTrigger>
-                    <TabsTrigger value="Team">Team</TabsTrigger>
-                    <TabsTrigger value="Spending Insights">
-                      Spending Insights
-                    </TabsTrigger>
-                  </TabsList>
+                  <div className="mb-6 flex items-end justify-between gap-4 border-b border-gray-200">
+                    <TabsList className="w-full justify-start border-b-0 bg-transparent p-0">
+                      {/* Plain tabs. No anchors, no scrolling. */}
+                      <TabsTrigger value="About">About</TabsTrigger>
+                      <TabsTrigger value="Culture">Culture</TabsTrigger>
+                      <TabsTrigger value="Team">Team</TabsTrigger>
+                      <TabsTrigger value="Spending Insights">
+                        Spending Insights
+                      </TabsTrigger>
+                    </TabsList>
+
+                    {isOwnProfile && (
+                      <Button
+                        className="mb-2 shrink-0 bg-white"
+                        size="md"
+                        variant="outlined"
+                        visual="gray"
+                        onClick={() => setIsEditMode(!isEditMode)}
+                      >
+                        {isEditMode ? (
+                          <>
+                            <Eye className="size-[15px]" /> Preview
+                          </>
+                        ) : (
+                          <>
+                            <Edit03 className="size-[15px]" /> Edit Profile
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
                 )}
 
                 {/* Culture / Team / Spending Insights panels. Real tabs, not anchors. */}
