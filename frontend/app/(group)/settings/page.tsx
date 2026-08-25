@@ -6,6 +6,7 @@ import { useDropzone } from "react-dropzone"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
+import { ClientAPI } from "@/service/http/client"
 import { cn, getIsNotEmpty } from "@/utils/functions"
 import languagesMock from "@/public/mock/languages.json"
 import ActiveSessionsModal from "@/components/active-sessions-modal"
@@ -130,9 +131,13 @@ export default function SettingsPage() {
     ? ""
     : avatarPreview ?? user?.avatarUrl ?? ""
 
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+
   const onAvatarDropAccepted = useCallback((files: File[]) => {
     const file = files[0]
     if (!file) return
+
+    setAvatarFile(file)
 
     const reader = new FileReader()
     reader.onloadend = () => {
@@ -143,6 +148,7 @@ export default function SettingsPage() {
   }, [])
 
   const onAvatarRemove = useCallback(() => {
+    setAvatarFile(null)
     setAvatarPreview(null)
     setIsAvatarRemoved(true)
   }, [])
@@ -480,10 +486,18 @@ export default function SettingsPage() {
 
     setIsSaving(true)
     try {
+      if (avatarFile) {
+        await ClientAPI.UploadAvatar(avatarFile)
+        setAvatarFile(null)
+      }
+
       const payload: UserProfilePayload = {
         firstName: profileForm.firstName,
         lastName: profileForm.lastName,
         username: profileForm.username,
+        phone: profileForm.phone,
+        recentJobTitle: profileForm.jobTitle,
+        language: profileForm.languages.join(", "),
       }
       const response = await UserAPI.updateProfile(user.id, payload)
       const isSuccess =
@@ -728,6 +742,8 @@ export default function SettingsPage() {
                       <Label size="sm">Phone Number</Label>
                       <PhoneNumberInput
                         defaultCountry="us"
+                        placeholder="+1 (555) 000-0000"
+                        disableDialCodePrefill
                         value={profileForm.phone}
                         onChange={(v) => handleProfileChange("phone", v)}
                       />
@@ -747,9 +763,11 @@ export default function SettingsPage() {
                         <ListboxButton
                           placeholder="Select Team"
                           displayValue={(val) =>
-                            Array.isArray(val) && val.length
-                              ? val.join(", ")
-                              : null
+                            Array.isArray(val) && val.length ? (
+                              val.join(", ")
+                            ) : (
+                              <span className="text-gray-500">Select Team</span>
+                            )
                           }
                         />
                         <ListboxOptions>
@@ -787,9 +805,13 @@ export default function SettingsPage() {
                           <ListboxButton
                             placeholder="Select Language"
                             displayValue={(val) =>
-                              Array.isArray(val) && val.length
-                                ? val.join(", ")
-                                : null
+                              Array.isArray(val) && val.length ? (
+                                val.join(", ")
+                              ) : (
+                                <span className="text-gray-500">
+                                  Select Language
+                                </span>
+                              )
                             }
                           />
                           <ListboxOptions>
@@ -838,14 +860,14 @@ export default function SettingsPage() {
                       <Alert
                         variant="success"
                         className={cn(
-                          "absolute left-0 top-1/2 z-10 -translate-y-1/2 w-[296px] items-center rounded-[5px] pointer-events-none transition-opacity duration-300",
+                          "absolute left-0 top-1/2 z-10 -translate-y-1/2 w-max min-w-[296px] items-center rounded-[5px] pointer-events-none transition-opacity duration-300",
                           isSavedAlertVisible ? "opacity-100" : "opacity-0"
                         )}
                       >
                         <AlertIcon>
                           <CheckCircle className="size-5 text-success-500" />
                         </AlertIcon>
-                        <AlertTitle className="text-success-600">
+                        <AlertTitle className="whitespace-nowrap text-success-600">
                           {savedAlertMessage}
                         </AlertTitle>
                       </Alert>
@@ -1116,14 +1138,14 @@ export default function SettingsPage() {
                       <Alert
                         variant="success"
                         className={cn(
-                          "absolute left-0 top-1/2 z-10 -translate-y-1/2 w-[296px] items-center rounded-[5px] pointer-events-none transition-opacity duration-300",
+                          "absolute left-0 top-1/2 z-10 -translate-y-1/2 w-max min-w-[296px] items-center rounded-[5px] pointer-events-none transition-opacity duration-300",
                           isSavedAlertVisible ? "opacity-100" : "opacity-0"
                         )}
                       >
                         <AlertIcon>
                           <CheckCircle className="size-5 text-success-500" />
                         </AlertIcon>
-                        <AlertTitle className="text-success-600">
+                        <AlertTitle className="whitespace-nowrap text-success-600">
                           {savedAlertMessage}
                         </AlertTitle>
                       </Alert>
@@ -1185,14 +1207,14 @@ export default function SettingsPage() {
                       <Alert
                         variant="success"
                         className={cn(
-                          "absolute left-0 top-full z-10 mt-6 w-[296px] items-center rounded-[5px] pointer-events-none transition-opacity duration-300",
+                          "absolute left-0 top-full z-10 mt-6 w-max min-w-[296px] items-center rounded-[5px] pointer-events-none transition-opacity duration-300",
                           isSavedAlertVisible ? "opacity-100" : "opacity-0"
                         )}
                       >
                         <AlertIcon>
                           <CheckCircle className="size-5 text-success-500" />
                         </AlertIcon>
-                        <AlertTitle className="text-success-600">
+                        <AlertTitle className="whitespace-nowrap text-success-600">
                           {savedAlertMessage}
                         </AlertTitle>
                       </Alert>

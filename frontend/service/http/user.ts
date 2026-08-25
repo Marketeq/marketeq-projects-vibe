@@ -56,6 +56,8 @@ export interface UserProfilePayload {
   firstName?: string
   lastName?: string
   username?: string
+  phone?: string
+  language?: string
   bio?: string
   overview?: string
   location?: string
