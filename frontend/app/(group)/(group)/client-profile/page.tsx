@@ -56,6 +56,7 @@ import {
   Plus2,
   RefreshCw,
   SearchMd,
+  Send01,
   Share,
   Share01,
   Share06,
@@ -113,6 +114,10 @@ import {
 } from "@dnd-kit/sortable"
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers"
 import { CSS } from "@dnd-kit/utilities"
+import {
+  PhoneNumberInput,
+  isPhoneValid,
+} from "@/components/phone-number-input"
 import { ProjectAPI } from "@/service/http/project"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { RecentQuestionsManager } from "@/app/(group)/my-listings/[slug]/recent-questions-manager"
@@ -458,6 +463,7 @@ import {
   ImageEditor,
   Input,
   InputGroup,
+  InputLeftAddon,
   InputLeftElement,
   InputRightElement,
   Listbox,
@@ -646,6 +652,9 @@ const generateValueAnswer = (project: any, question: string): string => {
     `This ${kind} is designed to address exactly that — see the description and scope for the full details.`
   )
 }
+
+const isWebsiteValid = (url: string) =>
+  /^(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?$/i.test(url.trim())
 
 const LazySection = ({
   children,
@@ -1346,6 +1355,12 @@ function Default() {
   const [project, setProject] = useState<any>({ values: [] })
   const persistValues = (_next: any[]) => {}
   const saveProjectFields = (_fields: any) => {}
+  const [phoneDialogOpen, setPhoneDialogOpen] = React.useState(false)
+  const [phoneValue, setPhoneValue] = React.useState("")
+  const [phoneTouched, setPhoneTouched] = React.useState(false)
+  const [websiteDialogOpen, setWebsiteDialogOpen] = React.useState(false)
+  const [websiteValue, setWebsiteValue] = React.useState("")
+  const [websiteTouched, setWebsiteTouched] = React.useState(false)
   const [valuesDialogOpen, setValuesDialogOpen] = React.useState(false)
   const [questionsTab, setQuestionsTab] = React.useState("dialog-values")
   const [recentQTab, setRecentQTab] = React.useState("all")
@@ -2584,6 +2599,7 @@ function Default() {
                           <Button
                             className="gap-2 text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30"
                             variant="link"
+                            onClick={() => setPhoneDialogOpen(true)}
                           >
                             <Phone className="size-[15px]" /> Verify Phone Number
                           </Button>
@@ -2641,6 +2657,7 @@ function Default() {
                               )}
                               variant="link"
                               visual="gray"
+                              onClick={() => setWebsiteDialogOpen(true)}
                             >
                               <Plus className="size-[15px]" /> Add Website
                             </Button>
@@ -7005,6 +7022,138 @@ function Default() {
                             </div>
                           </DialogContent>
                         </Dialog>
+      {/* Phone Verification */}
+      <Dialog
+        open={phoneDialogOpen}
+        onOpenChange={(open) => {
+          setPhoneDialogOpen(open)
+          if (!open) setPhoneTouched(false)
+        }}
+      >
+        <DialogContent className="max-w-[740px] p-0 gap-0">
+          <div className="px-6 pt-6 pb-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <DialogTitle className="text-lg font-bold text-dark-blue-400">
+                  Phone Verification
+                </DialogTitle>
+                <p className="mt-1 text-sm font-light text-dark-blue-400">
+                  Enter your phone number and we&apos;ll send a magic link to
+                  the number entered. You&apos;ll be able to use this number if
+                  you ever need to recover your account.
+                </p>
+              </div>
+              <DialogClose asChild>
+                <IconButton variant="ghost" visual="gray" size="sm">
+                  <X className="size-5" />
+                </IconButton>
+              </DialogClose>
+            </div>
+
+            <div className="mt-6">
+              <PhoneNumberInput
+                defaultCountry="us"
+                value={phoneValue}
+                onChange={(v) => {
+                  setPhoneValue(v)
+                  setPhoneTouched(true)
+                }}
+              />
+              {phoneTouched && !isPhoneValid(phoneValue) && (
+                <ErrorMessage size="sm" className="mt-1.5">
+                  Please enter a valid phone number
+                </ErrorMessage>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
+            <Button
+              variant="link"
+              visual="gray"
+              onClick={() => setPhoneDialogOpen(false)}
+            >
+              <X className="size-[15px]" /> Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!isPhoneValid(phoneValue)}
+              onClick={() => setPhoneDialogOpen(false)}
+            >
+              <Send01 className="size-[15px]" /> Send Link
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Company Website */}
+      <Dialog
+        open={websiteDialogOpen}
+        onOpenChange={(open) => {
+          setWebsiteDialogOpen(open)
+          if (!open) setWebsiteTouched(false)
+        }}
+      >
+        <DialogContent className="max-w-[740px] p-0 gap-0">
+          <div className="px-6 pt-6 pb-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <DialogTitle className="text-lg font-bold text-dark-blue-400">
+                  Company Website
+                </DialogTitle>
+                <p className="mt-1 text-sm font-light text-dark-blue-400">
+                  Show clients where to find you online.
+                </p>
+              </div>
+              <DialogClose asChild>
+                <IconButton variant="ghost" visual="gray" size="sm">
+                  <X className="size-5" />
+                </IconButton>
+              </DialogClose>
+            </div>
+
+            <div className="mt-6">
+              <InputGroup>
+                <InputLeftAddon>http://</InputLeftAddon>
+                <Input
+                  className="rounded-l-none"
+                  type="text"
+                  placeholder="website.com"
+                  isInvalid={websiteTouched && !isWebsiteValid(websiteValue)}
+                  value={websiteValue}
+                  onChange={(event) => {
+                    setWebsiteValue(event.target.value)
+                    setWebsiteTouched(true)
+                  }}
+                />
+              </InputGroup>
+              {websiteTouched && !isWebsiteValid(websiteValue) && (
+                <ErrorMessage size="sm" className="mt-1.5">
+                  Invalid website url
+                </ErrorMessage>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
+            <Button
+              variant="link"
+              visual="gray"
+              onClick={() => setWebsiteDialogOpen(false)}
+            >
+              <X className="size-[15px]" /> Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!isWebsiteValid(websiteValue)}
+              onClick={() => setWebsiteDialogOpen(false)}
+            >
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={caseStudyOpen} onOpenChange={setCaseStudyOpen}>
             <DialogContent
               variant="unanimated"
