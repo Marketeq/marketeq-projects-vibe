@@ -2465,79 +2465,81 @@ function Default() {
 
 
                 {/* Company Bio — first section under the About tab. Three states. */}
-                {isClientProfile && activeTab === "About" && (
-                  <div className="mb-6">
-                    {bioState === "filled" ? (
-                      <Card className="w-full items-start gap-6 rounded-lg p-6">
-                        <p className="flex-1 text-sm font-light leading-[34px] text-gray-700">
-                          Empowering businesses through technology innovation since
-                          2018. Trusted by 50+ global clients. At{" "}
-                          <span className="font-bold">Company Name</span>, our mission
-                          is to simplify business challenges with cutting-edge
-                          solutions tailored for SMEs and enterprises alike. With
-                          expertise spanning software development, IT consulting, and
-                          digital transformation, we have successfully completed 200+
-                          projects.
-                        </p>
-                        <Button
-                          className="size-9 shrink-0 rounded-full p-0 text-gray-500"
-                          variant="ghost"
-                          visual="gray"
-                          aria-label="Edit bio"
-                        >
-                          <Edit03 className="size-4" />
-                        </Button>
-                      </Card>
-                    ) : (
-                      <>
-                        <div
-                          className={cn(
-                            "flex w-full items-start justify-center gap-[75px] rounded-lg border p-6",
-                            bioState === "error"
-                              ? "border-error-200 bg-error-25"
-                              : "border-gray-200 bg-white"
-                          )}
-                        >
+                {isClientProfile && (
+                  <TabsContent value="About">
+                    <div className="mb-6">
+                      {bioState === "filled" ? (
+                        <Card className="w-full items-start gap-6 rounded-lg p-6">
+                          <p className="flex-1 text-sm font-light leading-[34px] text-gray-700">
+                            Empowering businesses through technology innovation since
+                            2018. Trusted by 50+ global clients. At{" "}
+                            <span className="font-bold">Company Name</span>, our mission
+                            is to simplify business challenges with cutting-edge
+                            solutions tailored for SMEs and enterprises alike. With
+                            expertise spanning software development, IT consulting, and
+                            digital transformation, we have successfully completed 200+
+                            projects.
+                          </p>
+                          <Button
+                            className="size-9 shrink-0 rounded-full p-0 text-gray-500"
+                            variant="ghost"
+                            visual="gray"
+                            aria-label="Edit bio"
+                          >
+                            <Edit03 className="size-4" />
+                          </Button>
+                        </Card>
+                      ) : (
+                        <>
                           <div
                             className={cn(
-                              "flex min-w-0 flex-1 flex-col items-start gap-3",
+                              "flex w-full items-start justify-center gap-[75px] rounded-lg border p-6",
                               bioState === "error"
-                                ? "text-error-500"
-                                : "text-dark-blue-400"
+                                ? "border-error-200 bg-error-25"
+                                : "border-gray-200 bg-white"
                             )}
                           >
-                            <p className="w-full text-lg font-semibold leading-7">
-                              Company Bio
-                            </p>
-                            <p className="w-full text-sm font-light">
-                              Build a strong overview that helps clients understand who
-                              you are, what you do, and the value you bring. This is
-                              your space to create a real connection and show what
-                              makes you worth working with.
-                            </p>
+                            <div
+                              className={cn(
+                                "flex min-w-0 flex-1 flex-col items-start gap-3",
+                                bioState === "error"
+                                  ? "text-error-500"
+                                  : "text-dark-blue-400"
+                              )}
+                            >
+                              <p className="w-full text-lg font-semibold leading-7">
+                                Company Bio
+                              </p>
+                              <p className="w-full text-sm font-light">
+                                Build a strong overview that helps clients understand who
+                                you are, what you do, and the value you bring. This is
+                                your space to create a real connection and show what
+                                makes you worth working with.
+                              </p>
+                            </div>
+                            <Button
+                              className={cn(
+                                "shrink-0 gap-2 bg-white px-[14px] py-2 text-xs",
+                                bioState === "error"
+                                  ? "border-error-300 text-error-500"
+                                  : "border-gray-300 text-gray-800"
+                              )}
+                              variant="outlined"
+                              visual="gray"
+                              leftIcon={<Plus className="size-[15px]" />}
+                            >
+                              Add Bio
+                            </Button>
                           </div>
-                          <Button
-                            className={cn(
-                              "shrink-0 gap-2 bg-white px-[14px] py-2 text-xs",
-                              bioState === "error"
-                                ? "border-error-300 text-error-500"
-                                : "border-gray-300 text-gray-800"
-                            )}
-                            variant="outlined"
-                            visual="gray"
-                            leftIcon={<Plus className="size-[15px]" />}
-                          >
-                            Add Bio
-                          </Button>
-                        </div>
-                        {bioState === "error" && (
-                          <p className="mt-4 text-sm leading-5 text-error-500">
-                            Please add your company bio.
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </div>
+                          {bioState === "error" && (
+                            <p className="mt-4 text-sm leading-5 text-error-500">
+                              Please add your company bio.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </TabsContent>
                 )}
                 {isEditMode &&
                   isOwnProfile &&
@@ -2660,7 +2662,7 @@ function Default() {
                     )
                   })()}
 
-                {(!isClientView || hasPortfolio) && (
+                {!isClientProfile && (!isClientView || hasPortfolio) && (
                   <PortfolioCards
                     key={profile?.portfolio?.length ? "real" : "demo"}
                     portfolio={profile?.portfolio}
