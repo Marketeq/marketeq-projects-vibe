@@ -121,12 +121,10 @@ const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
     label: "Work",
     items: [
       { href: "/client-dashboard", label: "Home", icon: Home03 },
-      { href: "/my-listings", label: "My Projects", icon: Briefcase },
+      { href: "/my-contracts", label: "My Contracts", icon: FileCheck02 },
       { href: "/my-jobs", label: "My Jobs", icon: Briefcase },
-      { href: "/favorites", label: "My Favorites", icon: Search },
       { href: "/my-team", label: "My Team", icon: Users },
       { href: "/stats", label: "Stats & Trends", icon: BarChartSquare02 },
-      { href: "/reports", label: "Reports", icon: BarChartSquare02 },
     ],
   },
   {
@@ -134,7 +132,6 @@ const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
     items: [
       { href: "/client-profile", label: "Profile", icon: UserCircle },
       { href: "/inbox", label: "Inbox", icon: Mail01, badge: inboxBadge },
-      { href: "/payments", label: "Payments", icon: CurrencyDollar },
       {
         href: "/notifications",
         label: "Notifications",
