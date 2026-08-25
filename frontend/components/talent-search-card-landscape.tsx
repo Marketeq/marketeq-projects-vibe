@@ -36,7 +36,10 @@ interface TalentSearchCardLandscapeProps {
   onRemove?: () => void
 }
 
-export const TalentSearchCardLandscape = ({ showOptionsMenu = false, onRemove }: TalentSearchCardLandscapeProps = {}) => {
+export const TalentSearchCardLandscape = ({
+  showOptionsMenu = false,
+  onRemove,
+}: TalentSearchCardLandscapeProps = {}) => {
   const [isOpen, toggleIsOpen] = useToggle(false)
   const [value, setValue] = React.useState("")
   const [isExpanded, toggleIsExpanded] = useToggle(false)
@@ -88,7 +91,11 @@ export const TalentSearchCardLandscape = ({ showOptionsMenu = false, onRemove }:
           {showOptionsMenu ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <IconButton className="text-gray-400 self-start" variant="ghost" visual="gray">
+                <IconButton
+                  className="text-gray-400 self-start"
+                  variant="ghost"
+                  visual="gray"
+                >
                   <MoreHorizontal className="size-5" />
                 </IconButton>
               </DropdownMenuTrigger>
@@ -179,7 +186,8 @@ export const TalentSearchCardLandscape = ({ showOptionsMenu = false, onRemove }:
                     variant="outlined"
                     visual="gray"
                   >
-                    <Plus className="size-[9.56px] lg:size-[15px]" /> Add to My Team
+                    <Plus className="size-[9.56px] lg:size-[15px]" /> Add to My
+                    Team
                   </Button>
                 </div>
 

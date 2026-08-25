@@ -7,12 +7,14 @@ import { PassportModule } from '@nestjs/passport'
 import { ProxyService } from './proxy/proxy.service'
 import { ProxyController } from './proxy/proxy.controller'
 import { TalentUploadController } from './controllers/talent-upload.controller'
+import { ResumeUploadController } from './controllers/resume-upload.controller'
 import { UserAvatarUploadController } from './controllers/user-avatar-upload.controller'
 import { PublishMediaController } from './controllers/publish-media.controller'
 import { PublishRichTextImageController } from './controllers/publish-rich-text-image.controller'
 import { HomepageModule } from './homepage/homepage.module'
 import { BlogModule } from './blog/blog.module'
 import { JwtStrategy } from './guards/jwt-auth.guard'
+import { CsrfOriginMiddleware } from './middleware/csrf-origin.middleware'
 import { JwtMiddleware } from './middleware/jwt.middleware'
 import { LoggingMiddleware } from './middleware/logging.middleware'
 
@@ -60,6 +62,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
   providers: [ProxyService, JwtStrategy],
   controllers: [
     TalentUploadController,
+    ResumeUploadController,
     UserAvatarUploadController,
     PublishMediaController,
     PublishRichTextImageController,
@@ -69,6 +72,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
 export class ApiGatewayModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(LoggingMiddleware).forRoutes('*')
+    consumer.apply(CsrfOriginMiddleware).forRoutes('*')
     consumer.apply(JwtMiddleware).forRoutes('*')
   }
 }

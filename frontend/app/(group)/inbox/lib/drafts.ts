@@ -1,9 +1,8 @@
 // Per Doc 05 EC-3.3: composer drafts must persist per-thread per-user
 // across navigation, refresh, and accidental tab close.
 // Storage is IndexedDB (not localStorage) per Doc 06 §14.
-
-import { openDB, type IDBPDatabase } from "idb"
 import { publishMessagingEvent } from "@/utils/messagingBroadcast"
+import { type IDBPDatabase, openDB } from "idb"
 
 const DB_NAME = "messaging-drafts"
 const STORE = "drafts"
@@ -32,7 +31,7 @@ function key(threadId: string, userId: string): string {
 
 export async function loadDraft(
   threadId: string,
-  userId: string,
+  userId: string
 ): Promise<string> {
   const d = db()
   if (!d || !threadId || !userId) return ""
@@ -47,7 +46,7 @@ export async function loadDraft(
 export async function saveDraft(
   threadId: string,
   userId: string,
-  text: string,
+  text: string
 ): Promise<void> {
   const d = db()
   if (!d || !threadId || !userId) return
@@ -65,7 +64,7 @@ export async function saveDraft(
 
 export async function clearDraft(
   threadId: string,
-  userId: string,
+  userId: string
 ): Promise<void> {
   const d = db()
   if (!d || !threadId || !userId) return

@@ -2,23 +2,41 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Certification } from './certifications.entity';
+import { CertificationIssuersService } from './certification-issuers.service';
 import { CreateCertificationDto } from './dto/create-certification.dto';
 import { UpdateCertificationDto } from './dto/update-certification.dto';
+
+const parseLocalDate = (s?: string): Date | undefined => {
+  if (!s) return undefined;
+  const [y, m, d] = s.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return undefined;
+  return new Date(y, m - 1, d);
+};
 
 @Injectable()
 export class CertificationsService {
   constructor(
     @InjectRepository(Certification)
     private readonly certificationRepository: Repository<Certification>,
+    private readonly issuersService: CertificationIssuersService,
   ) {}
 
   async create(userId: string, dto: CreateCertificationDto) {
+    // Auto-resolve issuer logo from the certification name
+    const { logoUrl } = await this.issuersService.resolveIssuerLogo(
+      dto.name,
+      dto.issuer,
+    );
+
     const certification = this.certificationRepository.create({
       ...dto,
-      issueDate: new Date(dto.issueDate),
-      expirationDate: dto.expirationDate
-        ? new Date(dto.expirationDate)
-        : undefined,
+      issueDate: parseLocalDate(dto.issueDate),
+      doesntExpire: dto.doesntExpire ?? false,
+      expirationDate:
+        dto.doesntExpire === true
+          ? undefined
+          : parseLocalDate(dto.expirationDate),
+      issuerLogoUrl: logoUrl ?? undefined,
     });
     certification.userId = userId;
     return this.certificationRepository.save(certification);
@@ -42,10 +60,14 @@ export class CertificationsService {
 
     Object.assign(certification, {
       ...dto,
-      issueDate: dto.issueDate ? new Date(dto.issueDate) : certification.issueDate,
-      expirationDate: dto.expirationDate
-        ? new Date(dto.expirationDate)
-        : certification.expirationDate,
+      issueDate: dto.issueDate ? parseLocalDate(dto.issueDate) : certification.issueDate,
+      doesntExpire: dto.doesntExpire ?? certification.doesntExpire,
+      expirationDate:
+        dto.doesntExpire === true
+          ? null
+          : dto.expirationDate
+            ? parseLocalDate(dto.expirationDate)
+            : certification.expirationDate,
     });
 
     return this.certificationRepository.save(certification);

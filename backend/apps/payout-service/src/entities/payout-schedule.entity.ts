@@ -36,6 +36,15 @@ export class PayoutSchedule {
   @Column({ name: 'custom_interval_days', type: 'smallint', nullable: true })
   customIntervalDays: number | null;
 
+  // US-72: optional window for a custom schedule — e.g. pause payouts during
+  // a planned absence without disabling the schedule outright. Both null by
+  // default (no window restriction, matches existing behavior).
+  @Column({ name: 'start_date', type: 'timestamptz', nullable: true })
+  startDate: Date | null;
+
+  @Column({ name: 'end_date', type: 'timestamptz', nullable: true })
+  endDate: Date | null;
+
   @Column({ name: 'threshold_usd', type: 'numeric', precision: 18, scale: 8, default: '50' })
   thresholdUsd: string;
 
@@ -43,10 +52,10 @@ export class PayoutSchedule {
   reserveUsd: string;
 
   // ─── Split config (PS-18) ─────────────────────────────────────
-  @Column({ name: 'primary_method_id', nullable: true })
+  @Column({ name: 'primary_method_id', nullable: true, type: 'varchar' })
   primaryMethodId: string | null;
 
-  @Column({ name: 'secondary_method_id', nullable: true })
+  @Column({ name: 'secondary_method_id', nullable: true, type: 'varchar' })
   secondaryMethodId: string | null;
 
   // PS-18 §2: primarySplitPercent is the single source of truth.

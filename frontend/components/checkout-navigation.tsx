@@ -2,10 +2,10 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { cn } from "@/utils/functions"
 import { Check, Lock } from "@blend-metrics/icons"
 import { Logo3 } from "@/components/icons"
 import { StepIndicator } from "@/components/ui"
-import { cn } from "@/utils/functions"
 
 type CheckoutStepNumber = 1 | 2 | 3
 
@@ -14,6 +14,7 @@ type CheckoutNavigationProps = {
   firstStepLabel?: string
   showSteps?: boolean
   logoHref?: string
+  allStepsCompleted?: boolean
 }
 
 const Step = ({
@@ -52,14 +53,18 @@ export function CheckoutNavigation({
   currentStep,
   firstStepLabel = "Project Details",
   showSteps = true,
-  logoHref,
+  logoHref = "/",
+  allStepsCompleted = false,
 }: CheckoutNavigationProps) {
   return (
     <div className="fixed inset-x-0 top-0 z-40 bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]">
       <div className="max-w-[1140px] h-[64px] mx-auto flex items-center justify-between">
         <div className="flex items-center gap-x-6">
           {logoHref ? (
-            <Link href={logoHref} className="shrink-0 focus-visible:outline-none">
+            <Link
+              href={logoHref}
+              className="shrink-0 focus-visible:outline-none"
+            >
               <Logo3 className="w-[128px] h-[18.81px] shrink-0" />
             </Link>
           ) : (
@@ -80,7 +85,7 @@ export function CheckoutNavigation({
               step={1}
               label={firstStepLabel}
               active={currentStep === 1}
-              completed={currentStep > 1}
+              completed={allStepsCompleted || currentStep > 1}
             />
             <span className="h-0 w-[35px] shrink-0 border-t-2 border-dashed border-gray-300" />
             <Step
@@ -88,7 +93,7 @@ export function CheckoutNavigation({
               label="Payment Details"
               disabled={currentStep < 2}
               active={currentStep === 2}
-              completed={currentStep > 2}
+              completed={allStepsCompleted || currentStep > 2}
             />
             <span className="h-0 w-[35px] shrink-0 border-t-2 border-dashed border-gray-300" />
             <Step
@@ -96,6 +101,7 @@ export function CheckoutNavigation({
               label="Review & Pay"
               disabled={currentStep < 3}
               active={currentStep === 3}
+              completed={allStepsCompleted}
             />
           </div>
         ) : null}

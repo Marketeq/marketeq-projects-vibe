@@ -10,7 +10,6 @@ import { EarningsModule }   from './earnings/earnings.module';
 import { InternalModule }   from './internal/internal.module';
 import { ConsumersModule }  from './consumers/consumers.module';
 import { PublishersModule } from './publishers/publishers.module';
-import { ExportModule }     from './export/export.module';
 
 @Module({
   imports: [
@@ -24,7 +23,6 @@ import { ExportModule }     from './export/export.module';
     InternalModule,
     ConsumersModule,
     PublishersModule,
-    ExportModule,
   ],
 })
 export class AppModule {}

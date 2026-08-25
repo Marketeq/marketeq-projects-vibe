@@ -11,11 +11,18 @@ import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
 import { GoogleDefault } from "@blend-metrics/icons/social"
 import { useGoogleLogin } from "@react-oauth/google"
-import Cookies from "js-cookie"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
+import type { User } from "@/types/user"
+import { getOAuthErrorMessage } from "@/utils/auth-errors"
 
-const GoogleLoginButtonInner = () => {
+const GoogleLoginButtonInner = ({
+  onSuccess,
+  mode = "sign-in",
+}: {
+  onSuccess?: (user: User) => void
+  mode?: "sign-in" | "sign-up"
+}) => {
   const router = useRouter()
 
   const { setUser } = useAuth()
@@ -25,6 +32,9 @@ const GoogleLoginButtonInner = () => {
 
   const handleLoginWithGoogle = useGoogleLogin({
     scope: "openid email profile",
+    // Force the Google account chooser instead of silently reusing the last
+    // signed-in Google account after a Marketeq logout.
+    prompt: "select_account",
     onSuccess: (tokenResponse) => {
       const accessToken = tokenResponse?.access_token
 
@@ -36,22 +46,14 @@ const GoogleLoginButtonInner = () => {
         .then(async (response) => {
           if (
             response?.status === 200 &&
-            response?.data?.access_token &&
             response?.data?.user
           ) {
-            Cookies.set("access_token", response.data.access_token, { path: "/" })
-            if (response.data.refresh_token) {
-              Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
-            }
-            if (response.data.sessionId) {
-              Cookies.set("session_id", response.data.sessionId, { path: "/" })
-            }
-
             let nextUser = response.data.user
             try {
               const me = await UserAPI.me()
               if (me?.status === 200) {
-                const profileUser = me.data?.user ?? me.data?.data?.user ?? me.data
+                const profileUser =
+                  me.data?.user ?? me.data?.data?.user ?? me.data
                 if (profileUser && typeof profileUser === "object") {
                   nextUser = mergeDashboardUserFields(nextUser, profileUser)
                 }
@@ -62,23 +64,32 @@ const GoogleLoginButtonInner = () => {
             if (nextUser && typeof nextUser === "object") {
               setUser(nextUser)
             }
-            router.push(resolveDashboardRoute(nextUser as any))
+            if (response.data.user?.accountLinked) {
+              toast({
+                title: "Your Google account has been linked to your existing Marketeq account.",
+              })
+            }
+            if (onSuccess) {
+              onSuccess(nextUser as User)
+            } else {
+              router.replace(resolveDashboardRoute(nextUser as any))
+            }
           }
         })
         .catch((error) => {
-          const msg =
-            error?.response?.data?.message ??
-            error?.response?.data?.errors?.message ??
-            error?.message ??
-            "Login failed"
           toast({
-            title: msg,
+            title: getOAuthErrorMessage(error),
             variant: "destructive",
           })
         })
         .finally(() => setIsLoading(false))
     },
-    onError: () => {},
+    onError: () => {
+      toast({
+        title: "Google sign-in was cancelled or failed. Please try again.",
+        variant: "destructive",
+      })
+    },
   })
 
   return (
@@ -99,14 +110,17 @@ const GoogleLoginButtonInner = () => {
         />
       ) : (
         <>
-          <GoogleDefault className="size-5 md:size-6" /> Sign in with Google
+          <GoogleDefault className="size-5 md:size-6" /> {mode === "sign-up" ? "Sign up with Google" : "Sign in with Google"}
         </>
       )}
     </Button>
   )
 }
 
-const GoogleLoginButton = () => {
+const GoogleLoginButton = ({
+  onSuccess,
+  mode = "sign-in",
+}: { onSuccess?: (user: User) => void; mode?: "sign-in" | "sign-up" } = {}) => {
   if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
     return (
       <Button
@@ -117,12 +131,12 @@ const GoogleLoginButton = () => {
         disabled
         title="Google sign-in is not configured"
       >
-        <GoogleDefault className="size-5 md:size-6" /> Sign in with Google
+        <GoogleDefault className="size-5 md:size-6" /> {mode === "sign-up" ? "Sign up with Google" : "Sign in with Google"}
       </Button>
     )
   }
 
-  return <GoogleLoginButtonInner />
+  return <GoogleLoginButtonInner onSuccess={onSuccess} mode={mode} />
 }
 
 export default GoogleLoginButton

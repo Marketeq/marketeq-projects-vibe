@@ -126,7 +126,12 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
       lastSyncAt = Date.now();
       return;
     }
-    // Non-2xx — decide retryable vs dead-letter per doc 16 §5.
+    // Non-2xx — decide retryable vs dead-letter per doc 16 §5. 401 is
+    // deliberately excluded here (matching doc 16 §4's reference queue
+    // exactly) — a 401 reaching this layer means api-client's own
+    // refresh-and-retry (doc 15 §7) already gave it a fresh token and
+    // failed anyway, so the queue treats it like any other non-retryable
+    // 4xx, same as the doc's example code.
     const s = resp.status;
     const retryable = s === 408 || s === 429 || (s >= 500 && s <= 599);
     const msg = `HTTP ${s}`;

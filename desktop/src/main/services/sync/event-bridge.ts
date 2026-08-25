@@ -34,6 +34,33 @@ export interface EventBridgeDeps {
   getDeviceId: () => string | null;
   /** Returns the current authenticated user's id, or null. */
   getUserId?: () => string | null;
+  /**
+   * Looks up a session's persisted row by id (repos.session.findById).
+   * Used to read the authoritative ended_at/end_reason/billable_seconds
+   * once a session closes — by the time the FSM's own state-changed
+   * snapshot reflects the transition to Idle, activeSessionId and the
+   * per-session fields have already been cleared from the in-memory
+   * snapshot, so we go back to the DB row timer-service already wrote.
+   */
+  getSessionById?: (id: string) => {
+    ended_at: number | null;
+    end_reason: string | null;
+    billable_seconds: number;
+  } | null;
+  /**
+   * Lists a session's local time_entry rows (repos.timeEntry.listForSession).
+   * Used to sync each closed segment to the backend once its parent session
+   * closes — this was never wired up at all (same as session.close before
+   * it), so time_entries stayed local-only and never appeared server-side,
+   * even after the session.close fix made the session's own billable_seconds
+   * correct.
+   */
+  listTimeEntriesForSession?: (sessionId: string) => Array<{
+    id: string;
+    started_at: number;
+    ended_at: number | null;
+    duration_seconds: number;
+  }>;
   logger?: Logger;
 }
 
@@ -42,6 +69,10 @@ export type EventBridge = ReturnType<typeof createEventBridge>;
 export function createEventBridge(deps: EventBridgeDeps) {
   const log = deps.logger?.child({ svc: 'event-bridge' });
   const detachers: Array<() => void> = [];
+  // Tracks the most recently seen active session id so that when a
+  // state-changed snapshot arrives with activeSessionId back to null, we
+  // still know which session just closed (see handleTimerEvent below).
+  let lastActiveSessionId: string | null = null;
 
   // ---- Timer events --------------------------------------------------------
   const offTimer = deps.timer.attachEventBus((evt: TimerBusEvent) => {
@@ -57,7 +88,59 @@ export function createEventBridge(deps: EventBridgeDeps) {
     if (evt.channel !== 'timer:state-changed') return;
     const snap = evt.payload;
     const deviceId = deps.getDeviceId();
+
+    // Session.close: the FSM enters Idle (activeSessionId back to null)
+    // from a session that WAS active a moment ago. Read the closed
+    // session's row back from the DB — timer-service's handleCloseSession
+    // already wrote ended_at/end_reason/billable_seconds there
+    // synchronously before this snapshot was emitted — and enqueue the
+    // matching POST /sessions/:id/close. This previously never fired at
+    // all (see git history), so no session end ever reached the backend.
+    if (!snap.activeSessionId && lastActiveSessionId) {
+      const closedId = lastActiveSessionId;
+      lastActiveSessionId = null;
+      const row = deps.getSessionById?.(closedId);
+      if (row && row.ended_at != null) {
+        deps.outbox.enqueue({
+          kind: 'session.close',
+          method: 'POST',
+          path: `/sessions/${closedId}/close`,
+          id: `req_ses-close-${closedId}`,
+          payload: {
+            endedAt: row.ended_at,
+            reason: row.end_reason ?? 'user_stop',
+            billableSeconds: row.billable_seconds,
+          },
+        });
+      } else {
+        log?.warn({ closedId }, 'event-bridge: session closed but no DB row found to sync');
+      }
+
+      // Sync every closed segment for this session. The backend's
+      // CreateTimeEntryDto requires ISO8601 strings for startedAt/endedAt
+      // (@IsISO8601()) — the local row stores unix-ms numbers, so these
+      // must be converted here, not passed through raw (that would fail
+      // validation with a 400).
+      const entries = deps.listTimeEntriesForSession?.(closedId) ?? [];
+      for (const entry of entries) {
+        if (entry.ended_at == null) continue;
+        deps.outbox.enqueue({
+          kind: 'time-entry.create',
+          method: 'POST',
+          path: `/sessions/${closedId}/entries`,
+          id: `req_ent-${entry.id}`,
+          payload: {
+            id: entry.id,
+            startedAt: new Date(entry.started_at).toISOString(),
+            endedAt: new Date(entry.ended_at).toISOString(),
+            durationSeconds: entry.duration_seconds,
+          },
+        });
+      }
+    }
+
     if (!deviceId || !snap.activeSessionId) return;
+    lastActiveSessionId = snap.activeSessionId;
     // Session.start: we don't have a direct "started" event, but the
     // FSM emits a state change into Running with `runningSec === 0` on
     // first entry. A cleaner signal is `state === 'Running'` AND no prior
@@ -78,15 +161,6 @@ export function createEventBridge(deps: EventBridgeDeps) {
         },
       });
     }
-    // Session.close is fired when the FSM enters Idle from a non-Idle
-    // state. We detect it by the presence of `activeSessionId == null`
-    // in a later event — but by that point we've lost the id. Instead
-    // we install a secondary listener on `session-closed` style by
-    // observing rows transitioning to a session row with ended_at set.
-    // Since the timer-service already updates the DB row synchronously
-    // in `handleCloseSession`, the onClosed hook below listens for the
-    // snapshot flip and reads the latest finished session via a
-    // post-transition hook we wire in wiring.ts.
   }
 
   // ---- Capture events ------------------------------------------------------
@@ -103,6 +177,40 @@ export function createEventBridge(deps: EventBridgeDeps) {
         // correct project/service/team contract
         const snap = deps.timer.getSnapshot();
         const contract = snap.pickedContract;
+        
+        let imageBase64: string | undefined;
+        try {
+          const fs = require('fs');
+          if (e.filePath && fs.existsSync(e.filePath)) {
+            const buf = fs.readFileSync(e.filePath);
+            if (buf.length > 0) {
+              imageBase64 = buf.toString('base64');
+            }
+          }
+        } catch (err) {
+          log?.warn({ err }, 'event-bridge: failed to read screenshot file for upload');
+        }
+
+        // Compute activity from instant idle time at capture moment
+        let keyboard = 0;
+        let mouse = 0;
+        try {
+          const { powerMonitor } = require('electron');
+          const idleSec = powerMonitor.getSystemIdleTime();
+          if (idleSec < 300) {
+            // Activity level derived from system idle time.
+            // keyboard/mouse breakdown requires native input hooks (rejected per DTT-D-009
+            // privacy guarantee — no keystroke data leaves the device). Values remain 0
+            // until an explicit repo-owner decision on a privacy-compliant measurement approach.
+            const basePct = Math.round((1 - idleSec / 300) * 100);
+            keyboard = 0; // Placeholder — see DTT-D-009
+            mouse = 0;    // Placeholder — see DTT-D-009
+            void basePct; // Available for overall activity signal if needed
+          }
+        } catch {
+          // Non-fatal
+        }
+
         deps.outbox.enqueue({
           kind: 'screenshot.confirm',
           method: 'POST',
@@ -117,6 +225,12 @@ export function createEventBridge(deps: EventBridgeDeps) {
             monitorId: e.displayId,
             contractId: contract?.contractId ?? undefined,
             taskId: contract?.taskId ?? undefined,
+            imageBase64,
+            keyboard,
+            mouse,
+            apps: e.activeAppName
+              ? [{ appName: e.activeAppName, iconUrl: '' }]
+              : undefined,
           },
         });
       } catch (err) {

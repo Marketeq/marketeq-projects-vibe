@@ -1,7 +1,8 @@
 import { Suspense } from "react"
-import { TopMostHeader } from "../top-most-header"
-import { OnlineUsersProvider } from "@/utils/useOnlineUsers"
 import { InboxThreadsProvider } from "@/utils/useInboxThreads"
+import { OnlineUsersProvider } from "@/utils/useOnlineUsers"
+import { TopMostHeader } from "../top-most-header"
+import { GroupLayoutInner } from "./group-layout-inner"
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -12,7 +13,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </Suspense>
         {/* Reserve space for the fixed primary header so page content starts
             below it instead of sliding underneath the pinned nav. */}
-        <div className="pt-[62px] lg:pt-[65px]">{children}</div>
+        <GroupLayoutInner>{children}</GroupLayoutInner>
       </InboxThreadsProvider>
     </OnlineUsersProvider>
   )

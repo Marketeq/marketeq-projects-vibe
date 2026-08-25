@@ -15,11 +15,13 @@ export class TasksService {
   async getTasksByContract(contractId: string): Promise<ContractTask[]> {
     return this.taskRepo.find({
       where: { contractId, archived: false },
-      order: { createdAt: 'ASC' },
+      order: { name: 'ASC' },
     });
   }
 
   async createTask(dto: CreateContractTaskDto): Promise<ContractTask> {
+    // id is a real uuid column with a gen_random_uuid() default — let
+    // Postgres/TypeORM generate it rather than building a fake text id.
     const task = this.taskRepo.create({
       contractId: dto.contractId,
       name: dto.name,

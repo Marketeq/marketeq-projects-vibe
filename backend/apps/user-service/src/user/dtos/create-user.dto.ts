@@ -1,5 +1,7 @@
 import {
+  IsArray,
   IsEmail,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -97,6 +99,11 @@ export class CreateUserDto {
   @IsString()
   timezone?: string;
 
+  @ApiPropertyOptional({ example: 'EUR', description: 'ES-06 region-based currency override' })
+  @IsOptional()
+  @IsString()
+  preferredCurrency?: string | null;
+
   @ApiPropertyOptional({ example : 'Full-time'})
   @IsOptional()
   @IsString()
@@ -124,6 +131,39 @@ export class CreateUserDto {
   @Min(0)
   rate?: number;
 
+  @ApiPropertyOptional({ example: 50 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  rateMin?: number;
+
+  @ApiPropertyOptional({ example: 120 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  rateMax?: number;
+
+  @ApiPropertyOptional({ example: [{ jobTitle: 'Senior Frontend Engineer', clientRate: 120, earning: 96, fee: 24, saveAsDefault: true }] })
+  @IsOptional()
+  @IsArray()
+  jobTitles?: any[];
+
+  @ApiPropertyOptional({ example: 'Finance' })
+  @IsOptional()
+  @IsString()
+  industry?: string;
+
+  @ApiPropertyOptional({ example: 'Hire talent' })
+  @IsOptional()
+  @IsString()
+  businessGoals?: string;
+
+  @ApiPropertyOptional({ example: 2 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  gettingStartedStep?: number;
+
   // `client_success_rating`, `repeat_hire_rate`, and `response_time` are
   // derived metrics that are never set by user input. They are excluded
   // from the input DTO to avoid client spoofing and to keep Swagger clean.
@@ -137,4 +177,19 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   onboardingDismissed?: boolean;
+
+  @ApiPropertyOptional({ example: 'client' })
+  @IsOptional()
+  @IsString()
+  userType?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  clientOnboardedAt?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  talentOnboardedAt?: string;
 }

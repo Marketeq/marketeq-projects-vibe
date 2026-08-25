@@ -5,9 +5,18 @@ import { SVGProps } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import data from "@/public/mock/projects.json"
+import { ProjectAPI } from "@/service/http/project"
 import { UserAPI } from "@/service/http/user"
+import {
+  type MyListing,
+  formatActivityDate,
+  formatRelativeTime,
+  statusToBadgeVisual,
+  useMyListings,
+} from "@/src/lib/my-listings"
 import { ONE_SECOND } from "@/utils/constants"
 import { cn, getId, getIsEmpty, getIsNotEmpty } from "@/utils/functions"
+import { DashboardAmount } from "@/components/dashboard-amount"
 import { useEditable } from "@ark-ui/react"
 import {
   AlertCircle,
@@ -34,6 +43,7 @@ import {
   Trash01,
   Trash02,
   UserCircle,
+  Users03,
   X,
 } from "@blend-metrics/icons"
 import { GridVertical2 } from "@blend-metrics/icons/special"
@@ -48,6 +58,20 @@ import {
   ClientAccountSidebar,
   TalentAccountSidebar,
 } from "@/components/account-sidebars"
+import {
+  MoreInfoDialog,
+  AvailabilityDialog,
+  SkillsDialog,
+} from "@/components/edit-profile-modals"
+import dynamic from "next/dynamic"
+
+const PayoutScheduleDialog = dynamic(
+  () =>
+    import("@/components/transactions-comps").then(
+      (mod) => mod.PayoutScheduleDialog
+    ),
+  { ssr: false }
+)
 import { DashboardFooter } from "@/components/dashboard-footer"
 import { Logo } from "@/components/icons"
 import { GridVertical6 } from "@/components/icons/grid-vertical-6"
@@ -83,15 +107,6 @@ import {
   EditablePreview,
   EditableRoot,
 } from "@/components/ui"
-
-import {
-  type MyListing,
-  formatActivityDate,
-  formatRelativeTime,
-  statusToBadgeVisual,
-  useMyListings,
-} from "@/src/lib/my-listings"
-
 
 export const MoneyDollarCircleFill = ({
   className,
@@ -167,12 +182,28 @@ export const WalletBold = ({
   )
 }
 
-export const LeftSidebar = ({ forceRole }: { forceRole?: "TALENT" | "CLIENT" } = {}) => {
+export const LeftSidebar = ({
+  forceRole,
+}: { forceRole?: "TALENT" | "CLIENT" } = {}) => {
   const { user } = useAuth()
   const dashboardRole = forceRole ?? resolveDashboardRole(user)
   const isTalent = dashboardRole === ROLE.TALENT
 
   return isTalent ? <TalentAccountSidebar /> : <ClientAccountSidebar />
+}
+
+const useProfile = () => {
+  const { user } = useAuth()
+  const [profile, setProfile] = React.useState<any>(null)
+  const fetchProfile = React.useCallback(async () => {
+    if (!user?.id) return
+    try {
+      const res = await UserAPI.getProfile(user.id)
+      setProfile(res?.data ?? null)
+    } catch {}
+  }, [user?.id])
+  React.useEffect(() => { fetchProfile() }, [fetchProfile])
+  return { profile, refreshProfile: fetchProfile }
 }
 
 export const RightDrawer = ({
@@ -185,6 +216,9 @@ export const RightDrawer = ({
   profileProgress?: number
 }) => {
   const { user } = useAuth()
+  const { profile, refreshProfile } = useProfile()
+  const [moreInfoOpen, setMoreInfoOpen] = React.useState(false)
+  const [availabilityOpen, setAvailabilityOpen] = React.useState(false)
   return (
     <div
       className={cn(
@@ -210,6 +244,7 @@ export const RightDrawer = ({
             visual="gray"
             size="md"
             variant="link"
+            onClick={() => setMoreInfoOpen(true)}
           >
             Add your job title
           </Button>
@@ -249,36 +284,6 @@ export const RightDrawer = ({
           </div>
         </div>
 
-        <div className="p-5">
-          <div className="flex gap-x-[5px] items-center">
-            <ThumbsUp className="size-[15px] text-dark-blue-400" />
-            <span className="text-[11px] leading-6 font-semibold text-dark-blue-400">
-              0% Client Success
-            </span>
-          </div>
-        </div>
-
-        <div className="p-5 space-y-3">
-          <div className="flex gap-x-[5px] items-center">
-            <MapPin className="size-[15px] text-dark-blue-400" />
-            <NextLink
-              href="#"
-              className="text-[11px] leading-6 font-semibold text-dark-blue-400 underline hover:text-primary-500"
-            >
-              Add your location
-            </NextLink>
-          </div>
-          <div className="flex gap-x-[5px] items-center">
-            <Clock className="size-[15px] text-dark-blue-400" />
-            <NextLink
-              href="#"
-              className="text-[11px] leading-6 font-semibold text-dark-blue-400 underline hover:text-primary-500"
-            >
-              Add your local time
-            </NextLink>
-          </div>
-        </div>
-
         <div className="p-5 grid grid-cols-2 gap-x-[15px] gap-y-3">
           <div className="flex flex-col items-start gap-y-[5px]">
             <span className="inline-block text-sm leading-[16.94px] text-dark-blue-400">
@@ -288,6 +293,7 @@ export const RightDrawer = ({
               className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
               visual="gray"
               variant="link"
+              onClick={() => setMoreInfoOpen(true)}
             >
               Edit
             </Button>
@@ -300,6 +306,7 @@ export const RightDrawer = ({
               className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
               visual="gray"
               variant="link"
+              onClick={() => setAvailabilityOpen(true)}
             >
               Edit
             </Button>
@@ -320,6 +327,7 @@ export const RightDrawer = ({
               className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
               visual="gray"
               variant="link"
+              onClick={() => setMoreInfoOpen(true)}
             >
               Edit
             </Button>
@@ -328,6 +336,9 @@ export const RightDrawer = ({
 
         <Tasks />
       </div>
+
+      <MoreInfoDialog opened={moreInfoOpen} onOpenedChange={setMoreInfoOpen} profile={profile} onSaved={refreshProfile} />
+      <AvailabilityDialog opened={availabilityOpen} onOpenedChange={setAvailabilityOpen} profile={profile} onSaved={refreshProfile} />
     </div>
   )
 }
@@ -342,6 +353,9 @@ export const RightSidebar = ({
   profileProgress?: number
 }) => {
   const { user } = useAuth()
+  const { profile, refreshProfile } = useProfile()
+  const [moreInfoOpen, setMoreInfoOpen] = React.useState(false)
+  const [availabilityOpen, setAvailabilityOpen] = React.useState(false)
   return (
     <div
       className={cn("w-[322px] shrink-0 min-[1440px]:block hidden", className)}
@@ -364,6 +378,7 @@ export const RightSidebar = ({
             visual="gray"
             size="md"
             variant="link"
+            onClick={() => setMoreInfoOpen(true)}
           >
             Add your job title
           </Button>
@@ -403,36 +418,6 @@ export const RightSidebar = ({
           </div>
         </div>
 
-        <div className="p-5">
-          <div className="flex gap-x-[5px] items-center">
-            <ThumbsUp className="size-[15px]" />
-            <span className="text-[11px] leading-6 font-semibold text-dark-blue-400">
-              0% Client Success
-            </span>
-          </div>
-        </div>
-
-        <div className="p-5 space-y-3">
-          <div className="flex gap-x-[5px] items-center">
-            <MapPin className="size-[15px]" />
-            <NextLink
-              href="#"
-              className="text-[11px] leading-6 font-semibold text-dark-blue-400 underline hover:text-primary-500"
-            >
-              Add your location
-            </NextLink>
-          </div>
-          <div className="flex gap-x-[5px] items-center">
-            <Clock className="size-[15px]" />
-            <NextLink
-              href="#"
-              className="text-[11px] leading-6 font-semibold text-dark-blue-400 underline hover:text-primary-500"
-            >
-              Add your local time
-            </NextLink>
-          </div>
-        </div>
-
         <div className="p-5 grid grid-cols-2 gap-x-[15px] gap-y-3">
           <div className="flex flex-col items-start gap-y-[5px]">
             <span className="inline-block text-sm leading-[16.94px] text-dark-blue-400">
@@ -442,6 +427,7 @@ export const RightSidebar = ({
               className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
               visual="gray"
               variant="link"
+              onClick={() => setMoreInfoOpen(true)}
             >
               Edit
             </Button>
@@ -454,6 +440,7 @@ export const RightSidebar = ({
               className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
               visual="gray"
               variant="link"
+              onClick={() => setAvailabilityOpen(true)}
             >
               Edit
             </Button>
@@ -474,12 +461,16 @@ export const RightSidebar = ({
               className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
               visual="gray"
               variant="link"
+              onClick={() => setMoreInfoOpen(true)}
             >
               Edit
             </Button>
           </div>
         </div>
       </div>
+
+      <MoreInfoDialog opened={moreInfoOpen} onOpenedChange={setMoreInfoOpen} profile={profile} onSaved={refreshProfile} />
+      <AvailabilityDialog opened={availabilityOpen} onOpenedChange={setAvailabilityOpen} profile={profile} onSaved={refreshProfile} />
 
       <div className="bg-white mt-5 border rounded-lg border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
         <Tasks />
@@ -532,11 +523,34 @@ interface Task {
   value: string
 }
 
-const defaultTasks: Task[] = []
+const TASKS_STORAGE_KEY = "marketeq-dashboard-tasks"
+
+const loadTasks = (): Task[] => {
+  try {
+    const saved = localStorage.getItem(TASKS_STORAGE_KEY)
+    return saved ? JSON.parse(saved) : []
+  } catch {
+    return []
+  }
+}
+
+const saveTasks = (tasks: Task[]) => {
+  try {
+    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks))
+  } catch {}
+}
 
 export const Tasks = () => {
-  const [tasks, setTasks] = React.useState<Task[]>(defaultTasks)
+  const [tasks, setTasks] = React.useState<Task[]>([])
   const [shouldClearAll, toggleShouldClearAll] = useToggle(false)
+
+  React.useEffect(() => {
+    setTasks(loadTasks())
+  }, [])
+
+  React.useEffect(() => {
+    saveTasks(tasks)
+  }, [tasks])
 
   React.useEffect(() => {
     if (shouldClearAll) {
@@ -745,9 +759,13 @@ export const Tasks = () => {
                         onDoneChange({ id: task.id, done: false })
                       }
                     />
-                    <span className="text-sm font-medium leading-5  text-dark-blue-400">
-                      {task.value}
-                    </span>
+                    <Editable
+                      defaultValue={task.value}
+                      onChange={(value) =>
+                        onEditableChange({ value, id: task.id })
+                      }
+                      placeholder="Task"
+                    />
 
                     <button
                       className="group-hover:opacity-100 opacity-0 absolute right-0 top-[2.5px] focus-visible:outline-none text-error-500/50 hover:text-error-500"
@@ -878,6 +896,29 @@ export const StarsBFill = ({
 
 export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
   const { user } = useAuth()
+  const router = useRouter()
+  const [creatingDraft, setCreatingDraft] = React.useState(false)
+  const [scheduleOpen, setScheduleOpen] = React.useState(false)
+
+  const handleCreateProject = async () => {
+    if (creatingDraft) return
+    setCreatingDraft(true)
+    try {
+      const res = await ProjectAPI.CreateProjectDraft({
+        title: "",
+        listingType: "project",
+      })
+      const draftId = res?.data?.projectId ?? res?.data?.id
+      if (draftId) {
+        router.push(`/my-listings/${draftId}`)
+      }
+    } catch (err) {
+      console.error("Failed to create draft", err)
+    } finally {
+      setCreatingDraft(false)
+    }
+  }
+
   return (
     <>
       <div className="md:contents flex flex-col gap-y-5">
@@ -899,6 +940,8 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
               className="bg-white text-dark-blue-400 xs:max-md:hidden"
               variant="outlined"
               visual="gray"
+              disabled={creatingDraft}
+              onClick={handleCreateProject}
             >
               <Plus className="size-[15px]" />
               Create a Project
@@ -910,6 +953,8 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
           className="bg-white text-dark-blue-400 md:hidden"
           variant="outlined"
           visual="gray"
+          disabled={creatingDraft}
+          onClick={handleCreateProject}
         >
           <Plus className="size-[15px]" />
           Create a Project
@@ -933,17 +978,7 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
                 </div>
 
                 <div className="space-y-2.5">
-                  <div className="flex items-center gap-x-0.5">
-                    <span className="text-xl leading-6 text-dark-blue-400/50">
-                      $
-                    </span>
-                    <h1 className="text-2xl leading-[29.05px] font-semibold text-dark-blue-400">
-                      66,777
-                      <span className="text-sm leading-[16.94px] text-dark-blue-400">
-                        .00
-                      </span>
-                    </h1>
-                  </div>
+                  <DashboardAmount whole="66,777" cents="00" />
 
                   <p className="text-[11px] leading-[13.31px] text-dark-blue-400">
                     Earnings since Jun 24, 2021
@@ -966,17 +1001,7 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
                 </div>
 
                 <div className="space-y-2.5">
-                  <div className="flex items-center gap-x-0.5">
-                    <span className="text-xl leading-6 text-dark-blue-400/50">
-                      $
-                    </span>
-                    <h1 className="text-2xl leading-[29.05px] font-semibold text-dark-blue-400">
-                      4,566
-                      <span className="text-sm leading-[16.94px] text-dark-blue-400">
-                        .00
-                      </span>
-                    </h1>
-                  </div>
+                  <DashboardAmount whole="4,566" cents="00" />
 
                   <p className="text-[11px] leading-[13.31px] text-dark-blue-400">
                     Earnings in August
@@ -1014,17 +1039,7 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
                 <div className="flex items-center md:gap-x-[25px] min-[1024px]:gap-x-[30px] min-[1440px]:gap-x-[37px] xl:gap-x-[57px] 2xl:gap-x-[75px] justify-between">
                   <div className="space-y-2.5">
                     <div className="flex gap-x-1 items-center">
-                      <div className="flex items-center gap-x-0.5">
-                        <span className="text-xl leading-6 text-dark-blue-400/50">
-                          $
-                        </span>
-                        <h1 className="text-2xl leading-[29.05px] font-semibold text-dark-blue-400">
-                          800
-                          <span className="text-sm leading-[16.94px] text-dark-blue-400">
-                            .00
-                          </span>
-                        </h1>
-                      </div>
+                      <DashboardAmount whole="800" cents="00" />
 
                       <Badge visual="primary">Processing</Badge>
                     </div>
@@ -1038,6 +1053,7 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
                     className="bg-white h-7 px-2.5 text-[10px] leading-5 text-dark-blue-400"
                     variant="outlined"
                     visual="gray"
+                    onClick={() => setScheduleOpen(true)}
                   >
                     Edit Schedule
                   </Button>
@@ -1066,6 +1082,8 @@ export const Welcome = ({ onToggle }: { onToggle: () => void }) => {
           </div>
         </div>
       </div>
+
+      <PayoutScheduleDialog open={scheduleOpen} onOpenChange={setScheduleOpen} />
     </>
   )
 }
@@ -1076,11 +1094,11 @@ const RecentListingsTableRow = ({ listing }: { listing: MyListing }) => {
   return (
     <tr
       className="hover:bg-gray-50 cursor-pointer"
-      onClick={() => router.push("/my-listings")}
+      onClick={() => router.push(`/my-listings/${listing.id}`)}
     >
       <td className="px-6 py-4">
         <NextLink
-          href="/my-listings"
+          href={`/my-listings/${listing.id}`}
           className="text-sm font-semibold text-dark-blue-400 hover:underline"
         >
           {listing.title}
@@ -1227,7 +1245,28 @@ const GETTING_STARTED_STEPS = [
 
 export const CreateYourOwnProject = () => {
   const { user } = useAuth()
+  const router = useRouter()
   const totalSteps = GETTING_STARTED_STEPS.length
+  const [creatingDraft, setCreatingDraft] = React.useState(false)
+
+  const handleCreateProject = async () => {
+    if (creatingDraft) return
+    setCreatingDraft(true)
+    try {
+      const res = await ProjectAPI.CreateProjectDraft({
+        title: "",
+        listingType: "project",
+      })
+      const draftId = res?.data?.projectId ?? res?.data?.id
+      if (draftId) {
+        router.push(`/my-listings/${draftId}`)
+      }
+    } catch (err) {
+      console.error("Failed to create draft", err)
+    } finally {
+      setCreatingDraft(false)
+    }
+  }
 
   // Read persisted step from user; null means dismissed
   const savedStep = user?.gettingStartedStep
@@ -1274,6 +1313,7 @@ export const CreateYourOwnProject = () => {
 
   const step = GETTING_STARTED_STEPS[currentStep]
   const progressValue = ((currentStep + 1) / totalSteps) * 100
+  const isCreateProjectStep = step.href === "/publish-project"
 
   return (
     <div className="bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] border rounded-lg border-gray-200 p-5 flex flex-col-reverse md:grid md:grid-cols-2 gap-5 min-[1024px]:gap-x-[100px]">
@@ -1297,16 +1337,29 @@ export const CreateYourOwnProject = () => {
 
         <div className="mt-5 min-[1024px]:mt-[49px] flex flex-col items-start gap-y-3">
           <div className="flex items-center gap-x-3">
-            <NextLink href={step.href}>
+            {isCreateProjectStep ? (
               <Button
                 className="text-dark-blue-400"
                 size="sm"
                 variant="outlined"
                 visual="gray"
+                disabled={creatingDraft}
+                onClick={handleCreateProject}
               >
                 <Plus className="size-[15px]" /> {step.cta}
               </Button>
-            </NextLink>
+            ) : (
+              <NextLink href={step.href}>
+                <Button
+                  className="text-dark-blue-400"
+                  size="sm"
+                  variant="outlined"
+                  visual="gray"
+                >
+                  <Plus className="size-[15px]" /> {step.cta}
+                </Button>
+              </NextLink>
+            )}
             <Button
               className="text-dark-blue-400"
               size="sm"
@@ -1333,81 +1386,116 @@ export const CreateYourOwnProject = () => {
   )
 }
 
-export const RecommendedForYouCard = () => {
+type RecommendedProject = {
+  id: string
+  slug: string
+  title: string
+  memberCount: number
+  memberAvatars: string[]
+  score: number
+}
+
+export const RecommendedForYouCard = ({
+  project,
+  onDismiss,
+}: {
+  project: RecommendedProject
+  onDismiss: (id: string) => void
+}) => {
   return (
     <article className="relative rounded-lg p-5 border border-[#122A4B]/[.15] shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-      <button className="focus-visible:outline-none absolute top-3 right-3 text-dark-blue-400/50 hover:text-dark-blue-400">
+      <button
+        className="focus-visible:outline-none absolute top-3 right-3 text-dark-blue-400/50 hover:text-dark-blue-400"
+        onClick={() => onDismiss(project.id)}
+      >
         <X className="size-[18px]" />
       </button>
       <div className="pt-[18px] pb-[54px]">
         <div className="flex items-center justify-center">
-          <AvatarGroup size="md" max={3} excess>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-            <Avatar
-              className="border-2 border-white hover:ring-0 active:ring-0"
-              size="md"
-            >
-              <AvatarImage src="/woman.jpg" alt="Woman" />
-              <AvatarFallback>W</AvatarFallback>
-            </Avatar>
-          </AvatarGroup>
+          {project.memberCount > 0 ? (
+            <AvatarGroup size="md" max={3} excess>
+              {Array.from({ length: Math.min(project.memberCount, 6) }).map(
+                (_, i) => (
+                  <Avatar
+                    key={i}
+                    className="border-2 border-white hover:ring-0 active:ring-0"
+                    size="md"
+                  >
+                    {project.memberAvatars[i] && (
+                      <AvatarImage src={project.memberAvatars[i]} alt="" />
+                    )}
+                    <AvatarFallback>
+                      {project.title.charAt(i % project.title.length).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                ),
+              )}
+            </AvatarGroup>
+          ) : (
+            <div className="flex items-center -space-x-2">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="size-10 rounded-full border-2 border-dashed border-gray-300 bg-gray-100 flex items-center justify-center ring-2 ring-white"
+                >
+                  <Users03 className="size-4 text-gray-400" />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <h1 className="text-sm leading-[16.94px] line-clamp-1 text-center text-dark-blue-400 mt-2.5 font-semibold">
-          Full E-commerce Website Setup for your store
+          {project.title}
         </h1>
         <p className="text-sm leading-[16.94px] mt-1 text-center text-gray-500">
-          5 people are working on this project
+          {project.memberCount > 0
+            ? `${project.memberCount} ${project.memberCount === 1 ? "person is" : "people are"} working on this project`
+            : "Be the first to claim this project"}
         </p>
       </div>
 
-      <Button
-        visual="gray"
-        variant="outlined"
-        className="w-full text-dark-blue-400"
-      >
-        <Send className="size-[15px]" /> Request to Join
-      </Button>
+      <NextLink href={`/project-details/${project.slug}`}>
+        <Button
+          visual="gray"
+          variant="outlined"
+          className="w-full text-dark-blue-400"
+        >
+          <Send className="size-[15px]" />{" "}
+          {project.memberCount > 0 ? "Request to Join" : "Claim this Project"}
+        </Button>
+      </NextLink>
     </article>
   )
 }
 
 export const RecommendedForYou = () => {
   const [carousel, setCarousel] = React.useState<Swiper>()
+  const [projects, setProjects] = React.useState<RecommendedProject[]>([])
+  const [dismissed, setDismissed] = React.useState<Set<string>>(new Set())
+  const [skillsOpen, setSkillsOpen] = React.useState(false)
+  const { profile, refreshProfile } = useProfile()
+  const { user } = useAuth()
+
+  React.useEffect(() => {
+    const load = async () => {
+      try {
+        const profileRes = await UserAPI.getProfile(user?.id ?? "")
+        const skills: string[] = (profileRes?.data?.skills ?? []).map(
+          (s: { name: string }) => s.name,
+        )
+        const res = await ProjectAPI.getRecommended(skills, 10)
+        setProjects(res?.data ?? [])
+      } catch {
+        // silently fail
+      }
+    }
+    if (user?.id) load()
+  }, [user?.id])
+
+  const visible = projects.filter((p) => !dismissed.has(p.id))
+  const hasSkills = user?.id && projects.length > 0
+
   return (
     <div className="mt-3 md:mt-5">
       <div className="p-5 border bg-white border-gray-200 rounded-lg shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
@@ -1416,21 +1504,26 @@ export const RecommendedForYou = () => {
             <h1 className="text-lg leading-[21.78px] font-bold text-dark-blue-400">
               Recommended for you
             </h1>
-            <p className="text-sm leading-[16.94px] font-light text-dark-blue-400">
-              Improve your recommendations by{" "}
-              <NextLink
-                className="focus-visible:outline-none underline hover:text-primary-500"
-                href="/complete-profile"
-              >
-                adding skills
-              </NextLink>{" "}
-              to your profile.
-            </p>
+            {!hasSkills && (
+              <p className="text-sm leading-[16.94px] font-light text-dark-blue-400">
+                Improve your recommendations by{" "}
+                <button
+                  type="button"
+                  className="focus-visible:outline-none underline hover:text-primary-500"
+                  onClick={() => setSkillsOpen(true)}
+                >
+                  adding skills
+                </button>{" "}
+                to your profile.
+              </p>
+            )}
           </div>
 
-          <Button variant="outlined" visual="gray">
-            View All
-          </Button>
+          <NextLink href="/c/research">
+            <Button variant="outlined" visual="gray">
+              View All
+            </Button>
+          </NextLink>
         </div>
 
         <Tabs defaultValue="Projects">
@@ -1446,21 +1539,16 @@ export const RecommendedForYou = () => {
                 onInit={setCarousel}
                 className="avatar-carousel"
               >
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
-                <SwiperSlide>
-                  <RecommendedForYouCard />
-                </SwiperSlide>
+                {visible.map((project) => (
+                  <SwiperSlide key={project.id}>
+                    <RecommendedForYouCard
+                      project={project}
+                      onDismiss={(id) =>
+                        setDismissed((prev) => new Set([...prev, id]))
+                      }
+                    />
+                  </SwiperSlide>
+                ))}
               </SwiperRoot>
 
               {carousel?.allowSlideNext && (
@@ -1484,11 +1572,35 @@ export const RecommendedForYou = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      <SkillsDialog opened={skillsOpen} onOpenedChange={setSkillsOpen} profile={profile} onSaved={refreshProfile} />
     </div>
   )
 }
 
 export const BecomeTopSeller = () => {
+  const router = useRouter()
+  const [creatingDraft, setCreatingDraft] = React.useState(false)
+
+  const handleCreateProject = async () => {
+    if (creatingDraft) return
+    setCreatingDraft(true)
+    try {
+      const res = await ProjectAPI.CreateProjectDraft({
+        title: "",
+        listingType: "project",
+      })
+      const draftId = res?.data?.projectId ?? res?.data?.id
+      if (draftId) {
+        router.push(`/my-listings/${draftId}`)
+      }
+    } catch (err) {
+      console.error("Failed to create draft", err)
+    } finally {
+      setCreatingDraft(false)
+    }
+  }
+
   return (
     <div className="mt-3 md:mt-5 p-5 bg-white rounded-lg border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
       <h1 className="text-lg leading-[21.78px] font-bold text-dark-blue-400">
@@ -1536,6 +1648,8 @@ export const BecomeTopSeller = () => {
               className="text-dark-blue-400"
               variant="outlined"
               visual="gray"
+              disabled={creatingDraft}
+              onClick={handleCreateProject}
             >
               Create a Project Now
             </Button>

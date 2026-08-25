@@ -48,10 +48,20 @@
 # ----- CRITICAL: publish-project flow (save & exit) -----
 /frontend/app/publish-project/                      @CTorres9800 @Marketeq/code-review
 
-# ----- CRITICAL: top-level layout and header -----
+# ----- CRITICAL: top-level layout, header, and settings sidebar -----
 /frontend/app/top-most-header.tsx                   @CTorres9800 @Marketeq/code-review
 /frontend/app/layout.tsx                            @CTorres9800 @Marketeq/code-review
 /frontend/middleware.ts                             @CTorres9800 @Marketeq/code-review
+/frontend/components/settings-sidebar.tsx           @CTorres9800 @Marketeq/code-review
+
+# ----- CRITICAL: frozen presentation files -----
+# Per SOP 1.5 "Frozen UI". The front end of these screens is locked: no
+# engineer may change markup, styling, layout, or transitions. Backend and
+# API work IS allowed, but only through the sibling data module listed
+# beneath each entry, which is deliberately left unowned so backend
+# engineers can wire it without CTO review.
+/frontend/app/(group)/my-jobs/page.tsx              @CTorres9800 @Marketeq/code-review
+# ^ backend seam (NOT frozen, edit freely): frontend/app/(group)/my-jobs/my-jobs.data.ts
 
 # ----- Shared UI components -----
 /frontend/components/listing-card.tsx               @Marketeq/code-review
@@ -61,6 +71,10 @@
 /.github/                                           @CTorres9800 @Marketeq/code-review
 /render.yaml                                        @CTorres9800 @Marketeq/code-review
 /vercel.json                                        @CTorres9800 @Marketeq/code-review
+/scripts/devops/                                    @CTorres9800 @Marketeq/code-review
+/backend/Dockerfile.all                             @CTorres9800 @Marketeq/code-review
+/backend/boot-all.js                                @CTorres9800 @Marketeq/code-review
+/backend/build-all-services.sh                      @CTorres9800 @Marketeq/code-review
 /frontend/.env.local.example                        @CTorres9800 @Marketeq/code-review
 /frontend/.env.staging.example                      @CTorres9800 @Marketeq/code-review
 /frontend/.env.production.example                   @CTorres9800 @Marketeq/code-review

@@ -7,8 +7,9 @@
 //   2. Inject the bearer token on every request. Phase 5 owns the
 //      keychain wiring; for now the client exposes `setAuthToken(token)`
 //      which auth can call once it has one.
-//   3. On a 401, emit `auth:token-expired` so the app can kick off the
-//      refresh dance (Phase 5).
+//   3. On a 401, refresh via `onUnauthorized` and transparently retry the
+//      same request once (doc 15 §7) — no caller ever sees a stale-token
+//      401 unless the refresh itself fails.
 //   4. On 5xx / network errors / 408 / 429: exponential backoff + full
 //      jitter per doc 16 §4, capped at MAX_RETRIES per single call. Note
 //      that the outbox layer owns its own multi-cycle retry budget; this
@@ -31,7 +32,6 @@ import axios, {
   AxiosResponse,
   InternalAxiosRequestConfig,
 } from 'axios';
-import { EventEmitter } from 'node:events';
 import type { Logger } from 'pino';
 import { z, ZodSchema } from 'zod';
 
@@ -39,11 +39,14 @@ import { z, ZodSchema } from 'zod';
 // Response schemas (doc 13)
 // -----------------------------------------------------------------------------
 
+// export const HealthResponse = z.object({
+//   status: z.literal('ok'),
+//   version: z.string(),
+//   uptime: z.number(),
+// });
 export const HealthResponse = z.object({
   status: z.literal('ok'),
-  version: z.string(),
-  uptime: z.number(),
-});
+}).passthrough();
 export type HealthResponse = z.infer<typeof HealthResponse>;
 
 export const ErrorEnvelope = z.object({
@@ -200,18 +203,21 @@ export interface ApiClientConfig {
   retryPolicy?: RetryPolicy;
   /** Optional pre-seeded token (e.g. a Phase 5 test fixture). */
   initialToken?: string | null;
+  /**
+   * doc 15 §7: called on a 401 to obtain a fresh token before transparently
+   * retrying the same request once. Resolves true if a fresh token is now
+   * set (via setAuthToken), false if refresh failed (e.g. the refresh
+   * token itself was revoked) — in which case the original 401 is returned
+   * as-is and the caller (e.g. the doc 16 sync queue) treats it like any
+   * other non-retryable 4xx.
+   */
+  onUnauthorized?: () => Promise<boolean>;
   /** Injected logger. */
   logger?: Logger;
   /** Injected axios for tests. */
   axiosInstance?: AxiosInstance;
   /** Clock injected for deterministic tests. */
   now?: () => number;
-}
-
-export interface ApiClientEvents {
-  on(event: 'auth:token-expired', listener: () => void): this;
-  off(event: 'auth:token-expired', listener: () => void): this;
-  emit(event: 'auth:token-expired'): boolean;
 }
 
 export interface RawRequestOptions {
@@ -234,7 +240,6 @@ export type ApiClient = ReturnType<typeof createApiClient>;
 // -----------------------------------------------------------------------------
 
 export function createApiClient(config: ApiClientConfig) {
-  const bus: ApiClientEvents = new EventEmitter() as ApiClientEvents;
   const log = config.logger?.child({ svc: 'api-client' });
   const now = config.now ?? Date.now;
   const timeoutMs = config.timeoutMs ?? 15_000;
@@ -259,19 +264,6 @@ export function createApiClient(config: ApiClientConfig) {
       req.headers.set('Authorization', `Bearer ${authToken}`);
     }
     return req;
-  });
-
-  // ---- Response interceptor: 401 -> emit token expired ---------------------
-  client.interceptors.response.use((resp: AxiosResponse) => {
-    if (resp.status === 401) {
-      log?.warn({ url: resp.config.url }, '401 received — emitting token expired');
-      try {
-        bus.emit('auth:token-expired');
-      } catch (e) {
-        log?.debug({ e }, 'auth:token-expired listener threw');
-      }
-    }
-    return resp;
   });
 
   // ---------------------------------------------------------------------------
@@ -299,11 +291,33 @@ export function createApiClient(config: ApiClientConfig) {
     };
 
     let attempt = 0;
+    let authRetried = false;
     // attempt = 0 is the initial try; attempts 1..maxRetries are retries.
     // eslint-disable-next-line no-constant-condition
     while (true) {
       try {
         const resp = await client.request(axiosCfg);
+
+        // doc 15 §7: on a 401, refresh and transparently retry the same
+        // request once — unconditional on `noRetry`, since this is
+        // authentication plumbing, not the doc 16 retry/backoff policy.
+        // Every caller (typed helpers and the outbox's raw() escape hatch
+        // alike) gets "no stale tokens are possible" for free.
+        if (resp.status === 401 && !authRetried && config.onUnauthorized) {
+          authRetried = true;
+          let refreshed = false;
+          try {
+            refreshed = await config.onUnauthorized();
+          } catch (e) {
+            log?.warn({ e }, 'onUnauthorized threw');
+          }
+          if (refreshed) {
+            log?.debug({ path: options.path }, '401 — refreshed, retrying once');
+            continue;
+          }
+          log?.warn({ path: options.path }, '401 — refresh failed, returning as final');
+        }
+
         // Retry on retryable HTTP status even though axios didn't throw
         // (validateStatus: () => true).
         if (shouldRetryStatus(resp.status) && !options.noRetry) {
@@ -383,9 +397,6 @@ export function createApiClient(config: ApiClientConfig) {
         /* ignore */
       }
     },
-    on: bus.on.bind(bus),
-    off: bus.off.bind(bus),
-
     // low-level escape hatch used by the outbox
     raw: rawRequest,
 

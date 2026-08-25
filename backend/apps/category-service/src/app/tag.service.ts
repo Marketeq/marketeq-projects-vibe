@@ -17,7 +17,7 @@ export class TagService {
 
   /** Upsert a tag (by slug first, then uuid fallback) from CMS/webhook/manual */
   async upsertFromCms(dto: TagDto): Promise<TagEntity> {
-    let tag =
+    const tag =
       (await this.repo.findOne({ where: { slug: dto.slug } })) ||
       (dto.uuid ? await this.repo.findOne({ where: { uuid: dto.uuid } }) : null);
 
@@ -57,6 +57,15 @@ export class TagService {
     const tag = await this.repo.findOne({ where: { slug } });
     if (!tag) throw new NotFoundException(`Tag with slug '${slug}' not found`);
     return tag;
+  }
+
+  /** List all tags, optionally filtered by a case-insensitive name match */
+  async findAll(search?: string): Promise<TagEntity[]> {
+    const qb = this.repo.createQueryBuilder('tag').orderBy('tag.name', 'ASC');
+    if (search) {
+      qb.andWhere('tag.name ILIKE :search', { search: `%${search}%` });
+    }
+    return qb.getMany();
   }
 
   // ----- Nest -> CMS helpers (Payload REST API) -----

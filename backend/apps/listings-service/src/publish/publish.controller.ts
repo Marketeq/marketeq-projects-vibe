@@ -118,6 +118,37 @@ export class PublishController {
     }
   }
 
+  @Post('project/:projectId/faqs/suggest')
+  async suggestFaqs(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      return await this.publishService.suggestFaqs(req.user.sub, projectId);
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Post('project/:projectId/faqs/answer')
+  async suggestFaqAnswer(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body('question') question: string,
+  ) {
+    try {
+      return await this.publishService.suggestFaqAnswer(
+        req.user.sub,
+        projectId,
+        question,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
   @Get('projects/mine')
   async getMyProjects(@Req() req: AuthenticatedRequest) {
     try {
@@ -146,6 +177,75 @@ export class PublishController {
     }
   }
 
+  @Get('project/:projectId/members')
+  async getProjectMembers(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      return await this.publishService.getProjectMembers(
+        req.user.sub,
+        projectId,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Put('project/:projectId/members')
+  async saveProjectMembers(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() body: { members: any[] },
+  ) {
+    try {
+      return await this.publishService.saveProjectMembers(
+        req.user.sub,
+        projectId,
+        body?.members ?? [],
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Get('project/:projectId/questions')
+  async getRecentQuestions(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      return await this.publishService.getRecentQuestions(
+        req.user.sub,
+        projectId,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Put('project/:projectId/questions')
+  async saveRecentQuestions(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+    @Body() body: { questions: any[] },
+  ) {
+    try {
+      return await this.publishService.saveRecentQuestions(
+        req.user.sub,
+        projectId,
+        body?.questions ?? [],
+        req.headers.authorization,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
   @Post('category/subcategory')
   async createModeratedSubcategory(
     @Body() dto: CreateModeratedSubcategoryDto,
@@ -160,6 +260,23 @@ export class PublishController {
   ) {
     try {
       return await this.publishService.publishExistingProject(
+        req.user.sub,
+        projectId,
+        req.headers.authorization,
+      );
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
+  @Put('project/:projectId/unpublish')
+  async unpublishProject(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      return await this.publishService.unpublishProject(
         req.user.sub,
         projectId,
       );
@@ -201,7 +318,7 @@ export class PublishController {
     const featuredVideoFile =
       files?.featuredVideo?.[0] ?? files?.videoUrl?.[0];
 
-    if (!featuredImageFile) {
+    if (!featuredImageFile && !dto.featuredImage && dto.clearFeatured !== 'true') {
       throw new BadRequestException('Featured image is required.');
     }
 
@@ -213,7 +330,7 @@ export class PublishController {
       }
     });
 
-    if (!this.imageValidator.isValid(featuredImageFile)) {
+    if (featuredImageFile && !this.imageValidator.isValid(featuredImageFile)) {
       throw new BadRequestException(
         this.imageValidator.buildErrorMessage(featuredImageFile),
       );
@@ -234,12 +351,13 @@ export class PublishController {
   async updateGalleryImages(
     @Req() req: AuthenticatedRequest,
     @Param('projectId') projectId: string,
-    @Body() body: { additionalImages: string[] },
+    @Body() body: { additionalImages: string[]; hiddenImages?: string[] },
   ) {
     return this.publishService.updateMediaGallery(
       req.user.sub,
       projectId,
       body.additionalImages ?? [],
+      body.hiddenImages,
     );
   }
 

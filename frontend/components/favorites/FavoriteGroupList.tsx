@@ -1,11 +1,17 @@
 "use client"
 
 import { useState } from "react"
-import { useFavoriteGroups, useRemoveFavorite, useMoveFavorite, useCreateGroup, useDeleteGroup } from "@/src/hooks/useFavorites"
-import { FavoriteGroup, Favorite } from "@/service/http/favorites"
-import { Button, IconButton, Input } from "@/components/ui"
-import { Plus, Trash01, X } from "@blend-metrics/icons"
+import { Favorite, FavoriteGroup } from "@/service/http/favorites"
+import {
+  useCreateGroup,
+  useDeleteGroup,
+  useFavoriteGroups,
+  useMoveFavorite,
+  useRemoveFavorite,
+} from "@/src/hooks/useFavorites"
 import { cn } from "@/utils/functions"
+import { Plus, Trash01, X } from "@blend-metrics/icons"
+import { Button, IconButton, Input } from "@/components/ui"
 
 const TYPE_LABELS: Record<string, string> = {
   talent: "Talent",
@@ -31,7 +37,9 @@ function FavoriteItem({
         <span className="inline-flex items-center rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700">
           {TYPE_LABELS[fav.type] ?? fav.type}
         </span>
-        <span className="truncate text-sm text-gray-700 font-medium">{fav.itemId}</span>
+        <span className="truncate text-sm text-gray-700 font-medium">
+          {fav.itemId}
+        </span>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <select
@@ -78,7 +86,11 @@ function NewGroupForm({ onDone }: { onDone: () => void }) {
         onChange={(e) => setName(e.target.value)}
         className="h-8 text-sm"
       />
-      <Button type="submit" size="sm" disabled={create.isPending || !name.trim()}>
+      <Button
+        type="submit"
+        size="sm"
+        disabled={create.isPending || !name.trim()}
+      >
         {create.isPending ? "Creating..." : "Create"}
       </Button>
       <Button type="button" size="sm" variant="outlined" onClick={onDone}>
@@ -129,7 +141,9 @@ export function FavoriteGroupList() {
       {(groups as FavoriteGroup[]).map((group) => (
         <div key={group.id} className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">{group.name}</h2>
+            <h2 className="text-sm font-semibold text-gray-700">
+              {group.name}
+            </h2>
             <IconButton
               aria-label="Delete group"
               className="h-7 w-7 text-gray-400 hover:text-red-500"
@@ -141,11 +155,17 @@ export function FavoriteGroupList() {
           </div>
 
           {group.favorites.length === 0 ? (
-            <p className="text-xs text-gray-400 pl-1">No items in this group.</p>
+            <p className="text-xs text-gray-400 pl-1">
+              No items in this group.
+            </p>
           ) : (
             <div className="space-y-2">
               {group.favorites.map((fav) => (
-                <FavoriteItem key={fav.id} fav={fav} groups={groups as FavoriteGroup[]} />
+                <FavoriteItem
+                  key={fav.id}
+                  fav={fav}
+                  groups={groups as FavoriteGroup[]}
+                />
               ))}
             </div>
           )}

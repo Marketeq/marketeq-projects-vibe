@@ -20,6 +20,7 @@ export class ProjectMapper {
     project.tags = raw.tags;
     project.skills = raw.skills;
     project.listingType = raw.listingType;
+    project.projectType = raw.projectType ?? null;
     project.categories = raw.categories;
     project.subCategories = raw.subCategories;
     project.categorySelections = raw.categorySelections;
@@ -30,6 +31,11 @@ export class ProjectMapper {
     project.updatedAt = raw.updatedAt;
     project.deletedAt = raw.deletedAt;
     project.deliverables = raw.deliverables ?? null;
+    project.mediaUrls = raw.mediaUrls ?? [];
+    project.teamMemberIds = raw.teamMemberIds ?? [];
+    project.videoUrl = raw.videoUrl ?? null;
+    project.faqs = raw.faqs ?? [];
+    project.scope = raw.scope ?? null;
     if (raw.media) {
       project.media = raw.media;
     }
@@ -59,10 +65,18 @@ export class ProjectMapper {
     projectEntity.tags = project.tags!;
     projectEntity.skills = project.skills!;
     projectEntity.listingType = project.listingType!;
+    projectEntity.projectType = project.projectType ?? undefined;
     projectEntity.categories = project.categories!;
     projectEntity.subCategories = project.subCategories!;
     projectEntity.categorySelections = project.categorySelections ?? [];
     projectEntity.deliverables = project.deliverables ?? null;
+    projectEntity.mediaUrls = project.mediaUrls ?? [];
+    projectEntity.teamMemberIds = project.teamMemberIds ?? [];
+    projectEntity.videoUrl = project.videoUrl ?? undefined;
+    projectEntity.faqs = project.faqs ?? [];
+    if (project.publishedSnapshot !== undefined) {
+      projectEntity.publishedSnapshot = project.publishedSnapshot;
+    }
     projectEntity.status = project.status ?? undefined;
     projectEntity.projectDatePublished = project.projectDatePublished ?? undefined;
     projectEntity.userId = project.userId;

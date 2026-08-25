@@ -59,6 +59,13 @@ export class User {
   @Column({ nullable: true })
   availability?: string;
 
+  // ES-06 region-based currency: explicit talent override set via Currency
+  // Settings. No reliable ISO region/country code exists elsewhere on this
+  // entity (`location` is freeform text), so this is the only resolvable
+  // signal — absence of it is what triggers the USD fallback path.
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  preferredCurrency?: string | null;
+
   @Column({ nullable: true })
   role?: string;
 
@@ -92,11 +99,23 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   onboardedAt?: Date;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  clientOnboardedAt?: Date;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  talentOnboardedAt?: Date;
+
   @Column({ type: 'numeric', nullable: true })
   rate?: number;
 
+  @Column({ type: 'numeric', nullable: true })
+  rateMin?: number | null;
+
+  @Column({ type: 'numeric', nullable: true })
+  rateMax?: number | null;
+
   @Column({ type: 'jsonb', nullable: true })
-  jobTitles?: string[];
+  jobTitles?: any;
 
   // Restored in migration 1773700000000 — previous "align entity with DB"
   // pass (commit 371fd4f3) dropped these columns from the entity, which

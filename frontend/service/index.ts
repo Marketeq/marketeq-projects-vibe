@@ -6,76 +6,24 @@ import axios, {
   AxiosResponse,
   InternalAxiosRequestConfig,
 } from "axios"
-import Cookies from "js-cookie"
 import { getPublicApiUrl, getPublicAuthUrl } from "@/lib/runtime-urls"
 
 interface Config extends AxiosRequestConfig {}
 
 const BASE = getPublicApiUrl()
 
-const getAccessToken = () => {
-  const cookieToken = Cookies.get("access_token") || Cookies.get("accessToken")
-  if (cookieToken) return cookieToken
-
-  if (typeof window === "undefined") return undefined
-
-  return (
-    window.localStorage.getItem("access_token") ||
-    window.localStorage.getItem("accessToken") ||
-    window.localStorage.getItem("token") ||
-    window.localStorage.getItem("authToken") ||
-    undefined
-  )
-}
-
-export const persistAuthTokens = (data: {
-  access_token?: string
-  accessToken?: string
-  refresh_token?: string
-  refreshToken?: string
-  sessionId?: string
-  session_id?: string
-}) => {
-  const accessToken = data.access_token ?? data.accessToken
-  const refreshToken = data.refresh_token ?? data.refreshToken
-  const sessionId = data.sessionId ?? data.session_id
-
-  if (accessToken) {
-    Cookies.set("access_token", accessToken, { path: "/" })
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("access_token", accessToken)
-      window.localStorage.setItem("token", accessToken)
-    }
-  }
-
-  if (refreshToken) {
-    Cookies.set("refresh_token", refreshToken, { path: "/" })
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("refresh_token", refreshToken)
-    }
-  }
-
-  if (sessionId) {
-    Cookies.set("session_id", sessionId, { path: "/" })
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("session_id", sessionId)
-    }
-  }
-}
-
 axios.defaults.baseURL = BASE
+axios.defaults.withCredentials = true
 
 const axiosInstance = axios.create({
   baseURL: BASE,
   timeout: 30000,
+  withCredentials: true,
 })
 
 axiosInstance.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
-    const access_token = getAccessToken()
-    if (access_token) {
-      config.headers.Authorization = `Bearer ${access_token}`
-    } else if (config.headers?.Authorization) {
+    if (config.headers?.Authorization) {
       delete config.headers.Authorization
     }
 
@@ -89,16 +37,40 @@ axiosInstance.interceptors.request.use(
 // Auto-refresh: if a request gets 401, try refreshing the token and retry once
 let isRefreshing = false
 let failedQueue: Array<{
-  resolve: (token: string) => void
+  resolve: () => void
   reject: (err: unknown) => void
 }> = []
 
-const processQueue = (error: unknown, token: string | null = null) => {
+const processQueue = (error: unknown = null) => {
   failedQueue.forEach((prom) => {
-    if (token) prom.resolve(token)
+    if (!error) prom.resolve()
     else prom.reject(error)
   })
   failedQueue = []
+}
+
+let refreshInFlight: Promise<void> | null = null
+
+/**
+ * Refresh the session, collapsing concurrent callers onto a single request.
+ *
+ * `apiFetch` (src/lib/api.ts) is a separate HTTP layer that does not go through
+ * these interceptors, so without a shared entry point a fetch-side 401 and an
+ * axios-side 401 could POST /auth/refresh concurrently — the second call would
+ * present a refresh token the first one had already consumed and log the user
+ * out. Both layers route through here so only one refresh is ever in flight.
+ */
+export const refreshSession = (): Promise<void> => {
+  if (!refreshInFlight) {
+    const AUTH_BASE = getPublicAuthUrl()
+    refreshInFlight = axiosInstance
+      .post(`${AUTH_BASE}/auth/refresh`, null)
+      .then(() => undefined)
+      .finally(() => {
+        refreshInFlight = null
+      })
+  }
+  return refreshInFlight
 }
 
 axiosInstance.interceptors.response.use(
@@ -115,21 +87,15 @@ axiosInstance.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    const refreshToken = Cookies.get("refresh_token")
-    if (!refreshToken) {
-      return Promise.reject(error)
-    }
-
     if (isRefreshing) {
       // Queue this request until the refresh completes
       return new Promise((resolve, reject) => {
         failedQueue.push({
-          resolve: (token: string) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`
+          resolve: () => {
             originalRequest._retry = true
             resolve(axiosInstance(originalRequest))
           },
-          reject: (err: unknown) => reject(err),
+          reject: () => reject(error),
         })
       })
     }
@@ -138,34 +104,19 @@ axiosInstance.interceptors.response.use(
     originalRequest._retry = true
 
     try {
-      const AUTH_BASE = getPublicAuthUrl()
-      const res = await axiosInstance.post(`${AUTH_BASE}/auth/refresh`, {
-        refresh_token: refreshToken,
-      })
-
-      const newAccessToken = res?.data?.access_token
-      const newRefreshToken = res?.data?.refresh_token
-
-      if (newAccessToken) {
-        persistAuthTokens({
-          access_token: newAccessToken,
-          refresh_token: newRefreshToken,
-          sessionId: res?.data?.sessionId,
-        })
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
-        processQueue(null, newAccessToken)
-        return axiosInstance(originalRequest)
-      }
-
-      processQueue(error, null)
-      return Promise.reject(error)
+      await refreshSession()
+      processQueue()
+      return axiosInstance(originalRequest)
     } catch (refreshError) {
-      processQueue(refreshError, null)
-      // Refresh failed — clear tokens, user will need to re-login
-      Cookies.remove("access_token", { path: "/" })
-      Cookies.remove("refresh_token", { path: "/" })
-      Cookies.remove("session_id", { path: "/" })
-      return Promise.reject(refreshError)
+      processQueue(refreshError)
+      // Refresh failed, so the session is genuinely over. Reject with the
+      // caller's own 401 rather than the refresh call's error: the caller's
+      // payload already reads "Your session has expired. Please log in again
+      // to continue.", whereas the refresh error surfaces the internal
+      // "Invalid refresh token" — which is what onboarding was showing users.
+      // Nothing can be cleared here; access_token/refresh_token are httpOnly,
+      // so only a fresh sign-in replaces them.
+      return Promise.reject(error)
     } finally {
       isRefreshing = false
     }

@@ -66,6 +66,7 @@ export class ListingAdapterReal extends ListingAdapter {
       const queryParams = new URLSearchParams({
         [`where[listingType][equals]`]: listingType,
         [`where[status][equals]`]: 'published',
+        [`where[category.uuid][equals]`]: params.categoryUuid,
         sort: `-${sortField}`,
         limit: params.limit.toString(),
         page: page.toString(),

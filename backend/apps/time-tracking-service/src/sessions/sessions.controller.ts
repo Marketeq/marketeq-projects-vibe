@@ -32,4 +32,16 @@ export class SessionsController {
     if (!userId) throw new UnauthorizedException('Missing user identity');
     return this.svc.findByContract(String(userId), contractId);
   }
+
+  @Get(':id')
+  async findById(@Param('id') id: string) {
+    return this.svc.findById(id);
+  }
+
+  /** Doc 13 §6.3 — POST /sessions/:id/take-over */
+  @Post(':id/take-over')
+  async takeOver(@Param('id') id: string, @Req() req: any, @Body() body: { deviceId: string }) {
+    const userId = req?.user?.sub ?? req?.headers?.['x-user-id'];
+    return this.svc.takeOver(id, String(userId), body.deviceId);
+  }
 }

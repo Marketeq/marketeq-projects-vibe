@@ -26,7 +26,7 @@ export function Toaster() {
       }) {
         return (
           <Toast key={id} variant={variant} {...props}>
-            <div className="flex max-w-full items-center">
+            <div className="flex max-w-full items-start">
               {/* Icon */}
               {variant === "success" ? (
                 <CheckCircle className="size-5 shrink-0 text-success-500" />
@@ -35,11 +35,18 @@ export function Toaster() {
               )}
 
               {/* Icon → Text = 12px */}
-              {title && (
-                <span className="ml-3 max-w-full text-[14px] font-semibold leading-[20px] text-white">
-                  {title}
-                </span>
-              )}
+              <div className="ml-3 max-w-full min-w-0">
+                {title && (
+                  <ToastTitle className="text-[14px] font-semibold leading-[20px] text-white">
+                    {title}
+                  </ToastTitle>
+                )}
+                {description && (
+                  <ToastDescription className="text-white/90">
+                    {description}
+                  </ToastDescription>
+                )}
+              </div>
 
               {/* Text → Undo = 16px */}
               {action && <div className="ml-4">{action}</div>}

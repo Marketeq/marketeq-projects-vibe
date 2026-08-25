@@ -1,69 +1,79 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import {
-  hasCompletedOnboarding,
-  resolveDashboardRole,
-  useAuth,
-} from "@/contexts/auth"
-import { ROLE } from "@/types/user"
+import { resolveDashboardRoute, useAuth } from "@/contexts/auth"
 import { Spinner } from "@/components/ui/spinner/spinner"
 
 const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter()
   const pathname = usePathname()
-  const { isLoading, user } = useAuth()
+  const { isLoading, user, authModalOpen, openAuthModal, closeAuthModal, setPendingRedirect } = useAuth()
   const [isPageLoading, setIsPageLoading] = useState(true)
+  const didOpenModal = useRef(false)
 
   const routeCheck = async () => {
     if (isLoading) return
 
-    //Not logged in
     if (!user) {
-      if (pathname !== "/sign-in") {
-        router.push("/sign-in")
-      }
+      setPendingRedirect(pathname || "/")
+      openAuthModal("sign-in")
       return
+    } else {
+      closeAuthModal()
+      setPendingRedirect(null)
+      didOpenModal.current = false
     }
 
-    const dashboardRole = resolveDashboardRole(user)
-    const hasRole = !!dashboardRole
-    const onboardingComplete = hasCompletedOnboarding(user)
+    const targetRoute = resolveDashboardRoute(user)
+    const isOnboardingRoute = pathname?.startsWith("/onboarding")
 
-    //New user, no role yet
-    if (!hasRole) {
-      if (!pathname?.includes("onboarding")) {
-        router.push("/onboarding")
-      } else {
-        setIsPageLoading(false)
-      }
-      return
-    }
-
-    //Has role, but onboarding not dismissed
-    if (hasRole && !onboardingComplete) {
-      if (!pathname?.includes("onboarding")) {
-        router.push("/onboarding")
-      } else {
-        setIsPageLoading(false)
-      }
-      return
-    }
-
-    //Has role and onboarding is dismissed — user can access the requested page
-    if (hasRole && onboardingComplete) {
-      // If they somehow landed on an onboarding route, send them home
-      if (pathname?.includes("onboarding")) {
-        router.push("/")
+    if (targetRoute.includes("onboarding")) {
+      // A generic "/onboarding" target means no role has been committed to
+      // the backend yet — the role picker and either role's onboarding form
+      // are all valid pages at this stage. Only a role-specific target
+      // (set once the onboarding form itself submits) should force an exact
+      // route match, so a talent user who wanders onto /onboarding/client
+      // still gets bounced to /onboarding/talent.
+      const isGenericFallback = targetRoute === "/onboarding"
+      const shouldRedirect = isGenericFallback
+        ? !isOnboardingRoute
+        : pathname !== targetRoute
+      if (shouldRedirect) {
+        router.push(targetRoute)
         return
       }
       setIsPageLoading(false)
       return
     }
+
+    if (isOnboardingRoute) {
+      router.push(targetRoute)
+      return
+    }
+
+    setIsPageLoading(false)
   }
 
   useEffect(() => {
     routeCheck()
   }, [user, isLoading, pathname])
+
+  // Only arm the "closed without logging in" check once the modal has
+  // actually committed as open — prevents a same-tick race where this
+  // effect reads a stale authModalOpen=false right after routeCheck
+  // requests the modal to open, which would fire router.back() instantly.
+  useEffect(() => {
+    if (authModalOpen && !user && !isLoading) {
+      didOpenModal.current = true
+    }
+  }, [authModalOpen, user, isLoading])
+
+  // If user closed the modal without logging in, go back to previous page
+  useEffect(() => {
+    if (didOpenModal.current && !authModalOpen && !user && !isLoading) {
+      didOpenModal.current = false
+      router.back()
+    }
+  }, [authModalOpen, user, isLoading, router])
 
   return (
     <>

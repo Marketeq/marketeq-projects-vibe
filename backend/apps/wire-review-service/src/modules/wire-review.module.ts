@@ -10,6 +10,7 @@ import { QuickBooksCustomerMap } from '../entities/quickbooks-customer-map.entit
 import { WireTransfer } from '../entities/wire-transfer.entity'
 
 import { AdminReviewController } from '../controllers/admin-review.controller'
+import { HealthController } from '../controllers/health.controller'
 import { QuickBooksWebhookController } from '../controllers/quickbooks-webhook.controller'
 import { WireTransferController } from '../controllers/wire-transfer.controller'
 
@@ -35,11 +36,7 @@ import { UnmatchedWireAuditJob } from '../jobs/unmatched-wire-audit.job'
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         type: 'postgres' as const,
-        host: config.get<string>('DATABASE_HOST'),
-        port: Number(config.get('DATABASE_PORT') ?? 5432),
-        username: config.get<string>('DATABASE_USERNAME'),
-        password: config.get<string>('DATABASE_PASSWORD'),
-        database: config.get<string>('DATABASE_NAME'),
+        url: config.get<string>('DATABASE_URL'),
         entities: [Invoice, WireTransfer, QuickBooksCustomerMap, SyncLog, WireMatchCandidate],
         autoLoadEntities: true,
         synchronize: false,
@@ -60,6 +57,7 @@ import { UnmatchedWireAuditJob } from '../jobs/unmatched-wire-audit.job'
   ],
   controllers: [
     AdminReviewController,
+    HealthController,
     QuickBooksWebhookController,
     WireTransferController,
   ],

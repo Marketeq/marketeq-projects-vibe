@@ -19,9 +19,11 @@ import { DepositMethod } from '../entities/deposit-method.entity';
 import { AuditService } from '../audit/audit.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
 import { PayoutError } from '../common/errors/payout.error';
+import { BrevoMailService } from '../notifications/brevo-mail.service';
 
 const TTL_SECONDS = 15 * 60; // 15 minutes — hard, no extension
 const MAX_RESENDS = 3;
+const RESEND_COOLDOWN_SECONDS = 30;
 
 @Injectable()
 export class MagicLinkService {
@@ -29,6 +31,7 @@ export class MagicLinkService {
   private readonly redis: Redis;
   private readonly baseUrl: string;
   private readonly ttlSeconds: number;
+  private readonly isProduction: boolean;
 
   constructor(
     @InjectRepository(MagicLinkVerification)
@@ -43,10 +46,23 @@ export class MagicLinkService {
     private readonly config: ConfigService,
     private readonly auditService: AuditService,
     private readonly publisher: PayoutPublisher,
+    private readonly brevoMail: BrevoMailService,
   ) {
     this.redis = new Redis(this.config.get<string>('REDIS_URL', 'redis://localhost:6379'));
     this.baseUrl = this.config.get('MAGIC_LINK_BASE_URL', 'http://localhost:3000/verify-withdrawal');
     this.ttlSeconds = parseInt(this.config.get('MAGIC_LINK_TTL_SECONDS', '900'), 10);
+    this.isProduction = this.config.get('NODE_ENV', 'development') === 'production';
+  }
+
+  // The raw token is a bearer credential: it is the single factor that moves
+  // a payout from PENDING_VERIFICATION to QUEUED. Logging the full URL is a
+  // local-debugging affordance only — see the CRITICAL note at the top of
+  // this file. Both deployed environments set NODE_ENV=production (see
+  // backend/.env.staging.example and .env.production.example), so this can
+  // never emit a live token into staging or live logs.
+  private logDevVerifyUrl(magicLinkUrl: string): void {
+    if (this.isProduction) return;
+    this.logger.warn(`[DEV MODE] Full verify URL: ${magicLinkUrl}`);
   }
 
   /**
@@ -95,35 +111,34 @@ export class MagicLinkService {
     return rawToken;
   }
 
-  // ─── PS-14 §4: Publish magic link event to notification-service ──
+  // ─── PS-14 §4: Send magic link email via Brevo ──
+  // Per 00 — Payouts Epic Overview §9.3, payout-service calls its email
+  // provider directly for magic links (unlike every other contractor
+  // communication, which goes through notification-service via RabbitMQ).
   async publishMagicLinkEvent(
     payout: PayoutRequest,
     rawToken: string,
+    contractorEmail?: string,
   ): Promise<void> {
-    const method = await this.methodRepo.findOne({ where: { id: payout.depositMethodId } });
     const magicLinkUrl = `${this.baseUrl}?token=${rawToken}&id=${payout.id}`;
-    const expiresAt = new Date(Date.now() + this.ttlSeconds * 1000);
 
-    // In production: publish to RabbitMQ for notification-service
-    // For now: log + fire-and-forget (same as PS-00 stub pattern)
     this.logger.log(`[MAGIC_LINK] Email event for payout ${payout.id} (contractor: ${payout.contractorId})`);
     // CRITICAL: Do NOT log the raw token or full URL
     this.logger.log(`[DEV] Verify URL: ${this.baseUrl}?token=***REDACTED***&id=${payout.id}`);
 
-    // Dev mode: log the actual URL for manual testing
-    if (!this.config.get('SENDGRID_API_KEY') || this.config.get('SENDGRID_API_KEY', '').startsWith('SG.your_')) {
-      this.logger.warn(`[DEV MODE] Full verify URL: ${magicLinkUrl}`);
+    if (!contractorEmail) {
+      this.logger.warn(`No contractor email available for payout ${payout.id} — magic link cannot be emailed.`);
+      this.logDevVerifyUrl(magicLinkUrl);
+      return;
     }
-  }
 
-  // ─── PS-14 §3 (legacy compat): send() — called by existing payout.service.ts ──
-  async send(contractorId: string, rawToken: string, amountUsd: string): Promise<void> {
-    this.logger.log(`Sending magic link for contractor ${contractorId}, amount $${amountUsd}`);
-    // In production: this publishes to RabbitMQ
-    // Dev mode: log URL for manual testing
-    const verifyUrl = `${this.baseUrl}?token=${rawToken}`;
-    if (!this.config.get('SENDGRID_API_KEY') || this.config.get('SENDGRID_API_KEY', '').startsWith('SG.your_')) {
-      this.logger.warn(`[DEV] Verification URL: ${verifyUrl}`);
+    try {
+      await this.brevoMail.sendMagicLink(contractorEmail, magicLinkUrl, parseFloat(payout.amountUsd).toFixed(2));
+    } catch (err) {
+      // PS-14 / F-18: delivery failure must not block withdrawal initiation —
+      // the payout_request already exists; the contractor can use resend (F-19).
+      this.logger.error(`Magic link email delivery failed for payout ${payout.id}: ${(err as Error).message}`);
+      this.logDevVerifyUrl(magicLinkUrl);
     }
   }
 
@@ -131,7 +146,11 @@ export class MagicLinkService {
   async verifyEmailToken(
     rawToken: string,
     payoutRequestId: string,
-  ): Promise<{ payoutRequestId: string; status: string; message: string }> {
+  ): Promise<{
+    payoutRequestId: string; status: string; message: string;
+    amountUsd?: string; netAmountUsd?: string; feeUsd?: string; currency?: string;
+    methodType?: string; methodLabel?: string | null;
+  }> {
     // 1. Hash incoming token — never compare raw values
     const incomingHash = crypto.createHash('sha256').update(rawToken).digest('hex');
 
@@ -184,12 +203,32 @@ export class MagicLinkService {
 
     // 7. Advance payout request to QUEUED (matching existing PS-02 flow)
     const payout = await this.payoutRepo.findOne({
-      where: { id: payoutRequestId, status: PayoutStatus.PENDING_VERIFICATION },
+      where: { id: payoutRequestId },
+      relations: ['depositMethod'],
     });
 
     if (!payout) {
+      throw new PayoutError('Payout request not found.', HttpStatus.NOT_FOUND, 'ERR_PAYOUT_NOT_FOUND');
+    }
+
+    // AC-20.01: the success screen needs amount/method regardless of branch below,
+    // so build this once and reuse it for both the idempotent-replay and fresh-verify returns.
+    const detail = {
+      // amount_usd/net_amount_usd are numeric(18,8) — round to 2dp for display.
+      amountUsd: parseFloat(payout.amountUsd).toFixed(2),
+      netAmountUsd: parseFloat(payout.netAmountUsd).toFixed(2),
+      // speed itself isn't persisted (only used transiently to compute feeUsd
+      // at initiate() time) — feeUsd > 0 implies instant, matching that same
+      // derivation, so this is accurate rather than a guess.
+      feeUsd: parseFloat(payout.feeUsd).toFixed(2),
+      currency: payout.currency,
+      methodType: payout.depositMethod?.methodType,
+      methodLabel: payout.depositMethod?.displayLabel ?? payout.depositMethod?.nickname ?? null,
+    };
+
+    if (payout.status !== PayoutStatus.PENDING_VERIFICATION) {
       // Payout already advanced or cancelled — idempotent
-      return { payoutRequestId, status: 'already_processed', message: 'This withdrawal has already been processed.' };
+      return { payoutRequestId, status: 'already_processed', message: 'This withdrawal has already been processed.', ...detail };
     }
 
     await this.dataSource.transaction(async (em) => {
@@ -214,6 +253,7 @@ export class MagicLinkService {
       payoutRequestId,
       status: 'verified',
       message: 'Your withdrawal has been confirmed and is being processed.',
+      ...detail,
     };
   }
 
@@ -221,6 +261,7 @@ export class MagicLinkService {
   async resendVerification(
     contractorId: string,
     payoutRequestId: string,
+    contractorEmail?: string,
   ): Promise<{ resent: boolean; message: string }> {
     const payout = await this.payoutRepo.findOne({
       where: { id: payoutRequestId, contractorId, status: PayoutStatus.PENDING_VERIFICATION },
@@ -251,6 +292,20 @@ export class MagicLinkService {
       order: { createdAt: 'DESC' },
     });
 
+    // ERR-52: server-defined resend cooldown — must not be reconstructible
+    // client-side, so the remaining seconds are returned in the error body.
+    if (previous) {
+      const elapsedSeconds = (Date.now() - previous.createdAt.getTime()) / 1000;
+      const remaining = Math.ceil(RESEND_COOLDOWN_SECONDS - elapsedSeconds);
+      if (remaining > 0) {
+        throw new PayoutError(
+          'Please wait before requesting another link.',
+          HttpStatus.TOO_MANY_REQUESTS, 'ERR_MAGIC_LINK_RESEND_COOLDOWN',
+          { cooldownRemainingSeconds: remaining },
+        );
+      }
+    }
+
     if (previous) {
       await this.redis.del(`magiclink:${previous.tokenHash}`);
       await this.verificationRepo.update({ id: previous.id }, { superseded: true });
@@ -258,7 +313,7 @@ export class MagicLinkService {
 
     // Generate and publish new token
     const rawToken = await this.generateAndStore(payoutRequestId, contractorId);
-    await this.publishMagicLinkEvent(payout, rawToken);
+    await this.publishMagicLinkEvent(payout, rawToken, contractorEmail);
 
     return { resent: true, message: 'A new verification email has been sent.' };
   }

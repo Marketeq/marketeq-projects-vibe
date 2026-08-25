@@ -2,23 +2,22 @@
 
 import React, { useCallback, useMemo, useRef, useState } from "react"
 import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { decryptAES, decryptWithPrivateKey } from "@/src/crypto/e2ee"
-import { exportPrivateKey } from "@/src/crypto/keys"
+import { exportPrivateKey, republishPublicKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
-import { apiFetch } from "@/src/lib/api"
-import { Bubble, YourBubble } from "./message-components"
-import { UNDECRYPTABLE_PLACEHOLDER } from "../constants"
-import { loadDraft, saveDraft, clearDraft } from "../lib/drafts"
-import { subscribeMessagingEvents } from "@/utils/messagingBroadcast"
+import { ApiError, apiFetch } from "@/src/lib/api"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
+  cn,
   DataEmoji,
   EmojiProperties,
   noop,
   toPxIfNumber,
 } from "@/utils/functions"
 import { useControllableState, useIsomorphicLayoutEffect } from "@/utils/hooks"
+import { subscribeMessagingEvents } from "@/utils/messagingBroadcast"
 import { useAblyChannel } from "@/utils/useAblyChannel"
 import { useAblyPresence } from "@/utils/useAblyPresence"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
@@ -33,6 +32,7 @@ import {
   Image03,
   Info,
   Mail05,
+  MessageSquare,
   MoreHorizontal,
   Pin02,
   Plus,
@@ -55,6 +55,8 @@ import { useMeasure, useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message, MessageAttachment } from "@/types/message"
 import { User } from "@/types/user"
+import { Spinner } from "@/components/ui/spinner/spinner"
+import { toast } from "@/components/ui/toast/use-toast"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
 import { EmojiPicker, type Result as TenorGif } from "@/components/emoji-picker"
@@ -64,6 +66,7 @@ import {
   AvatarImage,
   Badge,
   Button,
+  Card,
   CircularProgressDropzone,
   CircularProgressDropzoneState,
   Dialog,
@@ -79,8 +82,6 @@ import {
   DropdownMenuRadioTrigger,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  Favorite,
-  FavoriteRoot,
   IconButton,
   Input,
   InputGroup,
@@ -89,29 +90,66 @@ import {
   ScrollArea,
   ScrollBar,
   Textarea,
+  ToastAction,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
-import { Spinner } from "@/components/ui/spinner/spinner"
-import { toast } from "@/components/ui/toast/use-toast"
-import { useFileUpload } from "../hooks/use-file-upload"
+import { UNDECRYPTABLE_PLACEHOLDER } from "../constants"
 import {
   openDropboxChooser,
   openGoogleDrivePicker,
 } from "../hooks/use-cloud-picker"
-import { OneDrivePickerDialog } from "./onedrive-picker-dialog"
-import { BlockReportDialog } from "./block-report-dialog"
-import { addParticipantToGroup } from "../hooks/use-group-encryption"
 import { useEditMessage } from "../hooks/use-edit-message"
+import { useFileUpload } from "../hooks/use-file-upload"
+import { addParticipantToGroup } from "../hooks/use-group-encryption"
 import { useMessages } from "../hooks/use-messages"
 import { useSendMessage } from "../hooks/use-send-message"
 import { useThreadActions } from "../hooks/use-thread-actions"
+import { clearDraft, loadDraft, saveDraft } from "../lib/drafts"
+import { BlockReportDialog } from "./block-report-dialog"
 import { ForwardMessageDialog } from "./forward-message-dialog"
+import { Bubble, YourBubble } from "./message-components"
+import { OneDrivePickerDialog } from "./onedrive-picker-dialog"
+
+/**
+ * Turn a key-unwrap failure into a message that matches what actually went
+ * wrong. Every failure here used to be reported as a decryption error, so an
+ * expired session or an unreachable backend told the user their conversation
+ * key was corrupt — pointing debugging at the crypto layer instead of the
+ * session. Only a genuine crypto failure gets the decryption wording.
+ */
+function describeKeyFailure(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 401)
+      return "Your session expired. Sign in again to view this conversation."
+    if (err.status === 403)
+      return "You don't have access to this conversation."
+    if (err.status === 404)
+      return "This conversation's encryption key is no longer available."
+    // 409/422 are both permanent server-side key-material problems. Telling the
+    // user to retry would be false — no amount of retrying recovers these.
+    if (err.status === 409 || err.status === 422)
+      return "This conversation can't be unlocked. Its encryption key is missing from the server — contact support."
+    if (err.status >= 500)
+      return "Messaging is temporarily unavailable. Try again in a moment."
+    return "Couldn't load this conversation. Try again."
+  }
+  if (err instanceof TypeError) {
+    // fetch() rejects with TypeError for network/CORS failures
+    return "Couldn't reach the server. Check your connection and try again."
+  }
+  return "Could not decrypt this conversation key. Refresh and try again."
+}
 
 interface ChatsProps {
   selectedConversation: Conversation | null
+  setSelectedConversation?: (conv: Conversation | null) => void
+  /** Patches a conversation directly in the sidebar's list (see
+   * left-sidebar.tsx's registerPatchConversation) so header actions like
+   * the favorite star show up in the list without an Ably round-trip. */
+  onPatchConversation?: (id: string, patch: Partial<Conversation>) => void
   jwtToken: string
   privateKey: CryptoKey | null
   currentUserProfile?: any
@@ -131,6 +169,9 @@ interface ChatsProps {
     createdAt: string
     attachments?: Message["attachments"]
   }) => void
+  acceptedOfferCard?: AcceptedOfferCardData | null
+  counterOfferCard?: CounterOfferCardData | null
+  declinedOfferCard?: DeclinedOfferCardData | null
 }
 
 const COMPOSER_MAX_CHARS = 8000
@@ -195,15 +236,68 @@ const formatDateSeparator = (iso: string): string => {
 }
 
 const DateSeparator = ({ label }: { label: string }) => (
-  <div className="flex items-center gap-x-3 py-1" role="separator" aria-label={label}>
+  <div
+    className="flex items-center gap-x-3 py-1"
+    role="separator"
+    aria-label={label}
+  >
     <div className="h-px flex-1 bg-gray-200" />
-    <span className="text-[11px] font-medium text-gray-500 shrink-0">{label}</span>
+    <span className="text-[11px] font-medium text-gray-500 shrink-0">
+      {label}
+    </span>
     <div className="h-px flex-1 bg-gray-200" />
   </div>
 )
 
+export interface AcceptedOfferCardData {
+  status: "accepted"
+  contractId: string
+  offerTitle: string
+  offerType: string
+  offerRate: string
+  role: string
+  duration: string
+  schedule: string
+  startDate: string
+  acceptanceMessage?: string
+}
+
+export interface CounterOfferCardData {
+  status: "submitted"
+  contractId: string
+  offerTitle: string
+  offerType: string
+  offerRate: string
+  duration: string
+  schedule: string
+  startDate: string
+  expiresLabel: string
+  message?: string
+}
+
+export interface DeclinedOfferCardData {
+  status: "declined"
+  contractId: string
+  offerTitle: string
+  offerType: string
+  receivedLabel?: string
+  declinedAt?: string
+  declinedLabel?: string
+  offerRate: string
+  role: string
+  duration: string
+  schedule: string
+  startDate: string
+  senderDisplayName?: string
+  senderUsername?: string
+  senderAvatarSrc?: string
+  declineMessage?: string
+}
+
 export function Chats({
   selectedConversation,
+  setSelectedConversation,
+  onPatchConversation,
   jwtToken,
   privateKey,
   currentUserProfile,
@@ -212,8 +306,14 @@ export function Chats({
   highlightMessageId,
   onHighlightConsumed,
   onIndexNewMessage,
+  acceptedOfferCard,
+  counterOfferCard,
+  declinedOfferCard,
 }: ChatsProps) {
+  const router = useRouter()
   const [textareaValue, setTextareaValue] = useState("")
+  const lastTypedAtRef = useRef(0)
+  const userTypedRef = useRef(false)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
   const [uploadModalMode, setUploadModalMode] = useState<
@@ -222,6 +322,80 @@ export function Chats({
   const [receiverUser, setReceiverUser] = useState<User | null>(null)
   const [counterpartDeleted, setCounterpartDeleted] = useState(false)
   const [starredMap, setStarredMap] = useState<Record<string, boolean>>({})
+  const [declinedOfferDetailsOpen, setDeclinedOfferDetailsOpen] =
+    useState(false)
+  const acceptedOfferToastRef = useRef<string | null>(null)
+  const submittedCounterOfferRef = useRef<string | null>(null)
+  const declinedOfferToastRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (
+      !acceptedOfferCard ||
+      acceptedOfferToastRef.current === acceptedOfferCard.contractId
+    ) {
+      return
+    }
+
+    acceptedOfferToastRef.current = acceptedOfferCard.contractId
+    toast({
+      title: "Offer Accepted",
+      description: "Your contract is now active.",
+    })
+  }, [acceptedOfferCard])
+
+  useEffect(() => {
+    if (
+      !counterOfferCard ||
+      submittedCounterOfferRef.current === counterOfferCard.contractId
+    ) {
+      return
+    }
+
+    submittedCounterOfferRef.current = counterOfferCard.contractId
+    toast({
+      title: "Counter Offer Submitted",
+      description: "Sent to the client. We'll notify you when they respond.",
+    })
+  }, [counterOfferCard])
+
+  useEffect(() => {
+    if (
+      !declinedOfferCard ||
+      declinedOfferToastRef.current === declinedOfferCard.contractId
+    ) {
+      return
+    }
+
+    declinedOfferToastRef.current = declinedOfferCard.contractId
+    toast({
+      title: "Offer Declined",
+      description: "This offer is now closed.",
+    })
+  }, [declinedOfferCard])
+  const declinedOfferSenderName =
+    declinedOfferCard?.senderDisplayName || "Laura"
+  const declinedOfferSenderUsername =
+    declinedOfferCard?.senderUsername || "@lauradesign21"
+  const declinedOfferSenderInitial =
+    declinedOfferSenderName.slice(0, 1) ||
+    declinedOfferSenderUsername.replace(/^@/, "").slice(0, 1) ||
+    "L"
+  const declinedAtDate = declinedOfferCard?.declinedAt
+    ? new Date(declinedOfferCard.declinedAt)
+    : null
+  const canRequestExtension =
+    !declinedAtDate ||
+    Number.isNaN(declinedAtDate.getTime()) ||
+    Date.now() - declinedAtDate.getTime() < 30 * 24 * 60 * 60 * 1000
+  const declinedDisplayLabel =
+    declinedOfferCard?.declinedLabel ||
+    declinedOfferCard?.receivedLabel ||
+    "Feb 1, 2025"
+  const askNowMessage = declinedOfferCard
+    ? canRequestExtension
+      ? `Hi ${declinedOfferSenderName}! Can you extend the offer for the project ${declinedOfferCard.offerTitle}? I'm still interested.`
+      : `Hi ${declinedOfferSenderName}! I wanted to check in and see if the ${declinedOfferCard.role} role for the project ${declinedOfferCard.offerTitle} is still available. If so, I'm still interested.`
+    : ""
   const [selectedTab, setSelectedTab] = useState<"Messages" | "Pinned">(
     "Messages"
   )
@@ -234,6 +408,7 @@ export function Chats({
   const recentlyAbortedMessageIdsRef = useRef<Set<string>>(new Set())
   const pendingIncomingRef = useRef<Message[]>([])
   const pendingIncomingRafRef = useRef<number | null>(null)
+  const pendingEditsRef = useRef<Map<string, Partial<Message>>>(new Map())
   const pendingSendsRef = useRef<
     Map<string, { threadId: string; content: string; replyToId?: string }>
   >(new Map())
@@ -253,16 +428,50 @@ export function Chats({
   const threadArchived = !!(selectedConversation as any)?.isArchived
   const threadSpam = !!(selectedConversation as any)?.isSpam
   const threadUnread = !!(selectedConversation as any)?.markedUnread
-  const [starredOverride, setStarredOverride] = useState<boolean | null>(null)
-  const threadStarred = starredOverride ?? !!(selectedConversation as any)?.isStarred
+  const threadStarred = !!(selectedConversation as any)?.isStarred
   const threadActions = useThreadActions(jwtToken)
+
+  const handleToggleStar = useCallback(
+    (next: boolean) => {
+      if (!selectedConversation) return
+      const prev = selectedConversation
+      setSelectedConversation?.({ ...(prev as any), isStarred: next })
+      onPatchConversation?.(prev.id, { isStarred: next })
+      ;(next
+        ? threadActions.star(prev.id)
+        : threadActions.unstar(prev.id)
+      ).catch((err) => {
+        console.error("star toggle failed", err)
+        setSelectedConversation?.(prev)
+        onPatchConversation?.(prev.id, { isStarred: !next })
+      })
+    },
+    [selectedConversation, setSelectedConversation, onPatchConversation, threadActions]
+  )
 
   const handleOpenForward = useCallback((msg: Message) => {
     setForwardTarget(msg)
     setForwardOpen(true)
   }, [])
 
-  const [currentUser, setCurrentUser] = useState<ReturnType<typeof getCurrentUser>>(null)
+  const pushUndoToast = useCallback((title: string, onUndo?: () => void) => {
+    toast({
+      title,
+      variant: "success",
+      action: onUndo ? (
+        <ToastAction
+          altText="Undo"
+          className="h-auto p-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none text-sm font-semibold"
+          onClick={onUndo}
+        >
+          Undo
+        </ToastAction>
+      ) : undefined,
+    })
+  }, [])
+
+  const [currentUser, setCurrentUser] =
+    useState<ReturnType<typeof getCurrentUser>>(null)
   useEffect(() => {
     const base = getCurrentUser()
     if (base && currentUserProfile?.username) {
@@ -279,6 +488,8 @@ export function Chats({
         .map((hex) => parseInt(hex, 16))
     )
     setTextareaValue((prev) => (prev || "") + emojiChar)
+    userTypedRef.current = true
+    lastTypedAtRef.current = Date.now()
   }, [])
 
   const handleGifSelect = async (gif: TenorGif) => {
@@ -327,13 +538,13 @@ export function Chats({
   // Reset per-conversation state when switching conversations,
   // then restore any persisted draft for this thread (Doc 05 EC-3.3).
   useEffect(() => {
-    setStarredOverride(null)
     setReplyingTo(null)
     setEditingMessage(null)
     setTextareaValue("")
     setSelectedFiles([])
     setRejectedFiles([])
     setUploadModalMode(null)
+    userTypedRef.current = false
 
     const tid = selectedConversation?.id
     const uid = currentUser?.id
@@ -354,6 +565,7 @@ export function Chats({
     const tid = selectedConversation?.id
     const uid = currentUser?.id
     if (!tid || !uid) return
+    if (!userTypedRef.current) return
     const handle = setTimeout(() => {
       saveDraft(tid, uid, textareaValue).catch(() => undefined)
     }, 400)
@@ -367,13 +579,10 @@ export function Chats({
     return subscribeMessagingEvents((evt) => {
       if (evt.type !== "draft") return
       if (evt.threadId !== tid || evt.userId !== uid) return
+      if (Date.now() - lastTypedAtRef.current < 1000) return
       setTextareaValue(evt.text)
     })
   }, [selectedConversation?.id, currentUser?.id])
-
-  useEffect(() => {
-    setStarredOverride(null)
-  }, [(selectedConversation as any)?.isStarred])
 
   // Auto mark-read when opening a conversation
   useEffect(() => {
@@ -395,37 +604,88 @@ export function Chats({
     const ac = new AbortController()
     const convId = selectedConversation.id
     ;(async () => {
-      try {
+      const isGroupParam = selectedConversation.isGroup
+      const fetchAndUnwrap = async () => {
         const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-          `/api/messaging/conversations/${convId}/key?isGroup=${selectedConversation.isGroup}`,
+          `/api/messaging/conversations/${convId}/key?isGroup=${isGroupParam}`,
           {
             headers: { Authorization: `Bearer ${jwtToken}` },
             signal: ac.signal,
           }
         )
-        if (ac.signal.aborted) return
+        if (ac.signal.aborted) return false
 
         const privatePem = await exportPrivateKey(privateKey)
         const rawBuf = await decryptWithPrivateKey(encryptedKey, privatePem)
-        if (ac.signal.aborted) return
+        if (ac.signal.aborted) return false
 
         const arr = new Uint8Array(rawBuf)
         const b64 = btoa(String.fromCharCode(...arr))
         saveKey(convId, b64)
         setKeyReady(true)
-      } catch (err: any) {
-        if (err?.name === "AbortError") return
-        console.error("Failed to unwrap conversation key", err)
-        if (!ac.signal.aborted) {
-          setKeyReady(false)
-          setKeyError(
-            "Could not decrypt this conversation key. Refresh and try again."
+        return true
+      }
+
+      try {
+        await fetchAndUnwrap()
+      } catch (firstErr: any) {
+        if (firstErr?.name === "AbortError") return
+        // The recovery below only helps when our wrapped key is stale. If the
+        // server says its own key material is unusable (409/422) no client-side
+        // rewrap can fix it, and the DELETE would discard a wrapped key the
+        // server is unable to reissue. Report it instead of churning.
+        if (
+          firstErr instanceof ApiError &&
+          (firstErr.status === 409 || firstErr.status === 422)
+        ) {
+          if (!ac.signal.aborted) {
+            setKeyReady(false)
+            setKeyError(describeKeyFailure(firstErr))
+          }
+          return
+        }
+        // The wrapped key doesn't match our private key — either a stale wrap
+        // from before a key rotation, or messaging-service holds a public key
+        // that no longer matches our private key. Re-publish our LOCAL public
+        // key first so the server rewraps conversation keys to the keypair we
+        // actually hold, then delete this thread's wrapped key and refetch so
+        // it is re-wrapped fresh.
+        try {
+          await republishPublicKey(getCurrentUser()?.id)
+        } catch (republishErr) {
+          console.warn(
+            "Public-key re-publish before key retry failed",
+            republishErr
           )
+        }
+        try {
+          await apiFetch(
+            `/api/messaging/conversations/${convId}/key`,
+            {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${jwtToken}` },
+              signal: ac.signal,
+            }
+          )
+          if (ac.signal.aborted) return
+          await fetchAndUnwrap()
+        } catch (retryErr: any) {
+          if (retryErr?.name === "AbortError") return
+          console.error("Failed to unwrap conversation key after retry", retryErr)
+          if (!ac.signal.aborted) {
+            setKeyReady(false)
+            setKeyError(describeKeyFailure(retryErr))
+          }
         }
       }
     })()
     return () => ac.abort()
-  }, [selectedConversation?.id, selectedConversation?.isGroup, privateKey, jwtToken])
+  }, [
+    selectedConversation?.id,
+    selectedConversation?.isGroup,
+    privateKey,
+    jwtToken,
+  ])
 
   //below logic to add new user to a group chat //need to add button for it once user-service can be called to add users
   const handleAddUser = async (userId: string) => {
@@ -502,7 +762,9 @@ export function Chats({
     try {
       const picker =
         provider === "google-drive" ? openGoogleDrivePicker : openDropboxChooser
-      const files = await picker((count) => setCloudFetching({ provider, count }))
+      const files = await picker((count) =>
+        setCloudFetching({ provider, count })
+      )
       if (files.length > 0) {
         addFiles(files)
       }
@@ -514,7 +776,11 @@ export function Chats({
   }
 
   const providerLabel = (p: "google-drive" | "dropbox" | "onedrive") =>
-    p === "google-drive" ? "Google Drive" : p === "dropbox" ? "Dropbox" : "OneDrive"
+    p === "google-drive"
+      ? "Google Drive"
+      : p === "dropbox"
+        ? "Dropbox"
+        : "OneDrive"
 
   // Format file size helper
   const formatFileSize = (bytes: number): string => {
@@ -548,9 +814,24 @@ export function Chats({
   // a user is online unless they're in the same thread channel right now —
   // which broke the avatar dot in 99% of cases. Online status now comes from
   // the global presence:online channel via useOnlineUsers().
-  const { members: presentMembers, sendTyping, typingUserIds } =
-    useAblyPresence(selectedConversation?.id ?? "")
+  const {
+    members: presentMembers,
+    sendTyping,
+    typingUserIds,
+  } = useAblyPresence(selectedConversation?.id ?? "")
   const { isOnline } = useOnlineUsers()
+  const handleAskNow = useCallback(() => {
+    if (!askNowMessage || counterpartDeleted) return
+
+    setDeclinedOfferDetailsOpen(false)
+    setTextareaValue(askNowMessage)
+    lastTypedAtRef.current = Date.now()
+    userTypedRef.current = true
+    sendTyping(true)
+    requestAnimationFrame(() => {
+      composerRef.current?.focus()
+    })
+  }, [askNowMessage, counterpartDeleted, sendTyping])
 
   // 2.1) local messages state for optimistic updates
   const [localMsgs, setLocalMsgs] = useState<Message[]>([])
@@ -559,10 +840,27 @@ export function Chats({
     scrollTop: number
   } | null>(null)
   useEffect(() => {
-    if (fetchedMsgs) {
-      setLocalMsgs(fetchedMsgs)
+    if (!fetchedMsgs) return
+    const convId = selectedConversation?.id
+    if (
+      fetchedMsgs.length > 0 &&
+      (fetchedMsgs[0] as any).threadId !== undefined &&
+      (fetchedMsgs[0] as any).threadId !== convId
+    ) {
+      setLocalMsgs([])
+      return
     }
-  }, [fetchedMsgs])
+    setLocalMsgs((prev) => {
+      const fetchedIds = new Set(fetchedMsgs.map((m) => m.id))
+      const localOnly = prev.filter(
+        (m) =>
+          !fetchedIds.has(m.id) &&
+          ((m as any).threadId === undefined ||
+            (m as any).threadId === convId),
+      )
+      return [...fetchedMsgs, ...localOnly]
+    })
+  }, [fetchedMsgs, selectedConversation?.id])
 
   const isNearBottomRef = useRef(true)
   useEffect(() => {
@@ -779,22 +1077,27 @@ export function Chats({
             let next = prev
             let changed = false
             for (const m of batch) {
-              if (next.some((existing) => existing.id === m.id)) continue
+              const pendingEdit = pendingEditsRef.current.get(m.id)
+              const incoming = pendingEdit ? { ...m, ...pendingEdit } : m
+              if (pendingEdit) pendingEditsRef.current.delete(m.id)
+              if (next.some((existing) => existing.id === incoming.id)) continue
               const tempIdx = next.findIndex(
                 (existing) =>
                   typeof existing.id === "string" &&
                   existing.id.startsWith("tmp-") &&
-                  existing.senderId === m.senderId &&
+                  existing.senderId === incoming.senderId &&
                   (existing.status === "sending" ||
                     existing.status === "optimistic-offline") &&
-                  (existing.content ?? "") === (m.content ?? ""),
+                  (existing.content ?? "") === (m.content ?? "")
               )
               if (tempIdx !== -1) {
-                next = next.map((existing, i) => (i === tempIdx ? m : existing))
+                next = next.map((existing, i) =>
+                  i === tempIdx ? incoming : existing,
+                )
                 changed = true
                 continue
               }
-              next = [...next, m]
+              next = [...next, incoming]
               changed = true
             }
             return changed ? next : prev
@@ -834,7 +1137,10 @@ export function Chats({
 
   const handleLocalDelete = useCallback(
     (messageId: string) => {
-      updateMessage(messageId, { isDeleted: true, deletedAt: Date.now() } as any)
+      updateMessage(messageId, {
+        isDeleted: true,
+        deletedAt: Date.now(),
+      } as any)
       setTimeout(() => {
         setLocalMsgs((prev) => prev.map((m) => m))
       }, 30000)
@@ -844,14 +1150,23 @@ export function Chats({
 
   const handleLocalRestore = useCallback(
     (messageId: string) => {
-      updateMessage(messageId, { isDeleted: false, deletedAt: undefined } as any)
+      updateMessage(messageId, {
+        isDeleted: false,
+        deletedAt: undefined,
+      } as any)
     },
     [updateMessage]
   )
 
   // Ably incoming edit: decrypt + patch local state
   const handleIncomingEdit = useCallback(
-    async (incoming: { id: string; ciphertext?: string; senderId: string; threadId: string; edited?: boolean }) => {
+    async (incoming: {
+      id: string
+      ciphertext?: string
+      senderId: string
+      threadId: string
+      edited?: boolean
+    }) => {
       let plain = ""
       try {
         const key = loadKey(incoming.threadId)
@@ -862,13 +1177,22 @@ export function Chats({
         console.error("Failed to decrypt edited message:", err)
         plain = UNDECRYPTABLE_PLACEHOLDER
       }
-      updateMessage(incoming.id, {
+      const patch: Partial<Message> = {
         content: plain,
         ciphertext: incoming.ciphertext,
         edited: true,
+      }
+      setLocalMsgs((prev) => {
+        if (prev.some((m) => m.id === incoming.id)) {
+          return prev.map((m) =>
+            m.id === incoming.id ? { ...m, ...patch } : m,
+          )
+        }
+        pendingEditsRef.current.set(incoming.id, patch)
+        return prev
       })
     },
-    [updateMessage]
+    []
   )
 
   useAblyChannel(
@@ -942,15 +1266,13 @@ export function Chats({
       const params = pendingSendsRef.current.get(tempId)
       if (!params) return
       setLocalMsgs((prev) =>
-        prev.map((m) =>
-          m.id === tempId ? { ...m, status: "sending" } : m,
-        ),
+        prev.map((m) => (m.id === tempId ? { ...m, status: "sending" } : m))
       )
       try {
         const saved = await send(
           params.threadId,
           params.content,
-          params.replyToId,
+          params.replyToId
         )
         const msg = (saved as any).data ?? saved
         let displayContent = msg.content
@@ -969,7 +1291,7 @@ export function Chats({
             return prev.filter((m) => m.id !== tempId)
           }
           return prev.map((m) =>
-            m.id === tempId ? { ...msg, content: displayContent } : m,
+            m.id === tempId ? { ...msg, content: displayContent } : m
           )
         })
         onIndexNewMessage?.({
@@ -983,19 +1305,19 @@ export function Chats({
       } catch {
         setLocalMsgs((prev) =>
           prev.map((m) =>
-            m.id === tempId ? { ...m, status: "failed-send" } : m,
-          ),
+            m.id === tempId ? { ...m, status: "failed-send" } : m
+          )
         )
       }
     },
-    [send, onIndexNewMessage],
+    [send, onIndexNewMessage]
   )
 
   const retryOptimistic = useCallback(
     (tempId: string) => {
       void attemptOptimisticSend(tempId)
     },
-    [attemptOptimisticSend],
+    [attemptOptimisticSend]
   )
 
   const discardOptimistic = useCallback((tempId: string) => {
@@ -1044,10 +1366,9 @@ export function Chats({
               selectedConversation.id,
             content: displayContent,
             messageType: result.message.messageType ?? "file",
-            attachments:
-              result.message.attachments?.length
-                ? result.message.attachments
-                : [result.attachment],
+            attachments: result.message.attachments?.length
+              ? result.message.attachments
+              : [result.attachment],
           },
         ]
       })
@@ -1121,8 +1442,7 @@ export function Chats({
         const status = err?.status ?? err?.response?.status
         if (
           status === 404 ||
-          (typeof err?.message === "string" &&
-            err.message.includes("404"))
+          (typeof err?.message === "string" && err.message.includes("404"))
         ) {
           setCounterpartDeleted(true)
           setReceiverUser(deletedPlaceholder)
@@ -1152,14 +1472,14 @@ export function Chats({
             const uploaded = await uploadFile(
               selectedConversation.id,
               file,
-              i === 0 ? caption : undefined,
+              i === 0 ? caption : undefined
             )
             if (abortRecord.aborted) {
               const abortedId = uploaded.message.id
               recentlyAbortedMessageIdsRef.current.add(abortedId)
               setTimeout(
                 () => recentlyAbortedMessageIdsRef.current.delete(abortedId),
-                30_000,
+                30_000
               )
               apiFetch(`/v1/messages/${abortedId}`, {
                 method: "DELETE",
@@ -1178,7 +1498,9 @@ export function Chats({
         sendTyping(false)
         setReplyingTo(null)
         if (currentUser?.id) {
-          clearDraft(selectedConversation.id, currentUser.id).catch(() => undefined)
+          clearDraft(selectedConversation.id, currentUser.id).catch(
+            () => undefined
+          )
         }
         return
       }
@@ -1217,7 +1539,9 @@ export function Chats({
       sendTyping(false)
       setReplyingTo(null)
       if (currentUser?.id) {
-        clearDraft(selectedConversation.id, currentUser.id).catch(() => undefined)
+        clearDraft(selectedConversation.id, currentUser.id).catch(
+          () => undefined
+        )
       }
 
       if (!isOnline) {
@@ -1225,11 +1549,7 @@ export function Chats({
       }
 
       try {
-        const saved = await send(
-          selectedConversation.id,
-          content,
-          replyToId,
-        )
+        const saved = await send(selectedConversation.id, content, replyToId)
         const msg = (saved as any).data ?? saved
         let displayContent = msg.content
         try {
@@ -1247,7 +1567,7 @@ export function Chats({
             return prev.filter((m) => m.id !== tempId)
           }
           return prev.map((m) =>
-            m.id === tempId ? { ...msg, content: displayContent } : m,
+            m.id === tempId ? { ...msg, content: displayContent } : m
           )
         })
         onIndexNewMessage?.({
@@ -1262,8 +1582,8 @@ export function Chats({
         console.error("Send failed", err)
         setLocalMsgs((prev) =>
           prev.map((m) =>
-            m.id === tempId ? { ...m, status: "failed-send" } : m,
-          ),
+            m.id === tempId ? { ...m, status: "failed-send" } : m
+          )
         )
       }
     } catch (err) {
@@ -1448,7 +1768,11 @@ export function Chats({
         const pinned = allMsgs.filter((m) => m.pinned || m.isPinned)
 
         let key: Uint8Array | null = null
-        try { key = loadKey(convId) } catch { /* no key */ }
+        try {
+          key = loadKey(convId)
+        } catch {
+          /* no key */
+        }
         const decrypted = await Promise.all(
           pinned.map(async (m) => {
             // Backend column is `pinned`; Bubble reads `isPinned`. Normalize.
@@ -1457,9 +1781,13 @@ export function Chats({
               isPinned: (m as any).isPinned ?? (m as any).pinned ?? false,
             }
             if (!m.ciphertext) return normalized
-            if (!key) return { ...normalized, content: UNDECRYPTABLE_PLACEHOLDER }
+            if (!key)
+              return { ...normalized, content: UNDECRYPTABLE_PLACEHOLDER }
             try {
-              return { ...normalized, content: await decryptAES(m.ciphertext, key) }
+              return {
+                ...normalized,
+                content: await decryptAES(m.ciphertext, key),
+              }
             } catch {
               return { ...normalized, content: UNDECRYPTABLE_PLACEHOLDER }
             }
@@ -1540,7 +1868,9 @@ export function Chats({
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
         <Mail05 className="size-10 stroke-[1.5]" />
-        <p className="text-sm font-medium">Select a conversation to start messaging</p>
+        <p className="text-sm font-medium">
+          Select a conversation to start messaging
+        </p>
       </div>
     )
   }
@@ -1556,7 +1886,7 @@ export function Chats({
 
   // First-name-only display (per design)
   const fullName = selectedConversation?.isGroup
-    ? selectedConversation.group?.name ?? "Unnamed Group"
+    ? (selectedConversation.group?.name ?? "Unnamed Group")
     : counterpartDeleted
       ? "Account no longer available"
       : receiverUser.firstName?.trim() ||
@@ -1590,13 +1920,19 @@ export function Chats({
               alt={
                 selectedConversation?.isGroup
                   ? selectedConversation?.group?.name || "Group"
-                  : receiverUser.username ?? ""
+                  : (receiverUser.username ?? "")
               }
             />
             <AvatarFallback>
               {selectedConversation?.isGroup
-                ? selectedConversation?.group?.name?.[0] ?? "G"
-                : receiverUser.username?.[0] ?? ""}
+                ? (selectedConversation?.group?.name?.[0] ?? "G")
+                : (
+                    receiverUser.firstName?.trim() ||
+                    receiverUser.username ||
+                    "U"
+                  )
+                    .charAt(0)
+                    .toUpperCase()}
             </AvatarFallback>
           </Avatar>
 
@@ -1618,7 +1954,9 @@ export function Chats({
                       const others = presentMembers.filter(
                         (m) => m.clientId !== currentUser?.id
                       ).length
-                      return others > 0 ? `${others} active now` : "No one active"
+                      return others > 0
+                        ? `${others} active now`
+                        : "No one active"
                     })()
                   : isOnline(receiverUser.id)
                     ? "Active now"
@@ -1630,7 +1968,13 @@ export function Chats({
                   <span className="inline-block h-4 w-px bg-gray-300" />
                   <span className="text-sm text-dark-blue-400">
                     {receiverUser.recentJobTitle ||
-                      receiverUser.jobTitles?.[0]}
+                      (typeof receiverUser.jobTitles?.[0] === "string"
+                        ? receiverUser.jobTitles?.[0]
+                        : (
+                            receiverUser.jobTitles?.[0] as unknown as {
+                              jobTitle?: string
+                            }
+                          )?.jobTitle)}
                   </span>
                 </>
               ) : null}
@@ -1652,13 +1996,21 @@ export function Chats({
             {/* Local shadow override: primitive's arbitrary-value shadow is
                 malformed (Tailwind drops it); patching the primitive would
                 regress ~20 other pages where the no-shadow is established. */}
-            <ToggleGroupItem value="Messages" className="data-[state=on]:shadow-sm">
+            <ToggleGroupItem
+              value="Messages"
+              className="data-[state=on]:shadow-sm"
+            >
               Messages
             </ToggleGroupItem>
-            <ToggleGroupItem value="Pinned" className="data-[state=on]:shadow-sm">
+            <ToggleGroupItem
+              value="Pinned"
+              className="data-[state=on]:shadow-sm"
+            >
               Pinned
               {(() => {
-                const count = localMsgs.filter((m) => m.pinned || m.isPinned).length
+                const count = localMsgs.filter(
+                  (m) => m.pinned || m.isPinned
+                ).length
                 return count > 0 ? (
                   <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[11px] font-semibold bg-gray-200 text-gray-800 rounded-full">
                     {count}
@@ -1687,30 +2039,23 @@ export function Chats({
             </TooltipProvider>
             <TooltipProvider>
               <Tooltip>
-                <FavoriteRoot
-                  value={threadStarred}
-                  onValueChange={(next) => {
-                    if (!selectedConversation) return
-                    setStarredOverride(next)
-                    ;(next
-                      ? threadActions.star(selectedConversation.id)
-                      : threadActions.unstar(selectedConversation.id)
-                    ).catch((err) => {
-                      console.error("star toggle failed", err)
-                      setStarredOverride(!next)
-                    })
-                  }}
-                >
-                  {() => (
-                    // Wrap div, not Favorite — TooltipTrigger's data-state
-                    // would overwrite Toggle's, breaking the active-color rule.
-                    <TooltipTrigger asChild>
-                      <div className="size-11 flex items-center justify-center">
-                        <Favorite className="text-gray-500" />
-                      </div>
-                    </TooltipTrigger>
-                  )}
-                </FavoriteRoot>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-pressed={threadStarred}
+                    className="size-11 flex items-center justify-center focus-visible:outline-none"
+                    onClick={() => handleToggleStar(!threadStarred)}
+                  >
+                    <Star
+                      className={cn(
+                        "size-6 transition-colors duration-300 ease-out",
+                        threadStarred
+                          ? "text-warning-300 fill-warning-300"
+                          : "text-dark-blue-400/50 fill-transparent hover:text-dark-blue-400"
+                      )}
+                    />
+                  </button>
+                </TooltipTrigger>
                 <TooltipContent>
                   {threadStarred ? "Remove from Favorites" : "Add to Favorites"}
                 </TooltipContent>
@@ -1742,16 +2087,7 @@ export function Chats({
                 <DropdownMenuItem
                   onSelect={(e) => {
                     e.preventDefault()
-                    if (!selectedConversation) return
-                    const next = !threadStarred
-                    setStarredOverride(next)
-                    ;(next
-                      ? threadActions.star(selectedConversation.id)
-                      : threadActions.unstar(selectedConversation.id)
-                    ).catch((err) => {
-                      console.error("star toggle failed", err)
-                      setStarredOverride(!next)
-                    })
+                    handleToggleStar(!threadStarred)
                   }}
                 >
                   <Star className="size-4" />
@@ -1761,23 +2097,50 @@ export function Chats({
                   onSelect={(e) => {
                     e.preventDefault()
                     if (!selectedConversation) return
-                    ;(threadUnread
-                      ? threadActions.markRead(selectedConversation.id)
-                      : threadActions.markUnread(selectedConversation.id)
-                    ).catch((err) => console.error("mark unread/read failed", err))
+                    const id = selectedConversation.id
+                    const goingUnread = !threadUnread
+                    ;(goingUnread
+                      ? threadActions.markUnread(id)
+                      : threadActions.markRead(id)
+                    )
+                      .then(() =>
+                        pushUndoToast(
+                          goingUnread
+                            ? "Message marked as unread"
+                            : "Message marked as read",
+                          () =>
+                            (goingUnread
+                              ? threadActions.markRead(id)
+                              : threadActions.markUnread(id)
+                            ).catch(() => {})
+                        )
+                      )
+                      .catch((err) =>
+                        console.error("mark unread/read failed", err)
+                      )
                   }}
                 >
-                  <Mail05 className="size-4" /> {threadUnread ? "Mark as Read" : "Mark Unread"}
+                  <Mail05 className="size-4" />{" "}
+                  {threadUnread ? "Mark as Read" : "Mark Unread"}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={(e) => {
                     e.preventDefault()
                     if (!selectedConversation) return
+                    const id = selectedConversation.id
                     const next = !threadPinned
-                    ;(next
-                      ? threadActions.pin(selectedConversation.id)
-                      : threadActions.unpin(selectedConversation.id)
-                    ).catch((err) => console.error("pin toggle failed", err))
+                    ;(next ? threadActions.pin(id) : threadActions.unpin(id))
+                      .then(() =>
+                        pushUndoToast(
+                          next ? "Message Pinned" : "Message Unpinned",
+                          () =>
+                            (next
+                              ? threadActions.unpin(id)
+                              : threadActions.pin(id)
+                            ).catch(() => {})
+                        )
+                      )
+                      .catch((err) => console.error("pin toggle failed", err))
                   }}
                 >
                   <Pin02 className="size-4" />
@@ -1787,26 +2150,60 @@ export function Chats({
                   onSelect={(e) => {
                     e.preventDefault()
                     if (!selectedConversation) return
-                    ;(threadArchived
-                      ? threadActions.unarchive(selectedConversation.id)
-                      : threadActions.archive(selectedConversation.id)
-                    ).catch((err) => console.error("archive toggle failed", err))
+                    const id = selectedConversation.id
+                    const goingArchived = !threadArchived
+                    ;(goingArchived
+                      ? threadActions.archive(id)
+                      : threadActions.unarchive(id)
+                    )
+                      .then(() =>
+                        pushUndoToast(
+                          goingArchived
+                            ? "Message Archived"
+                            : "Message Restored",
+                          () =>
+                            (goingArchived
+                              ? threadActions.unarchive(id)
+                              : threadActions.archive(id)
+                            ).catch(() => {})
+                        )
+                      )
+                      .catch((err) =>
+                        console.error("archive toggle failed", err)
+                      )
                   }}
                 >
-                  <Archive className="size-4" /> {threadArchived ? "Unarchive" : "Archive"}
+                  <Archive className="size-4" />{" "}
+                  {threadArchived ? "Unarchive" : "Archive"}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={(e) => {
                     e.preventDefault()
                     if (!selectedConversation) return
-                    ;(threadSpam
-                      ? threadActions.unspam(selectedConversation.id)
-                      : threadActions.spam(selectedConversation.id)
-                    ).catch((err) => console.error("spam toggle failed", err))
+                    const id = selectedConversation.id
+                    const goingSpam = !threadSpam
+                    ;(goingSpam
+                      ? threadActions.spam(id)
+                      : threadActions.unspam(id)
+                    )
+                      .then(() =>
+                        pushUndoToast(
+                          goingSpam
+                            ? "Message moved to Spam"
+                            : "Message moved to Inbox",
+                          () =>
+                            (goingSpam
+                              ? threadActions.unspam(id)
+                              : threadActions.spam(id)
+                            ).catch(() => {})
+                        )
+                      )
+                      .catch((err) => console.error("spam toggle failed", err))
                   }}
                 >
-                  <AlertTriangle className="size-4" /> {threadSpam ? "Move to Inbox" : "Move to Spam"}
+                  <AlertTriangle className="size-4" />{" "}
+                  {threadSpam ? "Move to Inbox" : "Move to Spam"}
                 </DropdownMenuItem>
                 {!selectedConversation?.isGroup && (
                   <DropdownMenuItem
@@ -1831,11 +2228,15 @@ export function Chats({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+            <Dialog
+              open={showDeleteConfirm}
+              onOpenChange={setShowDeleteConfirm}
+            >
               <DialogContent className="max-w-[348px] p-7 rounded-xl">
                 <DialogTitle>Delete this chat?</DialogTitle>
                 <DialogDescription className="mt-2">
-                  This chat will be moved to Trash. You can restore it later from the Trash filter.
+                  This chat will be moved to Trash. You can restore it later
+                  from the Trash filter.
                 </DialogDescription>
                 <div className="mt-8 grid grid-cols-2 gap-x-3">
                   <DialogClose asChild>
@@ -1843,13 +2244,21 @@ export function Chats({
                       Cancel
                     </Button>
                   </DialogClose>
-                  <Button onClick={() => {
-                    if (!selectedConversation) return
-                    threadActions
-                      .trash(selectedConversation.id)
-                      .catch((err) => console.error("trash failed", err))
-                    setShowDeleteConfirm(false)
-                  }}>
+                  <Button
+                    onClick={() => {
+                      if (!selectedConversation) return
+                      const id = selectedConversation.id
+                      threadActions
+                        .trash(id)
+                        .then(() =>
+                          pushUndoToast("Chat Deleted", () =>
+                            threadActions.untrash(id).catch(() => {})
+                          )
+                        )
+                        .catch((err) => console.error("trash failed", err))
+                      setShowDeleteConfirm(false)
+                    }}
+                  >
                     Yes, Delete
                   </Button>
                 </div>
@@ -1871,9 +2280,7 @@ export function Chats({
                       Cancel
                     </Button>
                   </DialogClose>
-                  <Button onClick={handleConfirmEditDelete}>
-                    Yes, Delete
-                  </Button>
+                  <Button onClick={handleConfirmEditDelete}>Yes, Delete</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -1913,102 +2320,256 @@ export function Chats({
                 <p className="text-sm font-medium">{keyError}</p>
               </div>
             )}
-            {!isSwitching && displayedMessages.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
-                <Send className="size-8 stroke-[1.5]" />
-                <p className="text-sm">No messages yet. Say hello!</p>
-              </div>
-            )}
-            {!isSwitching && displayedMessages.map((m, i) => {
-              const prev = i > 0 ? displayedMessages[i - 1] : null
-              const showDate =
-                !prev ||
-                !isSameDay(parseISO(m.createdAt), parseISO(prev.createdAt))
-              return (
-                <React.Fragment key={m.id ?? i}>
-                  {showDate && (
-                    <DateSeparator label={formatDateSeparator(m.createdAt)} />
-                  )}
-                  <div
-                    data-message-id={m.id}
-                    className={`flex rounded-lg ${
-                      m.senderId === currentUser.id
-                        ? "justify-end"
-                        : "justify-start"
-                    }`}
-                  >
-                    {m.senderId === currentUser.id ? (
-                      <div className="flex flex-col items-end gap-y-1">
-                        <Bubble
+            {!isSwitching &&
+              displayedMessages.length === 0 &&
+              !(
+                selectedTab === "Messages" &&
+                (acceptedOfferCard || counterOfferCard || declinedOfferCard)
+              ) && (
+                <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
+                  <Send className="size-8 stroke-[1.5]" />
+                  <p className="text-sm">No messages yet. Say hello!</p>
+                </div>
+              )}
+            {!isSwitching &&
+              displayedMessages.map((m, i) => {
+                const prev = i > 0 ? displayedMessages[i - 1] : null
+                const showDate =
+                  !prev ||
+                  !isSameDay(parseISO(m.createdAt), parseISO(prev.createdAt))
+                return (
+                  <React.Fragment key={m.id ?? i}>
+                    {showDate && (
+                      <DateSeparator label={formatDateSeparator(m.createdAt)} />
+                    )}
+                    <div
+                      data-message-id={m.id}
+                      className={`flex rounded-lg ${
+                        m.senderId === currentUser.id
+                          ? "justify-end"
+                          : "justify-start"
+                      }`}
+                    >
+                      {m.senderId === currentUser.id ? (
+                        <div className="flex flex-col items-end gap-y-1">
+                          <Bubble
+                            message={m}
+                            currentUser={currentUser}
+                            participantUsername={receiverUser.username ?? ""}
+                            participantName={fullName}
+                            onForward={handleOpenForward}
+                            onReply={setReplyingTo}
+                            onEdit={handleStartEdit}
+                            onLocalDelete={handleLocalDelete}
+                            onLocalRestore={handleLocalRestore}
+                            onToggleReaction={handleToggleReaction}
+                            replyToMessage={
+                              m.replyToMessageId
+                                ? (localMessageById.get(m.replyToMessageId) ??
+                                  null)
+                                : null
+                            }
+                          />
+                          {m.status === "optimistic-offline" && (
+                            <div className="flex items-center gap-x-2 text-xs text-amber-600">
+                              <span>
+                                Will send when you&apos;re back online
+                              </span>
+                              <button
+                                type="button"
+                                className="text-gray-500 hover:text-gray-700 hover:underline"
+                                onClick={() => discardOptimistic(m.id)}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+                          {m.status === "failed-send" && (
+                            <div className="flex items-center gap-x-2 text-xs text-error-600">
+                              <span>Failed to send</span>
+                              <button
+                                type="button"
+                                className="font-semibold text-primary-500 hover:underline"
+                                onClick={() => retryOptimistic(m.id)}
+                              >
+                                Retry
+                              </button>
+                              <button
+                                type="button"
+                                className="text-gray-500 hover:text-gray-700 hover:underline"
+                                onClick={() => discardOptimistic(m.id)}
+                              >
+                                Discard
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <YourBubble
                           message={m}
                           currentUser={currentUser}
-                          participantUsername={receiverUser.username ?? ""}
-                          participantName={fullName}
                           onForward={handleOpenForward}
                           onReply={setReplyingTo}
-                          onEdit={handleStartEdit}
-                          onLocalDelete={handleLocalDelete}
-                          onLocalRestore={handleLocalRestore}
                           onToggleReaction={handleToggleReaction}
                           replyToMessage={
                             m.replyToMessageId
-                              ? localMessageById.get(m.replyToMessageId) ?? null
+                              ? (localMessageById.get(m.replyToMessageId) ??
+                                null)
                               : null
                           }
+                          participantName={fullName}
+                          participantUsername={receiverUser.username ?? ""}
+                          participantAvatarUrl={
+                            receiverUser.avatarUrl ?? undefined
+                          }
                         />
-                        {m.status === "optimistic-offline" && (
-                          <div className="flex items-center gap-x-2 text-xs text-amber-600">
-                            <span>Will send when you&apos;re back online</span>
-                            <button
-                              type="button"
-                              className="text-gray-500 hover:text-gray-700 hover:underline"
-                              onClick={() => discardOptimistic(m.id)}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        )}
-                        {m.status === "failed-send" && (
-                          <div className="flex items-center gap-x-2 text-xs text-error-600">
-                            <span>Failed to send</span>
-                            <button
-                              type="button"
-                              className="font-semibold text-primary-500 hover:underline"
-                              onClick={() => retryOptimistic(m.id)}
-                            >
-                              Retry
-                            </button>
-                            <button
-                              type="button"
-                              className="text-gray-500 hover:text-gray-700 hover:underline"
-                              onClick={() => discardOptimistic(m.id)}
-                            >
-                              Discard
-                            </button>
-                          </div>
-                        )}
+                      )}
+                    </div>
+                  </React.Fragment>
+                )
+              })}
+            {!isSwitching &&
+              selectedTab === "Messages" &&
+              acceptedOfferCard && (
+                <div className="flex justify-end rounded-lg">
+                  <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                    <div className="text-sm leading-[16.94px] text-dark-blue-400">
+                      <span className="font-bold">Me</span>{" "}
+                      {currentUser.username ? (
+                        <span>@{currentUser.username} </span>
+                      ) : null}
+                      <span className="font-semibold underline decoration-primary-500 decoration-2 underline-offset-2">
+                        accepted the offer
+                      </span>
+                    </div>
+
+                    <p className="text-sm leading-[20px] text-dark-blue-400">
+                      {acceptedOfferCard.acceptanceMessage ||
+                        "Excited to get started!"}
+                    </p>
+
+                    <Card className="mt-4 w-full min-w-[320px] flex-col items-stretch justify-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
+                      <h3 className="text-base font-bold leading-[19.36px] text-dark-blue-400">
+                        Offer Accepted!
+                      </h3>
+                      <p className="mt-5 text-sm font-medium leading-[16.94px] text-dark-blue-400">
+                        {acceptedOfferCard.offerTitle}
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <Badge variant="rounded" visual="gray" size="sm">
+                          {acceptedOfferCard.offerType}
+                        </Badge>
+                        <span className="text-xs leading-[14.52px] text-gray-500">
+                          {acceptedOfferCard.startDate.startsWith("Starts")
+                            ? acceptedOfferCard.startDate
+                            : `Starts on ${acceptedOfferCard.startDate}`}
+                        </span>
                       </div>
-                    ) : (
-                      <YourBubble
-                        message={m}
-                        currentUser={currentUser}
-                        onForward={handleOpenForward}
-                        onReply={setReplyingTo}
-                        onToggleReaction={handleToggleReaction}
-                        replyToMessage={
-                          m.replyToMessageId
-                            ? localMessageById.get(m.replyToMessageId) ?? null
-                            : null
+                      <Button
+                        className="mt-4 w-fit px-5 text-primary-500"
+                        variant="outlined"
+                        visual="gray"
+                        onClick={() =>
+                          router.push(
+                            `/my-contracts?contractId=${encodeURIComponent(
+                              acceptedOfferCard.contractId
+                            )}`
+                          )
                         }
-                        participantName={fullName}
-                        participantUsername={receiverUser.username ?? ""}
-                        participantAvatarUrl={receiverUser.avatarUrl ?? undefined}
-                      />
-                    )}
+                      >
+                        View Contract
+                      </Button>
+                    </Card>
+                  </article>
+                </div>
+              )}
+            {!isSwitching && selectedTab === "Messages" && counterOfferCard && (
+              <div className="flex justify-end rounded-lg">
+                <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                  <div className="text-sm leading-[16.94px] text-dark-blue-400">
+                    <span className="font-bold">You</span>{" "}
+                    {currentUser.username ? (
+                      <span>@{currentUser.username} </span>
+                    ) : null}
+                    <span className="font-semibold">sent a counter offer</span>
                   </div>
-                </React.Fragment>
-              )
-            })}
+
+                  {counterOfferCard.message ? (
+                    <p className="text-sm leading-[20px] text-dark-blue-400">
+                      {counterOfferCard.message}
+                    </p>
+                  ) : null}
+
+                  <Card className="mt-4 w-full min-w-[320px] flex-col items-stretch justify-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
+                    <h3 className="text-base font-bold leading-[19.36px] text-dark-blue-400">
+                      Counter Offer Submitted
+                    </h3>
+                    <p className="mt-5 text-sm font-medium leading-[16.94px] text-dark-blue-400">
+                      {counterOfferCard.offerTitle}
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <Badge variant="rounded" visual="gray" size="sm">
+                        {counterOfferCard.offerType}
+                      </Badge>
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        This counteroffer expires{" "}
+                        {counterOfferCard.expiresLabel}.
+                      </span>
+                    </div>
+                    <Button
+                      className="mt-4 w-fit px-5 text-primary-500"
+                      variant="outlined"
+                      visual="gray"
+                    >
+                      View Details
+                    </Button>
+                  </Card>
+                </article>
+              </div>
+            )}
+            {!isSwitching && selectedTab === "Messages" && declinedOfferCard && (
+              <div className="flex justify-end rounded-lg">
+                <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                  <div className="text-sm leading-[16.94px] text-dark-blue-400">
+                    <span className="font-bold">You</span>{" "}
+                    {currentUser.username ? (
+                      <span>@{currentUser.username} </span>
+                    ) : null}
+                    <span className="font-semibold">declined the offer</span>
+                  </div>
+
+                  <p className="text-sm leading-[20px] text-dark-blue-400">
+                    {declinedOfferCard.declineMessage ||
+                      "Thanks, unfortunately I can't take this on right now."}
+                  </p>
+
+                  <Card className="mt-4 w-full min-w-[320px] flex-col items-stretch justify-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
+                    <h3 className="text-base font-bold leading-[19.36px] text-dark-blue-400">
+                      Offer Declined
+                    </h3>
+                    <p className="mt-5 text-sm font-medium leading-[16.94px] text-dark-blue-400">
+                      {declinedOfferCard.offerTitle}
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <Badge variant="rounded" visual="gray" size="sm">
+                        {declinedOfferCard.offerType}
+                      </Badge>
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        This offer is now closed.
+                      </span>
+                    </div>
+                    <Button
+                      className="mt-4 w-fit px-5 text-primary-500"
+                      variant="outlined"
+                      visual="gray"
+                      onClick={() => setDeclinedOfferDetailsOpen(true)}
+                    >
+                      View Details
+                    </Button>
+                  </Card>
+                </article>
+              </div>
+            )}
             <div ref={scrollRef} />
           </div>
         </ScrollArea>
@@ -2050,7 +2611,12 @@ export function Chats({
           <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-primary-600">
-                Replying to {replyingTo.senderId === currentUser?.id ? "yourself" : (receiverUser?.firstName || receiverUser?.username || "Unknown")}
+                Replying to{" "}
+                {replyingTo.senderId === currentUser?.id
+                  ? "yourself"
+                  : receiverUser?.firstName ||
+                    receiverUser?.username ||
+                    "Unknown"}
               </p>
               <p className="text-xs text-gray-500 truncate">
                 {replyingTo.content || "Encrypted message"}
@@ -2125,7 +2691,7 @@ export function Chats({
                       .getElementById(
                         uploadModalMode === "image"
                           ? "image-file-input"
-                          : "desktop-file-input",
+                          : "desktop-file-input"
                       )
                       ?.click()
                   }
@@ -2268,7 +2834,7 @@ export function Chats({
                         const uploaded = await uploadFile(
                           selectedConversation.id,
                           file,
-                          undefined,
+                          undefined
                         )
                         if (abortRecord.aborted) {
                           const abortedId = uploaded.message.id
@@ -2276,9 +2842,9 @@ export function Chats({
                           setTimeout(
                             () =>
                               recentlyAbortedMessageIdsRef.current.delete(
-                                abortedId,
+                                abortedId
                               ),
-                            30_000,
+                            30_000
                           )
                           apiFetch(`/v1/messages/${abortedId}`, {
                             method: "DELETE",
@@ -2402,201 +2968,224 @@ export function Chats({
         )}
 
         <div className="p-3 flex min-h-[68px] items-end gap-x-3">
-        {/* Emoji + File + Upload */}
-        <div className="flex items-center gap-x-1">
-          <EmojiPicker onEmojiSelect={handleEmojiSelect} onGifSelect={handleGifSelect}>
-            <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
-              <Smile className="size-[22px]" />
-            </IconButton>
-          </EmojiPicker>
-
-          <IconButton
-            visual="gray"
-            variant="ghost"
-            size="lg"
-            className="rounded-full"
-            onClick={() => setUploadModalMode("image")}
-          >
-            <Image03 className="size-[22px]" />
-          </IconButton>
-          {/* // Updated attachment dropdown with file input */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <IconButton visual="gray" variant="ghost" size="lg" className="rounded-full">
-                <Attachment01 className="size-[22px]" />
+          {/* Emoji + File + Upload */}
+          <div className="flex items-center gap-x-1">
+            <EmojiPicker
+              onEmojiSelect={handleEmojiSelect}
+              onGifSelect={handleGifSelect}
+            >
+              <IconButton
+                visual="gray"
+                variant="ghost"
+                size="lg"
+                className="rounded-full"
+              >
+                <Smile className="size-[22px]" />
               </IconButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-[212px]">
-              <DropdownMenuItem onClick={() => setUploadModalMode("file")}>
-                <UploadCloud className="size-6" /> Upload from Desktop
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleCloudPick("dropbox")}>
-                <DropboxBrand className="size-6" /> Upload via Dropbox
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleCloudPick("google-drive")}>
-                <GoogleDrive1Brand className="size-6" /> Upload via Google Drive
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleCloudPick("onedrive")}>
-                <MsOnedriveBrand className="size-6" /> Upload via OneDrive
-              </DropdownMenuItem>
-              <DropdownMenuArrow className="fill-white" />
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </EmojiPicker>
 
-          {/* Hidden file inputs */}
-          <input
-            id="desktop-file-input"
-            type="file"
-            className="hidden"
-            onChange={handleFileSelect}
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.webp,.svg,.zip,.mp4,.mov"
-            multiple
-          />
-          <input
-            id="image-file-input"
-            type="file"
-            className="hidden"
-            onChange={handleFileSelect}
-            accept="image/*"
-            multiple
-          />
-        </div>
+            <IconButton
+              visual="gray"
+              variant="ghost"
+              size="lg"
+              className="rounded-full"
+              onClick={() => setUploadModalMode("image")}
+            >
+              <Image03 className="size-[22px]" />
+            </IconButton>
+            {/* // Updated attachment dropdown with file input */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <IconButton
+                  visual="gray"
+                  variant="ghost"
+                  size="lg"
+                  className="rounded-full"
+                >
+                  <Attachment01 className="size-[22px]" />
+                </IconButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[212px]">
+                <DropdownMenuItem onClick={() => setUploadModalMode("file")}>
+                  <UploadCloud className="size-6" /> Upload from Desktop
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleCloudPick("dropbox")}>
+                  <DropboxBrand className="size-6" /> Upload via Dropbox
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleCloudPick("google-drive")}
+                >
+                  <GoogleDrive1Brand className="size-6" /> Upload via Google
+                  Drive
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleCloudPick("onedrive")}>
+                  <MsOnedriveBrand className="size-6" /> Upload via OneDrive
+                </DropdownMenuItem>
+                <DropdownMenuArrow className="fill-white" />
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-        {/* Text area + send - Updated */}
-        <InputGroup className="flex-auto w-[calc(100%-164px)]">
-          <Textarea
-            ref={composerRef}
-            placeholder={
-              counterpartDeleted
-                ? "You can no longer reply"
-                : editingMessage
-                  ? "Edit message..."
-                  : selectedFiles.length > 0
-                    ? "Add a message (optional)..."
-                    : "Send message..."
-            }
-            disabled={counterpartDeleted}
-            className={`w-full resize-none py-1.5 leading-5 h-9 max-h-32 overflow-y-auto ${
-              editingMessage
-                ? "pr-[120px] ring-1 ring-primary-500 border-primary-500 focus:ring-primary-500 focus:border-primary-500"
-                : "pr-11"
-            }`}
-            rows={1}
-            value={textareaValue}
-            onChange={(e) => {
-              setTextareaValue(e.target.value)
-              if (e.target.value.length > 0) sendTyping(true)
-              else sendTyping(false)
-            }}
-            onBlur={() => sendTyping(false)}
-            onPaste={(e) => {
-              const pasted = e.clipboardData.getData("text")
-              if (!pasted) return
-              const target = e.currentTarget
-              const selStart = target.selectionStart ?? textareaValue.length
-              const selEnd = target.selectionEnd ?? textareaValue.length
-              const projected =
-                textareaValue.slice(0, selStart) +
-                pasted +
-                textareaValue.slice(selEnd)
-              if (projected.length <= COMPOSER_MAX_CHARS) return
-              e.preventDefault()
-              const room = COMPOSER_MAX_CHARS - (textareaValue.length - (selEnd - selStart))
-              const truncated = pasted.slice(0, Math.max(0, room))
-              const next =
-                textareaValue.slice(0, selStart) +
-                truncated +
-                textareaValue.slice(selEnd)
-              setTextareaValue(next)
-              toast({
-                title: `Pasted content was truncated to ${COMPOSER_MAX_CHARS.toLocaleString()} characters`,
-              })
-            }}
-            onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing) return
-              if (editingMessage) {
-                if (e.key === "Escape") {
-                  e.preventDefault()
-                  handleCancelEdit()
-                } else if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSaveEdit()
-                }
-                return
+            {/* Hidden file inputs */}
+            <input
+              id="desktop-file-input"
+              type="file"
+              className="hidden"
+              onChange={handleFileSelect}
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.gif,.webp,.svg,.zip,.mp4,.mov"
+              multiple
+            />
+            <input
+              id="image-file-input"
+              type="file"
+              className="hidden"
+              onChange={handleFileSelect}
+              accept="image/*"
+              multiple
+            />
+          </div>
+
+          {/* Text area + send - Updated */}
+          <InputGroup className="flex-auto w-[calc(100%-164px)]">
+            <Textarea
+              ref={composerRef}
+              placeholder={
+                counterpartDeleted
+                  ? "You can no longer reply"
+                  : editingMessage
+                    ? "Edit message..."
+                    : selectedFiles.length > 0
+                      ? "Add a message (optional)..."
+                      : "Send message..."
               }
-              if (e.key === "Enter" && !e.shiftKey) {
+              disabled={counterpartDeleted}
+              className={`w-full resize-none py-1.5 leading-5 h-9 max-h-32 overflow-y-auto ${
+                editingMessage
+                  ? "pr-[120px] ring-1 ring-primary-500 border-primary-500 focus:ring-primary-500 focus:border-primary-500"
+                  : "pr-11"
+              }`}
+              rows={1}
+              value={textareaValue}
+              onChange={(e) => {
+                setTextareaValue(e.target.value)
+                lastTypedAtRef.current = Date.now()
+                userTypedRef.current = true
+                if (e.target.value.length > 0) sendTyping(true)
+                else sendTyping(false)
+              }}
+              onBlur={() => sendTyping(false)}
+              onPaste={(e) => {
+                const pasted = e.clipboardData.getData("text")
+                if (!pasted) return
+                const target = e.currentTarget
+                const selStart = target.selectionStart ?? textareaValue.length
+                const selEnd = target.selectionEnd ?? textareaValue.length
+                const projected =
+                  textareaValue.slice(0, selStart) +
+                  pasted +
+                  textareaValue.slice(selEnd)
+                if (projected.length <= COMPOSER_MAX_CHARS) return
                 e.preventDefault()
-                handleSendMessage()
-              }
-            }}
-          />
-          <InputRightElement
-            className={
-              editingMessage
-                ? "!w-[120px] justify-end items-end pb-2"
-                : "items-end pb-2"
-            }
-          >
-            {editingMessage ? (
-              <div className="flex items-center gap-x-3 pr-3">
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  className="text-xs font-medium text-gray-500 hover:text-gray-700"
-                >
-                  Cancel
-                </button>
-                <span className="h-3 w-px bg-gray-300" aria-hidden />
-                <button
-                  type="button"
-                  onClick={handleSaveEdit}
-                  disabled={
-                    !keyReady ||
-                    !!keyError ||
-                    textareaValue.trim() === (editingMessage.content || "").trim()
+                const room =
+                  COMPOSER_MAX_CHARS -
+                  (textareaValue.length - (selEnd - selStart))
+                const truncated = pasted.slice(0, Math.max(0, room))
+                const next =
+                  textareaValue.slice(0, selStart) +
+                  truncated +
+                  textareaValue.slice(selEnd)
+                setTextareaValue(next)
+                userTypedRef.current = true
+                lastTypedAtRef.current = Date.now()
+                toast({
+                  title: `Pasted content was truncated to ${COMPOSER_MAX_CHARS.toLocaleString()} characters`,
+                })
+              }}
+              onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing) return
+                if (editingMessage) {
+                  if (e.key === "Escape") {
+                    e.preventDefault()
+                    handleCancelEdit()
+                  } else if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSaveEdit()
                   }
-                  className="text-xs font-semibold text-primary-500 hover:text-primary-600 disabled:text-gray-400 disabled:cursor-not-allowed"
-                >
-                  Save
-                </button>
-              </div>
-            ) : (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger
-                    className={`text-gray-500 hover:text-primary-500 disabled:text-gray-400 ${
-                      isUploading || isSending ? "animate-pulse" : ""
-                    }`}
-                    onClick={handleSendMessage}
+                  return
+                }
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSendMessage()
+                }
+              }}
+            />
+            <InputRightElement
+              className={
+                editingMessage
+                  ? "!w-[120px] justify-end items-end pb-2"
+                  : "items-end pb-2"
+              }
+            >
+              {editingMessage ? (
+                <div className="flex items-center gap-x-3 pr-3">
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <span className="h-3 w-px bg-gray-300" aria-hidden />
+                  <button
+                    type="button"
+                    onClick={handleSaveEdit}
                     disabled={
-                      (!textareaValue.trim() && selectedFiles.length === 0) ||
-                      isUploading ||
-                      isSending ||
                       !keyReady ||
                       !!keyError ||
-                      counterpartDeleted
+                      textareaValue.trim() ===
+                        (editingMessage.content || "").trim()
                     }
+                    className="text-xs font-semibold text-primary-500 hover:text-primary-600 disabled:text-gray-400 disabled:cursor-not-allowed"
                   >
-                    {isUploading || isSending ? (
-                      <Spinner size={18} strokeWidth={3} />
-                    ) : (
-                      <Send className="size-[18px]" />
-                    )}
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {isUploading
-                      ? "Uploading..."
-                      : selectedFiles.length > 0
-                        ? "Send files"
-                        : textareaValue
-                          ? "Send message"
-                          : "Type a message or select files"}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-          </InputRightElement>
-        </InputGroup>
+                    Save
+                  </button>
+                </div>
+              ) : (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger
+                      className={`text-gray-500 hover:text-primary-500 disabled:text-gray-400 ${
+                        isUploading || isSending ? "animate-pulse" : ""
+                      }`}
+                      onClick={handleSendMessage}
+                      disabled={
+                        (!textareaValue.trim() && selectedFiles.length === 0) ||
+                        isUploading ||
+                        isSending ||
+                        !keyReady ||
+                        !!keyError ||
+                        counterpartDeleted
+                      }
+                    >
+                      {isUploading || isSending ? (
+                        <Spinner size={18} strokeWidth={3} />
+                      ) : (
+                        <Send className="size-[18px]" />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {isUploading
+                        ? "Uploading..."
+                        : selectedFiles.length > 0
+                          ? "Send files"
+                          : textareaValue
+                            ? "Send message"
+                            : "Type a message or select files"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </InputRightElement>
+          </InputGroup>
         </div>
       </div>
 
@@ -2615,7 +3204,8 @@ export function Chats({
         onOpenChange={setShowBlockConfirm}
         targetUserId={
           selectedConversation && currentUser?.id
-            ? getOtherParticipantId(selectedConversation, currentUser.id) ?? null
+            ? (getOtherParticipantId(selectedConversation, currentUser.id) ??
+              null)
             : null
         }
         targetDisplayName={
@@ -2624,6 +3214,154 @@ export function Chats({
         }
         contextThreadId={selectedConversation?.id ?? null}
       />
+
+      {declinedOfferCard ? (
+        <Dialog
+          open={declinedOfferDetailsOpen}
+          onOpenChange={setDeclinedOfferDetailsOpen}
+        >
+          <DialogContent
+            variant="unanimated"
+            className="pointer-events-none inset-0 flex max-w-none items-center justify-center bg-transparent p-0 shadow-none"
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) {
+                setDeclinedOfferDetailsOpen(false)
+              }
+            }}
+          >
+            <div className="pointer-events-auto flex w-[520px] flex-col overflow-hidden rounded-[20px] bg-white shadow-xl transition-[height,width] duration-1000 ease-out [interpolate-size:allow-keywords]">
+              <div className="flex h-[60px] shrink-0 items-center justify-between border-b border-gray-100 px-6 py-3">
+                <DialogTitle className="text-[18px] font-semibold leading-7 text-dark-blue-400">
+                  This Offer Expired
+                </DialogTitle>
+
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="md">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <ScrollArea
+                className="h-[446px] flex-1"
+                scrollBar={<ScrollBar className="w-4 px-1" />}
+              >
+                <div className="space-y-6 px-6 py-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-3">
+                        <Badge variant="rounded" visual="gray" size="sm">
+                          {declinedOfferCard.offerType}
+                        </Badge>
+                        <span className="text-sm leading-5 text-gray-500">
+                          Expired on {declinedDisplayLabel}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 text-[18px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.offerTitle}
+                      </div>
+
+                      <div className="mt-2 flex items-center gap-1.5 text-sm leading-5 text-dark-blue-400">
+                        <span>Offer from</span>
+                        <Avatar size="xs">
+                          <AvatarImage
+                            src={declinedOfferCard.senderAvatarSrc}
+                            alt={declinedOfferSenderName}
+                          />
+                          <AvatarFallback>
+                            {declinedOfferSenderInitial}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span>{declinedOfferSenderName}</span>
+                        <span className="text-primary-500">
+                          {declinedOfferSenderUsername}
+                        </span>
+                      </div>
+                    </div>
+
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      leftIcon={<MessageSquare className="size-4" />}
+                      onClick={() => setDeclinedOfferDetailsOpen(false)}
+                    >
+                      Message
+                    </Button>
+                  </div>
+
+                  <div className="space-y-4 border-y border-gray-100 py-6">
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        Offer Rate
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.offerRate}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] leading-7 text-gray-500">
+                        Role
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.role}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] leading-7 text-gray-500">
+                        Contract Duration
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.duration}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] leading-7 text-gray-500">
+                        Work Schedule
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.schedule}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-[170px_1fr] gap-4">
+                      <span className="text-[15px] leading-7 text-gray-500">
+                        Start Date
+                      </span>
+                      <span className="text-[15px] font-semibold leading-7 text-dark-blue-400">
+                        {declinedOfferCard.startDate}
+                      </span>
+                    </div>
+                  </div>
+
+                </div>
+              </ScrollArea>
+
+              <div className="flex shrink-0 items-center justify-between gap-3 border-t border-gray-100 px-6 py-4">
+                <div className="flex items-start gap-2 text-sm leading-5 text-gray-400">
+                  <Info className="mt-0.5 size-4 shrink-0" />
+                  <span>
+                    {canRequestExtension
+                      ? "Want to revisit this? You can ask the client to extend the offer."
+                      : "Want to revisit this? Ask the client to see if the role is still available."}
+                  </span>
+                </div>
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  disabled={counterpartDeleted}
+                  onClick={handleAskNow}
+                >
+                  {canRequestExtension ? "Request Extension" : "Ask Now"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       <OneDrivePickerDialog
         open={onedriveDialogOpen}

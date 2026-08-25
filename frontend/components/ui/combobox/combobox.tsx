@@ -8,7 +8,8 @@ import { WithoutChildren } from "@/types/react"
 import { labelVariants } from "../label"
 
 interface ComboboxLabelProps
-  extends WithoutChildren<React.LabelHTMLAttributes<HTMLLabelElement>>,
+  extends
+    WithoutChildren<React.LabelHTMLAttributes<HTMLLabelElement>>,
     VariantProps<typeof labelVariants> {
   children?:
     | React.ReactNode
@@ -32,15 +33,15 @@ const ComboboxLabel = React.forwardRef<HTMLLabelElement, ComboboxLabelProps>(
 
 ComboboxLabel.displayName = "ComboboxLabel"
 
-interface ComboboxProps<TValue>
-  extends Omit<
-    React.HTMLAttributes<HTMLDivElement>,
-    "children" | "onChange" | "defaultValue"
-  > {
+interface ComboboxProps<TValue> extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "children" | "onChange" | "defaultValue"
+> {
   value?: TValue
   onChange?: (value: TValue) => void
   multiple?: boolean
   nullable?: boolean
+  disabled?: boolean
   defaultValue?: TValue
   className?: string
   children?:
@@ -106,7 +107,8 @@ export const comboboxInputVariants = cva("peer w-full rounded-[5px]", {
 })
 
 interface ComboboxInputProps<T = any>
-  extends Omit<
+  extends
+    Omit<
       React.InputHTMLAttributes<HTMLInputElement>,
       "children" | "defaultValue" | "size"
     >,
@@ -183,8 +185,9 @@ export const comboboxButtonVariants = cva(
   }
 )
 
-interface ComboboxButtonProps
-  extends WithoutChildren<React.ButtonHTMLAttributes<HTMLButtonElement>> {
+interface ComboboxButtonProps extends WithoutChildren<
+  React.ButtonHTMLAttributes<HTMLButtonElement>
+> {
   children?:
     | React.ReactNode
     | ((bag: {
@@ -207,8 +210,9 @@ const ComboboxButton = React.forwardRef<
 
 ComboboxButton.displayName = "ComboboxButton"
 
-interface ComboboxOptionsProps
-  extends WithoutChildren<React.HTMLAttributes<HTMLUListElement>> {
+interface ComboboxOptionsProps extends WithoutChildren<
+  React.HTMLAttributes<HTMLUListElement>
+> {
   children?:
     | React.ReactNode
     | ((bag: {
@@ -232,8 +236,10 @@ const ComboboxOptions = React.forwardRef<
 
 ComboboxOptions.displayName = "ComboboxOptions"
 
-interface ComboboxOptionProps<TValue = any>
-  extends Omit<React.LiHTMLAttributes<HTMLLIElement>, "children" | "value"> {
+interface ComboboxOptionProps<TValue = any> extends Omit<
+  React.LiHTMLAttributes<HTMLLIElement>,
+  "children" | "value"
+> {
   value: TValue
   children?:
     | React.ReactNode

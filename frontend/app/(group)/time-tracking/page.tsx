@@ -12,8 +12,14 @@ import {
   type ScreenshotCardDTO,
   type ScreenshotCardsParams,
   getScreenshotCards,
+  deleteScreenshot,
+  blurScreenshot,
+  unblurScreenshot,
+  updateScreenshotMeta,
+  bulkTransferScreenshots,
 } from "@/service/http/screenshots"
 import { cn } from "@/utils/functions"
+import { ROLE } from "@/types/user"
 import {
   ArrowLeft,
   Calendar,
@@ -87,8 +93,17 @@ import {
   TooltipProvider,
   TooltipTrigger,
   buttonVariants,
+  toast,
   useToast,
 } from "@/components/ui"
+import { VscCode } from "react-icons/vsc"
+import { FiFigma } from "react-icons/fi"
+import { FaChrome, FaSlack, FaGithub, FaGoogle, FaTerminal, FaApple, FaSafari } from "react-icons/fa"
+import { getManualTime } from "@/service/http/manual-time"
+import { AddManualTimeDialog } from "@/components/add-manual-time-dialog"
+import { createContractTask, getTasksForContract } from "@/service/http/tasks"
+import React from "react"
+
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -101,6 +116,8 @@ interface Screenshot {
   isDuplicate?: boolean
   duplicateCount?: number
   isNoActivity?: boolean
+  isBlurred?: boolean
+  contractId?: string
   keyboardPct?: number
   mousePct?: number
 }
@@ -164,27 +181,75 @@ const projectLabelColors: Record<ProjectColor, string> = {
 
 // ─── App icon components (small colored dots) ───────────────────────────
 
+// function AppIcons({ apps }: { apps: string[] }) {
+//   const colors: Record<string, string> = {
+//     chromebrowser: "bg-success-500",
+//     chrome: "bg-success-500",
+//     googlesearch: "bg-warning-500",
+//     slack: "bg-error-400",
+//     github: "bg-gray-700",
+//     githubdesktop: "bg-gray-700",
+//     vscode: "bg-primary-500",
+//     figma: "bg-purple-500",
+//     terminal: "bg-gray-500",
+//   }
+//   return (
+//     <div className="flex items-center gap-0.5">
+//       {apps.map((app, i) => (
+//         <div
+//           key={i}
+//           className={cn("size-3 rounded-full", colors[app] || "bg-gray-400")}
+//           title={app}
+//         />
+//       ))}
+//     </div>
+//   )
+// }
+
 function AppIcons({ apps }: { apps: string[] }) {
-  const colors: Record<string, string> = {
-    chrome: "bg-success-500",
-    slack: "bg-error-400",
-    github: "bg-gray-700",
-    vscode: "bg-primary-500",
-    figma: "bg-purple-500",
-    terminal: "bg-gray-500",
-  }
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-1">
       {apps.map((app, i) => (
-        <div
-          key={i}
-          className={cn("size-3 rounded-full", colors[app] || "bg-gray-400")}
-          title={app}
-        />
+        <AppIcon key={i} app={app} />
       ))}
     </div>
   )
 }
+
+function AppIcon({ app }: { app: string }) {
+  const size = 14
+  switch (app) {
+    case "chrome":
+    case "chromebrowser":
+      return <FaChrome size={size} className="text-green-500" title="Chrome" />
+    case "googlesearch":
+      return <FaGoogle size={size} className="text-amber-500" title="Google Search" />
+    case "slack":
+      return <FaSlack size={size} className="text-rose-500" title="Slack" />
+    case "github":
+    case "githubdesktop":
+      return <FaGithub size={size} className="text-gray-700" title="GitHub" />
+    case "vscode":
+      return <VscCode size={size} className="text-blue-500" title="VS Code" />
+    case "figma":
+      return <FiFigma size={size} className="text-purple-500" title="Figma" />
+    case "terminal":
+      return <FaTerminal size={size} className="text-gray-500" title="Terminal" />
+    case "code":
+      return <VscCode size={size} className="text-blue-500" title="VS Code" />
+    case "googlechrome":
+      return <FaChrome size={size} className="text-green-500" title="Chrome" />
+    case "finder":
+      return <FaApple size={size} className="text-gray-500" title="Finder" />
+    case "safari":
+      return <FaSafari size={size} className="text-blue-400" title="Safari" />
+    case "electron":
+      return <VscCode size={size} className="text-blue-400" title="Electron" />
+    default:
+      return <div className="size-3 rounded-full bg-gray-400" title={app} />
+  }
+}
+
 
 // ─── Sample data ────────────────────────────────────────────────────────
 
@@ -343,8 +408,15 @@ const PROJECT_COLORS: ProjectColor[] = [
 ]
 
 function transformScreenshotsToTimeBlocks(
-  cards: ScreenshotCardDTO[]
+  cards: ScreenshotCardDTO[],
+  contracts: ContractDTO[] = [],
+  opts: { timezone?: string; dateFormat?: string; timeFormat?: string } = {}
 ): TimeBlock[] {
+  // Build lookup map for contract names
+  const contractMap = new Map<string, ContractDTO>()
+  for (const c of contracts) {
+    contractMap.set(c.id, c)
+  }
   // Group by hour
   const hourMap = new Map<string, { date: Date; cards: ScreenshotCardDTO[] }>()
 
@@ -376,15 +448,20 @@ function transformScreenshotsToTimeBlocks(
   const blocks: TimeBlock[] = []
 
   for (const [, { date, cards: hourCards }] of hourMap) {
-    const hour = date.getHours()
-    const ampm = hour >= 12 ? "pm" : "am"
-    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour
-    const hourLabel = `${displayHour} ${ampm}`
+    const tzOpts = opts.timezone ? { timeZone: opts.timezone } : {}
+    const localeHour = date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      hour12: opts.timeFormat !== "24h",
+      ...tzOpts,
+    }).toLowerCase()
+    const hourLabel = localeHour.replace(/:00/, "")
 
-    const dateLabel = date.toLocaleDateString("en-US", {
+    const dateLocale = opts.dateFormat === "DD/MM/YYYY" ? "en-GB" : "en-US"
+    const dateLabel = date.toLocaleDateString(dateLocale, {
       month: "short",
       day: "numeric",
       year: "numeric",
+      ...tzOpts,
     })
 
     // Group by contractId within this hour
@@ -405,11 +482,12 @@ function transformScreenshotsToTimeBlocks(
           .toLocaleTimeString("en-US", {
             hour: "numeric",
             minute: "2-digit",
-            hour12: true,
+            hour12: opts.timeFormat !== "24h",
+            ...(opts.timezone ? { timeZone: opts.timezone } : {}),
           })
           .toLowerCase()
 
-        const activityLevel = Math.round((c.keyboardPct + c.mousePct) / 2)
+        const activityLevel = Math.round((Number(c.keyboardPct) + Number(c.mousePct)) / 2)
         const apps = c.apps
           ? c.apps.map((a) => a.appName.toLowerCase().replace(/\s+/g, ""))
           : []
@@ -420,16 +498,18 @@ function transformScreenshotsToTimeBlocks(
           imageUrl: c.thumbnailUrl || "",
           activityLevel,
           apps,
-          isNoActivity: activityLevel === 0 && (!c.apps || c.apps.length === 0),
+          isNoActivity: activityLevel === 0 && (!c.apps || c.apps.length === 0) && !c.thumbnailUrl,
+          isBlurred: c.isBlurred ?? false,
+          contractId: c.contractId ?? undefined,
           keyboardPct: c.keyboardPct,
           mousePct: c.mousePct,
         }
       })
 
       projects.push({
-        projectName: pid === "__none__" ? "No Project" : `Project`,
+        projectName: pid === "__none__" ? "No Project" : (pCards[0]?.contractName ?? contractMap.get(pid)?.title ?? pid),
         projectColor: getProjectColor(pid === "__none__" ? null : pid),
-        taskName: pCards[0]?.taskId ?? "No task",
+        taskName: pCards[0]?.taskName ?? pCards[0]?.contractName ?? "No task",
         screenshots,
       })
     }
@@ -441,7 +521,7 @@ function transformScreenshotsToTimeBlocks(
     const totalTime = `${hrs}:${mins.toString().padStart(2, "0")} hrs`
 
     blocks.push({
-      id: `tb-${date.getTime()}-${hour}`,
+      id: `tb-${date.getTime()}-${date.getHours()}`,
       hour: hourLabel,
       date: dateLabel,
       totalTime,
@@ -461,10 +541,16 @@ function ScreenshotThumbnail({
   screenshot,
   selected,
   onSelect,
+  bulkMode,
+  bulkSelected,
+  onBulkToggle,
 }: {
   screenshot: Screenshot
   selected: boolean
   onSelect: (id: string) => void
+  bulkMode?: boolean
+  bulkSelected?: boolean
+  onBulkToggle?: (id: string) => void
 }) {
   return (
     <div
@@ -474,12 +560,34 @@ function ScreenshotThumbnail({
           ? "bg-gray-100 border border-gray-200"
           : "border border-transparent"
       )}
-      onClick={() => onSelect(screenshot.id)}
+      onClick={() => bulkMode ? onBulkToggle?.(screenshot.id) : onSelect(screenshot.id)}
     >
       <div className="relative aspect-[16/10] rounded-lg overflow-hidden">
+        {bulkMode && (
+          <div className="absolute top-1.5 left-1.5 z-10">
+            <Checkbox
+              checked={bulkSelected}
+              onCheckedChange={() => onBulkToggle?.(screenshot.id)}
+              className="bg-white shadow-sm"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        )}
         {screenshot.isNoActivity ? (
           <div className="w-full h-full bg-gray-100 flex items-center justify-center">
             <span className="text-xs text-gray-400">No Activity</span>
+          </div>
+        ) : screenshot.isBlurred ? (
+          <div className="relative w-full h-full">
+            <img
+              src={screenshot.imageUrl}
+              alt={`Screenshot at ${screenshot.time}`}
+              className="w-full h-full object-cover blur-lg"
+              loading="lazy"
+            />
+            <div className="absolute inset-0 bg-gray-900/40 flex items-center justify-center">
+              <Droplet className="size-4 text-white" />
+            </div>
           </div>
         ) : screenshot.imageUrl ? (
           <img
@@ -513,6 +621,24 @@ function ScreenshotThumbnail({
         <span className="text-[11px] text-gray-400">{screenshot.time}</span>
         {screenshot.apps.length > 0 && <AppIcons apps={screenshot.apps} />}
       </div>
+      {/* US-84: keyboard/mouse activity icons on every tile, not just the
+          detail-drawer sidebar. */}
+      {!screenshot.isNoActivity && (screenshot.keyboardPct != null || screenshot.mousePct != null) && (
+        <div className="flex items-center gap-2 mt-0.5">
+          {screenshot.keyboardPct != null && (
+            <span className="flex items-center gap-0.5 text-[10px] text-gray-400">
+              <Keyboard01 className="size-3" />
+              {screenshot.keyboardPct}%
+            </span>
+          )}
+          {screenshot.mousePct != null && (
+            <span className="flex items-center gap-0.5 text-[10px] text-gray-400">
+              <Mouse className="size-3" />
+              {screenshot.mousePct}%
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -680,10 +806,16 @@ function TimeBlockCard({
   block,
   selectedScreenshotId,
   onSelectScreenshot,
+  bulkMode,
+  selectedScreenshots,
+  onBulkToggle,
 }: {
   block: TimeBlock
   selectedScreenshotId: string | null
   onSelectScreenshot: (id: string) => void
+  bulkMode?: boolean
+  selectedScreenshots?: Set<string>
+  onBulkToggle?: (id: string) => void
 }) {
   return (
     <div className="py-4">
@@ -728,6 +860,9 @@ function TimeBlockCard({
                 screenshot={screenshot}
                 selected={selectedScreenshotId === screenshot.id}
                 onSelect={onSelectScreenshot}
+                bulkMode={bulkMode}
+                bulkSelected={selectedScreenshots?.has(screenshot.id)}
+                onBulkToggle={onBulkToggle}
               />
             ))
           )}
@@ -739,134 +874,476 @@ function TimeBlockCard({
 
 // ─── Add Manual Time Dialog ─────────────────────────────────────────────
 
-function AddManualTimeDialog({
+// ─── Transfer Time Dialog (US-TT-013 + US-TT-021 Confirmation) ────────────
+function TransferTimeDialog({
   open,
   onOpenChange,
+  selectedCount,
+  onConfirm,
 }: {
   open: boolean
-  onOpenChange: (open: boolean) => void
+  onOpenChange: (v: boolean) => void
+  selectedCount: number
+  onConfirm: (contractId: string, taskId?: string) => void
 }) {
-  const { toast } = useToast()
-  const [date, setDate] = useState("")
-  const [startTime, setStartTime] = useState("")
-  const [endTime, setEndTime] = useState("")
-  const [contract, setContract] = useState("")
-  const [task, setTask] = useState("")
-  const [notes, setNotes] = useState("")
+  const [targetContract, setTargetContract] = useState("")
+  const [targetTask, setTargetTask] = useState("")
+  const [tasks, setTasks] = useState<{ id: string; name: string }[]>([])
+  const [loadingTasks, setLoadingTasks] = useState(false)
+  const [step, setStep] = useState<"select" | "confirm">("select")
+
+  useEffect(() => {
+    if (!targetContract) {
+      setTasks([])
+      setTargetTask("")
+      return
+    }
+    setLoadingTasks(true)
+    setTargetTask("")
+    fetch(`${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/tasks/contract/${encodeURIComponent(targetContract)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setTasks(data.map((t: any) => ({ id: t.id, name: t.name })))
+        }
+      })
+      .catch(() => setTasks([]))
+      .finally(() => setLoadingTasks(false))
+  }, [targetContract])
+
+  useEffect(() => {
+    if (!open) {
+      setTargetContract("")
+      setTargetTask("")
+      setTasks([])
+      setStep("select")
+    }
+  }, [open])
+
+  const selectedContractName =
+    projectOptions.find((p) => p.id === targetContract)?.name ?? targetContract
+  const selectedTaskName =
+    tasks.find((t) => t.id === targetTask)?.name ?? ""
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Manual Time</DialogTitle>
+          <DialogTitle>
+            {step === "select" ? "Transfer Time" : "Confirm Reassignment"}
+          </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-dark-blue-400">
-              Date
-            </label>
-            <Input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              placeholder="Select Date"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
+        {step === "select" ? (
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-gray-500">
+              Move {selectedCount} screenshot{selectedCount !== 1 ? "s" : ""} to a different contract.
+            </p>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-dark-blue-400">
-                Start Time
-              </label>
-              <Input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                placeholder="Enter start time"
-              />
+              <label className="text-sm font-medium text-gray-700">Destination Contract</label>
+              <select
+                value={targetContract}
+                onChange={(e) => setTargetContract(e.target.value)}
+                className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-primary-300 focus:ring-2 focus:ring-primary-50"
+              >
+                <option value="">Select a contract…</option>
+                {projectOptions.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-dark-blue-400">
-                End Time
-              </label>
-              <Input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                placeholder="Enter end time"
-              />
+            {targetContract && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">
+                  Task <span className="text-gray-400">(optional)</span>
+                </label>
+                {loadingTasks ? (
+                  <p className="text-sm text-gray-400">Loading tasks…</p>
+                ) : (
+                  <select
+                    value={targetTask}
+                    onChange={(e) => setTargetTask(e.target.value)}
+                    className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-primary-300 focus:ring-2 focus:ring-primary-50"
+                  >
+                    <option value="">No specific task</option>
+                    {tasks.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4 py-2">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-medium text-amber-800">Are you sure you want to reassign?</p>
+              <p className="mt-1 text-sm text-amber-700">
+                {selectedCount} screenshot{selectedCount !== 1 ? "s" : ""} will be moved to:
+              </p>
+              <ul className="mt-2 space-y-1 text-sm text-amber-700">
+                <li><span className="font-medium">Contract:</span> {selectedContractName}</li>
+                {selectedTaskName && (
+                  <li><span className="font-medium">Task:</span> {selectedTaskName}</li>
+                )}
+              </ul>
+              <p className="mt-2 text-xs text-amber-600">
+                This will update the time entries associated with these screenshots.
+              </p>
             </div>
           </div>
+        )}
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-dark-blue-400">
-              Contract
-            </label>
-            <Select value={contract} onValueChange={setContract}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Contract" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="project1">Project 1</SelectItem>
-                <SelectItem value="project2">Project 2</SelectItem>
-                <SelectItem value="project3">Project 3</SelectItem>
-                <SelectItem value="project4">Project 4</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outlined" visual="gray" size="sm">Cancel</Button>
+          </DialogClose>
+          {step === "select" ? (
+            <Button
+              variant="filled"
+              visual="primary"
+              size="sm"
+              disabled={!targetContract}
+              onClick={() => setStep("confirm")}
+            >
+              Next
+            </Button>
+          ) : (
+            <div className="flex gap-2">
+              <Button variant="outlined" visual="gray" size="sm" onClick={() => setStep("select")}>
+                Back
+              </Button>
+              <Button
+                variant="filled"
+                visual="primary"
+                size="sm"
+                onClick={() => onConfirm(targetContract, targetTask || undefined)}
+              >
+                Confirm Transfer
+              </Button>
+            </div>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-dark-blue-400">
-              Task
-            </label>
-            <Select value={task} onValueChange={setTask}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Task" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="editing">Editing Layouts</SelectItem>
-                <SelectItem value="logo">Creating logo</SelectItem>
-                <SelectItem value="wireframes">Wireframing</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-dark-blue-400">
-              Notes
-            </label>
-            <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Tell us what you worked on"
-              rows={3}
-            />
-          </div>
+// ─── Time Tracking Settings Dialog (US-TT-038 through US-TT-044) ──────────
+function TimeTrackingSettingsDialog({
+  open,
+  onOpenChange,
+  isClient,
+  contracts,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  isClient: boolean
+  contracts: { id: string; name: string }[]
+}) {
+  const [activeTab, setActiveTab] = useState<"time" | "permissions">(
+    isClient ? "permissions" : "time"
+  )
+  useEffect(() => {
+    setActiveTab(isClient ? "permissions" : "time")
+  }, [isClient])
+  const [saving, setSaving] = useState(false)
+  const { toast } = useToast()
+  const getToken = () => {
+    try {
+      const Cookies = require("js-cookie")
+      return Cookies.get("access_token") || Cookies.get("accessToken") || localStorage.getItem("access_token") || localStorage.getItem("token") || ""
+    } catch {
+      return localStorage.getItem("access_token") || localStorage.getItem("token") || ""
+    }
+  }
 
-          <p className="text-xs text-gray-400 flex items-center gap-1.5">
-            <HelpCircle className="size-3.5 flex-none" />
-            Manual time will appear in your timeline without screenshots and may
-            be subject to review or approval.
-          </p>
+  // ── Talent: Time & Display prefs ──
+  const [timezone, setTimezone] = useState("America/New_York")
+  const [dateFormat, setDateFormat] = useState<"MM/DD/YYYY" | "DD/MM/YYYY">("MM/DD/YYYY")
+  const [startOfWeek, setStartOfWeek] = useState<"Sunday" | "Monday">("Sunday")
+  const [timeFormat, setTimeFormat] = useState<"12h" | "24h">("12h")
+
+  // ── Client: Per-contract admin settings ──
+  const [selectedContract, setSelectedContract] = useState(contracts[0]?.id ?? "")
+  const [allowDelete, setAllowDelete] = useState(true)
+  const [allowBlur, setAllowBlur] = useState(true)
+  const [autoApproveBlur, setAutoApproveBlur] = useState(false)
+  const [allowReassign, setAllowReassign] = useState(true)
+  const [deletedNonBillable, setDeletedNonBillable] = useState(true)
+  const [blurredBillable, setBlurredBillable] = useState(true)
+
+  // Fetch user prefs on open
+  useEffect(() => {
+    if (!open) return
+    if (!isClient) {
+      fetch(`${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/settings/preferences`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (data) {
+            setTimezone(data.timezone ?? "America/New_York")
+            setDateFormat(data.dateFormat ?? "MM/DD/YYYY")
+            setStartOfWeek(data.startOfWeek ?? "Sunday")
+            setTimeFormat(data.timeFormat ?? "12h")
+          }
+        })
+        .catch(() => {})
+    }
+  }, [open, isClient])
+
+  // Fetch admin settings when contract changes
+  useEffect(() => {
+    if (!open || !isClient || !selectedContract) return
+    fetch(`${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/settings/admin/${selectedContract}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data) {
+          setAllowDelete(data.allowDelete ?? true)
+          setAllowBlur(data.allowBlur ?? true)
+          setAutoApproveBlur(data.autoApproveBlur ?? false)
+          setAllowReassign(data.allowReassign ?? true)
+          setDeletedNonBillable(data.deletedNonBillable ?? true)
+          setBlurredBillable(data.blurredBillable ?? true)
+        }
+      })
+      .catch(() => {})
+  }, [open, isClient, selectedContract])
+
+  const handleSavePreferences = async () => {
+    setSaving(true)
+    try {
+      const token = getToken()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/settings/preferences`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ timezone, dateFormat, startOfWeek, timeFormat }),
+      })
+      if (!res.ok) throw new Error("Save failed")
+      toast({ title: "Saved", description: "Your time & display preferences have been updated." })
+      onOpenChange(false)
+    } catch {
+      toast({ title: "Error", description: "Failed to save preferences.", variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveAdminSettings = async () => {
+    setSaving(true)
+    try {
+      const token = getToken()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/settings/admin/${selectedContract}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ allowDelete, allowBlur, autoApproveBlur, allowReassign, deletedNonBillable, blurredBillable }),
+      })
+      if (!res.ok) throw new Error("Save failed")
+      toast({ title: "Saved", description: "Screenshot permissions updated for this contract." })
+      onOpenChange(false)
+    } catch {
+      toast({ title: "Error", description: "Failed to save settings.", variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const ToggleRow = ({ label, description, checked, onChange }: {
+    label: string; description: string; checked: boolean; onChange: (v: boolean) => void
+  }) => (
+    <div className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
+      <div className="flex-1 pr-4">
+        <p className="text-sm font-medium text-dark-blue-400">{label}</p>
+        <p className="text-xs text-gray-400 mt-0.5">{description}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={cn(
+          "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+          checked ? "bg-primary-500" : "bg-gray-200"
+        )}
+      >
+        <span className={cn(
+          "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+          checked ? "translate-x-4" : "translate-x-0"
+        )} />
+      </button>
+    </div>
+  )
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Time Tracking Settings</DialogTitle>
+        </DialogHeader>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 -mx-6 px-6">
+          {!isClient && (
+            <button
+              onClick={() => setActiveTab("time")}
+              className={cn(
+                "px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+                activeTab === "time"
+                  ? "border-primary-500 text-primary-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              )}
+            >
+              Time & Display
+            </button>
+          )}
+          <button
+            onClick={() => setActiveTab("permissions")}
+            className={cn(
+              "px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+              activeTab === "permissions"
+                ? "border-primary-500 text-primary-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            )}
+          >
+            Screenshot Permissions
+          </button>
+        </div>
+
+        {/* Tab content */}
+        <div className="py-2 min-h-[280px]">
+          {activeTab === "time" && (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">Timezone</label>
+                <select
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm"
+                >
+                  <option value="America/New_York">America/New_York (EST)</option>
+                  <option value="America/Chicago">America/Chicago (CST)</option>
+                  <option value="America/Denver">America/Denver (MST)</option>
+                  <option value="America/Los_Angeles">America/Los_Angeles (PST)</option>
+                  <option value="Europe/London">Europe/London (GMT)</option>
+                  <option value="Europe/Berlin">Europe/Berlin (CET)</option>
+                  <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+                  <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+                  <option value="UTC">UTC</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">Date Format</label>
+                <select
+                  value={dateFormat}
+                  onChange={(e) => setDateFormat(e.target.value as any)}
+                  className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm"
+                >
+                  <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                  <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">Start of Week</label>
+                <select
+                  value={startOfWeek}
+                  onChange={(e) => setStartOfWeek(e.target.value as any)}
+                  className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm"
+                >
+                  <option value="Sunday">Sunday</option>
+                  <option value="Monday">Monday</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">Time Format</label>
+                <select
+                  value={timeFormat}
+                  onChange={(e) => setTimeFormat(e.target.value as any)}
+                  className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm"
+                >
+                  <option value="12h">12-hour (2:30 PM)</option>
+                  <option value="24h">24-hour (14:30)</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "permissions" && (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">Contract</label>
+                <select
+                  value={selectedContract}
+                  onChange={(e) => setSelectedContract(e.target.value)}
+                  className="w-full h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm"
+                >
+                  {contracts.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400">Changes apply to the selected contract only.</p>
+              </div>
+
+              <div className="mt-2">
+                <ToggleRow
+                  label="Allow screenshot blurring"
+                  description="Contractors can blur screenshots to hide sensitive content"
+                  checked={allowBlur}
+                  onChange={setAllowBlur}
+                />
+                <ToggleRow
+                  label="Auto-approve blurring"
+                  description="Blurred screenshots are automatically counted as logged time"
+                  checked={autoApproveBlur}
+                  onChange={setAutoApproveBlur}
+                />
+                <ToggleRow
+                  label="Log blurred as billable time"
+                  description="Include blurred screenshot time in billing totals"
+                  checked={blurredBillable}
+                  onChange={setBlurredBillable}
+                />
+                <ToggleRow
+                  label="Allow screenshot deletion"
+                  description="Contractors can delete their own screenshots"
+                  checked={allowDelete}
+                  onChange={setAllowDelete}
+                />
+                <ToggleRow
+                  label="Deleted time is non-billable"
+                  description="Deleted screenshot time is excluded from billing"
+                  checked={deletedNonBillable}
+                  onChange={setDeletedNonBillable}
+                />
+                <ToggleRow
+                  label="Allow contract reassignment"
+                  description="Contractors can move screenshots between contracts"
+                  checked={allowReassign}
+                  onChange={setAllowReassign}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outlined" visual="gray">
-              Cancel
-            </Button>
+            <Button variant="outlined" visual="gray" size="sm">Cancel</Button>
           </DialogClose>
           <Button
-            onClick={() => {
-              onOpenChange(false)
-              toast({
-                title: "Manual time added",
-                description: `${startTime} – ${endTime}`,
-              })
-            }}
+            variant="filled"
+            visual="primary"
+            size="sm"
+            disabled={saving}
+            onClick={activeTab === "time" ? handleSavePreferences : handleSaveAdminSettings}
           >
-            Save
+            {saving ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -902,46 +1379,62 @@ interface CategoryConfig {
 
 const contractFilterOpts: FilterOptionItem[] = [
   {
-    value: "Referrizer Website",
-    label: "Referrizer Website",
-    subLabel: "@referrizer",
+    value: "con_web_redesign",
+    label: "Redesigning and Optimizing Website for Enhanced User Experience",
+    subLabel: "@christorres",
     avatar: { initial: "R", color: "bg-warning-400" },
   },
   {
-    value: "Alex",
-    label: "Alex",
-    subLabel: "@alex_guy21",
-    avatar: { initial: "A", color: "bg-warning-400" },
+    value: "con_ux_designer",
+    label: "UX Designer",
+    subLabel: "@christorres",
+    avatar: { initial: "U", color: "bg-gray-300" },
   },
   {
-    value: "Saas Landing Page",
-    label: "Saas Landing Page",
-    subLabel: "@client_name_234",
-    avatar: { initial: "S", color: "bg-warning-400" },
+    value: "con_crypto_mobile",
+    label: "Crypto App Mobile",
+    subLabel: "@christorres",
+    avatar: { initial: "C", color: "bg-primary-100" },
   },
   {
-    value: "Bitcoin Dev Team",
-    label: "Bitcoin Dev Team",
-    subLabel: "@bitcoinmasters321",
-    avatar: { initial: "B", color: "bg-warning-400" },
+    value: "con_marketing_vsl",
+    label: "Marketing VSL Funnel",
+    subLabel: "@christorres",
+    avatar: { initial: "M", color: "bg-success-100" },
   },
   {
-    value: "Referrizer App",
-    label: "Referrizer App",
-    subLabel: "@referrizer",
-    avatar: { initial: "R", color: "bg-warning-400" },
+    value: "con_saas_landing",
+    label: "SaaS Landing Page",
+    subLabel: "@christorres",
+    avatar: { initial: "S", color: "bg-purple-100" },
+  },
+  {
+    value: "con_test_001",
+    label: "Test Web Development Contract",
+    subLabel: "@christorres",
+    avatar: { initial: "T", color: "bg-gray-300" },
   },
 ]
+
 const taskFilterOpts: FilterOptionItem[] = [
-  { value: "Finalize homepage layout", label: "Finalize homepage layout" },
-  { value: "Editing layouts", label: "Editing layouts" },
-  { value: "Fix checkout flow bugs", label: "Fix checkout flow bugs" },
-  {
-    value: "Add analytics summary cards",
-    label: "Add analytics summary cards",
-  },
-  { value: "No tasks assigned", label: "No tasks assigned" },
+  { value: "task-con_web_redesign", label: "Creating logo for X brand" },
+  { value: "task-con_ux_designer", label: "User flow mapping" },
+  { value: "task-con_ux_designer-1779841764091", label: "UX Designer" },
+  { value: "task-con_ux_designer-1779842216348", label: "Testing task" },
+  { value: "task-con_ux_designer-1779842193505", label: "user stories" },
+  { value: "task-con_crypto_mobile", label: "Building crypto wallet UI" },
+  { value: "task-con_test_001", label: "Building API endpoints" },
+  { value: "task-mktg-vsl-01", label: "VSL Script & Storyboard" },
+  { value: "task-mktg-vsl-02", label: "Funnel Page Build" },
+  { value: "task-mktg-vsl-03", label: "Ad Creative & Copy" },
+  { value: "task-con_marketing_vsl", label: "Marketing VSL Funnel" },
+  { value: "task-saas-lp-01", label: "Landing Page Design" },
+  { value: "task-saas-lp-02", label: "Responsive Dev & QA" },
+  { value: "task-saas-lp-03", label: "Copywriting & SEO" },
+  { value: "task-con_saas_landing", label: "SaaS Landing Page Design" },
 ]
+
+
 const appFilterOpts: FilterOptionItem[] = [
   {
     value: "Google Docs",
@@ -987,11 +1480,13 @@ const urlFilterOpts: FilterOptionItem[] = [
   },
 ]
 const activityFilterOpts: FilterOptionItem[] = [
-  { value: "No Activity", label: "No Activity" },
-  { value: "Low Activity", label: "Low Activity" },
-  { value: "Medium Activity", label: "Medium Activity" },
-  { value: "High Activity", label: "High Activity" },
+  { value: "none", label: "No Activity" },
+  { value: "low", label: "Low Activity" },
+  { value: "medium", label: "Medium Activity" },
+  { value: "high", label: "High Activity" },
 ]
+
+
 const timeEntryFilterOpts: FilterOptionItem[] = [
   { value: "Auto Tracked Time", label: "Auto Tracked Time" },
   { value: "Manual Time", label: "Manual Time" },
@@ -1289,15 +1784,28 @@ function flattenScreenshots(blocks: TimeBlock[]): FlatScreenshot[] {
   )
 }
 
+// const appDisplay: Record<string, { name: string; color: string }> = {
+//   chrome: { name: "Chrome Browser", color: "bg-success-500" },
+//   slack: { name: "Slack", color: "bg-error-400" },
+//   github: { name: "Github Desktop", color: "bg-gray-700" },
+//   vscode: { name: "VS Code", color: "bg-primary-500" },
+//   figma: { name: "Figma", color: "bg-purple-500" },
+//   terminal: { name: "Terminal", color: "bg-gray-500" },
+// }
+
 const appDisplay: Record<string, { name: string; color: string }> = {
   chrome: { name: "Chrome Browser", color: "bg-success-500" },
+  chromebrowser: { name: "Chrome Browser", color: "bg-success-500" },
+  googlesearch: { name: "Google Search", color: "bg-warning-500" },
   slack: { name: "Slack", color: "bg-error-400" },
-  github: { name: "Github Desktop", color: "bg-gray-700" },
+  github: { name: "GitHub Desktop", color: "bg-gray-700" },
+  githubdesktop: { name: "GitHub Desktop", color: "bg-gray-700" },
   vscode: { name: "VS Code", color: "bg-primary-500" },
   figma: { name: "Figma", color: "bg-purple-500" },
   terminal: { name: "Terminal", color: "bg-gray-500" },
+  googlechrome: { name: "Google Chrome", color: "bg-success-500" },
+  code: { name: "VS Code", color: "bg-primary-500" },
 }
-
 // ─── Contract / Task pickers ───────────────────────────────────────────
 
 interface ProjectOption {
@@ -1308,48 +1816,50 @@ interface ProjectOption {
   initial: string
 }
 
+
+
 const projectOptions: ProjectOption[] = [
   {
-    id: "p1",
-    name: "Crypto App / Mobile",
-    handle: "@bitcoinmasters321",
+    id: "con_web_redesign",
+    name: "Redesigning and Optimizing Website for Enhanced User Experience",
+    handle: "@christorres",
     avatarColor: "bg-warning-400",
+    initial: "R",
+  },
+  {
+    id: "con_ux_designer",
+    name: "UX Designer",
+    handle: "@christorres",
+    avatarColor: "bg-gray-300",
+    initial: "U",
+  },
+  {
+    id: "con_crypto_mobile",
+    name: "Crypto App Mobile",
+    handle: "@christorres",
+    avatarColor: "bg-primary-100",
     initial: "C",
   },
   {
-    id: "p2",
-    name: "Logo Design",
-    handle: "@christheclient234",
-    avatarColor: "bg-gray-300",
-    initial: "L",
+    id: "con_marketing_vsl",
+    name: "Marketing VSL Funnel",
+    handle: "@christorres",
+    avatarColor: "bg-success-100",
+    initial: "M",
   },
   {
-    id: "p3",
-    name: "Saas Landing Page",
-    handle: "@referrizerllc",
-    avatarColor: "bg-primary-100",
+    id: "con_saas_landing",
+    name: "SaaS Landing Page",
+    handle: "@christorres",
+    avatarColor: "bg-purple-100",
     initial: "S",
   },
   {
-    id: "p4",
-    name: "Website Redesign",
-    handle: "@referrizerllc",
-    avatarColor: "bg-primary-100",
-    initial: "W",
-  },
-  {
-    id: "p5",
-    name: "App Redesign Sprint",
-    handle: "@northstarstudio",
-    avatarColor: "bg-success-400",
-    initial: "A",
-  },
-  {
-    id: "p6",
-    name: "Design QA Support",
-    handle: "@brandteam",
-    avatarColor: "bg-gray-500",
-    initial: "D",
+    id: "con_test_001",
+    name: "Test Web Development Contract",
+    handle: "@christorres",
+    avatarColor: "bg-gray-300",
+    initial: "T",
   },
 ]
 
@@ -1388,7 +1898,7 @@ function ContractPicker({
       <label className="text-sm text-gray-500">Contract</label>
       <Combobox
         value={selectedProject}
-        onChange={(project: ProjectOption) => onChange(project.name)}
+        onChange={(project: ProjectOption) => onChange(project.id)}
         className="w-full"
       >
         <ComboboxTrigger>
@@ -1453,22 +1963,40 @@ function ContractPicker({
 function TaskPicker({
   value,
   onChange,
+  contractId,
 }: {
   value: string
   onChange: (v: string) => void
+  contractId?: string
 }) {
   const [query, setQuery] = useState("")
-  const [tasks, setTasks] = useState<string[]>(taskOptions)
+  const [tasks, setTasks] = useState<{ id: string; name: string }[]>([])
+  const taskInputRef = React.useRef("")
+
+  useEffect(() => {
+    if (contractId) {
+      getTasksForContract(contractId)
+        .then(res => setTasks(res.map(t => ({ id: t.id, name: t.name }))))
+        .catch(() => {})
+    }
+  }, [contractId])
+
   const filtered = tasks.filter((t) =>
-    t.toLowerCase().includes(query.toLowerCase())
+    t.name.toLowerCase().includes(query.toLowerCase())
   )
 
-  const addNewTask = () => {
-    if (query.trim() && !tasks.includes(query.trim())) {
-      const next = query.trim()
-      setTasks([...tasks, next])
-      onChange(next)
-      setQuery("")
+  const addNewTask = async (overrideName?: string) => {
+    const name = (overrideName || query).trim()
+    if (!name || tasks.some(t => t.name === name)) return
+    if (contractId) {
+      try {
+        const created = await createContractTask({ contractId, name, createdBy: 'talent' })
+        setTasks(prev => [...prev, { id: created.id, name: created.name }])
+        onChange(created.id)
+        setQuery("")
+      } catch {
+        // failed
+      }
     }
   }
 
@@ -1477,16 +2005,23 @@ function TaskPicker({
       <label className="text-sm text-gray-500">Task</label>
       <Combobox
         value={value}
-        onChange={(task: string) => onChange(task)}
+        onChange={(taskId: string) => onChange(taskId)}
         className="w-full"
         nullable
       >
         <ComboboxTrigger>
           <div className="relative">
             <ComboboxInput
+              data-task-create-input
               className="h-10 pl-3 pr-9 text-sm font-medium text-dark-blue-400"
-              displayValue={(task: string) => task ?? ""}
-              onChange={(event) => setQuery(event.target.value)}
+              displayValue={() => {
+                const found = tasks.find(t => t.id === value)
+                return found?.name ?? value ?? ""
+              }}
+              onChange={(event) => {
+                setQuery(event.target.value)
+                taskInputRef.current = event.target.value
+              }}
             />
             <ComboboxButton
               align="right"
@@ -1497,7 +2032,7 @@ function TaskPicker({
           </div>
         </ComboboxTrigger>
         <ScaleOutIn afterLeave={() => setQuery("")}>
-          <ComboboxOptions className="left-auto right-0 mt-1 w-[462px] max-w-[calc(100vw-3rem)] space-y-0 rounded-xl border border-gray-100 bg-white px-0 py-0 shadow-[0_24px_48px_rgba(16,24,40,0.18)]">
+          <ComboboxOptions className="left-auto right-0 mt-1 w-full min-w-[200px] max-w-[300px] space-y-0 rounded-xl border border-gray-100 bg-white px-0 py-0 shadow-[0_24px_48px_rgba(16,24,40,0.18)]">
             <ScrollArea viewportClassName="max-h-[224px]">
               {filtered.length === 0 ? (
                 <li className="px-5 py-6 text-center text-sm text-gray-400">
@@ -1506,32 +2041,42 @@ function TaskPicker({
               ) : (
                 filtered.map((task) => (
                   <ComboboxOption
-                    key={task}
-                    value={task}
+                    key={task.id}
+                    value={task.id}
                     className={cn(
                       "px-5 py-3 text-sm font-medium text-left ui-active:bg-gray-50 ui-active:text-dark-blue-400",
-                      task === value ? "text-dark-blue-400" : "text-gray-500"
+                      task.id === value ? "text-dark-blue-400" : "text-gray-500"
                     )}
                   >
-                    {task}
+                    {task.name}
                   </ComboboxOption>
                 ))
               )}
             </ScrollArea>
-            <li className="border-t border-gray-100 px-5 py-3">
-              <Button
-                onClick={addNewTask}
-                variant="link"
-                visual="gray"
-                leftIcon={<Plus className="size-4" />}
-                className="w-full justify-center text-sm"
-              >
-                Add New Task
-              </Button>
-            </li>
-          </ComboboxOptions>
+            </ComboboxOptions>
         </ScaleOutIn>
       </Combobox>
+      <button
+        type="button"
+        onClick={async () => {
+          const val = taskInputRef.current.trim()
+          if (!val || !contractId) return
+          if (tasks.some(t => t.name.toLowerCase() === val.toLowerCase())) return
+          try {
+            const created = await createContractTask({ contractId, name: val, createdBy: 'talent' })
+            setTasks(prev => [...prev, { id: created.id, name: created.name }])
+            onChange(created.id)
+            taskInputRef.current = ""
+            setQuery("")
+          } catch {
+            // silently fail
+          }
+        }}
+        className="mt-1 w-full flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-primary-500 py-2 border border-dashed border-gray-200 rounded-lg hover:border-primary-300 transition-colors"
+      >
+        <Plus className="size-4" />
+        Add New Task
+      </button>
     </div>
   )
 }
@@ -1541,11 +2086,25 @@ function ScreenshotDetailsDialog({
   openId,
   onOpenChange,
   onNavigate,
+  onDelete,
+  onBlur,
+  onUnblur,
+  onDownload,
+  onUpdateMeta,
+  isClient = false,
+  allowReassign = true,
 }: {
   flatScreenshots: FlatScreenshot[]
   openId: string | null
   onOpenChange: (open: boolean) => void
   onNavigate: (id: string) => void
+  onDelete?: (id: string) => void
+  onBlur?: (id: string) => void
+  onUnblur?: (id: string) => void
+  onDownload?: (imageUrl: string) => void
+  onUpdateMeta?: (id: string, data: { contractId?: string; taskId?: string }) => void
+  isClient?: boolean
+  allowReassign?: boolean
 }) {
   const currentIndex = openId
     ? flatScreenshots.findIndex((f) => f.screenshot.id === openId)
@@ -1597,11 +2156,24 @@ function ScreenshotDetailsDialog({
                       </IconButton>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem>Download</DropdownMenuItem>
-                      <DropdownMenuItem>Edit Details</DropdownMenuItem>
-                      <DropdownMenuItem className="text-red-600">
-                        Delete
-                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onDownload?.(s.imageUrl)}>Download</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => {
+                        setTimeout(() => {
+                          const contractEl = document.querySelector('[data-edit-contract]')
+                          if (contractEl) {
+                            contractEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                            const el = contractEl as HTMLElement
+                            el.style.transition = 'box-shadow 0.3s'
+                            el.style.boxShadow = '0 0 0 2px #2563EB'
+                            setTimeout(() => { el.style.boxShadow = 'none' }, 2000)
+                          }
+                        }, 150)
+                      }}>Edit Details</DropdownMenuItem>
+                      {onDelete && (
+                        <DropdownMenuItem className="text-red-600" onClick={() => onDelete(s.id)}>
+                          Delete
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TooltipTrigger>
@@ -1640,6 +2212,45 @@ function ScreenshotDetailsDialog({
                     <div className="w-full h-full bg-gray-100 rounded-lg flex items-center justify-center">
                       <span className="text-sm text-gray-400">No Activity</span>
                     </div>
+                  ) : s.isBlurred ? (
+                    <div className="relative w-full h-full rounded-lg overflow-hidden">
+                      <img
+                        src={s.imageUrl}
+                        alt={`Screenshot at ${s.time}`}
+                        className="w-full h-full rounded-lg object-cover blur-xl"
+                      />
+                      <div className="absolute inset-0 bg-gray-900/60 flex flex-col items-center justify-center gap-3 rounded-lg">
+                        <Droplet className="size-8 text-white" />
+                        <p className="text-white font-semibold text-sm">Screenshot Blurred</p>
+                        <p className="text-white/70 text-xs max-w-[280px] text-center">
+                          This screenshot was blurred by the contractor to protect sensitive content.
+                        </p>
+                        {isClient ? (
+                          <Button
+                            size="sm"
+                            variant="outlined"
+                            className="mt-2 text-white border-white/50 hover:bg-white/10"
+                            onClick={() =>
+                              toast({
+                                title: "Access Requested",
+                                description: "The contractor will be notified of your request.",
+                              })
+                            }
+                          >
+                            Request Access
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outlined"
+                            className="mt-2 text-white border-white/50 hover:bg-white/10"
+                            onClick={() => onUnblur?.(s.id)}
+                          >
+                            Unblur
+                          </Button>
+                        )}
+                      </div>
+                    </div>
                   ) : s.imageUrl ? (
                     <img
                       src={s.imageUrl}
@@ -1672,37 +2283,42 @@ function ScreenshotDetailsDialog({
                     <ChevronRight className="size-5" />
                   </button>
 
-                  {/* Floating action icon row (bottom-right overlay) */}
-                  <div className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-white rounded-lg shadow-md border border-gray-200 p-1">
+                  {/* Floating action icon row (bottom-right overlay) — talent/admin only */}
+                  {!isClient && <div className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-white rounded-lg shadow-md border border-gray-200 p-1">
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <IconButton variant="ghost" visual="gray" size="sm">
+                        <IconButton variant="ghost" visual="gray" size="sm" onClick={() => onDownload?.(s.imageUrl)}>
                           <Download className="size-4" />
                         </IconButton>
                       </TooltipTrigger>
                       <TooltipContent>Download</TooltipContent>
                     </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <IconButton variant="ghost" visual="gray" size="sm">
-                          <Droplet className="size-4" />
-                        </IconButton>
-                      </TooltipTrigger>
-                      <TooltipContent>Blur</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <IconButton
-                          variant="ghost"
-                          visual="gray"
-                          size="sm"
-                          className="text-error-500 hover:text-error-600"
-                        >
-                          <Trash01 className="size-4" />
-                        </IconButton>
-                      </TooltipTrigger>
-                      <TooltipContent>Delete</TooltipContent>
-                    </Tooltip>
+                    {onBlur && !s.isBlurred && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <IconButton variant="ghost" visual="gray" size="sm" onClick={() => onBlur(s.id)}>
+                            <Droplet className="size-4" />
+                          </IconButton>
+                        </TooltipTrigger>
+                        <TooltipContent>Blur</TooltipContent>
+                      </Tooltip>
+                    )}
+                    {onDelete && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <IconButton
+                            variant="ghost"
+                            visual="gray"
+                            size="sm"
+                            className="text-error-500 hover:text-error-600"
+                            onClick={() => onDelete(s.id)}
+                          >
+                            <Trash01 className="size-4" />
+                          </IconButton>
+                        </TooltipTrigger>
+                        <TooltipContent>Delete</TooltipContent>
+                      </Tooltip>
+                    )}
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <IconButton variant="ghost" visual="gray" size="sm">
@@ -1711,7 +2327,7 @@ function ScreenshotDetailsDialog({
                       </TooltipTrigger>
                       <TooltipContent>Zoom in</TooltipContent>
                     </Tooltip>
-                  </div>
+                  </div>}
                 </div>
               </div>
 
@@ -1834,14 +2450,35 @@ function ScreenshotDetailsDialog({
 
                 <div className="h-px bg-gray-200" />
 
-                {/* Contract */}
-                <ContractPicker
-                  value={current.projectName}
-                  onChange={() => {}}
-                />
 
+                {/* Contract */}
+                
+                <div data-edit-contract>
+                  {isClient || !allowReassign ? (
+                    <div className="space-y-1.5">
+                      <label className="text-sm text-gray-500">Contract</label>
+                      <p className="text-sm font-medium text-dark-blue-400">{current.projectName}</p>
+                    </div>
+                  ) : (
+                    <ContractPicker
+                      value={current.projectName}
+                      onChange={(newContract) => onUpdateMeta?.(s.id, { contractId: newContract })}
+                    />
+                  )}
+                </div>
                 {/* Task */}
-                <TaskPicker value={current.taskName} onChange={() => {}} />
+                {isClient ? (
+                  <div className="space-y-1.5">
+                    <label className="text-sm text-gray-500">Task</label>
+                    <p className="text-sm font-medium text-dark-blue-400">{current.taskName}</p>
+                  </div>
+                ) : (
+                  <TaskPicker
+                    value={current.taskName}
+                    onChange={(newTask) => onUpdateMeta?.(s.id, { taskId: newTask })}
+                    contractId={s.contractId || undefined}
+                  />
+                )}
 
                 <div className="h-px bg-gray-200" />
 
@@ -1861,12 +2498,9 @@ function ScreenshotDetailsDialog({
                         }
                         return (
                           <div key={i} className="flex items-center gap-2.5">
-                            <div
-                              className={cn(
-                                "size-5 rounded-full flex-none",
-                                info.color
-                              )}
-                            />
+                            <div className="size-5 flex-none flex items-center justify-center">
+                              <AppIcon app={app} />
+                            </div>
                             <span className="text-sm text-dark-blue-400">
                               {info.name}
                             </span>
@@ -2210,17 +2844,60 @@ export default function TimeTrackingPage() {
   >(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [contractFilter, setContractFilter] = useState("all")
-  const [dateRange] = useState("Jan 6, 2022 – Jan 13, 2022")
-  const [timezone] = useState("UTC-4 New York (Me)")
+  const [dateFrom, setDateFrom] = useState<string | undefined>(undefined)
+  const [dateTo, setDateTo] = useState<string | undefined>(undefined)
+  
+  // ── User preferences (consumed from backend) ──
+  const [userTimezone, setUserTimezone] = useState("America/New_York")
+  const [userDateFormat, setUserDateFormat] = useState<"MM/DD/YYYY" | "DD/MM/YYYY">("MM/DD/YYYY")
+  const [userTimeFormat, setUserTimeFormat] = useState<"12h" | "24h">("12h")
+  const [userStartOfWeek, setUserStartOfWeek] = useState<"Sunday" | "Monday">("Sunday")
+
+  const timezoneDisplayMap: Record<string, string> = {
+    "America/New_York": "UTC-4 New York (Me)",
+    "America/Chicago": "UTC-5 Chicago",
+    "America/Denver": "UTC-6 Denver",
+    "America/Los_Angeles": "UTC-7 Los Angeles",
+    "Europe/London": "UTC+0 London",
+    "Europe/Berlin": "UTC+1 Berlin",
+    "Asia/Kolkata": "UTC+5:30 Kolkata",
+    "Asia/Tokyo": "UTC+9 Tokyo",
+    "UTC": "UTC",
+  }
+  const timezone = timezoneDisplayMap[userTimezone] ?? userTimezone
+
+  const dateLocale = userDateFormat === "DD/MM/YYYY" ? "en-GB" : "en-US"
+  const dateRange = dateFrom && dateTo
+    ? `${new Date(dateFrom).toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" })} – ${new Date(dateTo).toLocaleDateString(dateLocale, { month: "short", day: "numeric", year: "numeric" })}`
+    : "All Time"
+
   const [bulkSelectionEnabled, setBulkSelectionEnabled] = useState(false)
+  const [selectedScreenshots, setSelectedScreenshots] = useState<Set<string>>(new Set())
   const [showManualTimeDialog, setShowManualTimeDialog] = useState(false)
+  const [showTransferDialog, setShowTransferDialog] = useState(false)
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false)
   const [showDownloadTracker, setShowDownloadTracker] = useState(false)
   const [appliedFilters, setAppliedFilters] =
     useState<AppliedFilters>(emptyAppliedFilters)
 
-  // --- Real contracts from API ---
   const { user } = useAuth()
+  // ── Role-based view (US-TT-008/009/015/029/030/035/036) ──
+  const detectedRole =
+    (user as any)?.role?.toUpperCase?.() === "CLIENT" ? ROLE.CLIENT
+    : (user as any)?.role?.toUpperCase?.() === "ADMIN" ? ROLE.ADMIN
+    : ROLE.TALENT
+  const [viewAsRole, setViewAsRole] = useState<ROLE>(detectedRole)
+  const isClient = viewAsRole === ROLE.CLIENT
+  const isAdmin = viewAsRole === ROLE.ADMIN
+  const isTalent = viewAsRole === ROLE.TALENT
   const [realContracts, setRealContracts] = useState<ContractDTO[]>([])
+  const [contractSettings, setContractSettings] = useState({
+    allowDelete: true,
+    allowBlur: true,
+    allowReassign: true,
+    blurredBillable: true,
+    deletedNonBillable: true,
+  })
 
   useEffect(() => {
     if (!user?.id) return
@@ -2240,6 +2917,52 @@ export default function TimeTrackingPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [totalTime, setTotalTime] = useState("03:24")
   const [screenshotCount, setScreenshotCount] = useState(0)
+  // US-86: "+ Manual time" was hardcoded to a fixed "0:23hr" regardless of
+  // what the contractor actually logged — fabricated, never wired to
+  // GET /manual-time. Sums real entries within the currently applied
+  // date range (falls back to all entries when no range is set).
+  const [manualTimeLabel, setManualTimeLabel] = useState<string | null>(null)
+  const fetchManualTime = useCallback(async () => {
+    try {
+      const entries = await getManualTime()
+      const inRange = entries.filter((e) => {
+        if (dateFrom && e.startTime < dateFrom) return false
+        if (dateTo && e.startTime > dateTo) return false
+        return true
+      })
+      const totalMin = inRange.reduce((sum, e) => {
+        const mins = (new Date(e.endTime).getTime() - new Date(e.startTime).getTime()) / 60_000
+        return sum + Math.max(0, mins)
+      }, 0)
+      const hrs = Math.floor(totalMin / 60)
+      const mins = Math.round(totalMin % 60)
+      setManualTimeLabel(`${hrs}:${mins.toString().padStart(2, "0")}hr`)
+    } catch {
+      setManualTimeLabel(null)
+    }
+  }, [dateFrom, dateTo])
+
+  useEffect(() => { fetchManualTime() }, [fetchManualTime])
+
+  // Fetch user time/display preferences from backend
+  useEffect(() => {
+    const loadPrefs = async () => {
+      try {
+        const token = (() => { try { const C = require("js-cookie"); return C.get("access_token") || C.get("accessToken") || localStorage.getItem("access_token") || "" } catch { return localStorage.getItem("access_token") || "" } })()
+        const res = await fetch(`${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/settings/preferences`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.timezone) setUserTimezone(data.timezone)
+          if (data.dateFormat) setUserDateFormat(data.dateFormat)
+          if (data.timeFormat) setUserTimeFormat(data.timeFormat)
+          if (data.startOfWeek) setUserStartOfWeek(data.startOfWeek)
+        }
+      } catch {}
+    }
+    loadPrefs()
+  }, [])
 
   const fetchScreenshots = useCallback(async () => {
     setIsLoading(true)
@@ -2251,10 +2974,30 @@ export default function TimeTrackingPage() {
       }
       if (contractFilter !== "all") {
         params.contractId = contractFilter
+      } else if (appliedFilters.contracts?.length > 0) {
+        params.contractId = appliedFilters.contracts[0]
+      }
+      if (dateFrom) params.from = dateFrom
+      if (dateTo) params.to = dateTo
+      // Apply task filter from appliedFilters
+      if (appliedFilters.tasks?.length > 0) {
+        params.taskId = appliedFilters.tasks[0]
+      }
+      // Apply activity filter
+      if (appliedFilters.activity?.length > 0) {
+        const level = appliedFilters.activity[0]
+        if (level === "high") { params.minKeyboard = 60 }
+        else if (level === "medium") { params.minKeyboard = 30; params.maxKeyboard = 59 }
+        else if (level === "low") { params.minKeyboard = 1; params.maxKeyboard = 29 }
+        else if (level === "none") { params.maxKeyboard = 0 }
       }
       const res = await getScreenshotCards(params)
       if (res.data && res.data.length > 0) {
-        const blocks = transformScreenshotsToTimeBlocks(res.data)
+        const blocks = transformScreenshotsToTimeBlocks(res.data, realContracts, {
+          timezone: userTimezone,
+          dateFormat: userDateFormat,
+          timeFormat: userTimeFormat,
+        })
         setTimeBlocks(blocks)
         setScreenshotCount(res.total)
         // Compute total time from screenshot count (each ~10 min interval)
@@ -2266,19 +3009,179 @@ export default function TimeTrackingPage() {
         )
       } else {
         // No real data — keep sample data for demo
-        setTimeBlocks(sampleTimeBlocks)
+        setTimeBlocks([])
+        setScreenshotCount(0)
+        setTotalTime("00:00")
       }
     } catch {
       // API not available — fallback to sample data
-      setTimeBlocks(sampleTimeBlocks)
+      setTimeBlocks([])
+      setScreenshotCount(0)
+      setTotalTime("00:00")
     } finally {
       setIsLoading(false)
     }
-  }, [contractFilter])
+    }, [contractFilter, realContracts, dateFrom, dateTo, appliedFilters])
 
   useEffect(() => {
     fetchScreenshots()
   }, [fetchScreenshots])
+
+  useEffect(() => {
+    if (contractFilter === "all" || !contractFilter) {
+      setContractSettings({ allowDelete: true, allowBlur: true, allowReassign: true, blurredBillable: true, deletedNonBillable: true })
+      return
+    }
+    let token = ""
+    try {
+      const Cookies = require("js-cookie")
+      token = Cookies.get("access_token") || Cookies.get("accessToken") || localStorage.getItem("access_token") || localStorage.getItem("token") || ""
+    } catch { token = localStorage.getItem("access_token") || localStorage.getItem("token") || "" }
+    fetch(`${process.env.NEXT_PUBLIC_TTS_URL ?? "http://localhost:3017/api"}/settings/admin/${contractFilter}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) setContractSettings({
+          allowDelete: data.allowDelete ?? true,
+          allowBlur: data.allowBlur ?? true,
+          allowReassign: data.allowReassign ?? true,
+          blurredBillable: data.blurredBillable ?? true,
+          deletedNonBillable: data.deletedNonBillable ?? true,
+        })
+      })
+      .catch(() => {})
+  }, [contractFilter])
+
+  // ── Screenshot action handlers ────────────────────────────────────
+  const handleDeleteScreenshot = async (id: string) => {
+    try {
+      await deleteScreenshot(id)
+      toast({ title: "Screenshot deleted", description: "The screenshot has been removed." })
+      
+      // Find the next screenshot to navigate to before refreshing
+      const currentIdx = flatScreenshots.findIndex(f => f.screenshot.id === id)
+      const nextScreenshot = flatScreenshots[currentIdx + 1] || flatScreenshots[currentIdx - 1]
+      
+      // Refresh data
+      await fetchScreenshots()
+      
+      // Navigate to next screenshot or close if none left
+      if (nextScreenshot) {
+        setSelectedScreenshotId(nextScreenshot.screenshot.id)
+      } else {
+        setDetailsOpen(false)
+        setSelectedScreenshotId(null)
+      }
+    } catch {
+      toast({ title: "Delete failed", description: "Failed to delete screenshot. Please try again.", variant: "destructive" })
+    }
+  }
+
+  const handleBlurScreenshot = async (id: string) => {
+    try {
+      await blurScreenshot(id)
+      toast({ title: "Screenshot blurred", description: "The screenshot has been blurred for privacy." })
+      await fetchScreenshots()
+    } catch {
+      toast({ title: "Blur failed", description: "Failed to blur screenshot. Please try again.", variant: "destructive" })
+    }
+  }
+
+  const handleUnblurScreenshot = async (id: string) => {
+    try {
+      await unblurScreenshot(id)
+      toast({ title: "Screenshot unblurred", description: "The screenshot has been restored." })
+      await fetchScreenshots()
+    } catch {
+      toast({ title: "Unblur failed", variant: "destructive" })
+    }
+  }
+
+  const handleDownloadScreenshot = async (imageUrl: string) => {
+    if (!imageUrl) {
+      toast({ title: "Download failed", description: "No image URL available.", variant: "destructive" })
+      return
+    }
+    try {
+      const response = await fetch(imageUrl)
+      const blob = await response.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = blobUrl
+      a.download = `screenshot-${Date.now()}.jpg`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      toast({ title: "Download failed", description: "Could not download screenshot.", variant: "destructive" })
+    }
+  }
+
+  const handleUpdateMeta = async (id: string, data: { contractId?: string; taskId?: string }) => {
+    try {
+      await updateScreenshotMeta(id, data)
+      toast({ title: "Updated", description: "Screenshot assignment updated." })
+      await fetchScreenshots()
+    } catch {
+      toast({ title: "Update failed", description: "Failed to update assignment.", variant: "destructive" })
+    }
+  }
+
+  const toggleScreenshotSelection = (id: string) => {
+    setSelectedScreenshots(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedScreenshots.size === 0) return
+    if (!confirm(`Delete ${selectedScreenshots.size} screenshot(s)? This cannot be undone.`)) return
+    try {
+      for (const id of selectedScreenshots) {
+        await deleteScreenshot(id)
+      }
+      toast({ title: "Deleted", description: `${selectedScreenshots.size} screenshot(s) deleted.` })
+      setSelectedScreenshots(new Set())
+      setBulkSelectionEnabled(false)
+      await fetchScreenshots()
+    } catch {
+      toast({ title: "Delete failed", variant: "destructive" })
+    }
+  }
+
+  const handleBulkBlur = async () => {
+    if (selectedScreenshots.size === 0) return
+    try {
+      for (const id of selectedScreenshots) {
+        await blurScreenshot(id)
+      }
+      toast({ title: "Blurred", description: `${selectedScreenshots.size} screenshot(s) blurred.` })
+      setSelectedScreenshots(new Set())
+      setBulkSelectionEnabled(false)
+      await fetchScreenshots()
+    } catch {
+      toast({ title: "Blur failed", variant: "destructive" })
+    }
+  }
+
+  const handleBulkTransfer = async (contractId: string, taskId?: string) => {
+    if (selectedScreenshots.size === 0) return
+    try {
+      await bulkTransferScreenshots(Array.from(selectedScreenshots), contractId, taskId)
+      toast({ title: "Transferred", description: `${selectedScreenshots.size} screenshot(s) moved successfully.` })
+      setSelectedScreenshots(new Set())
+      setBulkSelectionEnabled(false)
+      setShowTransferDialog(false)
+      await fetchScreenshots()
+    } catch {
+      toast({ title: "Transfer failed", variant: "destructive" })
+    }
+  }
 
   const flatScreenshots = useMemo(
     () => flattenScreenshots(timeBlocks),
@@ -2320,21 +3223,36 @@ export default function TimeTrackingPage() {
               <h1 className="text-xl font-bold text-dark-blue-400">
                 Total time <span className="text-2xl">{totalTime}</span>
               </h1>
-              <span className="text-sm text-gray-400">
-                + Manual time{" "}
-                <span className="font-bold text-primary-500">0:23hr</span>
-              </span>
+              {manualTimeLabel && (
+                <span className="text-sm text-gray-400">
+                  + Manual time{" "}
+                  <span className="font-bold text-primary-500">{manualTimeLabel}</span>
+                </span>
+              )}
+              {/* US-89: only shown when a single contract is selected — with
+                  "all" selected, contracts can have different rates, and
+                  picking one to display (or averaging) would be a guess. */}
+              {contractFilter !== "all" && realContracts.find((c) => c.id === contractFilter) && (
+                <span className="text-sm text-gray-400">
+                  Rate{" "}
+                  <span className="font-bold text-primary-500">
+                    ${realContracts.find((c) => c.id === contractFilter)!.rate}/hr
+                  </span>
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                visual="gray"
-                size="sm"
-                leftIcon={<Plus className="size-4" />}
-                onClick={() => setShowManualTimeDialog(true)}
-              >
-                Add Manual Time
-              </Button>
+              {!isClient && (
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  leftIcon={<Plus className="size-4" />}
+                  onClick={() => setShowManualTimeDialog(true)}
+                >
+                  Add Manual Time
+                </Button>
+              )}
               <Button
                 size="sm"
                 visual="error"
@@ -2361,15 +3279,20 @@ export default function TimeTrackingPage() {
                 variant="ghost"
                 visual="gray"
                 size="sm"
-                onClick={() =>
-                  toast({
-                    title: "Settings",
-                    description: "Time tracking settings coming soon.",
-                  })
-                }
+                onClick={() => setShowSettingsDialog(true)}
               >
                 <Settings02 className="size-4" />
               </IconButton>
+              {/* DEV: Role switcher for testing client/admin views */}
+              <select
+                value={viewAsRole}
+                onChange={(e) => setViewAsRole(e.target.value as ROLE)}
+                className="h-8 rounded-md border border-dashed border-amber-400 bg-amber-50 px-2 text-xs font-medium text-amber-700"
+              >
+                <option value="TALENT">👷 Talent</option>
+                <option value="CLIENT">👤 Client</option>
+                <option value="ADMIN">🛡️ Admin</option>
+              </select>
             </div>
           </div>
 
@@ -2383,19 +3306,67 @@ export default function TimeTrackingPage() {
                     visual: "gray",
                     size: "sm",
                   }),
-                  "min-w-[56px] justify-between bg-white px-2.5"
+                  "min-w-[56px] justify-between bg-white px-2.5",
+                  isClient && "hidden"
                 )}
               >
                 <Checkbox
                   checked={bulkSelectionEnabled}
-                  onCheckedChange={(checked) =>
+                  onCheckedChange={(checked) => {
                     setBulkSelectionEnabled(checked === true)
-                  }
+                    if (!checked) setSelectedScreenshots(new Set())
+                  }}
                   className="hover:ring-0 active:ring-0"
                 />
                 <ChevronDown className="size-4 text-gray-500" />
               </div>
-
+              {/* Bulk action bar */}
+              {/* Bulk action bar — talent/admin only */}
+              {bulkSelectionEnabled && !isClient && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">
+                    {selectedScreenshots.size} selected
+                  </span>
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    onClick={handleBulkBlur}
+                    disabled={selectedScreenshots.size === 0}
+                  >
+                    Blur
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    visual="primary"
+                    size="sm"
+                    onClick={() => setShowTransferDialog(true)}
+                    disabled={selectedScreenshots.size === 0}
+                  >
+                    Transfer
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    visual="error"
+                    size="sm"
+                    onClick={handleBulkDelete}
+                    disabled={selectedScreenshots.size === 0}
+                  >
+                    Delete
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    visual="gray"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedScreenshots(new Set())
+                      setBulkSelectionEnabled(false)
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
               {/* Filter button */}
               <FilterPopover
                 applied={appliedFilters}
@@ -2453,15 +3424,55 @@ export default function TimeTrackingPage() {
               </Select>
 
               {/* Date range */}
-              <Button
-                variant="outlined"
-                visual="gray"
-                size="sm"
-                className="bg-white"
-                leftIcon={<Calendar className="size-4" />}
-              >
-                {dateRange}
-              </Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    className="bg-white"
+                    leftIcon={<Calendar className="size-4" />}
+                  >
+                    {dateRange}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-4 space-y-3" align="start">
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: "Today", fn: () => { const d = new Date(); setDateFrom(d.toISOString()); setDateTo(new Date(d.getTime() + 86400000).toISOString()) }},
+                      { label: "Yesterday", fn: () => { const d = new Date(); d.setDate(d.getDate() - 1); setDateFrom(d.toISOString()); setDateTo(new Date(d.getTime() + 86400000).toISOString()) }},
+                      { label: "This Week", fn: () => { const d = new Date(); const day = d.getDay(); const start = new Date(d); start.setDate(d.getDate() - day); setDateFrom(start.toISOString()); setDateTo(new Date().toISOString()) }},
+                      { label: "This Month", fn: () => { const d = new Date(); setDateFrom(new Date(d.getFullYear(), d.getMonth(), 1).toISOString()); setDateTo(new Date().toISOString()) }},
+                      { label: "All Time", fn: () => { setDateFrom(undefined); setDateTo(undefined) }},
+                    ].map(p => (
+                      <Button key={p.label} variant="outlined" visual="gray" size="sm" onClick={p.fn}>
+                        {p.label}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="space-y-1">
+                      <label className="text-xs text-gray-500">From</label>
+                      <input
+                        type="date"
+                        className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                        value={dateFrom ? new Date(dateFrom).toISOString().split('T')[0] : ''}
+                        onChange={(e) => setDateFrom(e.target.value ? new Date(e.target.value).toISOString() : undefined)}
+                      />
+                    </div>
+                    <span className="text-gray-400 mt-5">–</span>
+                    <div className="space-y-1">
+                      <label className="text-xs text-gray-500">To</label>
+                      <input
+                        type="date"
+                        className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                        value={dateTo ? new Date(dateTo).toISOString().split('T')[0] : ''}
+                        onChange={(e) => setDateTo(e.target.value ? new Date(e.target.value + 'T23:59:59').toISOString() : undefined)}
+                      />
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="flex items-center gap-2">
@@ -2470,19 +3481,17 @@ export default function TimeTrackingPage() {
               </IconButton>
 
               {/* Timezone */}
-              <Select value={timezone}>
+              <Select value={timezone} onValueChange={(val) => {
+                const ianaKey = Object.entries(timezoneDisplayMap).find(([, v]) => v === val)?.[0]
+                if (ianaKey) setUserTimezone(ianaKey)
+              }}>
                 <SelectTrigger className="w-[200px] h-9 bg-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="UTC-4 New York (Me)">
-                    UTC-4 New York (Me)
-                  </SelectItem>
-                  <SelectItem value="UTC-5 Chicago">UTC-5 Chicago</SelectItem>
-                  <SelectItem value="UTC-7 Los Angeles">
-                    UTC-7 Los Angeles
-                  </SelectItem>
-                  <SelectItem value="UTC+0 London">UTC+0 London</SelectItem>
+                  {Object.values(timezoneDisplayMap).map((tz) => (
+                    <SelectItem key={tz} value={tz}>{tz}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -2567,6 +3576,9 @@ export default function TimeTrackingPage() {
                   block={block}
                   selectedScreenshotId={selectedScreenshotId}
                   onSelectScreenshot={selectScreenshot}
+                  bulkMode={bulkSelectionEnabled}
+                  selectedScreenshots={selectedScreenshots}
+                  onBulkToggle={toggleScreenshotSelection}
                 />
               ))
             )}
@@ -2577,7 +3589,22 @@ export default function TimeTrackingPage() {
       <AddManualTimeDialog
         open={showManualTimeDialog}
         onOpenChange={setShowManualTimeDialog}
+        onSaved={() => { fetchScreenshots(); fetchManualTime() }}
       />
+
+      <TransferTimeDialog
+          open={showTransferDialog}
+          onOpenChange={setShowTransferDialog}
+          selectedCount={selectedScreenshots.size}
+          onConfirm={handleBulkTransfer}
+        />
+
+      <TimeTrackingSettingsDialog
+          open={showSettingsDialog}
+          onOpenChange={setShowSettingsDialog}
+          isClient={isClient}
+          contracts={projectOptions.map((p) => ({ id: p.id, name: p.name }))}
+        />
 
       <DownloadDesktopTrackerDialog
         open={showDownloadTracker}
@@ -2588,7 +3615,14 @@ export default function TimeTrackingPage() {
         flatScreenshots={flatScreenshots}
         openId={detailsOpen ? selectedScreenshotId : null}
         onOpenChange={(open) => setDetailsOpen(open)}
-        onNavigate={setSelectedScreenshotId}
+        onNavigate={(id) => setSelectedScreenshotId(id)}
+        onDelete={isClient || !contractSettings.allowDelete ? undefined : handleDeleteScreenshot}
+        onBlur={isClient || !contractSettings.allowBlur ? undefined : handleBlurScreenshot}
+        allowReassign={contractSettings.allowReassign}
+        isClient={isClient}
+        onUnblur={handleUnblurScreenshot}
+        onDownload={handleDownloadScreenshot}
+        onUpdateMeta={handleUpdateMeta}
       />
     </AuthenticatedRoute>
   )

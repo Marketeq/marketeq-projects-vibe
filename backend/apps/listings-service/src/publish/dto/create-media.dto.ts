@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -18,15 +19,71 @@ export class CreateMediaDto {
   featuredImage?: string;
 
   @ApiProperty({
+    description:
+      "Upload target: 'featured' sets the cover, 'additional' appends to the gallery without touching the cover",
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  target?: 'featured' | 'additional';
+
+  @ApiProperty({
     description: 'Additional image URLs (max 8)',
     type: [String],
     required: false,
   })
+  @Transform(({ value }) =>
+    value === undefined || value === null
+      ? undefined
+      : Array.isArray(value)
+        ? value
+        : [value],
+  )
   @IsOptional()
   @ArrayMaxSize(8, { message: 'You can upload a maximum of 8 images.' })
   @IsArray()
   @IsString({ each: true })
   additionalImages?: string[];
+
+  @ApiProperty({
+    description: 'Additional image URLs hidden from the client-facing gallery',
+    type: [String],
+    required: false,
+  })
+  @Transform(({ value }) =>
+    value === undefined || value === null
+      ? undefined
+      : Array.isArray(value)
+        ? value
+        : [value],
+  )
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  hiddenImages?: string[];
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  replaceHidden?: string;
+
+  @ApiProperty({
+    description:
+      "Set to 'true' to treat additionalImages as the authoritative list, allowing removals (including clearing to empty) instead of merging",
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  replaceAdditional?: string;
+
+  @ApiProperty({
+    description:
+      "Set to 'true' to clear the featured image during draft editing (required only at publish)",
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  clearFeatured?: string;
 
   @ApiProperty({
     description: 'Featured YouTube or video URL',

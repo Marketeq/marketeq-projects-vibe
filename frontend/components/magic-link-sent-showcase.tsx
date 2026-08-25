@@ -5,11 +5,15 @@ import { AlertCircle, ArrowLeft, Mail } from "@blend-metrics/icons"
 import { Button } from "./ui"
 
 export const MagicLinkSentShowcase = ({
+  email,
   goBack,
   onResend,
+  isResending,
 }: {
+  email: string
   goBack?: () => void
   onResend?: () => void
+  isResending?: boolean
 }) => {
   return (
     <div className="py-10 px-5 md:p-10 3xl:px-[120px] 3xl:py-[50px]">
@@ -25,14 +29,14 @@ export const MagicLinkSentShowcase = ({
         </h1>
 
         <p className="mt-2 text-center text-sm leading-5 text-dark-blue-400">
-          We sent a magic link sent to the email{" "}
-          <span className="font-semibold">johndoe@gmail.com.</span> The link
+          We sent a magic link to the email{" "}
+          <span className="font-semibold">{email}.</span> The link
           will expire in <span className="font-semibold">24 hours.</span>
         </p>
 
         <div className="mt-8 flex flex-col items-center gap-y-8">
-          <Button size="sm" onClick={onResend}>
-            Resend Link
+          <Button size="sm" onClick={onResend} disabled={isResending}>
+            {isResending ? "Sending..." : "Resend Link"}
           </Button>
           <Button size="sm" variant="link" onClick={goBack}>
             <ArrowLeft className="size-[15px]" /> Back

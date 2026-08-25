@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import { apiFetch } from "@/src/lib/api"
+import { getAccessToken, getCurrentUser } from "@/utils/auth"
 import { SearchMd, X } from "@blend-metrics/icons"
 import {
   Avatar,
@@ -11,8 +13,6 @@ import {
   DialogClose,
   DialogContent,
 } from "@/components/ui"
-import { apiFetch } from "@/src/lib/api"
-import { getAccessToken, getCurrentUser } from "@/utils/auth"
 
 interface UserPickerItem {
   id: string
@@ -53,12 +53,16 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
   return <>{parts}</>
 }
 
-export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) {
+export function NewMessageDialog({
+  open,
+  onOpenChange,
+}: NewMessageDialogProps) {
   const router = useRouter()
   const [users, setUsers] = useState<UserPickerItem[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fetchKey, setFetchKey] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const currentUser = getCurrentUser()
 
@@ -92,8 +96,8 @@ export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) 
         const list = Array.isArray(response)
           ? response
           : ((response as { data?: unknown[]; users?: unknown[] }).data ??
-              (response as { users?: unknown[] }).users ??
-              [])
+            (response as { users?: unknown[] }).users ??
+            [])
         const items: UserPickerItem[] = (list as Array<Record<string, unknown>>)
           .filter((u) => u?.id && u.id !== currentUser?.id)
           .map((u) => ({
@@ -111,13 +115,21 @@ export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) 
       } catch (err) {
         if ((err as { name?: string })?.name === "AbortError") return
         console.error("[NewMessageDialog] failed to fetch users", err)
-        setError("Failed to load users")
+        const msg = (err as Error)?.message || ""
+        if (msg.includes("401") || msg.includes("UNAUTHORIZED")) {
+          setError("Session expired — please log in again")
+        } else if (msg.includes("502") || msg.includes("503")) {
+          setError("Server is starting up — please retry in a moment")
+        } else {
+          setError("Failed to load users — please try again")
+        }
       } finally {
         if (!controller.signal.aborted) setIsLoading(false)
       }
     })()
     return () => controller.abort()
-  }, [open, currentUser?.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, currentUser?.id, fetchKey])
 
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
@@ -182,8 +194,18 @@ export function NewMessageDialog({ open, onOpenChange }: NewMessageDialogProps) 
               Loading...
             </div>
           ) : error ? (
-            <div className="px-4 py-6 text-center text-sm text-error-500">
-              {error}
+            <div className="px-4 py-6 text-center">
+              <p className="text-sm text-error-500">{error}</p>
+              <button
+                type="button"
+                className="mt-2 text-xs font-medium text-primary-500 hover:text-primary-600 hover:underline transition"
+                onClick={() => {
+                  setError(null)
+                  setFetchKey((k) => k + 1)
+                }}
+              >
+                Retry
+              </button>
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="px-4 py-6 text-center text-sm text-gray-500">

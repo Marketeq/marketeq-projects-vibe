@@ -5,12 +5,11 @@
 // We build an index on the client from decrypted messages and persist it in
 // IndexedDB so a refresh doesn't cost re-indexing. A brand-new device pays
 // the one-time cost of fetching + decrypting all history.
-
-import Fuse, { type IFuseOptions } from "fuse.js"
-import { openDB, type IDBPDatabase } from "idb"
 import { decryptAES } from "@/src/crypto/e2ee"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
+import Fuse, { type IFuseOptions } from "fuse.js"
+import { type IDBPDatabase, openDB } from "idb"
 import type { Conversation } from "@/types/conversation"
 import type { Message, MessageAttachment } from "@/types/message"
 
@@ -109,7 +108,6 @@ export async function clearCachedIndex(userId: string): Promise<void> {
  */
 async function unwrapAesKey(
   conv: Conversation,
-  token: string,
   privateKey: CryptoKey
 ): Promise<Uint8Array | null> {
   try {
@@ -119,8 +117,7 @@ async function unwrapAesKey(
   }
   try {
     const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-      `/api/messaging/conversations/${conv.id}/key?isGroup=${conv.isGroup}`,
-      { headers: { Authorization: `Bearer ${token}` } }
+      `/api/messaging/conversations/${conv.id}/key?isGroup=${conv.isGroup}`
     )
     const wrapped = Uint8Array.from(atob(encryptedKey), (c) => c.charCodeAt(0))
     const rawBuffer = await window.crypto.subtle.decrypt(
@@ -142,7 +139,6 @@ async function unwrapAesKey(
 
 interface BuildOptions {
   userId: string
-  token: string
   privateKey: CryptoKey | null
   /**
    * Existing docs to merge into. When provided, we only index threads with
@@ -164,11 +160,10 @@ export async function buildSearchIndex(opts: BuildOptions): Promise<{
   docs: SearchDoc[]
   threadsIndexed: string[]
 }> {
-  const { token, privateKey, existing = [], onProgress, signal } = opts
+  const { privateKey, existing = [], onProgress, signal } = opts
 
   const threads = await apiFetch<Conversation[]>("/v1/threads", {
     method: "GET",
-    headers: { Authorization: `Bearer ${token}` },
     signal,
   })
   if (signal?.aborted) throw new DOMException("aborted", "AbortError")
@@ -188,13 +183,12 @@ export async function buildSearchIndex(opts: BuildOptions): Promise<{
 
     try {
       let aesKey: Uint8Array | null = null
-      if (privateKey) aesKey = await unwrapAesKey(thread, token, privateKey)
+      if (privateKey) aesKey = await unwrapAesKey(thread, privateKey)
 
       const { messages } = await apiFetch<{ messages: Message[] }>(
         `/v1/messages/thread/${thread.id}?all=true`,
         {
           method: "GET",
-          headers: { Authorization: `Bearer ${token}` },
           signal,
         }
       )
@@ -228,10 +222,7 @@ export async function buildSearchIndex(opts: BuildOptions): Promise<{
       threadsIndexed.push(thread.id)
     } catch (err) {
       if ((err as any)?.name === "AbortError") throw err
-      console.warn(
-        `[message-search] failed to index thread ${thread.id}`,
-        err
-      )
+      console.warn(`[message-search] failed to index thread ${thread.id}`, err)
     }
 
     done += 1

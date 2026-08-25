@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { cn } from "@/utils/functions"
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui"
 
 interface MenuItem {
   label: string
@@ -52,7 +52,9 @@ const defaultSections: MenuSection[] = [
     ],
   },
   {
-    items: [{ label: "Quit Time Tracker", shortcut: "\u2318Q", variant: "danger" }],
+    items: [
+      { label: "Quit Time Tracker", shortcut: "\u2318Q", variant: "danger" },
+    ],
   },
 ]
 
@@ -65,17 +67,20 @@ export function AccountMenu({
   className,
 }: AccountMenuProps) {
   return (
-    <div
-      className={cn(
-        "w-full rounded-lg bg-white py-1 shadow-lg",
-        className
-      )}
-    >
+    <div className={cn("w-full rounded-lg bg-white py-1 shadow-lg", className)}>
       {/* Hamburger close button row */}
       <div className="flex justify-end px-4 pt-2 pb-1">
-        <button onClick={onClose} className="text-gray-500 hover:text-gray-700 transition">
+        <button
+          onClick={onClose}
+          className="text-gray-500 hover:text-gray-700 transition"
+        >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <path
+              d="M3 5h14M3 10h14M3 15h14"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
           </svg>
         </button>
       </div>
@@ -87,23 +92,26 @@ export function AccountMenu({
           <AvatarFallback>{name.charAt(0)}</AvatarFallback>
         </Avatar>
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-dark-blue-500 truncate">{name}</p>
+          <p className="text-sm font-semibold text-dark-blue-500 truncate">
+            {name}
+          </p>
           <p className="text-xs text-gray-500 truncate">{email}</p>
         </div>
       </div>
 
       {/* Menu sections */}
       {sections.map((section, sIdx) => (
-        <div key={sIdx} className="border-b border-gray-100 last:border-b-0 py-1">
+        <div
+          key={sIdx}
+          className="border-b border-gray-100 last:border-b-0 py-1"
+        >
           {section.items.map((item, iIdx) => (
             <button
               key={iIdx}
               onClick={item.onClick}
               className={cn(
                 "flex w-full items-center justify-between px-4 py-2.5 text-sm transition hover:bg-gray-50",
-                item.variant === "danger"
-                  ? "text-error-500"
-                  : "text-gray-700"
+                item.variant === "danger" ? "text-error-500" : "text-gray-700"
               )}
             >
               <span>{item.label}</span>

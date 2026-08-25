@@ -48,6 +48,48 @@ export class TeamsService {
     return this.teamMemberRepository.save(member);
   }
 
+  /**
+   * A user's team is keyed by their own userId (owner convention, matching
+   * the invitations service). Returns the roster the caller can assign from:
+   * the owner plus everyone who accepted an invite into their team.
+   */
+  async getMyTeam(userId: string) {
+    // Resolve the team the caller belongs to: if they're a member of a team
+    // (invited + accepted), use that team; otherwise they own a team keyed by
+    // their own userId. This lets both the owner and members see the same
+    // roster.
+    const membership = await this.teamMemberRepository.findOne({
+      where: { userId },
+      order: { createdAt: 'ASC' },
+    });
+    const teamId = membership?.teamId ?? userId;
+
+    const members = await this.getTeamMembers(teamId);
+
+    const owner = await this.userRepository.findOne({ where: { id: teamId } });
+    const ownerEntry = owner
+      ? {
+          teamId,
+          userId: owner.id,
+          role: 'owner',
+          username: owner.username,
+          firstName: owner.firstName,
+          lastName: owner.lastName,
+          avatarUrl: owner.avatarUrl,
+          email: owner.email,
+          recentJobTitle: owner.recentJobTitle,
+          jobTitles: owner.jobTitles,
+          location: owner.location,
+        }
+      : null;
+
+    const roster = ownerEntry
+      ? [ownerEntry, ...members.filter((m) => m.userId !== teamId)]
+      : members;
+
+    return { id: teamId, ownerId: teamId, members: roster };
+  }
+
   async getTeamMembers(teamId: string) {
     const members = await this.teamMemberRepository.find({
       where: { teamId },
@@ -70,6 +112,9 @@ export class TeamsService {
         lastName: u?.lastName,
         avatarUrl: u?.avatarUrl,
         email: u?.email,
+        recentJobTitle: u?.recentJobTitle,
+        jobTitles: u?.jobTitles,
+        location: u?.location,
       };
     });
   }

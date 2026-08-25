@@ -139,6 +139,28 @@ jobs:
             fi
           fi
 
+          # --- Section 3c: Frozen UI files (settings sidebar, nav bar, active project, my jobs) ---
+          FROZEN_UI_HIT=0
+          FROZEN_UI_FILES=""
+          while IFS= read -r f; do
+            case "$f" in
+              frontend/components/settings-sidebar.tsx|\
+              frontend/app/top-most-header.tsx|\
+              "frontend/app/(group)/active-project/[id]/page.tsx"|\
+              "frontend/app/(group)/my-jobs/page.tsx")
+                FROZEN_UI_HIT=1
+                FROZEN_UI_FILES="$FROZEN_UI_FILES\n- \`$f\`" ;;
+            esac
+          done <<< "$CHANGED_FILES"
+
+          if [ "$FROZEN_UI_HIT" = "1" ]; then
+            # Only CTO can touch these files
+            PR_AUTHOR=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json author --jq '.author.login' 2>/dev/null || echo "")
+            if [ "$PR_AUTHOR" != "CTorres9800" ]; then
+              add "🔒 **Frozen UI file(s) touched:** $(echo -e "$FROZEN_UI_FILES"). These files are locked and can only be modified by @CTorres9800. Backend/API work on the My Jobs screen belongs in \`frontend/app/(group)/my-jobs/my-jobs.data.ts\`, which is intentionally NOT frozen. Remove these changes from the PR or request CTO approval."
+            fi
+          fi
+
           # --- Section 4: Entity changes without migrations ---
           ENTITY_CHANGED=0
           MIGRATION_ADDED=0
@@ -152,6 +174,12 @@ jobs:
           done <<< "$CHANGED_FILES"
           if [ "$ENTITY_CHANGED" = "1" ] && [ "$MIGRATION_ADDED" = "0" ]; then
             add "🧩 **TypeORM entity changed without a migration** — \`synchronize: false\` is enforced. Add a migration file under \`backend/apps/<service>/src/migrations/\`. See SOP §3.4."
+          fi
+
+          # --- Section 4b: synchronize must always be false ---
+          SYNC_TRUE=$(git diff "$BASE_SHA"...HEAD -- 'backend/apps/**/*.ts' 2>/dev/null | grep -E '^\+[^+].*synchronize:' | grep -vE 'synchronize:\s*false' || true)
+          if [ -n "$SYNC_TRUE" ]; then
+            add "🔥 **TypeORM \`synchronize\` is not \`false\`** — all environments share the same production database. Any value other than \`synchronize: false\` will auto-drop/alter production tables. This caused a P0 outage on 2026-08-04 (5,286 DROP COLUMN statements). Use migrations instead. See SOP §3.4."
           fi
 
           # --- Section 5: Junk files ---
@@ -256,6 +284,13 @@ jobs:
             add "🔥 **Hardcoded SSL based on \`NODE_ENV\`** — database SSL must be driven by \`DATABASE_SSL_ENABLED\` env var, not \`NODE_ENV === 'production'\`. Our Supabase VPS does not support SSL. Use: \`ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false\`. See DEVOPS_SOP §6."
           fi
 
+          # --- Section 10: Branch freshness — HARD BLOCK if even 1 commit behind ---
+          git fetch origin "$BASE_REF" --unshallow 2>/dev/null || true
+          BEHIND_COUNT=$(git rev-list --count HEAD.."origin/$BASE_REF" 2>/dev/null || echo 0)
+          if [ "$BEHIND_COUNT" -gt 0 ]; then
+            add "🚫 **BLOCKED: Branch is $BEHIND_COUNT commit(s) behind \`$BASE_REF\`** — branch MUST be fully up-to-date (zero commits behind) before merging. This is a HARD BLOCK with zero exceptions. Rebase now: \`git fetch origin $BASE_REF && git rebase origin/$BASE_REF && git push --force-with-lease\`"
+          fi
+
           # --- Section 9: New @ts-ignore without justification ---
           TS_IGNORE_HITS=$(git diff "$BASE_SHA"...HEAD -- '*.ts' '*.tsx' 2>/dev/null | grep -E '^\+[^+].*@ts-ignore' | grep -vE '@ts-ignore.*--' || true)
           if [ -n "$TS_IGNORE_HITS" ]; then
@@ -305,37 +340,36 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           MARKER="<!-- login-sentinel-comment -->"
-          BODY=$(cat <<'COMMENT'
-## 🚨 LOGIN TOUCHED — sentinel notice
+          read -r -d '' BODY <<'COMMENT' || true
+          ## 🚨 LOGIN TOUCHED — sentinel notice
 
-This PR modifies one or more files in the **login-frozen** set (SOP §1.4):
+          This PR modifies one or more files in the **login-frozen** set (SOP §1.4):
 
-- `frontend/app/sign-in/**`, `frontend/app/sign-up/**`
-- `frontend/contexts/auth.tsx`, `frontend/src/lib/api/auth.ts`, `frontend/middleware.ts`
-- `backend/apps/auth-service/**`
-- `backend/libs/shared/src/guards/**`, `backend/libs/shared/src/decorators/**`
-- `*.env.example`
+          - `frontend/app/sign-in/**`, `frontend/app/sign-up/**`
+          - `frontend/contexts/auth.tsx`, `frontend/src/lib/api/auth.ts`, `frontend/middleware.ts`
+          - `backend/apps/auth-service/**`
+          - `backend/libs/shared/src/guards/**`, `backend/libs/shared/src/decorators/**`
+          - `*.env.example`
 
-**Rule:** login is fixed once and stays fixed, bidirectionally. If login works locally it must not break on dev/staging/live. If login works on dev/staging/live it must not break locally. "Fixing" login in one environment by hardcoding a value that only works there **is the bug**, not the fix. Every regression here costs the whole team time.
+          **Rule:** login is fixed once and stays fixed, bidirectionally. If login works locally it must not break on dev/staging/live. If login works on dev/staging/live it must not break locally. "Fixing" login in one environment by hardcoding a value that only works there **is the bug**, not the fix. Every regression here costs the whole team time.
 
-**Mandatory reviewer checklist before approval:**
+          **Mandatory reviewer checklist before approval:**
 
-1. Check out this branch locally
-2. Delete your `frontend/.env.local` and `backend/.env.local`
-3. Copy the repo's `.env.example` files fresh
-4. Boot the backend and frontend locally with the standard dev commands
-5. Sign in with a **client** test account
-6. Sign in with a **talent** test account
-7. Confirm both accounts reach their dashboards without intervention
-8. If any step fails, request changes and do not merge
+          1. Check out this branch locally
+          2. Delete your `frontend/.env.local` and `backend/.env.local`
+          3. Copy the repo's `.env.example` files fresh
+          4. Boot the backend and frontend locally with the standard dev commands
+          5. Sign in with a **client** test account
+          6. Sign in with a **talent** test account
+          7. Confirm both accounts reach their dashboards without intervention
+          8. If any step fails, request changes and do not merge
 
-The PR description must also contain the four-point login confirmation from SOP §1.4. If it does not, this PR is automatically blocked by the SOP check.
+          The PR description must also contain the four-point login confirmation from SOP §1.4. If it does not, this PR is automatically blocked by the SOP check.
 
-CTO (@CTorres9800) has been auto-requested as a reviewer on this PR.
+          CTO (@CTorres9800) has been auto-requested as a reviewer on this PR.
 
-🤖 Posted by [Claude Code](https://claude.com/claude-code)
-COMMENT
-)
+          🤖 Posted by [Claude Code](https://claude.com/claude-code)
+          COMMENT
           EXISTING=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
             --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -n1)
           FULL_BODY="${MARKER}"$'\n'"${BODY}"

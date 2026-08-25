@@ -22,8 +22,14 @@ export { REDIS_CLIENT };
     {
       provide:    REDIS_CLIENT,
       inject:     [ConfigService],
-      useFactory: (config: ConfigService) =>
-        new Redis(config.get<string>('REDIS_URL') as string),
+      useFactory: (config: ConfigService) => {
+        const url = config.get<string>('REDIS_URL');
+        if (!url) {
+          console.warn('[transaction-service] REDIS_URL not set — Redis disabled');
+          return null;
+        }
+        return new Redis(url, { lazyConnect: true, enableReadyCheck: false });
+      },
     },
   ],
   exports: [MetricsService, REDIS_CLIENT],

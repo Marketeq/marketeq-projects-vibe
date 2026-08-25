@@ -1,0 +1,165 @@
+{
+  "_description": "Critical data flows and contracts that MUST be verified on every PR. The AI regression detector uses this manifest to catch regressions before merge.",
+  "frozen_files": {
+    "_description": "Files that must NEVER be modified without CTO approval",
+    "paths": [
+      "frontend/components/layout/top-most-header.tsx",
+      "frontend/contexts/auth.tsx",
+      "frontend/middleware.ts",
+      "frontend/app/sign-in/**",
+      "frontend/app/sign-up/**"
+    ]
+  },
+  "critical_data_flows": [
+    {
+      "name": "Profile Location Display",
+      "description": "User profile must show full location (city, state/region, country) not just country",
+      "backend_source": "backend/apps/user-service/src/talent/talent.service.ts",
+      "backend_fields": ["talent_profiles.location", "talent_profiles.country", "talent_profiles.timezone", "users.location"],
+      "priority_rule": "talent_profiles.location is preferred over users.location. Location must include city+state+country when available, never truncate to just country.",
+      "frontend_consumers": [
+        "frontend/components/talent-profile-card.tsx",
+        "frontend/components/talent-search-card.tsx",
+        "frontend/src/lib/api/talent-users.ts"
+      ],
+      "regression_examples": [
+        "Location shows 'United States' instead of 'Roswell, Georgia, United States'",
+        "Location field returns null when talent_profiles.location exists",
+        "Country used instead of full location string"
+      ]
+    },
+    {
+      "name": "Years of Experience Calculation",
+      "description": "Experience years must be calculated from actual work history (experience table startDate), NOT a hardcoded number",
+      "backend_source": "backend/apps/user-service/src/talent/talent.service.ts",
+      "calculation": "Earliest experience.startDate subtracted from now, converted to years, rounded to 1 decimal",
+      "data_sources": ["experience table (startDate column)", "talent_profiles.workExperience JSONB (startDate field)"],
+      "frontend_consumers": [
+        "frontend/components/talent-profile-card.tsx",
+        "frontend/src/lib/api/talent-users.ts"
+      ],
+      "regression_examples": [
+        "Shows '19 years' when work history only spans 5 years",
+        "Shows hardcoded '5 years of experience' instead of calculated value",
+        "yearsOfExperience field missing from API response",
+        "Frontend ignores API yearsOfExperience and uses stale user.yearsOfExperience column"
+      ]
+    },
+    {
+      "name": "Profile Data Loading",
+      "description": "Profile page must load all user data without blank sections or loading spinners stuck",
+      "api_endpoint": "GET /talent/users/:username",
+      "backend_service": "backend/apps/user-service/src/talent/talent.controller.ts",
+      "required_relations": ["skills", "experiences", "education", "certifications", "portfolio"],
+      "frontend_consumers": [
+        "frontend/app/(group)/(group)/talent-profile/page.tsx",
+        "frontend/components/edit-profile-modals.tsx"
+      ],
+      "regression_examples": [
+        "Profile shows loading spinner forever",
+        "Skills section empty despite user having skills",
+        "Experience section missing",
+        "API returns 500 due to missing relation join"
+      ]
+    },
+    {
+      "name": "Talent Search/Browse Cards",
+      "description": "Talent browse page cards must show all data fields correctly",
+      "api_endpoint": "GET /talent/users (list endpoint)",
+      "backend_method": "listTalentUsers() in talent.service.ts",
+      "required_card_fields": ["name", "avatar", "location", "rate", "skills", "experience", "rating", "totalProjects"],
+      "frontend_consumers": [
+        "frontend/components/talent-search-card.tsx",
+        "frontend/src/lib/api/talent-users.ts"
+      ],
+      "regression_examples": [
+        "Cards show $0/hr rate",
+        "Skills badges missing",
+        "Avatar not loading (signed URL regression)"
+      ]
+    },
+    {
+      "name": "Authentication Flow",
+      "description": "Login/signup must work for both client and talent accounts via email and OAuth",
+      "critical_files": [
+        "frontend/contexts/auth.tsx",
+        "frontend/middleware.ts",
+        "backend/apps/auth-service/src/**",
+        "backend/libs/shared/src/guards/**"
+      ],
+      "regression_examples": [
+        "Login redirects to wrong page",
+        "JWT token not persisted",
+        "OAuth callback fails",
+        "Role-based redirects broken"
+      ]
+    },
+    {
+      "name": "Offer Negotiation Flow",
+      "description": "Full offer lifecycle: create, counter, accept, reject with state machine",
+      "backend_service": "backend/apps/offer-service/src/**",
+      "state_machine_states": ["PENDING", "COUNTERED", "ACCEPTED", "REJECTED", "EXPIRED", "WITHDRAWN"],
+      "regression_examples": [
+        "Cannot counter an offer",
+        "Accepted offer still shows action buttons",
+        "State transition validation bypassed"
+      ]
+    },
+    {
+      "name": "Project Listings CRUD",
+      "description": "Create, edit, publish, unpublish project listings",
+      "backend_service": "backend/apps/listings-service/src/**",
+      "frontend_consumers": [
+        "frontend/app/(group)/(group)/my-listings/**",
+        "frontend/components/my-listings/**"
+      ],
+      "regression_examples": [
+        "Draft not saving",
+        "Published listing showing draft data",
+        "File uploads failing",
+        "Categories/skills not persisting"
+      ]
+    },
+    {
+      "name": "Signed URL / Avatar / File Display",
+      "description": "All R2 stored files must display via signed URLs, blurred versions for non-authenticated",
+      "backend_source": "backend/libs/shared/src/storage/**",
+      "regression_examples": [
+        "Avatars showing broken image",
+        "Signed URL expired immediately",
+        "Blurred overlay not showing for locked content"
+      ]
+    }
+  ],
+  "api_contracts": {
+    "_description": "Backend API response shapes that frontend depends on. Changes to these MUST be flagged.",
+    "GET /talent/users/:username": {
+      "required_fields": ["id", "username", "firstName", "lastName", "email", "userType", "location", "timezone", "rate", "skills", "experiences", "education", "certifications", "portfolio", "yearsOfExperience", "avatar"],
+      "source_file": "backend/apps/user-service/src/talent/talent.service.ts"
+    },
+    "GET /talent/users": {
+      "required_fields": ["id", "username", "firstName", "lastName", "avatar", "location", "country", "timezone", "rate", "rateMin", "rateMax", "skills", "yearsOfExperience", "rating", "totalProjectsCompleted", "recentJobTitle"],
+      "source_file": "backend/apps/user-service/src/talent/talent.service.ts"
+    }
+  },
+  "component_contracts": {
+    "_description": "Frontend component props that must not lose data fields",
+    "TalentProfileCard": {
+      "file": "frontend/components/talent-profile-card.tsx",
+      "critical_props": ["location", "experienceYears", "skills", "rate", "avatar"]
+    },
+    "TalentSearchCard": {
+      "file": "frontend/components/talent-search-card.tsx",
+      "critical_props": ["country", "experience", "localTime", "rate", "skills"]
+    }
+  },
+  "layout_frozen_patterns": {
+    "_description": "UI patterns that must NEVER be changed when wiring data or adding content",
+    "rules": [
+      "NEVER change HTML structure, CSS classes, grid layouts, or hover effects when wiring data",
+      "ONLY replace static text/placeholders with dynamic data",
+      "Storybook is the source of truth for layouts",
+      "NEVER use em dashes in website copy"
+    ]
+  }
+}

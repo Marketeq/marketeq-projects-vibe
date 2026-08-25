@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { cn } from "@/utils/functions"
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui"
 
 interface ActiveTrackingBarProps {
   taskName: string
@@ -34,13 +34,25 @@ export function ActiveTrackingBar({
               <span className="relative inline-flex rounded-full h-2 w-2 bg-error-500" />
             </span>
           )}
-          <span className="text-xs font-medium text-dark-blue-500">{label}</span>
+          <span className="text-xs font-medium text-dark-blue-500">
+            {label}
+          </span>
         </div>
 
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-gray-500">{utcTime}</span>
-          <svg className="h-3.5 w-3.5 text-gray-400" viewBox="0 0 14 14" fill="none">
-            <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <svg
+            className="h-3.5 w-3.5 text-gray-400"
+            viewBox="0 0 14 14"
+            fill="none"
+          >
+            <path
+              d="M3 5l4 4 4-4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </div>
       </div>

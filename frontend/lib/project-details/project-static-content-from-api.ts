@@ -88,8 +88,7 @@ function parseHowItWorksFromPayload(
       const stepTitle = typeof row.title === "string" ? row.title.trim() : ""
       const description =
         typeof row.description === "string" ? row.description.trim() : ""
-      const iconUrlRaw =
-        normalizeSafeImageHref(row.iconUrl) ?? ""
+      const iconUrlRaw = normalizeSafeImageHref(row.iconUrl) ?? ""
       if (!stepNumber || !stepTitle || !description) return null
       return {
         stepNumber,
@@ -136,19 +135,19 @@ export const DEFAULT_PROJECT_STATIC_CONTENT: ProjectStaticContent = {
         stepNumber: "1",
         title: "Customize Your Scope",
         description: "Lorem ipsum odor amet, consectetuer adipiscing elit.",
-        iconUrl: "/media/seed-1558655146-9f40138edfeb.jpg",
+        iconUrl: "/artificial-intelligence.jpeg",
       },
       {
         stepNumber: "2",
         title: "Customize Your Scope",
         description: "Lorem ipsum odor amet, consectetuer adipiscing elit.",
-        iconUrl: "/media/seed-1454165804606-c3d57bc86b40.jpg",
+        iconUrl: "/building.jpg",
       },
       {
         stepNumber: "3",
         title: "Customize Your Scope",
         description: "Lorem ipsum odor amet, consectetuer adipiscing elit.",
-        iconUrl: "/media/seed-1455390582262-044cdead277a.jpg",
+        iconUrl: "/boxes.jpg",
       },
     ],
   },
@@ -168,10 +167,11 @@ export function buildProjectStaticContentFromGateway(
   const payload = apiPayload as Record<string, unknown>
 
   const howItWorksFromApi =
-    parseHowItWorksFromPayload(payload) ?? DEFAULT_PROJECT_STATIC_CONTENT.howItWorks
+    parseHowItWorksFromPayload(payload) ??
+    DEFAULT_PROJECT_STATIC_CONTENT.howItWorks
 
   const guaranteeItems = Array.isArray(payload.guaranteeItems)
-    ? payload.guaranteeItems
+    ? (payload.guaranteeItems
         .map((item: unknown) => {
           if (!item || typeof item !== "object") return null
           const row = item as Record<string, unknown>
@@ -194,7 +194,7 @@ export function buildProjectStaticContentFromGateway(
             description,
           }
         })
-        .filter(Boolean) as ProjectStaticContent["guaranteeItems"]
+        .filter(Boolean) as ProjectStaticContent["guaranteeItems"])
     : []
 
   if (guaranteeItems.length === 0) {

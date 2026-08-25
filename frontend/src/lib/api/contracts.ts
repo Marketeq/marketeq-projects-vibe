@@ -1,15 +1,10 @@
 // frontend/src/lib/api/contracts.ts
-
-import Cookies from "js-cookie"
-
 const CONTRACTS_API_URL =
   process.env.NEXT_PUBLIC_CONTRACTS_API_URL || "http://localhost:3010"
 
 function authHeaders(): HeadersInit {
-  const token = Cookies.get("access_token")
   return {
     "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   }
 }
 
@@ -93,10 +88,13 @@ export interface DisputeContractDto {
 // ── API Functions ──────────────────────────────────────
 
 /** Get a single contract by ID */
-export async function getContract(contractId: string): Promise<Contract | null> {
+export async function getContract(
+  contractId: string
+): Promise<Contract | null> {
   try {
     const res = await fetch(`${CONTRACTS_API_URL}/contracts/${contractId}`, {
       headers: authHeaders(),
+      credentials: "include",
       cache: "no-store",
     })
     if (!res.ok) return null
@@ -108,12 +106,18 @@ export async function getContract(contractId: string): Promise<Contract | null> 
 }
 
 /** Get all contracts for a client */
-export async function getClientContracts(clientId: string): Promise<Contract[]> {
+export async function getClientContracts(
+  clientId: string
+): Promise<Contract[]> {
   try {
-    const res = await fetch(`${CONTRACTS_API_URL}/contracts/client/${clientId}`, {
-      headers: authHeaders(),
-      cache: "no-store",
-    })
+    const res = await fetch(
+      `${CONTRACTS_API_URL}/contracts/client/${clientId}`,
+      {
+        headers: authHeaders(),
+        credentials: "include",
+        cache: "no-store",
+      }
+    )
     if (!res.ok) return []
     return res.json()
   } catch (error) {
@@ -123,12 +127,18 @@ export async function getClientContracts(clientId: string): Promise<Contract[]> 
 }
 
 /** Get all contracts for a talent */
-export async function getTalentContracts(talentId: string): Promise<Contract[]> {
+export async function getTalentContracts(
+  talentId: string
+): Promise<Contract[]> {
   try {
-    const res = await fetch(`${CONTRACTS_API_URL}/contracts/talent/${talentId}`, {
-      headers: authHeaders(),
-      cache: "no-store",
-    })
+    const res = await fetch(
+      `${CONTRACTS_API_URL}/contracts/talent/${talentId}`,
+      {
+        headers: authHeaders(),
+        credentials: "include",
+        cache: "no-store",
+      }
+    )
     if (!res.ok) return []
     return res.json()
   } catch (error) {
@@ -138,11 +148,14 @@ export async function getTalentContracts(talentId: string): Promise<Contract[]> 
 }
 
 /** Create a contract group with N contracts */
-export async function createContractGroup(dto: CreateGroupDto): Promise<ContractGroup | null> {
+export async function createContractGroup(
+  dto: CreateGroupDto
+): Promise<ContractGroup | null> {
   try {
     const res = await fetch(`${CONTRACTS_API_URL}/contract-groups`, {
       method: "POST",
       headers: authHeaders(),
+      credentials: "include",
       body: JSON.stringify(dto),
     })
     if (!res.ok) {
@@ -158,10 +171,13 @@ export async function createContractGroup(dto: CreateGroupDto): Promise<Contract
 }
 
 /** Get a contract group by ID (includes all contracts) */
-export async function getContractGroup(groupId: string): Promise<ContractGroup | null> {
+export async function getContractGroup(
+  groupId: string
+): Promise<ContractGroup | null> {
   try {
     const res = await fetch(`${CONTRACTS_API_URL}/contract-groups/${groupId}`, {
       headers: authHeaders(),
+      credentials: "include",
       cache: "no-store",
     })
     if (!res.ok) return null
@@ -178,11 +194,15 @@ export async function endContract(
   dto: EndContractDto
 ): Promise<Contract | null> {
   try {
-    const res = await fetch(`${CONTRACTS_API_URL}/contracts/${contractId}/end`, {
-      method: "PUT",
-      headers: authHeaders(),
-      body: JSON.stringify(dto),
-    })
+    const res = await fetch(
+      `${CONTRACTS_API_URL}/contracts/${contractId}/end`,
+      {
+        method: "PUT",
+        headers: authHeaders(),
+        credentials: "include",
+        body: JSON.stringify(dto),
+      }
+    )
     if (!res.ok) {
       const text = await res.text()
       console.error("Failed to end contract:", res.status, text)
@@ -201,11 +221,15 @@ export async function respondToContract(
   dto: AcceptRejectDto
 ): Promise<Contract | null> {
   try {
-    const res = await fetch(`${CONTRACTS_API_URL}/contracts/${contractId}/respond`, {
-      method: "PUT",
-      headers: authHeaders(),
-      body: JSON.stringify(dto),
-    })
+    const res = await fetch(
+      `${CONTRACTS_API_URL}/contracts/${contractId}/respond`,
+      {
+        method: "PUT",
+        headers: authHeaders(),
+        credentials: "include",
+        body: JSON.stringify(dto),
+      }
+    )
     if (!res.ok) {
       const text = await res.text()
       console.error("Failed to respond to contract:", res.status, text)
@@ -224,11 +248,15 @@ export async function disputeContract(
   dto: DisputeContractDto
 ): Promise<Contract | null> {
   try {
-    const res = await fetch(`${CONTRACTS_API_URL}/contracts/${contractId}/dispute`, {
-      method: "PUT",
-      headers: authHeaders(),
-      body: JSON.stringify(dto),
-    })
+    const res = await fetch(
+      `${CONTRACTS_API_URL}/contracts/${contractId}/dispute`,
+      {
+        method: "PUT",
+        headers: authHeaders(),
+        credentials: "include",
+        body: JSON.stringify(dto),
+      }
+    )
     if (!res.ok) {
       const text = await res.text()
       console.error("Failed to dispute contract:", res.status, text)

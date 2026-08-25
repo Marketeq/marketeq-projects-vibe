@@ -480,7 +480,6 @@ const chatsCtxValue = {
     </EditContextProvider>
   ),
 ]
-
 ;(YourBubble as any).args = {
   message: mockMessage,
   currentUser: mockCurrentUser,

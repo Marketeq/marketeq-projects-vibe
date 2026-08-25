@@ -6,11 +6,16 @@ export class AblyService {
   private readonly client: Ably.Rest | null;
 
   constructor() {
-    this.client = process.env.ABLY_API_KEY
-      ? new Ably.Rest({ key: process.env.ABLY_API_KEY })
-      : null;
-    if (!this.client) {
+    if (!process.env.ABLY_API_KEY) {
+      this.client = null;
       console.warn('[AblyService] ABLY_API_KEY not set — real-time publish disabled');
+      return;
+    }
+    try {
+      this.client = new Ably.Rest({ key: process.env.ABLY_API_KEY });
+    } catch (err) {
+      this.client = null;
+      console.warn(`[AblyService] Invalid ABLY_API_KEY — real-time publish disabled: ${(err as Error).message}`);
     }
   }
 

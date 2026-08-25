@@ -262,6 +262,60 @@ import {
       };
     }
   
+    async getRateAverages(sinceDate?: string): Promise<{
+      averages: Array<{
+        descriptionType: string;
+        contractType: string;
+        avgAmount: number;
+        avgHours: number;
+        effectiveHourlyRate: number | null;
+        transactionCount: number;
+        totalAmount: number;
+      }>;
+      sinceDate: string;
+      generatedAt: string;
+    }> {
+      const since = sinceDate
+        ? new Date(sinceDate)
+        : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000); // default 90 days
+
+      const results = await this.repo
+        .createQueryBuilder('t')
+        .select('t.description_type', 'descriptionType')
+        .addSelect('t.contract_type', 'contractType')
+        .addSelect('AVG(t.amount)', 'avgAmount')
+        .addSelect('AVG(t.description_hours)', 'avgHours')
+        .addSelect('COUNT(*)', 'transactionCount')
+        .addSelect('SUM(t.amount)', 'totalAmount')
+        .where('t.status IN (:...statuses)', {
+          statuses: ['paid', 'succeeded'],
+        })
+        .andWhere('t.date >= :since', { since })
+        .andWhere('t.amount_direction = :dir', { dir: 'debit' })
+        .groupBy('t.description_type')
+        .addGroupBy('t.contract_type')
+        .getRawMany();
+
+      const averages = results.map((r) => ({
+        descriptionType: r.descriptionType,
+        contractType: r.contractType,
+        avgAmount: parseFloat(r.avgAmount) || 0,
+        avgHours: parseFloat(r.avgHours) || 0,
+        effectiveHourlyRate:
+          r.avgHours && parseFloat(r.avgHours) > 0
+            ? parseFloat(r.avgAmount) / parseFloat(r.avgHours)
+            : null,
+        transactionCount: parseInt(r.transactionCount, 10),
+        totalAmount: parseFloat(r.totalAmount) || 0,
+      }));
+
+      return {
+        averages,
+        sinceDate: since.toISOString(),
+        generatedAt: new Date().toISOString(),
+      };
+    }
+
     private async generateReceiptPdf(
       transaction: Transaction,
     ): Promise<Buffer> {

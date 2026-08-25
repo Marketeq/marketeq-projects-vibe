@@ -49,6 +49,7 @@ export class UserInternalController {
       email: user.email,
       avatarUrl: (user as any).avatarUrl ?? null,
       location: (user as any).location ?? null,
+      rate: (user as any).rate ?? null,
       languages: Array.isArray((user as any).languages)
         ? (user as any).languages
             .map((l: any) => (typeof l === 'string' ? l : l?.name ?? ''))

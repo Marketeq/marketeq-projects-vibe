@@ -2056,8 +2056,8 @@ export const WorkExperienceDialog = ({
                       {workExperiences?.map((workExperience, index) => (
                         <WorkExperienceCard
                           onRemove={() =>
-                            setWorkExperiences(
-                              (prev) => prev?.filter((_, i) => i !== index)
+                            setWorkExperiences((prev) =>
+                              prev?.filter((_, i) => i !== index)
                             )
                           }
                           onEdit={() => {
@@ -2840,8 +2840,8 @@ export const EducationDialog = ({
                     {educationQualifications?.map((qualification, index) => (
                       <EducationCard
                         onRemove={() =>
-                          setEducationQualifications(
-                            (prev) => prev?.filter((_, i) => i !== index)
+                          setEducationQualifications((prev) =>
+                            prev?.filter((_, i) => i !== index)
                           )
                         }
                         onEdit={() => {

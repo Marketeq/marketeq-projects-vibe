@@ -72,7 +72,9 @@ async function selectTextInEditor(
 
     const index = fullText.indexOf(searchText)
     if (index < 0) {
-      throw new Error(`Could not find "${searchText}" in editor text "${fullText}"`)
+      throw new Error(
+        `Could not find "${searchText}" in editor text "${fullText}"`
+      )
     }
 
     const range = document.createRange()
@@ -198,7 +200,9 @@ async function showImageDropCursor(
     { imageIndex, side }
   )
 
-  const dropCursor = page.locator(".rich-text-dropcursor.prosemirror-dropcursor-block")
+  const dropCursor = page.locator(
+    ".rich-text-dropcursor.prosemirror-dropcursor-block"
+  )
   await expect(dropCursor).toBeVisible()
   return dropCursor
 }
@@ -215,11 +219,11 @@ test("rich text editor toolbar preserves styling and applies size only to select
   await page.goto(EDITOR_URL, { waitUntil: "domcontentloaded" })
   console.log("opened publish project page")
 
-  await page
-    .locator("label[for='full-description']")
-    .scrollIntoViewIfNeeded()
+  await page.locator("label[for='full-description']").scrollIntoViewIfNeeded()
   await expect(page.locator("label[for='full-description']")).toBeVisible()
-  await expect(page.getByText("Enter a full Description", { exact: true })).toBeVisible()
+  await expect(
+    page.getByText("Enter a full Description", { exact: true })
+  ).toBeVisible()
   await page.getByText("Enter a full Description").click()
   console.log("opened rich text editor")
 
@@ -294,7 +298,9 @@ test("rich text editor toolbar preserves styling and applies size only to select
     response.url().includes("/publish/rich-text-image")
   )
   await page.locator("[data-rich-text-command='image']").click()
-  await page.locator("[data-rich-text-file-input='true']").setInputFiles(IMAGE_FIXTURE)
+  await page
+    .locator("[data-rich-text-file-input='true']")
+    .setInputFiles(IMAGE_FIXTURE)
   const uploadResponse = await uploadPromise
   console.log("uploaded image")
   expect(uploadResponse.ok()).toBeTruthy()
@@ -448,14 +454,16 @@ test("image drag preview reflects alignment with blue 2px dropcursor", async ({
 
   await setHoveredImageAlignment(page, "full-width")
   const fullWidthDropCursor = await showImageDropCursor(page, { side: "left" })
-  const fullWidthDropCursorStyles = await fullWidthDropCursor.evaluate((node) => {
-    const computed = window.getComputedStyle(node)
-    return {
-      backgroundColor: computed.backgroundColor,
-      height: computed.height,
-      width: computed.width,
+  const fullWidthDropCursorStyles = await fullWidthDropCursor.evaluate(
+    (node) => {
+      const computed = window.getComputedStyle(node)
+      return {
+        backgroundColor: computed.backgroundColor,
+        height: computed.height,
+        width: computed.width,
+      }
     }
-  })
+  )
 
   expect(fullWidthDropCursorStyles.backgroundColor).toBe("rgb(48, 108, 254)")
   expect(fullWidthDropCursorStyles.height).toBe("2px")
@@ -475,7 +483,9 @@ test("toolbar only appears for text selection and survives pin/unpin", async ({
   await page.getByText("Enter a full Description").click()
   await page.waitForTimeout(250)
 
-  await expect(page.locator("[data-rich-text-editor-toolbar='true']")).toHaveCount(0)
+  await expect(
+    page.locator("[data-rich-text-editor-toolbar='true']")
+  ).toHaveCount(0)
 
   const editor = page.locator(".ProseMirror").first()
   await expect(editor).toBeVisible()
@@ -486,7 +496,9 @@ test("toolbar only appears for text selection and survives pin/unpin", async ({
   await editor.type("Alpha Beta Gamma")
 
   await selectTextInEditor(page, "Beta")
-  await expect(page.locator("[data-rich-text-editor-toolbar='true']")).toHaveCount(1)
+  await expect(
+    page.locator("[data-rich-text-editor-toolbar='true']")
+  ).toHaveCount(1)
 
   const toolbar = page.locator("[data-rich-text-editor-toolbar='true']").first()
   const editorBox = await editor.boundingBox()
@@ -495,7 +507,9 @@ test("toolbar only appears for text selection and survives pin/unpin", async ({
   await page.locator("[data-rich-text-command='toggle-pin']").click()
   await page.waitForTimeout(300)
 
-  const pinnedToolbar = page.locator("[data-rich-text-editor-toolbar='true']").first()
+  const pinnedToolbar = page
+    .locator("[data-rich-text-editor-toolbar='true']")
+    .first()
   const pinnedBox = await pinnedToolbar.boundingBox()
   expect(pinnedBox).toBeTruthy()
   expect(pinnedBox!.y).toBeLessThan(editorBox!.y)
@@ -503,7 +517,9 @@ test("toolbar only appears for text selection and survives pin/unpin", async ({
   await page.locator("[data-rich-text-command='toggle-pin']").click()
   await page.waitForTimeout(300)
 
-  await expect(page.locator("[data-rich-text-editor-toolbar='true']")).toHaveCount(1)
+  await expect(
+    page.locator("[data-rich-text-editor-toolbar='true']")
+  ).toHaveCount(1)
 })
 
 test("fullscreen editor opens with constrained content width", async ({

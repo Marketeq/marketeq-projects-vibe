@@ -15,6 +15,16 @@
 - notification-service – Ably push, SendGrid email, event handlers, preferences
 - contracts-service – contract groups, lifecycle (pending→active→ended/canceled/disputed), audit logging, CRON auto-cancel, RabbitMQ events
 - time-tracking-service – complete service, code review fixes, QA tested all endpoints
+- transaction-service – ledger entries, Stripe webhooks, RabbitMQ events, 3 migrations, 62 .ts files
+- billing-service – Stripe checkout, QuickBooks, wire transfers, RabbitMQ, 15 .ts files
+- pricing-service – rate cards, fee calculation, FX rates, 30 .ts files
+- portfolio-service – media handling, Editor.js blocks, auth/access control, 20 .ts files
+- content-moderation-service – text/media filters, profanity detection, approval flow, 48 .ts files
+- search-service – Algolia indexing, filter config, autocomplete, 8 .ts files
+- suggestions-service – dynamic job title suggestions, RabbitMQ, 9 .ts files
+- earnings-service – balance tracking, RabbitMQ consumers (6 events), currency conversion (4-tier fallback), CSV/PDF export, Redis caching, service-to-service auth, 5 migrations
+- payout-service – withdrawals, deposit methods (Stripe/PayPal/Wise/Payoneer/Crypto), schedule engine, magic link, KYC gating, pause system, 22 modules, 97 .ts files
+- offer-service – complete offer lifecycle, counter-offers, milestones, templates, notifications, work schedules, 164 files
 
 ## In Progress
 - homepage (api-gateway module + frontend SSR) — ~85% complete, backend done, frontend wired, tests pending

@@ -8,8 +8,16 @@ import {
   RadioGroupItemSelector,
 } from "./ui"
 
-export const NavigationForm = () => {
-  const [option, setOption] = React.useState<string>()
+export type SessionChoice = "stay-logged-in" | "sign-out-others"
+
+export const NavigationForm = ({
+  onContinue,
+  isSubmitting,
+}: {
+  onContinue?: (choice: SessionChoice) => void
+  isSubmitting?: boolean
+}) => {
+  const [option, setOption] = React.useState<SessionChoice>()
   return (
     <div className="py-10 px-5 md:p-10 3xl:px-[120px] 3xl:py-[50px]">
       <div className="max-w-[420px] w-full mx-auto p-5 md:p-[50px] bg-white border rounded-xl border-gray-100 shadow-[0px_32px_64px_-12px_rgba(16,24,40,.05)]">
@@ -26,31 +34,39 @@ export const NavigationForm = () => {
             </h1>
 
             <p className="text-center text-sm leading-5 text-dark-blue-400">
-              Porem ipsum dolor sit amet, consectetur adipiscing elit. Nunc
-              vulputate libero et velit interdum.
+              Choose whether to stay signed in on your other devices, or sign
+              them all out for extra security.
             </p>
           </div>
 
           <RadioGroup
             className="gap-y-2"
             value={option}
-            onValueChange={setOption}
+            onValueChange={(value) => setOption(value as SessionChoice)}
           >
-            <RadioGroupItemSelector value="Option 1">
+            <RadioGroupItemSelector value="stay-logged-in">
               <Label asChild>
                 <span>Stay logged in to my devices</span>
               </Label>
-              <HelperText>Short description here</HelperText>
+              <HelperText>
+                Other devices you're signed in on will remain logged in.
+              </HelperText>
             </RadioGroupItemSelector>
-            <RadioGroupItemSelector value="Option 2">
+            <RadioGroupItemSelector value="sign-out-others">
               <Label asChild>
                 <span>Sign out of all other devices</span>
               </Label>
-              <HelperText>Short description here</HelperText>
+              <HelperText>
+                For extra security, all other active sessions will be signed
+                out.
+              </HelperText>
             </RadioGroupItemSelector>
           </RadioGroup>
 
-          <Button disabled={!option}>
+          <Button
+            disabled={!option || isSubmitting}
+            onClick={() => option && onContinue?.(option)}
+          >
             <Check className="size-[15px]" />
             Continue to Dashboard
           </Button>

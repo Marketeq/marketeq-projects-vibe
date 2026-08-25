@@ -78,4 +78,13 @@ export class EarningsCache {
 
   @Column({ type: 'timestamptz', nullable: true })
   reversedAt: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  taskName: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  contractRef: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  taskRef: string | null;
 }

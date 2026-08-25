@@ -1,25 +1,33 @@
 "use client"
 
-import React, { useCallback, useEffect, useState } from "react"
-import { createPortal } from "react-dom"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { useAuth } from "@/contexts/auth"
+import {
+  hasCompletedClientOnboarding,
+  hasCompletedTalentOnboarding,
+  resolveDashboardRole,
+  useAuth,
+} from "@/contexts/auth"
 import { useAutocomplete } from "@/libs/autocomplete"
 import {
+  type NotificationMetadata,
+  type UiNotificationItem,
   formatNotificationTime,
   mapAblyNotificationToUi,
   mapApiNotificationToUi,
-  type NotificationMetadata,
-  type UiNotificationItem,
 } from "@/libs/notifications"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
-import { respondToContract } from "@/src/lib/api/contracts"
 import NotificationsAPI, {
   isTransientNotificationsApiError,
 } from "@/service/http/notifications"
 import { UserAPI } from "@/service/http/user"
-import { ROLE } from "@/types/user"
+import { getContract, respondToContract } from "@/src/lib/api/contracts"
+import { jobDetailsUrl } from "@/src/lib/listing-urls"
 import { cn } from "@/utils/functions"
+import {
+  type InboxThreadSummary,
+  useInboxThreads,
+} from "@/utils/useInboxThreads"
+import { useNotificationChannel } from "@/utils/useNotificationChannel"
 import {
   BarChart2,
   Bell,
@@ -40,14 +48,21 @@ import {
   Users,
   X,
 } from "@blend-metrics/icons"
+import { createPortal } from "react-dom"
+import { ROLE } from "@/types/user"
+import {
+  CounterOfferDialog,
+  type CounterOfferSubmissionData,
+} from "@/components/counter-offer-dialog"
 import { Campaigns, Logo3, Project, Talent } from "@/components/icons"
 import { InviteWindowTrigger } from "@/components/invite-window"
-import { CounterOfferDialog } from "@/components/counter-offer-dialog"
+import NextLink from "@/components/next-link"
+import type { OfferDialogData } from "@/components/offer-dialog.types"
 import {
   OfferFlowDialog,
   type OfferFlowDialogVariant,
 } from "@/components/offer-flow-dialog"
-import NextLink from "@/components/next-link"
+import { AuthModal } from "@/components/auth/auth-modal"
 import { ThreeHorizontalLines } from "@/components/three-horizontal-lines"
 import {
   Avatar,
@@ -82,22 +97,259 @@ import {
   TabsTrigger,
 } from "@/components/ui"
 import { ScrollBar } from "@/components/ui"
-import { useNotificationChannel } from "@/utils/useNotificationChannel"
-import {
-  useInboxThreads,
-  type InboxThreadSummary,
-} from "@/utils/useInboxThreads"
 
 const OFFER_NOTIFICATION_EVENT = "contract.offer.received"
+const OFFER_ACCEPTED_STORAGE_PREFIX = "inbox_offer_accepted"
+const COUNTER_OFFER_STORAGE_PREFIX = "inbox_counter_offer_submitted"
+const OFFER_DECLINED_STORAGE_PREFIX = "inbox_offer_declined"
 
-const readMetadataString = (
-  metadata: NotificationMetadata,
-  key: string
-) => {
+const readMetadataString = (metadata: NotificationMetadata, key: string) => {
   const value = metadata?.[key]
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined
+}
+
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+
+const getOfferJobHref = (
+  metadata: NotificationMetadata,
+  fallbackHref?: string
+) => {
+  const explicitHref =
+    readMetadataString(metadata, "jobHref") ||
+    readMetadataString(metadata, "jobUrl") ||
+    readMetadataString(metadata, "projectHref") ||
+    readMetadataString(metadata, "listingHref")
+  if (explicitHref) return explicitHref
+
+  const jobSlugOrId =
+    readMetadataString(metadata, "jobSlug") ||
+    readMetadataString(metadata, "jobId") ||
+    readMetadataString(metadata, "listingSlug") ||
+    readMetadataString(metadata, "listingId")
+  if (jobSlugOrId) return jobDetailsUrl(jobSlugOrId)
+
+  return fallbackHref?.includes("/job-details/") ? fallbackHref : "/find-jobs"
+}
+
+const withOfferView = (href: string) => {
+  if (!href.includes("/job-details/")) return href
+
+  const separator = href.includes("?") ? "&" : "?"
+  return `${href}${separator}view=offer`
+}
+
+const normalizeInboxHref = (href: string) => {
+  if (!href.startsWith("/inbox")) return href
+
+  const [pathname, query = ""] = href.split("?")
+  const params = new URLSearchParams(query)
+  const legacyThreadId = params.get("thread")
+
+  if (legacyThreadId && !params.get("threadId")) {
+    params.set("threadId", legacyThreadId)
+    params.delete("thread")
+  }
+
+  const normalizedQuery = params.toString()
+  return normalizedQuery ? `${pathname}?${normalizedQuery}` : pathname
+}
+
+const getInboxHref = (href?: string) => {
+  if (!href?.startsWith("/inbox")) return undefined
+  return normalizeInboxHref(href)
+}
+
+const withAcceptedOfferState = (href: string, contractId?: string) => {
+  try {
+    const url = new URL(
+      href,
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "https://localhost"
+    )
+    url.searchParams.set("offerStatus", "accepted")
+    if (contractId) url.searchParams.set("contractId", contractId)
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    const separator = href.includes("?") ? "&" : "?"
+    const contractParam = contractId
+      ? `&contractId=${encodeURIComponent(contractId)}`
+      : ""
+    return `${href}${separator}offerStatus=accepted${contractParam}`
+  }
+}
+
+const withDeclinedOfferState = (href: string, contractId?: string) => {
+  try {
+    const url = new URL(
+      href,
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "https://localhost"
+    )
+    url.searchParams.set("offerStatus", "declined")
+    if (contractId) url.searchParams.set("contractId", contractId)
+    return `${url.pathname}${url.search}${url.hash}`
+  } catch {
+    const separator = href.includes("?") ? "&" : "?"
+    const contractParam = contractId
+      ? `&contractId=${encodeURIComponent(contractId)}`
+      : ""
+    return `${href}${separator}offerStatus=declined${contractParam}`
+  }
+}
+
+const storeAcceptedOfferCard = (
+  contractId: string | undefined,
+  details: OfferDialogData,
+  acceptanceMessage?: string
+) => {
+  if (!contractId || typeof window === "undefined") return
+
+  sessionStorage.setItem(
+    `${OFFER_ACCEPTED_STORAGE_PREFIX}:${contractId}`,
+    JSON.stringify({
+      status: "accepted",
+      contractId,
+      offerTitle: details.offerTitle,
+      offerType: details.offerType,
+      offerRate: details.offerRate,
+      role: details.role,
+      duration: details.duration,
+      schedule: details.schedule,
+      startDate: details.startDate,
+      acceptanceMessage,
+    })
+  )
+}
+
+const storeDeclinedOfferCard = (
+  contractId: string | undefined,
+  details: OfferDialogData,
+  declineMessage: string
+) => {
+  if (!contractId || typeof window === "undefined") return
+  const declinedDetails = details as OfferDialogData & {
+    senderAvatarSrc?: string
+  }
+  const declinedAt = new Date().toISOString()
+
+  sessionStorage.setItem(
+    `${OFFER_DECLINED_STORAGE_PREFIX}:${contractId}`,
+    JSON.stringify({
+      status: "declined",
+      contractId,
+      offerTitle: details.offerTitle,
+      offerType: details.offerType,
+      receivedLabel: details.receivedLabel,
+      declinedAt,
+      declinedLabel: details.receivedLabel,
+      offerRate: details.offerRate,
+      role: details.role,
+      duration: details.duration,
+      schedule: details.schedule,
+      startDate: details.startDate,
+      senderDisplayName: details.senderDisplayName,
+      senderUsername: details.senderUsername,
+      senderAvatarSrc: declinedDetails.senderAvatarSrc,
+      declineMessage,
+    })
+  )
+}
+
+const storeCounterOfferCard = (
+  contractId: string | undefined,
+  details: OfferDialogData,
+  counterOffer: CounterOfferSubmissionData
+) => {
+  if (!contractId || typeof window === "undefined") return
+
+  sessionStorage.setItem(
+    `${COUNTER_OFFER_STORAGE_PREFIX}:${contractId}`,
+    JSON.stringify({
+      status: "submitted",
+      contractId,
+      offerTitle: details.offerTitle,
+      offerType: details.offerType,
+      expiresLabel: details.expiresLabel,
+      ...counterOffer,
+    })
+  )
+}
+
+const normalizeContactText = (value?: string) =>
+  value?.trim().replace(/^@/, "").toLowerCase().replace(/\s+/g, " ")
+
+const getOfferThreadHref = (
+  threads: InboxThreadSummary[],
+  senderUsername?: string,
+  senderDisplayName?: string
+) => {
+  const normalizedUsername = normalizeContactText(senderUsername)
+  const normalizedDisplayName = normalizeContactText(senderDisplayName)
+
+  if (!normalizedUsername && !normalizedDisplayName) return undefined
+
+  const thread = threads.find((candidate) => {
+    const participantUsername = normalizeContactText(
+      candidate.participantUsername
+    )
+    const displayName = normalizeContactText(candidate.displayName)
+    const participantName = normalizeContactText(candidate.participantName)
+
+    return (
+      (!!normalizedUsername &&
+        (participantUsername === normalizedUsername ||
+          displayName === normalizedUsername ||
+          participantName === normalizedUsername)) ||
+      (!!normalizedDisplayName &&
+        (displayName === normalizedDisplayName ||
+          participantName === normalizedDisplayName))
+    )
+  })
+
+  return thread ? `/inbox?threadId=${encodeURIComponent(thread.id)}` : undefined
+}
+
+const getOfferAcceptedMessageHref = (
+  metadata: NotificationMetadata,
+  messageHref: string,
+  clientId?: string | null,
+  threads: InboxThreadSummary[] = [],
+  senderUsername?: string,
+  senderDisplayName?: string
+) => {
+  const explicitMessageHref = getInboxHref(
+    readMetadataString(metadata, "messageHref")
+  )
+  if (explicitMessageHref) return explicitMessageHref
+
+  const threadId =
+    readMetadataString(metadata, "threadId") ||
+    readMetadataString(metadata, "messageThreadId")
+  if (threadId) return `/inbox?threadId=${encodeURIComponent(threadId)}`
+
+  const participantId =
+    readMetadataString(metadata, "participantId") ||
+    readMetadataString(metadata, "senderId") ||
+    readMetadataString(metadata, "senderUserId") ||
+    readMetadataString(metadata, "clientId") ||
+    clientId
+  if (participantId) {
+    return `/inbox?participantId=${encodeURIComponent(participantId)}`
+  }
+
+  const threadHref = getOfferThreadHref(
+    threads,
+    senderUsername,
+    senderDisplayName
+  )
+  if (threadHref) return threadHref
+
+  return getInboxHref(messageHref) || "/inbox"
 }
 
 const ensureUsernameHandle = (value?: string) => {
@@ -150,6 +402,10 @@ const getOfferNotificationDetails = (item: UiNotificationItem) => {
     "@lauradesign21"
   const senderDisplayName =
     readMetadataString(metadata, "senderDisplayName") || "Offer from"
+  const senderAvatarSrc =
+    readMetadataString(metadata, "senderAvatarUrl") ||
+    readMetadataString(metadata, "senderAvatarSrc") ||
+    readMetadataString(metadata, "senderAvatar")
   const offerTitle =
     readMetadataString(metadata, "offerTitle") ||
     readMetadataString(metadata, "projectTitle") ||
@@ -169,16 +425,12 @@ const getOfferNotificationDetails = (item: UiNotificationItem) => {
     contractId: readMetadataString(metadata, "contractId"),
     senderUsername,
     senderDisplayName,
+    senderAvatarSrc,
     offerType: readMetadataString(metadata, "offerType") || "Project",
     receivedLabel,
     offerTitle,
-    viewJobHref:
-      readMetadataString(metadata, "jobHref") ||
-      readMetadataString(metadata, "projectHref") ||
-      item.href ||
-      "/inbox",
-    messageHref:
-      readMetadataString(metadata, "messageHref") || "/inbox",
+    viewJobHref: withOfferView(getOfferJobHref(metadata, item.href)),
+    messageHref: readMetadataString(metadata, "messageHref") || "/inbox",
     offerRate: readMetadataString(metadata, "offerRate") || "$45/hr",
     role: readMetadataString(metadata, "role") || "UX Designer",
     duration: readMetadataString(metadata, "duration") || "4 Months",
@@ -216,7 +468,9 @@ const Notifications = () => {
   const [activeTab, setActiveTab] = useState<"Notifications" | "Messages">(
     "Notifications"
   )
-  const [allNotifications, setAllNotifications] = useState<UiNotificationItem[]>([])
+  const [allNotifications, setAllNotifications] = useState<
+    UiNotificationItem[]
+  >([])
   const [unreadBadgeCount, setUnreadBadgeCount] = useState(0)
   const {
     threads: inboxThreads,
@@ -227,10 +481,6 @@ const Notifications = () => {
   const loadNotifications = useCallback(async (allowSeed = true) => {
     try {
       setLoading(true)
-
-      if (process.env.NODE_ENV !== "production") {
-        await ensureDevAuth()
-      }
 
       const response = await NotificationsAPI.list({ limit: 8 })
       const items: UiNotificationItem[] = Array.isArray(response?.data?.data)
@@ -285,9 +535,13 @@ const Notifications = () => {
     },
   })
 
-  const selectedOfferDetails = selectedOfferNotification
-    ? getOfferNotificationDetails(selectedOfferNotification)
-    : null
+  const selectedOfferDetails = useMemo(
+    () =>
+      selectedOfferNotification
+        ? getOfferNotificationDetails(selectedOfferNotification)
+        : null,
+    [selectedOfferNotification]
+  )
   const resetOfferDialogState = useCallback(() => {
     setOfferDialogMode("details")
     setOfferAcceptanceNote("")
@@ -303,7 +557,8 @@ const Notifications = () => {
         ? offerAcceptanceNote.trim().length > 0 && offerTermsAccepted
           ? "accept-offer-ready"
           : "accept-offer-empty"
-        : offerDeclineNote.trim().length > 0 || offerDeclineReason.trim().length > 0
+        : offerDeclineNote.trim().length > 0 ||
+            offerDeclineReason.trim().length > 0
           ? "decline-offer-ready"
           : "decline-offer-empty"
 
@@ -331,6 +586,7 @@ const Notifications = () => {
     const details = selectedOfferNotification
       ? getOfferNotificationDetails(selectedOfferNotification)
       : null
+    const metadata = selectedOfferNotification?.metadata
 
     if (!selectedOfferNotification || !details?.contractId || !user?.id) {
       setOfferDialogOpen(false)
@@ -340,17 +596,145 @@ const Notifications = () => {
     setOfferActionLoading(accepted ? "accept" : "decline")
 
     try {
+      const acceptedMessageHref = getOfferAcceptedMessageHref(
+        metadata,
+        details.messageHref,
+        undefined,
+        inboxThreads,
+        details.senderUsername,
+        details.senderDisplayName
+      )
+
+      if (accepted && !isUuid(details.contractId)) {
+        setOfferDialogOpen(false)
+        setSelectedOfferNotification(null)
+        resetOfferDialogState()
+        storeAcceptedOfferCard(
+          details.contractId,
+          details,
+          offerAcceptanceNote.trim()
+        )
+        router.push(
+          withAcceptedOfferState(acceptedMessageHref, details.contractId)
+        )
+        return
+      }
+      if (!accepted && !isUuid(details.contractId)) {
+        setOfferDialogOpen(false)
+        setSelectedOfferNotification(null)
+        resetOfferDialogState()
+        storeDeclinedOfferCard(
+          details.contractId,
+          details,
+          offerDeclineNote.trim() ||
+            offerDeclineReason.trim() ||
+            "Thanks, unfortunately I can't take this on right now."
+        )
+        router.push(
+          withDeclinedOfferState(acceptedMessageHref, details.contractId)
+        )
+        return
+      }
+
+      const offerContract = accepted
+        ? await getContract(details.contractId)
+        : null
       const response = await respondToContract(details.contractId, {
         accepted,
         talentId: user.id,
       })
 
-      if (response) {
-        setOfferDialogOpen(false)
-        setSelectedOfferNotification(null)
-        resetOfferDialogState()
-        await loadNotifications(false)
+      if (!response) {
+        if (
+          accepted &&
+          offerContract?.clientId &&
+          offerContract.status.toUpperCase() !== "PENDING"
+        ) {
+          setOfferDialogOpen(false)
+          setSelectedOfferNotification(null)
+          resetOfferDialogState()
+          storeAcceptedOfferCard(
+            details.contractId,
+            details,
+            offerAcceptanceNote.trim()
+          )
+          router.push(
+            withAcceptedOfferState(
+              getOfferAcceptedMessageHref(
+                metadata,
+                details.messageHref,
+                offerContract.clientId,
+                inboxThreads,
+                details.senderUsername,
+                details.senderDisplayName
+              ),
+              details.contractId
+            )
+          )
+        }
+        if (!accepted) {
+          setOfferDialogOpen(false)
+          setSelectedOfferNotification(null)
+          resetOfferDialogState()
+          storeDeclinedOfferCard(
+            details.contractId,
+            details,
+            offerDeclineNote.trim() ||
+              offerDeclineReason.trim() ||
+              "Thanks, unfortunately I can't take this on right now."
+          )
+          router.push(
+            withDeclinedOfferState(acceptedMessageHref, details.contractId)
+          )
+        }
+        return
       }
+
+      setOfferDialogOpen(false)
+      setSelectedOfferNotification(null)
+      resetOfferDialogState()
+      if (accepted) {
+        storeAcceptedOfferCard(
+          details.contractId,
+          details,
+          offerAcceptanceNote.trim()
+        )
+        router.push(
+          withAcceptedOfferState(
+            getOfferAcceptedMessageHref(
+              metadata,
+              details.messageHref,
+              response.clientId ?? offerContract?.clientId,
+              inboxThreads,
+              details.senderUsername,
+              details.senderDisplayName
+            ),
+            details.contractId
+          )
+        )
+      } else {
+        storeDeclinedOfferCard(
+          details.contractId,
+          details,
+          offerDeclineNote.trim() ||
+            offerDeclineReason.trim() ||
+            "Thanks, unfortunately I can't take this on right now."
+        )
+        router.push(
+          withDeclinedOfferState(
+            getOfferAcceptedMessageHref(
+              metadata,
+              details.messageHref,
+              response.clientId,
+              inboxThreads,
+              details.senderUsername,
+              details.senderDisplayName
+            ),
+            details.contractId
+          )
+        )
+      }
+      await loadNotifications(false)
     } finally {
       setOfferActionLoading(null)
     }
@@ -372,7 +756,7 @@ const Notifications = () => {
 
   const handleInboxThreadClick = (thread: InboxThreadSummary) => {
     setOpen(false)
-    router.push(`/inbox?thread=${thread.id}`)
+    router.push(`/inbox?threadId=${thread.id}`)
   }
 
   const renderInboxThreadItem = (thread: InboxThreadSummary) => {
@@ -388,7 +772,10 @@ const Notifications = () => {
       >
         <Avatar size="md">
           {thread.displayAvatarUrl ? (
-            <AvatarImage src={thread.displayAvatarUrl} alt={thread.displayName} />
+            <AvatarImage
+              src={thread.displayAvatarUrl}
+              alt={thread.displayName}
+            />
           ) : null}
           <AvatarFallback>{thread.displayInitial}</AvatarFallback>
         </Avatar>
@@ -398,7 +785,7 @@ const Notifications = () => {
             <div
               className={cn(
                 "text-sm leading-[16.94px] text-dark-blue-400 truncate",
-                thread.hasUnread ? "font-bold" : "font-semibold",
+                thread.hasUnread ? "font-bold" : "font-semibold"
               )}
             >
               {thread.displayName}
@@ -419,7 +806,9 @@ const Notifications = () => {
           <div
             className={cn(
               "mt-1 text-sm leading-[16.94px] truncate",
-              thread.hasUnread ? "text-dark-blue-400 font-medium" : "text-gray-700",
+              thread.hasUnread
+                ? "text-dark-blue-400 font-medium"
+                : "text-gray-700"
             )}
           >
             {thread.lastMessagePreview}
@@ -534,7 +923,12 @@ const Notifications = () => {
           className="w-[370px] bg-white border border-gray-100 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]"
           align="end"
         >
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "Notifications" | "Messages")}>
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) =>
+              setActiveTab(value as "Notifications" | "Messages")
+            }
+          >
             <TabsList className="w-full">
               <TabsTrigger value="Notifications">
                 Notifications
@@ -562,7 +956,9 @@ const Notifications = () => {
                         Loading notifications...
                       </div>
                     ) : allNotifications.length > 0 ? (
-                      allNotifications.map((item) => renderNotificationItem(item, false))
+                      allNotifications.map((item) =>
+                        renderNotificationItem(item, false)
+                      )
                     ) : (
                       <div className="px-3 py-6 text-sm text-gray-500">
                         No notifications to show
@@ -573,7 +969,13 @@ const Notifications = () => {
               </div>
 
               <div className="py-3.5 grid">
-                <button className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium" onClick={() => router.push("/notifications")}>
+                <button
+                  className="focus-visible:outline-none text-[13px] leading-[13.3px] text-gray-500 hover:underline font-medium"
+                  onClick={() => {
+                    setOpen(false)
+                    router.push("/notifications")
+                  }}
+                >
                   View All
                 </button>
               </div>
@@ -586,9 +988,6 @@ const Notifications = () => {
                 >
                   <div className="px-2">
                     {(() => {
-                      const unreadThreads = inboxThreads.filter(
-                        (t) => t.hasUnread,
-                      )
                       if (inboxLoading && inboxThreads.length === 0) {
                         return (
                           <div className="px-3 py-6 text-sm text-gray-500">
@@ -596,14 +995,14 @@ const Notifications = () => {
                           </div>
                         )
                       }
-                      if (unreadThreads.length === 0) {
+                      if (inboxThreads.length === 0) {
                         return (
                           <div className="px-3 py-6 text-sm text-gray-500">
-                            No unread messages
+                            No messages
                           </div>
                         )
                       }
-                      return unreadThreads
+                      return inboxThreads
                         .slice(0, 8)
                         .map(renderInboxThreadItem)
                     })()}
@@ -648,7 +1047,12 @@ const Notifications = () => {
           onTermsAcceptedChange={setOfferTermsAccepted}
           onDeclineMessageChange={setOfferDeclineNote}
           onDeclineReasonChange={setOfferDeclineReason}
-          onViewJob={() => router.push(selectedOfferDetails.viewJobHref)}
+          onViewJob={() => {
+            setOfferDialogOpen(false)
+            setSelectedOfferNotification(null)
+            resetOfferDialogState()
+            router.push(selectedOfferDetails.viewJobHref || "/find-jobs")
+          }}
           onMessage={() => {
             setOfferDialogOpen(false)
             setSelectedOfferNotification(null)
@@ -689,6 +1093,35 @@ const Notifications = () => {
           data={selectedOfferDetails}
           onCancel={() => setOfferDialogMode("details")}
           onReview={() => {}}
+          onSubmit={(counterOffer) => {
+            const messageHref = getOfferAcceptedMessageHref(
+              selectedOfferNotification?.metadata,
+              selectedOfferDetails.messageHref,
+              undefined,
+              inboxThreads,
+              selectedOfferDetails.senderUsername,
+              selectedOfferDetails.senderDisplayName
+            )
+
+            storeCounterOfferCard(
+              selectedOfferDetails.contractId,
+              selectedOfferDetails,
+              counterOffer
+            )
+            setOfferDialogOpen(false)
+            setSelectedOfferNotification(null)
+            resetOfferDialogState()
+
+            const separator = messageHref.includes("?") ? "&" : "?"
+            const contractParam = selectedOfferDetails.contractId
+              ? `&contractId=${encodeURIComponent(
+                  selectedOfferDetails.contractId
+                )}`
+              : ""
+            router.push(
+              `${messageHref}${separator}offerStatus=counter-submitted${contractParam}`
+            )
+          }}
         />
       ) : null}
     </>
@@ -802,6 +1235,17 @@ const SearchBar = () => {
     }, 300)
   }
 
+  const handleCategoryChange = (newCategory: string) => {
+    setState(newCategory)
+    if (pathname?.startsWith("/search") && query.trim()) {
+      const params = new URLSearchParams()
+      params.set("q", query.trim())
+      if (newCategory) params.set("category", newCategory.toLowerCase())
+      closeDropdown()
+      router.push(`/search?${params.toString()}`)
+    }
+  }
+
   const submitSearch = (term: string) => {
     const trimmed = term.trim()
     if (!trimmed) return
@@ -814,11 +1258,16 @@ const SearchBar = () => {
 
   const searchPlaceholder = (() => {
     switch (state) {
-      case "Projects": return "Search by skills or project type"
-      case "Services": return "Search by skills or service type"
-      case "Teams": return "Search by skills or team type"
-      case "Talent": return "Search by skills or expertise"
-      default: return "Search by skills or keyword"
+      case "Projects":
+        return "Search by skills or project type"
+      case "Services":
+        return "Search by skills or service type"
+      case "Teams":
+        return "Search by skills or team type"
+      case "Talent":
+        return "Search by skills or expertise"
+      default:
+        return "Search by skills or keyword"
     }
   })()
 
@@ -877,7 +1326,12 @@ const SearchBar = () => {
       key={resetNonce}
       className="group/root w-auto flex-auto"
       value={selected}
-      onChange={(value: { id: number; value: string; icon?: React.JSXElementConstructor<any>; route?: string }) => {
+      onChange={(value: {
+        id: number
+        value: string
+        icon?: React.JSXElementConstructor<any>
+        route?: string
+      }) => {
         if (!value) return
         // Fixed "Browse ..." items have a route — navigate instead of searching.
         if (value.route) {
@@ -896,174 +1350,219 @@ const SearchBar = () => {
       }}
     >
       {({ open }) => (
-      <>
-      {/* Amazon-style page overlay: when the search combobox is open, dim
+        <>
+          {/* Amazon-style page overlay: when the search combobox is open, dim
           the rest of the page so focus is entirely on the search. Rendered
           via portal to document.body so it escapes the header's stacking
           context, allowing z-40 to sit cleanly below the z-50 sticky nav. */}
-      {open &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div
-            className="fixed inset-0 bg-black/40 z-40 pointer-events-none animate-in fade-in duration-150"
-            aria-hidden="true"
-          />,
-          document.body
-        )}
-      <ComboboxTrigger className="relative z-50 flex h-[34px] lg:h-10 rounded-[5px] items-center gap-x-3 border border-gray-300 bg-white ui-open:rounded-b-none py-[7px] lg:py-2 pl-2.5 pr-3 lg:px-3">
-        <div className="flex items-center gap-x-2 flex-auto">
-          <SearchMd className="size-4 shrink-0 text-gray-400" />
-          <ComboboxInput
-            ref={inputRef}
-            placeholder={searchPlaceholder}
-            className="p-0 border-0 text-xs leading-5 h-auto rounded-none hover:ring-0 hover:border-gray-300 focus:ring-0 focus:border-gray-300 ui-open:rounded-b-none"
-            size="lg"
-            displayValue={(value: {
-              id: number
-              value: string
-              icon?: React.JSXElementConstructor<any>
-            }) => value?.value ?? ""}
-            onChange={(event) => setQuery(event.target.value)}
-            onFocus={() => {
-              // Open the dropdown the moment the user focuses the input
-              // (industry-standard behavior — Amazon, Upwork, Fiverr all do this).
-              // Guard against double-firing: only click the hidden trigger if
-              // the options aren't already open, otherwise we'd toggle it shut.
-              // Also skip if we're in the middle of submitting a search, so
-              // the dropdown doesn't reopen right as it's closing.
-              if (submittingRef.current) return
-              const btn = openButtonRef.current
-              if (btn && btn.getAttribute("aria-expanded") !== "true") {
-                btn.click()
-              }
-            }}
-            onKeyDownCapture={(e: React.KeyboardEvent<HTMLInputElement>) => {
-              // Capture-phase so we intercept Enter before Headless UI's own
-              // keydown handler tries to "select the highlighted option"
-              // (which would otherwise swallow the event when nothing is
-              // highlighted, or submit the wrong term if something is).
-              if (e.key === "Enter") {
-                e.preventDefault()
-                e.stopPropagation()
-                submitSearch(query)
-              } else if (e.key === "Escape") {
-                // Standard: Escape clears the input without submitting
-                setQuery("")
-                setSelected(undefined)
-              }
-            }}
-          />
-          {/* Hidden trigger — gives clicking/focusing the input the ability
+          {open &&
+            typeof document !== "undefined" &&
+            createPortal(
+              <div
+                className="fixed inset-0 bg-black/40 z-40 pointer-events-none animate-in fade-in duration-150"
+                aria-hidden="true"
+              />,
+              document.body
+            )}
+          <ComboboxTrigger className="relative z-50 flex h-[34px] lg:h-10 rounded-[5px] items-center gap-x-3 border border-gray-300 bg-white ui-open:rounded-b-none py-[7px] lg:py-2 pl-2.5 pr-3 lg:px-3">
+            <div className="flex items-center gap-x-2 flex-auto">
+              <SearchMd className="size-4 shrink-0 text-gray-400" />
+              <ComboboxInput
+                ref={inputRef}
+                placeholder={searchPlaceholder}
+                className="p-0 border-0 text-xs leading-5 h-auto rounded-none hover:ring-0 hover:border-gray-300 focus:ring-0 focus:border-gray-300 ui-open:rounded-b-none"
+                size="lg"
+                displayValue={(value: {
+                  id: number
+                  value: string
+                  icon?: React.JSXElementConstructor<any>
+                }) => value?.value ?? ""}
+                onChange={(event) => setQuery(event.target.value)}
+                onFocus={() => {
+                  // Open the dropdown the moment the user focuses the input
+                  // (industry-standard behavior — Amazon, Upwork, Fiverr all do this).
+                  // Guard against double-firing: only click the hidden trigger if
+                  // the options aren't already open, otherwise we'd toggle it shut.
+                  // Also skip if we're in the middle of submitting a search, so
+                  // the dropdown doesn't reopen right as it's closing.
+                  if (submittingRef.current) return
+                  const btn = openButtonRef.current
+                  if (btn && btn.getAttribute("aria-expanded") !== "true") {
+                    btn.click()
+                  }
+                }}
+                onKeyDownCapture={(
+                  e: React.KeyboardEvent<HTMLInputElement>
+                ) => {
+                  // Capture-phase so we intercept Enter before Headless UI's own
+                  // keydown handler tries to "select the highlighted option"
+                  // (which would otherwise swallow the event when nothing is
+                  // highlighted, or submit the wrong term if something is).
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    submitSearch(query)
+                  } else if (e.key === "Escape") {
+                    // Standard: Escape clears the input without submitting
+                    setQuery("")
+                    setSelected(undefined)
+                  }
+                }}
+              />
+              {/* Hidden trigger — gives clicking/focusing the input the ability
               to open the Headless UI Combobox popover. */}
-          <ComboboxButton
-            ref={openButtonRef}
-            className="hidden"
-            aria-hidden="true"
-            tabIndex={-1}
-          />
-        </div>
-        <span className="w-px h-4 shrink-0 inline-block bg-gray-200" />
-        <Listbox className="w-auto" value={state} onChange={setState}>
-          <ListboxButton
-            className="p-0 border-0 text-[11px] leading-[16.67px] lg:text-sm lg:leading-5 font-semibold gap-x-[6.67px] lg:gap-x-1.5 w-auto h-auto rounded-none hover:ring-0 focus:ring-0"
-            placeholder="View All"
-            iconClassName="size-[12.5px]"
-          />
-          <ListboxOptions
-              className="w-[160px] -right-3 left-auto mt-3.5 rounded-lg border border-gray-100 shadow-lg overflow-hidden"
-              viewportClassName="max-h-none"
-              wrapperClassName="p-1 space-y-0"
-            >
-            {listingTypes.map((type) => (
-              <ListboxOption
-                key={type}
-                value={type}
-                className="rounded-md px-3 py-2.5 text-sm font-medium text-gray-700 ui-active:bg-gray-50"
-              >
-                {type}
-              </ListboxOption>
-            ))}
-          </ListboxOptions>
-        </Listbox>
-      </ComboboxTrigger>
-      <ScaleOutIn afterLeave={reset}>
-        <ComboboxOptions className="px-0 mt-0 space-y-0 border border-gray-300 border-t-0 rounded-t-none bg-white">
-          {query === "" ? (
-            <>
-              {/* Empty state: fixed "Browse ..." suggestions + Recent Searches */}
-              <div className="p-3">
-                {fixedSuggestions.map((fixedSuggestion) => (
-                  <ComboboxOption
-                    key={fixedSuggestion.id}
-                    value={fixedSuggestion}
-                    className="text-xs flex items-center gap-x-3 leading-[13.3px] text-gray-400"
-                  >
-                    <fixedSuggestion.icon className="size-5" />
-                    {fixedSuggestion.value}
-                  </ComboboxOption>
-                ))}
-              </div>
-
-              <div className="space-y-1 p-3 border-t border-gray-100">
-                <div className="px-3 flex items-center justify-between">
-                  <h1 className="text-[13px] leading-6 font-semibold text-dark-blue-400">
-                    Recent Searches
-                  </h1>
-
-                  <Button
-                    className="opacity-50 hover:opacity-100"
-                    variant="link"
-                    visual="gray"
-                  >
-                    Clear Search History
-                  </Button>
-                </div>
-                <ScrollArea viewportClassName="max-h-[360px]">
-                  {suggestions.map((suggestion) => (
-                    <ComboboxOption key={suggestion.id} value={suggestion}>
-                      {suggestion.value}
-                    </ComboboxOption>
-                  ))}
-                </ScrollArea>
-              </div>
-            </>
-          ) : (
-            /* Typing state: live autocomplete matches only */
-            <div className="p-3">
-              <ScrollArea viewportClassName="max-h-[360px]">
-                {filteredSuggestions.length > 0 ? (
-                  filteredSuggestions.map((suggestion) => (
-                    <ComboboxOption key={suggestion.id} value={suggestion}>
-                      {suggestion.value}
-                    </ComboboxOption>
-                  ))
-                ) : (
-                  <div className="px-3 py-2 text-xs text-gray-400">
-                    No matches
-                  </div>
-                )}
-              </ScrollArea>
+              <ComboboxButton
+                ref={openButtonRef}
+                className="hidden"
+                aria-hidden="true"
+                tabIndex={-1}
+              />
             </div>
-          )}
-        </ComboboxOptions>
-      </ScaleOutIn>
-      </>
+            <span className="w-px h-4 shrink-0 inline-block bg-gray-200" />
+            <Listbox className="w-auto" value={state} onChange={handleCategoryChange}>
+              <ListboxButton
+                className="p-0 border-0 text-[11px] leading-[16.67px] lg:text-sm lg:leading-5 font-semibold gap-x-[6.67px] lg:gap-x-1.5 w-auto h-auto rounded-none hover:ring-0 focus:ring-0"
+                placeholder="View All"
+                iconClassName="size-[12.5px]"
+              />
+              <ListboxOptions
+                className="w-[160px] -right-3 left-auto mt-3.5 rounded-lg border border-gray-100 shadow-lg overflow-hidden"
+                viewportClassName="max-h-none"
+                wrapperClassName="p-1 space-y-0"
+              >
+                {listingTypes.map((type) => (
+                  <ListboxOption
+                    key={type}
+                    value={type}
+                    className="rounded-md px-3 py-2.5 text-sm font-medium text-gray-700 ui-active:bg-gray-50"
+                  >
+                    {type}
+                  </ListboxOption>
+                ))}
+              </ListboxOptions>
+            </Listbox>
+          </ComboboxTrigger>
+          <ScaleOutIn afterLeave={reset}>
+            <ComboboxOptions className="px-0 mt-0 space-y-0 border border-gray-300 border-t-0 rounded-t-none bg-white">
+              {query === "" ? (
+                <>
+                  {/* Empty state: fixed "Browse ..." suggestions + Recent Searches */}
+                  <div className="p-3">
+                    {fixedSuggestions.map((fixedSuggestion) => (
+                      <ComboboxOption
+                        key={fixedSuggestion.id}
+                        value={fixedSuggestion}
+                        className="text-xs flex items-center gap-x-3 leading-[13.3px] text-gray-400"
+                      >
+                        <fixedSuggestion.icon className="size-5" />
+                        {fixedSuggestion.value}
+                      </ComboboxOption>
+                    ))}
+                  </div>
+
+                  <div className="space-y-1 p-3 border-t border-gray-100">
+                    <div className="px-3 flex items-center justify-between">
+                      <h1 className="text-[13px] leading-6 font-semibold text-dark-blue-400">
+                        Recent Searches
+                      </h1>
+
+                      <Button
+                        className="opacity-50 hover:opacity-100"
+                        variant="link"
+                        visual="gray"
+                      >
+                        Clear Search History
+                      </Button>
+                    </div>
+                    <ScrollArea viewportClassName="max-h-[360px]">
+                      {suggestions.map((suggestion) => (
+                        <ComboboxOption key={suggestion.id} value={suggestion}>
+                          {suggestion.value}
+                        </ComboboxOption>
+                      ))}
+                    </ScrollArea>
+                  </div>
+                </>
+              ) : (
+                /* Typing state: live autocomplete matches only */
+                <div className="p-3">
+                  <ScrollArea viewportClassName="max-h-[360px]">
+                    {filteredSuggestions.length > 0 ? (
+                      filteredSuggestions.map((suggestion) => (
+                        <ComboboxOption key={suggestion.id} value={suggestion}>
+                          {suggestion.value}
+                        </ComboboxOption>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2 text-xs text-gray-400">
+                        No matches
+                      </div>
+                    )}
+                  </ScrollArea>
+                </div>
+              )}
+            </ComboboxOptions>
+          </ScaleOutIn>
+        </>
       )}
     </Combobox>
   )
 }
 
-const PATHNAMES = ["/talent-dashboard", "/client-dashboard", "/talent-profile"]
+const PATHNAMES = [
+  "/talent-dashboard",
+  "/client-dashboard",
+  "/talent-profile",
+  "/client-profile",
+]
+
+// Pages with sidebar navigation that should use tighter header padding (24px)
+const HAS_SIDEBAR_NAV = [
+  "/talent-dashboard",
+  "/client-dashboard",
+  "/inbox",
+  "/earnings",
+  "/my-listings",
+  "/my-contracts",
+  "/my-jobs",
+  "/time-tracking",
+  "/reports",
+  "/invoices",
+  "/payments",
+  "/notifications",
+  "/complete-profile",
+  "/settings",
+]
 
 // Pages that have a secondary nav bar below the primary nav — shadow should only appear on the secondary nav, not the primary
-const HAS_SECONDARY_NAV = ["/", "/talent-profile", "/my-team", "/favorite-projects", "/favorite-talent", "/browser-history", "/search", "/talent-search", "/projects", "/services", "/teams", "/talent", "/find-jobs"]
+const HAS_SECONDARY_NAV = [
+  "/",
+  "/talent-profile",
+  "/client-profile",
+  "/my-team",
+  "/favorite-projects",
+  "/favorite-talent",
+  "/browser-history",
+  "/search",
+  "/talent-search",
+  "/projects",
+  "/services",
+  "/teams",
+  "/talent",
+  "/find-jobs",
+]
 
 const ONBOARDING = "/onboarding"
 
-export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) => {
+export const TopMostHeader = ({
+  showShadow = true,
+}: {
+  showShadow?: boolean
+}) => {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [secondaryNavHidden, setSecondaryNavHidden] = React.useState(false)
+  const { authModalOpen, authModalView, openAuthModal, closeAuthModal } = useAuth()
 
   const router = useRouter()
   const { logoutHandler, user, setUser } = useAuth()
@@ -1083,7 +1582,10 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
       const val = document.documentElement.dataset.secondaryNav
       setSecondaryNavHidden(val === "hidden")
     })
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-secondary-nav"] })
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-secondary-nav"],
+    })
     return () => observer.disconnect()
   }, [hasSecondaryNav])
 
@@ -1093,16 +1595,18 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
 
   // Show shadow: always on pages without secondary nav, or when secondary nav is hidden (scrolled away)
   const showNavShadow = !hasSecondaryNav || secondaryNavHidden
+  const hasSidebarNav = HAS_SIDEBAR_NAV.includes(pathname)
 
   return (
-      <div
-        className={cn(
+    <div
+      className={cn(
         // Keep the primary nav pinned to the viewport so iOS/macOS overscroll
         // bounce only affects page content, not the header itself.
-        "fixed inset-x-0 top-0 px-3.5 md:px-6 lg:px-[50px] bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 z-50",
+        "fixed inset-x-0 top-0 px-3.5 md:px-6 bg-white flex flex-col xs:max-md:pt-1 xs:max-md:pb-3.5 z-50",
+        !hasSidebarNav && "lg:px-[50px]",
         showNavShadow
           ? "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]"
-          : "shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] md:shadow-none",
+          : "shadow-none",
         PATHNAMES.includes(pathname) && "md:max-lg:pb-2.5"
       )}
     >
@@ -1140,6 +1644,8 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
         </div>
 
         <div className="flex items-center">
+          {user ? (
+          <>
           <div className="flex items-center gap-x-1">
             <InviteWindowTrigger asChild>
               <IconButton
@@ -1175,10 +1681,16 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col text-left">
-                  <span className="text-xs font-semibold leading-[15px] text-gray-700" suppressHydrationWarning>
+                  <span
+                    className="text-xs font-semibold leading-[15px] text-gray-700"
+                    suppressHydrationWarning
+                  >
                     {`${user?.firstName || ""} ${user?.lastName || ""}`.trim()}
                   </span>
-                  <span className="text-[9px] leading-[14px] text-gray-500" suppressHydrationWarning>
+                  <span
+                    className="text-[9px] leading-[14px] text-gray-500"
+                    suppressHydrationWarning
+                  >
                     {user?.email}
                   </span>
                 </div>
@@ -1193,70 +1705,165 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
                     <span className="text-xs leading-5 text-gray-700">
                       User ID: 2459749
                     </span>
-                    <span className="text-[13px] leading-5 text-primary-500" suppressHydrationWarning>
+                    <span
+                      className="text-[13px] leading-5 text-primary-500"
+                      suppressHydrationWarning
+                    >
                       {user?.email}
                     </span>
                   </div>
 
-                  <Button className="w-full" onClick={() => { setMenuOpen(false); router.push("/settings") }}>My Account</Button>
+                  <Button
+                    className="w-full"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      router.push("/settings")
+                    }}
+                  >
+                    My Account
+                  </Button>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/talent-profile") }}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  // A client account sees the client profile; the talent
+                  // profile is only for talent accounts.
+                  router.push(
+                    resolveDashboardRole(user) === ROLE.CLIENT
+                      ? "/client-profile"
+                      : "/talent-profile"
+                  )
+                }}
+              >
                 <User className="size-4" />
                 My Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push(user?.accountType === "TALENT" ? "/talent-dashboard" : "/client-dashboard") }}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  router.push(
+                    user?.accountType === "TALENT"
+                      ? "/talent-dashboard"
+                      : "/client-dashboard"
+                  )
+                }}
+              >
                 <LayoutGrid02 className="size-4" />
                 My Dashboard
               </DropdownMenuItem>
               {user?.accountType === "TALENT" && (
-                <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-listings") }}>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setMenuOpen(false)
+                    router.push("/my-listings")
+                  }}
+                >
                   <List className="size-4" />
                   My Listings
                 </DropdownMenuItem>
               )}
-              {user?.accountType !== "TALENT" && (
-                <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-jobs") }}>
-                  <List className="size-4" />
-                  My Jobs
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-contracts") }}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  router.push("/my-contracts")
+                }}
+              >
                 <FileCheck02 className="size-4" />
                 My Contracts
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/my-team") }}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  router.push("/my-team")
+                }}
+              >
                 <Users className="size-4" />
                 My Team
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/favorites") }}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  router.push("/favorites")
+                }}
+              >
                 <Star className="size-4" />
                 My Favorites
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/billing") }}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  router.push("/settings?tab=billing-overview")
+                }}
+              >
                 <CoinStack className="size-4" />
                 Billing
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => { setMenuOpen(false); router.push("/settings") }}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  router.push("/settings?tab=personal-info")
+                }}
+              >
                 <Settings className="size-4" />
                 Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={async () => {
-                setMenuOpen(false)
-                const newType = user?.accountType === "TALENT" ? "client" : "talent"
-                const newDashboard = newType === "client" ? "/client-dashboard" : "/talent-dashboard"
-                // Optimistically update local user so the dropdown label flips immediately,
-                // even if the backend doesn't accept the userType change.
-                setUser((prev) => prev ? { ...prev, userType: newType, accountType: newType === "talent" ? ROLE.TALENT : ROLE.CLIENT } : prev)
-                if (user?.id) {
-                  UserAPI.updateProfile(user.id, { userType: newType }).catch(() => {})
-                }
-                router.push(newDashboard)
-              }}>
+              <DropdownMenuItem
+                onClick={async () => {
+                  setMenuOpen(false)
+                  const isTalent =
+                    user?.accountType?.toUpperCase() === "TALENT" ||
+                    user?.userType?.toLowerCase() === "talent" ||
+                    user?.role?.toUpperCase() === "TALENT"
+                  const newType = isTalent ? "client" : "talent"
+                  const newRole =
+                    newType === "talent" ? ROLE.TALENT : ROLE.CLIENT
+                  // Optimistically update local user so the dropdown label flips immediately,
+                  // even if the backend doesn't accept the userType change.
+                  const updatedUser = user
+                    ? {
+                        ...user,
+                        userType: newType,
+                        accountType: newRole,
+                        role: newRole,
+                      }
+                    : null
+                  setUser((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          userType: newType,
+                          accountType: newRole,
+                          role: newRole,
+                        }
+                      : prev
+                  )
+                  if (user?.id) {
+                    UserAPI.updateProfile(user.id, { userType: newType }).catch(
+                      () => {}
+                    )
+                  }
+                  // Check if the user needs onboarding for the target role
+                  const needsOnboarding =
+                    newType === "client"
+                      ? !hasCompletedClientOnboarding(updatedUser)
+                      : !hasCompletedTalentOnboarding(updatedUser)
+                  const destination = needsOnboarding
+                    ? `/onboarding/${newType}`
+                    : newType === "client"
+                      ? "/client-dashboard"
+                      : "/talent-dashboard"
+                  router.push(destination)
+                }}
+              >
                 <Repeat className="size-4" />
-                {user?.accountType === "TALENT" ? "Switch to Client" : "Switch to Talent"}
+                {user?.accountType?.toUpperCase() === "TALENT" ||
+                user?.userType?.toLowerCase() === "talent" ||
+                user?.role?.toUpperCase() === "TALENT"
+                  ? "Switch to Client"
+                  : "Switch to Talent"}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <div className="grid grid-cols-2 gap-x-[9px]">
@@ -1271,12 +1878,39 @@ export const TopMostHeader = ({ showShadow = true }: { showShadow?: boolean }) =
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
+          </>
+          ) : (
+            <div className="flex items-center gap-x-5">
+              <Button
+                variant="link"
+                visual="primary"
+                size="sm"
+                onClick={() => openAuthModal("sign-in")}
+              >
+                Sign In
+              </Button>
+              <Button
+                variant="filled"
+                visual="primary"
+                size="sm"
+                onClick={() => openAuthModal("sign-up")}
+              >
+                Sign Up
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="md:hidden">
         <SearchBar />
       </div>
+
+      <AuthModal
+        open={authModalOpen}
+        onOpenChange={(open) => { if (!open) closeAuthModal() }}
+        defaultView={authModalView}
+      />
     </div>
   )
 }

@@ -17,19 +17,21 @@ import { JwtAuthGuard } from "../guards/jwt-auth.guard";
 import { RolesGuard } from "../guards/roles.guard";
 import { Request } from "express";
 
-import { CreateCheckoutSessionDto } from "./dto/create-checkout-session.dto";
-import { ApplyGiftCardDto } from "./dto/apply-gift-card.dto";
-import { UseWalletDto } from "./dto/use-wallet.dto";
-import { ConfirmPaymentDto } from "./dto/confirm-payment.dto";
-import { CancelPaymentDto } from "./dto/cancel-payment.dto";
-import { CreateSubscriptionDto } from "./dto/create-subscription.dto";
-import { SplitPaymentDto } from "./dto/split-payment.dto";
-import { CreateBankLinkDto } from "./dto/create-bank-link.dto";
-import { AttachBankAccountDto } from "./dto/attach-bank-account.dto";
-import { PayACHDto } from "./dto/pay-ach.dto";
-import { ConfirmWireDto } from "./dto/confirm-wire.dto";
-import { WalletTopUpDto } from "./dto/wallet-topup.dto";
-import { StoreMetadataDto } from "./dto/store-metadata.dto";
+import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
+import { ApplyGiftCardDto } from './dto/apply-gift-card.dto';
+import { UseWalletDto } from './dto/use-wallet.dto';
+import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
+import { CancelPaymentDto } from './dto/cancel-payment.dto';
+import { CreateSubscriptionDto } from './dto/create-subscription.dto';
+import { SplitPaymentDto } from './dto/split-payment.dto';
+import { CreateBankLinkDto } from './dto/create-bank-link.dto';
+import { AttachBankAccountDto } from './dto/attach-bank-account.dto';
+import { PayACHDto } from './dto/pay-ach.dto';
+import { ConfirmWireDto } from './dto/confirm-wire.dto';
+import { WalletTopUpDto } from './dto/wallet-topup.dto';
+import { StoreMetadataDto } from './dto/store-metadata.dto';
+import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
+import { ConfirmPaymentIntentDto } from './dto/confirm-payment-intent.dto';
 
 @Controller("v1/checkout")
 export class CheckoutController {
@@ -77,8 +79,39 @@ export class CheckoutController {
   @Post("confirm")
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  confirm(@Body() dto: ConfirmPaymentDto) {
-    return this.checkoutService.confirm(dto.sessionId);
+  confirm(@Body() dto: ConfirmPaymentDto, @Req() req: any) {
+    return this.checkoutService.confirm(dto.sessionId, req.user.sub);
+  }
+
+  @Post('payment-intent')
+  @UseGuards(JwtAuthGuard)
+  createPaymentIntent(@Body() dto: CreatePaymentIntentDto, @Req() req: any) {
+    return this.checkoutService.createCardPaymentIntent({
+      clientId: req.user.sub,
+      customerId: req.user.stripeCustomerId,
+      email: req.user.email,
+      name: req.user.name,
+      amount: dto.amount,
+      currency: dto.currency,
+      paymentMethod: dto.paymentMethod,
+      projectId: dto.projectId,
+      contractId: dto.contractId,
+      savePaymentMethod: dto.savePaymentMethod,
+      metadata: dto.metadata,
+    });
+  }
+
+  @Post('payment-intent/confirm')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  confirmPaymentIntent(
+    @Body() dto: ConfirmPaymentIntentDto,
+    @Req() req: any,
+  ) {
+    return this.checkoutService.confirmPaymentIntent({
+      clientId: req.user.sub,
+      paymentIntentId: dto.paymentIntentId,
+    });
   }
 
   @Post("cancel")
@@ -90,8 +123,8 @@ export class CheckoutController {
 
   @Get("status/:sessionId")
   @UseGuards(JwtAuthGuard)
-  getStatus(@Param("sessionId") sessionId: string) {
-    return this.checkoutService.getStatus(sessionId);
+  getStatus(@Param('sessionId') sessionId: string, @Req() req: any) {
+    return this.checkoutService.getStatus(sessionId, req.user.sub);
   }
 
   // ─── Webhook (no auth — Stripe signs it) ──────────────────────────
@@ -219,8 +252,21 @@ export class CheckoutController {
     });
   }
 
-  @Post("confirm-wire")
-  @UseGuards(JwtAuthGuard, RolesGuard("admin"))
+  @Post('confirm-wire-initiation')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  confirmWireTransferInitiation(
+    @Body() body: { wireTransferId: string },
+    @Req() req: any,
+  ) {
+    return this.checkoutService.confirmWireTransferInitiation({
+      wireTransferId: body.wireTransferId,
+      clientId: req.user.sub,
+    });
+  }
+
+  @Post('confirm-wire')
+  @UseGuards(JwtAuthGuard, RolesGuard('admin'))
   confirmWireTransfer(@Body() dto: ConfirmWireDto, @Req() req: any) {
     return this.checkoutService.confirmWireTransfer({
       wireTransferId: dto.wireTransferId,

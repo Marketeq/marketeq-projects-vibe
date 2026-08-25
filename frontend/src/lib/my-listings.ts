@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { ProjectAPI } from "@/service/http/project"
-import { ensureDevAuth } from "@/src/lib/api/dev-login"
 
 export type MyListingType = "project" | "service"
 
@@ -31,7 +30,7 @@ export interface MyListing {
 
 export const MY_LISTINGS_STORAGE_KEY = "marketeq-project-drafts"
 
-const FALLBACK_IMAGES = [
+export const FALLBACK_IMAGES = [
   "/my-listings-thumbnails/project-thumbnail-0.png",
   "/my-listings-thumbnails/project-thumbnail-1.png",
   "/my-listings-thumbnails/project-thumbnail-2.png",
@@ -55,7 +54,12 @@ const FALLBACK_TITLES = [
   "Brand & Website Sprint Team",
 ]
 
-const TEAM_SEED_LISTINGS: MyListing[] = [
+export interface SeedListingData extends MyListing {
+  /** The deliverable type shown in the Project Type dropdown (e.g. "Web App", "Mobile App") */
+  projectType?: string
+}
+
+export const TEAM_SEED_LISTINGS: SeedListingData[] = [
   {
     id: "seed-team-product-launch",
     title: "Cross-Functional Product Launch Squad",
@@ -67,6 +71,7 @@ const TEAM_SEED_LISTINGS: MyListing[] = [
     budget: "$45,000 budget",
     duration: "10 week engagement",
     mediaUrl: "/my-listings-thumbnails/project-thumbnail-0.png",
+    projectType: "Web App",
   },
   {
     id: "seed-team-design-system",
@@ -79,6 +84,7 @@ const TEAM_SEED_LISTINGS: MyListing[] = [
     budget: "$28,000 budget",
     duration: "8 week engagement",
     mediaUrl: "/my-listings-thumbnails/project-thumbnail-1.png",
+    projectType: "Website",
   },
   {
     id: "seed-team-ai-integration",
@@ -91,6 +97,7 @@ const TEAM_SEED_LISTINGS: MyListing[] = [
     budget: "$62,000 budget",
     duration: "12 week engagement",
     mediaUrl: "/my-listings-thumbnails/project-thumbnail-2.png",
+    projectType: "Cloud Application",
   },
   {
     id: "seed-team-growth-retainer",
@@ -103,6 +110,7 @@ const TEAM_SEED_LISTINGS: MyListing[] = [
     budget: "$12,500 / month",
     duration: "Rolling monthly retainer",
     mediaUrl: "/my-listings-thumbnails/project-thumbnail-3.png",
+    projectType: "Digital Marketing",
   },
   {
     id: "seed-team-mobile-app",
@@ -115,6 +123,7 @@ const TEAM_SEED_LISTINGS: MyListing[] = [
     budget: "$18,000 / sprint",
     duration: "2 week sprints",
     mediaUrl: "/my-listings-thumbnails/project-thumbnail-4.png",
+    projectType: "Mobile App",
   },
   {
     id: "seed-team-brand-sprint",
@@ -127,10 +136,11 @@ const TEAM_SEED_LISTINGS: MyListing[] = [
     budget: "$22,000 flat",
     duration: "6 week sprint",
     mediaUrl: "/my-listings-thumbnails/project-thumbnail-5.png",
+    projectType: "Website",
   },
 ]
 
-function pickFromList<T>(list: T[], key: string): T {
+export function pickFromList<T>(list: T[], key: string): T {
   let hash = 0
   for (let i = 0; i < key.length; i += 1) {
     hash = (hash * 31 + key.charCodeAt(i)) | 0
@@ -294,14 +304,15 @@ export function formatActivityDate(iso?: string): string {
 
 async function fetchBackendListings(): Promise<MyListing[]> {
   try {
-    await ensureDevAuth()
     const res = await ProjectAPI.GetMyProjects()
     const projects = res?.data ?? []
     if (!Array.isArray(projects)) return []
     return projects.map((p: any) => ({
       id: p.id,
       title: p.title && p.title.trim().length > 0 ? p.title : "Untitled",
-      type: (p.listingType === "service" ? "service" : "project") as MyListingType,
+      type: (p.listingType === "service"
+        ? "service"
+        : "project") as MyListingType,
       status: (p.status === "published"
         ? "Active"
         : p.status === "in_review"
@@ -309,13 +320,71 @@ async function fetchBackendListings(): Promise<MyListing[]> {
           : "Draft") as MyListingStatus,
       category: p.categories?.[0] || "Uncategorized",
       description: p.shortDescription || p.fullDescription,
-      mediaUrl: (Array.isArray(p.media) ? p.media[0]?.featuredImage : p.media?.featuredImage) || pickFromList(FALLBACK_IMAGES, p.id),
-      budget: p.budget ? `$${Number(p.budget).toLocaleString()} budget` : "Budget TBD",
+      mediaUrl:
+        p.mediaUrls?.[0] ||
+        (Array.isArray(p.media)
+          ? p.media[0]?.featuredImage
+          : p.media?.featuredImage) ||
+        undefined,
+      budget: p.budget
+        ? `$${Number(p.budget).toLocaleString()} budget`
+        : "Budget TBD",
       updatedAt: p.updatedAt || p.createdAt,
     }))
   } catch (err) {
-    console.error("Failed to fetch backend listings:", err)
+    console.warn("Failed to fetch backend listings; using local fallback:", err)
     return []
+  }
+}
+
+const SEED_MIGRATED_KEY = "marketeq-seed-listings-migrated"
+
+function parseBudgetNumber(budget: string): number | null {
+  const match = budget.replace(/,/g, "").match(/\$?([\d.]+)/)
+  return match ? Number(match[1]) : null
+}
+
+async function ensureSeedListingsInBackend(): Promise<void> {
+  if (typeof window === "undefined") return
+  const migrated = localStorage.getItem(SEED_MIGRATED_KEY)
+  if (migrated === "true") return
+
+  try {
+    // Fetch existing backend listings to find already-migrated seeds
+    const existingRes = await ProjectAPI.GetMyProjects()
+    const existing = existingRes?.data ?? []
+    const existingTitles = new Set(
+      existing.map((p: any) => (p.title || "").trim())
+    )
+
+    for (const seed of TEAM_SEED_LISTINGS) {
+      try {
+        const budgetNum = parseBudgetNumber(seed.budget)
+        const payload = {
+          title: seed.title,
+          shortDescription: seed.description || "",
+          fullDescription: seed.description || "",
+          listingType: seed.projectType || "Website",
+          categories: seed.category ? [seed.category] : [],
+          budget: budgetNum ?? undefined,
+        } as any
+
+        // If a draft with this title already exists, update it
+        const match = existing.find(
+          (p: any) => (p.title || "").trim() === seed.title.trim()
+        )
+        if (match) {
+          await ProjectAPI.UpdateProjectDraft(match.id, payload)
+        } else if (!existingTitles.has(seed.title.trim())) {
+          await ProjectAPI.CreateProjectDraft(payload)
+        }
+      } catch {
+        // ignore individual failures
+      }
+    }
+    localStorage.setItem(SEED_MIGRATED_KEY, "true")
+  } catch {
+    // auth or network failure — will retry next load
   }
 }
 
@@ -326,6 +395,8 @@ export function useMyListings() {
   const refreshListings = useCallback(async () => {
     try {
       setIsLoading(true)
+      // Ensure seed listings exist in the backend on first load
+      await ensureSeedListingsInBackend()
       const [backendListings, localDrafts] = await Promise.all([
         fetchBackendListings(),
         Promise.resolve(normalizeDraftsFromStorage()),
@@ -334,10 +405,15 @@ export function useMyListings() {
       // don't have a matching backend entry (by id)
       const backendIds = new Set(backendListings.map((l) => l.id))
       const uniqueLocalDrafts = localDrafts.filter((l) => !backendIds.has(l.id))
+      // Check if seed listings have been migrated — if so, they'll be
+      // in backendListings and we don't need the static ones
+      const seedMigrated = localStorage.getItem(SEED_MIGRATED_KEY) === "true"
       setListings(
-        [...backendListings, ...uniqueLocalDrafts, ...TEAM_SEED_LISTINGS].sort(
-          compareListingsByRecentActivity
-        )
+        [
+          ...backendListings,
+          ...uniqueLocalDrafts,
+          ...(seedMigrated ? [] : TEAM_SEED_LISTINGS),
+        ].sort(compareListingsByRecentActivity)
       )
     } catch (error) {
       console.error("Failed to fetch listings:", error)
@@ -353,7 +429,9 @@ export function useMyListings() {
   }, [refreshListings])
 
   useEffect(() => {
-    const onFocus = () => { refreshListings() }
+    const onFocus = () => {
+      refreshListings()
+    }
     window.addEventListener("focus", onFocus)
     return () => window.removeEventListener("focus", onFocus)
   }, [refreshListings])

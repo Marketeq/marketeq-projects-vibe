@@ -43,6 +43,19 @@ const FALLBACK_SKILL_OPTIONS = [
   "API Integration",
 ];
 
+const FALLBACK_LANGUAGE_OPTIONS = [
+  "English",
+  "Spanish",
+  "French",
+  "German",
+  "Mandarin",
+  "Portuguese",
+  "Arabic",
+  "Japanese",
+  "Hindi",
+  "Italian",
+];
+
 export function getAutocompleteServiceBaseUrl(): string {
   // In Payload admin (browser), always use same-origin CMS proxy to avoid CORS
   // and missing env exposure after refresh.
@@ -86,6 +99,7 @@ export async function loadAutocompleteOptions(
       if (type === "industries") return FALLBACK_INDUSTRY_OPTIONS;
       if (type === "search_keywords") return FALLBACK_TAG_OPTIONS;
       if (type === "skills") return FALLBACK_SKILL_OPTIONS;
+      if (type === "usernames") return [];
       return [];
     }
     throw new Error(
@@ -105,6 +119,7 @@ export async function loadAutocompleteOptions(
   if (type === "industries") return FALLBACK_INDUSTRY_OPTIONS;
   if (type === "search_keywords") return FALLBACK_TAG_OPTIONS;
   if (type === "skills") return FALLBACK_SKILL_OPTIONS;
+  if (type === "languages") return FALLBACK_LANGUAGE_OPTIONS;
   return [];
 }
 
@@ -148,4 +163,5 @@ export {
   FALLBACK_INDUSTRY_OPTIONS,
   FALLBACK_TAG_OPTIONS,
   FALLBACK_SKILL_OPTIONS,
+  FALLBACK_LANGUAGE_OPTIONS,
 };

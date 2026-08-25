@@ -1,16 +1,10 @@
 "use client"
 
 import { memo, useEffect, useState } from "react"
-import Cookies from "js-cookie"
 import { apiFetch } from "@/src/lib/api"
 import { CurrentUser } from "@/utils/auth"
+import { DataEmoji, EmojiProperties } from "@/utils/functions"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
-import {
-  DataEmoji,
-  EmojiProperties,
-} from "@/utils/functions"
-import { EmojiPicker } from "@/components/emoji-picker"
-import { useEditContext } from "@/components/inbox-comps"
 import {
   AlertCircle,
   Archive,
@@ -20,6 +14,7 @@ import {
   Download02,
   Edit03,
   EyeOff,
+  HelpCircle,
   Pin02,
   Send03,
   Smile,
@@ -28,11 +23,14 @@ import {
 } from "@blend-metrics/icons"
 import { GoogleDrive1Brand } from "@blend-metrics/icons/brands"
 import { format, isToday, isYesterday, parseISO } from "date-fns"
+import Cookies from "js-cookie"
 import { useIsomorphicLayoutEffect } from "react-use"
 import { Message } from "@/types/message"
+import { EmojiPicker } from "@/components/emoji-picker"
+import { useEditContext } from "@/components/inbox-comps"
 import {
   Avatar,
-  AvatarFallbackIcon,
+  AvatarFallback,
   AvatarImage,
   Dialog,
   DialogClose,
@@ -46,14 +44,17 @@ import {
 
 const getJwtToken = () => {
   if (typeof window === "undefined") return null
-  return Cookies.get("access_token") || Cookies.get("accessToken") || localStorage.getItem("token") || null
+  return (
+    Cookies.get("access_token") ||
+    Cookies.get("accessToken") ||
+    localStorage.getItem("token") ||
+    null
+  )
 }
 
 const dataEmojiToChar = (emoji: DataEmoji): string =>
   String.fromCodePoint(
-    ...emoji[EmojiProperties.unified]
-      .split("-")
-      .map((hex) => parseInt(hex, 16))
+    ...emoji[EmojiProperties.unified].split("-").map((hex) => parseInt(hex, 16))
   )
 
 // Groups a message's reactions by emoji and returns [{ emoji, count, reactedByMe }].
@@ -141,7 +142,9 @@ const toSafeHttpUrl = (value?: string | null): string | null => {
       : value.startsWith("/")
         ? new URL(
             value,
-            typeof window !== "undefined" ? window.location.origin : "https://localhost"
+            typeof window !== "undefined"
+              ? window.location.origin
+              : "https://localhost"
           )
         : null
     if (!parsed) return null
@@ -152,7 +155,7 @@ const toSafeHttpUrl = (value?: string | null): string | null => {
   }
 }
 
-const MessageAttachmentView = ({
+export const MessageAttachmentView = ({
   attachment,
 }: {
   attachment: {
@@ -242,7 +245,9 @@ const MessageAttachmentView = ({
     return (
       <span className="inline-flex items-center gap-x-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500 max-w-[300px]">
         <Download02 className="size-4 shrink-0 text-gray-400" />
-        <span className="truncate">{attachment.fileName || "Attachment unavailable"}</span>
+        <span className="truncate">
+          {attachment.fileName || "Attachment unavailable"}
+        </span>
       </span>
     )
   }
@@ -274,7 +279,7 @@ const MessageAttachmentView = ({
 // as the Search Results link card.
 const MESSAGE_URL_REGEX = /https?:\/\/[^\s<>"]+/g
 const extractMessageUrls = (text: string | null | undefined): string[] =>
-  text ? text.match(MESSAGE_URL_REGEX) ?? [] : []
+  text ? (text.match(MESSAGE_URL_REGEX) ?? []) : []
 
 const LinkifiedText = ({ text }: { text: string | null | undefined }) => {
   if (!text) return null
@@ -284,7 +289,11 @@ const LinkifiedText = ({ text }: { text: string | null | undefined }) => {
   for (const m of text.matchAll(MESSAGE_URL_REGEX)) {
     const idx = m.index ?? 0
     if (idx > lastIdx) {
-      parts.push({ type: "text", value: text.slice(lastIdx, idx), key: `t${i++}` })
+      parts.push({
+        type: "text",
+        value: text.slice(lastIdx, idx),
+        key: `t${i++}`,
+      })
     }
     parts.push({ type: "url", value: m[0], key: `u${i++}` })
     lastIdx = idx + m[0].length
@@ -315,7 +324,11 @@ const LinkifiedText = ({ text }: { text: string | null | undefined }) => {
   )
 }
 
-const MessageLinkCard = memo(function MessageLinkCard({ url }: { url: string }) {
+const MessageLinkCard = memo(function MessageLinkCard({
+  url,
+}: {
+  url: string
+}) {
   const [imgFailed, setImgFailed] = useState(false)
   const isImageUrl = /\.(png|jpe?g|gif|webp|svg|bmp|ico)(\?|#|$)/i.test(url)
   const isDrive = /drive\.google\.com/.test(url)
@@ -409,7 +422,9 @@ const BubbleImpl = ({
     ? "Me"
     : participantName || participantUsername || "Unknown"
   const senderUsername = isMe
-    ? (currentUser.username ? "@" + currentUser.username : "")
+    ? currentUser.username
+      ? "@" + currentUser.username
+      : ""
     : participantUsername
       ? "@" + participantUsername
       : ""
@@ -462,13 +477,10 @@ const BubbleImpl = ({
       // Optimistic UI
       setIsPinned((prev) => !prev)
 
-      await apiFetch<{ message: string }>(
-        `/v1/messages/${message.id}/pin`,
-        {
-          method: "POST",
-          headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
-        }
-      )
+      await apiFetch<{ message: string }>(`/v1/messages/${message.id}/pin`, {
+        method: "POST",
+        headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
+      })
     } catch (err) {
       console.error("Failed to pin message:", err)
       setIsPinned((prev) => !prev) // revert if failed
@@ -522,7 +534,9 @@ const BubbleImpl = ({
           {!isDeleted && (
             <div
               className={`inline-flex transition duration-300 items-center gap-x-0.5 ${
-                actionMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                actionMenuOpen
+                  ? "opacity-100"
+                  : "opacity-0 group-hover:opacity-100"
               }`}
             >
               <button
@@ -543,7 +557,10 @@ const BubbleImpl = ({
                 </button>
               </EmojiPicker>
 
-              <DropdownMenu open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
+              <DropdownMenu
+                open={actionMenuOpen}
+                onOpenChange={setActionMenuOpen}
+              >
                 <DropdownMenuTrigger className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
                   <DotsHorizontal className="size-4" />
                 </DropdownMenuTrigger>
@@ -636,7 +653,8 @@ const BubbleImpl = ({
             <LinkifiedText text={value} />
           </span>
         )}
-        {!isDeleted && message.messageType !== "gif" &&
+        {!isDeleted &&
+          message.messageType !== "gif" &&
           extractMessageUrls(value).map((url) => (
             <MessageLinkCard key={url} url={url} />
           ))}
@@ -676,6 +694,7 @@ const YourBubbleImpl = ({
   onReply,
   replyToMessage,
   onToggleReaction,
+  onAddToRecentQuestions,
 }: {
   message: Message
   currentUser: CurrentUser
@@ -686,6 +705,7 @@ const YourBubbleImpl = ({
   onReply?: (message: Message) => void
   replyToMessage?: Message | null
   onToggleReaction?: (messageId: string, emoji: string) => void
+  onAddToRecentQuestions?: (message: Message) => void
 }) => {
   const [isPinned, setIsPinned] = useState(!!message.isPinned)
   const [isDeleted, setIsDeleted] = useState(!!message.isDeleted)
@@ -710,13 +730,10 @@ const YourBubbleImpl = ({
       // Optimistic UI
       setIsPinned((prev) => !prev)
 
-      await apiFetch<{ message: string }>(
-        `/v1/messages/${message.id}/pin`,
-        {
-          method: "POST",
-          headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
-        }
-      )
+      await apiFetch<{ message: string }>(`/v1/messages/${message.id}/pin`, {
+        method: "POST",
+        headers: jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {},
+      })
     } catch (err) {
       console.error("Failed to pin message:", err)
       setIsPinned((prev) => !prev) // revert if failed
@@ -728,7 +745,9 @@ const YourBubbleImpl = ({
     ? "Me"
     : participantName || participantUsername || "Unknown"
   const senderUsername = isMe
-    ? (currentUser.username ? "@" + currentUser.username : "")
+    ? currentUser.username
+      ? "@" + currentUser.username
+      : ""
     : participantUsername
       ? "@" + participantUsername
       : ""
@@ -752,7 +771,9 @@ const YourBubbleImpl = ({
           src={participantAvatarUrl || undefined}
           alt={participantName || "User"}
         />
-        <AvatarFallbackIcon />
+        <AvatarFallback>
+          {(participantName || "U").charAt(0).toUpperCase()}
+        </AvatarFallback>
       </Avatar>
 
       <div className="group flex flex-col items-start gap-y-2 min-w-0 flex-1">
@@ -767,7 +788,9 @@ const YourBubbleImpl = ({
 
             <div
               className={`inline-flex transition duration-300 items-center gap-x-0.5 ${
-                actionMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                actionMenuOpen
+                  ? "opacity-100"
+                  : "opacity-0 group-hover:opacity-100"
               }`}
             >
               <button
@@ -788,7 +811,10 @@ const YourBubbleImpl = ({
                 </button>
               </EmojiPicker>
 
-              <DropdownMenu open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
+              <DropdownMenu
+                open={actionMenuOpen}
+                onOpenChange={setActionMenuOpen}
+              >
                 <DropdownMenuTrigger className="size-7 inline-flex rounded-full focus-visible:outline-none text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 justify-center items-center shrink-0">
                   <DotsHorizontal className="size-4" />
                 </DropdownMenuTrigger>
@@ -803,6 +829,13 @@ const YourBubbleImpl = ({
                   <DropdownMenuItem onSelect={() => onForward?.(message)}>
                     <Send03 className="h-4 w-4" /> Forward
                   </DropdownMenuItem>
+                  {onAddToRecentQuestions && (
+                    <DropdownMenuItem
+                      onSelect={() => onAddToRecentQuestions(message)}
+                    >
+                      <HelpCircle className="h-4 w-4" /> Add to Recent Questions
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -858,7 +891,8 @@ const YourBubbleImpl = ({
               <LinkifiedText text={value} />
             </span>
           )}
-          {!isDeleted && message.messageType !== "gif" &&
+          {!isDeleted &&
+            message.messageType !== "gif" &&
             extractMessageUrls(value).map((url) => (
               <MessageLinkCard key={url} url={url} />
             ))}
@@ -913,7 +947,7 @@ const SearchPeopleRowImpl = ({
   >
     <Avatar size="md" className="shrink-0">
       <AvatarImage src={avatarUrl || undefined} alt={name} />
-      <AvatarFallbackIcon />
+      <AvatarFallback>{(name || "U").charAt(0).toUpperCase()}</AvatarFallback>
     </Avatar>
     <div className="flex flex-col min-w-0">
       <span className="text-[13px] text-gray-700 truncate">{name}</span>
@@ -947,7 +981,9 @@ const SearchMessageRowImpl = ({
         src={participantAvatarUrl || undefined}
         alt={participantName}
       />
-      <AvatarFallbackIcon />
+      <AvatarFallback>
+        {(participantName || "U").charAt(0).toUpperCase()}
+      </AvatarFallback>
     </Avatar>
     <div className="flex flex-col min-w-0 flex-1 gap-y-0.5">
       <div className="flex items-center justify-between gap-x-2">
@@ -1140,10 +1176,7 @@ const SearchFileRowImpl = ({
           </div>
         )}
         <div className="flex flex-col min-w-0 flex-1 gap-y-0.5">
-          <span
-            className="text-[13px] text-gray-700 truncate"
-            title={fileName}
-          >
+          <span className="text-[13px] text-gray-700 truncate" title={fileName}>
             {truncateFilenameMiddle(fileName)}
           </span>
           {fileSize != null && (

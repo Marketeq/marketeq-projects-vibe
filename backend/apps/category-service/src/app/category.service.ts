@@ -14,6 +14,7 @@ import { TagEntity } from './entities/tag.entity';
 import { CategoryDto } from './dto/category.dto';
 import { ContentService } from '../content/content.service';
 import { CategoryEventPublisher } from './category-event.publisher';
+import { CategoryMatchingService } from './category-matching.service';
 import {
   checkDrugs,
   checkGambling,
@@ -50,6 +51,7 @@ export class CategoryService {
     private readonly tagRepo: Repository<TagEntity>,
     private readonly http: HttpService,
     private readonly contentService: ContentService,
+    private readonly matching: CategoryMatchingService,
   ) {}
 
   public async findByUuid(uuid: string): Promise<CategoryEntity> {
@@ -67,6 +69,11 @@ export class CategoryService {
   // CMS -> Nest upsert
   // ---------------------------------------------------------
   async syncFromCms(dto: CategoryDto): Promise<void> {
+    // Any taxonomy write invalidates the semantic-matching embeddings — a
+    // stale cache would keep matching talent to a renamed or unpublished
+    // category. Cheap: it only drops a reference, the rebuild is lazy.
+    this.matching.invalidate();
+
     // 1) Upsert tags first (by slug; create if missing)
     const tagEntities: TagEntity[] = [];
     for (const t of dto.tags ?? []) {
@@ -221,10 +228,8 @@ export class CategoryService {
         c.slug,
         c.approved,
         c.published_in_marketplace,
-        l.inv_category_id AS parent_id
-      FROM public.categories c
-      LEFT JOIN public.categories_parent_lnk l
-        ON l.category_id = c.id
+        c."parentId" AS parent_id
+      FROM public.categories_v2 c
       ORDER BY c.name ASC
     `);
 
@@ -592,6 +597,8 @@ export class CategoryService {
   // Delete (safe) — used by webhook + API
   // ---------------------------------------------------------
   async deleteCategory(uuid: string, reassignToUuid?: string): Promise<{ status: string }> {
+    this.matching.invalidate();
+
     const cat = await this.catRepo.findOne({
       where: { uuid },
       relations: ['parent', 'children'],

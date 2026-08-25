@@ -14,7 +14,14 @@
  * Talent cards forward to the existing TalentSearchCard which already
  * implements the full grid layout with skills, rating, avatar, etc.
  */
-
+import {
+  jobDetailsUrl,
+  projectDetailsUrl,
+  serviceDetailsUrl,
+  talentProfileUrl,
+  teamDetailsUrl,
+} from "@/src/lib/listing-urls"
+import { cn, plainTextFromRichTextHtml } from "@/utils/functions"
 import {
   Briefcase,
   Check,
@@ -25,21 +32,14 @@ import {
   File02,
   HelpCircle,
   MarkerPin02,
-  RefreshCw01,
+  RefreshCw,
   Star,
   Users,
 } from "@blend-metrics/icons"
 import { Money } from "@/components/money"
 import { NextImage } from "@/components/next-image"
 import { NextLink } from "@/components/next-link"
-import {
-  jobDetailsUrl,
-  projectDetailsUrl,
-  serviceDetailsUrl,
-  talentProfileUrl,
-  teamDetailsUrl,
-} from "@/src/lib/listing-urls"
-import { cn } from "@/utils/functions"
+import { TalentSearchCard } from "@/components/talent-search-card"
 import {
   Avatar,
   AvatarFallback,
@@ -55,7 +55,6 @@ import {
   DropdownMenuTrigger,
   IconButton,
 } from "@/components/ui"
-import { TalentSearchCard } from "@/components/talent-search-card"
 
 /* ─── Types ────────────────────────────────────────────────────────────── */
 
@@ -118,6 +117,7 @@ interface TalentCardProps {
   allStars?: boolean
   skills?: string[]
   href?: string
+  favoriteSlot?: React.ReactNode
   isFavorited?: boolean
   onFavoriteChange?: (favorited: boolean) => void
   showOptionsMenu?: boolean
@@ -169,6 +169,7 @@ export function ListingCard(props: ListingCardProps) {
         allStars={props.allStars}
         skills={props.skills}
         profileHref={href}
+        favoriteSlot={props.favoriteSlot}
         isFavorited={props.isFavorited}
         onFavoriteChange={props.onFavoriteChange}
         showOptionsMenu={props.showOptionsMenu}
@@ -206,15 +207,36 @@ function ProjectListingCard({
   favoriteSlot,
   cardVariant = "default",
 }: ProjectLikeProps) {
+  // Listing descriptions are authored in the rich-text editor and stored as
+  // HTML. Cards render their excerpt as a JSX text child, which React escapes
+  // — so without flattening it first the tags show up on screen as literal
+  // text. Detail pages still render the real markup.
+  const plainDescription = plainTextFromRichTextHtml(description)
   const computedHref =
     href ??
     (cardVariant === "job" || cardVariant === "job-grid"
       ? jobDetailsUrl(id)
       : mode === "owned" && status && status !== "Active"
-      ? `/publish-project?type=${kind}&draftId=${id}`
-      : kind === "service"
-        ? serviceDetailsUrl(id)
-        : projectDetailsUrl(id))
+        ? `/publish-project?type=${kind}&draftId=${id}`
+        : kind === "service"
+          ? serviceDetailsUrl(id)
+          : projectDetailsUrl(id))
+  const badgeText = kind === "service" ? "Service" : badge?.trim()
+  const budgetText = (() => {
+    const value = String(budget ?? "")
+      .replace(/\s*\/\s*(hr|hour|month)\s*$/i, "")
+      .replace(/\s+budget\s*$/i, "")
+    const numericValue = Number(value.replace(/[$,\s]/g, ""))
+    return value && !Number.isNaN(numericValue)
+      ? `$${numericValue.toLocaleString()}`
+      : value
+  })()
+  const budgetSuffix =
+    budgetText && kind === "service"
+      ? "/month"
+      : budgetText && kind === "project"
+        ? " budget"
+        : ""
 
   const getStableVariantIndex = (value: string, total: number) => {
     let hash = 0
@@ -228,23 +250,22 @@ function ProjectListingCard({
   // grid layout when the shared search toggle is in grid mode.
   if (cardVariant === "job-grid") {
     const jobDescription =
-      description ||
+      plainDescription ||
       "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
     const primarySkills = ["Visual Design", "Tailwind CSS", "Next.js"]
     const secondarySkills = ["Wireframing", "Figma"]
     const gridVariantIndex = getStableVariantIndex(id, 4)
     const earningsVariantIndex = getStableVariantIndex(`${id}-earnings`, 3)
-    const showPaymentVerified =
-      gridVariantIndex === 1 || gridVariantIndex === 3
+    const showPaymentVerified = gridVariantIndex === 1 || gridVariantIndex === 3
     const showNdaRequired = gridVariantIndex === 2 || gridVariantIndex === 3
     const showServiceBadge = gridVariantIndex === 0 || gridVariantIndex === 3
 
     return (
-      <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+      <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] ">
         <div className="flex items-start justify-between gap-4">
           <NextLink
             href={computedHref}
-            className="max-w-[195px] text-[16px] font-bold leading-normal text-dark-blue-400 focus-visible:outline-none hover:underline"
+            className="max-w-[195px] line-clamp-2 text-[16px] font-bold leading-normal text-dark-blue-400 focus-visible:outline-none hover:underline"
           >
             {title || "The Ultimate Mobile App Experience"}
           </NextLink>
@@ -290,7 +311,9 @@ function ProjectListingCard({
                 visual="gray"
                 size="sm"
                 className="h-auto rounded-[5px] px-3 py-1 text-xs font-semibold leading-[18px] text-dark-blue-400 shadow-none"
-                leftIcon={<DollarSign className="size-[14px] text-success-600" />}
+                leftIcon={
+                  <DollarSign className="size-[14px] text-success-600" />
+                }
               >
                 Payment Verified
               </Button>
@@ -323,7 +346,7 @@ function ProjectListingCard({
           </NextLink>
         </div>
 
-        <p className="mt-4 text-sm font-light leading-normal text-dark-blue-400">
+        <p className="mt-4 line-clamp-2 text-sm font-light leading-normal text-dark-blue-400">
           {jobDescription}
         </p>
 
@@ -385,7 +408,7 @@ function ProjectListingCard({
                   visual="gray"
                   size="sm"
                   className="h-auto rounded-[5px] px-3 py-1 text-xs font-semibold leading-[18px] text-primary-500 shadow-none"
-                  leftIcon={<RefreshCw01 className="size-[14px]" />}
+                  leftIcon={<RefreshCw className="size-[14px]" />}
                 >
                   Service
                 </Button>
@@ -410,12 +433,12 @@ function ProjectListingCard({
   // landscape layout so /find-jobs can evolve independently from project cards.
   if (cardVariant === "job") {
     const jobDescription =
-      description ||
+      plainDescription ||
       "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum."
     const jobSkills = ["Visual Design", "Tailwind CSS", "Next.js", "E-commerce"]
 
     return (
-      <article className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+      <article className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] ">
         <div className="p-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0 flex-1">
@@ -427,7 +450,9 @@ function ProjectListingCard({
                   {title || "Corporate Dashboard Project"}
                 </NextLink>
 
-                <span className="text-sm leading-5 text-gray-500">2 days ago</span>
+                <span className="text-sm leading-5 text-gray-500">
+                  2 days ago
+                </span>
               </div>
 
               <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -462,7 +487,7 @@ function ProjectListingCard({
             </div>
           </div>
 
-          <p className="mt-4 text-sm font-light leading-normal text-dark-blue-400">
+          <p className="mt-4 line-clamp-2 text-sm font-light leading-normal text-dark-blue-400">
             {jobDescription}
           </p>
 
@@ -499,7 +524,7 @@ function ProjectListingCard({
               visual="gray"
               size="sm"
               className="h-auto shrink-0 px-3 py-1 text-xs font-semibold leading-[18px] text-primary-500 shadow-none"
-              leftIcon={<RefreshCw01 className="size-[14px]" />}
+              leftIcon={<RefreshCw className="size-[14px]" />}
             >
               Service
             </Button>
@@ -584,7 +609,7 @@ function ProjectListingCard({
   }
 
   return (
-    <article className="h-full flex flex-col p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+    <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] ">
       <NextLink
         href={computedHref}
         className="block focus-visible:outline-none group/card"
@@ -603,16 +628,19 @@ function ProjectListingCard({
               <Briefcase className="size-10 text-gray-300" />
             </div>
           )}
-          {badge?.trim() && (
-            <span className="absolute top-2 right-2 inline-flex max-w-[60%] items-center truncate rounded-md bg-dark-blue-400/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
-              {badge}
+          {badgeText && (
+            <span className="absolute top-2 right-2 inline-flex max-w-[60%] items-center gap-1 truncate rounded-md bg-[#00000091] px-2 py-0.5 text-[10px] font-semibold text-white shadow">
+              {kind === "service" && (
+                <RefreshCw className="size-3 shrink-0 text-[#98B6FF]" />
+              )}
+              <span className="truncate">{badgeText}</span>
             </span>
           )}
         </div>
 
         <div className="mt-3 flex items-start gap-x-3">
-          <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 group-hover/card:underline">
-            {title}
+          <span className="line-clamp-2 min-w-0 flex-auto text-base font-bold leading-tight text-dark-blue-400">
+            <span className="hover:underline">{title}</span>
           </span>
 
           {mode === "owned" && status && status !== "Active" && (
@@ -631,7 +659,7 @@ function ProjectListingCard({
           )}
 
           {typeof rating === "number" && (
-            <div className="inline-flex items-center gap-x-1">
+            <div className="inline-flex shrink-0 items-center gap-x-1">
               <Star className="size-[15px] text-primary-500 fill-primary-500" />
               <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
                 {rating.toFixed(1)}{" "}
@@ -643,9 +671,9 @@ function ProjectListingCard({
           )}
         </div>
 
-        {description && (
-          <p className="mt-3 text-sm leading-[1.4] font-extralight text-dark-blue-400 line-clamp-2">
-            {description}
+        {plainDescription && (
+          <p className="mt-3 line-clamp-3 text-sm leading-[1.4] font-extralight text-dark-blue-400">
+            {plainDescription}
           </p>
         )}
 
@@ -662,7 +690,14 @@ function ProjectListingCard({
           <div className="flex items-center gap-x-[6.4px]">
             <Money className="size-[18px] shrink-0 text-primary-500" />
             <span className="font-medium text-sm leading-none text-dark-blue-400">
-              {budget}
+              {budgetText}
+              {kind === "service" && budgetSuffix ? (
+                <span className="text-[10px] font-light leading-none">
+                  {budgetSuffix}
+                </span>
+              ) : (
+                budgetSuffix
+              )}
             </span>
           </div>
         </div>
@@ -686,7 +721,7 @@ function ProjectListingCard({
                 className="border-2 border-white hover:ring-0 active:ring-0"
               >
                 <AvatarImage src={src} alt="Collaborator" />
-                <AvatarFallback>·</AvatarFallback>
+                <AvatarFallback />
               </Avatar>
             ))}
           </AvatarGroup>
@@ -729,12 +764,10 @@ function TeamListingCard({
 }: TeamCardProps) {
   const computedHref = href ?? teamDetailsUrl(id)
   const avatars =
-    memberAvatars && memberAvatars.length > 0
-      ? memberAvatars
-      : ["/woman.jpg"]
+    memberAvatars && memberAvatars.length > 0 ? memberAvatars : ["/woman.jpg"]
 
   return (
-    <article className="h-full flex flex-col p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white">
+    <article className="h-full flex flex-col p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white ">
       <div className="flex items-start justify-between">
         <AvatarGroup
           max={3}
@@ -800,7 +833,7 @@ function TeamListingCard({
           <div className="mt-3.5 flex items-center gap-x-2">
             {typeof rating === "number" && (
               <div className="flex items-center gap-x-2">
-                <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
+                <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-[#F2F4F7] shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
                   <div className="flex items-center gap-x-[3px]">
                     {Array.from({ length: 5 }).map((_, k) => (
                       <Star
@@ -809,10 +842,10 @@ function TeamListingCard({
                       />
                     ))}
                   </div>
+                  <span className="text-xs font-semibold leading-none text-dark-blue-400">
+                    {rating.toFixed(1)}
+                  </span>
                 </div>
-                <span className="text-xs font-semibold leading-none text-dark-blue-400">
-                  {rating.toFixed(1)}
-                </span>
               </div>
             )}
             {typeof projectCount === "number" && (

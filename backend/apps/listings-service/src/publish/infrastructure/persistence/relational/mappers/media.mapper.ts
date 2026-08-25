@@ -7,6 +7,7 @@ export class MediaMapper {
       id: raw.id,
       featuredImage: raw.featuredImage,
       additionalImages: raw.additionalImages ?? [],
+      hiddenImages: raw.hiddenImages ?? [],
       featuredVideo: raw.videoUrl ?? undefined,
       projectId: raw.projectId,
       createdAt: raw.createdAt,
@@ -24,6 +25,7 @@ export class MediaMapper {
 
     mediaEntity.featuredImage = media.featuredImage;
     mediaEntity.additionalImages = media.additionalImages ?? [];
+    mediaEntity.hiddenImages = media.hiddenImages ?? [];
     mediaEntity.videoUrl = media.featuredVideo ?? undefined;
     mediaEntity.projectId = media.projectId;
     mediaEntity.createdAt = media.createdAt!;

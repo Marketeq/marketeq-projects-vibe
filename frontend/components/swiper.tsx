@@ -4,7 +4,7 @@ import * as React from "react"
 import { callAll } from "@/utils/functions"
 import { createContext } from "@/utils/react-utils"
 import { Slot } from "@radix-ui/react-slot"
-import { Navigation, FreeMode, Mousewheel } from "swiper/modules"
+import { FreeMode, Mousewheel, Navigation } from "swiper/modules"
 import { Swiper } from "swiper/react"
 import { Swiper as SwiperInstance } from "swiper/types"
 
@@ -18,7 +18,13 @@ const [SwiperRootProvider, useSwiperRootContext] = createContext<{
   errorMessage: `useSwiperRootContext returned is 'undefined'. Seems you forgot to wrap the components in "<SwiperRoot />"`,
 })
 
-export const SwiperRoot = ({ children, className }: { children?: React.ReactNode; className?: string }) => {
+export const SwiperRoot = ({
+  children,
+  className,
+}: {
+  children?: React.ReactNode
+  className?: string
+}) => {
   const [state, setState] = React.useState<SwiperInstance | null>(null)
   const [isBeginning, setIsBeginning] = React.useState(true)
   const [isEnd, setIsEnd] = React.useState(false)
@@ -31,29 +37,37 @@ export const SwiperRoot = ({ children, className }: { children?: React.ReactNode
     <SwiperRootProvider
       value={{ swiper: state, onSwiperChange, isBeginning, isEnd }}
     >
-      <div className={`group/carousel ${className || ""}`}>
-        {children}
-      </div>
+      <div className={`group/carousel ${className || ""}`}>{children}</div>
     </SwiperRootProvider>
   )
 }
 
 export const SwiperContent = (props: React.ComponentProps<typeof Swiper>) => {
   const { onSwiperChange, ...ctx } = useSwiperRootContext()
+  const { className, ...swiperProps } = props
 
-  const updateEdgeState = React.useCallback((swiper: SwiperInstance) => {
-    // Parent context tracks edge state for fade masks
-    onSwiperChange(swiper)
-  }, [onSwiperChange])
+  const updateEdgeState = React.useCallback(
+    (swiper: SwiperInstance) => {
+      // Parent context tracks edge state for fade masks
+      onSwiperChange(swiper)
+    },
+    [onSwiperChange]
+  )
 
   return (
     <Swiper
       modules={[Navigation, FreeMode, Mousewheel]}
-      freeMode={{ enabled: true, momentum: true, momentumRatio: 0.6, sticky: true }}
+      freeMode={{
+        enabled: true,
+        momentum: true,
+        momentumRatio: 0.6,
+        sticky: true,
+      }}
       mousewheel={{ forceToAxis: true }}
       grabCursor={false}
       simulateTouch={false}
-      {...props}
+      className={`[&_.swiper-wrapper]:items-stretch [&_.swiper-slide]:h-auto ${className || ""}`}
+      {...swiperProps}
       onSwiper={callAll(props.onSwiper, updateEdgeState)}
       onSlideChange={callAll(props.onSlideChange as any, updateEdgeState)}
       onProgress={callAll(props.onProgress as any, updateEdgeState)}
@@ -67,7 +81,11 @@ export const SwiperContent = (props: React.ComponentProps<typeof Swiper>) => {
 }
 
 /** Wrapper that adds fade masks on left/right edges to hint at more content */
-export const SwiperFadeContainer = ({ children }: { children: React.ReactNode }) => {
+export const SwiperFadeContainer = ({
+  children,
+}: {
+  children: React.ReactNode
+}) => {
   const { isBeginning, isEnd } = useSwiperRootContext()
   return (
     <div className="relative">
@@ -104,7 +122,10 @@ export function SwiperNextTrigger({
       onClick={() => {
         if (!swiper) return
         const jump = getVisibleSlideCount(swiper)
-        const target = Math.min(swiper.slides.length - 1, swiper.activeIndex + jump)
+        const target = Math.min(
+          swiper.slides.length - 1,
+          swiper.activeIndex + jump
+        )
         swiper.slideTo(target, 300)
       }}
     />

@@ -219,19 +219,21 @@ interface ListboxOption<T = any> extends Omit<
   children?: React.ReactNode
   iconClassName?: string
   indicator?: boolean
+  disabled?: boolean
 }
 
 export const ListboxOption = React.forwardRef<HTMLLIElement, ListboxOption>(
-  ({
-    className,
-    value,
-    children,
-    iconClassName,
-    indicator = true,
-    ...props
-  }: ListboxOption,
-  ref
-) => (
+  (
+    {
+      className,
+      value,
+      children,
+      iconClassName,
+      indicator = true,
+      ...props
+    }: ListboxOption,
+    ref
+  ) => (
     <ListboxPrimitive.Option
       ref={ref}
       className={cn(

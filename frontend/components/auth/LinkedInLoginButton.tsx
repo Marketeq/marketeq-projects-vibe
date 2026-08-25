@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { usePathname, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import {
   mergeDashboardUserFields,
   resolveDashboardRoute,
@@ -10,15 +10,21 @@ import {
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
 import { LinkedInDefault } from "@blend-metrics/icons/social"
-import Cookies from "js-cookie"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
+import type { User } from "@/types/user"
+import { getOAuthErrorMessage } from "@/utils/auth-errors"
 
-const LinkedInLogin = () => {
+const LinkedInLogin = ({
+  onSuccess,
+  mode = "sign-in",
+}: { onSuccess?: (user: User) => void; mode?: "sign-in" | "sign-up" } = {}) => {
   const hasLoggedInRef = useRef(false)
+  const popupRef = useRef<Window | null>(null)
+  const popupPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const router = useRouter()
-  const pathName = usePathname()
+  const redirectUrl = process.env.NEXT_PUBLIC_LINKEDIN_OAUTH_REDIRECT || ""
 
   const { setUser } = useAuth()
   const { toast } = useToast()
@@ -30,11 +36,17 @@ const LinkedInLogin = () => {
     return popupWindowURL.searchParams.get("code")
   }, [])
 
+  const stopPopupPoll = useCallback(() => {
+    if (popupPollRef.current) {
+      clearInterval(popupPollRef.current)
+      popupPollRef.current = null
+    }
+  }, [])
+
   const handleLoginWithLinkedIn = () => {
     if (typeof window === "undefined") return
 
     const clientId = process.env.NEXT_PUBLIC_LINKEDIN_CLIENT_ID || ""
-    const redirectUrl = `${window.location.origin}${pathName}`
 
     const params = new URLSearchParams({
       response_type: "code",
@@ -42,23 +54,39 @@ const LinkedInLogin = () => {
       redirect_uri: redirectUrl,
       state: "1234",
       scope: "openid profile email",
+      // Force the LinkedIn login / account chooser instead of silently reusing
+      // the browser's existing LinkedIn session after a Marketeq logout.
+      prompt: "login",
     })
 
     const authUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`
 
-    window.open(
+    hasLoggedInRef.current = false
+    popupRef.current = window.open(
       authUrl,
       "Linkedin",
-      "menubar=no,location=no,resizable=no,scrollbars=no,status=no,width=550,height=730"
+      "menubar=no,location=no,resizable=yes,scrollbars=yes,status=no,width=550,height=730"
     )
+
+    stopPopupPoll()
+    popupPollRef.current = setInterval(() => {
+      if (popupRef.current?.closed) {
+        stopPopupPoll()
+        if (!hasLoggedInRef.current) {
+          toast({
+            title: "LinkedIn sign-in was cancelled or failed. Please try again.",
+            variant: "destructive",
+          })
+        }
+      }
+    }, 500)
   }
 
   const handleLoginWithLinkedInApi = useCallback(
     (code: string) => {
       if (!hasLoggedInRef.current) {
         hasLoggedInRef.current = true
-
-        const redirectUrl = `${window?.location?.origin}${pathName}`
+        stopPopupPoll()
 
         setIsLoading(true)
 
@@ -69,21 +97,14 @@ const LinkedInLogin = () => {
           .then(async (response) => {
             if (
               response?.status === 200 &&
-              response?.data?.access_token &&
               response?.data?.user
             ) {
-              Cookies.set("access_token", response?.data?.access_token, { path: "/" })
-              if (response?.data?.refresh_token) {
-                Cookies.set("refresh_token", response.data.refresh_token, { path: "/" })
-              }
-              if (response?.data?.sessionId) {
-                Cookies.set("session_id", response.data.sessionId, { path: "/" })
-              }
               let nextUser = response.data.user
               try {
                 const me = await UserAPI.me()
                 if (me?.status === 200) {
-                  const profileUser = me.data?.user ?? me.data?.data?.user ?? me.data
+                  const profileUser =
+                    me.data?.user ?? me.data?.data?.user ?? me.data
                   if (profileUser && typeof profileUser === "object") {
                     nextUser = mergeDashboardUserFields(nextUser, profileUser)
                   }
@@ -94,23 +115,30 @@ const LinkedInLogin = () => {
               if (nextUser && typeof nextUser === "object") {
                 setUser(nextUser)
               }
-              router.push(resolveDashboardRoute(nextUser as any))
+              if (response.data.user?.accountLinked) {
+                toast({
+                  title: "Your LinkedIn account has been linked to your existing Marketeq account.",
+                })
+              }
+              if (onSuccess) {
+                onSuccess(nextUser as User)
+              } else {
+                router.replace(resolveDashboardRoute(nextUser as any))
+              }
             }
           })
           .catch((error) => {
-            if (error?.response?.data?.errors?.message) {
-              toast({
-                title: error?.response?.data?.errors?.message,
-                variant: "destructive",
-              })
-            }
+            toast({
+              title: getOAuthErrorMessage(error),
+              variant: "destructive",
+            })
           })
           .finally(() => {
             setIsLoading(false)
           })
       }
     },
-    [pathName, router, setUser, toast]
+    [redirectUrl, router, setUser, toast, stopPopupPoll]
   )
 
   const handlePostMessage = useCallback(
@@ -134,8 +162,9 @@ const LinkedInLogin = () => {
 
     return () => {
       window.removeEventListener("message", handlePostMessage)
+      stopPopupPoll()
     }
-  }, [getCodeFromWindowURL, handlePostMessage])
+  }, [getCodeFromWindowURL, handlePostMessage, stopPopupPoll])
 
   return (
     <>
@@ -158,8 +187,7 @@ const LinkedInLogin = () => {
           />
         ) : (
           <>
-            <LinkedInDefault className="size-5 md:size-6" /> Sign in with
-            Linkedin
+            <LinkedInDefault className="size-5 md:size-6" /> {mode === "sign-up" ? "Sign up with LinkedIn" : "Sign in with LinkedIn"}
           </>
         )}
       </Button>

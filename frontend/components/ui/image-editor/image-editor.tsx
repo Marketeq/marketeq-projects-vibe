@@ -175,20 +175,33 @@ const renderEditedImageFile = async ({
   context.translate(canvasWidth / 2 + offsetX, canvasHeight / 2 + offsetY)
   context.rotate((rotated * Math.PI) / 180)
   context.scale(scale, scale)
-  context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight)
+  context.drawImage(
+    image,
+    -drawWidth / 2,
+    -drawHeight / 2,
+    drawWidth,
+    drawHeight
+  )
 
   const mimeType = getFileMimeType(fileName)
-  const outputFileName = ensureFileExtension(fileName || "edited-image", mimeType)
+  const outputFileName = ensureFileExtension(
+    fileName || "edited-image",
+    mimeType
+  )
 
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((nextBlob) => {
-      if (nextBlob) {
-        resolve(nextBlob)
-        return
-      }
+    canvas.toBlob(
+      (nextBlob) => {
+        if (nextBlob) {
+          resolve(nextBlob)
+          return
+        }
 
-      reject(new Error("Unable to save edited image."))
-    }, mimeType, mimeType === "image/jpeg" ? 0.92 : undefined)
+        reject(new Error("Unable to save edited image."))
+      },
+      mimeType,
+      mimeType === "image/jpeg" ? 0.92 : undefined
+    )
   })
 
   return new File([blob], outputFileName, {
@@ -593,6 +606,7 @@ export const ImageEditor = ({
   defaultFileName,
   onSaveImage,
   onEditDialogOpenChange,
+  fallbackInitials,
 }: {
   onValueChange?: (files: readonly FileWithPath[] | undefined) => void
   startingPoint: (options: {
@@ -608,6 +622,7 @@ export const ImageEditor = ({
   defaultFileName?: string
   onSaveImage?: (file: File) => void | Promise<void>
   onEditDialogOpenChange?: (open: boolean) => void
+  fallbackInitials?: string
 }) => {
   const [state, send] = useStateMachine("ideal", {
     ideal: {
@@ -873,7 +888,7 @@ export const ImageEditor = ({
   }, [isImageVariant, restoreSnapshot, send])
 
   const handleSaveEdit = useCallback(async () => {
-    if (!isImageVariant || !dataUrl || !onSaveImage) {
+    if (!dataUrl || !onSaveImage) {
       send("TOGGLE")
       return
     }
@@ -954,7 +969,7 @@ export const ImageEditor = ({
               {...getRootProps()}
             >
               <span className="text-[60px] leading-none text-gray-300 font-medium">
-                CH
+                {fallbackInitials ?? "CH"}
               </span>
             </div>
           </div>

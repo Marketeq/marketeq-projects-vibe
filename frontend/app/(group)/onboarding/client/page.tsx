@@ -5,6 +5,7 @@ import { useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import { useAutocomplete } from "@/libs/autocomplete"
 import jobTitlesMock from "@/public/mock/job_titles.json"
 import rawSkillSuggestions from "@/public/mock/skills.json"
 import { AuthAPI } from "@/service/http/auth"
@@ -15,7 +16,6 @@ import {
 import { ClientAPI } from "@/service/http/client"
 import { InvitationsAPI } from "@/service/http/invitations"
 import { UserAPI } from "@/service/http/user"
-import { generateUsernameSuggestions } from "@/utils/username"
 import { HOT_KEYS } from "@/utils/constants"
 import {
   cn,
@@ -25,6 +25,7 @@ import {
   keys,
 } from "@/utils/functions"
 import { useControllableState, useStepper } from "@/utils/hooks"
+import { generateUsernameSuggestions } from "@/utils/username"
 import {
   AlertCircle,
   Briefcase02,
@@ -54,18 +55,17 @@ import {
 } from "react-hook-form"
 import { useDebounce, useIsomorphicLayoutEffect, useToggle } from "react-use"
 import { z } from "zod"
-import { useAutocomplete } from "@/libs/autocomplete"
 import { CreateClientType } from "@/types/client"
 import { ROLE, User } from "@/types/user"
 import { PictureEditor } from "@/components/ui/image-editor/image-editor"
 import { Spinner } from "@/components/ui/spinner/spinner"
-import { Logo } from "@/components/icons"
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { Logo } from "@/components/icons"
 import { Pointer } from "@/components/icons/pointer"
 import NextLink from "@/components/next-link"
 import { Triangles } from "@/components/triangles"
@@ -112,6 +112,12 @@ import {
   useToast,
 } from "@/components/ui"
 
+// The flow is numbered 1..6, starting at "Introduce yourself!" and ending at
+// "Outline Your Interests"; the closing "What would you like to do next?" screen
+// is not numbered. Every numbered screen sits at step index 0-5 and draws a
+// progress ring, so its displayed number is its own index + 1.
+const NUMBERED_STEPS = 6
+
 const getClientUsernameSuggestions = ({
   email,
   firstName,
@@ -135,7 +141,7 @@ const getClientUsernameSuggestions = ({
 
   const primarySuggestions = generateUsernameSuggestions(
     firstName ?? "",
-    lastName ?? "",
+    "",
     contextParts
   )
 
@@ -218,10 +224,12 @@ const getClientPayloadValidationErrors = (data: CreateClientType) => {
       )
     }
   }
-  if (!isNonEmptyString(data.teamName)) errors.push("Team/company name is required.")
+  if (!isNonEmptyString(data.teamName))
+    errors.push("Team/company name is required.")
   if (!isNonEmptyString(data.role)) errors.push("Role/job title is required.")
   if (!isNonEmptyString(data.industry)) errors.push("Industry is required.")
-  if (!isNonEmptyString(data.budget)) errors.push("Please select a budget range.")
+  if (!isNonEmptyString(data.budget))
+    errors.push("Please select a budget range.")
 
   if (!data.businessTypes?.length) {
     errors.push("Select at least one goal.")
@@ -261,13 +269,12 @@ const getBudgetDefaultValue = (value?: string) => {
 }
 
 const describeYourTeamFormSchema = z.object({
-  teamName: z.string().min(1, "Team/company name is required."),
-  role: z.string().min(1, "Role/job title is required."),
-  industry: z.string().min(1, "Industry is required."),
+  teamName: z.string().min(1, "Please enter your team or company name."),
+  role: z.string().min(1, "Please enter your role or job title."),
+  industry: z.string().min(1, "Please select your industry."),
 })
 
 type DescribeYourTeamFormValues = z.infer<typeof describeYourTeamFormSchema>
-
 
 const InfoTooltip = ({ text }: { text: string }) => {
   const [pinned, setPinned] = React.useState(false)
@@ -349,11 +356,7 @@ const ChipInput = ({
             "focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-50"
           )}
         >
-          <Badge
-            visual="primary"
-            size="md"
-            className="gap-x-1.5 max-w-full"
-          >
+          <Badge visual="primary" size="md" className="gap-x-1.5 max-w-full">
             <span className="truncate">{draft.trim()}</span>
             <button
               type="button"
@@ -475,9 +478,9 @@ const DescribeYourTeam = ({
 
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
 
-  const { totalSteps, currentStep } = useStepRootContext()
+  const { currentStep } = useStepRootContext()
 
-  const progress = ((currentStep + 1) / totalSteps) * 100
+  const progress = ((currentStep + 1) / NUMBERED_STEPS) * 100
 
   const onSubmit: SubmitHandler<DescribeYourTeamFormValues> = (values) => {
     setStepData({
@@ -529,12 +532,11 @@ const DescribeYourTeam = ({
           </div>
 
           <h1 className="text-2xl leading-[36px] mt-2 text-dark-blue-400 font-semibold">
-            What brings you here today?
+            Describe Your Team!
           </h1>
 
           <p className="text-base leading-[19.36px] text-dark-blue-400 mt-2 font-light">
-            Whether you&apos;re here to hire or get hired, let&apos;s get you
-            set up the right way.
+            Give us insights into your team to help us make things even smoother.
           </p>
 
           <div className="mt-10 2xl:mt-[50px] flex flex-col">
@@ -632,31 +634,32 @@ const DescribeYourTeam = ({
                     isInvalid={hookFormHasError({ errors, name: "industry" })}
                     autoComplete="off"
                   />
-                  {showIndustrySuggestions && industrySuggestions.length > 0 && (
-                    <ul className="absolute z-50 mt-1 w-full max-h-[200px] overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
-                      {industrySuggestions.map(
-                        (item: { label: string }, index: number) => (
-                          <li
-                            key={index}
-                            className="cursor-pointer px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                            onMouseDown={() => {
-                              const label = item.label
-                              setIndustryQuery(label)
-                              setValue("industry", label, {
-                                shouldDirty: true,
-                                shouldTouch: true,
-                                shouldValidate: true,
-                              })
-                              setShowIndustrySuggestions(false)
-                              setIndustryCommitted(true)
-                            }}
-                          >
-                            {item.label}
-                          </li>
-                        )
-                      )}
-                    </ul>
-                  )}
+                  {showIndustrySuggestions &&
+                    industrySuggestions.length > 0 && (
+                      <ul className="absolute z-50 mt-1 w-full max-h-[200px] overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
+                        {industrySuggestions.map(
+                          (item: { label: string }, index: number) => (
+                            <li
+                              key={index}
+                              className="cursor-pointer px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                              onMouseDown={() => {
+                                const label = item.label
+                                setIndustryQuery(label)
+                                setValue("industry", label, {
+                                  shouldDirty: true,
+                                  shouldTouch: true,
+                                  shouldValidate: true,
+                                })
+                                setShowIndustrySuggestions(false)
+                                setIndustryCommitted(true)
+                              }}
+                            >
+                              {item.label}
+                            </li>
+                          )
+                        )}
+                      </ul>
+                    )}
                 </div>
               )}
 
@@ -752,7 +755,7 @@ const shareYourGoalsFormSchema = z
     )
   )
   .refine((data) => keys(data).some((value) => data[value]), {
-    message: "Select at least one goal.",
+    message: "Please select at least one goal.",
     path: [defaultValue.label],
   })
 
@@ -789,9 +792,9 @@ const ShareYourGoals = ({
 
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
 
-  const { totalSteps, currentStep } = useStepRootContext()
+  const { currentStep } = useStepRootContext()
 
-  const progress = ((currentStep + 1) / totalSteps) * 100
+  const progress = ((currentStep + 1) / NUMBERED_STEPS) * 100
 
   const onSubmit: SubmitHandler<ShareYourGoalsFormValues> = (values) => {
     const businessTypes = Object.entries(values)
@@ -846,12 +849,11 @@ const ShareYourGoals = ({
           </div>
 
           <h1 className="text-2xl leading-[36px] mt-2 text-dark-blue-400 font-semibold">
-            What brings you here today?
+            Share Your Goals!
           </h1>
 
           <p className="text-base leading-[19.36px] text-dark-blue-400 mt-2 font-light">
-            Whether you&apos;re here to hire or get hired, let&apos;s get you
-            set up the right way.
+            Give us insights into your team to help us make things even smoother.
           </p>
 
           <div className="mt-10 2xl:mt-[50px]">
@@ -926,12 +928,11 @@ const ShareYourGoals = ({
 
 const inviteYourTeamFormSchema = z
   .object({
-    emails: z
-      .array(
-        z.object({
-          email: z.string().trim(),
-        })
-      )
+    emails: z.array(
+      z.object({
+        email: z.string().trim(),
+      })
+    ),
   })
   .superRefine(({ emails }, ctx) => {
     const populatedEmails = emails
@@ -1021,9 +1022,9 @@ const InviteYourTeam = ({
 
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
 
-  const { totalSteps, currentStep } = useStepRootContext()
+  const { currentStep } = useStepRootContext()
 
-  const progress = ((currentStep + 1) / totalSteps) * 100
+  const progress = ((currentStep + 1) / NUMBERED_STEPS) * 100
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -1101,7 +1102,9 @@ const InviteYourTeam = ({
           : "")
 
       if (!inviteUrl) {
-        throw new Error("We couldn't generate the invite link. Please try again.")
+        throw new Error(
+          "We couldn't generate the invite link. Please try again."
+        )
       }
 
       setInviteLink(inviteUrl)
@@ -1333,10 +1336,15 @@ const InviteYourTeam = ({
   )
 }
 
-const usernameRules = z.string().trim()
-  .min(3, "Username must be at least 3 characters.")
-  .max(24, "Username must be at most 24 characters.")
-  .regex(/^[a-z][a-z0-9_]*$/, "Username must start with a letter and contain only lowercase letters, numbers, and underscores.")
+const usernameRules = z
+  .string()
+  .trim()
+  .min(3, "Please enter at least 3 characters.")
+  .max(24, "Please keep your username under 24 characters.")
+  .regex(
+    /^[a-z][a-z0-9_]*$/,
+    "Username must start with a letter and contain only lowercase letters, numbers, and underscores."
+  )
 
 const createYourUsernameFormSchema = z.object({
   username: z.preprocess(
@@ -1407,8 +1415,7 @@ const CreateYourUsername = ({
   const [checkedSuggestions, setCheckedSuggestions] = React.useState<
     Record<string, boolean>
   >({})
-  const [suggestionsChecking, setSuggestionsChecking] =
-    React.useState(false)
+  const [suggestionsChecking, setSuggestionsChecking] = React.useState(false)
 
   React.useEffect(() => {
     if (usernameSuggestions.length === 0) return
@@ -1429,8 +1436,7 @@ const CreateYourUsername = ({
           const name = usernameSuggestions[index]
           try {
             const res = await AuthAPI.CheckUsername({ username: name })
-            map[name] =
-              res?.status === 200 && res?.data?.available === true
+            map[name] = res?.status === 200 && res?.data?.available === true
           } catch {
             map[name] = false
           }
@@ -1465,9 +1471,9 @@ const CreateYourUsername = ({
 
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
 
-  const { totalSteps, currentStep } = useStepRootContext()
+  const { currentStep } = useStepRootContext()
 
-  const progress = ((currentStep + 1) / totalSteps) * 100
+  const progress = ((currentStep + 1) / NUMBERED_STEPS) * 100
 
   const onSubmit: SubmitHandler<CreateYourUsernameFormValues> = (values) => {
     if (isAvailable === false || errors.username) return
@@ -1483,7 +1489,8 @@ const CreateYourUsername = ({
   const setFormValue = (value: string) => {
     setValue("username", value)
     trigger("username")
-    setUsernameCommitted(true)
+    setUsernameCommitted(false)
+    setTimeout(() => usernameInputRef.current?.focus(), 0)
   }
 
   const clearUsername = () => {
@@ -1553,8 +1560,7 @@ const CreateYourUsername = ({
 
   useDebounce(checkUsernameAvailability, 700, [username])
 
-  const usernameHasError =
-    hasValidationError || isAvailable === false
+  const usernameHasError = hasValidationError || isAvailable === false
 
   return (
     <div className="min-h-screen flex 2xl:pl-[480px]">
@@ -1646,7 +1652,9 @@ const CreateYourUsername = ({
                     id="username"
                     ref={(el) => {
                       registerRef(el)
-                      ;(usernameInputRef as React.MutableRefObject<HTMLInputElement | null>).current = el
+                      ;(
+                        usernameInputRef as React.MutableRefObject<HTMLInputElement | null>
+                      ).current = el
                     }}
                     {...registerRest}
                     isInvalid={usernameHasError}
@@ -1741,35 +1749,30 @@ const CreateYourUsername = ({
               ) : (
                 <div className="mt-6">
                   <span className="block text-sm leading-[16.94px] text-gray-500">
-                    {displaySuggestions
-                      .slice(0, 3)
-                      .map((s, index) => (
-                        <React.Fragment key={s}>
-                          <Button
-                            className="text-primary-500/50 hover:text-primary-500"
-                            size="lg"
-                            visual="gray"
-                            variant="link"
-                            type="button"
-                            onClick={() => setFormValue(s)}
-                          >
-                            @{s}
-                          </Button>
+                    {displaySuggestions.slice(0, 3).map((s, index) => (
+                      <React.Fragment key={s}>
+                        <Button
+                          className="text-primary-500/50 hover:text-primary-500"
+                          size="lg"
+                          visual="gray"
+                          variant="link"
+                          type="button"
+                          onClick={() => setFormValue(s)}
+                        >
+                          @{s}
+                        </Button>
 
-                          {index === 0 &&
-                            displaySuggestions.length > 1 && (
-                              <span>, </span>
-                            )}
-                          {index === 1 &&
-                            displaySuggestions.length > 2 && (
-                              <span> and </span>
-                            )}
-                          {index === 1 &&
-                            displaySuggestions.length === 2 && (
-                              <span> and </span>
-                            )}
-                        </React.Fragment>
-                      ))}{" "}
+                        {index === 0 && displaySuggestions.length > 1 && (
+                          <span>, </span>
+                        )}
+                        {index === 1 && displaySuggestions.length > 2 && (
+                          <span> and </span>
+                        )}
+                        {index === 1 && displaySuggestions.length === 2 && (
+                          <span> and </span>
+                        )}
+                      </React.Fragment>
+                    ))}{" "}
                     {isVerified ? "are available" : ""}
                   </span>
 
@@ -2183,7 +2186,6 @@ const LookingToWorkWith = ({
           ))}
         </div>
       )}
-
     </div>
   )
 }
@@ -2468,21 +2470,21 @@ const outlineYourInterestsFormSchema = z
     }),
     lookingToWorkWith: z
       .array(z.string())
-      .min(1, "Enter at least one desired role or one desired skill."),
+      .min(1, "Please enter at least one desired role or skill."),
     skillsLookingFor: z
       .array(z.string())
-      .min(1, "Enter at least one desired role or one desired skill."),
+      .min(1, "Please enter at least one desired role or skill."),
   })
   .refine(
     (data) =>
       industriesOrVerticals.some((item) => data.industriesOrVerticals[item]),
     {
-      message: "Select at least one industry or vertical.",
+      message: "Please select at least one industry or vertical.",
       path: ["industriesOrVerticals"],
     }
   )
   .refine((data) => projects.some((item) => data.projects[item]), {
-    message: "Select at least one project type.",
+    message: "Please select at least one project type.",
     path: ["projects"],
   })
 
@@ -2547,19 +2549,18 @@ const OutlineYourInterests = ({
 
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
 
-  const { totalSteps, currentStep } = useStepRootContext()
+  const { currentStep } = useStepRootContext()
 
-  const progress = ((currentStep + 1) / totalSteps) * 100
+  const progress = ((currentStep + 1) / NUMBERED_STEPS) * 100
 
   const onSubmit: SubmitHandler<OutlineYourInterestsFormValues> = (values) => {
     setIsLoading(true)
-    const { firstName, lastName } = deriveClientProfileNames(user, stepData)
+    const derived = deriveClientProfileNames(user, stepData)
 
-    //const { userId, ...restStepData } = stepData || {};
     const clientData: CreateClientType = {
       ...stepData,
-      firstName: user?.firstName ?? stepData?.firstName,
-      lastName: user?.lastName ?? stepData?.lastName,
+      firstName: user?.firstName || stepData?.firstName || derived.firstName,
+      lastName: user?.lastName || stepData?.lastName || derived.lastName,
       avatarUrl: stepData?.avatarUrl ?? user?.avatarUrl ?? undefined,
       budget: values.budget,
       skills: values?.skillsLookingFor,
@@ -2585,30 +2586,42 @@ const OutlineYourInterests = ({
 
     ClientAPI.CreateClient(clientData)
       .then((response) => {
-        if (response?.status === 201 && response?.data?.user) {
+        if (response?.status === 201) {
           toggleValidation(true)
           setStep(currentStep + 1)
           setStepData(null)
-          setClientUser(response?.data?.user)
+          const returnedUser = response?.data?.user ?? response?.data
+          if (returnedUser) {
+            setClientUser(returnedUser)
+          }
         }
       })
       .catch((error) => {
+        const status = error?.response?.status
+        const msg = error?.response?.data?.message
+
+        // 422 "Client already exists" means the user already onboarded
+        // before — treat as success and advance to the final screen.
+        if (status === 422) {
+          toggleValidation(true)
+          setStep(currentStep + 1)
+          setStepData(null)
+          return
+        }
+
         if (error?.response?.data?.errors?.message) {
           toast({
             title: error?.response?.data?.errors?.message,
             variant: "destructive",
           })
-        } else if (
-          Array.isArray(error?.response?.data?.message) &&
-          error?.response?.data?.message?.length > 0
-        ) {
+        } else if (Array.isArray(msg) && msg.length > 0) {
           toast({
-            title: error?.response?.data?.message?.[0],
+            title: msg[0],
             variant: "destructive",
           })
         } else {
           toast({
-            title: error?.response?.data?.message,
+            title: msg || "Something went wrong. Please try again.",
             variant: "destructive",
           })
         }
@@ -2948,28 +2961,37 @@ const DoNext = ({
   const [isLoading, setIsLoading] = React.useState(false)
 
   const requiresPasswordSetup = (candidate?: User | null) => {
-    const safeUser = candidate as { provider?: string; hasPassword?: boolean } | null | undefined
+    const safeUser = candidate as
+      | { provider?: string; hasPassword?: boolean }
+      | null
+      | undefined
     return safeUser?.provider === "EMAIL" && !safeUser?.hasPassword
   }
 
-  const getPostOnboardingRoute = (targetRoute: string, candidate?: User | null) => {
+  const getPostOnboardingRoute = (
+    targetRoute: string,
+    candidate?: User | null
+  ) => {
     // Enforce password setup before allowing post-onboarding route jumps.
     return requiresPasswordSetup(candidate) ? "/client-dashboard" : targetRoute
   }
 
-  const handleFinish = async () => {
+  const completeOnboardingAndNavigate = async (targetRoute: string) => {
     setIsLoading(true)
 
     // Always mark onboarding as dismissed locally so AuthenticatedRoute won't bounce back
     const finishedUser = {
       ...(clientUser ?? user),
       onboardingDismissed: true,
+      clientOnboardedAt: new Date().toISOString(),
       userType: "client",
     } as User
     setUser(finishedUser)
 
     // Persist to localStorage as a fallback in case the API call fails
-    try { window.localStorage.setItem("marketeq-onboarding-dismissed", "true") } catch {}
+    try {
+      window.localStorage.setItem("marketeq-onboarding-dismissed", "true")
+    } catch {}
 
     try {
       await UserAPI.handleSkip({ role: ROLE.CLIENT })
@@ -2982,8 +3004,10 @@ const DoNext = ({
     }
 
     setIsLoading(false)
-    router.push("/client-dashboard")
+    router.push(getPostOnboardingRoute(targetRoute, clientUser ?? user))
   }
+
+  const handleFinish = () => completeOnboardingAndNavigate("/client-dashboard")
 
   return (
     <div className="min-h-screen flex 2xl:pl-[480px]">
@@ -3000,7 +3024,10 @@ const DoNext = ({
           </p>
 
           <div className="mt-10 md:mt-[50px] grid md:grid-cols-2 gap-2.5 2xl:gap-5">
-            <div className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300">
+            <div
+              className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
+              onClick={() => completeOnboardingAndNavigate("/projects")}
+            >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
                   <Briefcase02 className="size-5" />
@@ -3013,7 +3040,10 @@ const DoNext = ({
               <ChevronRight className="shrink-0 size-5" />
             </div>
 
-            <div className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300">
+            <div
+              className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
+              onClick={() => completeOnboardingAndNavigate("/teams")}
+            >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
                   <Users03 className="size-5" />
@@ -3026,7 +3056,10 @@ const DoNext = ({
               <ChevronRight className="shrink-0 size-5" />
             </div>
 
-            <div className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300">
+            <div
+              className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
+              onClick={() => completeOnboardingAndNavigate("/services")}
+            >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
                   <User02 className="size-5" />
@@ -3041,12 +3074,7 @@ const DoNext = ({
 
             <div
               className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-              onClick={() => {
-                if (clientUser) {
-                  setUser(clientUser)
-                }
-                router.push(getPostOnboardingRoute("/client-dashboard", clientUser ?? user))
-              }}
+              onClick={() => completeOnboardingAndNavigate("/publish-project")}
             >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
@@ -3198,8 +3226,8 @@ const introduceYourselfFormSchema = z.object({
       required_error: "Please select a profile photo.",
     })
     .min(1, "Please select a profile photo."),
-  firstName: z.string().min(1, "First name is required."),
-  lastName: z.string().min(1, "Last name is required."),
+  firstName: z.string().min(1, "Please enter your first name."),
+  lastName: z.string().min(1, "Please enter your last name."),
 })
 type IntroduceYourselfFormValues = z.infer<typeof introduceYourselfFormSchema>
 
@@ -3231,7 +3259,8 @@ const IntroduceYourself = ({
   const { nextStep, setStep } = useStepperContext()
   const { toast } = useToast()
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
-  const { totalSteps, currentStep } = useStepRootContext()
+  const { currentStep } = useStepRootContext()
+  const progress = ((currentStep + 1) / NUMBERED_STEPS) * 100
   const initials = `${firstName?.[0] || ""}${lastName?.[0] || ""}`.trim()
   const onSubmit: SubmitHandler<IntroduceYourselfFormValues> = async ({
     avatar,
@@ -3281,8 +3310,14 @@ const IntroduceYourself = ({
       >
         <div className="max-w-[488px] lg:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
+            <CircularProgress
+              show={false}
+              size={15.43}
+              strokeWidth={2.5}
+              value={progress}
+            />
             <span className="text-[11px] leading-[15.43px] text-gray-700">
-              STEP 1 / {totalSteps}
+              STEP 1 / 6
             </span>
           </div>
           <h1 className="text-2xl leading-[36px] mt-2 text-dark-blue-400 font-semibold">

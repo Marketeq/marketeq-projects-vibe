@@ -7,6 +7,22 @@ import {
 import { ConfigService } from "@nestjs/config";
 import * as jwt from "jsonwebtoken";
 
+const normalizeKey = (value?: string) => (value ? value.replace(/\\n/g, '\n') : value);
+
+const verifyAccessToken = (token: string) => {
+  const publicKey = normalizeKey(process.env.AUTH_JWT_PUBLIC_KEY);
+  if (publicKey) {
+    return jwt.verify(token, publicKey, { algorithms: ['RS256'] });
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (secret) {
+    return jwt.verify(token, secret);
+  }
+
+  throw new UnauthorizedException('JWT verifier is not configured');
+};
+
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(private readonly config: ConfigService) {}
@@ -24,9 +40,7 @@ export class JwtAuthGuard implements CanActivate {
     const secretOrKey = publicKey || this.config.get<string>("JWT_SECRET");
 
     try {
-      req.user = jwt.verify(authHeader.split(" ")[1], secretOrKey!, {
-        algorithms: publicKey ? ["RS256"] : ["HS256"],
-      });
+      req.user = verifyAccessToken(authHeader.split(' ')[1]);
       return true;
     } catch {
       throw new UnauthorizedException("Invalid or expired token");

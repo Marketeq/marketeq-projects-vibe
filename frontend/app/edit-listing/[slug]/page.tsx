@@ -13,11 +13,13 @@ import {
 import React from "react"
 // import ReactPlayer from "react-player"
 import dynamic from "next/dynamic"
-import * as RadixTabs from "@radix-ui/react-tabs"
-import { useParams, useRouter } from "next/navigation"
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import { Logo3 } from "@/components/icons"
-import NextLink from "@/components/next-link"
 import options from "@/public/mock/options.json"
 import {
   AutocompleteAPI,
@@ -27,6 +29,7 @@ import {
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
+import { TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { HTTPS, ONE_SECOND } from "@/utils/constants"
 import {
@@ -55,6 +58,7 @@ import {
   ArrowUpLeft,
   ChartBreakoutCircle,
   Check,
+  XCircle,
   CheckCircle,
   CheckCircleBroken,
   ChevronDown,
@@ -63,6 +67,7 @@ import {
   ChevronsDown,
   ChevronsUp,
   Clock,
+  RefreshCcw05,
   Copy,
   Edit03,
   Eye,
@@ -82,6 +87,7 @@ import {
   Trash01,
   Trash2,
   Type,
+  Upload01,
   X,
   X2,
 } from "@blend-metrics/icons"
@@ -106,7 +112,23 @@ import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
+import * as RadixTabs from "@radix-ui/react-tabs"
 import { createColumnHelper, noop } from "@tanstack/react-table"
+import {
+  AddRoleDialog,
+  countryFromLocation,
+  estimateScopeBudgetCents,
+  PHASE_TYPE_TITLE,
+  PhaseHeaderMeta,
+  RolePicker,
+  type PhaseType,
+  type RecurrenceSchedule,
+  type ScopeType,
+  type TeamMember,
+} from "@/components/scope-builder"
+import { TeamsAPI } from "@/service/http/teams"
+import { useInviteWindowStore } from "@/components/invite-window"
+import { getCurrentUser } from "@/utils/auth"
 import {
   Row,
   flexRender,
@@ -131,12 +153,14 @@ import {
 import { util, z } from "zod"
 import { Prettify } from "@/types/core"
 import { CreateProjectType } from "@/types/project"
+import { Logo3 } from "@/components/icons"
 import { GripVertical2 } from "@/components/icons/grip-vertical-2"
 import { Network } from "@/components/icons/network"
 import { Network1 } from "@/components/icons/network-1"
 import { Network2 } from "@/components/icons/network-2"
 import { Network3 } from "@/components/icons/network-3"
 import { Network4 } from "@/components/icons/network-4"
+import NextLink from "@/components/next-link"
 import { CountriesCombobox, OwnCombobox } from "@/components/own-combobox"
 import { RichTextEditor } from "@/components/rich-text-editor"
 import {
@@ -198,6 +222,9 @@ import {
   ListboxButton,
   ListboxOption,
   ListboxOptions,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Progress,
   ScrollArea,
   ScrollBar,
@@ -208,12 +235,12 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  Textarea,
-  ToastAction,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
+  Textarea,
+  ToastAction,
   Toaster,
   Tooltip,
   TooltipContent,
@@ -234,8 +261,13 @@ declare module "@tanstack/react-table" {
   // @ts-expect-error
   interface TableMeta<TData extends PhaseRow> {
     updateData: (rowIndex: number, columnId: string, value: unknown) => void
+    batchUpdateData?: (
+      rowIndex: number,
+      updates: Record<string, unknown>
+    ) => void
     openDurationDialog: (index: number) => void
     roles: string[]
+    teamMembers?: TeamMember[]
   }
 }
 
@@ -364,6 +396,39 @@ const resolveMediaFileForUpload = async (
   return makeUniqueFile(file)
 }
 
+const appendFeaturedImageField = async (
+  formData: FormData,
+  meta: File | Blob | undefined
+): Promise<boolean> => {
+  if (!meta) return false
+  if (isPersistedMediaFile(meta)) {
+    formData.append("featuredImage", meta.__persistedUrl!)
+    return true
+  }
+  const resolved = await resolveMediaFileForUpload(meta, "featured-image.jpg")
+  if (!resolved) return false
+  formData.append("featuredImage", resolved)
+  return true
+}
+
+const appendAdditionalImageFields = async (
+  formData: FormData,
+  metas: (File | Blob | undefined)[]
+): Promise<void> => {
+  for (const meta of metas) {
+    if (!meta) continue
+    if (isPersistedMediaFile(meta)) {
+      formData.append("additionalImages", meta.__persistedUrl!)
+      continue
+    }
+    const resolved = await resolveMediaFileForUpload(
+      meta,
+      "additional-image.jpg"
+    )
+    if (resolved) formData.append("additionalImages", resolved)
+  }
+}
+
 const hydrateRemoteMediaFile = async (url: string, fallbackName: string) => {
   try {
     const response = await fetch(url)
@@ -413,62 +478,61 @@ const buildProjectDraftPayload = (projectInfo: ProjectInfoFormValues) => {
     industries: projectInfo.industry,
     tags: projectInfo.tags,
     skills: projectInfo.skills,
+    projectType: projectInfo.projectType,
     shortDescription: projectInfo.shortDescription,
     fullDescription: projectInfo.fullDescription,
   }
 }
 
+// Draft autosave payload. Drafts are allowed to be partial, so we send every
+// phase and every row (with fallbacks) rather than dropping incomplete ones —
+// otherwise editing a not-yet-complete task/phase produces an unchanged payload
+// and the autosave never fires. Publish-time validation is enforced separately.
 const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
   (phases ?? [])
+    // Skip the blank starter phase ({}), but keep anything the user has begun
+    // filling in (a name, a phase type, or at least one row).
+    .filter(
+      (phase) =>
+        !!phase?.phaseName?.trim() ||
+        !!phase?.phaseType ||
+        (phase?.rows?.length ?? 0) > 0
+    )
     .map((phase, phaseIndex) => {
-      const phaseName = phase?.phaseName?.trim()
-      const rows = (phase?.rows ?? [])
-        .map((row) => {
-          const taskName = row?.task?.trim()
-          const role = row?.role?.trim()
-          const locationValue = row?.location?.trim()
-          const experienceLevel = row?.experience?.trim()
-          const durationValue = row?.duration?.value
-          const durationType = row?.duration?.type
-
-          if (
-            !taskName ||
-            !role ||
-            !locationValue ||
-            !experienceLevel ||
-            durationValue === undefined ||
-            !durationType
-          ) {
-            return null
-          }
-
-          return {
-            taskName,
-            role,
-            location: [locationValue],
-            experience: [experienceLevel],
-            experienceLevel,
-            duration: `${durationValue} ${durationType}`,
-            phaseId: "temporary-required-string",
-          }
-        })
-        .filter((row): row is NonNullable<typeof row> => Boolean(row))
-
-      if (!phaseName || rows.length === 0) {
-        return null
-      }
-
+    const phaseName = phase?.phaseName?.trim() || `Phase ${phaseIndex + 1}`
+    const rows = (phase?.rows ?? []).map((row) => {
+      const durationValue = row?.duration?.value
+      const durationType = row?.duration?.type
+      const experienceLevel = row?.experience?.trim() ?? ""
       return {
-        name: phaseName,
-        stageName: `Stage ${phaseIndex + 1}`,
-        startDay: 1,
-        endDay: 8,
-        order: phaseIndex + 1,
-        projectId,
-        tasks: rows,
+        taskName: row?.task?.trim() ?? "",
+        role: row?.role?.trim() ?? "",
+        location: [row?.location?.trim() ?? ""].filter(Boolean),
+        experience: [experienceLevel].filter(Boolean),
+        experienceLevel,
+        duration:
+          durationValue !== undefined && durationType
+            ? `${durationValue} ${durationType}`
+            : "1 days",
+        assigneeUserId:
+          row?.assigneeUserId ?? row?.assignedMember?.id ?? null,
+        phaseId: "temporary-required-string",
       }
     })
-    .filter((phase): phase is NonNullable<typeof phase> => Boolean(phase))
+
+    return {
+      name: phaseName,
+      stageName: `Stage ${phaseIndex + 1}`,
+      startDay: 1,
+      endDay: 8,
+      order: phaseIndex + 1,
+      projectId,
+      phaseType: phase?.phaseType ?? undefined,
+      recurrenceSchedule: phase?.recurrenceSchedule ?? undefined,
+      recurrenceCount: phase?.recurrenceCount ?? undefined,
+      tasks: rows,
+    }
+  })
 const Empty = ({
   outcome,
   draftId,
@@ -767,7 +831,23 @@ const pickFromProjectScopeSchema = (
 
 const projectScopeSchema = pickFromProjectScopeSchema()
 
-const Sidebar = () => {
+const Sidebar = ({
+  hasFaqs = false,
+  hasRecentQuestions = false,
+  faqError = false,
+  faqModerationHasError = false,
+  projectInfoModerationHasError = false,
+  publishAttempted = false,
+  questionsStarted = false,
+}: {
+  hasFaqs?: boolean
+  hasRecentQuestions?: boolean
+  faqError?: boolean
+  faqModerationHasError?: boolean
+  projectInfoModerationHasError?: boolean
+  publishAttempted?: boolean
+  questionsStarted?: boolean
+}) => {
   const { currentStep, stepsState } = useStepRootContext()
   const { setStep } = useStepperContext()
   const projectInfoMethods: UseFormReturn<ProjectInfoFormValues> =
@@ -784,28 +864,67 @@ const Sidebar = () => {
         (p.phaseName?.trim?.() ?? "").length > 0 ||
         (Array.isArray(p.rows) && p.rows.length > 0)
     )
+  const projectInfoValues = useWatch({ control: projectInfoMethods.control })
   const hasProjectInfoFieldError = useCallback(
     (name: (typeof meta)["Project Info"][number]["name"]) => {
       // Each sidebar sub-item maps to a tab grouping
       if (name === "title") {
         // Basic Info tab: title + category
-        return Boolean(projectInfoMethods.formState.errors.title) ||
+        return (
+          Boolean(projectInfoMethods.formState.errors.title) ||
           Boolean(projectInfoMethods.formState.errors.category)
+        )
       }
       if (name === "shortDescription") {
         // Description tab: shortDescription + fullDescription
-        return Boolean(projectInfoMethods.formState.errors.shortDescription) ||
+        return (
+          Boolean(projectInfoMethods.formState.errors.shortDescription) ||
           Boolean(projectInfoMethods.formState.errors.fullDescription)
+        )
       }
       if (name === "tags") {
         // Project Details tab: tags + skills + industry
-        return Boolean(projectInfoMethods.formState.errors.tags) ||
+        return (
+          Boolean(projectInfoMethods.formState.errors.tags) ||
           Boolean(projectInfoMethods.formState.errors.skills) ||
           Boolean(projectInfoMethods.formState.errors.industry)
+        )
       }
       return false
     },
     [projectInfoMethods.formState.errors]
+  )
+  const hasProjectInfoFieldValue = useCallback(
+    (name: (typeof meta)["Project Info"][number]["name"]) => {
+      const v = projectInfoValues ?? {}
+      if (name === "title") {
+        return (
+          Boolean(v.title?.trim()) &&
+          Boolean(
+            v.category?.some(
+              (c) =>
+                Boolean(c?.category?.trim()) &&
+                Boolean(c?.subCategories?.length)
+            )
+          )
+        )
+      }
+      if (name === "shortDescription") {
+        return (
+          Boolean(v.shortDescription?.trim()) &&
+          getRichTextCharacterCount(v.fullDescription ?? "") > 0
+        )
+      }
+      if (name === "tags") {
+        return (
+          Boolean(v.tags?.length) &&
+          Boolean(v.skills?.length) &&
+          Boolean(v.industry?.length)
+        )
+      }
+      return false
+    },
+    [projectInfoValues]
   )
   const hasMediaFieldError = useCallback(
     (name: (typeof meta)["Media"][number]["name"]) =>
@@ -815,171 +934,257 @@ const Sidebar = () => {
       }),
     [mediaMethods.formState.errors]
   )
+  const mediaValues = useWatch({ control: mediaMethods.control })
+  const hasMediaFieldValue = useCallback(
+    (name: (typeof meta)["Media"][number]["name"]) => {
+      const v = mediaValues ?? {}
+      if (name === "featuredImages") return Boolean(v.featuredImages?.length)
+      if (name === "additionalImages")
+        return Boolean(v.additionalImages?.flat().length)
+      if (name === "featuredVideo") return Boolean(v.featuredVideo?.trim())
+      return false
+    },
+    [mediaValues]
+  )
+
+  const stepHasStarted = (index: number): boolean => {
+    if (index === 0)
+      return Boolean(
+        projectInfoValues.title?.trim() ||
+          projectInfoValues.shortDescription?.trim() ||
+          projectInfoValues.fullDescription?.trim() ||
+          projectInfoValues.category?.some((c) => c?.category?.trim()) ||
+          projectInfoValues.tags?.length ||
+          projectInfoValues.skills?.length ||
+          projectInfoValues.industry?.length
+      )
+    if (index === 1)
+      return Boolean(
+        mediaValues.featuredImages?.length ||
+          mediaValues.additionalImages?.flat().length ||
+          mediaValues.featuredVideo?.trim()
+      )
+    if (index === 2) return hasStartedScope
+    if (index === 4) return questionsStarted
+    return false
+  }
 
   return (
-    <div className="sticky top-0 py-6 px-[15px] flex h-screen flex-col shrink-0 gap-y-5 overflow-y-auto xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
+    <div className="sticky top-0 py-6 px-6 flex h-screen flex-col shrink-0 overflow-y-auto xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
+      <div className="mb-8">
+        <Logo3 className="h-[19px] w-auto" />
+      </div>
       {stepsState.map(({ label, isValid }, index) => {
         const isActive = currentStep === index
+        const isLast = index === stepsState.length - 1
+        const hasError =
+          (publishAttempted && !isValid) ||
+          (label === "Questions" && faqModerationHasError) ||
+          (label === "Project Info" && projectInfoModerationHasError)
+        const showErrorBadge = hasError
+        const showWarningBadge =
+          !hasError && !isValid && !isActive && stepHasStarted(index)
         return (
-          <TooltipProvider key={index}>
-            <Tooltip>
-              <div className="flex flex-col">
-                <TooltipTrigger asChild>
-                  <button
-                    className="group flex items-center justify-between focus-visible:outline-none hover:bg-gray-100 rounded-md px-3 py-2"
-                    data-ui-state={
-                      isActive
-                        ? "active"
-                        : isValid
-                          ? "complete"
-                          : undefined
-                    }
-                    onClick={() => setStep(index)}
-                  >
-                    <span className="flex items-center gap-x-3">
-                      <span className="text-sm leading-[16.94px] font-semibold size-[25px] rounded-full shrink-0 inline-flex justify-center items-center text-white group-data-[ui-state=active]:border-2 group-data-[ui-state=active]:text-primary-500 group-data-[ui-state=active]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=undefined]:bg-gray-300">
-                        {index + 1}
-                      </span>
-                      <span className="text-dark-blue-400 text-sm leading-[16.94px] font-semibold">
-                        {label}
-                      </span>
-                    </span>
-                  </button>
-                </TooltipTrigger>
+          <div key={index} className="relative pb-6 last:pb-0">
+            {!isLast && (
+              <span
+                aria-hidden
+                className="absolute left-3 top-7 bottom-0 border-l-2 border-dashed border-gray-300"
+              />
+            )}
+            <button
+              type="button"
+              className="group relative z-[1] flex w-full items-center gap-x-3 focus-visible:outline-none"
+              data-ui-state={
+                hasError
+                  ? "error"
+                  : isActive
+                    ? "active"
+                    : isValid
+                      ? "complete"
+                      : undefined
+              }
+              onClick={() => setStep(index)}
+            >
+              <span className="size-6 shrink-0 rounded-full inline-flex justify-center items-center border-2 border-gray-300 bg-gray-50 group-data-[ui-state=complete]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=active]:border-primary-500 group-data-[ui-state=error]:border-error-500">
+                {hasError ? (
+                  <Plus className="size-3.5 text-error-500" />
+                ) : isActive ? (
+                  <span className="size-2 rounded-full bg-primary-500" />
+                ) : isValid ? (
+                  <Check className="size-3.5 text-white" />
+                ) : (
+                  <Plus className="size-3.5 text-gray-400" />
+                )}
+              </span>
+              <span className="text-dark-blue-400 text-sm leading-[16.94px] font-semibold group-data-[ui-state=error]:text-error-500">
+                {label}
+              </span>
 
-                <TooltipContent className="max-w-[138px]">
-                  {isActive ? "Opened" : isValid ? "Click to open" : "Click to open"}
-                </TooltipContent>
+              {(showErrorBadge || showWarningBadge) && (
+                <AlertCircle
+                  className={cn(
+                    "size-[18px] shrink-0 ml-auto",
+                    showErrorBadge ? "text-error-500" : "text-warning-500"
+                  )}
+                />
+              )}
+            </button>
 
-                <div
-                  className="pl-[25px] overflow-hidden"
-                  style={{
-                    maxHeight: isActive ? "500px" : "0px",
-                    opacity: isActive ? 1 : 0,
-                    transition: "max-height 400ms cubic-bezier(0.4, 0, 0.2, 1), opacity 350ms cubic-bezier(0.4, 0, 0.2, 1) 50ms",
-                  }}
-                >
-                    {label === "Project Info" &&
-                      meta[label].map((field, i) => {
-                        const isDirty = Boolean(
-                          projectInfoMethods.formState.dirtyFields[field.name]
-                        )
-                        const hasError = hasProjectInfoFieldError(field.name)
-                        const shouldShowStatus = hasError || isDirty
+            {isActive && (
+              <div className="mt-1 pl-9">
+                  {label === "Project Info" &&
+                    meta[label].map((field, i) => {
+                      const hasError = hasProjectInfoFieldError(field.name)
+                      const hasValue = hasProjectInfoFieldValue(field.name)
+                      const shouldShowStatus = hasError || hasValue
 
-                        return (
-                          <div
-                            className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
-                            key={i}
-                          >
-                            <span className="text-sm leading-6 text-gray-500">
-                              {field.label}
-                            </span>
-
-                            {shouldShowStatus &&
-                              (hasError ? (
-                                <AlertCircle className="size-[22px] text-warning-500 shrink-0" />
-                              ) : (
-                                <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                                  <Check className="size-3 text-white" />
-                                </div>
-                              ))}
-                          </div>
-                        )
-                      })}
-                    {label === "Media" &&
-                      meta[label].map((field, i) => {
-                        const isDirty = Boolean(
-                          mediaMethods.formState.dirtyFields[field.name]
-                        )
-                        const hasError = hasMediaFieldError(field.name)
-                        const shouldShowStatus = hasError || isDirty
-
-                        return (
-                          <div
-                            className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
-                            key={i}
-                          >
-                            <span className="text-sm leading-6 text-gray-500">
-                              {field.label}
-                            </span>
-
-                            {shouldShowStatus &&
-                              (hasError ? (
-                                <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
-                              ) : (
-                                <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                                  <Check className="size-3 text-white" />
-                                </div>
-                              ))}
-                          </div>
-                        )
-                      })}
-                    {label === "Project Scope" &&
-                      meta[label].map((field, i) => (
+                      return (
                         <div
-                          className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
-                          key={i}
-                        >
-                          {field.label === "Task Name" ? (
-                            <button
-                              type="button"
-                              className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none"
-                              onClick={() => setTaskSearchDialogOpen(true)}
-                            >
-                              {field.label}
-                            </button>
-                          ) : (
-                            <span className="text-sm leading-6 text-gray-500">
-                              {field.label}
-                            </span>
-                          )}
-
-                          {hasStartedScope ? (
-                            (field.label === "Task Name" &&
-                              pickFromProjectScopeSchema({
-                                task: true,
-                              }).safeParse(phases)) ||
-                            (field.label === "Role" &&
-                              pickFromProjectScopeSchema({
-                                role: true,
-                              }).safeParse(phases)) ||
-                            (field.label === "Location" &&
-                              pickFromProjectScopeSchema({
-                                location: true,
-                              }).safeParse(phases)) ||
-                            (field.label === "Experience" &&
-                              pickFromProjectScopeSchema({
-                                experience: true,
-                              }).safeParse(phases)) ||
-                            (field.label === "Duration" &&
-                              pickFromProjectScopeSchema({
-                                duration: true,
-                              }).safeParse(phases)) ? (
-                              <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                                <Check className="size-3 text-white" />
-                              </div>
-                            ) : (
-                              <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
-                            )
-                          ) : null}
-                        </div>
-                      ))}
-                    {label === "Questions" &&
-                      meta[label].map((field, i) => (
-                        <div
-                          className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                          className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
                           <span className="text-sm leading-6 text-gray-500">
                             {field.label}
                           </span>
+
+                          {shouldShowStatus &&
+                            (hasError ? (
+                              <AlertCircle className="size-[22px] text-warning-500 shrink-0" />
+                            ) : (
+                              <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                                <Check className="size-3 text-white" />
+                              </div>
+                            ))}
                         </div>
-                      ))}
-                </div>
+                      )
+                    })}
+                  {label === "Media" &&
+                    meta[label].map((field, i) => {
+                      const isAdditional = field.name === "additionalImages"
+                      const mv = mediaValues ?? {}
+                      const additionalCount = (mv.additionalImages ?? [])
+                        .flat()
+                        .filter((it) => it?.meta && it?.progress === 100).length
+                      const requiredAdditional = mv.featuredVideo?.trim()
+                        ? 2
+                        : 3
+                      const additionalStarted =
+                        additionalCount > 0 ||
+                        Boolean(mv.featuredImages?.length) ||
+                        Boolean(mv.featuredVideo?.trim())
+                      const hasError = isAdditional
+                        ? additionalStarted &&
+                          additionalCount < requiredAdditional
+                        : hasMediaFieldError(field.name)
+                      const hasValue = isAdditional
+                        ? additionalCount >= requiredAdditional
+                        : hasMediaFieldValue(field.name)
+                      const shouldShowStatus = hasError || hasValue
+
+                      return (
+                        <div
+                          className="py-1.5 flex items-center justify-between pr-3"
+                          key={i}
+                        >
+                          <span className="text-sm leading-6 text-gray-500">
+                            {field.label}
+                          </span>
+
+                          {shouldShowStatus &&
+                            (hasError ? (
+                              <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
+                            ) : (
+                              <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                                <Check className="size-3 text-white" />
+                              </div>
+                            ))}
+                        </div>
+                      )
+                    })}
+                  {label === "Project Scope" &&
+                    meta[label].map((field, i) => (
+                      <div
+                        className="py-1.5 flex items-center justify-between pr-3"
+                        key={i}
+                      >
+                        {field.label === "Task Name" ? (
+                          <button
+                            type="button"
+                            className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none"
+                            onClick={() => setTaskSearchDialogOpen(true)}
+                          >
+                            {field.label}
+                          </button>
+                        ) : (
+                          <span className="text-sm leading-6 text-gray-500">
+                            {field.label}
+                          </span>
+                        )}
+
+                        {hasStartedScope ? (
+                          (field.label === "Task Name" &&
+                            pickFromProjectScopeSchema({
+                              task: true,
+                            }).safeParse(phases)) ||
+                          (field.label === "Role" &&
+                            pickFromProjectScopeSchema({
+                              role: true,
+                            }).safeParse(phases)) ||
+                          (field.label === "Location" &&
+                            pickFromProjectScopeSchema({
+                              location: true,
+                            }).safeParse(phases)) ||
+                          (field.label === "Experience" &&
+                            pickFromProjectScopeSchema({
+                              experience: true,
+                            }).safeParse(phases)) ||
+                          (field.label === "Duration" &&
+                            pickFromProjectScopeSchema({
+                              duration: true,
+                            }).safeParse(phases)) ? (
+                            <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                              <Check className="size-3 text-white" />
+                            </div>
+                          ) : (
+                            <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
+                          )
+                        ) : null}
+                      </div>
+                    ))}
+                  {label === "Questions" &&
+                    meta[label].map((field, i) => {
+                      const hasValue =
+                        field.name === "faqs"
+                          ? hasFaqs
+                          : field.name === "recentQuestions"
+                            ? hasRecentQuestions
+                            : false
+                      const hasError =
+                        field.name === "faqs" &&
+                        (faqError || faqModerationHasError)
+                      return (
+                        <div
+                          className="py-1.5 flex items-center justify-between pr-3"
+                          key={i}
+                        >
+                          <span className="text-sm leading-6 text-gray-500">
+                            {field.label}
+                          </span>
+
+                          {hasError ? (
+                            <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
+                          ) : hasValue ? (
+                            <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                              <Check className="size-3 text-white" />
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })}
               </div>
-            </Tooltip>
-          </TooltipProvider>
+            )}
+          </div>
         )
       })}
     </div>
@@ -990,10 +1195,14 @@ const Header = ({
   onClose,
   slug,
   lastSavedAt,
+  onPublish,
+  publishing,
 }: {
   onClose?: () => void
   slug?: string
   lastSavedAt?: Date | null
+  onPublish?: () => void
+  publishing?: boolean
 }) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200 z-10">
@@ -1003,10 +1212,15 @@ const Header = ({
 
       <div className="flex items-center gap-x-3">
         {lastSavedAt && (
-        <span className="inline-flex items-center gap-x-1.5 text-sm text-gray-500">
-          <Clock className="size-4" />
-          Saved at {lastSavedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })}
-        </span>
+          <span className="inline-flex items-center gap-x-1.5 text-sm text-gray-500">
+            <Clock className="size-4" />
+            Saved at{" "}
+            {lastSavedAt.toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            })}
+          </span>
         )}
         <TooltipProvider>
           <Tooltip>
@@ -1027,17 +1241,13 @@ const Header = ({
             <TooltipContent>Preview</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <Button>
-          Publish
+        <Button onClick={onPublish} disabled={publishing}>
+          {publishing ? "Publishing…" : "Publish"}
         </Button>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <IconButton
-                variant="ghost"
-                visual="gray"
-                onClick={onClose}
-              >
+              <IconButton variant="ghost" visual="gray" onClick={onClose}>
                 <X className="size-5" />
               </IconButton>
             </TooltipTrigger>
@@ -1199,22 +1409,12 @@ const BottomBar = ({
         if (featuredFile || additionalFiles.length || videoUrl) {
           const formData = new FormData()
           formData.append("projectId", String(projectId))
-          const uniqueFeatured = await resolveMediaFileForUpload(
-            featuredFile,
-            "featured-image.jpg"
-          )
-          if (uniqueFeatured) {
-            formData.append("featuredImage", uniqueFeatured)
+          await appendFeaturedImageField(formData, featuredFile)
+          await appendAdditionalImageFields(formData, additionalFiles)
+          for (const url of media.hiddenImages ?? []) {
+            formData.append("hiddenImages", url)
           }
-          for (const file of additionalFiles) {
-            const uniqueAdditional = await resolveMediaFileForUpload(
-              file,
-              "additional-image.jpg"
-            )
-            if (uniqueAdditional) {
-              formData.append("additionalImages", uniqueAdditional)
-            }
-          }
+          formData.append("replaceHidden", "true")
           if (videoUrl) {
             formData.append("videoUrl", videoUrl)
           }
@@ -1287,71 +1487,10 @@ const BottomBar = ({
 
       // 4. Replace the saved project scope before publish
       if (projectId) {
-        const publishPhases = (phases ?? [])
-          .map((phase, phaseIndex) => {
-            const phaseName = phase?.phaseName?.trim()
-            const rows = (phase?.rows ?? [])
-              .map((row) => {
-                const taskName = row?.task?.trim()
-                const role = row?.role?.trim()
-                const locationValue = row?.location?.trim()
-                const experienceLevel = row?.experience?.trim()
-                const durationValue = row?.duration?.value
-                const durationType = row?.duration?.type
-
-                if (
-                  !taskName ||
-                  !role ||
-                  !locationValue ||
-                  !experienceLevel ||
-                  durationValue === undefined ||
-                  !durationType
-                ) {
-                  return null
-                }
-
-                return {
-                  taskName,
-                  role,
-                  location: [locationValue],
-                  experience: [experienceLevel],
-                  experienceLevel,
-                  duration: `${durationValue} ${formatDurationUnit(
-                    durationValue,
-                    durationType
-                  )}`,
-                  phaseId: "temporary-required-string",
-                }
-              })
-              .filter((row): row is NonNullable<typeof row> => Boolean(row))
-
-            if (!phaseName || rows.length === 0) {
-              return null
-            }
-
-            const { startDay, endDay } = getPhaseDayRange(
-              phases ?? [],
-              phaseIndex
-            )
-            if (typeof endDay !== "number") {
-              return null
-            }
-
-            return {
-              name: phaseName,
-              stageName: `Stage ${phaseIndex + 1}`,
-              startDay,
-              endDay,
-              order: phaseIndex + 1,
-              projectId: String(projectId),
-              tasks: rows,
-            }
-          })
-          .filter((phase): phase is NonNullable<typeof phase> => Boolean(phase))
-
-        for (const phasePayload of publishPhases) {
-          await ProjectAPI.CreatePhase(phasePayload)
-        }
+        await ProjectAPI.ReplaceProjectScope(
+          String(projectId),
+          buildScopeDraftPayload(String(projectId), phases ?? [])
+        )
       }
 
       if (projectId) {
@@ -1604,8 +1743,8 @@ const projectInfoSchema = z.object({
     .max(5, "Please do not enter more than 5 industry(s)"),
   shortDescription: z
     .string()
-    .min(50, "Please enter at least 50 character(s)")
-    .max(300, "Please do not enter more than 300 character(s)"),
+    .min(350, "Please enter at least 350 character(s)")
+    .max(450, "Please do not enter more than 450 character(s)"),
   fullDescription: z.string().superRefine((value, ctx) => {
     const contentLength = getRichTextCharacterCount(value)
 
@@ -1637,10 +1776,11 @@ const projectInfoSchema = z.object({
     .max(10, "Please do not enter/select more than 10 tag(s)"),
   skills: z
     .array(z.string(), {
-      required_error: "Please enter/select at least 1 skill(s)",
+      required_error: "Please add at least three skills",
     })
-    .min(1, "Please enter/select at least 1 skill(s)")
+    .min(3, "Please add at least three skills")
     .max(10, "Please do not enter/select more than 10 tag(s)"),
+  projectType: z.string().default("Website"),
 })
 
 type ProjectInfoFormValues = z.infer<typeof projectInfoSchema>
@@ -1700,11 +1840,11 @@ const scrollToPublishField = (targetId: string) => {
 }
 
 const TITLE_MAX_LENGTH = 120
-const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const SHORT_DESCRIPTION_MAX_LENGTH = 450
 const FULL_DESCRIPTION_MAX_LENGTH = 5000
 const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
 const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 300 character(s)"
+  "Please do not enter more than 450 character(s)"
 const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
   "Please do not enter more than 5,000 character(s)"
 
@@ -1815,6 +1955,81 @@ const findSuggestedSubCategory = (node?: CategoryTreeNode): string | null => {
   return firstDescendant?.name ?? null
 }
 
+const SUGGESTION_STOPWORDS = new Set([
+  "the","and","for","with","your","our","that","this","from","into","over",
+  "you","are","was","will","can","get","all","new","use","per","via",
+])
+
+const tokenizeForSuggestion = (text: string): string[] =>
+  text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 3 && !SUGGESTION_STOPWORDS.has(token))
+
+const scoreCandidateAgainstTitle = (
+  titleTokens: string[],
+  candidateText: string
+): number => {
+  const candidateTokens = tokenizeForSuggestion(candidateText)
+  let score = 0
+  for (const candidateToken of candidateTokens) {
+    for (const titleToken of titleTokens) {
+      if (candidateToken === titleToken) {
+        score += 2
+        break
+      }
+      if (
+        candidateToken.length >= 4 &&
+        titleToken.length >= 4 &&
+        (candidateToken.includes(titleToken) ||
+          titleToken.includes(candidateToken))
+      ) {
+        score += 1
+        break
+      }
+    }
+  }
+  return score
+}
+
+const suggestionsFromText = (
+  text: string,
+  nodes: CategoryTreeNode[]
+): SuggestedCategoryOption[] => {
+  const tokens = tokenizeForSuggestion(text)
+  if (!tokens.length || !nodes.length) return []
+
+  const scored: Array<SuggestedCategoryOption & { score: number }> = []
+  for (const categoryNode of nodes) {
+    if (!isActiveCategoryNode(categoryNode) || !categoryNode.name) continue
+    const subs = (categoryNode.children ?? []).filter(isActiveCategoryNode)
+    for (const sub of subs) {
+      if (!sub.name || sub.name === categoryNode.name) continue
+      const score = scoreCandidateAgainstTitle(
+        tokens,
+        `${categoryNode.name} ${sub.name}`
+      )
+      if (score > 0) {
+        scored.push({
+          category: categoryNode.name,
+          subCategory: sub.name,
+          score,
+        })
+      }
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score)
+  const seenCategories = new Set<string>()
+  const result: SuggestedCategoryOption[] = []
+  for (const item of scored) {
+    if (seenCategories.has(item.category)) continue
+    seenCategories.add(item.category)
+    result.push({ category: item.category, subCategory: item.subCategory })
+  }
+  return result
+}
+
 const indexCategoryTreeByName = (nodes: CategoryTreeNode[]) => {
   const index = new Map<string, CategoryTreeNode>()
 
@@ -1849,7 +2064,8 @@ const ProjectInfo = ({
     trigger,
   } = methods
 
-  const [projectType, setProjectType] = useState("Website")
+  const projectType = methods.watch("projectType") ?? "Website"
+  const setProjectType = (value: string) => setValue("projectType", value)
 
   const [suggested, setSuggested] = useState<SuggestedCategoryOption[]>(
     DEFAULT_SUGGESTED_CATEGORIES
@@ -1867,7 +2083,10 @@ const ProjectInfo = ({
   )
   const [tagOptions, setTagOptions] = useState<string[]>(FALLBACK_TAG_OPTIONS)
   const [skills, setSkills] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
-  const [suggestedSkillOptions] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
+  const [suggestedSkillOptions, setSuggestedSkillOptions] =
+    useState<string[]>(FALLBACK_SKILL_OPTIONS)
+  const skillsSuggestRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const skillsRequestRef = useRef(0)
   const categoryRequestRef = useRef(0)
   const categoryDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -1884,6 +2103,42 @@ const ProjectInfo = ({
   useIsomorphicLayoutEffect(() => {
     toggleValidation(isProjectInfoValid)
   }, [isProjectInfoValid])
+
+  useEffect(() => {
+    const description =
+      plainTextFromRichTextHtml(projectInfoValues.fullDescription ?? "").trim() ||
+      (projectInfoValues.shortDescription ?? "").trim()
+    const category = projectInfoValues.category?.[0]?.category?.trim() || undefined
+    const tags = projectInfoValues.tags ?? []
+    if (!description && !category && tags.length === 0) return
+    if (skillsSuggestRef.current) clearTimeout(skillsSuggestRef.current)
+    skillsSuggestRef.current = setTimeout(async () => {
+      const requestId = ++skillsRequestRef.current
+      try {
+        const res = await ProjectAPI.SuggestSkills({ description, category, tags })
+        if (requestId !== skillsRequestRef.current) return
+        const nextSkills = Array.isArray(res?.data?.skills)
+          ? (res.data.skills as string[])
+          : []
+        if (nextSkills.length > 0) {
+          setSuggestedSkillOptions(
+            Array.from(new Set([...nextSkills, ...FALLBACK_SKILL_OPTIONS]))
+          )
+        }
+      } catch {
+        // keep fallback options
+      }
+    }, 700)
+    return () => {
+      if (skillsSuggestRef.current) clearTimeout(skillsSuggestRef.current)
+    }
+  }, [
+    projectInfoValues.fullDescription,
+    projectInfoValues.shortDescription,
+    projectInfoValues.category,
+    projectInfoValues.tags,
+  ])
+
   const categoryValues = useWatch({
     control: methods.control,
     name: "category",
@@ -2162,10 +2417,13 @@ const ProjectInfo = ({
         const nextCategoryOptions = getUniqueOptions(
           selectableCategories.map((node) => node.name)
         )
-        const nextSuggested = selectableCategories
+        const nextSuggested = nodes
+          .filter(isActiveCategoryNode)
           .map((node) => {
-            const subCategory = findSuggestedSubCategory(node)
-            return subCategory ? { category: node.name, subCategory } : null
+            const sub = (node.children ?? []).filter(isActiveCategoryNode)[0]
+            return sub?.name && node.name
+              ? { category: node.name, subCategory: sub.name }
+              : null
           })
           .filter((value): value is SuggestedCategoryOption => value !== null)
 
@@ -2256,17 +2514,35 @@ const ProjectInfo = ({
       ),
     [categoryValues]
   )
-  const suggestedForDisplay = useMemo(
-    () =>
-      suggested
-        .filter(
-          ({ category, subCategory }) =>
-            !selectedCategoryNames.has(category) &&
-            !selectedSuggestedPairs.has(`${category}::${subCategory}`)
-        )
-        .slice(0, 3),
-    [selectedCategoryNames, selectedSuggestedPairs, suggested]
-  )
+  const derivedSuggestions = useMemo(() => {
+    const enteredNames = (Array.isArray(categoryValues) ? categoryValues : [])
+      .map((item) => item?.category?.trim())
+      .filter((name): name is string => Boolean(name))
+      .join(" ")
+    return suggestionsFromText(
+      `${projectType} ${enteredNames}`.trim(),
+      categoryTree
+    )
+  }, [projectType, categoryValues, categoryTree])
+  const suggestedForDisplay = useMemo(() => {
+    const seenCategories = new Set(selectedCategoryNames)
+    const result: SuggestedCategoryOption[] = []
+    for (const item of [...derivedSuggestions, ...suggested]) {
+      if (item.category === item.subCategory) continue
+      if (seenCategories.has(item.category)) continue
+      if (selectedSuggestedPairs.has(`${item.category}::${item.subCategory}`))
+        continue
+      seenCategories.add(item.category)
+      result.push(item)
+      if (result.length >= 3) break
+    }
+    return result
+  }, [
+    derivedSuggestions,
+    suggested,
+    selectedCategoryNames,
+    selectedSuggestedPairs,
+  ])
 
   return (
     <form className="contents" onSubmit={methods.handleSubmit(onSubmit)}>
@@ -2323,1080 +2599,1157 @@ const ProjectInfo = ({
               <TabsList className="px-0 pt-0 gap-6">
                 <TabsTrigger value="basic-info">Basic Info</TabsTrigger>
                 <TabsTrigger value="description">Description</TabsTrigger>
-                <TabsTrigger value="project-details">Project Details</TabsTrigger>
+                <TabsTrigger value="project-details">
+                  Project Details
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="basic-info">
-            <div
-              id="publish-project-title-field"
-              className="space-y-1.5 mt-6 mb-6"
-            >
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                  htmlFor="title"
+                <div
+                  id="publish-project-title-field"
+                  className="space-y-1.5 mt-6 mb-6"
                 >
-                  Title
-                </Label>
-                <div className="flex items-center justify-between">
-                  <HelperText size="sm">
-                    Write a title that accurately describes your project scope
-                    for the marketplace.
-                  </HelperText>
-
-                  <span className="text-xs leading-[14.52px] text-gray-500">
-                    {titleCharacterCount}/{TITLE_MAX_LENGTH}
-                  </span>
-                </div>
-              </div>
-
-              <Input
-                id="title"
-                type="text"
-                placeholder="Enter Title"
-                value={projectInfoValues.title ?? ""}
-                maxLength={TITLE_MAX_LENGTH}
-                onChange={(event) => {
-                  methods.setValue(
-                    "title",
-                    event.target.value.slice(0, TITLE_MAX_LENGTH),
-                    {
-                      shouldDirty: true,
-                      shouldTouch: true,
-                      shouldValidate: false,
-                    }
-                  )
-                  if (titleHasError && get(errors, "title.type") === "manual") {
-                    methods.clearErrors("title")
-                  }
-                }}
-                onBlur={() => void methods.trigger("title")}
-                onKeyDown={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      projectInfoValues.title?.length || 0,
-                      TITLE_MAX_LENGTH
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
-                  }
-                }}
-                onPaste={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      projectInfoValues.title?.length || 0,
-                      TITLE_MAX_LENGTH
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
-                  }
-                }}
-                isInvalid={titleHasError}
-              />
-
-              <HookFormErrorMessage
-                errors={errors}
-                name="title"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            <div id="publish-project-type-field" className="space-y-1.5 mt-6 mb-6">
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                >
-                  Project Type
-                </Label>
-                <HelperText size="sm">
-                  Select the category that best represents your project scope.
-                </HelperText>
-              </div>
-
-              <div className="max-w-[202px]">
-                <Listbox value={projectType} onChange={setProjectType}>
-                  <ListboxButton
-                    placeholder="Select Type"
-                    className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start border border-gray-300 rounded-[5px]"
-                  >
-                    {({ value }) => (
-                      <span className="truncate block">
-                        {value || "Select Type"}
-                      </span>
-                    )}
-                  </ListboxButton>
-                  <ListboxOptions>
-                    {PROJECT_TYPE_OPTIONS.map((option) => (
-                      <ListboxOption key={option} value={option}>
-                        {option}
-                      </ListboxOption>
-                    ))}
-                  </ListboxOptions>
-                </Listbox>
-              </div>
-            </div>
-
-            <div id="publish-project-category-field" className="space-y-6 mt-0">
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                  htmlFor="email"
-                  asChild
-                >
-                  <span>Category</span>
-                </Label>
-
-                <HelperText size="sm">
-                  Select categories that best fit your project scope for easier
-                  discovery.
-                </HelperText>
-              </div>
-
-              <div className="flex items-start gap-x-1.5">
-                <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
-                  1
-                </div>
-
-                <div className="flex flex-col flex-auto gap-y-2.5">
-                  <div className="max-w-[202px]">
-                    <Controller
-                      control={methods.control}
-                      name="category.0.category"
-                      render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox
-                          value={value}
-                          onChange={(nextValue) =>
-                            handleCategorySelection(0, nextValue, onChange)
-                          }
-                        >
-                          <ListboxButton
-                            placeholder="Add Category"
-                            className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
-                            onFocus={() => setActiveCategoryIndex(0)}
-                            {...field}
-                          >
-                            {({ value }) => (
-                              <span className="truncate block">
-                                {value || "Add Category"}
-                              </span>
-                            )}
-                          </ListboxButton>
-                          <ListboxOptions>
-                            {getAvailableCategoriesForIndex(0, value).map(
-                              (category) => (
-                                <ListboxOption key={category} value={category}>
-                                  {category}
-                                </ListboxOption>
-                              )
-                            )}
-                          </ListboxOptions>
-                        </Listbox>
-                      )}
-                    />
-                  </div>
-
-                  <Controller
-                    name="category.0.subCategories"
-                    control={methods.control}
-                    render={({ field: { onChange, ...field } }) => (
-                      <TagsInputRoot
-                        onValueChange={handleSubCategoryChange(
-                          "category.0.subCategories",
-                          onChange
-                        )}
-                        {...field}
-                        className="space-y-1.5"
-                      >
-                        <TagsInputContext>
-                          {(tagsInput) => (
-                            <>
-                              <TagsInputControl className="relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] border border-gray-300 px-[14px] py-[10px] m-0">
-                                {tagsInput.value.map((value, index) => (
-                                  <TagsInputItem
-                                    key={index}
-                                    index={index}
-                                    value={value}
-                                  >
-                                    <TagsInputItemPreview
-                                      visual="primary"
-                                      size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
-                                    >
-                                      <TagsInputItemText>
-                                        {value}
-                                      </TagsInputItemText>
-                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                        <X2 className="size-3" />
-                                      </TagsInputItemDeleteTrigger>
-                                    </TagsInputItemPreview>
-                                    <TagsInputItemInput />
-                                  </TagsInputItem>
-                                ))}
-                                <TagsInputInput
-                                  placeholder={
-                                    tagsInput.value.length
-                                      ? ""
-                                      : "Add Sub-Category(s)"
-                                  }
-                                  options={subCategoryOptions}
-                                  allowCreateOption
-                                  className="flex-1 min-w-[100px] "
-                                  onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(0, value)
-                                  }}
-                                  onFocus={() => {
-                                    setActiveCategoryIndex(0)
-                                    setSubCategoryOptions(
-                                      getSubCategoryOptionsForCategory(
-                                        categoryValues?.[0]?.category
-                                      )
-                                    )
-                                  }}
-                                />
-                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                              </TagsInputControl>
-                            </>
-                          )}
-                        </TagsInputContext>
-                        <TagsInputHiddenInput />
-                      </TagsInputRoot>
-                    )}
-                  />
-
-                  {(hookFormHasError({ errors, name: "category.0.category" }) ||
-                    hookFormHasError({
-                      errors,
-                      name: "category.0.subCategories",
-                    })) && (
-                    <ErrorMessage size="sm">
-                      {get(errors, "category.0.category.message") ||
-                        get(errors, "category.0.subCategories.message")}
-                    </ErrorMessage>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-start gap-x-1.5">
-                <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
-                  2
-                </div>
-
-                <div className="flex flex-col flex-auto gap-y-2.5">
-                  <div className="max-w-[202px]">
-                    <Controller
-                      control={methods.control}
-                      name="category.1.category"
-                      render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox
-                          value={value}
-                          onChange={(nextValue) =>
-                            handleCategorySelection(1, nextValue, onChange)
-                          }
-                        >
-                          <ListboxButton
-                            placeholder="Add Category"
-                            className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
-                            onFocus={() => setActiveCategoryIndex(1)}
-                            {...field}
-                          >
-                            {({ value }) => (
-                              <span className="truncate block">
-                                {value || "Add Category"}
-                              </span>
-                            )}
-                          </ListboxButton>
-                          <ListboxOptions>
-                            {getAvailableCategoriesForIndex(1, value).map(
-                              (category) => (
-                                <ListboxOption key={category} value={category}>
-                                  {category}
-                                </ListboxOption>
-                              )
-                            )}
-                          </ListboxOptions>
-                        </Listbox>
-                      )}
-                    />
-                  </div>
-
-                  <Controller
-                    name="category.1.subCategories"
-                    control={methods.control}
-                    render={({ field: { onChange, ...field } }) => (
-                      <TagsInputRoot
-                        onValueChange={handleSubCategoryChange(
-                          "category.1.subCategories",
-                          onChange
-                        )}
-                        {...field}
-                        className="space-y-1.5"
-                      >
-                        <TagsInputContext>
-                          {(tagsInput) => (
-                            <>
-                              <TagsInputControl
-                                className="relative pr-[28px] flex flex-wrap !justify-start
-                               !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] 
-                               border border-gray-300 px-[14px] py-[10px] m-0"
-                              >
-                                {tagsInput.value.map((value, index) => (
-                                  <TagsInputItem
-                                    key={index}
-                                    index={index}
-                                    value={value}
-                                  >
-                                    <TagsInputItemPreview
-                                      visual="primary"
-                                      size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
-                                    >
-                                      <TagsInputItemText>
-                                        {value}
-                                      </TagsInputItemText>
-                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                        <X2 className="size-3" />
-                                      </TagsInputItemDeleteTrigger>
-                                    </TagsInputItemPreview>
-                                    <TagsInputItemInput />
-                                  </TagsInputItem>
-                                ))}
-                                <TagsInputInput
-                                  options={subCategoryOptions}
-                                  placeholder={
-                                    tagsInput.value.length
-                                      ? ""
-                                      : "Add Sub-Category(s)"
-                                  }
-                                  allowCreateOption
-                                  className="flex-1 min-w-[100px]"
-                                  onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(1, value)
-                                  }}
-                                  onFocus={() => {
-                                    setActiveCategoryIndex(1)
-                                    setSubCategoryOptions(
-                                      getSubCategoryOptionsForCategory(
-                                        categoryValues?.[1]?.category
-                                      )
-                                    )
-                                  }}
-                                />
-
-                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                              </TagsInputControl>
-                            </>
-                          )}
-                        </TagsInputContext>
-                        <TagsInputHiddenInput />
-                      </TagsInputRoot>
-                    )}
-                  />
-
-                  {(hookFormHasError({ errors, name: "category.1.category" }) ||
-                    hookFormHasError({
-                      errors,
-                      name: "category.1.subCategories",
-                    })) && (
-                    <ErrorMessage size="sm">
-                      {get(errors, "category.1.category.message") ||
-                        get(errors, "category.1.subCategories.message")}
-                    </ErrorMessage>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-start gap-x-1.5">
-                <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
-                  3
-                </div>
-
-                <div className="flex flex-col flex-auto gap-y-2.5">
-                  <div className="max-w-[202px]">
-                    <Controller
-                      control={methods.control}
-                      name="category.2.category"
-                      render={({ field: { value, onChange, ...field } }) => (
-                        <Listbox
-                          value={value}
-                          onChange={(nextValue) =>
-                            handleCategorySelection(2, nextValue, onChange)
-                          }
-                        >
-                          <ListboxButton
-                            placeholder="Add Category"
-                            className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
-                            onFocus={() => setActiveCategoryIndex(2)}
-                            {...field}
-                          >
-                            {({ value }) => (
-                              <span className="truncate block">
-                                {value || "Add Category"}
-                              </span>
-                            )}
-                          </ListboxButton>
-                          <ListboxOptions>
-                            {getAvailableCategoriesForIndex(2, value).map(
-                              (category) => (
-                                <ListboxOption key={category} value={category}>
-                                  {category}
-                                </ListboxOption>
-                              )
-                            )}
-                          </ListboxOptions>
-                        </Listbox>
-                      )}
-                    />
-                  </div>
-
-                  <Controller
-                    name="category.2.subCategories"
-                    control={methods.control}
-                    render={({ field: { onChange, ...field } }) => (
-                      <TagsInputRoot
-                        onValueChange={handleSubCategoryChange(
-                          "category.2.subCategories",
-                          onChange
-                        )}
-                        {...field}
-                        className="space-y-1.5"
-                      >
-                        <TagsInputContext>
-                          {(tagsInput) => (
-                            <>
-                              <TagsInputControl
-                                className="relative pr-[28px] flex flex-wrap !justify-start
-                               !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] 
-                               border border-gray-300 px-[14px] py-[10px] m-0"
-                              >
-                                {tagsInput.value.map((value, index) => (
-                                  <TagsInputItem
-                                    key={index}
-                                    index={index}
-                                    value={value}
-                                  >
-                                    <TagsInputItemPreview
-                                      visual="primary"
-                                      size="md"
-                                      className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
-                                    >
-                                      <TagsInputItemText>
-                                        {value}
-                                      </TagsInputItemText>
-                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                        <X2 className="size-3" />
-                                      </TagsInputItemDeleteTrigger>
-                                    </TagsInputItemPreview>
-                                    <TagsInputItemInput />
-                                  </TagsInputItem>
-                                ))}
-                                <TagsInputInput
-                                  options={subCategoryOptions}
-                                  placeholder={
-                                    tagsInput.value.length
-                                      ? ""
-                                      : "Add Sub-Category(s)"
-                                  }
-                                  allowCreateOption
-                                  className="flex-1 min-w-[100px]"
-                                  onInputValueChange={(value) => {
-                                    fetchCategoriesAutocomplete(2, value)
-                                  }}
-                                  onFocus={() => {
-                                    setActiveCategoryIndex(2)
-                                    setSubCategoryOptions(
-                                      getSubCategoryOptionsForCategory(
-                                        categoryValues?.[2]?.category
-                                      )
-                                    )
-                                  }}
-                                />
-
-                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                              </TagsInputControl>
-                            </>
-                          )}
-                        </TagsInputContext>
-                        <TagsInputHiddenInput />
-                      </TagsInputRoot>
-                    )}
-                  />
-
-                  {(hookFormHasError({ errors, name: "category.2.category" }) ||
-                    hookFormHasError({
-                      errors,
-                      name: "category.2.subCategories",
-                    })) && (
-                    <ErrorMessage size="sm">
-                      {get(errors, "category.2.category.message") ||
-                        get(errors, "category.2.subCategories.message")}
-                    </ErrorMessage>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {showSuggestions && (
-              <div className="mt-6 space-y-1.5">
-                <span className="block text-xs leading-5 text-dark-blue-400">
-                  Suggested Categories
-                </span>
-
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
-                  {suggestedForDisplay.map(({ category, subCategory }) => (
-                    <Badge
-                      size="md"
-                      className="pr-2 focus-visible:outline-none text-primary-500 bg-primary-50"
-                      visual="primary"
-                      asChild
-                      key={category}
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                      htmlFor="title"
                     >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const indexToUpdate = activeCategoryIndex
+                      Title
+                    </Label>
+                    <div className="flex items-center justify-between">
+                      <HelperText size="sm">
+                        Write a title that accurately describes your project
+                        scope for the marketplace.
+                      </HelperText>
 
-                          // write values and mark as user-driven so Sidebar shows the checkmark
-                          setValue(
-                            `category.${indexToUpdate}.category`,
-                            category,
-                            {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            }
-                          )
-                          setValue(
-                            `category.${indexToUpdate}.subCategories`,
-                            [subCategory],
-                            {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            }
-                          )
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        {titleCharacterCount}/{TITLE_MAX_LENGTH}
+                      </span>
+                    </div>
+                  </div>
 
-                          // validate that slot
-                          trigger(`category.${indexToUpdate}`)
+                  <Input
+                    id="title"
+                    type="text"
+                    placeholder="Enter Title"
+                    value={projectInfoValues.title ?? ""}
+                    maxLength={TITLE_MAX_LENGTH}
+                    onChange={(event) => {
+                      methods.setValue(
+                        "title",
+                        event.target.value.slice(0, TITLE_MAX_LENGTH),
+                        {
+                          shouldDirty: true,
+                          shouldTouch: true,
+                          shouldValidate: false,
+                        }
+                      )
+                      if (
+                        titleHasError &&
+                        get(errors, "title.type") === "manual"
+                      ) {
+                        methods.clearErrors("title")
+                      }
+                    }}
+                    onBlur={() => void methods.trigger("title")}
+                    onKeyDown={(event) => {
+                      if (
+                        shouldBlockMaxLengthInput(
+                          event,
+                          projectInfoValues.title?.length || 0,
+                          TITLE_MAX_LENGTH
+                        )
+                      ) {
+                        event.preventDefault()
+                        triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                      }
+                    }}
+                    onPaste={(event) => {
+                      if (
+                        shouldBlockMaxLengthInput(
+                          event,
+                          projectInfoValues.title?.length || 0,
+                          TITLE_MAX_LENGTH
+                        )
+                      ) {
+                        event.preventDefault()
+                        triggerMaxLengthError("title", TITLE_MAX_LENGTH_ERROR)
+                      }
+                    }}
+                    isInvalid={titleHasError}
+                  />
 
-                          // keep suggestions visible for subsequent category slots
-                        }}
-                      >
-                        {category} / {subCategory}
-                        <Plus2 className="size-3 opacity-50 hover:opacity-100" />
-                      </button>
-                    </Badge>
-                  ))}
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="title"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
                 </div>
-              </div>
-            )}
+
+                <div
+                  id="publish-project-type-field"
+                  className="space-y-1.5 mt-6 mb-6"
+                >
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                    >
+                      Project Type
+                    </Label>
+                    <HelperText size="sm">
+                      Select the category that best represents your project
+                      scope.
+                    </HelperText>
+                  </div>
+
+                  <div className="max-w-[202px]">
+                    <Listbox value={projectType} onChange={setProjectType}>
+                      <ListboxButton
+                        placeholder="Select Type"
+                        className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start border border-gray-300 rounded-[5px]"
+                      >
+                        {({ value }) => (
+                          <span className="truncate block">
+                            {(PROJECT_TYPE_OPTIONS as readonly string[]).includes(
+                              value
+                            )
+                              ? value
+                              : "Select Type"}
+                          </span>
+                        )}
+                      </ListboxButton>
+                      <ListboxOptions>
+                        {PROJECT_TYPE_OPTIONS.map((option) => (
+                          <ListboxOption key={option} value={option}>
+                            {option}
+                          </ListboxOption>
+                        ))}
+                      </ListboxOptions>
+                    </Listbox>
+                  </div>
+                </div>
+
+                <div
+                  id="publish-project-category-field"
+                  className="space-y-6 mt-0"
+                >
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                      htmlFor="email"
+                      asChild
+                    >
+                      <span>Category</span>
+                    </Label>
+
+                    <HelperText size="sm">
+                      Select categories that best fit your project scope for
+                      easier discovery.
+                    </HelperText>
+                  </div>
+
+                  <div className="flex items-start gap-x-1.5">
+                    <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
+                      1
+                    </div>
+
+                    <div className="flex flex-col flex-auto gap-y-2.5">
+                      <div className="max-w-[202px]">
+                        <Controller
+                          control={methods.control}
+                          name="category.0.category"
+                          render={({
+                            field: { value, onChange, ...field },
+                          }) => (
+                            <Listbox
+                              value={value}
+                              onChange={(nextValue) =>
+                                handleCategorySelection(0, nextValue, onChange)
+                              }
+                            >
+                              <ListboxButton
+                                placeholder="Add Category"
+                                className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
+                                onFocus={() => setActiveCategoryIndex(0)}
+                                {...field}
+                              >
+                                {({ value }) => (
+                                  <span className="truncate block">
+                                    {value || "Add Category"}
+                                  </span>
+                                )}
+                              </ListboxButton>
+                              <ListboxOptions>
+                                {getAvailableCategoriesForIndex(0, value).map(
+                                  (category) => (
+                                    <ListboxOption
+                                      key={category}
+                                      value={category}
+                                    >
+                                      {category}
+                                    </ListboxOption>
+                                  )
+                                )}
+                              </ListboxOptions>
+                            </Listbox>
+                          )}
+                        />
+                      </div>
+
+                      <Controller
+                        name="category.0.subCategories"
+                        control={methods.control}
+                        render={({ field: { onChange, ...field }, fieldState }) => (
+                          <TagsInputRoot
+                            onValueChange={handleSubCategoryChange(
+                              "category.0.subCategories",
+                              onChange
+                            )}
+                            {...field}
+                            className="space-y-1.5"
+                          >
+                            <TagsInputContext>
+                              {(tagsInput) => (
+                                <>
+                                  <TagsInputControl
+                                    className={cn(
+                                      "relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] border px-[14px] py-[10px] m-0",
+                                      fieldState.error
+                                        ? "border-error-300"
+                                        : "border-gray-300"
+                                    )}
+                                  >
+                                    {tagsInput.value.map((value, index) => (
+                                      <TagsInputItem
+                                        key={index}
+                                        index={index}
+                                        value={value}
+                                      >
+                                        <TagsInputItemPreview
+                                          visual="primary"
+                                          size="md"
+                                          className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
+                                        >
+                                          <TagsInputItemText>
+                                            {value}
+                                          </TagsInputItemText>
+                                          <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                            <X2 className="size-3" />
+                                          </TagsInputItemDeleteTrigger>
+                                        </TagsInputItemPreview>
+                                        <TagsInputItemInput />
+                                      </TagsInputItem>
+                                    ))}
+                                    <TagsInputInput
+                                      placeholder={
+                                        tagsInput.value.length
+                                          ? ""
+                                          : "Add Sub-Category(s)"
+                                      }
+                                      options={subCategoryOptions}
+                                      allowCreateOption
+                                      portalDropdown
+                                      className="flex-1 min-w-[100px] "
+                                      onInputValueChange={(value) => {
+                                        fetchCategoriesAutocomplete(0, value)
+                                      }}
+                                      onFocus={() => {
+                                        setActiveCategoryIndex(0)
+                                        setSubCategoryOptions(
+                                          getSubCategoryOptionsForCategory(
+                                            categoryValues?.[0]?.category
+                                          )
+                                        )
+                                      }}
+                                    />
+                                    <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                                  </TagsInputControl>
+                                </>
+                              )}
+                            </TagsInputContext>
+                            <TagsInputHiddenInput />
+                          </TagsInputRoot>
+                        )}
+                      />
+
+                      {(hookFormHasError({
+                        errors,
+                        name: "category.0.category",
+                      }) ||
+                        hookFormHasError({
+                          errors,
+                          name: "category.0.subCategories",
+                        })) && (
+                        <ErrorMessage size="sm">
+                          {get(errors, "category.0.category.message") ||
+                            get(errors, "category.0.subCategories.message")}
+                        </ErrorMessage>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-x-1.5">
+                    <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
+                      2
+                    </div>
+
+                    <div className="flex flex-col flex-auto gap-y-2.5">
+                      <div className="max-w-[202px]">
+                        <Controller
+                          control={methods.control}
+                          name="category.1.category"
+                          render={({
+                            field: { value, onChange, ...field },
+                          }) => (
+                            <Listbox
+                              value={value}
+                              onChange={(nextValue) =>
+                                handleCategorySelection(1, nextValue, onChange)
+                              }
+                            >
+                              <ListboxButton
+                                placeholder="Add Category"
+                                className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
+                                onFocus={() => setActiveCategoryIndex(1)}
+                                {...field}
+                              >
+                                {({ value }) => (
+                                  <span className="truncate block">
+                                    {value || "Add Category"}
+                                  </span>
+                                )}
+                              </ListboxButton>
+                              <ListboxOptions>
+                                {getAvailableCategoriesForIndex(1, value).map(
+                                  (category) => (
+                                    <ListboxOption
+                                      key={category}
+                                      value={category}
+                                    >
+                                      {category}
+                                    </ListboxOption>
+                                  )
+                                )}
+                              </ListboxOptions>
+                            </Listbox>
+                          )}
+                        />
+                      </div>
+
+                      <Controller
+                        name="category.1.subCategories"
+                        control={methods.control}
+                        render={({ field: { onChange, ...field }, fieldState }) => (
+                          <TagsInputRoot
+                            onValueChange={handleSubCategoryChange(
+                              "category.1.subCategories",
+                              onChange
+                            )}
+                            {...field}
+                            className="space-y-1.5"
+                          >
+                            <TagsInputContext>
+                              {(tagsInput) => (
+                                <>
+                                  <TagsInputControl
+                                    className={cn(
+                                      "relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] border px-[14px] py-[10px] m-0",
+                                      fieldState.error
+                                        ? "border-error-300"
+                                        : "border-gray-300"
+                                    )}
+                                  >
+                                    {tagsInput.value.map((value, index) => (
+                                      <TagsInputItem
+                                        key={index}
+                                        index={index}
+                                        value={value}
+                                      >
+                                        <TagsInputItemPreview
+                                          visual="primary"
+                                          size="md"
+                                          className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
+                                        >
+                                          <TagsInputItemText>
+                                            {value}
+                                          </TagsInputItemText>
+                                          <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                            <X2 className="size-3" />
+                                          </TagsInputItemDeleteTrigger>
+                                        </TagsInputItemPreview>
+                                        <TagsInputItemInput />
+                                      </TagsInputItem>
+                                    ))}
+                                    <TagsInputInput
+                                      options={subCategoryOptions}
+                                      placeholder={
+                                        tagsInput.value.length
+                                          ? ""
+                                          : "Add Sub-Category(s)"
+                                      }
+                                      allowCreateOption
+                                      portalDropdown
+                                      className="flex-1 min-w-[100px]"
+                                      onInputValueChange={(value) => {
+                                        fetchCategoriesAutocomplete(1, value)
+                                      }}
+                                      onFocus={() => {
+                                        setActiveCategoryIndex(1)
+                                        setSubCategoryOptions(
+                                          getSubCategoryOptionsForCategory(
+                                            categoryValues?.[1]?.category
+                                          )
+                                        )
+                                      }}
+                                    />
+
+                                    <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                                  </TagsInputControl>
+                                </>
+                              )}
+                            </TagsInputContext>
+                            <TagsInputHiddenInput />
+                          </TagsInputRoot>
+                        )}
+                      />
+
+                      {(hookFormHasError({
+                        errors,
+                        name: "category.1.category",
+                      }) ||
+                        hookFormHasError({
+                          errors,
+                          name: "category.1.subCategories",
+                        })) && (
+                        <ErrorMessage size="sm">
+                          {get(errors, "category.1.category.message") ||
+                            get(errors, "category.1.subCategories.message")}
+                        </ErrorMessage>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-x-1.5">
+                    <div className="size-11 shrink-0 inline-flex items-center justify-between text-xl leading-[30px] text-gray-900 font-semibold">
+                      3
+                    </div>
+
+                    <div className="flex flex-col flex-auto gap-y-2.5">
+                      <div className="max-w-[202px]">
+                        <Controller
+                          control={methods.control}
+                          name="category.2.category"
+                          render={({
+                            field: { value, onChange, ...field },
+                          }) => (
+                            <Listbox
+                              value={value}
+                              onChange={(nextValue) =>
+                                handleCategorySelection(2, nextValue, onChange)
+                              }
+                            >
+                              <ListboxButton
+                                placeholder="Add Category"
+                                className="w-full max-w-[202px] h-[44px] px-[14px] py-[10px] flex items-center justify-start  border border-gray-300 rounded-[5px]"
+                                onFocus={() => setActiveCategoryIndex(2)}
+                                {...field}
+                              >
+                                {({ value }) => (
+                                  <span className="truncate block">
+                                    {value || "Add Category"}
+                                  </span>
+                                )}
+                              </ListboxButton>
+                              <ListboxOptions>
+                                {getAvailableCategoriesForIndex(2, value).map(
+                                  (category) => (
+                                    <ListboxOption
+                                      key={category}
+                                      value={category}
+                                    >
+                                      {category}
+                                    </ListboxOption>
+                                  )
+                                )}
+                              </ListboxOptions>
+                            </Listbox>
+                          )}
+                        />
+                      </div>
+
+                      <Controller
+                        name="category.2.subCategories"
+                        control={methods.control}
+                        render={({ field: { onChange, ...field }, fieldState }) => (
+                          <TagsInputRoot
+                            onValueChange={handleSubCategoryChange(
+                              "category.2.subCategories",
+                              onChange
+                            )}
+                            {...field}
+                            className="space-y-1.5"
+                          >
+                            <TagsInputContext>
+                              {(tagsInput) => (
+                                <>
+                                  <TagsInputControl
+                                    className={cn(
+                                      "relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] border px-[14px] py-[10px] m-0",
+                                      fieldState.error
+                                        ? "border-error-300"
+                                        : "border-gray-300"
+                                    )}
+                                  >
+                                    {tagsInput.value.map((value, index) => (
+                                      <TagsInputItem
+                                        key={index}
+                                        index={index}
+                                        value={value}
+                                      >
+                                        <TagsInputItemPreview
+                                          visual="primary"
+                                          size="md"
+                                          className="pr-2 text-primary-500 bg-primary-50 animate-in fade-in-0 zoom-in-95 duration-200"
+                                        >
+                                          <TagsInputItemText>
+                                            {value}
+                                          </TagsInputItemText>
+                                          <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                            <X2 className="size-3" />
+                                          </TagsInputItemDeleteTrigger>
+                                        </TagsInputItemPreview>
+                                        <TagsInputItemInput />
+                                      </TagsInputItem>
+                                    ))}
+                                    <TagsInputInput
+                                      options={subCategoryOptions}
+                                      placeholder={
+                                        tagsInput.value.length
+                                          ? ""
+                                          : "Add Sub-Category(s)"
+                                      }
+                                      allowCreateOption
+                                      portalDropdown
+                                      className="flex-1 min-w-[100px]"
+                                      onInputValueChange={(value) => {
+                                        fetchCategoriesAutocomplete(2, value)
+                                      }}
+                                      onFocus={() => {
+                                        setActiveCategoryIndex(2)
+                                        setSubCategoryOptions(
+                                          getSubCategoryOptionsForCategory(
+                                            categoryValues?.[2]?.category
+                                          )
+                                        )
+                                      }}
+                                    />
+
+                                    <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                                  </TagsInputControl>
+                                </>
+                              )}
+                            </TagsInputContext>
+                            <TagsInputHiddenInput />
+                          </TagsInputRoot>
+                        )}
+                      />
+
+                      {(hookFormHasError({
+                        errors,
+                        name: "category.2.category",
+                      }) ||
+                        hookFormHasError({
+                          errors,
+                          name: "category.2.subCategories",
+                        })) && (
+                        <ErrorMessage size="sm">
+                          {get(errors, "category.2.category.message") ||
+                            get(errors, "category.2.subCategories.message")}
+                        </ErrorMessage>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {showSuggestions && (
+                  <div className="mt-6 space-y-1.5">
+                    <span className="block text-xs leading-5 text-dark-blue-400">
+                      Suggested Categories
+                    </span>
+
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
+                      {suggestedForDisplay.map(({ category, subCategory }) => (
+                        <Badge
+                          size="md"
+                          className="pr-2 focus-visible:outline-none text-primary-500 bg-primary-50"
+                          visual="primary"
+                          asChild
+                          key={category}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const indexToUpdate = activeCategoryIndex
+
+                              // write values and mark as user-driven so Sidebar shows the checkmark
+                              setValue(
+                                `category.${indexToUpdate}.category`,
+                                category,
+                                {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                }
+                              )
+                              setValue(
+                                `category.${indexToUpdate}.subCategories`,
+                                [subCategory],
+                                {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                }
+                              )
+
+                              // validate that slot
+                              trigger(`category.${indexToUpdate}`)
+
+                              // keep suggestions visible for subsequent category slots
+                            }}
+                          >
+                            {category} / {subCategory}
+                            <Plus2 className="size-3 opacity-50 hover:opacity-100" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="description">
-            <div
-              id="publish-project-short-description-field"
-              className="space-y-1.5 mt-6"
-            >
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                  htmlFor="short-description"
+                <div
+                  id="publish-project-short-description-field"
+                  className="space-y-1.5 mt-6"
                 >
-                  Short Description
-                </Label>
-                <div className="flex items-center justify-between">
-                  <HelperText size="sm">
-                    Provide a brief overview of your project scope.
-                  </HelperText>
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                      htmlFor="short-description"
+                    >
+                      Short Description
+                    </Label>
+                    <div className="flex items-center justify-between">
+                      <HelperText size="sm">
+                        Provide a brief overview of your project scope.
+                      </HelperText>
 
-                  <span className="text-xs leading-[14.52px] text-gray-500">
-                    {projectInfoValues.shortDescription?.length || 0}/
-                    {SHORT_DESCRIPTION_MAX_LENGTH}
-                  </span>
-                </div>
-              </div>
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        {projectInfoValues.shortDescription?.length || 0}/
+                        {SHORT_DESCRIPTION_MAX_LENGTH}
+                      </span>
+                    </div>
+                  </div>
 
-              <Textarea
-                id="short-description"
-                placeholder="Enter a short Description"
-                maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
-                {...shortDescriptionField}
-                onChange={(event) => {
-                  shortDescriptionField.onChange(event)
-                  if (
-                    shortDescriptionHasError &&
-                    get(errors, "shortDescription.type") === "manual"
-                  ) {
-                    methods.clearErrors("shortDescription")
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      event.currentTarget.value.length,
-                      SHORT_DESCRIPTION_MAX_LENGTH
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError(
-                      "shortDescription",
-                      SHORT_DESCRIPTION_MAX_LENGTH_ERROR
-                    )
-                  }
-                }}
-                onPaste={(event) => {
-                  if (
-                    shouldBlockMaxLengthInput(
-                      event,
-                      event.currentTarget.value.length,
-                      SHORT_DESCRIPTION_MAX_LENGTH
-                    )
-                  ) {
-                    event.preventDefault()
-                    triggerMaxLengthError(
-                      "shortDescription",
-                      SHORT_DESCRIPTION_MAX_LENGTH_ERROR
-                    )
-                  }
-                }}
-                isInvalid={shortDescriptionHasError}
-              />
-
-              <HookFormErrorMessage
-                errors={errors}
-                name="shortDescription"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            <div
-              id="publish-project-full-description-field"
-              className="space-y-1.5 mt-6"
-            >
-              <div className="space-y-0.5">
-                <Label
-                  className="leading-9 text-dark-blue-400 font-semibold"
-                  size="lg"
-                  htmlFor="full-description"
-                >
-                  Full Description
-                </Label>
-                <div className="flex items-center justify-between">
-                  <HelperText size="sm">
-                    Provide a comprehensive description of this project,
-                    including its purpose and features.
-                  </HelperText>
-
-                  <span className="text-xs leading-[14.52px] text-gray-500">
-                    {fullDescriptionCharacterCount}/
-                    {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              <Controller
-                name="fullDescription"
-                control={methods.control}
-                render={({ field }) => (
-                  <RichTextEditor
-                    defaultValue={field.value ?? ""}
-                    placeholder="<p class='text-gray-400'>Enter a full Description</p>"
-                    allowFullscreen
-                    className={cn(
-                      "rounded-lg border bg-white transition-colors",
-                      fullDescriptionHasError
-                        ? "border-error-500"
-                        : "border-gray-300 focus-within:border-primary-500"
-                    )}
-                    toolbarClassName="left-4"
-                    editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
-                    onUpdate={(html) => {
-                      field.onChange(html)
-
-                      const contentLength = getRichTextCharacterCount(html)
-                      if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
-                        triggerMaxLengthError(
-                          "fullDescription",
-                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                        )
-                        return
-                      }
-
+                  <Textarea
+                    id="short-description"
+                    placeholder="Enter a short Description"
+                    maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
+                    {...shortDescriptionField}
+                    onChange={(event) => {
+                      shortDescriptionField.onChange(event)
                       if (
-                        fullDescriptionHasError &&
-                        get(errors, "fullDescription.message") ===
-                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                        shortDescriptionHasError &&
+                        get(errors, "shortDescription.type") === "manual"
                       ) {
-                        methods.clearErrors("fullDescription")
+                        methods.clearErrors("shortDescription")
                       }
                     }}
-                    onBlur={(html) => {
-                      field.onBlur()
-
-                      const contentLength = getRichTextCharacterCount(html)
-                      if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
-                        triggerMaxLengthError(
-                          "fullDescription",
-                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                        )
-                        return
-                      }
-
+                    onKeyDown={(event) => {
                       if (
-                        fullDescriptionHasError &&
-                        get(errors, "fullDescription.message") ===
-                          FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                        shouldBlockMaxLengthInput(
+                          event,
+                          event.currentTarget.value.length,
+                          SHORT_DESCRIPTION_MAX_LENGTH
+                        )
                       ) {
-                        methods.clearErrors("fullDescription")
+                        event.preventDefault()
+                        triggerMaxLengthError(
+                          "shortDescription",
+                          SHORT_DESCRIPTION_MAX_LENGTH_ERROR
+                        )
                       }
-
-                      void trigger("fullDescription")
                     }}
+                    onPaste={(event) => {
+                      if (
+                        shouldBlockMaxLengthInput(
+                          event,
+                          event.currentTarget.value.length,
+                          SHORT_DESCRIPTION_MAX_LENGTH
+                        )
+                      ) {
+                        event.preventDefault()
+                        triggerMaxLengthError(
+                          "shortDescription",
+                          SHORT_DESCRIPTION_MAX_LENGTH_ERROR
+                        )
+                      }
+                    }}
+                    isInvalid={shortDescriptionHasError}
                   />
-                )}
-              />
 
-              <HookFormErrorMessage
-                errors={errors}
-                name="fullDescription"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="shortDescription"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
+
+                <div
+                  id="publish-project-full-description-field"
+                  className="space-y-1.5 mt-6"
+                >
+                  <div className="space-y-0.5">
+                    <Label
+                      className="leading-9 text-dark-blue-400 font-semibold"
+                      size="lg"
+                      htmlFor="full-description"
+                    >
+                      Full Description
+                    </Label>
+                    <div className="flex items-center justify-between">
+                      <HelperText size="sm">
+                        Provide a comprehensive description of this project,
+                        including its purpose and features.
+                      </HelperText>
+
+                      <span className="text-xs leading-[14.52px] text-gray-500">
+                        {fullDescriptionCharacterCount}/
+                        {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <Controller
+                    name="fullDescription"
+                    control={methods.control}
+                    render={({ field }) => (
+                      <RichTextEditor
+                        defaultValue={field.value ?? ""}
+                        placeholder="<p class='text-gray-400'>Enter a full Description</p>"
+                        allowFullscreen
+                        className={cn(
+                          "rounded-lg border bg-white transition-colors",
+                          fullDescriptionHasError
+                            ? "border-error-500"
+                            : "border-gray-300 focus-within:border-primary-500"
+                        )}
+                        toolbarClassName="left-4"
+                        editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+                        onUpdate={(html) => {
+                          field.onChange(html)
+
+                          const contentLength = getRichTextCharacterCount(html)
+                          if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+                            triggerMaxLengthError(
+                              "fullDescription",
+                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            )
+                            return
+                          }
+
+                          if (
+                            fullDescriptionHasError &&
+                            get(errors, "fullDescription.message") ===
+                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                          ) {
+                            methods.clearErrors("fullDescription")
+                          }
+                        }}
+                        onBlur={(html) => {
+                          field.onBlur()
+
+                          const contentLength = getRichTextCharacterCount(html)
+                          if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+                            triggerMaxLengthError(
+                              "fullDescription",
+                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            )
+                            return
+                          }
+
+                          if (
+                            fullDescriptionHasError &&
+                            get(errors, "fullDescription.message") ===
+                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                          ) {
+                            methods.clearErrors("fullDescription")
+                          }
+
+                          void trigger("fullDescription")
+                        }}
+                      />
+                    )}
+                  />
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="fullDescription"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
               </TabsContent>
 
               <TabsContent value="project-details">
-            <div id="publish-project-tags-field" className="space-y-1.5 mt-6">
-              <Controller
-                name="tags"
-                control={methods.control}
-                render={({ field: { onChange, ...field } }) => (
-                  <TagsInputRoot
-                    onValueChange={(details) => {
-                      if (details.value.length > 10) {
-                        methods.setError("tags", {
-                          type: "manual",
-                          message: "You can only add up to 10 tags",
-                        })
-                        return
-                      }
-                      methods.clearErrors("tags")
-                      onChange(details.value)
-                    }}
-                    {...field}
-                    className="space-y-1.5"
-                  >
-                    <TagsInputContext>
-                      {(tagsInput) => (
-                        <>
-                          <div className="space-y-0.5">
-                            <TagsInputLabel
-                              className="leading-9 text-dark-blue-400 font-semibold"
-                              size="lg"
-                            >
-                              Tags
-                            </TagsInputLabel>
-                            <div className="flex items-center justify-between">
-                              <HelperText size="sm">
-                                Add up to 10 tags that best describe your
-                                project. Use relevant keywords to highlight its
-                                features and make it easier to find.
-                              </HelperText>
-
-                              <span className="text-xs leading-[14.52px] text-gray-500">
-                                {projectInfoValues.tags?.length || 0}/10
-                              </span>
-                            </div>
-                          </div>
-                          <TagsInputControl className="relative pr-[28px]">
-                            {tagsInput.value.map((value, index) => (
-                              <TagsInputItem
-                                key={index}
-                                index={index}
-                                value={value}
-                              >
-                                <TagsInputItemPreview
-                                  visual="primary"
-                                  size="md"
-                                  className="pr-2 text-primary-500 bg-primary-50"
-                                >
-                                  <TagsInputItemText>{value}</TagsInputItemText>
-                                  <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                    <X2 className="size-3" />
-                                  </TagsInputItemDeleteTrigger>
-                                </TagsInputItemPreview>
-                                <TagsInputItemInput />
-                              </TagsInputItem>
-                            ))}
-                            <TagsInputInput
-                              options={tagOptions}
-                              placeholder="Add Tags"
-                              allowCreateOption
-                              onInputValueChange={(value) => {
-                                fetchTypeAutocomplete(
-                                  "search_keywords",
-                                  value,
-                                  setTagOptions
-                                )
-                              }}
-                            />
-
-                            <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                          </TagsInputControl>
-                        </>
-                      )}
-                    </TagsInputContext>
-                    <TagsInputHiddenInput />
-                  </TagsInputRoot>
-                )}
-              />
-
-              <HookFormErrorMessage
-                errors={errors}
-                name="tags"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            <div id="publish-project-skills-field" className="space-y-1.5 mt-6">
-              <Controller
-                name="skills"
-                control={methods.control}
-                render={({ field: { onChange, ...field } }) => (
-                  <TagsInputRoot
-                    onValueChange={(details) => {
-                      if (details.value.length > 10) {
-                        methods.setError("skills", {
-                          type: "manual",
-                          message: "You can only add up to 10 skills",
-                        })
-                        return
-                      }
-                      methods.clearErrors("skills")
-                      onChange(details.value)
-                    }}
-                    {...field}
-                    className="space-y-1.5"
-                  >
-                    <TagsInputContext>
-                      {(tagsInput) => (
-                        <>
-                          <div className="space-y-0.5">
-                            <TagsInputLabel
-                              className="leading-9 text-dark-blue-400 font-semibold"
-                              size="lg"
-                            >
-                              Skills
-                            </TagsInputLabel>
-                            <div className="flex items-center justify-between">
-                              <HelperText size="sm">
-                                List up to 10 key skills or proficiencies
-                                required to implement this project effectively.
-                              </HelperText>
-
-                              <span className="text-xs leading-[14.52px] text-gray-500">
-                                {projectInfoValues.skills?.length || 0}/10
-                              </span>
-                            </div>
-                          </div>
-                          <TagsInputControl className="relative pr-[28px]">
-                            {tagsInput.value.map((value, index) => (
-                              <TagsInputItem
-                                key={index}
-                                index={index}
-                                value={value}
-                              >
-                                <TagsInputItemPreview
-                                  visual="primary"
-                                  size="md"
-                                  className="pr-2 text-primary-500 bg-primary-50"
-                                >
-                                  <TagsInputItemText>{value}</TagsInputItemText>
-                                  <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                    <X2 className="size-3" />
-                                  </TagsInputItemDeleteTrigger>
-                                </TagsInputItemPreview>
-                                <TagsInputItemInput />
-                              </TagsInputItem>
-                            ))}
-                            <TagsInputInput
-                              options={skills}
-                              placeholder="Add Skills"
-                              allowCreateOption
-                              onInputValueChange={(value) => {
-                                fetchTypeAutocomplete(
-                                  "skills",
-                                  value,
-                                  setSkills
-                                )
-                              }}
-                            />
-
-                            <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                          </TagsInputControl>
-                        </>
-                      )}
-                    </TagsInputContext>
-                    <TagsInputHiddenInput />
-                  </TagsInputRoot>
-                )}
-              />
-
-              <HookFormErrorMessage
-                errors={errors}
-                name="skills"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
-
-            {getIsNotEmpty(suggestedSkillsForDisplay) ? (
-              <div className="mt-6 space-y-1.5">
-                <span className="block text-xs leading-5 text-dark-blue-400">
-                  Suggested Skills
-                </span>
-
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
-                  {suggestedSkillsForDisplay.map((suggestedSkill, index) => (
-                    <Badge
-                      size="md"
-                      className="pr-2 bg-primary-50 focus-visible:outline-none text-primary-500"
-                      visual="primary"
-                      key={index}
-                      asChild
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const next = projectInfoValues.skills
-                            ? [...projectInfoValues.skills, suggestedSkill]
-                            : [suggestedSkill]
-
-                          // tell RHF this field changed and should be validated
-                          setValue("skills", next, {
-                            shouldDirty: true,
-                            shouldValidate: true,
-                          })
+                <div
+                  id="publish-project-tags-field"
+                  className="space-y-1.5 mt-6"
+                >
+                  <Controller
+                    name="tags"
+                    control={methods.control}
+                    render={({ field: { onChange, ...field } }) => (
+                      <TagsInputRoot
+                        onValueChange={(details) => {
+                          if (details.value.length > 10) {
+                            methods.setError("tags", {
+                              type: "manual",
+                              message: "You can only add up to 10 tags",
+                            })
+                            return
+                          }
+                          onChange(details.value)
+                          void methods.trigger("tags")
                         }}
+                        {...field}
+                        className="space-y-1.5"
                       >
-                        {suggestedSkill}
-                        <Plus2 className="size-3 opacity-50 hover:opacity-100" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <div
-              id="publish-project-industry-field"
-              className="space-y-1.5 mt-6"
-            >
-              <Controller
-                name="industry"
-                control={methods.control}
-                render={({ field: { onChange, ...field } }) => (
-                  <TagsInputRoot
-                    onValueChange={(details) => {
-                      if (details.value.length > 5) {
-                        methods.setError("industry", {
-                          type: "manual",
-                          message: "You can only add up to 5 industries",
-                        })
-                        return
-                      }
-                      methods.clearErrors("industry")
-                      onChange(details.value)
-                    }}
-                    {...field}
-                    className="space-y-1.5"
-                  >
-                    <TagsInputContext>
-                      {(tagsInput) => (
-                        <>
-                          <div className="space-y-0.5">
-                            <TagsInputLabel
-                              className="leading-9 text-dark-blue-400 font-semibold"
-                              size="lg"
-                            >
-                              Industries
-                            </TagsInputLabel>
-                            <div className="flex items-center justify-between">
-                              <HelperText size="sm">
-                                Add up to 5 industries that align with your
-                                project scope for targeted visibility.
-                              </HelperText>
-
-                              <span className="text-xs leading-[14.52px] text-gray-500">
-                                {projectInfoValues.industry?.length || 0}/5
-                              </span>
-                            </div>
-                          </div>
-                          <TagsInputControl className="relative pr-[28px]">
-                            {tagsInput.value.map((value, index) => (
-                              <TagsInputItem
-                                key={index}
-                                index={index}
-                                value={value}
-                              >
-                                <TagsInputItemPreview
-                                  visual="primary"
-                                  size="md"
-                                  className="pr-2 text-primary-500 bg-primary-50"
+                        <TagsInputContext>
+                          {(tagsInput) => (
+                            <>
+                              <div className="space-y-0.5">
+                                <TagsInputLabel
+                                  className="leading-9 text-dark-blue-400 font-semibold"
+                                  size="lg"
                                 >
-                                  <TagsInputItemText>{value}</TagsInputItemText>
-                                  <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
-                                    <X2 className="size-3" />
-                                  </TagsInputItemDeleteTrigger>
-                                </TagsInputItemPreview>
-                                <TagsInputItemInput />
-                              </TagsInputItem>
-                            ))}
-                            <TagsInputInput
-                              options={industryOptions}
-                              placeholder="Add Industries"
-                              allowCreateOption
-                              onInputValueChange={(value) => {
-                                fetchTypeAutocomplete(
-                                  "industries",
-                                  value,
-                                  setIndustryOptions
-                                )
+                                  Tags
+                                </TagsInputLabel>
+                                <div className="flex items-center justify-between">
+                                  <HelperText size="sm">
+                                    Add up to 10 tags that best describe your
+                                    project. Use relevant keywords to highlight
+                                    its features and make it easier to find.
+                                  </HelperText>
+
+                                  <span className="text-xs leading-[14.52px] text-gray-500">
+                                    {projectInfoValues.tags?.length || 0}/10
+                                  </span>
+                                </div>
+                              </div>
+                              <TagsInputControl className="relative pr-[28px]">
+                                {tagsInput.value.map((value, index) => (
+                                  <TagsInputItem
+                                    key={index}
+                                    index={index}
+                                    value={value}
+                                  >
+                                    <TagsInputItemPreview
+                                      visual="primary"
+                                      size="md"
+                                      className="pr-2 text-primary-500 bg-primary-50"
+                                    >
+                                      <TagsInputItemText>
+                                        {value}
+                                      </TagsInputItemText>
+                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                        <X2 className="size-3" />
+                                      </TagsInputItemDeleteTrigger>
+                                    </TagsInputItemPreview>
+                                    <TagsInputItemInput />
+                                  </TagsInputItem>
+                                ))}
+                                <TagsInputInput
+                                  options={tagOptions}
+                                  placeholder="Add Tags"
+                                  allowCreateOption
+                                  portalDropdown
+                                  onInputValueChange={(value) => {
+                                    fetchTypeAutocomplete(
+                                      "search_keywords",
+                                      value,
+                                      setTagOptions
+                                    )
+                                  }}
+                                />
+
+                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                              </TagsInputControl>
+                            </>
+                          )}
+                        </TagsInputContext>
+                        <TagsInputHiddenInput />
+                      </TagsInputRoot>
+                    )}
+                  />
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="tags"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
+
+                <div
+                  id="publish-project-skills-field"
+                  className="space-y-1.5 mt-6"
+                >
+                  <Controller
+                    name="skills"
+                    control={methods.control}
+                    render={({ field: { onChange, ...field } }) => (
+                      <TagsInputRoot
+                        onValueChange={(details) => {
+                          if (details.value.length > 10) {
+                            methods.setError("skills", {
+                              type: "manual",
+                              message: "You can only add up to 10 skills",
+                            })
+                            return
+                          }
+                          onChange(details.value)
+                          void methods.trigger("skills")
+                        }}
+                        {...field}
+                        className="space-y-1.5"
+                      >
+                        <TagsInputContext>
+                          {(tagsInput) => (
+                            <>
+                              <div className="space-y-0.5">
+                                <TagsInputLabel
+                                  className="leading-9 text-dark-blue-400 font-semibold"
+                                  size="lg"
+                                >
+                                  Skills
+                                </TagsInputLabel>
+                                <div className="flex items-center justify-between">
+                                  <HelperText size="sm">
+                                    List up to 10 key skills or proficiencies
+                                    required to implement this project
+                                    effectively.
+                                  </HelperText>
+
+                                  <span className="text-xs leading-[14.52px] text-gray-500">
+                                    {projectInfoValues.skills?.length || 0}/10
+                                  </span>
+                                </div>
+                              </div>
+                              <TagsInputControl className="relative pr-[28px]">
+                                {tagsInput.value.map((value, index) => (
+                                  <TagsInputItem
+                                    key={index}
+                                    index={index}
+                                    value={value}
+                                  >
+                                    <TagsInputItemPreview
+                                      visual="primary"
+                                      size="md"
+                                      className="pr-2 text-primary-500 bg-primary-50"
+                                    >
+                                      <TagsInputItemText>
+                                        {value}
+                                      </TagsInputItemText>
+                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                        <X2 className="size-3" />
+                                      </TagsInputItemDeleteTrigger>
+                                    </TagsInputItemPreview>
+                                    <TagsInputItemInput />
+                                  </TagsInputItem>
+                                ))}
+                                <TagsInputInput
+                                  options={skills}
+                                  placeholder="Add Skills"
+                                  allowCreateOption
+                                  portalDropdown
+                                  onInputValueChange={(value) => {
+                                    fetchTypeAutocomplete(
+                                      "skills",
+                                      value,
+                                      setSkills
+                                    )
+                                  }}
+                                />
+
+                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                              </TagsInputControl>
+                            </>
+                          )}
+                        </TagsInputContext>
+                        <TagsInputHiddenInput />
+                      </TagsInputRoot>
+                    )}
+                  />
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="skills"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
+
+                {getIsNotEmpty(suggestedSkillsForDisplay) ? (
+                  <div className="mt-6 space-y-1.5">
+                    <span className="block text-xs leading-5 text-dark-blue-400">
+                      Suggested Skills
+                    </span>
+
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 max-w-full">
+                      {suggestedSkillsForDisplay.map(
+                        (suggestedSkill, index) => (
+                          <Badge
+                            size="md"
+                            className="pr-2 bg-primary-50 focus-visible:outline-none text-primary-500"
+                            visual="primary"
+                            key={index}
+                            asChild
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = projectInfoValues.skills
+                                  ? [
+                                      ...projectInfoValues.skills,
+                                      suggestedSkill,
+                                    ]
+                                  : [suggestedSkill]
+
+                                // tell RHF this field changed and should be validated
+                                setValue("skills", next, {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                })
                               }}
-                            />
-
-                            <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
-                          </TagsInputControl>
-                        </>
+                            >
+                              {suggestedSkill}
+                              <Plus2 className="size-3 opacity-50 hover:opacity-100" />
+                            </button>
+                          </Badge>
+                        )
                       )}
-                    </TagsInputContext>
-                    <TagsInputHiddenInput />
-                  </TagsInputRoot>
-                )}
-              />
+                    </div>
+                  </div>
+                ) : null}
 
-              <HookFormErrorMessage
-                errors={errors}
-                name="industry"
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
+                <div
+                  id="publish-project-industry-field"
+                  className="space-y-1.5 mt-6"
+                >
+                  <Controller
+                    name="industry"
+                    control={methods.control}
+                    render={({ field: { onChange, ...field } }) => (
+                      <TagsInputRoot
+                        onValueChange={(details) => {
+                          if (details.value.length > 5) {
+                            methods.setError("industry", {
+                              type: "manual",
+                              message: "You can only add up to 5 industries",
+                            })
+                            return
+                          }
+                          onChange(details.value)
+                          void methods.trigger("industry")
+                        }}
+                        {...field}
+                        className="space-y-1.5"
+                      >
+                        <TagsInputContext>
+                          {(tagsInput) => (
+                            <>
+                              <div className="space-y-0.5">
+                                <TagsInputLabel
+                                  className="leading-9 text-dark-blue-400 font-semibold"
+                                  size="lg"
+                                >
+                                  Industries
+                                </TagsInputLabel>
+                                <div className="flex items-center justify-between">
+                                  <HelperText size="sm">
+                                    Add up to 5 industries that align with your
+                                    project scope for targeted visibility.
+                                  </HelperText>
+
+                                  <span className="text-xs leading-[14.52px] text-gray-500">
+                                    {projectInfoValues.industry?.length || 0}/5
+                                  </span>
+                                </div>
+                              </div>
+                              <TagsInputControl className="relative pr-[28px]">
+                                {tagsInput.value.map((value, index) => (
+                                  <TagsInputItem
+                                    key={index}
+                                    index={index}
+                                    value={value}
+                                  >
+                                    <TagsInputItemPreview
+                                      visual="primary"
+                                      size="md"
+                                      className="pr-2 text-primary-500 bg-primary-50"
+                                    >
+                                      <TagsInputItemText>
+                                        {value}
+                                      </TagsInputItemText>
+                                      <TagsInputItemDeleteTrigger className="opacity-50 hover:opacity-100">
+                                        <X2 className="size-3" />
+                                      </TagsInputItemDeleteTrigger>
+                                    </TagsInputItemPreview>
+                                    <TagsInputItemInput />
+                                  </TagsInputItem>
+                                ))}
+                                <TagsInputInput
+                                  options={industryOptions}
+                                  placeholder="Add Industries"
+                                  allowCreateOption
+                                  portalDropdown
+                                  onInputValueChange={(value) => {
+                                    fetchTypeAutocomplete(
+                                      "industries",
+                                      value,
+                                      setIndustryOptions
+                                    )
+                                  }}
+                                />
+
+                                <SearchMd className="size-4 shrink-0 absolute inset-y-0 right-3 my-auto text-gray-400" />
+                              </TagsInputControl>
+                            </>
+                          )}
+                        </TagsInputContext>
+                        <TagsInputHiddenInput />
+                      </TagsInputRoot>
+                    )}
+                  />
+
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="industry"
+                    render={({ message }) => (
+                      <ErrorMessage size="sm">{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
               </TabsContent>
             </Tabs>
           </div>
@@ -3530,12 +3883,13 @@ const mediaFormSchema = z
         }
       )
       .optional(),
+    hiddenImages: z.array(z.string()).optional(),
   })
   .refine(
     (data) => data.featuredImages.every((value) => value.progress === 100),
     {
       message: "Please let the images get uploaded to the server",
-      path: ["featuredImage"],
+      path: ["featuredImages"],
     }
   )
   .refine(
@@ -3552,9 +3906,23 @@ const mediaFormSchema = z
             )
             .optional()
         )
-        .safeParse(data.additionalImages),
+        .safeParse(data.additionalImages).success,
     {
       message: "Please let the images get uploaded to the server",
+      path: ["additionalImages"],
+    }
+  )
+  .refine(
+    (data) => {
+      const additionalCount = (data.additionalImages ?? [])
+        .flat()
+        .filter((item) => item?.meta && item.progress === 100).length
+      const hasVideo = Boolean(data.featuredVideo?.trim())
+      return additionalCount >= (hasVideo ? 2 : 3)
+    },
+    {
+      message:
+        "Add at least 3 additional images, or a featured video and 2 images, to publish.",
       path: ["additionalImages"],
     }
   )
@@ -3571,6 +3939,7 @@ type MediaFormValues = {
     meta: any
   }[][]
   featuredVideo: string
+  hiddenImages?: string[]
 }
 
 const MEDIA_VALIDATION_TARGETS: Array<{
@@ -3601,6 +3970,24 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
     setValue,
   } = useMediaContext()
 
+  const formHiddenImages =
+    (useWatch({ control, name: "hiddenImages" }) as string[] | undefined) ?? []
+  const hiddenKey = formHiddenImages.join("|")
+  const [hiddenImages, setHiddenImages] = useState<string[]>([])
+  useEffect(() => {
+    setHiddenImages(formHiddenImages)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hiddenKey])
+  const setHiddenForUrl = (url: string, hidden: boolean) => {
+    const next = hidden
+      ? hiddenImages.includes(url)
+        ? hiddenImages
+        : [...hiddenImages, url]
+      : hiddenImages.filter((u) => u !== url)
+    setHiddenImages(next)
+    setValue("hiddenImages", next, { shouldDirty: true })
+  }
+
   const { currentStep } = useStepRootContext()
   const [progressValue, setProgressValue] = useState(0)
 
@@ -3612,6 +3999,18 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
   const featuredImage = useWatch({ control, name: "featuredImages" })
   const additionalImages = useWatch({ control, name: "additionalImages" })
   const featuredVideo = useWatch({ control, name: "featuredVideo" })
+
+  const additionalUploadedCount = (additionalImages ?? [])
+    .flat()
+    .filter((item) => item?.meta && item?.progress === 100).length
+  const hasFeaturedVideo = Boolean(featuredVideo?.trim())
+  const mediaStarted = Boolean(
+    (Array.isArray(featuredImage) && featuredImage.length > 0) ||
+      additionalUploadedCount > 0 ||
+      hasFeaturedVideo
+  )
+  const showMediaCountError =
+    mediaStarted && additionalUploadedCount < (hasFeaturedVideo ? 2 : 3)
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(isMediaValid)
@@ -3770,7 +4169,7 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                     className="transition-colors duration-300"
                     size="lg"
                     icon
-                    value={value}
+                    value={value ?? []}
                     onValueChange={(value) => {
                       ref.current.forEach((cb) => cb())
                       ref.current.clear()
@@ -3843,26 +4242,42 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                     key={index}
                     name={`additionalImages.${index}`}
                     control={control}
-                    render={({ field: { value, onChange } }) => (
-                      <SquareShapeDropzone
-                        className="transition-colors duration-300"
-                        value={value}
-                        onValueChange={(value) => {
-                          onChange(
-                            value?.map((item) => ({ ...item, progress: 50 }))
-                          )
-                          window.setTimeout(() => {
+                    render={({ field: { value, onChange } }) => {
+                      const meta = value?.[0]?.meta
+                      const url =
+                        meta && isPersistedMediaFile(meta)
+                          ? meta.__persistedUrl
+                          : undefined
+                      return (
+                        <SquareShapeDropzone
+                          className="transition-colors duration-300"
+                          value={value}
+                          onValueChange={(value) => {
                             onChange(
-                              value?.map((item) => ({ ...item, progress: 100 }))
+                              value?.map((item) => ({ ...item, progress: 50 }))
                             )
-                          }, ONE_SECOND * 2)
-                          isSubmitted ? trigger("additionalImages") : noop
-                        }}
-                        onError={(message) =>
-                          setError(`additionalImages.${index}`, { message })
-                        }
-                      />
-                    )}
+                            window.setTimeout(() => {
+                              onChange(
+                                value?.map((item) => ({
+                                  ...item,
+                                  progress: 100,
+                                }))
+                              )
+                            }, ONE_SECOND * 2)
+                            isSubmitted ? trigger("additionalImages") : noop
+                          }}
+                          onError={(message) =>
+                            setError(`additionalImages.${index}`, { message })
+                          }
+                          isHidden={
+                            url ? hiddenImages.includes(url) : undefined
+                          }
+                          onToggleHidden={
+                            url ? (h) => setHiddenForUrl(url, h) : undefined
+                          }
+                        />
+                      )
+                    }}
                   />
                 ))}
               </div>
@@ -3874,6 +4289,13 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                   <ErrorMessage size="sm">{message}</ErrorMessage>
                 )}
               />
+
+              {showMediaCountError && !errors.additionalImages?.root && (
+                <ErrorMessage size="sm">
+                  Add at least 3 additional images, or a featured video and 2
+                  images, to publish.
+                </ErrorMessage>
+              )}
             </div>
 
             <div
@@ -4114,13 +4536,18 @@ const PhaseNameDialog = ({
   open,
   defaultName,
   placeholder = "Enter Phase Name",
+  showPhaseType = false,
+  disabledTypes = [],
 }: {
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  onAddPhaseName: (phaseName: string) => void
+  onAddPhaseName: (phaseName: string, phaseType?: PhaseType) => void
   defaultName?: string
   placeholder?: string
+  showPhaseType?: boolean
+  disabledTypes?: PhaseType[]
 }) => {
+  const [phaseType, setPhaseType] = useState<PhaseType | undefined>(undefined)
   const [isOpen, toggleIsOpen] = useControllableState({
     defaultValue: false,
     value: open,
@@ -4141,12 +4568,15 @@ const PhaseNameDialog = ({
   useEffect(() => {
     if (isOpen) {
       reset({ name: defaultName ?? "" })
+      setPhaseType(undefined)
     }
   }, [isOpen, defaultName, reset])
 
   const onSubmit: SubmitHandler<PhaseNameFormValues> = (values) => {
     const { name } = values
-    onAddPhaseName(name)
+    // Services require a phase type before the phase can be created.
+    if (showPhaseType && !phaseType) return
+    onAddPhaseName(name, showPhaseType ? phaseType : undefined)
 
     toggleIsOpen(false)
   }
@@ -4171,7 +4601,14 @@ const PhaseNameDialog = ({
                 id="phase-name"
                 className="text-gray-900"
                 placeholder={placeholder}
-                {...register("name")}
+                {...register("name", {
+                  onChange: (e) => {
+                    const v = e.target.value
+                    if (v && v[0] !== v[0].toUpperCase()) {
+                      e.target.value = v.charAt(0).toUpperCase() + v.slice(1)
+                    }
+                  },
+                })}
                 isInvalid={hookFormHasError({ errors, name: "name" })}
               />
               <HookFormErrorMessage
@@ -4180,6 +4617,41 @@ const PhaseNameDialog = ({
                 render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
               />
             </div>
+
+            {showPhaseType && (
+              <div className="space-y-1.5 mt-4">
+                <Label size="sm" className="text-dark-blue-400">
+                  Phase Type
+                </Label>
+                <Listbox value={phaseType} onChange={setPhaseType}>
+                  <ListboxButton placeholder="Select phase type">
+                    {({ value }) => (
+                      <span className="text-gray-black">
+                        {PHASE_TYPE_TITLE[value as PhaseType]}
+                      </span>
+                    )}
+                  </ListboxButton>
+                  <ListboxOptions>
+                    <ListboxOption
+                      value="setup"
+                      disabled={disabledTypes.includes("setup")}
+                    >
+                      Setup
+                    </ListboxOption>
+                    <ListboxOption value="recurring">Recurring</ListboxOption>
+                    <ListboxOption
+                      value="ongoing"
+                      disabled={disabledTypes.includes("ongoing")}
+                    >
+                      Ongoing
+                    </ListboxOption>
+                  </ListboxOptions>
+                </Listbox>
+                <p className="text-xs font-light text-gray-500">
+                  Helps organize tasks by timing and frequency
+                </p>
+              </div>
+            )}
 
             <DialogFooter className="mt-8 grid gap-x-3">
               <DialogClose asChild>
@@ -4763,12 +5235,17 @@ type PhaseRow = Prettify<
     role?: string
     location?: string
     experience?: string
+    assignedMember?: TeamMember | null
+    assigneeUserId?: string | null
   } & TaskFormValues
 >
 
 interface Phase {
   phaseName?: string
   rows?: PhaseRow[]
+  phaseType?: PhaseType
+  recurrenceSchedule?: RecurrenceSchedule
+  recurrenceCount?: number
 }
 
 const getPhaseDurationInDays = (phase?: Phase) => {
@@ -4885,35 +5362,133 @@ const columns = [
     header: "Task Name",
   }),
   columnHelper.accessor("role", {
-    cell: ({ getValue, row: { index }, column: { id }, table }) => {
+    cell: ({ row: { index, original }, table }) => {
+      const value = original.role ?? ""
+      const teamMembers = table.options.meta?.teamMembers ?? []
+      const allRoles = table.options.meta?.roles ?? []
+      const member =
+        original.assignedMember ??
+        teamMembers.find((m) => m.id === original.assigneeUserId) ??
+        null
       // eslint-disable-next-line
-      const [value, setValue] = useUncontrolledState({
-        defaultValue: getValue(),
-        onChange: (value) => table.options.meta?.updateData(index, id, value),
-      })
+      const [popoverOpen, setPopoverOpen] = useState(false)
+      // eslint-disable-next-line
+      const [addRoleOpen, setAddRoleOpen] = useState(false)
+
+      const handleSelectMember = (tm: TeamMember) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role: tm.role,
+          assignedMember: tm,
+          assigneeUserId: tm.id,
+          location: tm.location ?? "",
+        })
+        setPopoverOpen(false)
+      }
+
+      const handleSelectVacantRole = (role: string) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role,
+          assignedMember: null,
+          assigneeUserId: null,
+        })
+        setPopoverOpen(false)
+      }
+
+      const handleAddRole = () => {
+        setPopoverOpen(false)
+        setAddRoleOpen(true)
+      }
+
+      const handleAddRoleDone = (role: string) => {
+        table.options.meta?.batchUpdateData?.(index, {
+          role,
+          assignedMember: null,
+          assigneeUserId: null,
+        })
+      }
+
+      const pickerPopover = (
+        <>
+          <PopoverContent className="w-[220px] pb-2 px-0 pt-0 z-50 bg-white border-gray-100 rounded-lg border shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
+            <RolePicker
+              teamMembers={teamMembers}
+              roles={allRoles}
+              onSelectMember={handleSelectMember}
+              onSelectRole={handleSelectVacantRole}
+              onAddRole={handleAddRole}
+            />
+          </PopoverContent>
+          <AddRoleDialog
+            open={addRoleOpen}
+            onOpenChange={setAddRoleOpen}
+            roles={allRoles}
+            onDone={handleAddRoleDone}
+          />
+        </>
+      )
+
+      if (member) {
+        return (
+          <TableCell className="py-4 px-3">
+            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+              <PopoverTrigger asChild>
+                <button className="focus-visible:outline-none inline-flex items-center gap-x-2 max-w-full transition duration-300 hover:bg-gray-50 rounded-md px-1.5 py-1 -mx-1.5 -my-1">
+                  <Avatar className="size-6 shrink-0">
+                    {member.avatarUrl ? (
+                      <AvatarImage
+                        src={member.avatarUrl}
+                        alt={member.firstName}
+                      />
+                    ) : null}
+                    <AvatarFallback className="text-[10px]">
+                      {member.firstName.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 text-left">
+                    <p className="text-xs font-medium text-gray-900 truncate leading-tight">
+                      {member.firstName}
+                      <span className="text-gray-400 font-normal ml-0.5">
+                        @{member.username}...
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-gray-500 truncate leading-tight">
+                      {member.role}
+                    </p>
+                  </div>
+                </button>
+              </PopoverTrigger>
+              {pickerPopover}
+            </Popover>
+          </TableCell>
+        )
+      }
 
       return (
-        <TableCell className="py-4 px-6">
-          <OwnCombobox
-            value={value}
-            onValueChange={setValue}
-            placeholder="Add Role"
-            options={table.options.meta?.roles}
-            triggerClassName="max-w-full"
-          />
+        <TableCell className="py-4 px-3">
+          <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className={cn(
+                  "focus-visible:outline-none transition duration-300 border border-transparent hover:border-gray-300 h-7 px-[8px] rounded-[5px] border-dashed hover:bg-gray-100 shrink-0 text-sm leading-[16.94px] truncate whitespace-nowrap max-w-full",
+                  value ? "text-gray-600" : "text-gray-400"
+                )}
+              >
+                <span className="block truncate">{value || "Add Role"}</span>
+              </button>
+            </PopoverTrigger>
+            {pickerPopover}
+          </Popover>
         </TableCell>
       )
     },
-    header: "Role",
+    header: "Team Member",
   }),
   columnHelper.accessor("location", {
     cell: ({ getValue, row: { index }, column: { id }, table }) => {
       // eslint-disable-next-line
       const [value, setValue] = useUncontrolledState({
-        defaultValue: getValue(),
-        onChange: () => {
-          table.options.meta?.updateData(index, id, value)
-        },
+        defaultValue: countryFromLocation(getValue()),
+        onChange: (value) => table.options.meta?.updateData(index, id, value),
       })
       return (
         <TableCell className="px-3 py-4">
@@ -4972,6 +5547,7 @@ interface PhaseTableProps {
   rows: PhaseRow[]
   onRowsChange: (rows: PhaseRow[]) => void
   openDurationDialog: (index: number) => void
+  teamMembers: TeamMember[]
 }
 
 const ROLES = [
@@ -5065,6 +5641,7 @@ const PhaseTable = ({
   rows,
   onRowsChange,
   openDurationDialog,
+  teamMembers,
 }: PhaseTableProps) => {
   const [data, setData] = useControllableState({
     value: rows,
@@ -5093,8 +5670,16 @@ const PhaseTable = ({
           })
         )
       },
+      batchUpdateData: (rowIndex, patch) => {
+        setData((prev) =>
+          prev.map((row, index) =>
+            index === rowIndex ? ({ ...row, ...patch } as PhaseRow) : row
+          )
+        )
+      },
       openDurationDialog,
       roles: ROLES,
+      teamMembers,
     },
   })
 
@@ -5237,8 +5822,12 @@ const ProjectScope = ({
 }: {
   setProgress?: (val: number) => void
 }) => {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
   const lastUndo = useRef<null | (() => void)>(null)
+  const handledCheckoutActionRef = useRef(false)
   const [taskDialogState, setTaskDialogState] = useState<TaskDialogState>({
     editingPhaseIndex: null,
     open: false,
@@ -5254,11 +5843,84 @@ const ProjectScope = ({
     defaultPhaseNameDialogState
   )
   const [accordionState, setAccordionState] = useState(["item-0"])
+  const [scopeTeam, setScopeTeam] = useState<TeamMember[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await TeamsAPI.getMyTeam()
+        const data = res?.data?.data ?? res?.data
+        const roster = Array.isArray(data?.members) ? data.members : []
+        const mapped: TeamMember[] = roster.map((m: any) => {
+          const jobTitleList = Array.isArray(m.jobTitles)
+            ? m.jobTitles
+                .map((j: any) =>
+                  typeof j === "string" ? j : (j?.jobTitle ?? j?.headline ?? "")
+                )
+                .filter(Boolean)
+            : []
+          const jobTitle = m.recentJobTitle || jobTitleList[0] || ""
+          return {
+            id: m.userId || m.id,
+            firstName: m.firstName || m.username || "User",
+            username: m.username || "",
+            avatarUrl: m.avatarUrl || null,
+            role: jobTitle,
+            jobTitles: jobTitleList,
+            hourlyRate: m.hourlyRate ?? m.rateMax ?? null,
+            workSchedule: m.workSchedule ?? null,
+            customHoursPerWeek: m.customHoursPerWeek ?? null,
+            location: m.location ?? m.country ?? null,
+            experience: m.experience ?? m.experienceLevel ?? null,
+          }
+        })
+        if (!cancelled) setScopeTeam(mapped)
+      } catch {
+        /* roster fetch failed — picker shows empty state */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const {
     projectScopeMethods,
     isTaskSearchDialogOpen,
     setTaskSearchDialogOpen,
+    teamMemberIds,
+    pricingBudgetCents,
+    scopeType,
+    setScopeType,
+    draftProjectId,
   } = useProjectScopeContext()
+  const isService = scopeType === "service"
+
+  const handleScopeTypeChange = (type: ScopeType) => {
+    if (type === scopeType) return
+    setScopeType(type)
+    if (draftProjectId) {
+      ProjectAPI.UpdateProjectDraft(draftProjectId, {
+        listingType: type,
+      }).catch(() => {})
+    }
+    toast({
+      variant: "success",
+      title: type === "service" ? "Switched to Service" : "Switched to Project",
+    })
+  }
+  // Scope assignees must be members ON this project (Chris 07-28) — the owner
+  // (self) plus added members — never the whole roster.
+  const scopeOwnerId = getCurrentUser()?.id
+  const projectTeam = useMemo(
+    () =>
+      scopeTeam.filter(
+        (m) =>
+          String(m.id) === String(scopeOwnerId) ||
+          teamMemberIds.includes(m.id)
+      ),
+    [scopeTeam, teamMemberIds, scopeOwnerId]
+  )
   const { toggleValidation } = useStepContext()
 
   const [projectScopeState, setProjectScopeState] = projectScopeMethods
@@ -5271,6 +5933,64 @@ const ProjectScope = ({
     },
   })
   const success = projectScopeSchema.safeParse(phases)
+
+  // Budget + duration computed from the scope (same helper/rate-card as the
+  // inline my-listings view) — replaces the hardcoded sidebar figures.
+  const { budgetTotalCents, durationLabel, durationDays } = React.useMemo(() => {
+    const scopePhases = Array.isArray(phases) ? phases : []
+    let totalDays = 0
+    for (const phase of scopePhases) {
+      const taskDays = (((phase as any)?.rows ?? []) as any[])
+        .map((row: any) => {
+          const dur = row?.duration
+          if (!dur) return 0
+          const val = Number(dur.value) || 0
+          if (val <= 0) return 0
+          if (dur.type === "weeks") return val * 7
+          if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+          return val
+        })
+        .filter((d: number) => d > 0)
+      if (taskDays.length > 0) totalDays += Math.max(...taskDays)
+    }
+    let label = "—"
+    if (totalDays > 0) {
+      if (totalDays < 7) {
+        label = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
+      } else if (totalDays < 28) {
+        const w = Math.max(1, Math.ceil(totalDays / 7))
+        label = `${w} Week${w !== 1 ? "s" : ""}`
+      } else {
+        const m = Math.max(1, Math.ceil(totalDays / 30))
+        label = `${m} Month${m !== 1 ? "s" : ""}`
+      }
+    }
+    const computedCents = estimateScopeBudgetCents(scopePhases)
+    return {
+      budgetTotalCents:
+        pricingBudgetCents > 0 ? pricingBudgetCents : computedCents,
+      durationLabel: label,
+      durationDays: totalDays,
+    }
+  }, [phases, pricingBudgetCents])
+
+  const formatBudget = React.useCallback(
+    (cents: number, period: string) => {
+      if (cents <= 0) return "$0"
+      const total = cents / 100
+      const periodDays: Record<string, number> = {
+        week: 7,
+        "2-week": 14,
+        month: 30,
+        quarter: 90,
+        year: 365,
+      }
+      const daysPerPeriod = periodDays[period] ?? 7
+      const numPeriods = Math.max(1, Math.ceil(durationDays / daysPerPeriod))
+      return `$${Math.round(total / numPeriods).toLocaleString()}`
+    },
+    [durationDays]
+  )
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(success)
@@ -5305,6 +6025,26 @@ const ProjectScope = ({
     },
     [phases]
   )
+
+  useEffect(() => {
+    if (handledCheckoutActionRef.current) return
+    if (searchParams.get("checkoutAction") !== "add-task") return
+    if (phases.length < 1) return
+
+    handledCheckoutActionRef.current = true
+    setAccordionState((current) =>
+      current.includes("item-0") ? current : [...current, "item-0"]
+    )
+    handleOpenTaskDialog(0)
+
+    const nextSearchParams = new URLSearchParams(searchParams.toString())
+    nextSearchParams.delete("checkoutStep")
+    nextSearchParams.delete("checkoutAction")
+    const nextQuery = nextSearchParams.toString()
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+      scroll: false,
+    })
+  }, [handleOpenTaskDialog, pathname, phases.length, router, searchParams])
 
   const handleRowsChange = useCallback(
     (phaseIndex: number, rows: PhaseRow[]) => {
@@ -5351,7 +6091,11 @@ const ProjectScope = ({
   )
 
   const onAddPhaseName = useCallback(
-    (phaseName: string) => {
+    (rawPhaseName: string, phaseType?: PhaseType) => {
+      const trimmedName = rawPhaseName.trim()
+      const phaseName = trimmedName
+        ? trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1)
+        : trimmedName
       const { action, editingPhaseIndex, addTo } = phaseDialogState
 
       if (action === "EDIT" && typeof editingPhaseIndex === "number") {
@@ -5402,14 +6146,40 @@ const ProjectScope = ({
           editingPhaseIndex >= 0 &&
           editingPhaseIndex < next.length
 
-        insertedPhaseIndex =
-          addTo === "start" && hasTargetPhase
-            ? editingPhaseIndex
-            : addTo === "below" && hasTargetPhase
-              ? editingPhaseIndex + 1
-              : next.length
+        if (phaseType) {
+          // Service ordering: Setup first, Ongoing last, Recurring before Ongoing.
+          const ongoingIdx = next.findIndex((p) => p.phaseType === "ongoing")
+          insertedPhaseIndex =
+            phaseType === "setup"
+              ? 0
+              : phaseType === "ongoing"
+                ? next.length
+                : ongoingIdx >= 0
+                  ? ongoingIdx
+                  : next.length
+        } else {
+          insertedPhaseIndex =
+            addTo === "start" && hasTargetPhase
+              ? editingPhaseIndex
+              : addTo === "below" && hasTargetPhase
+                ? editingPhaseIndex + 1
+                : next.length
+        }
 
-        next.splice(insertedPhaseIndex, 0, { phaseName })
+        next.splice(
+          insertedPhaseIndex,
+          0,
+          phaseType === "recurring"
+            ? {
+                phaseName,
+                phaseType,
+                recurrenceSchedule: "monthly",
+                recurrenceCount: 1,
+              }
+            : phaseType
+              ? { phaseName, phaseType }
+              : { phaseName }
+        )
         return next
       })
 
@@ -5445,6 +6215,19 @@ const ProjectScope = ({
       })
     },
     [phaseDialogState, setPhases, toast]
+  )
+
+  const updatePhaseRecurrence = useCallback(
+    (index: number, schedule: RecurrenceSchedule, count: number) => {
+      setPhases((prev) =>
+        prev.map((p, i) =>
+          i === index
+            ? { ...p, recurrenceSchedule: schedule, recurrenceCount: count }
+            : p
+        )
+      )
+    },
+    [setPhases]
   )
 
   const onAddTask = useCallback(
@@ -5845,14 +6628,20 @@ const ProjectScope = ({
                         <TooltipTrigger asChild>
                           <Info className="size-3.5 text-gray-400 cursor-help" />
                         </TooltipTrigger>
-                        <TooltipContent>Calculated from your scope tasks</TooltipContent>
+                        <TooltipContent>
+                          Calculated from your scope tasks
+                        </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </span>
                   <div className="mt-2 flex items-baseline gap-x-1.5">
-                    <span className="text-[28px] leading-none font-bold text-dark-blue-400">$5,000</span>
+                    <span className="text-[28px] leading-none font-bold text-dark-blue-400">
+                      {formatBudget(budgetTotalCents, "week")}
+                    </span>
                     <span className="text-sm text-dark-blue-400">per</span>
-                    <Badge visual="gray" className="rounded-[5px]">week</Badge>
+                    <Badge visual="gray" className="rounded-[5px]">
+                      week
+                    </Badge>
                   </div>
                 </div>
                 <ShieldDollar className="size-10 text-primary-500" />
@@ -5867,12 +6656,16 @@ const ProjectScope = ({
                         <TooltipTrigger asChild>
                           <Info className="size-3.5 text-gray-400 cursor-help" />
                         </TooltipTrigger>
-                        <TooltipContent>Total duration based on tasks</TooltipContent>
+                        <TooltipContent>
+                          Total duration based on tasks
+                        </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </span>
                   <div className="mt-2">
-                    <span className="text-[28px] leading-none font-bold text-dark-blue-400">6 Months</span>
+                    <span className="text-[28px] leading-none font-bold text-dark-blue-400">
+                      {isService ? "Ongoing" : durationLabel}
+                    </span>
                   </div>
                 </div>
                 <ChartBreakoutCircle className="size-10 text-primary-500" />
@@ -5881,10 +6674,54 @@ const ProjectScope = ({
 
             <div className="flex md:flex-row flex-col gap-y-6 md:gap-y-0 md:items-center justify-between">
               <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
-                Project Scope
+                {isService ? "Service" : "Project"} Scope
               </h1>
 
               <div className="flex items-center md:gap-x-3">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outlined" visual="gray">
+                      <RefreshCcw05 className="size-[15px]" />
+                      {isService ? "Service" : "Project"}
+                      <ChevronDown className="size-[15px]" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[280px]">
+                    <DropdownMenuItem
+                      className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      onClick={() => handleScopeTypeChange("project")}
+                    >
+                      <div className="flex items-center gap-x-2 w-full">
+                        {!isService && (
+                          <Check className="size-4 text-primary-500 shrink-0" />
+                        )}
+                        <span className="font-semibold text-sm text-gray-900">
+                          Project{!isService ? " (current)" : ""}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 ml-6">
+                        One-time job with a defined duration
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      onClick={() => handleScopeTypeChange("service")}
+                    >
+                      <div className="flex items-center gap-x-2 w-full">
+                        {isService && (
+                          <Check className="size-4 text-primary-500 shrink-0" />
+                        )}
+                        <span className="font-semibold text-sm text-gray-900">
+                          Service{isService ? " (current)" : ""}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 ml-6">
+                        Recurring work with consistent needs
+                      </span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                 <div className="flex items-center">
                   <Button
                     className="border-r-0 rounded-r-none"
@@ -5934,14 +6771,16 @@ const ProjectScope = ({
                     <AccordionItem value={`item-${index}`} asChild>
                       <div className="rounded-lg border border-gray-200 shadow-sm">
                         <div className="mb-3 flex items-start gap-x-4 px-3 pt-3">
-                          <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
-                            <div className="inline-flex items-center gap-x-3.5">
+                          <div className="flex flex-auto min-w-0 gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
+                            <div className="inline-flex items-center gap-x-3.5 min-w-0">
                               <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
                                 <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                               </AccordionTrigger>
 
                               <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                Phase {numberToWord(index)}{" "}
+                                {isService && phases[index]?.phaseType
+                                  ? PHASE_TYPE_TITLE[phases[index].phaseType!]
+                                  : `Phase ${numberToWord(index)}`}{" "}
                                 <button
                                   type="button"
                                   className="font-light hover:underline focus-visible:outline-none"
@@ -5957,14 +6796,18 @@ const ProjectScope = ({
                               </span>
                             </div>
 
-                            <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:w-[118px] md:pl-0">
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                {getPhaseDayRangeLabel(phases, index)}
-                              </span>
+                            <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:pl-0 shrink-0">
+                              <PhaseHeaderMeta
+                                phases={phases}
+                                index={index}
+                                onRecurrenceChange={(schedule, count) =>
+                                  updatePhaseRecurrence(index, schedule, count)
+                                }
+                              />
                             </div>
                           </div>
 
-                          <div className="flex gap-x-4 items-center">
+                          <div className="flex gap-x-4 items-center shrink-0">
                             <MoreDropdown
                               onSwapPhases={(to) => handleSwapPhases(index, to)}
                               openPhaseDialog={() =>
@@ -6016,6 +6859,7 @@ const ProjectScope = ({
                                 open: true,
                               })
                             }
+                            teamMembers={projectTeam}
                           />
                         </DisclosureContent>
                       </div>
@@ -6024,15 +6868,17 @@ const ProjectScope = ({
                     <AccordionItem value={`item-${index}`} asChild>
                       <div className="rounded-lg border border-gray-200 shadow-sm">
                         <div className="mb-3 flex items-start gap-x-4 px-3 pt-3">
-                          <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
-                            <div className="inline-flex items-center gap-x-3.5">
+                          <div className="flex flex-auto min-w-0 gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
+                            <div className="inline-flex items-center gap-x-3.5 min-w-0">
                               <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
                                 <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                               </AccordionTrigger>
 
                               <div className="inline-flex md:flex-row gap-x-1.5 flex-col md:items-center gap-y-3 md:gap-x-5">
                                 <span className="text-base md:text-[18px] font-semibold md:font-light leading-7 text-gray-900">
-                                  Phase {numberToWord(index)}
+                                  {isService && phases[index]?.phaseType
+                                    ? PHASE_TYPE_TITLE[phases[index].phaseType!]
+                                    : `Phase ${numberToWord(index)}`}
                                 </span>{" "}
                                 {phaseName ? (
                                   <button
@@ -6065,21 +6911,29 @@ const ProjectScope = ({
                                   </button>
                                 )}
                                 <div className="inline-block md:hidden">
-                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    {getPhaseDayRangeLabel(phases, index)}
-                                  </span>
+                                  <PhaseHeaderMeta
+                                    phases={phases}
+                                    index={index}
+                                    onRecurrenceChange={(schedule, count) =>
+                                      updatePhaseRecurrence(index, schedule, count)
+                                    }
+                                  />
                                 </div>
                               </div>
                             </div>
 
-                            <div className="hidden items-center justify-start gap-x-2 pl-10 md:inline-flex md:w-[118px] md:pl-0">
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                {getPhaseDayRangeLabel(phases, index)}
-                              </span>
+                            <div className="hidden items-center justify-start gap-x-2 pl-10 md:inline-flex md:pl-0 shrink-0">
+                              <PhaseHeaderMeta
+                                phases={phases}
+                                index={index}
+                                onRecurrenceChange={(schedule, count) =>
+                                  updatePhaseRecurrence(index, schedule, count)
+                                }
+                              />
                             </div>
                           </div>
 
-                          <div className="flex gap-x-4 items-center">
+                          <div className="flex gap-x-4 items-center shrink-0">
                             <MoreDropdown
                               onSwapPhases={(to) => handleSwapPhases(index, to)}
                               openPhaseDialog={() =>
@@ -6165,6 +7019,12 @@ const ProjectScope = ({
               open={phaseDialogState.open}
               onAddPhaseName={onAddPhaseName}
               defaultName={currentPhaseName}
+              showPhaseType={
+                isService && phaseDialogState.action !== "EDIT"
+              }
+              disabledTypes={phases
+                .map((p) => p.phaseType)
+                .filter((t): t is PhaseType => !!t)}
               placeholder={
                 phaseDialogState.action === "EDIT"
                   ? "Edit Phase name"
@@ -6257,12 +7117,174 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   >
   isTaskSearchDialogOpen: boolean
   setTaskSearchDialogOpen: React.Dispatch<React.SetStateAction<boolean>>
+  teamMemberIds: string[]
+  setTeamMemberIds: React.Dispatch<React.SetStateAction<string[]>>
+  draftProjectId: string | null
+  pricingBudgetCents: number
+  scopeType: ScopeType
+  setScopeType: React.Dispatch<React.SetStateAction<ScopeType>>
 }>({
   displayName: "MediaProvider",
   errorMessage: `useMediaContext returned is 'undefined'. Seems you forgot to wrap the components in "<MediaPopover />"`,
 })
 
 const Team = () => {
+  const [members, setMembers] = React.useState<any[]>([])
+  React.useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await TeamsAPI.getMyTeam()
+        const data = (res as any)?.data?.data ?? (res as any)?.data
+        const roster = Array.isArray(data?.members) ? data.members : []
+        if (!cancelled) setMembers(roster)
+      } catch {
+        /* no roster — render empty */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const currentUserId = getCurrentUser()?.id
+  const owner =
+    members.find((m: any) => m.role === "owner") ?? members[0] ?? null
+  const mapRole = (role?: string) =>
+    role === "owner" ? "Owner" : role === "lead" ? "Manager" : "Contributor"
+
+  const { teamMemberIds, setTeamMemberIds, draftProjectId, projectScopeMethods } =
+    useProjectScopeContext()
+  const inviteWindow = useInviteWindowStore()
+  const [addQuery, setAddQuery] = React.useState("")
+  const [wizardRoles, setWizardRoles] = React.useState<Record<string, string>>(
+    {}
+  )
+  const [wizardStatus, setWizardStatus] = React.useState<
+    Record<string, string>
+  >({})
+  const [wizardLeadLabel, setWizardLeadLabel] = React.useState("")
+  const [wizardLeadId, setWizardLeadId] = React.useState<string | null>(null)
+  const [wizardLeadSearch, setWizardLeadSearch] = React.useState("")
+  const { toast: wizardToast } = useToast()
+  const [wizardRemoveTarget, setWizardRemoveTarget] = React.useState<{
+    id: string
+    firstName: string
+  } | null>(null)
+  const confirmWizardRemove = (deactivate: boolean) => {
+    const t = wizardRemoveTarget
+    if (!t) return
+    if (deactivate) {
+      setWizardStatus((s) => ({ ...s, [t.id]: "Inactive" }))
+      wizardToast({
+        title: `${t.firstName} has been deactivated`,
+        variant: "success",
+      })
+    } else {
+      removeFromProject(t.id)
+      wizardToast({
+        title: `${t.firstName} has been removed`,
+        variant: "success",
+      })
+    }
+    setWizardRemoveTarget(null)
+  }
+
+  const inProject = (m: any) =>
+    m.role === "owner" || teamMemberIds.includes(String(m.userId || m.id))
+  const projectMembers = members.filter(inProject)
+  const addable = members.filter(
+    (m: any) =>
+      !inProject(m) &&
+      (m.firstName || m.username || "")
+        .toLowerCase()
+        .includes(addQuery.trim().toLowerCase())
+  )
+
+  const wizardHydratedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (!draftProjectId || wizardHydratedRef.current) return
+    ;(async () => {
+      try {
+        const res = await ProjectAPI.GetProjectMembers(draftProjectId)
+        const pm = ((res as any)?.data ?? []) as any[]
+        if (Array.isArray(pm) && pm.length > 0) {
+          const roles: Record<string, string> = {}
+          const statuses: Record<string, string> = {}
+          let leadId: string | null = null
+          let leadLabel = ""
+          for (const m of pm) {
+            const uid = String(m.userId)
+            if (m.projectRole) roles[uid] = m.projectRole
+            if (m.status) statuses[uid] = m.status
+            if (m.isLead) {
+              leadId = uid
+              leadLabel = m.leadLabel || ""
+            }
+          }
+          setWizardRoles(roles)
+          setWizardStatus(statuses)
+          if (leadId) setWizardLeadId(leadId)
+          if (leadLabel) setWizardLeadLabel(leadLabel)
+        }
+      } catch {
+        /* no members yet */
+      }
+      wizardHydratedRef.current = true
+    })()
+  }, [draftProjectId])
+
+  React.useEffect(() => {
+    if (!draftProjectId || !wizardHydratedRef.current) return
+    const payload = projectMembers.map((m: any) => {
+      const id = String(m.userId || m.id)
+      const isOwner = m.role === "owner" || m.userId === currentUserId
+      const isLead = wizardLeadId ? id === wizardLeadId : isOwner
+      return {
+        userId: id,
+        projectRole: isOwner ? "Owner" : (wizardRoles[id] ?? "Contributor"),
+        status: wizardStatus[id] ?? "Active",
+        isLead,
+        leadLabel: isLead ? wizardLeadLabel || null : null,
+      }
+    })
+    if (payload.length === 0) return
+    const t = setTimeout(() => {
+      ProjectAPI.SaveProjectMembers(draftProjectId, payload).catch(() => {})
+    }, 800)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wizardRoles, wizardStatus, wizardLeadId, wizardLeadLabel, teamMemberIds])
+
+  const persistTeam = (next: string[]) => {
+    setTeamMemberIds(next)
+    if (draftProjectId) {
+      ProjectAPI.UpdateProjectDraft(draftProjectId, {
+        teamMemberIds: next,
+      } as any).catch(() => {})
+    }
+  }
+  const addToProject = (userId: string) => {
+    persistTeam(Array.from(new Set([...teamMemberIds, String(userId)])))
+    setAddQuery("")
+  }
+  const removeFromProject = (userId: string) => {
+    if (wizardLeadId === String(userId)) setWizardLeadId(null)
+    persistTeam(teamMemberIds.filter((id) => id !== String(userId)))
+    const [, setPhases] = projectScopeMethods
+    setPhases((prev) =>
+      prev.map((phase) => ({
+        ...phase,
+        rows: (phase.rows ?? []).map((row) =>
+          String(row.assigneeUserId ?? row.assignedMember?.id ?? "") ===
+          String(userId)
+            ? { ...row, assigneeUserId: null, assignedMember: null }
+            : row
+        ),
+      }))
+    )
+  }
+
   return (
     <ScrollArea
       className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
@@ -6275,22 +7297,40 @@ const Team = () => {
             Team
           </h1>
           <p className="mt-2 text-sm text-gray-500">
-            Select a team member to transfer lead status and all related permissions for Project Title. Only an existing team member can be made the project lead. Read more about roles and permissions.
+            Select a team member to transfer lead status and all related
+            permissions for Project Title. Only an existing team member can be
+            made the project lead. Read more about roles and permissions.
           </p>
 
           {/* Project Owner */}
           <div className="mt-6">
-            <span className="text-sm font-semibold text-dark-blue-400">Project Owner</span>
+            <span className="text-sm font-semibold text-dark-blue-400">
+              Project Owner
+            </span>
             <div className="mt-3 flex items-center justify-between">
               <div className="flex items-center gap-x-3">
                 <Avatar size="md">
-                  <AvatarImage src="/man.jpg" alt="Chris" />
-                  <AvatarFallback>C</AvatarFallback>
+                  <AvatarImage
+                    src={owner?.avatarUrl || ""}
+                    alt={owner?.firstName || "Owner"}
+                  />
+                  <AvatarFallback>
+                    {(owner?.firstName || owner?.username || "?")
+                      .charAt(0)
+                      .toUpperCase()}
+                  </AvatarFallback>
                 </Avatar>
                 <div>
-                  <span className="text-sm font-bold text-dark-blue-400">Chris</span>
-                  <span className="text-sm font-light text-gray-500"> @ux23isee</span>
-                  <p className="text-xs font-light text-dark-blue-400">Full Stack Designer</p>
+                  <span className="text-sm font-bold text-dark-blue-400">
+                    {owner?.firstName || owner?.username || "—"}
+                  </span>
+                  <span className="text-sm font-light text-gray-500">
+                    {" "}
+                    @{owner?.username || ""}
+                  </span>
+                  <p className="text-xs font-light text-dark-blue-400">
+                    {owner ? "Project Owner" : ""}
+                  </p>
                 </div>
               </div>
               <Badge visual="primary" className="rounded-[4px] bg-primary-50">
@@ -6302,30 +7342,180 @@ const Team = () => {
           {/* Assign Project Lead & Select Label */}
           <div className="mt-8 grid grid-cols-2 gap-x-6">
             <div>
-              <span className="text-sm font-semibold text-dark-blue-400">Assign Project Lead</span>
+              <span className="text-sm font-semibold text-dark-blue-400">
+                Assign Project Lead
+              </span>
               <div className="mt-2">
-                <Listbox defaultValue="">
-                  <ListboxButton className="w-full h-[44px]" placeholder="Add user from team" />
-                  <ListboxOptions>
-                    <ListboxOption value="Chris">Chris</ListboxOption>
-                    <ListboxOption value="Sarah">Sarah</ListboxOption>
-                    <ListboxOption value="Laura">Laura</ListboxOption>
-                  </ListboxOptions>
-                </Listbox>
+                {wizardLeadId ? (
+                  (() => {
+                    const lead = members.find(
+                      (mm: any) => String(mm.userId || mm.id) === wizardLeadId
+                    )
+                    return lead ? (
+                      <div className="flex h-[44px] items-center justify-between rounded-lg border border-gray-200 px-3">
+                        <div className="flex items-center gap-x-2">
+                          <Avatar size="sm">
+                            <AvatarImage
+                              src={lead.avatarUrl || undefined}
+                              alt={lead.firstName}
+                            />
+                            <AvatarFallback>
+                              {(lead.firstName || "U").charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-semibold text-dark-blue-400">
+                            {lead.firstName || lead.username || "User"}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="text-sm font-semibold text-gray-700 hover:text-dark-blue-400 focus-visible:outline-none"
+                          onClick={() => setWizardLeadId(null)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : null
+                  })()
+                ) : (
+                  <>
+                    <InputGroup>
+                      <Input
+                        className="h-[44px]"
+                        placeholder="Search team members"
+                        value={wizardLeadSearch}
+                        onChange={(e) => setWizardLeadSearch(e.target.value)}
+                      />
+                      <InputLeftElement>
+                        <SearchMd className="text-gray-500 h-4 w-4" />
+                      </InputLeftElement>
+                    </InputGroup>
+                    {wizardLeadSearch &&
+                      (() => {
+                        const q = wizardLeadSearch.trim().toLowerCase()
+                        const candidates = members.filter(
+                          (mm: any) =>
+                            !q ||
+                            (mm.firstName || "").toLowerCase().includes(q) ||
+                            (mm.username || "").toLowerCase().includes(q)
+                        )
+                        return (
+                          <div className="mt-1 max-h-[240px] overflow-y-auto rounded-lg border border-gray-100 bg-white shadow-lg">
+                            {candidates.length > 0 ? (
+                              candidates.map((mm: any) => (
+                                <button
+                                  key={mm.userId || mm.id}
+                                  type="button"
+                                  className="flex w-full items-center gap-x-2 px-3 py-2 text-left hover:bg-gray-50"
+                                  onClick={() => {
+                                    setWizardLeadId(String(mm.userId || mm.id))
+                                    setWizardLeadSearch("")
+                                  }}
+                                >
+                                  <Avatar size="sm">
+                                    <AvatarImage
+                                      src={mm.avatarUrl || undefined}
+                                      alt={mm.firstName}
+                                    />
+                                    <AvatarFallback>
+                                      {(
+                                        mm.firstName ||
+                                        mm.username ||
+                                        "U"
+                                      ).charAt(0)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                    <span className="text-sm font-semibold text-dark-blue-400">
+                                      {mm.firstName || mm.username || "User"}
+                                    </span>
+                                    {mm.username && (
+                                      <span className="text-sm font-light text-gray-500">
+                                        {" "}
+                                        @{mm.username}
+                                      </span>
+                                    )}
+                                    {mm.userId === currentUserId && (
+                                      <span className="text-sm font-semibold text-dark-blue-400">
+                                        {" "}
+                                        (You)
+                                      </span>
+                                    )}
+                                    {mm.recentJobTitle && (
+                                      <p className="text-xs font-light text-dark-blue-400">
+                                        {mm.recentJobTitle}
+                                      </p>
+                                    )}
+                                  </div>
+                                </button>
+                              ))
+                            ) : (
+                              <div className="px-3 py-2 text-sm font-light text-gray-500">
+                                No matching members.
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
+                  </>
+                )}
               </div>
             </div>
             <div>
-              <span className="text-sm font-semibold text-dark-blue-400">Select label</span>
+              <span className="text-sm font-semibold text-dark-blue-400">
+                Select label
+              </span>
               <div className="mt-2">
-                <Listbox defaultValue="">
-                  <ListboxButton className="w-full h-[44px]" placeholder="None selected" />
-                  <ListboxOptions>
-                    <ListboxOption value="Project Lead">Project Lead</ListboxOption>
-                    <ListboxOption value="Account Manager">Account Manager</ListboxOption>
-                    <ListboxOption value="Technical Lead">Technical Lead</ListboxOption>
-                    <ListboxOption value="Design Lead">Design Lead</ListboxOption>
-                  </ListboxOptions>
-                </Listbox>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex h-[44px] w-full items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm hover:border-gray-300 focus-visible:outline-none"
+                    >
+                      <span
+                        className={
+                          wizardLeadLabel
+                            ? "text-dark-blue-400"
+                            : "text-gray-500"
+                        }
+                      >
+                        {wizardLeadLabel || "None selected"}
+                      </span>
+                      <ChevronDown className="size-4 text-gray-500" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    style={{
+                      width: "var(--radix-dropdown-menu-trigger-width)",
+                    }}
+                  >
+                    {[
+                      "Account Manager",
+                      "Project Manager",
+                      "Client Relations Manager",
+                      "Team Manager",
+                    ].map((l) => (
+                      <DropdownMenuItem
+                        key={l}
+                        onClick={() => setWizardLeadLabel(l)}
+                      >
+                        {l}
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => setWizardLeadLabel("Use Profile Job Title")}
+                    >
+                      Use Profile Job Title
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setWizardLeadLabel("Create Custom Label")}
+                    >
+                      Create Custom Label
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>
@@ -6336,84 +7526,207 @@ const Team = () => {
               <h2 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
                 Team Members
               </h2>
-              <Button variant="outlined" visual="gray">
+              <Button
+                variant="outlined"
+                visual="gray"
+                onClick={() => inviteWindow.toggle(true, "Invite Team Members")}
+              >
                 <Plus className="size-[15px]" />
                 Add Team Member
               </Button>
             </div>
 
             <div className="mt-4">
-              <h3 className="text-sm font-semibold text-dark-blue-400">All assignees (3)</h3>
+              <h3 className="text-sm font-semibold text-dark-blue-400">
+                All assignees ({projectMembers.length})
+              </h3>
               <p className="mt-1 text-xs font-light text-dark-blue-400">
-                View and manage all users currently assigned to Project name below.
+                View and manage all users currently assigned to Project name
+                below.
               </p>
             </div>
 
-            <div className="mt-4">
-              <span className="text-sm font-semibold text-dark-blue-400">Add team members to this project</span>
+            <div className="mt-4 relative">
+              <span className="text-sm font-semibold text-dark-blue-400">
+                Add team members to this project
+              </span>
               <InputGroup className="mt-2">
-                <Input placeholder="Add users to this project" />
+                <Input
+                  placeholder="Add users to this project"
+                  value={addQuery}
+                  onChange={(e) => setAddQuery(e.target.value)}
+                />
                 <InputLeftElement>
                   <SearchMd className="text-gray-500 h-4 w-4" />
                 </InputLeftElement>
               </InputGroup>
+              {addQuery.trim().length > 0 && addable.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)] overflow-hidden max-h-[232px] overflow-y-auto">
+                  {addable.map((m: any) => (
+                    <button
+                      key={m.userId || m.id}
+                      type="button"
+                      className="w-full flex items-center gap-x-2 px-3 py-2 text-left hover:bg-gray-50 transition duration-150"
+                      onClick={() => addToProject(m.userId || m.id)}
+                    >
+                      <Avatar className="size-6 shrink-0">
+                        {m.avatarUrl ? (
+                          <AvatarImage src={m.avatarUrl} alt={m.firstName} />
+                        ) : null}
+                        <AvatarFallback className="text-[10px]">
+                          {(m.firstName || m.username || "U")
+                            .charAt(0)
+                            .toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-gray-900 truncate leading-tight">
+                          {m.firstName || m.username || "User"}
+                          <span className="text-gray-400 font-normal ml-0.5">
+                            @{m.username}
+                          </span>
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="mt-6">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-xs font-medium text-gray-500">Name</TableHead>
-                    <TableHead className="text-xs font-medium text-gray-500">Project Role</TableHead>
-                    <TableHead className="text-xs font-medium text-gray-500">Status</TableHead>
+                    <TableHead className="text-xs font-medium text-gray-500">
+                      Name
+                    </TableHead>
+                    <TableHead className="text-xs font-medium text-gray-500">
+                      Project Role
+                    </TableHead>
+                    <TableHead className="text-xs font-medium text-gray-500">
+                      Status
+                    </TableHead>
                     <TableHead className="w-[40px]" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[
-                    { name: "Chris", username: "ux23isee", role: "Owner", status: "Active", you: true, avatar: "/man.jpg" },
-                    { name: "Sarah", username: "ux23isee", role: "Manager", status: "Active", avatar: "/woman.jpg" },
-                    { name: "Laura", username: "ux23isee", role: "Contributor", status: "Active", avatar: "/woman.jpg" },
-                    { name: "Tina", username: "ux23isee", role: "Contributor", status: "Inactive", avatar: "/woman.jpg" },
-                    { name: "Shelly", username: "ux23isee", role: "Contributor", status: "Inactive", avatar: "/woman.jpg" },
-                  ].map((member, mi) => (
-                    <TableRow key={mi}>
+                  {projectMembers.map((m: any, mi: number) => {
+                    const id = String(m.userId || m.id || "")
+                    const isOwner =
+                      m.role === "owner" || m.userId === currentUserId
+                    const member = {
+                      name: m.firstName || m.username || "User",
+                      username: m.username || "",
+                      you: m.userId === currentUserId,
+                      avatar: m.avatarUrl || "",
+                    }
+                    const role = isOwner
+                      ? "Owner"
+                      : (wizardRoles[id] ?? mapRole(m.role))
+                    const status = wizardStatus[id] ?? "Active"
+                    return (
+                    <TableRow key={m.userId || mi}>
                       <TableCell className="py-4">
                         <div className="flex items-center gap-x-3">
                           <Avatar size="sm">
-                            <AvatarImage src={member.avatar} alt={member.name} />
-                            <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
+                            <AvatarImage
+                              src={member.avatar}
+                              alt={member.name}
+                            />
+                            <AvatarFallback>
+                              {member.name.charAt(0)}
+                            </AvatarFallback>
                           </Avatar>
                           <div>
                             <span className="text-sm font-semibold text-dark-blue-400">
                               {member.name}
                             </span>
                             <span className="text-sm font-light text-gray-500">
-                              {" "}@{member.username}
+                              {" "}
+                              @{member.username}
                             </span>
                             {member.you && (
-                              <span className="text-sm font-semibold text-dark-blue-400"> (You)</span>
+                              <span className="text-sm font-semibold text-dark-blue-400">
+                                {" "}
+                                (You)
+                              </span>
                             )}
-                            <p className="text-xs font-light text-dark-blue-400">Full Stack Designer</p>
+                            <p className="text-xs font-light text-dark-blue-400">
+                              Full Stack Designer
+                            </p>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="py-4">
-                        <Listbox defaultValue={member.role}>
-                          <ListboxButton className="h-[36px] w-[140px] text-sm" placeholder="Select role" />
-                          <ListboxOptions>
-                            <ListboxOption value="Owner">Owner</ListboxOption>
-                            <ListboxOption value="Manager">Manager</ListboxOption>
-                            <ListboxOption value="Contributor">Contributor</ListboxOption>
-                          </ListboxOptions>
-                        </Listbox>
+                        {isOwner ? (
+                          <div className="inline-flex h-[36px] w-[150px] items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-500">
+                            Owner
+                            <ChevronDown className="size-4 opacity-50" />
+                          </div>
+                        ) : (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="inline-flex h-[36px] w-[150px] items-center justify-between rounded-lg border border-gray-200 bg-white px-3 text-sm text-dark-blue-400 hover:border-gray-300 focus-visible:outline-none"
+                              >
+                                {role}
+                                <ChevronDown className="size-4 text-gray-500" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="start"
+                              className="w-[288px]"
+                            >
+                              {["Manager", "Contributor", "Viewer"].map((r) => (
+                                <DropdownMenuItem
+                                  key={r}
+                                  className="flex flex-col items-start gap-0.5 py-2"
+                                  onClick={() =>
+                                    setWizardRoles((mr) => ({ ...mr, [id]: r }))
+                                  }
+                                >
+                                  <span className="flex items-center gap-x-2 text-sm font-semibold text-dark-blue-400">
+                                    {role === r ? (
+                                      <Check className="size-4 text-primary-500" />
+                                    ) : (
+                                      <span className="size-4" />
+                                    )}
+                                    {r}
+                                  </span>
+                                  <span className="pl-6 text-xs font-light text-gray-500">
+                                    This is where the role&apos;s permissions and
+                                    limitations are briefly explained.
+                                  </span>
+                                </DropdownMenuItem>
+                              ))}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-error-600 focus:text-error-600"
+                                onClick={() =>
+                                  setWizardRemoveTarget({
+                                  id: String(m.userId || m.id),
+                                  firstName: member.name,
+                                })
+                                }
+                              >
+                                <XCircle className="size-4" />
+                                Remove from project
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </TableCell>
                       <TableCell className="py-4">
-                        <span className={cn(
-                          "text-sm font-semibold",
-                          member.status === "Active" ? "text-success-500" : "text-gray-500"
-                        )}>
-                          {member.status}
+                        <span
+                          className={cn(
+                            "text-sm font-semibold",
+                            status === "Active"
+                              ? "text-success-500"
+                              : "text-gray-500"
+                          )}
+                        >
+                          {status}
                         </span>
                       </TableCell>
                       <TableCell className="py-4">
@@ -6423,14 +7736,52 @@ const Team = () => {
                               <MoreHorizontal className="size-4" />
                             </IconButton>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>View Profile</DropdownMenuItem>
-                            <DropdownMenuItem>Remove</DropdownMenuItem>
+                          <DropdownMenuContent
+                            align="end"
+                            className="w-[200px]"
+                          >
+                            <DropdownMenuItem>Manage User</DropdownMenuItem>
+                            <DropdownMenuItem>
+                              Assign Team Lead
+                            </DropdownMenuItem>
+                            <DropdownMenuItem>
+                              Transfer Ownership
+                            </DropdownMenuItem>
+                            {status === "Inactive" && (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setWizardStatus((s) => ({
+                                    ...s,
+                                    [id]: "Active",
+                                  }))
+                                }
+                              >
+                                Activate User
+                              </DropdownMenuItem>
+                            )}
+                            {!isOwner && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-error-600 focus:text-error-600"
+                                  onClick={() =>
+                                    setWizardRemoveTarget({
+                                  id: String(m.userId || m.id),
+                                  firstName: member.name,
+                                })
+                                  }
+                                >
+                                  <XCircle className="size-4" />
+                                  Remove from project
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -6440,18 +7791,117 @@ const Team = () => {
           <ProjectInfoTip showArrow />
         </div>
       </div>
+
+      <Dialog
+        open={!!wizardRemoveTarget}
+        onOpenChange={(o) => !o && setWizardRemoveTarget(null)}
+      >
+        <DialogContent className="max-w-[540px] p-0">
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-dark-blue-400">
+              Remove this user?
+            </h3>
+            <p className="mt-2 text-sm font-light text-gray-500">
+              <span className="font-semibold text-dark-blue-400">
+                {wizardRemoveTarget?.firstName}
+              </span>{" "}
+              will no longer have access to this project, including any tasks,
+              files, or chat threads previously assigned. This will not delete
+              any tasks, files, or comments.
+            </p>
+          </div>
+          <div className="flex items-center justify-between border-t border-gray-200 py-4 px-6">
+            <Button
+              type="button"
+              variant="link"
+              visual="gray"
+              onClick={() => setWizardRemoveTarget(null)}
+            >
+              <X className="size-[15px]" />
+              Cancel
+            </Button>
+            <div className="flex items-center gap-x-3">
+              <Button
+                variant="outlined"
+                visual="gray"
+                className="text-error-600"
+                onClick={() => confirmWizardRemove(true)}
+              >
+                Deactivate Instead
+              </Button>
+              <Button
+                variant="outlined"
+                visual="gray"
+                onClick={() => confirmWizardRemove(false)}
+              >
+                Yes, Remove
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </ScrollArea>
   )
+}
+
+type WizardFaq = { id: string; q: string; a: string }
+
+type RecentQuestion = {
+  id: string
+  question: string
+  answer: string | null
+  askedByName?: string | null
+  askedByUsername?: string | null
+  askedAt?: string | null
+  answeredByUserId?: string | null
+  answeredByName?: string | null
+  answeredByRole?: string | null
+  assignedToUserId?: string | null
+  hidden?: boolean
+  moderationFailed?: boolean
+}
+
+function HideToggle({
+  hidden,
+  moderationFailed,
+  onToggle,
+}: {
+  hidden: boolean
+  moderationFailed?: boolean
+  onToggle: (value: boolean) => void
+}) {
+  if (moderationFailed) {
+    return (
+      <TooltipProvider delayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Switch checked={hidden} disabled />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            This question can&apos;t be made visible because it didn&apos;t pass
+            content moderation.
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+  return <Switch checked={hidden} onCheckedChange={(v) => onToggle(!!v)} />
 }
 
 const SortableFaqItem = ({
   id,
   faq,
   index,
+  onChange,
+  onDelete,
 }: {
   id: string
   faq: { q: string; a: string }
   index: number
+  onChange: (id: string, patch: Partial<{ q: string; a: string }>) => void
+  onDelete: (id: string) => void
 }) => {
   const {
     attributes,
@@ -6471,7 +7921,12 @@ const SortableFaqItem = ({
   }
 
   return (
-    <AccordionItem ref={setNodeRef} style={style} value={id} className="rounded-lg border border-gray-200 bg-white">
+    <AccordionItem
+      ref={setNodeRef}
+      style={style}
+      value={id}
+      className="rounded-lg border border-gray-200 bg-white"
+    >
       <AccordionTrigger className="w-full p-4 flex items-center gap-3 [&[data-state=open]_.closed-icons]:hidden [&[data-state=closed]_.open-icons]:hidden [&[data-state=open]_.closed-text]:hidden [&[data-state=open]_.open-text]:inline">
         <button
           type="button"
@@ -6483,22 +7938,52 @@ const SortableFaqItem = ({
           <GripVertical2 />
         </button>
         <div className="min-w-0 flex-1 text-left">
-          <span className="text-sm font-bold text-dark-blue-400">Question {index + 1}<span className="closed-text">:</span></span>
+          <span className="text-sm font-bold text-dark-blue-400">
+            Question {index + 1}
+            <span className="closed-text">:</span>
+          </span>
           <span className="closed-text"> </span>
-          <span className="closed-text text-sm text-dark-blue-400">{faq.q}</span>
+          <span className="closed-text text-sm text-dark-blue-400">
+            {faq.q}
+          </span>
         </div>
         <div className="flex items-center gap-1">
           <span className="open-icons">
-            <IconButton asChild variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800">
-              <span><Check className="size-4" /></span>
+            <IconButton
+              asChild
+              variant="ghost"
+              visual="gray"
+              size="sm"
+              className="rounded-full text-gray-500 hover:text-gray-800"
+            >
+              <span>
+                <Check className="size-4" />
+              </span>
             </IconButton>
           </span>
           <span className="closed-icons">
-            <IconButton asChild variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800">
-              <span><Edit03 className="size-4" /></span>
+            <IconButton
+              asChild
+              variant="ghost"
+              visual="gray"
+              size="sm"
+              className="rounded-full text-gray-500 hover:text-gray-800"
+            >
+              <span>
+                <Edit03 className="size-4" />
+              </span>
             </IconButton>
           </span>
-          <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800" onClick={(e) => e.stopPropagation()}>
+          <IconButton
+            variant="ghost"
+            visual="gray"
+            size="sm"
+            className="rounded-full text-gray-500 hover:text-gray-800"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete(id)
+            }}
+          >
             <Trash2 className="size-4" />
           </IconButton>
         </div>
@@ -6507,14 +7992,25 @@ const SortableFaqItem = ({
         <p className="text-sm font-light text-dark-blue-400">
           Make this clear and concise, this is what customers will see first.
         </p>
-        <Input className="mt-2" defaultValue={faq.q} />
+        <Input
+          className="mt-2"
+          value={faq.q}
+          onChange={(e) => onChange(id, { q: e.target.value })}
+        />
         <div className="mt-4">
           <h3 className="text-sm font-bold text-dark-blue-400">Answer</h3>
           <p className="mt-1 text-sm font-light text-dark-blue-400">
-            Provide a detailed, helpful response that fully addresses the question
+            Provide a detailed, helpful response that fully addresses the
+            question
           </p>
         </div>
-        <Textarea className="mt-2" rows={4} defaultValue={faq.a} maxLength={300} />
+        <Textarea
+          className="mt-2"
+          rows={4}
+          value={faq.a}
+          onChange={(e) => onChange(id, { a: e.target.value })}
+          maxLength={300}
+        />
         <div className="mt-1 flex items-center justify-between">
           <Button variant="outlined" visual="gray" size="sm">
             <Stars02 className="size-[15px]" />
@@ -6527,19 +8023,242 @@ const SortableFaqItem = ({
   )
 }
 
-const Questions = () => {
+const Questions = ({
+  faqs,
+  setFaqs,
+  draftProjectId,
+  onRecentQuestionsChange,
+  publishAttempted = false,
+  moderationError = null,
+}: {
+  faqs: WizardFaq[]
+  setFaqs: React.Dispatch<React.SetStateAction<WizardFaq[]>>
+  draftProjectId: string | null
+  onRecentQuestionsChange?: (hasQuestions: boolean) => void
+  publishAttempted?: boolean
+  moderationError?: string | null
+}) => {
+  const completedFaqCount = faqs.filter(
+    (faq) => faq.q.trim() && faq.a.trim()
+  ).length
+  const showFaqError =
+    completedFaqCount < 3 && (publishAttempted || faqs.length > 0)
   const [questionsTab, setQuestionsTab] = useState("FAQs")
   const [recentQTab, setRecentQTab] = useState("all")
   const [openFaqId, setOpenFaqId] = useState<string | null>(null)
-  const [faqs, setFaqs] = useState([
-    { id: "faq-1", q: "How will you involve me in the process?", a: "We offer a comprehensive range of IT consulting services, including IT strategy development, software development, network infrastructure design and implementation, cybersecurity assessment and solutions, cloud computing solutions, and IT project management." },
-    { id: "faq-2", q: "How do you handle revisions and feedback?", a: "" },
-    { id: "faq-3", q: "Do you offer any post-design support or maintenance?", a: "" },
-  ])
+  const [aiOpen, setAiOpen] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState(false)
+  const [suggestions, setSuggestions] = useState<
+    Array<{ question: string; answer: string; added?: boolean }>
+  >([])
+
+  const [questions, setQuestions] = useState<RecentQuestion[]>([])
+  const [assignTeam, setAssignTeam] = useState<
+    Array<{ id: string; name: string }>
+  >([])
+  const [respondingId, setRespondingId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const questionsHydrated = useRef(false)
+
+  useEffect(() => {
+    if (!draftProjectId) return
+    ProjectAPI.GetProjectDraft(draftProjectId)
+      .then((res) => {
+        const d = res?.data ?? {}
+        const rq = (d.recentQuestions ?? []).map(
+          (q: RecentQuestion, i: number) => ({
+            ...q,
+            id: q.id ?? `rq-${i}`,
+          })
+        )
+        setQuestions(rq)
+        const team = (d.team ?? []).map((t: any) => ({
+          id: String(t.userId ?? t.id ?? ""),
+          name:
+            [t.firstName, t.lastName].filter(Boolean).join(" ") ||
+            t.username ||
+            "Team Member",
+        }))
+        setAssignTeam(team.filter((t: { id: string }) => t.id))
+        questionsHydrated.current = true
+      })
+      .catch(() => {})
+  }, [draftProjectId])
+
+  useEffect(() => {
+    onRecentQuestionsChange?.(questions.length > 0)
+  }, [questions, onRecentQuestionsChange])
+
+  useEffect(() => {
+    if (!questionsHydrated.current || !draftProjectId) return
+    const t = setTimeout(() => {
+      ProjectAPI.SaveProjectQuestions(draftProjectId, questions)
+        .then((res) => {
+          const saved = res?.data
+          if (!Array.isArray(saved)) return
+          const byId = new Map(
+            saved.map((s: RecentQuestion, i: number) => [s.id ?? `rq-${i}`, s])
+          )
+          setQuestions((prev) => {
+            let changed = false
+            const next = prev.map((q) => {
+              const s = q.id ? byId.get(q.id) : undefined
+              if (s && !!s.moderationFailed !== !!q.moderationFailed) {
+                changed = true
+                return { ...q, moderationFailed: s.moderationFailed }
+              }
+              return q
+            })
+            return changed ? next : prev
+          })
+        })
+        .catch(() => {})
+    }, 600)
+    return () => clearTimeout(t)
+  }, [questions, draftProjectId])
+
+  const isAnswered = (q: RecentQuestion) => !!(q.answer && q.answer.trim())
+  const updateQuestion = (id: string, patch: Partial<RecentQuestion>) =>
+    setQuestions((qs) =>
+      qs.map((q) => (q.id === id ? { ...q, ...patch } : q))
+    )
+  const handleAnswerChange = (id: string, text: string) => {
+    const me = getCurrentUser() as
+      | {
+          id?: string
+          firstName?: string
+          lastName?: string
+          username?: string
+        }
+      | null
+    const hasText = !!text.trim()
+    updateQuestion(id, {
+      answer: text,
+      answeredByUserId: hasText ? (me?.id ? String(me.id) : null) : null,
+      answeredByName: hasText
+        ? [me?.firstName, me?.lastName].filter(Boolean).join(" ") ||
+          me?.username ||
+          "You"
+        : null,
+      answeredByRole: hasText ? "Project Lead" : null,
+    })
+  }
+  const answeredCount = questions.filter(isAnswered).length
+  const awaitingCount = questions.length - answeredCount
+  const visibleQuestions =
+    recentQTab === "awaiting"
+      ? questions.filter((q) => !isAnswered(q))
+      : recentQTab === "answered"
+        ? questions.filter(isAnswered)
+        : questions
+
+  const remainingSlots = Math.max(0, 10 - faqs.length)
+  const addedCount = suggestions.filter((s) => s.added).length
+
+  const runFaqGeneration = async () => {
+    if (!draftProjectId) return
+    setGenError(false)
+    setGenerating(true)
+    try {
+      const res = await ProjectAPI.SuggestFaqs(draftProjectId)
+      const data = (res?.data ?? []) as Array<{
+        question: string
+        answer: string
+      }>
+      const seen = new Set<string>()
+      const deduped = data.filter((d) => {
+        const key = (d?.question ?? "").trim().toLowerCase()
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      setSuggestions(deduped.map((d) => ({ ...d, added: false })))
+    } catch (error) {
+      console.error("Failed to generate FAQs", error)
+      setGenError(true)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const openAiFaqDialog = () => {
+    setAiOpen(true)
+    void runFaqGeneration()
+  }
+
+  const insertSuggestion = (idx: number) => {
+    const s = suggestions[idx]
+    if (!s || s.added || faqs.length >= 10) return
+    setFaqs((items) => [
+      ...items,
+      { id: `faq-ai-${Date.now()}-${idx}`, q: s.question, a: s.answer },
+    ])
+    setSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: true } : x))
+    )
+  }
+
+  const removeSuggestion = (idx: number) => {
+    const s = suggestions[idx]
+    if (!s) return
+    const key = s.question.trim().toLowerCase()
+    setFaqs((items) => items.filter((f) => f.q.trim().toLowerCase() !== key))
+    setSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: false } : x))
+    )
+  }
+
+  const insertAllSuggestions = () => {
+    const seen = new Set(faqs.map((f) => f.q.trim().toLowerCase()))
+    const toAdd = suggestions
+      .filter((s) => !s.added && !seen.has(s.question.trim().toLowerCase()))
+      .slice(0, remainingSlots)
+    if (toAdd.length === 0) return
+    setFaqs((items) => [
+      ...items,
+      ...toAdd.map((s, i) => ({
+        id: `faq-ai-all-${Date.now()}-${i}`,
+        q: s.question,
+        a: s.answer,
+      })),
+    ])
+    const addedKeys = new Set(toAdd.map((s) => s.question.trim().toLowerCase()))
+    setSuggestions((prev) =>
+      prev.map((x) =>
+        addedKeys.has(x.question.trim().toLowerCase())
+          ? { ...x, added: true }
+          : x
+      )
+    )
+  }
+
+  const handleAddFaq = () => {
+    setFaqs((items) =>
+      items.length >= 10
+        ? items
+        : [...items, { id: `faq-${Date.now()}-${items.length}`, q: "", a: "" }]
+    )
+  }
+
+  const handleFaqChange = (
+    id: string,
+    patch: Partial<{ q: string; a: string }>
+  ) => {
+    setFaqs((items) =>
+      items.map((item) => (item.id === id ? { ...item, ...patch } : item))
+    )
+  }
+
+  const handleDeleteFaq = (id: string) => {
+    setFaqs((items) => items.filter((item) => item.id !== id))
+  }
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 150, tolerance: 5 },
+    }),
     useSensor(KeyboardSensor)
   )
 
@@ -6564,25 +8283,205 @@ const Questions = () => {
         <div className="flex-auto min-w-0">
           <RadixTabs.Root defaultValue="FAQs">
             <RadixTabs.List className="inline-flex items-end gap-4 border-b border-b-gray-200 w-full">
-              <RadixTabs.Trigger value="FAQs" className="inline-flex items-center justify-center px-1 pb-2 pt-px text-sm font-semibold text-gray-500 data-[state=active]:text-primary-500 border-b-2 border-transparent data-[state=active]:border-primary-500 focus-visible:outline-none">FAQ&apos;s</RadixTabs.Trigger>
-              <RadixTabs.Trigger value="RecentQuestions" className="inline-flex items-center justify-center px-1 pb-2 pt-px text-sm font-semibold text-gray-500 data-[state=active]:text-primary-500 border-b-2 border-transparent data-[state=active]:border-primary-500 focus-visible:outline-none">Recent Questions</RadixTabs.Trigger>
+              <RadixTabs.Trigger
+                value="FAQs"
+                className="inline-flex items-center justify-center px-1 pb-2 pt-px text-sm font-semibold text-gray-500 data-[state=active]:text-primary-500 border-b-2 border-transparent data-[state=active]:border-primary-500 focus-visible:outline-none"
+              >
+                FAQ&apos;s
+              </RadixTabs.Trigger>
+              <RadixTabs.Trigger
+                value="RecentQuestions"
+                className="inline-flex items-center justify-center px-1 pb-2 pt-px text-sm font-semibold text-gray-500 data-[state=active]:text-primary-500 border-b-2 border-transparent data-[state=active]:border-primary-500 focus-visible:outline-none"
+              >
+                Recent Questions
+              </RadixTabs.Trigger>
             </RadixTabs.List>
 
-            <RadixTabs.Content value="FAQs" className="focus-visible:outline-none">
+            <RadixTabs.Content
+              value="FAQs"
+              className="focus-visible:outline-none"
+            >
               <p className="mt-4 text-sm font-light text-dark-blue-400">
-                Write a response for each of the question added to this project. Drag and drop FAQ items to reorder them. The order you set here will be reflected on your project&apos;s public FAQ page.
+                Write a response for each of the question added to this project.
+                Drag and drop FAQ items to reorder them. The order you set here
+                will be reflected on your project&apos;s public FAQ page.
               </p>
 
               <div className="mt-4 flex items-center gap-3">
-                <Button variant="outlined" visual="gray" size="sm">
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  onClick={openAiFaqDialog}
+                  disabled={!draftProjectId}
+                >
                   <Stars02 className="size-[15px]" />
                   Generate With AI
                 </Button>
-                <Button variant="outlined" visual="gray" size="sm">
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  onClick={handleAddFaq}
+                  disabled={faqs.length >= 10}
+                >
                   <Plus className="size-[15px]" />
                   Add Question
                 </Button>
               </div>
+
+              {showFaqError && (
+                <ErrorMessage size="sm" className="mt-2">
+                  Please add at least 3 FAQs before publishing.
+                </ErrorMessage>
+              )}
+
+              {moderationError && (
+                <ErrorMessage size="sm" className="mt-2">
+                  {`FAQ content did not meet community guidelines. ${moderationError}`}
+                </ErrorMessage>
+              )}
+
+              <Dialog open={aiOpen} onOpenChange={setAiOpen}>
+                <DialogContent className="max-w-[640px] p-0 gap-0">
+                  <div className="px-6 pt-6 pb-4 border-b border-gray-200 flex items-start justify-between">
+                    <div className="flex items-start gap-x-2">
+                      <Stars02 className="size-5 text-dark-blue-400 shrink-0 mt-0.5" />
+                      <div>
+                        <DialogTitle>AI Generated FAQ&apos;s</DialogTitle>
+                        <DialogDescription className="mt-1">
+                          Review and adjust your AI-generated FAQ&apos;s as needed
+                        </DialogDescription>
+                      </div>
+                    </div>
+                    <Badge
+                      className="rounded-full bg-success-50 text-success-600 shrink-0"
+                      visual="gray"
+                    >
+                      {addedCount} of {suggestions.length} added
+                    </Badge>
+                  </div>
+
+                  {remainingSlots <
+                    suggestions.filter((s) => !s.added).length && (
+                    <p className="px-6 pt-4 text-sm text-error-500">
+                      You currently have {faqs.length} FAQ&apos;s in total, so
+                      you can only add {remainingSlots} more
+                    </p>
+                  )}
+
+                  <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-3">
+                    {generating ? (
+                      <p className="py-8 text-center text-sm text-gray-500">
+                        Generating suggestions…
+                      </p>
+                    ) : genError ? (
+                      <div className="py-8 text-center">
+                        <p className="text-sm text-error-500">
+                          Suggestions couldn&apos;t be loaded. Try again.
+                        </p>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="mt-3"
+                          onClick={runFaqGeneration}
+                        >
+                          <Stars02 className="size-[15px]" />
+                          Retry
+                        </Button>
+                      </div>
+                    ) : suggestions.length === 0 ? (
+                      <p className="py-8 text-center text-sm text-gray-500">
+                        No suggestions available.
+                      </p>
+                    ) : (
+                      suggestions.map((s, i) => (
+                        <div
+                          key={i}
+                          className={cn(
+                            "group/sfaq relative rounded-lg border p-4 transition",
+                            s.added
+                              ? "border-success-300 bg-success-25"
+                              : "border-gray-200 bg-white hover:bg-gray-50"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-x-3">
+                            <h3
+                              className={cn(
+                                "text-sm font-bold",
+                                s.added
+                                  ? "text-success-700"
+                                  : "text-dark-blue-400"
+                              )}
+                            >
+                              {s.question}
+                            </h3>
+                            {s.added ? (
+                              <span className="shrink-0 inline-flex items-center gap-x-1 text-sm font-medium text-success-600">
+                                <Check className="size-4" />
+                                Added
+                              </span>
+                            ) : (
+                              <Button
+                                variant="outlined"
+                                visual="gray"
+                                size="sm"
+                                className="shrink-0 opacity-0 group-hover/sfaq:opacity-100 transition"
+                                onClick={() => insertSuggestion(i)}
+                              >
+                                <Upload01 className="size-[15px]" />
+                                Insert
+                              </Button>
+                            )}
+                          </div>
+                          <p
+                            className={cn(
+                              "mt-1 text-sm font-light",
+                              s.added
+                                ? "text-success-700"
+                                : "text-dark-blue-400"
+                            )}
+                          >
+                            {s.answer}
+                          </p>
+                          {s.added && (
+                            <button
+                              type="button"
+                              onClick={() => removeSuggestion(i)}
+                              className="absolute bottom-3 right-3 size-9 rounded-full border border-success-300 bg-white text-success-600 hover:border-error-300 hover:text-error-500 inline-flex items-center justify-center opacity-0 group-hover/sfaq:opacity-100 transition"
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      onClick={runFaqGeneration}
+                      disabled={generating}
+                    >
+                      <Stars02 className="size-[15px]" />
+                      Regenerate
+                    </Button>
+                    <Button
+                      onClick={insertAllSuggestions}
+                      disabled={
+                        generating ||
+                        remainingSlots === 0 ||
+                        suggestions.every((s) => s.added)
+                      }
+                    >
+                      Insert All ({suggestions.length})
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
 
               <DndContext
                 sensors={sensors}
@@ -6590,170 +8489,275 @@ const Questions = () => {
                 modifiers={[restrictToVerticalAxis]}
                 onDragEnd={handleDragEnd}
               >
-                <SortableContext items={faqs.map((f) => f.id)} strategy={verticalListSortingStrategy}>
-                  <Accordion
-                    type="single"
-                    collapsible
-                    className="mt-4 space-y-3"
-                    value={openFaqId ?? ""}
-                    onValueChange={(val) => setOpenFaqId(val || null)}
+                {faqs.length === 0 ? (
+                  <div className="mt-4 rounded-lg border-2 border-gray-200 bg-gray-25 p-6">
+                    <h3 className="text-base font-semibold text-dark-blue-400">
+                      No FAQs Yet
+                    </h3>
+                    <p className="mt-1 text-sm font-light text-dark-blue-400">
+                      Add a frequently asked question, or generate suggestions
+                      with AI, to help visitors understand your project.
+                    </p>
+                  </div>
+                ) : (
+                  <SortableContext
+                    items={faqs.map((f) => f.id)}
+                    strategy={verticalListSortingStrategy}
                   >
-                    {faqs.map((faq, idx) => (
-                      <SortableFaqItem key={faq.id} id={faq.id} faq={faq} index={idx} />
-                    ))}
-                  </Accordion>
-                </SortableContext>
+                    <Accordion
+                      type="single"
+                      collapsible
+                      className="mt-4 space-y-3"
+                      value={openFaqId ?? ""}
+                      onValueChange={(val) => setOpenFaqId(val || null)}
+                    >
+                      {faqs.map((faq, idx) => (
+                        <SortableFaqItem
+                          key={faq.id}
+                          id={faq.id}
+                          faq={faq}
+                          index={idx}
+                          onChange={handleFaqChange}
+                          onDelete={handleDeleteFaq}
+                        />
+                      ))}
+                    </Accordion>
+                  </SortableContext>
+                )}
               </DndContext>
             </RadixTabs.Content>
 
-            <RadixTabs.Content value="RecentQuestions" className="focus-visible:outline-none">
+            <RadixTabs.Content
+              value="RecentQuestions"
+              className="focus-visible:outline-none"
+            >
               <p className="mt-4 text-sm font-light text-dark-blue-400">
-                Write an response for each of the recently asked questions below. You can only respond to questions that have not yet been answered.
+                Write an response for each of the recently asked questions
+                below. You can only respond to questions that have not yet been
+                answered.
               </p>
 
-              <Tabs value={recentQTab} onValueChange={setRecentQTab} unanimated className="mt-4">
+              <Tabs
+                value={recentQTab}
+                onValueChange={setRecentQTab}
+                unanimated
+                className="mt-4"
+              >
                 <TabsList className="justify-start border-b border-gray-200 px-0 pt-0">
                   <TabsTrigger value="all">
-                    All (8)
+                    All ({questions.length})
                   </TabsTrigger>
                   <TabsTrigger value="awaiting">
-                    Awaiting Response (5)
+                    Awaiting Response ({awaitingCount})
                   </TabsTrigger>
                   <TabsTrigger value="answered">
-                    Answered (3)
+                    Answered ({answeredCount})
                   </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="all">
-                  <div className="mt-4 space-y-3">
-                    {[
-                      { question: "How will you ensure we're aligned on progress and feedback throughout each stage?", asker: "Kevin", username: "usernamehere", time: "3 weeks ago", status: "Answered" as const },
-                      { question: "How will you ensure we're aligned on progress and feedback throughout each stage?", asker: "Kevin", username: "usernamehere", time: "3 weeks ago", status: "Answered" as const },
-                      { question: "How will you ensure we're aligned on progress and feedback throughout each stage?", asker: "Kevin", username: "usernamehere", time: "3 weeks ago", status: "Answered" as const },
-                      { question: "How will you ensure we're aligned on progress and feedback throughout each stage?", asker: "Kevin", username: "usernamehere", time: "3 weeks ago", status: "Answered" as const },
-                      { question: "How will you ensure we're aligned on progress and feedback throughout each stage?", asker: "Kevin", username: "usernamehere", time: "3 weeks ago", status: "Answered" as const },
-                    ].map((item, idx) => (
-                      <div key={idx} className="rounded-lg border border-gray-200 bg-white p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <p className="text-sm font-medium text-dark-blue-400">{item.question}</p>
-                          <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800 shrink-0">
-                            <Edit03 className="size-4" />
-                          </IconButton>
-                        </div>
-                        <p className="mt-2 text-xs text-gray-500">
-                          Asked by {item.asker} <span className="text-gray-400">@{item.username}</span> {item.time}
-                          <span className="ml-3 text-xs font-semibold text-success-500">{item.status}</span>
-                        </p>
-                      </div>
-                    ))}
+                {visibleQuestions.length === 0 ? (
+                  <div className="mt-4 rounded-lg border-2 border-gray-200 bg-gray-25 p-6">
+                    <h3 className="text-base font-semibold text-dark-blue-400">
+                      No Recent Questions
+                    </h3>
+                    <p className="mt-1 text-sm font-light text-dark-blue-400">
+                      You will see recent questions here once your project is
+                      live in the marketplace and visitors engage in chat with
+                      you and your team.
+                    </p>
                   </div>
-                </TabsContent>
-
-                <TabsContent value="awaiting">
+                ) : (
                   <div className="mt-4 space-y-3">
-                    {[0, 1, 2, 3, 4].map((idx) => (
-                      <div key={idx} className="rounded-lg border border-gray-200 bg-white p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-2 min-w-0">
-                            {idx === 0 && <Check className="size-4 mt-0.5 shrink-0 text-gray-400" />}
-                            <p className="text-sm font-medium text-dark-blue-400">
-                              How will you ensure we&apos;re aligned on progress and feedback throughout each stage?
-                            </p>
-                          </div>
-                          {idx !== 0 && (
-                            <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800 shrink-0">
-                              <Edit03 className="size-4" />
-                            </IconButton>
-                          )}
-                        </div>
-                        <p className="mt-2 text-xs text-gray-500">
-                          Asked by Kevin <span className="text-gray-400">@usernamehere</span> 3 weeks ago
-                          {idx !== 0 && <span className="ml-3 text-xs font-semibold text-warning-500">Awaiting Response</span>}
-                        </p>
-                        {idx === 0 && (
-                          <>
-                            <div className="mt-3 flex items-center gap-3">
-                              <Button variant="outlined" visual="gray" size="sm">
-                                Assign To Team Member
-                              </Button>
-                              <Button size="sm">
-                                Respond
-                              </Button>
-                            </div>
-                            <div className="mt-3 flex items-center gap-2">
-                              <Switch />
-                              <span className="text-xs text-gray-500">Hide this question</span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="answered">
-                  <div className="mt-4 space-y-3">
-                    {[0, 1, 2].map((idx) => (
-                      <div key={idx} className="rounded-lg border border-gray-200 bg-white p-4">
-                        {idx === 0 ? (
-                          <>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex items-start gap-2 min-w-0">
-                                <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
-                                <p className="text-sm font-medium text-dark-blue-400">
-                                  How will you ensure we&apos;re aligned on progress and feedback throughout each stage?
-                                </p>
-                              </div>
-                            </div>
-                            <p className="mt-2 ml-6 text-xs text-gray-500">
-                              Asked by Kevin <span className="text-gray-400">@usernamehere</span> 3 weeks ago
-                            </p>
-                            <div className="mt-3 ml-6 flex items-start gap-2">
-                              <Avatar size="xs">
-                                <AvatarImage src="/man.jpg" alt="You" />
-                                <AvatarFallback>Y</AvatarFallback>
-                              </Avatar>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-xs font-medium text-dark-blue-400">
-                                  You <Badge visual="primary" className="ml-1 rounded-[4px] bg-primary-50 text-[10px]">Project Lead</Badge>
-                                </p>
-                                <Textarea className="mt-2" rows={3} defaultValue="We offer a comprehensive range of IT consulting services, including IT strategy development, software development, network infrastructure design and implementation, cybersecurity assessment and solutions, cloud computing solutions, and IT project management." maxLength={300} />
-                                <p className="mt-1 text-right text-xs text-gray-500">250/300</p>
-                              </div>
-                            </div>
-                            <div className="mt-3 ml-6 flex items-center gap-2">
-                              <Switch />
-                              <span className="text-xs text-gray-500">Hide this question</span>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="flex items-start justify-between gap-3">
+                    {visibleQuestions.map((q) => {
+                      const answered = isAnswered(q)
+                      const expanded = expandedId === q.id
+                      const responding = respondingId === q.id
+                      const showEditor = expanded && (answered || responding)
+                      const assignedName = q.assignedToUserId
+                        ? assignTeam.find(
+                            (t) => t.id === String(q.assignedToUserId)
+                          )?.name
+                        : null
+                      return (
+                        <div
+                          key={q.id}
+                          className="rounded-lg border border-gray-200 bg-white p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-2 min-w-0">
+                              {expanded && (
+                                <Check
+                                  className={cn(
+                                    "size-4 mt-0.5 shrink-0",
+                                    answered
+                                      ? "text-success-500"
+                                      : "text-gray-400"
+                                  )}
+                                />
+                              )}
                               <p className="text-sm font-medium text-dark-blue-400">
-                                How will you ensure we&apos;re aligned on progress and feedback throughout each stage?
+                                {q.question}
                               </p>
-                              <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full text-gray-500 hover:text-gray-800 shrink-0">
+                            </div>
+                            {!expanded && (
+                              <IconButton
+                                variant="ghost"
+                                visual="gray"
+                                size="sm"
+                                className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
+                                onClick={() => setExpandedId(q.id)}
+                              >
                                 <Edit03 className="size-4" />
                               </IconButton>
+                            )}
+                          </div>
+                          <p
+                            className={cn(
+                              "mt-2 text-xs text-gray-500",
+                              expanded && "ml-6"
+                            )}
+                          >
+                            Asked by {q.askedByName ?? "Someone"}{" "}
+                            <span className="text-gray-400">
+                              @{q.askedByUsername ?? "user"}
+                            </span>{" "}
+                            {q.askedAt ?? "recently"}
+                            {!expanded && (
+                              <span
+                                className={cn(
+                                  "ml-3 text-xs font-semibold",
+                                  answered
+                                    ? "text-success-500"
+                                    : "text-warning-500"
+                                )}
+                              >
+                                {answered ? "Answered" : "Awaiting Response"}
+                              </span>
+                            )}
+                          </p>
+
+                          {showEditor && (
+                            <div className="mt-3 ml-6">
+                              <div className="flex items-center gap-2">
+                                <Avatar size="xs">
+                                  <AvatarImage src="/man.jpg" alt="" />
+                                  <AvatarFallback>
+                                    {(q.answeredByName ?? "You").slice(0, 1)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <p className="text-xs font-medium text-dark-blue-400">
+                                  {q.answeredByName ?? "You"}{" "}
+                                  <Badge
+                                    visual="primary"
+                                    className="ml-1 rounded-[4px] bg-primary-50 text-[10px]"
+                                  >
+                                    {q.answeredByRole ?? "Project Lead"}
+                                  </Badge>
+                                </p>
+                              </div>
+                              <Textarea
+                                className="mt-2"
+                                rows={3}
+                                maxLength={300}
+                                placeholder="Write your response..."
+                                value={q.answer ?? ""}
+                                onChange={(e) =>
+                                  handleAnswerChange(q.id, e.target.value)
+                                }
+                              />
+                              <p className="mt-1 text-right text-xs text-gray-500">
+                                {(q.answer ?? "").length}/300
+                              </p>
+                              <div className="mt-3 flex items-center gap-2">
+                                <HideToggle
+                                  hidden={!!q.hidden}
+                                  moderationFailed={q.moderationFailed}
+                                  onToggle={(v) =>
+                                    updateQuestion(q.id, { hidden: v })
+                                  }
+                                />
+                                <span className="text-xs text-gray-500">
+                                  Hide this question
+                                </span>
+                              </div>
                             </div>
-                            <p className="mt-2 text-xs text-gray-500">
-                              Asked by Kevin <span className="text-gray-400">@usernamehere</span> 3 weeks ago
-                              <span className="ml-3 text-xs font-semibold text-success-500">Answered</span>
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    ))}
+                          )}
+
+                          {expanded && !showEditor && (
+                            <>
+                              <div className="mt-3 ml-6 flex items-center gap-3">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="outlined"
+                                      visual="gray"
+                                      size="sm"
+                                    >
+                                      {assignedName
+                                        ? `Assigned: ${assignedName}`
+                                        : "Assign To Team Member"}
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent
+                                    align="start"
+                                    className="min-w-[220px]"
+                                  >
+                                    {assignTeam.length === 0 ? (
+                                      <DropdownMenuItem disabled>
+                                        No team members
+                                      </DropdownMenuItem>
+                                    ) : (
+                                      assignTeam.map((t) => (
+                                        <DropdownMenuItem
+                                          key={t.id}
+                                          onSelect={() =>
+                                            updateQuestion(q.id, {
+                                              assignedToUserId: t.id,
+                                            })
+                                          }
+                                        >
+                                          {t.name}
+                                        </DropdownMenuItem>
+                                      ))
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                                <Button
+                                  size="sm"
+                                  onClick={() => setRespondingId(q.id)}
+                                >
+                                  Respond
+                                </Button>
+                              </div>
+                              <div className="mt-3 ml-6 flex items-center gap-2">
+                                <HideToggle
+                                  hidden={!!q.hidden}
+                                  moderationFailed={q.moderationFailed}
+                                  onToggle={(v) =>
+                                    updateQuestion(q.id, { hidden: v })
+                                  }
+                                />
+                                <span className="text-xs text-gray-500">
+                                  Hide this question
+                                </span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
-                </TabsContent>
+                )}
               </Tabs>
 
-              <div className="mt-4 flex justify-center">
-                <Button variant="outlined" visual="gray" size="sm">
-                  View More
-                  <ChevronDown className="size-4" />
-                </Button>
-              </div>
+              {visibleQuestions.length > 5 && (
+                <div className="mt-4 flex justify-center">
+                  <Button variant="outlined" visual="gray" size="sm">
+                    View More
+                    <ChevronDown className="size-4" />
+                  </Button>
+                </div>
+              )}
             </RadixTabs.Content>
           </RadixTabs.Root>
         </div>
@@ -6786,6 +8790,26 @@ function PublishProject({
   } = useStepper({
     steps,
   })
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const { toast } = useToast()
+  const handledCheckoutStepRef = useRef(false)
+
+  useEffect(() => {
+    if (handledCheckoutStepRef.current) return
+    if (searchParams.get("checkoutStep") !== "scope") return
+
+    handledCheckoutStepRef.current = true
+    setStep(2)
+
+    const nextSearchParams = new URLSearchParams(searchParams.toString())
+    nextSearchParams.delete("checkoutStep")
+    const nextQuery = nextSearchParams.toString()
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+      scroll: false,
+    })
+  }, [pathname, router, searchParams, setStep])
 
   const stepperValue = useMemo(
     () => ({ nextStep, prevStep, setStep, toggleStepValidation }),
@@ -6802,7 +8826,6 @@ function PublishProject({
     [currentStep, hasNextStep, hasPreviousStep, totalSteps, stepsState]
   )
   const [isSaveExitDialogOpen, toggleIsSaveExitDialogOpen] = useToggle(false)
-  const router = useRouter()
   const projectInfoMethods = useForm<ProjectInfoFormValues>({
     resolver: zodResolver(projectInfoSchema),
     defaultValues: {
@@ -6817,12 +8840,16 @@ function PublishProject({
       fullDescription: "",
       tags: [],
       skills: [],
+      projectType: "Website",
     },
   })
   const mediaMethods = useForm<MediaFormValues>({
     resolver: zodResolver(mediaFormSchema),
     defaultValues: {
+      featuredImages: [],
+      additionalImages: [],
       featuredVideo: "",
+      hiddenImages: [],
     },
   })
   const projectScopeMethods = useState<Phase[]>([{}])
@@ -6831,17 +8858,189 @@ function PublishProject({
     useState<SubmissionOutcome | null>(null)
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
+  const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
+  const [pricingBudgetCents, setPricingBudgetCents] = useState(0)
+  const [scopeType, setScopeType] = useState<ScopeType>("project")
+  const [isPublishing, setIsPublishing] = useState(false)
+  const [publishAttempted, setPublishAttempted] = useState(false)
+
+  const handlePublish = async () => {
+    if (!draftProjectId || isPublishing) return
+    setPublishAttempted(true)
+    setFaqModerationError(null)
+    setProjectInfoModerationError(null)
+    if (firstInvalidStep !== null) {
+      setStep(firstInvalidStep)
+      if (firstInvalidStep === 0) await projectInfoMethods.trigger()
+      else if (firstInvalidStep === 1) await mediaMethods.trigger()
+      toast({
+        title: "Please complete all required sections before publishing.",
+        variant: "destructive",
+      })
+      return
+    }
+    setIsPublishing(true)
+    try {
+      await ProjectAPI.PublishProject(draftProjectId)
+      setIsProjectSubmitted(true)
+      router.push("/my-listings")
+    } catch (error: any) {
+      console.error("Failed to publish project", error)
+      const errorMessage =
+        error?.response?.data?.reason ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Unable to publish project"
+      const errorType = classifyPublishError({
+        message: errorMessage,
+        statusCode: error?.response?.status,
+        status: error?.response?.data?.status,
+      })
+
+      const field = error?.response?.data?.field
+      const projectInfoFields = [
+        "title",
+        "category",
+        "industry",
+        "shortDescription",
+        "fullDescription",
+        "tags",
+        "skills",
+      ]
+      if (field && projectInfoFields.includes(field)) {
+        projectInfoMethods.setError(field as any, { message: errorMessage })
+        setProjectInfoModerationError(errorMessage)
+        setStep(0)
+      } else if (field === "faqs") {
+        setFaqModerationError(errorMessage)
+        setStep(4)
+      } else if (errorType === "video_rejection") {
+        mediaMethods.setError("featuredVideo", { message: errorMessage })
+        setStep(1)
+      } else if (errorType === "image_rejection") {
+        mediaMethods.setError("featuredImages", { message: errorMessage })
+        setStep(1)
+      } else if (errorType === "content_rejection") {
+        projectInfoMethods.setError("fullDescription", { message: errorMessage })
+        setProjectInfoModerationError(errorMessage)
+        setStep(0)
+      }
+
+      toast({
+        title:
+          errorType === "video_rejection"
+            ? `Project rejected: video violated moderation policy. ${errorMessage}`
+            : errorType === "image_rejection"
+              ? `Project rejected: image violated moderation policy. ${errorMessage}`
+              : errorType === "content_rejection"
+                ? `Project rejected: content did not meet community guidelines. ${errorMessage}`
+                : errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setIsPublishing(false)
+    }
+  }
   const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+  const [faqs, setFaqs] = useState<WizardFaq[]>([])
+  const [faqModerationError, setFaqModerationError] = useState<string | null>(
+    null
+  )
+  const [projectInfoModerationError, setProjectInfoModerationError] = useState<
+    string | null
+  >(null)
+  const [hasRecentQuestions, setHasRecentQuestions] = useState(false)
   const persistedMediaRef = useRef<{
     featuredImage?: string
     additionalImages?: string[]
+    hiddenImages?: string[]
     featuredVideo?: string
   } | null>(null)
   const lastDraftPayloadRef = useRef<string>("")
   const lastScopePayloadRef = useRef<string>("")
   const lastMediaPayloadRef = useRef<string>("")
+  const lastFaqsPayloadRef = useRef<string>("")
+  const faqsRef = useRef<WizardFaq[]>([])
+  const saveFaqsRef = useRef<() => Promise<void>>(async () => {})
+  const lastVideoUrlRef = useRef<string>("")
+  const saveVideoRef = useRef<() => Promise<void>>(async () => {})
   const hasHydratedRef = useRef(false)
+
+  useEffect(() => {
+    faqsRef.current = faqs
+    setFaqModerationError(null)
+  }, [faqs])
+
+  const projectInfoModerationWatch = useWatch({
+    control: projectInfoMethods.control,
+  })
+  useEffect(() => {
+    setProjectInfoModerationError(null)
+  }, [projectInfoModerationWatch])
+
+  // Sidebar step ticks: each step's form only mounts when it's the active step,
+  // so validate every step here (always mounted) — an existing/edited project
+  // shows completed steps immediately, and Team/Questions can tick too.
+  // Criteria: Project Info / Media / Project Scope pass their schema; Team has
+  // at least one member; Questions has at least one FAQ.
+  const [scopePhases] = projectScopeMethods
+  const lastStepValidRef = useRef<Record<number, boolean>>({})
+  const setStepValid = useCallback(
+    (index: number, valid: boolean) => {
+      if (lastStepValidRef.current[index] === valid) return
+      lastStepValidRef.current[index] = valid
+      toggleStepValidation(index)(valid)
+    },
+    [toggleStepValidation]
+  )
+  // useWatch re-computes on every value change — including the async reset() on
+  // load — so ticks reflect the loaded project immediately (no user edit needed).
+  const projectInfoWatch = useWatch({ control: projectInfoMethods.control })
+  const mediaWatch = useWatch({ control: mediaMethods.control })
+  const completedFaqCount = faqs.filter(
+    (faq) => faq.q.trim() && faq.a.trim()
+  ).length
+  useEffect(() => {
+    setStepValid(
+      0,
+      projectInfoSchema.safeParse(projectInfoMethods.getValues()).success
+    )
+  }, [projectInfoWatch, projectInfoMethods, setStepValid])
+  useEffect(() => {
+    setStepValid(
+      1,
+      mediaFormSchema.safeParse(mediaMethods.getValues()).success
+    )
+  }, [mediaWatch, mediaMethods, setStepValid])
+  useEffect(() => {
+    setStepValid(2, projectScopeSchema.safeParse(scopePhases))
+  }, [scopePhases, setStepValid])
+  useEffect(() => {
+    setStepValid(3, teamMemberIds.length > 0)
+  }, [teamMemberIds, setStepValid])
+  useEffect(() => {
+    setStepValid(4, completedFaqCount >= 3)
+  }, [completedFaqCount, setStepValid])
+
+  const firstInvalidStep = useMemo(() => {
+    const validity: Record<number, boolean> = {
+      0: projectInfoSchema.safeParse(projectInfoMethods.getValues()).success,
+      1: mediaFormSchema.safeParse(mediaMethods.getValues()).success,
+      2: projectScopeSchema.safeParse(scopePhases),
+      3: teamMemberIds.length > 0,
+      4: completedFaqCount >= 3,
+    }
+    return [0, 1, 2, 3, 4].find((index) => !validity[index]) ?? null
+  }, [
+    projectInfoWatch,
+    mediaWatch,
+    scopePhases,
+    teamMemberIds,
+    completedFaqCount,
+    projectInfoMethods,
+    mediaMethods,
+  ])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -6852,7 +9051,14 @@ function PublishProject({
     const hydrateDraft = async () => {
       try {
         // Edit mode: fetch existing project by slug
-        let response = slug ? await ProjectAPI.GetProjectBySlug(slug) : null
+        let response: any = null
+        if (slug) {
+          try {
+            response = await ProjectAPI.GetProjectBySlug(slug)
+          } catch {
+            response = null
+          }
+        }
 
         // If no project found by slug, try draftId from query params as fallback
         if (!response?.data) {
@@ -6863,11 +9069,28 @@ function PublishProject({
           }
         }
 
+        // Path param is itself a draft id (editor reached as /edit-listing/{draftId})
+        if (!response?.data && slug && UUID_PATTERN.test(slug)) {
+          try {
+            response = await ProjectAPI.GetProjectDraft(slug)
+          } catch {
+            // fall through to create a fresh draft below
+          }
+        }
+
         if (cancelled) return
 
         // If no project found by slug, create a new draft so edits still save
+        //    If the slug matches a seed listing, use its title/description
         if (!response?.data) {
-          response = await ProjectAPI.CreateProjectDraft({})
+          const seedListing = TEAM_SEED_LISTINGS.find((s) => s.id === slug)
+          response = await ProjectAPI.CreateProjectDraft({
+            title: seedListing?.title || "",
+            shortDescription: seedListing?.description || "",
+            fullDescription: seedListing?.description || "",
+            listingType: "project",
+            projectType: seedListing?.projectType || "Website",
+          })
         }
 
         if (cancelled) return
@@ -6875,30 +9098,86 @@ function PublishProject({
         const draft = response?.data ?? {}
         const nextDraftId = String(draft?.id ?? "")
         setDraftProjectId(nextDraftId || null)
+        setTeamMemberIds(
+          Array.isArray(draft?.teamMemberIds)
+            ? draft.teamMemberIds.map(String)
+            : []
+        )
+        setPricingBudgetCents(Number(draft?.budgetUsdCents) || 0)
+        const draftIsService =
+          draft?.listingType === "service" ||
+          (Array.isArray(draft?.scope) &&
+            draft.scope.some(
+              (p: any) =>
+                p?.phaseType === "setup" ||
+                p?.phaseType === "recurring" ||
+                p?.phaseType === "ongoing"
+            ))
+        setScopeType(draftIsService ? "service" : "project")
+
+        const rawCategorySelections = Array.isArray(draft?.categorySelections)
+          ? draft.categorySelections
+          : []
+        const fallbackSubcategories = Array.isArray(draft?.subcategories)
+          ? draft.subcategories
+          : Array.isArray(draft?.subCategories)
+            ? draft.subCategories
+            : []
+        const categoryRows =
+          rawCategorySelections.length > 0
+            ? rawCategorySelections.map((cs: any) => ({
+                category: cs?.category || "",
+                subCategories: Array.isArray(cs?.subCategories)
+                  ? cs.subCategories
+                  : [],
+              }))
+            : Array.isArray(draft?.categories) && draft.categories.length > 0
+              ? draft.categories.map((cat: string, i: number) => ({
+                  category: cat,
+                  subCategories: i === 0 ? fallbackSubcategories : [],
+                }))
+              : []
+        while (categoryRows.length < 3)
+          categoryRows.push({ category: "", subCategories: [] })
 
         projectInfoMethods.reset({
           title: draft?.title ?? "",
-          category: Array.isArray(draft?.categorySelections)
-            ? draft.categorySelections
-            : [],
+          category: categoryRows.slice(0, 3),
           industry: Array.isArray(draft?.industries) ? draft.industries : [],
           shortDescription: draft?.shortDescription ?? "",
           fullDescription: draft?.fullDescription ?? "",
           tags: Array.isArray(draft?.tags) ? draft.tags : [],
           skills: Array.isArray(draft?.skills) ? draft.skills : [],
+          projectType: draft?.projectType ?? draft?.listingType ?? "Website",
         })
+        if (draft?.title) void projectInfoMethods.trigger()
         lastDraftPayloadRef.current = JSON.stringify(
           buildProjectDraftPayload({
             title: draft?.title ?? "",
-            category: Array.isArray(draft?.categorySelections)
-              ? draft.categorySelections
-              : [],
+            category: categoryRows.slice(0, 3),
             industry: Array.isArray(draft?.industries) ? draft.industries : [],
             shortDescription: draft?.shortDescription ?? "",
             fullDescription: draft?.fullDescription ?? "",
             tags: Array.isArray(draft?.tags) ? draft.tags : [],
             skills: Array.isArray(draft?.skills) ? draft.skills : [],
+            projectType: draft?.projectType ?? draft?.listingType ?? "Website",
           })
+        )
+
+        const loadedFaqs: WizardFaq[] = Array.isArray(draft?.faqs)
+          ? draft.faqs.map(
+              (f: { question?: string; answer?: string }, i: number) => ({
+                id: `faq-${i}`,
+                q: f?.question ?? "",
+                a: f?.answer ?? "",
+              })
+            )
+          : []
+        setFaqs(loadedFaqs)
+        lastFaqsPayloadRef.current = JSON.stringify(
+          loadedFaqs
+            .filter((f) => f.q.trim() || f.a.trim())
+            .map((f) => ({ question: f.q.trim(), answer: f.a.trim() }))
         )
 
         const persistedMedia = draft?.media
@@ -6906,6 +9185,9 @@ function PublishProject({
               featuredImage: draft.media.featuredImage,
               additionalImages: Array.isArray(draft.media.additionalImages)
                 ? draft.media.additionalImages
+                : [],
+              hiddenImages: Array.isArray(draft.media.hiddenImages)
+                ? draft.media.hiddenImages
                 : [],
               featuredVideo: draft.media.featuredVideo ?? "",
             }
@@ -6941,17 +9223,26 @@ function PublishProject({
               hasError: false,
             },
           ]),
-          featuredVideo: persistedMedia?.featuredVideo ?? "",
+          featuredVideo: draft?.videoUrl ?? persistedMedia?.featuredVideo ?? "",
+          hiddenImages: persistedMedia?.hiddenImages ?? [],
         })
         lastMediaPayloadRef.current = JSON.stringify({
           featuredImage: persistedMedia?.featuredImage ?? "",
           additionalImages: persistedMedia?.additionalImages ?? [],
           featuredVideo: persistedMedia?.featuredVideo ?? "",
         })
+        lastVideoUrlRef.current = (
+          draft?.videoUrl ??
+          persistedMedia?.featuredVideo ??
+          ""
+        ).trim()
 
         const scope = Array.isArray(draft?.scope)
           ? draft.scope.map((phase: any) => ({
               phaseName: phase?.name ?? "",
+              phaseType: phase?.phaseType ?? undefined,
+              recurrenceSchedule: phase?.recurrenceSchedule ?? undefined,
+              recurrenceCount: phase?.recurrenceCount ?? undefined,
               rows: Array.isArray(phase?.task)
                 ? phase.task.map((task: any) => {
                     const durationRaw = String(task?.duration ?? "").trim()
@@ -6961,6 +9252,7 @@ function PublishProject({
                       id: String(task?.id ?? getId()),
                       task: task?.taskName ?? "",
                       role: task?.role ?? "",
+                      assigneeUserId: task?.assigneeUserId ?? null,
                       location: Array.isArray(task?.location)
                         ? (task.location[0] ?? "")
                         : "",
@@ -7000,7 +9292,7 @@ function PublishProject({
     return () => {
       cancelled = true
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug])
 
   // Ref-stable save functions so cleanup/beforeunload can call them
@@ -7018,6 +9310,7 @@ function PublishProject({
         industry: info.industry ?? [],
         tags: info.tags ?? [],
         skills: info.skills ?? [],
+        projectType: info.projectType ?? "Website",
         shortDescription: info.shortDescription ?? "",
         fullDescription: info.fullDescription ?? "",
       })
@@ -7064,7 +9357,14 @@ function PublishProject({
       if (serializedPayload === lastScopePayloadRef.current) return
 
       try {
-        await ProjectAPI.ReplaceProjectScope(draftProjectId, payload)
+        const scopeRes = await ProjectAPI.ReplaceProjectScope(
+          draftProjectId,
+          payload
+        )
+        const nextBudget = Number((scopeRes as any)?.data?.budgetUsdCents)
+        if (Number.isFinite(nextBudget) && nextBudget > 0) {
+          setPricingBudgetCents(nextBudget)
+        }
         lastScopePayloadRef.current = serializedPayload
         setLastSavedAt(new Date())
       } catch (error) {
@@ -7090,11 +9390,74 @@ function PublishProject({
     projectScopeMethods,
   ])
 
+  useEffect(() => {
+    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
+
+    const saveFaqs = async () => {
+      const payload = faqsRef.current
+        .filter((f) => f.q.trim() || f.a.trim())
+        .map((f) => ({ question: f.q.trim(), answer: f.a.trim() }))
+      const serializedPayload = JSON.stringify(payload)
+
+      if (serializedPayload === lastFaqsPayloadRef.current) return
+
+      try {
+        await ProjectAPI.UpdateProjectDraft(draftProjectId, { faqs: payload })
+        lastFaqsPayloadRef.current = serializedPayload
+        setLastSavedAt(new Date())
+      } catch (error) {
+        console.error("Failed to save project FAQs draft", error)
+      }
+    }
+
+    saveFaqsRef.current = saveFaqs
+
+    const interval = setInterval(() => {
+      void saveFaqs()
+    }, 2000)
+
+    return () => {
+      clearInterval(interval)
+      void saveFaqs()
+    }
+  }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted])
+
+  useEffect(() => {
+    if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
+
+    const saveVideo = async () => {
+      const videoUrl = mediaMethods.getValues().featuredVideo?.trim() ?? ""
+
+      if (videoUrl === lastVideoUrlRef.current) return
+
+      try {
+        await ProjectAPI.UpdateProjectDraft(draftProjectId, { videoUrl })
+        lastVideoUrlRef.current = videoUrl
+        setLastSavedAt(new Date())
+      } catch (error) {
+        console.error("Failed to save project video draft", error)
+      }
+    }
+
+    saveVideoRef.current = saveVideo
+
+    const interval = setInterval(() => {
+      void saveVideo()
+    }, 2000)
+
+    return () => {
+      clearInterval(interval)
+      void saveVideo()
+    }
+  }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted, mediaMethods])
+
   // Flush pending saves when the user navigates away or closes the tab
   useEffect(() => {
     const handleBeforeUnload = () => {
       void saveDraftRef.current()
       void saveScopeRef.current()
+      void saveFaqsRef.current()
+      void saveVideoRef.current()
     }
     window.addEventListener("beforeunload", handleBeforeUnload)
     return () => window.removeEventListener("beforeunload", handleBeforeUnload)
@@ -7112,6 +9475,7 @@ function PublishProject({
           .map((item) => item?.meta)
           .filter(Boolean) ?? []
       const videoUrl = mediaValues.featuredVideo?.trim() ?? ""
+      const hiddenImages = mediaValues.hiddenImages ?? []
 
       const signature = JSON.stringify({
         featuredImage: isPersistedMediaFile(featuredMeta)
@@ -7120,38 +9484,41 @@ function PublishProject({
         additionalImages: additionalMeta.map((item: any) =>
           isPersistedMediaFile(item) ? item.__persistedUrl : (item?.name ?? "")
         ),
-        featuredVideo: videoUrl,
+        hiddenImages,
       })
 
       if (signature === lastMediaPayloadRef.current) return
-      if (!featuredMeta) return
+
+      const isClearingFeatured =
+        !featuredMeta && !!persistedMediaRef.current?.featuredImage
+      if (!featuredMeta && !isClearingFeatured) return
+
+      const prevMediaSignature = lastMediaPayloadRef.current
+      lastMediaPayloadRef.current = signature
 
       const formData = new FormData()
       formData.append("projectId", draftProjectId)
 
-      const resolvedFeatured = await resolveMediaFileForUpload(
-        featuredMeta,
-        "featured-image.jpg"
-      )
-      if (!resolvedFeatured) return
-      formData.append("featuredImage", resolvedFeatured)
-
-      for (const file of additionalMeta) {
-        const resolvedAdditional = await resolveMediaFileForUpload(
-          file,
-          "additional-image.jpg"
+      if (isClearingFeatured) {
+        formData.append("clearFeatured", "true")
+      } else {
+        const hasFeatured = await appendFeaturedImageField(
+          formData,
+          featuredMeta
         )
-        if (resolvedAdditional) {
-          formData.append("additionalImages", resolvedAdditional)
+        if (!hasFeatured) {
+          lastMediaPayloadRef.current = prevMediaSignature
+          return
         }
       }
 
-      if (videoUrl) {
-        formData.append(
-          "videoUrl",
-          videoUrl.replace(/^(https?:\/\/)+/i, "https://")
-        )
+      await appendAdditionalImageFields(formData, additionalMeta)
+      formData.append("replaceAdditional", "true")
+
+      for (const url of hiddenImages) {
+        formData.append("hiddenImages", url)
       }
+      formData.append("replaceHidden", "true")
 
       try {
         const response = await ProjectAPI.UploadMedia(formData)
@@ -7164,14 +9531,11 @@ function PublishProject({
             response?.data?.additionalImages ??
             persistedMediaRef.current?.additionalImages ??
             [],
-          featuredVideo:
-            response?.data?.featuredVideo ??
-            response?.data?.videoUrl ??
-            videoUrl,
+          hiddenImages: response?.data?.hiddenImages ?? hiddenImages,
+          featuredVideo: videoUrl,
         }
 
         persistedMediaRef.current = nextMedia
-        lastMediaPayloadRef.current = JSON.stringify(nextMedia)
 
         mediaMethods.reset({
           featuredImages: nextMedia.featuredImage
@@ -7196,10 +9560,54 @@ function PublishProject({
             ]
           ),
           featuredVideo: nextMedia.featuredVideo ?? "",
+          hiddenImages: nextMedia.hiddenImages ?? [],
+        })
+
+        const resetValues = mediaMethods.getValues()
+        const resetFeatured = resetValues.featuredImages?.[0]?.meta
+        const resetAdditional =
+          resetValues.additionalImages
+            ?.flat()
+            .map((item) => item?.meta)
+            .filter(Boolean) ?? []
+        lastMediaPayloadRef.current = JSON.stringify({
+          featuredImage: isPersistedMediaFile(resetFeatured)
+            ? resetFeatured.__persistedUrl
+            : (resetFeatured?.name ?? ""),
+          additionalImages: resetAdditional.map((item: any) =>
+            isPersistedMediaFile(item) ? item.__persistedUrl : (item?.name ?? "")
+          ),
+          hiddenImages: resetValues.hiddenImages ?? [],
         })
         setLastSavedAt(new Date())
-      } catch (error) {
+      } catch (error: any) {
         console.error("Failed to save project media draft", error)
+        const status = error?.response?.status
+        if (!status || status >= 500) {
+          lastMediaPayloadRef.current = prevMediaSignature
+        } else {
+          const errorMessage =
+            error?.response?.data?.reason ||
+            error?.response?.data?.message ||
+            error?.message ||
+            "Failed to save media. Please try again."
+          const errorType = classifyPublishError({
+            message: errorMessage,
+            statusCode: status,
+            status: error?.response?.data?.status,
+          })
+          toast({
+            title:
+              errorType === "video_rejection"
+                ? `Media rejected: video violated moderation policy. ${errorMessage}`
+                : errorType === "image_rejection"
+                  ? `Media rejected: image violated moderation policy. ${errorMessage}`
+                  : errorType === "content_rejection"
+                    ? `Media rejected: content did not meet community guidelines. ${errorMessage}`
+                    : errorMessage,
+            variant: "destructive",
+          })
+        }
       }
     }
 
@@ -7219,6 +9627,12 @@ function PublishProject({
       setSubmissionOutcome,
       isTaskSearchDialogOpen,
       setTaskSearchDialogOpen,
+      teamMemberIds,
+      setTeamMemberIds,
+      draftProjectId,
+      pricingBudgetCents,
+      scopeType,
+      setScopeType,
     }),
     [
       projectScopeMethods,
@@ -7228,6 +9642,12 @@ function PublishProject({
       setSubmissionOutcome,
       isTaskSearchDialogOpen,
       setTaskSearchDialogOpen,
+      teamMemberIds,
+      setTeamMemberIds,
+      draftProjectId,
+      pricingBudgetCents,
+      scopeType,
+      setScopeType,
     ]
   )
   //  Validate the current step when Next is clicked
@@ -7298,50 +9718,92 @@ function PublishProject({
   ) : (
     <StepperProvider value={stepperValue}>
       <StepRootProvider value={stepperRootValue}>
-        <style dangerouslySetInnerHTML={{ __html: `@keyframes editStepFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }` }} />
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `@keyframes editStepFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`,
+          }}
+        />
         <div className="h-screen flex overflow-x-hidden">
           <ProjectInfoProvider value={projectInfoMethods}>
             <MediaProvider value={mediaMethods}>
               <ProjectScopeProvider value={projectScopeValue}>
-                <Sidebar />
+                <Sidebar
+                  hasFaqs={completedFaqCount >= 3}
+                  hasRecentQuestions={hasRecentQuestions}
+                  faqError={
+                    completedFaqCount < 3 &&
+                    (publishAttempted || faqs.length > 0)
+                  }
+                  faqModerationHasError={Boolean(faqModerationError)}
+                  projectInfoModerationHasError={Boolean(
+                    projectInfoModerationError
+                  )}
+                  publishAttempted={publishAttempted}
+                  questionsStarted={faqs.length > 0}
+                />
                 <div className="flex-auto bg-white min-w-0 overflow-x-hidden">
-                  <Header onClose={() => router.back()} slug={slug} lastSavedAt={lastSavedAt} />
+                  <Header
+                    onClose={() => {
+                      if (window.history.length > 1) {
+                        router.back()
+                      } else {
+                        router.push("/my-listings")
+                      }
+                    }}
+                    slug={slug}
+                    lastSavedAt={lastSavedAt}
+                    onPublish={handlePublish}
+                    publishing={isPublishing}
+                  />
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}
                     onOpenChange={toggleIsSaveExitDialogOpen}
                     onConfirm={handleSaveExit}
                   />
-                  <div key={currentStep} style={{ animation: "editStepFadeIn 450ms cubic-bezier(0.4, 0, 0.2, 1) forwards" }}>
-                  <StepControl className="contents">
-                    {/*  Wrap steps to inject progress setter props */}
-                    <Step className="contents">
-                      {projectInfo && React.isValidElement(projectInfo)
-                        ? React.cloneElement(projectInfo, {
-                            setProgress: setProjectInfoProgress, // <-- inject progress
-                          })
-                        : null}
-                    </Step>
-                    <Step className="contents">
-                      {media && React.isValidElement(media)
-                        ? React.cloneElement(media, {
-                            setProgress: setMediaProgress,
-                          })
-                        : null}
-                    </Step>
-                    <Step className="contents">
-                      {projectScope && React.isValidElement(projectScope)
-                        ? React.cloneElement(projectScope, {
-                            setProgress: setProjectScopeProgress, // <-- inject progress
-                          })
-                        : null}
-                    </Step>
-                    <Step className="contents">
-                      <Team />
-                    </Step>
-                    <Step className="contents">
-                      <Questions />
-                    </Step>
-                  </StepControl>
+                  <div
+                    key={currentStep}
+                    style={{
+                      animation:
+                        "editStepFadeIn 450ms cubic-bezier(0.4, 0, 0.2, 1) forwards",
+                    }}
+                  >
+                    <StepControl className="contents">
+                      {/*  Wrap steps to inject progress setter props */}
+                      <Step className="contents">
+                        {projectInfo && React.isValidElement(projectInfo)
+                          ? React.cloneElement(projectInfo, {
+                              setProgress: setProjectInfoProgress, // <-- inject progress
+                            })
+                          : null}
+                      </Step>
+                      <Step className="contents">
+                        {media && React.isValidElement(media)
+                          ? React.cloneElement(media, {
+                              setProgress: setMediaProgress,
+                            })
+                          : null}
+                      </Step>
+                      <Step className="contents">
+                        {projectScope && React.isValidElement(projectScope)
+                          ? React.cloneElement(projectScope, {
+                              setProgress: setProjectScopeProgress, // <-- inject progress
+                            })
+                          : null}
+                      </Step>
+                      <Step className="contents">
+                        <Team />
+                      </Step>
+                      <Step className="contents">
+                        <Questions
+                          faqs={faqs}
+                          setFaqs={setFaqs}
+                          draftProjectId={draftProjectId}
+                          onRecentQuestionsChange={setHasRecentQuestions}
+                          publishAttempted={publishAttempted}
+                          moderationError={faqModerationError}
+                        />
+                      </Step>
+                    </StepControl>
                   </div>
                   {/* No BottomBar in edit mode */}
                 </div>
@@ -7356,10 +9818,19 @@ function PublishProject({
 
 export default function PublishRootProject() {
   const params = useParams<{ slug: string }>()
+  const router = useRouter()
+  const pathname = usePathname()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    if (!isAuthLoading && !user) {
+      router.replace(`/sign-in?redirect=${encodeURIComponent(pathname)}`)
+    }
+  }, [isAuthLoading, user, router, pathname])
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -7368,6 +9839,10 @@ export default function PublishRootProject() {
   }, [])
 
   if (!mounted) {
+    return null
+  }
+
+  if (!isAuthLoading && !user) {
     return null
   }
 

@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 import { User } from '../user/entities/user.entity';
 
-@Entity('educations')
+@Entity({ name: 'education', schema: 'user_service' })
 export class Education {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -35,8 +35,8 @@ export class Education {
   @Column({ type: 'int', nullable: true })
   endMonth?: number;
 
-  @Column({ default: false })
-  isCurrent: boolean;
+  @Column({ name: 'isCurrent', default: false })
+  currentlyStudying: boolean;
 
   @ManyToOne(() => User, (user) => user.educations, {
     onDelete: 'CASCADE',

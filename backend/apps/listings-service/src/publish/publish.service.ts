@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { EntityCondition } from '../utils/types/entity-condition.type';
 import { IPaginationOptions } from '../utils/types/pagination-options';
+import { hourlyRateForTask } from '../shared/utils/pricing';
 import { NullableType } from '../utils/types/nullable.type';
 import { ProjectRepository } from './infrastructure/persistence/project.repository';
 import { Project } from './interface/project';
@@ -38,6 +39,9 @@ import {
 } from './project-moderation.service';
 import { CloudflareStorageService } from './cloudflare-storage.service';
 import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { firstValueFrom } from 'rxjs';
+import * as jwt from 'jsonwebtoken';
 import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategory.dto';
 import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
 import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
@@ -47,6 +51,9 @@ import {
   DeliverablesAdapter,
 } from '../project-sync/deliverables/deliverables.adapter';
 import { ScopePhaseInput } from '../project-sync/deliverables/deliverables.types';
+import { FAQ_ADAPTER, FaqAdapter } from './faq/faq.adapter';
+import { FaqContext, FaqSuggestion } from './faq/faq.types';
+import { UserProfileClient } from '../shared/user-profile/user-profile.client';
 
 @Injectable()
 export class PublishService {
@@ -60,9 +67,80 @@ export class PublishService {
     private readonly projectModerationService: ProjectModerationService,
     private readonly cloudflareStorageService: CloudflareStorageService,
     private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
     @Inject(DELIVERABLES_ADAPTER)
     private readonly deliverablesAdapter: DeliverablesAdapter,
+    @Inject(FAQ_ADAPTER)
+    private readonly faqAdapter: FaqAdapter,
+    private readonly userProfileClient: UserProfileClient,
   ) {}
+
+  private faqContextFromProject(project: Project): FaqContext {
+    return {
+      title: project.title,
+      listingType: project.listingType,
+      categories: project.categories,
+      skills: project.skills,
+      tags: project.tags,
+      durationMonths: project.durationMonths,
+      shortDescription: project.shortDescription,
+      fullDescription: project.fullDescription,
+    };
+  }
+
+  private async loadFaqScope(
+    projectId: string,
+  ): Promise<Array<{ phaseName: string; tasks: string[] }>> {
+    try {
+      const phases = await this.phaseRepository.findAll({
+        filterOptions: { projectId },
+      });
+      const sorted = [...phases].sort(
+        (a, b) => (a.order ?? 0) - (b.order ?? 0),
+      );
+      return await Promise.all(
+        sorted.map(async (phase, index) => {
+          const hydrated =
+            (await this.phaseRepository.findOneWithTasks(phase.id)) ?? phase;
+          return {
+            phaseName:
+              hydrated.name || hydrated.stageName || `Phase ${index + 1}`,
+            tasks: (hydrated.task ?? [])
+              .map((t) => t.taskName)
+              .filter(Boolean),
+          };
+        }),
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  async suggestFaqs(
+    userId: string,
+    projectId: string,
+  ): Promise<FaqSuggestion[]> {
+    const project = await this.ensureProjectOwnership(projectId, userId);
+    const scope = await this.loadFaqScope(projectId);
+    return this.faqAdapter.suggestFaqs({
+      ...this.faqContextFromProject(project),
+      scope,
+    });
+  }
+
+  async suggestFaqAnswer(
+    userId: string,
+    projectId: string,
+    question: string,
+  ): Promise<{ answer: string }> {
+    const project = await this.ensureProjectOwnership(projectId, userId);
+    const scope = await this.loadFaqScope(projectId);
+    const answer = await this.faqAdapter.suggestAnswer(
+      { ...this.faqContextFromProject(project), scope },
+      question,
+    );
+    return { answer };
+  }
 
   private get shouldSkipModeration(): boolean {
     return process.env.SKIP_CONTENT_MODERATION === 'true';
@@ -127,6 +205,7 @@ export class PublishService {
     subCategories?: string[] | null;
     categorySelections?: { category: string; subCategories: string[] }[] | null;
     tags?: string[] | null;
+    faqs?: { question: string; answer: string }[] | null;
     imageUrl?: string | null;
   }): ProjectModerationInput {
     return {
@@ -137,6 +216,7 @@ export class PublishService {
       subCategories: input.subCategories ?? [],
       categorySelections: input.categorySelections ?? [],
       tags: input.tags ?? [],
+      faqs: input.faqs ?? [],
       imageUrl: input.imageUrl ?? undefined,
     };
   }
@@ -170,10 +250,47 @@ export class PublishService {
       status = 'rejected';
     }
 
-    const moderatedProject = await this.projectRepository.update(projectId, {
+    const updatePayload: Partial<Project> = {
       status,
       projectDatePublished,
-    });
+    };
+
+    if (status === 'published') {
+      const media = await this.mediaRepository.find({ projectId });
+      const hiddenSet = new Set(media?.hiddenImages ?? []);
+      const galleryUrls = [
+        media?.featuredImage,
+        ...(media?.additionalImages ?? []).filter((url) => !hiddenSet.has(url)),
+      ].filter((url): url is string => Boolean(url && url.trim()));
+      if (galleryUrls.length > 0) {
+        updatePayload.mediaUrls = galleryUrls;
+      }
+
+      const proj = await this.projectRepository.findOne({ id: projectId });
+      if (proj) {
+        updatePayload.publishedSnapshot = {
+          title: proj.title,
+          subtitle: proj.subtitle ?? null,
+          shortDescription: proj.shortDescription ?? null,
+          description: proj.fullDescription ?? null,
+          categories: proj.categories ?? [],
+          subcategories: proj.subCategories ?? [],
+          industry: proj.industries ?? [],
+          tags: proj.tags ?? [],
+          skills: proj.skills ?? [],
+          mediaUrls: galleryUrls,
+          videoUrl: proj.videoUrl ?? null,
+          faqs: proj.faqs ?? [],
+          deliverables: proj.deliverables ?? [],
+          scope: proj.scope ?? null,
+        };
+      }
+    }
+
+    const moderatedProject = await this.projectRepository.update(
+      projectId,
+      updatePayload,
+    );
 
     if (status === 'rejected') {
       const moderationReason = moderationResult.reason ?? '';
@@ -187,17 +304,19 @@ export class PublishService {
         /banned keyword|bad words|profanity|content failed validation|content moderation|community guidelines/i.test(
           moderationReason,
         );
-      throw new BadRequestException(
-        isImageViolation
-          ? `Project rejected: image violates moderation policy. ${moderationReason}`.trim()
-          : isVideoViolation
-            ? `Project rejected: video violates moderation policy. ${moderationReason}`.trim()
-            : isContentViolation
-              ? `Project rejected: content violates moderation policy (bad words/profanity). ${moderationReason}`.trim()
-              : moderationResult.reason
-                ? `Project rejected: content violates moderation policy. ${moderationResult.reason}`
-                : 'Project rejected: content violates moderation policy.',
-      );
+      const message = isImageViolation
+        ? `Project rejected: image violates moderation policy. ${moderationReason}`.trim()
+        : isVideoViolation
+          ? `Project rejected: video violates moderation policy. ${moderationReason}`.trim()
+          : isContentViolation
+            ? `Project rejected: content violates moderation policy (bad words/profanity). ${moderationReason}`.trim()
+            : moderationResult.reason
+              ? `Project rejected: content violates moderation policy. ${moderationResult.reason}`
+              : 'Project rejected: content violates moderation policy.';
+      throw new BadRequestException({
+        message,
+        field: moderationResult.field,
+      });
     }
 
     if (status === 'pending_review') {
@@ -320,6 +439,7 @@ export class PublishService {
               experienceLevel: taskDto.experienceLevel,
               duration: taskDto.duration,
               estimatedHours: taskDto.estimatedHours,
+              assigneeUserId: taskDto.assigneeUserId ?? null,
               phaseId: phase.id,
             });
           }
@@ -369,6 +489,134 @@ export class PublishService {
     }
   }
 
+  private signInternalToken(): string {
+    const secret = this.configService.get<string>('JWT_SECRET') ?? '';
+    return jwt.sign({ sub: 'listings-service' }, secret, { expiresIn: '5m' });
+  }
+
+  // Median hourly rate (USD cents) from pricing-service for a role/location/
+  // experience. Returns 0 when pricing is unavailable or has no data.
+  private async getRateUsdCents(
+    role: string,
+    location: string | null,
+    experienceLevel: string | null,
+  ): Promise<number> {
+    const base = this.configService.get<string>('PRICING_SERVICE_URL');
+    if (!base || !role) return 0;
+    const EXP: Record<string, string> = {
+      student: 'junior',
+      junior: 'junior',
+      medior: 'mid',
+      mid: 'mid',
+      senior: 'senior',
+      guru: 'senior',
+    };
+    const experience = experienceLevel
+      ? (EXP[experienceLevel.toLowerCase()] ?? experienceLevel.toLowerCase())
+      : undefined;
+    try {
+      // Location is intentionally omitted: task locations are cities
+      // (e.g. "New York, NY") while pricing regions are broad ("United States"),
+      // so an ILIKE region match never hits. Per PS-04/§7.3, omitting location
+      // yields the platform average for the role + experience.
+      void location;
+      const res = await firstValueFrom(
+        this.httpService.get(`${base}/v1/rates`, {
+          params: { role, experience },
+          headers: { Authorization: `Bearer ${this.signInternalToken()}` },
+          timeout: 2000,
+        }),
+      );
+      const data = res.data as any;
+      if (data?.noData) return 0;
+      return Number(data?.hourlyRateMedianUsdCents) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private taskHours(task: Task): number {
+    const explicit = Number(task.estimatedHours);
+    if (Number.isFinite(explicit) && explicit > 0) return explicit;
+    const [rawVal, rawUnit] = String(task.duration ?? '')
+      .trim()
+      .split(/\s+/);
+    const value = Number(rawVal);
+    if (!Number.isFinite(value) || value <= 0) return 0;
+    const unit = (rawUnit ?? 'days').toLowerCase();
+    if (unit.startsWith('hour')) return value;
+    if (unit.startsWith('week')) return value * 40;
+    if (unit.startsWith('month')) return value * 160;
+    return value * 8;
+  }
+
+  private taskDurationDays(task: any): number {
+    const [rawVal, rawUnit] = String(task.duration ?? '')
+      .trim()
+      .split(/\s+/);
+    const value = Number(rawVal);
+    if (!Number.isFinite(value) || value <= 0) return 0;
+    const unit = (rawUnit ?? 'days').toLowerCase();
+    if (unit.startsWith('week')) return value * 7;
+    if (unit.startsWith('month')) return value * 30;
+    if (unit.startsWith('hour')) return Math.max(1, Math.ceil(value / 24));
+    return value;
+  }
+
+  private async calculateProjectBudgetUsdCents(phases: any[]): Promise<number> {
+    const tasks: any[] = [];
+    for (const phase of phases) {
+      for (const task of phase.task ?? []) tasks.push(task);
+    }
+
+    const assigneeIds = Array.from(
+      new Set(tasks.map((t) => t.assigneeUserId).filter(Boolean)),
+    );
+    const assignees = await this.userProfileClient.hydrateTeam(assigneeIds);
+    const rateByUserId = new Map<string, number>();
+    for (const m of assignees) {
+      if (m.hourlyRate && m.hourlyRate > 0) {
+        rateByUserId.set(m.userId, m.hourlyRate);
+      }
+    }
+
+    const costs = await Promise.all(
+      tasks.map(async (task) => {
+        const hours = this.taskHours(task);
+        if (hours <= 0) return 0;
+        const level = String(
+          task.experienceLevel || task.experience?.[0] || 'Medior',
+        ).toLowerCase();
+
+        const memberRate = task.assigneeUserId
+          ? rateByUserId.get(task.assigneeUserId)
+          : undefined;
+        if (memberRate) {
+          return Math.round(hours * memberRate * 100);
+        }
+
+        const location = task.location?.[0] ?? null;
+        const pricingCents = await this.getRateUsdCents(
+          task.role,
+          location,
+          task.experienceLevel ?? level,
+        );
+        const rateCents =
+          pricingCents > 0
+            ? pricingCents
+            : Math.round(
+                hourlyRateForTask({
+                  roleName: task.role,
+                  experienceLevel: task.experienceLevel ?? level,
+                  location: task.location,
+                }) * 100,
+              );
+        return Math.round(hours * rateCents);
+      }),
+    );
+    return costs.reduce((sum, c) => sum + c, 0);
+  }
+
   async getProjectDraft(userId: string, projectId: string): Promise<any> {
     const project = await this.ensureProjectOwnership(projectId, userId);
 
@@ -393,11 +641,127 @@ export class PublishService {
         }),
     );
 
+    const team = await this.userProfileClient.hydrateTeam(
+      project.teamMemberIds,
+    );
+    const projectMembers = await this.projectRepository.getProjectMembers(
+      project.id,
+    );
+    const leadUserId = projectMembers.find((m) => m.isLead)?.userId;
+    const teamWithLead = leadUserId
+      ? team.map((t: any) => ({
+          ...t,
+          isLead: String(t.userId ?? t.id ?? '') === String(leadUserId),
+        }))
+      : team;
+
+    const recentQuestions = await this.projectRepository.getRecentQuestions(
+      project.id,
+    );
+
     return {
       ...project,
       media: media ?? null,
       scope,
+      team: teamWithLead,
+      projectMembers,
+      recentQuestions,
+      budgetUsdCents: await this.calculateProjectBudgetUsdCents(scope),
     };
+  }
+
+  async getProjectMembers(userId: string, projectId: string) {
+    await this.ensureProjectOwnership(projectId, userId);
+    return this.projectRepository.getProjectMembers(projectId);
+  }
+
+  async saveProjectMembers(
+    userId: string,
+    projectId: string,
+    members: Array<{
+      userId: string;
+      projectRole?: string | null;
+      status?: string | null;
+      isLead?: boolean | null;
+      leadLabel?: string | null;
+    }>,
+  ) {
+    await this.ensureProjectOwnership(projectId, userId);
+    await this.projectRepository.upsertProjectMembers(projectId, members ?? []);
+    return this.projectRepository.getProjectMembers(projectId);
+  }
+
+  async getRecentQuestions(userId: string, projectId: string) {
+    await this.ensureProjectOwnership(projectId, userId);
+    return this.projectRepository.getRecentQuestions(projectId);
+  }
+
+  async saveRecentQuestions(
+    userId: string,
+    projectId: string,
+    questions: Array<{
+      id?: string;
+      question: string;
+      answer?: string | null;
+      askedByName?: string | null;
+      askedByUsername?: string | null;
+      askedAt?: string | null;
+      answeredByUserId?: string | null;
+      answeredByName?: string | null;
+      answeredByRole?: string | null;
+      assignedToUserId?: string | null;
+      hidden?: boolean;
+    }>,
+    authToken?: string,
+  ) {
+    await this.ensureProjectOwnership(projectId, userId);
+    const existing = await this.projectRepository.getRecentQuestions(projectId);
+    const existingById = new Map(existing.map((q) => [q.id, q] as const));
+    const normalized = await Promise.all(
+      (questions ?? [])
+        .filter((q) => q && typeof q.question === 'string' && q.question.trim())
+        .map(async (q) => {
+          const answer = q.answer?.trim() ? q.answer : null;
+          const hidden = !!q.hidden;
+          const prev = q.id ? existingById.get(q.id) : undefined;
+          const questionChanged = !prev || prev.question !== q.question;
+          const answerChanged = !!answer && (!prev || prev.answer !== answer);
+          let moderationFailed = prev?.moderationFailed ?? false;
+          if (questionChanged || answerChanged) {
+            moderationFailed = false;
+            const qStatus = await this.projectModerationService.moderateText(
+              q.question,
+              projectId,
+              authToken,
+            );
+            if (qStatus !== 'approved') moderationFailed = true;
+            if (answer && !moderationFailed) {
+              const aStatus = await this.projectModerationService.moderateText(
+                answer,
+                projectId,
+                authToken,
+              );
+              if (aStatus !== 'approved') moderationFailed = true;
+            }
+          }
+          return {
+            id: q.id ?? undefined,
+            question: q.question,
+            answer,
+            askedByName: q.askedByName ?? null,
+            askedByUsername: q.askedByUsername ?? null,
+            askedAt: q.askedAt ?? null,
+            answeredByUserId: answer ? (q.answeredByUserId ?? null) : null,
+            answeredByName: answer ? (q.answeredByName ?? null) : null,
+            answeredByRole: answer ? (q.answeredByRole ?? null) : null,
+            assignedToUserId: q.assignedToUserId ?? null,
+            hidden,
+            moderationFailed,
+          };
+        }),
+    );
+    await this.projectRepository.updateRecentQuestions(projectId, normalized);
+    return this.projectRepository.getRecentQuestions(projectId);
   }
 
   async updateProjectDraft(
@@ -442,6 +806,12 @@ export class PublishService {
     if (dto.tags !== undefined) payload.tags = dto.tags;
     if (dto.skills !== undefined) payload.skills = dto.skills;
     if (dto.listingType !== undefined) payload.listingType = dto.listingType;
+    if (dto.projectType !== undefined) payload.projectType = dto.projectType;
+    if (dto.videoUrl !== undefined) payload.videoUrl = dto.videoUrl;
+    if (dto.faqs !== undefined) payload.faqs = dto.faqs;
+    if (dto.teamMemberIds !== undefined) {
+      payload.teamMemberIds = dto.teamMemberIds;
+    }
 
     const updated = await this.projectRepository.update(projectId, payload);
     if (!updated) {
@@ -481,6 +851,7 @@ export class PublishService {
       ...project,
       media: media ?? null,
       scope,
+      budgetUsdCents: await this.calculateProjectBudgetUsdCents(scope),
     };
   }
 
@@ -492,12 +863,47 @@ export class PublishService {
     });
   }
 
+  /**
+   * Normalizes a service scope to the required shape (docs JL-07) instead of
+   * rejecting it — so autosave never fails mid-edit. Runs only when the scope
+   * carries phase types (project scopes pass through untouched):
+   *   - Setup phases first, Recurring in the middle, Ongoing last (re-ordered).
+   *   - Recurring phases get sensible recurrence defaults when missing.
+   * The frontend enforces the "one Setup / one Ongoing" UX; if extras slip
+   * through they're simply ordered by type, never dropped.
+   */
+  private normalizeServiceScope(
+    phases: CreateProjectPhaseDto[],
+  ): CreateProjectPhaseDto[] {
+    if (!phases.some((p) => p.phaseType)) return phases;
+
+    const rank = (t?: string) =>
+      t === 'setup' ? 0 : t === 'ongoing' ? 2 : 1;
+
+    return [...phases]
+      .sort((a, b) => {
+        const byType = rank(a.phaseType) - rank(b.phaseType);
+        return byType !== 0 ? byType : (a.order ?? 0) - (b.order ?? 0);
+      })
+      .map((p, index) => ({
+        ...p,
+        order: index,
+        ...(p.phaseType === 'recurring'
+          ? {
+              recurrenceSchedule: p.recurrenceSchedule ?? 'monthly',
+              recurrenceCount: p.recurrenceCount ?? 1,
+            }
+          : {}),
+      }));
+  }
+
   async replaceProjectScope(
     userId: string,
     projectId: string,
     dto: UpsertProjectScopeDto,
-  ): Promise<{ scope: Phase[] }> {
+  ): Promise<{ scope: Phase[]; budgetUsdCents: number }> {
     await this.ensureProjectOwnership(projectId, userId);
+    const normalizedScope = this.normalizeServiceScope(dto.scope ?? []);
 
     const existingPhases = await this.phaseRepository.findAll({
       filterOptions: { projectId },
@@ -516,13 +922,16 @@ export class PublishService {
 
     const scope: Phase[] = [];
 
-    for (const phaseDto of dto.scope ?? []) {
+    for (const phaseDto of normalizedScope) {
       const phase = await this.phaseRepository.create({
         name: phaseDto.name,
         stageName: phaseDto.stageName,
         startDay: phaseDto.startDay,
         endDay: phaseDto.endDay,
         order: phaseDto.order,
+        phaseType: phaseDto.phaseType ?? null,
+        recurrenceSchedule: phaseDto.recurrenceSchedule ?? null,
+        recurrenceCount: phaseDto.recurrenceCount ?? null,
         projectId,
       });
 
@@ -536,6 +945,7 @@ export class PublishService {
           experienceLevel: taskDto.experienceLevel,
           duration: taskDto.duration,
           estimatedHours: taskDto.estimatedHours,
+          assigneeUserId: taskDto.assigneeUserId ?? null,
           phaseId: phase.id,
         });
       }
@@ -569,22 +979,64 @@ export class PublishService {
       this.logger.warn(`Failed to derive deliverables for project ${projectId}: ${(err as Error).message}`);
     }
 
-    return { scope };
+    const budgetUsdCents = await this.calculateProjectBudgetUsdCents(scope);
+
+    let totalDays = 0;
+    for (const phase of scope) {
+      let phaseDays = 0;
+      for (const task of phase.task ?? []) {
+        phaseDays = Math.max(phaseDays, this.taskDurationDays(task));
+      }
+      totalDays += phaseDays;
+    }
+    const durationWeeks =
+      totalDays > 0 ? Math.max(1, Math.ceil(totalDays / 7)) : 0;
+
+    let totalHours = 0;
+    const scopeSnapshot = scope.map((phase, index) => ({
+      phaseName: phase.name || phase.stageName || `Phase ${index + 1}`,
+      order: phase.order ?? index,
+      phaseType: phase.phaseType ?? null,
+      recurrenceSchedule: phase.recurrenceSchedule ?? null,
+      recurrenceCount: phase.recurrenceCount ?? null,
+      tasks: (phase.task ?? []).map((task) => {
+        const hours = this.taskHours(task);
+        totalHours += hours;
+        return {
+          title: task.taskName,
+          roleName: task.role,
+          location: task.location ?? [],
+          experienceLevel:
+            task.experienceLevel ?? task.experience?.[0] ?? 'Medior',
+          estimatedHours: hours,
+          duration: task.duration ?? null,
+        };
+      }),
+    }));
+
+    await this.projectRepository.updatePublishedSnapshot(projectId, {
+      budget: budgetUsdCents / 100,
+      scope: scopeSnapshot,
+      duration: durationWeeks > 0 ? String(durationWeeks) : null,
+      estimatedHours: totalHours > 0 ? Math.round(totalHours) : null,
+    });
+
+    return { scope, budgetUsdCents };
   }
 
   async publishExistingProject(
     userId: string,
     projectId: string,
+    authToken?: string,
   ): Promise<Project> {
     const project = await this.ensureProjectOwnership(projectId, userId);
 
-    if (project.status === 'published') {
-      return project;
-    }
-
     try {
       const media = await this.mediaRepository.find({ projectId: project.id });
-      if (!media?.featuredImage) {
+      const hasCover =
+        !!media?.featuredImage ||
+        (Array.isArray(project.mediaUrls) && project.mediaUrls.length > 0);
+      if (!hasCover) {
         throw new BadRequestException(
           'Featured image is required before publishing.',
         );
@@ -607,11 +1059,13 @@ export class PublishService {
         subCategories: project.subCategories,
         categorySelections: project.categorySelections,
         tags: project.tags,
+        faqs: project.faqs,
       });
 
       const moderationResult = await this.projectModerationService.moderateProject(
         project.id!,
         moderationInput,
+        authToken,
       );
 
       return await this.applyModerationDecision(project.id!, moderationResult);
@@ -627,6 +1081,18 @@ export class PublishService {
       this.throwIfHttpException(error);
       throw new InternalServerErrorException('Failed to publish project');
     }
+  }
+
+  async unpublishProject(userId: string, projectId: string): Promise<Project> {
+    await this.ensureProjectOwnership(projectId, userId);
+    const updated = await this.projectRepository.update(projectId, {
+      status: 'draft',
+      projectDatePublished: null,
+    });
+    if (!updated) {
+      throw new NotFoundException('Project not found');
+    }
+    return updated;
   }
 
   async createProjectOfPhase(
@@ -784,23 +1250,39 @@ export class PublishService {
     userId: string,
     projectId: string,
     additionalImages: string[],
+    hiddenImages?: string[],
   ): Promise<Media | null> {
     const project = await this.projectRepository.find({ id: projectId });
     if (!project || project.userId !== userId) {
       throw new NotFoundException('Project not found');
     }
     const existingMedia = await this.mediaRepository.find({ projectId });
+    const featured = existingMedia?.featuredImage ?? '';
+    const hidden = hiddenImages ?? existingMedia?.hiddenImages ?? [];
+    const hiddenSet = new Set(hidden);
+    const galleryUrls = [
+      featured,
+      ...additionalImages.filter((url) => !hiddenSet.has(url)),
+    ].filter((url): url is string => Boolean(url && url.trim()));
+    await this.projectRepository.update(projectId, { mediaUrls: galleryUrls });
     if (!existingMedia) {
-      // Create a new media record with just additionalImages
-      return this.mediaRepository.create({ projectId, additionalImages, featuredImage: '' } as any);
+      return this.mediaRepository.create({
+        projectId,
+        additionalImages,
+        hiddenImages: hidden,
+        featuredImage: '',
+      } as any);
     }
-    return this.mediaRepository.update(existingMedia.id, { additionalImages });
+    return this.mediaRepository.update(existingMedia.id, {
+      additionalImages,
+      hiddenImages: hidden,
+    });
   }
 
   async createProjectOfMedia(
     userId: string,
     files: {
-      featuredImage: Express.Multer.File;
+      featuredImage?: Express.Multer.File;
       additionalImages?: Express.Multer.File[];
       featuredVideo?: Express.Multer.File;
     },
@@ -815,7 +1297,11 @@ export class PublishService {
         throw new BadRequestException('You can upload a maximum of 8 images.');
       }
 
-      if (!this.shouldSkipModeration) {
+      const existingMedia = await this.mediaRepository.find({
+        projectId: dto.projectId,
+      });
+
+      if (files.featuredImage && !this.shouldSkipModeration) {
         const featuredImageModeration =
           await this.projectModerationService.moderateUploadedImage(
             dto.projectId,
@@ -837,7 +1323,7 @@ export class PublishService {
             `Project rejected: image violates moderation policy. ${reason}`.trim(),
           );
         }
-      } else {
+      } else if (files.featuredImage) {
         this.logger.warn(
           `Skipping image moderation for project ${dto.projectId} (SKIP_CONTENT_MODERATION=true)`,
         );
@@ -881,7 +1367,8 @@ export class PublishService {
         persistedVideoUrl = featuredVideoUpload.url;
       } else if (resolvedVideoUrl) {
         moderationContext = 'video';
-        if (!this.shouldSkipModeration) {
+        const videoUnchanged = existingMedia?.featuredVideo === resolvedVideoUrl;
+        if (!videoUnchanged && !this.shouldSkipModeration) {
           const videoModeration =
             await this.projectModerationService.moderateVideoUrl(
               dto.projectId,
@@ -904,24 +1391,64 @@ export class PublishService {
         persistedVideoUrl = resolvedVideoUrl;
       }
 
-      const featuredImageUpload =
-        await this.cloudflareStorageService.uploadProjectMedia(
-          dto.projectId,
-          files.featuredImage,
-        );
+      const clearFeatured =
+        (dto as CreateMediaDto & { clearFeatured?: string }).clearFeatured ===
+        'true';
+      let featuredImageUrl: string;
+      if (files.featuredImage) {
+        const featuredImageUpload =
+          await this.cloudflareStorageService.uploadProjectMedia(
+            dto.projectId,
+            files.featuredImage,
+          );
+        featuredImageUrl = featuredImageUpload.url;
+      } else if (dto.featuredImage) {
+        featuredImageUrl = dto.featuredImage;
+      } else if (clearFeatured) {
+        featuredImageUrl = '';
+      } else {
+        throw new BadRequestException('Featured image is required.');
+      }
+
       const additionalImageUploads = await Promise.all(
         (files.additionalImages ?? []).map((file) =>
           this.cloudflareStorageService.uploadProjectMedia(dto.projectId, file),
         ),
       );
+      const uploadedAdditionalUrls = additionalImageUploads.map(
+        (image) => image.url,
+      );
+      const mergedAdditionalImages = [
+        ...(dto.additionalImages ?? []),
+        ...uploadedAdditionalUrls,
+      ];
+      const replaceAdditional =
+        (dto as CreateMediaDto & { replaceAdditional?: string })
+          .replaceAdditional === 'true';
+      const hasProvidedAdditional =
+        replaceAdditional ||
+        dto.additionalImages !== undefined ||
+        uploadedAdditionalUrls.length > 0;
 
       // Upsert: update existing media record if one exists, otherwise create
-      const existingMedia = await this.mediaRepository.find({ projectId: dto.projectId });
       let media: Media;
+      const isGalleryUpload = dto.target === 'additional';
       const mediaPayload = {
-        featuredImage: featuredImageUpload.url,
-        additionalImages: additionalImageUploads.map((image) => image.url),
-        featuredVideo: persistedVideoUrl ?? undefined,
+        featuredImage: isGalleryUpload
+          ? (existingMedia?.featuredImage ?? '')
+          : featuredImageUrl,
+        additionalImages: isGalleryUpload
+          ? [...(existingMedia?.additionalImages ?? []), featuredImageUrl]
+          : hasProvidedAdditional
+            ? mergedAdditionalImages
+            : (existingMedia?.additionalImages ?? []),
+        hiddenImages:
+          (dto as CreateMediaDto & { replaceHidden?: string }).replaceHidden ===
+            'true' || dto.hiddenImages !== undefined
+            ? (dto.hiddenImages ?? [])
+            : (existingMedia?.hiddenImages ?? []),
+        featuredVideo:
+          persistedVideoUrl ?? existingMedia?.featuredVideo ?? undefined,
         projectId: dto.projectId,
       };
       if (existingMedia?.id) {
@@ -932,7 +1459,24 @@ export class PublishService {
         media = await this.mediaRepository.create(mediaPayload);
       }
 
-      return media;
+      const hiddenSet = new Set(mediaPayload.hiddenImages ?? []);
+      const galleryUrls = [
+        mediaPayload.featuredImage,
+        ...(mediaPayload.additionalImages ?? []).filter(
+          (url) => !hiddenSet.has(url),
+        ),
+      ].filter((url): url is string => Boolean(url && url.trim()));
+      if (galleryUrls.length > 0) {
+        await this.projectRepository.update(dto.projectId, {
+          mediaUrls: galleryUrls,
+        });
+      } else if (clearFeatured) {
+        await this.projectRepository.update(dto.projectId, {
+          mediaUrls: [],
+        });
+      }
+
+      return { ...media, url: featuredImageUrl } as Media;
     } catch (error) {
       console.log('err', error);
       this.throwIfHttpException(error);

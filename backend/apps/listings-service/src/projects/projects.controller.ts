@@ -11,6 +11,7 @@ import {
   HttpStatus,
   UseGuards,
   ParseUUIDPipe,
+  Query,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ProjectsService } from './projects.service';
@@ -26,9 +27,62 @@ export class ProjectsController {
     return this.service.findAll();
   }
 
+  @Get('recommended')
+  getRecommended(
+    @Query('skills') skills: string,
+    @Query('limit') limit?: string,
+  ) {
+    const skillList = skills ? skills.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    return this.service.getRecommendedBySkills(skillList, limit ? parseInt(limit, 10) : 10);
+  }
+
   @Get('slug/:slug')
   findBySlug(@Param('slug') slug: string) {
     return this.service.findBySlug(slug);
+  }
+
+  @Get(':id/related-searches')
+  getRelatedSearches(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.getRelatedSearches(id, limit ? parseInt(limit, 10) : 60);
+  }
+
+  @Get(':id/questions')
+  getQuestions(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getQuestions(id);
+  }
+
+  @Get(':id/suggested-questions')
+  getSuggestedQuestions(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getSuggestedQuestions(id);
+  }
+
+  @Post(':id/questions')
+  @UseGuards(JwtAuthGuard)
+  addQuestion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('question') question: string,
+    @Req() req: any,
+  ) {
+    return this.service.addQuestion(id, question, req.user?.sub ?? req.user?.id ?? req.user?.userId);
+  }
+
+  @Put(':id/questions/:index/answer')
+  @UseGuards(JwtAuthGuard)
+  answerQuestion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('index') index: string,
+    @Body('answer') answer: string,
+    @Req() req: any,
+  ) {
+    return this.service.answerQuestion(
+      id,
+      parseInt(index, 10),
+      answer,
+      req.user?.sub ?? req.user?.id ?? req.user?.userId,
+    );
   }
 
   @Get(':id')

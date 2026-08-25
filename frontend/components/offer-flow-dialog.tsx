@@ -1,7 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { ArrowLeft, Briefcase, Info, Repeat, User, X } from "@blend-metrics/icons"
+import {
+  ArrowLeft,
+  Briefcase,
+  Info,
+  Repeat,
+  MessageSquare,
+  X,
+} from "@blend-metrics/icons"
 import NextLink from "@/components/next-link"
 import type { OfferDialogData } from "@/components/offer-dialog.types"
 import {
@@ -101,6 +108,9 @@ export function OfferFlowDialog({
   const resolvedDeclineReason =
     selectedDeclineReason ??
     (variant === "decline-offer-ready" ? "Too busy right now" : "")
+  const canDecline =
+    resolvedDeclineMessage.trim().length > 0 ||
+    resolvedDeclineReason.trim().length > 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -304,8 +314,8 @@ export function OfferFlowDialog({
                       Counter Offer
                     </Button>
                     <Button
-                      visual="error"
-                      disabled={declineLoading}
+                      visual="primary"
+                      disabled={!canDecline || declineLoading}
                       onClick={onDecline}
                     >
                       {declineLoading ? "Declining..." : "Decline Offer"}
@@ -330,8 +340,10 @@ export function OfferFlowDialog({
                   ) : null}
 
                   <DialogTitle className="text-[18px] font-semibold leading-7 text-dark-blue-400">
-                    {data.senderDisplayName}{" "}
-                    <span className="text-primary-500">{data.senderUsername}</span>
+                    Offer from{" "}
+                    <span className="text-primary-500">
+                      {data.senderUsername}
+                    </span>
                   </DialogTitle>
                 </div>
 
@@ -378,7 +390,7 @@ export function OfferFlowDialog({
                     <Button
                       variant="outlined"
                       visual="gray"
-                      leftIcon={<User className="size-4" />}
+                      leftIcon={<MessageSquare className="size-4" />}
                       onClick={onMessage}
                     >
                       Message

@@ -26,8 +26,15 @@ export class AblyNotificationsService {
       return;
     }
 
-    this.disabled = false;
-    this.client = new Ably.Rest({ key: ablyKey as string });
+    try {
+      this.client = new Ably.Rest({ key: ablyKey as string });
+      this.disabled = false;
+    } catch (err) {
+      this.disabled = true;
+      this.logger.warn(
+        `Ably client initialization failed — realtime disabled: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   isEnabled(): boolean {

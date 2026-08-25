@@ -1,10 +1,22 @@
 "use client"
 
-import React, { Fragment, Suspense, SVGProps, useEffect, useRef, useState } from "react"
+import React, {
+  Fragment,
+  SVGProps,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
+import dynamic from "next/dynamic"
 import { useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import { UserAPI, EducationPayload, ExperiencePayload } from "@/service/http/user"
-import { UserProfile } from "@/types/user"
+import {
+  EducationPayload,
+  ExperiencePayload,
+  UserAPI,
+} from "@/service/http/user"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { cn, hookFormHasError, noop } from "@/utils/functions"
 import {
   useCallbackRef,
@@ -46,13 +58,18 @@ import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
 import Confetti from "react-confetti"
 import CurrencyInput from "react-currency-input-field"
-import { Controller, SubmitHandler, useForm, useWatch } from "react-hook-form"
+import {
+  Controller,
+  DefaultValues,
+  SubmitHandler,
+  useForm,
+  useWatch,
+} from "react-hook-form"
 import { useToggle } from "react-use"
 import { z } from "zod"
-import dynamic from "next/dynamic"
+import { UserProfile } from "@/types/user"
 import NextImage from "@/components/next-image"
-
-const CaseStudyBuilder = dynamic(() => import("@/components/case-study-builder"), { ssr: false })
+import { getCompanyBrandFromName } from "@/src/lib/certification-brand"
 import {
   BecomeTopSeller,
   Carousel,
@@ -109,6 +126,11 @@ import {
   inputVariants,
 } from "@/components/ui"
 
+const CaseStudyBuilder = dynamic(
+  () => import("@/components/case-study-builder"),
+  { ssr: false }
+)
+
 const Bulb = (props: SVGProps<SVGSVGElement>) => (
   <svg
     width={20}
@@ -148,8 +170,11 @@ const RightSidebar = () => {
   const searchParams = useSearchParams()
   const [isOpen, setIsOpen] = useState(() => searchParams.get("open") === "1")
   const [profileProgress, setProfileProgress] = useState(0)
-  const displayUsername = user?.username ||
-    `${user?.firstName || ""}${user?.lastName || ""}`.toLowerCase().replace(/\s+/g, "") ||
+  const displayUsername =
+    user?.username ||
+    `${user?.firstName || ""}${user?.lastName || ""}`
+      .toLowerCase()
+      .replace(/\s+/g, "") ||
     "my-profile"
   return (
     <div className="shrink-0 w-[322px]">
@@ -194,7 +219,11 @@ const RightSidebar = () => {
               <UserCheck01 className="size-[15px]" />
               Complete My Profile
             </Button>
-            <StatusDialog open={isOpen} onOpenChange={setIsOpen} onProgressChange={setProfileProgress} />
+            <StatusDialog
+              open={isOpen}
+              onOpenChange={setIsOpen}
+              onProgressChange={setProfileProgress}
+            />
           </div>
           <div className="mt-3">
             <span className="text-[13px] leading-none font-light text-dark-blue-400">
@@ -446,8 +475,11 @@ export const StatusDialog = ({
   initialStep?: (typeof DIALOG_NAMES)[number] | null
 }) => {
   const { user } = useAuth()
-  const [dialogsState, setDialogsState] = useState<DialogsStateType>(defaultDialogsState)
+  const [dialogsState, setDialogsState] =
+    useState<DialogsStateType>(defaultDialogsState)
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [profileLoading, setProfileLoading] = useState(true)
+  const [profileError, setProfileError] = useState(false)
 
   // Load from localStorage on mount (client-side only — localStorage unavailable during SSR)
   useEffect(() => {
@@ -459,7 +491,10 @@ export const StatusDialog = ({
           DIALOG_NAMES.reduce(
             (acc, name) => ({
               ...acc,
-              [name]: { finished: parsed[name]?.finished ?? false, opened: false },
+              [name]: {
+                finished: parsed[name]?.finished ?? false,
+                opened: parsed[name]?.opened ?? false,
+              },
             }),
             {} as DialogsStateType
           )
@@ -468,16 +503,24 @@ export const StatusDialog = ({
     } catch {}
   }, [])
 
-  // Persist finished state to localStorage whenever it changes
+  const persistInitialized = useRef(false)
   useEffect(() => {
+    if (!persistInitialized.current) {
+      persistInitialized.current = true
+      return
+    }
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dialogsState))
     } catch {}
   }, [dialogsState])
 
-  // On mount, derive completion from API profile data
-  useEffect(() => {
-    if (!user?.id) return
+  const loadProfile = React.useCallback(() => {
+    if (!user?.id) {
+      setProfileLoading(false)
+      return
+    }
+    setProfileLoading(true)
+    setProfileError(false)
     UserAPI.getProfile(user.id)
       .then((res) => {
         const p = res?.data
@@ -507,8 +550,13 @@ export const StatusDialog = ({
           },
         }))
       })
-      .catch(() => {})
+      .catch(() => setProfileError(true))
+      .finally(() => setProfileLoading(false))
   }, [user?.id])
+
+  useEffect(() => {
+    loadProfile()
+  }, [loadProfile])
 
   // Open a specific step dialog when initialStep is provided
   const isDirectStep = Boolean(initialStep)
@@ -527,7 +575,11 @@ export const StatusDialog = ({
     onOpenChange?.(false)
   }, [onOpenChange])
 
+  const advancingRef = useRef(false)
   const next = () => {
+    if (advancingRef.current) return
+    advancingRef.current = true
+    setTimeout(() => { advancingRef.current = false }, 300)
     // If opened directly to a single step, skip to next incomplete step (or close if all done)
     if (isDirectStep) {
       let openedDialogName: keyof typeof dialogsState | null = null
@@ -537,7 +589,10 @@ export const StatusDialog = ({
           break
         }
       }
-      if (!openedDialogName) { closeAll(); return }
+      if (!openedDialogName) {
+        closeAll()
+        return
+      }
 
       // Find next incomplete step (excluding CONGRATULATIONS)
       const stepsToCheck = DIALOG_NAMES.filter((n) => n !== "CONGRATULATIONS")
@@ -636,9 +691,9 @@ export const StatusDialog = ({
   })
 
   const totalSteps = Object.keys(content).length
-  const completedSteps = (Object.keys(content) as (keyof typeof content)[]).filter(
-    (k) => dialogsState[k].finished
-  ).length
+  const completedSteps = (
+    Object.keys(content) as (keyof typeof content)[]
+  ).filter((k) => dialogsState[k].finished).length
   const progressPercent = Math.round((completedSteps / totalSteps) * 100)
 
   useEffect(() => {
@@ -656,7 +711,10 @@ export const StatusDialog = ({
         }
         opened={dialogsState["ABOUT-ME"].opened}
         onOpenedChange={(opened) => {
-          if (!opened && isDirectStep) { closeAll(); return }
+          if (!opened && isDirectStep) {
+            closeAll()
+            return
+          }
           setDialogsState((prev) => ({
             ...prev,
             "ABOUT-ME": { ...prev["ABOUT-ME"], opened },
@@ -666,6 +724,9 @@ export const StatusDialog = ({
         userId={user?.id ?? ""}
         progressPercent={progressPercent}
         profile={profile}
+        profileLoading={profileLoading}
+        profileError={profileError}
+        onReloadProfile={loadProfile}
       />
       <Portfolio
         onFinished={(finished) =>
@@ -676,7 +737,10 @@ export const StatusDialog = ({
         }
         opened={dialogsState["PORTFOLIO"].opened}
         onOpenedChange={(opened) => {
-          if (!opened && isDirectStep) { closeAll(); return }
+          if (!opened && isDirectStep) {
+            closeAll()
+            return
+          }
           setDialogsState((prev) => ({
             ...prev,
             PORTFOLIO: { ...prev["PORTFOLIO"], opened },
@@ -685,6 +749,9 @@ export const StatusDialog = ({
         next={next}
         previous={previous}
         progressPercent={progressPercent}
+        profileLoading={profileLoading}
+        profileError={profileError}
+        onReloadProfile={loadProfile}
       />
       <SkillsDialog
         onFinished={(finished) =>
@@ -695,7 +762,10 @@ export const StatusDialog = ({
         }
         opened={dialogsState["SKILLS"].opened}
         onOpenedChange={(opened) => {
-          if (!opened && isDirectStep) { closeAll(); return }
+          if (!opened && isDirectStep) {
+            closeAll()
+            return
+          }
           setDialogsState((prev) => ({
             ...prev,
             SKILLS: { ...prev["SKILLS"], opened },
@@ -706,6 +776,9 @@ export const StatusDialog = ({
         userId={user?.id ?? ""}
         progressPercent={progressPercent}
         profile={profile}
+        profileLoading={profileLoading}
+        profileError={profileError}
+        onReloadProfile={loadProfile}
       />
       <WorkExperienceDialog
         onFinished={(finished) =>
@@ -716,7 +789,10 @@ export const StatusDialog = ({
         }
         opened={dialogsState["WORK-EXPERIENCE"].opened}
         onOpenedChange={(opened) => {
-          if (!opened && isDirectStep) { closeAll(); return }
+          if (!opened && isDirectStep) {
+            closeAll()
+            return
+          }
           setDialogsState((prev) => ({
             ...prev,
             "WORK-EXPERIENCE": { ...prev["WORK-EXPERIENCE"], opened },
@@ -727,6 +803,9 @@ export const StatusDialog = ({
         userId={user?.id ?? ""}
         progressPercent={progressPercent}
         profile={profile}
+        profileLoading={profileLoading}
+        profileError={profileError}
+        onReloadProfile={loadProfile}
       />
       <EducationDialog
         onFinished={(finished) =>
@@ -737,7 +816,10 @@ export const StatusDialog = ({
         }
         opened={dialogsState["EDUCATION"].opened}
         onOpenedChange={(opened) => {
-          if (!opened && isDirectStep) { closeAll(); return }
+          if (!opened && isDirectStep) {
+            closeAll()
+            return
+          }
           setDialogsState((prev) => ({
             ...prev,
             EDUCATION: { ...prev["EDUCATION"], opened },
@@ -747,6 +829,9 @@ export const StatusDialog = ({
         previous={previous}
         userId={user?.id ?? ""}
         profile={profile}
+        profileLoading={profileLoading}
+        profileError={profileError}
+        onReloadProfile={loadProfile}
       />
       <MoreInfoDialog
         onFinished={(finished) =>
@@ -757,7 +842,10 @@ export const StatusDialog = ({
         }
         opened={dialogsState["JOB_TITLE_RATE"].opened}
         onOpenedChange={(opened) => {
-          if (!opened && isDirectStep) { closeAll(); return }
+          if (!opened && isDirectStep) {
+            closeAll()
+            return
+          }
           setDialogsState((prev) => ({
             ...prev,
             JOB_TITLE_RATE: { ...prev["JOB_TITLE_RATE"], opened },
@@ -768,6 +856,9 @@ export const StatusDialog = ({
         userId={user?.id ?? ""}
         progressPercent={progressPercent}
         profile={profile}
+        profileLoading={profileLoading}
+        profileError={profileError}
+        onReloadProfile={loadProfile}
       />
       <Congratulations
         opened={dialogsState["CONGRATULATIONS"].opened}
@@ -779,31 +870,42 @@ export const StatusDialog = ({
         }
       />
 
-      <Dialog open={isOpen && !isDirectStep} onOpenChange={setIsOpen}>
+      <Dialog open={isOpen && !isDirectStep && !Object.values(dialogsState).some((s) => s.opened)} onOpenChange={setIsOpen}>
         <DialogContent
           dialogOverlay={<DialogOverlay className="bg-gray-700/50" />}
           variant="unanimated"
           className="shadow-[0px_20px_24px_-4px_rgba(16,24,40,.08)] max-w-[451px] bottom-5 right-5 duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-bottom-5 data-[state=open]:slide-in-from-bottom-5"
         >
+          <ScrollArea
+            viewportStyle={{ maxHeight: "calc(100vh - 88px)" }}
+            scrollBar={<ScrollBar className="w-4 p-1" />}
+          >
           <div className="border border-gray-200 overflow-hidden rounded-[10px]">
             <div className="p-6 bg-white border-gray-200 flex items-center gap-x-[18px] border-b">
               <div className="flex-auto space-y-2">
                 <p className="text-sm leading-none text-dark-blue-400">
-                  Boost your hiring potential{user?.firstName ? `, ${user.firstName}` : ""}!
+                  Boost your hiring potential
+                  {user?.firstName ? `, ${user.firstName}` : ""}!
                 </p>
                 <h2 className="text-lg font-semibold leading-none text-dark-blue-400">
                   Complete your profile to get hired by top clients.
                 </h2>
               </div>
               {(() => {
-                const remaining = (Object.keys(content) as (keyof typeof content)[]).reduce(
+                const remaining = (
+                  Object.keys(content) as (keyof typeof content)[]
+                ).reduce(
                   (prev, cur) => (dialogsState[cur].finished ? prev - 1 : prev),
                   Object.keys(content).length
                 )
                 return remaining === 0 ? (
-                  <Badge visual="success" size="lg">All done! 🎉</Badge>
+                  <Badge visual="success" size="lg">
+                    All done! 🎉
+                  </Badge>
                 ) : (
-                  <Badge visual="primary" size="lg">{remaining} step{remaining !== 1 ? "s" : ""} left</Badge>
+                  <Badge visual="primary" size="lg">
+                    {remaining} step{remaining !== 1 ? "s" : ""} left
+                  </Badge>
                 )
               })()}
             </div>
@@ -886,6 +988,7 @@ export const StatusDialog = ({
               )}
             </div>
           </div>
+          </ScrollArea>
 
           <div className="flex items-center justify-end mt-3">
             <DialogClose className="group text-gray-400 transition duration-300 hover:opacity-50 focus-visible:outline-none size-11 shrink-0 rounded-full bg-white border border-gray-300 hover:border-gray-500 hover:text-gray-950 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] inline-flex items-center justify-center">
@@ -909,18 +1012,58 @@ function formatJobTitle(value: string): string {
     .join(" ")
 }
 
+// Capitalize the first letter of each word, preserving numbers, punctuation and
+// existing casing (so "3M", "AT&T", "eBay" stay intact). A word that already
+// contains an uppercase letter is left alone — otherwise deliberate brand casing
+// like "eBay"/"iPhone" would be flattened to "EBay"/"IPhone".
+function capitalizeCompanyName(value?: string): string {
+  return (value ?? "").replace(/(^|\s)(\S+)/g, (_m, lead, word) =>
+    /[A-Z]/.test(word)
+      ? lead + word
+      : lead + word.charAt(0).toUpperCase() + word.slice(1)
+  )
+}
+
+// Real elapsed duration between two {month(1-12), year} points, LinkedIn-style
+// ("5 yrs 2 mos", "1 yr", "3 mos"). Inclusive of both endpoints.
+function formatExperienceDuration(
+  start?: { month?: number; year?: number },
+  end?: { month?: number; year?: number },
+  currentlyWorkHere?: boolean
+): string {
+  if (!start?.month || !start?.year) return ""
+  const now = new Date()
+  const endYear = currentlyWorkHere ? now.getFullYear() : end?.year
+  const endMonth = currentlyWorkHere ? now.getMonth() + 1 : end?.month
+  if (!endYear || !endMonth) return ""
+  let totalMonths = (endYear - start.year) * 12 + (endMonth - start.month) + 1
+  if (totalMonths < 1) totalMonths = 1
+  const yrs = Math.floor(totalMonths / 12)
+  const mos = totalMonths % 12
+  const parts: string[] = []
+  if (yrs > 0) parts.push(`${yrs} yr${yrs > 1 ? "s" : ""}`)
+  if (mos > 0) parts.push(`${mos} mo${mos > 1 ? "s" : ""}`)
+  return parts.join(" ")
+}
+
 const moreInfoFormSchema = z
   .object({
     jobTitle: z.string().min(1, "Please enter at least 1 character(s)"),
     saveAsDefault: z.boolean(),
-    clientRate: z.number().optional(),
-    earning: z.number().optional(),
+    clientRate: z
+      .number()
+      .max(1000, "Rate cannot exceed $1,000/hr")
+      .optional(),
+    earning: z
+      .number()
+      .max(1000, "Rate cannot exceed $1,000/hr")
+      .optional(),
     fee: z.number().optional(),
   })
-  .refine(
-    (data) => (data.clientRate ?? 0) > 0 || (data.earning ?? 0) > 0,
-    { message: "Please enter a rate", path: ["clientRate"] }
-  )
+  .refine((data) => (data.clientRate ?? 0) > 0 || (data.earning ?? 0) > 0, {
+    message: "Please enter a rate",
+    path: ["clientRate"],
+  })
 
 type MoreInfoFormValues = z.infer<typeof moreInfoFormSchema>
 
@@ -941,6 +1084,9 @@ const MoreInfoDialog = ({
   userId,
   progressPercent,
   profile,
+  profileLoading,
+  profileError,
+  onReloadProfile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -950,6 +1096,9 @@ const MoreInfoDialog = ({
   userId: string
   progressPercent?: number
   profile?: UserProfile | null
+  profileLoading?: boolean
+  profileError?: boolean
+  onReloadProfile?: () => void
 }) => {
   const [open, setOpen] = useControllableState({
     defaultValue: false,
@@ -962,6 +1111,7 @@ const MoreInfoDialog = ({
   )
   const [editingIndex, setEditingIndex] = useState<number>()
   const [profileLoaded, setProfileLoaded] = useState(false)
+  const [duplicateError, setDuplicateError] = useState<string | null>(null)
   const [workExperiences, setWorkExperiences] = useUncontrolledState<
     MoreInfoFormValues[] | undefined
   >({
@@ -984,44 +1134,85 @@ const MoreInfoDialog = ({
 
   // Pre-fill from saved profile data
   useEffect(() => {
-    if (profile && !profileLoaded && (profile.rateMin || profile.rateMax || profile.role)) {
-      setProfileLoaded(true)
-      const entry: MoreInfoFormValues = {
-        jobTitle: profile.role ?? "",
-        saveAsDefault: true,
-        earning: profile.rateMin ? Number(profile.rateMin) : 0,
-        clientRate: profile.rateMax ? Number(profile.rateMax) : 0,
-        fee: 0,
+    if (profile && !profileLoaded) {
+      const existing = (profile as any)?.jobTitles as
+        | Array<{
+            jobTitle?: string
+            clientRate?: number
+            earning?: number
+            fee?: number
+            saveAsDefault?: boolean
+          }>
+        | null
+        | undefined
+      if (existing?.length) {
+        setProfileLoaded(true)
+        setWorkExperiences(
+          existing.map((e) => ({
+            jobTitle: e.jobTitle ?? "",
+            saveAsDefault: Boolean(e.saveAsDefault),
+            earning: Number(e.earning ?? 0),
+            clientRate: Number(e.clientRate ?? 0),
+            fee: Number(e.fee ?? 0),
+          }))
+        )
+        setState("preview")
+      } else if (profile.recentJobTitle || profile.rateMin || profile.rateMax) {
+        setProfileLoaded(true)
+        const entry: MoreInfoFormValues = {
+          jobTitle: profile.recentJobTitle ?? "",
+          saveAsDefault: true,
+          earning: profile.rateMin ? Number(profile.rateMin) : 0,
+          clientRate: profile.rateMax ? Number(profile.rateMax) : 0,
+          fee: 0,
+        }
+        setWorkExperiences([entry])
+        setState("preview")
       }
-      setWorkExperiences([entry])
-      setState("preview")
     }
   }, [profile, profileLoaded, setWorkExperiences])
   const onSubmit: SubmitHandler<MoreInfoFormValues> = (values) => {
+    const normalizedTitle = values.jobTitle.trim().toLowerCase()
+    const isDuplicate = (workExperiences ?? []).some(
+      (e, index) =>
+        index !== editingIndex &&
+        e.jobTitle.trim().toLowerCase() === normalizedTitle
+    )
+    if (isDuplicate) {
+      setDuplicateError("This job title already exists.")
+      return
+    }
+    setDuplicateError(null)
+    let nextEntries: MoreInfoFormValues[]
     if (editingIndex !== undefined) {
-      // If this entry is being set as default, unmark the previous default
-      const updated = workExperiences?.map((workExperience, index) => {
+      nextEntries = (workExperiences ?? []).map((workExperience, index) => {
         if (index === editingIndex) return values
-        if (values.saveAsDefault) return { ...workExperience, saveAsDefault: false }
+        if (values.saveAsDefault)
+          return { ...workExperience, saveAsDefault: false }
         return workExperience
       })
-      setWorkExperiences(updated)
+      setWorkExperiences(nextEntries)
       setEditingIndex(undefined)
     } else {
-      // If new entry is marked default, unmark previous defaults
-      setWorkExperiences((prev) => {
-        const newEntry = values
-        if (!prev) return [newEntry]
-        if (newEntry.saveAsDefault) {
-          return [...prev.map((e) => ({ ...e, saveAsDefault: false })), newEntry]
-        }
-        return [...prev, newEntry]
-      })
+      const prev = workExperiences ?? []
+      nextEntries = values.saveAsDefault
+        ? [...prev.map((e) => ({ ...e, saveAsDefault: false })), values]
+        : [...prev, values]
+      setWorkExperiences(nextEntries)
     }
     if (userId) {
+      const defaultEntry = nextEntries.find((e) => e.saveAsDefault) ?? nextEntries[0]
       UserAPI.updateProfile(userId, {
         rateMin: values.earning ? Number(values.earning) : undefined,
         rateMax: values.clientRate ? Number(values.clientRate) : undefined,
+        jobTitles: nextEntries.map((e) => ({
+          jobTitle: e.jobTitle,
+          clientRate: e.clientRate ?? 0,
+          earning: e.earning ?? 0,
+          fee: e.fee ?? 0,
+          saveAsDefault: e.saveAsDefault,
+        })),
+        recentJobTitle: defaultEntry?.jobTitle,
       }).catch(() => {})
     }
     reset(moreInfoFormDefaultValues as MoreInfoFormValues)
@@ -1041,7 +1232,7 @@ const MoreInfoDialog = ({
         <form
           onSubmit={handleSubmit(onSubmit)}
           className={cn(
-            "transition-all duration-300",
+            "transition-all duration-300 min-w-0",
             state === "action" && "col-span-3"
           )}
         >
@@ -1103,12 +1294,18 @@ const MoreInfoDialog = ({
             </div>
 
             <div className="px-[30px] mt-6 pb-6">
-              <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
-                Job Title & Rate
-              </h1>
-              <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
-                Tell us what you do and set your hourly rates
-              </p>
+              <DialogTitle asChild>
+                <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
+                  Job Title & Rate
+                </h1>
+              </DialogTitle>
+              {state === "default" && profileLoading && !profileError ? (
+                <div className="mt-1 h-6 w-[280px] bg-gray-200 rounded animate-pulse" />
+              ) : (
+                <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
+                  Tell us what you do and set your hourly rates
+                </p>
+              )}
             </div>
 
             <ScrollArea
@@ -1117,7 +1314,21 @@ const MoreInfoDialog = ({
             >
               <div className="pb-[30px] px-1">
                 <div className="mt-6">
-                  {state === "default" && (
+                  {state === "default" && profileError && (
+                    <div className="flex flex-col items-start gap-y-3">
+                      <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
+                      <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+                    </div>
+                  )}
+
+                  {state === "default" && !profileError && profileLoading && (
+                    <div className="space-y-3" aria-busy="true" aria-label="Loading">
+                      <div className="h-9 w-[200px] bg-gray-200 rounded animate-pulse" />
+                      <div className="h-4 w-[260px] bg-gray-200 rounded animate-pulse" />
+                    </div>
+                  )}
+
+                  {state === "default" && !profileError && !profileLoading && (
                     <Button
                       onClick={() => {
                         setEditingIndex(undefined)
@@ -1149,11 +1360,13 @@ const MoreInfoDialog = ({
                             <div className="mt-1 flex items-center gap-x-3">
                               <div className="flex items-center flex-none gap-x-2">
                                 <span className="text-xs leading-none font-light text-dark-blue-400">
-                                  Client rate ${workExperience.clientRate ?? 0}/hr
+                                  Client rate ${workExperience.clientRate ?? 0}
+                                  /hr
                                 </span>
                                 <span className="inline-block size-1 bg-gray-300 rounded-full" />
                                 <span className="text-xs leading-none font-light text-dark-blue-400">
-                                  Your earnings ${workExperience.earning ?? 0}/hr
+                                  Your earnings ${workExperience.earning ?? 0}
+                                  /hr
                                 </span>
                               </div>
 
@@ -1183,8 +1396,12 @@ const MoreInfoDialog = ({
                               type="button"
                               className="text-gray-400 rounded-full hover:text-error-500 hover:bg-error-50"
                               onClick={() => {
-                                const updated = workExperiences?.filter((_, i) => i !== index)
-                                setWorkExperiences(updated?.length ? updated : undefined)
+                                const updated = workExperiences?.filter(
+                                  (_, i) => i !== index
+                                )
+                                setWorkExperiences(
+                                  updated?.length ? updated : undefined
+                                )
                                 if (!updated?.length) setState("default")
                               }}
                             >
@@ -1200,7 +1417,10 @@ const MoreInfoDialog = ({
                     <>
                       <div className="space-y-1.5">
                         <Label size="sm" htmlFor="job-title-input">
-                          Job Title {editingIndex !== undefined ? editingIndex + 1 : (workExperiences?.length ?? 0) + 1}
+                          Job Title{" "}
+                          {editingIndex !== undefined
+                            ? editingIndex + 1
+                            : (workExperiences?.length ?? 0) + 1}
                         </Label>
 
                         <Input
@@ -1223,6 +1443,11 @@ const MoreInfoDialog = ({
                             <ErrorMessage size="sm">{message}</ErrorMessage>
                           )}
                         />
+                        {duplicateError && (
+                          <ErrorMessage size="sm">
+                            {duplicateError}
+                          </ErrorMessage>
+                        )}
                       </div>
 
                       <div className="mt-3 flex items-center gap-x-3">
@@ -1295,8 +1520,14 @@ const MoreInfoDialog = ({
                                         const rate = values?.float ?? null
                                         onChange(rate)
                                         if (rate != null) {
-                                          setValue("earning", Math.round(rate * 0.8))
-                                          setValue("fee", Math.round(rate * 0.2))
+                                          setValue(
+                                            "earning",
+                                            Math.round(rate * 0.8)
+                                          )
+                                          setValue(
+                                            "fee",
+                                            Math.round(rate * 0.2)
+                                          )
                                         }
                                       }}
                                       placeholder="$78"
@@ -1425,9 +1656,14 @@ const MoreInfoDialog = ({
                                         const earning = values?.float ?? null
                                         onChange(earning)
                                         if (earning != null) {
-                                          const clientRate = Math.round(earning / 0.8)
+                                          const clientRate = Math.round(
+                                            earning / 0.8
+                                          )
                                           setValue("clientRate", clientRate)
-                                          setValue("fee", Math.round(clientRate * 0.2))
+                                          setValue(
+                                            "fee",
+                                            Math.round(clientRate * 0.2)
+                                          )
                                         }
                                       }}
                                       placeholder="$65"
@@ -1470,6 +1706,7 @@ const MoreInfoDialog = ({
                   visual="gray"
                   type="button"
                   onClick={previous}
+                  disabled={profileLoading || profileError}
                 >
                   Back
                 </Button>
@@ -1480,13 +1717,14 @@ const MoreInfoDialog = ({
                     variant="ghost"
                     visual="gray"
                     type="button"
+                    disabled={profileLoading || profileError}
                   >
                     Skip
                   </Button>
                   <Button
                     size="md"
                     type="button"
-                    disabled={!Boolean(workExperiences?.length)}
+                    disabled={!Boolean(workExperiences?.length) || profileLoading || profileError}
                     onClick={next}
                   >
                     Save & Continue
@@ -1513,7 +1751,13 @@ const MoreInfoDialog = ({
                 >
                   <X className="size-[15px]" /> Cancel
                 </Button>
-                <Button ref={submitTriggerRef} type="submit" disabled={!isValid}>Save</Button>
+                <Button
+                  ref={submitTriggerRef}
+                  type="submit"
+                  disabled={!isValid}
+                >
+                  Save
+                </Button>
 
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                   <DialogContent className="max-w-[409px] p-0">
@@ -1574,6 +1818,7 @@ const MoreInfoDialog = ({
               size="md"
               variant="ghost"
               visual="gray"
+              aria-label="Close"
             >
               <X className="size-5" />
             </IconButton>
@@ -1629,6 +1874,9 @@ const AboutMeDialog = ({
   userId,
   progressPercent,
   profile,
+  profileLoading,
+  profileError,
+  onReloadProfile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -1637,6 +1885,9 @@ const AboutMeDialog = ({
   userId: string
   progressPercent?: number
   profile?: UserProfile | null
+  profileLoading?: boolean
+  profileError?: boolean
+  onReloadProfile?: () => void
 }) => {
   const onFinished = useCallbackRef(onFinishedProp)
   const [open, setOpen] = useControllableState({
@@ -1692,30 +1943,45 @@ const AboutMeDialog = ({
             </div>
 
             <div className="mt-6">
-              <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
-                About Me
-              </h1>
-              <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
-                Create a connection and let clients feel like they already know
-                you!
-              </p>
+              <DialogTitle asChild>
+                <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
+                  About Me
+                </h1>
+              </DialogTitle>
+              {profileLoading && !profileError ? (
+                <div className="mt-1 h-6 w-[280px] bg-gray-200 rounded animate-pulse" />
+              ) : (
+                <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
+                  Create a connection and let clients feel like they already know
+                  you!
+                </p>
+              )}
             </div>
 
-            <div className="mt-6 space-y-1.5">
-              <Textarea
-                className="h-[345px]"
-                placeholder="Enter your bio here..."
-                {...register("aboutMe")}
-                isInvalid={hookFormHasError({ errors, name: "aboutMe" })}
-              />
-              <HookFormErrorMessage
-                name="aboutMe"
-                errors={errors}
-                render={({ message }) => (
-                  <ErrorMessage size="sm">{message}</ErrorMessage>
-                )}
-              />
-            </div>
+            {profileError ? (
+              <div className="mt-6 flex flex-col items-start gap-y-3">
+                <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
+                <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+              </div>
+            ) : profileLoading ? (
+              <div className="mt-6 h-[345px] bg-gray-200 rounded animate-pulse" aria-busy="true" aria-label="Loading" />
+            ) : (
+              <div className="mt-6 space-y-1.5">
+                <Textarea
+                  className="h-[345px]"
+                  placeholder="Enter your bio here..."
+                  {...register("aboutMe")}
+                  isInvalid={hookFormHasError({ errors, name: "aboutMe" })}
+                />
+                <HookFormErrorMessage
+                  name="aboutMe"
+                  errors={errors}
+                  render={({ message }) => (
+                    <ErrorMessage size="sm">{message}</ErrorMessage>
+                  )}
+                />
+              </div>
+            )}
           </div>
           <div className="border rounded-b-[10px] flex items-center gap-x-3 justify-end border-gray-200 bg-white py-4 px-6">
             <Button
@@ -1724,10 +1990,11 @@ const AboutMeDialog = ({
               variant="ghost"
               visual="gray"
               onClick={next}
+              disabled={profileLoading || profileError}
             >
               Skip
             </Button>
-            <Button size="md" disabled={!isValid}>
+            <Button size="md" disabled={!isValid || profileLoading || profileError}>
               Save & Continue
             </Button>
           </div>
@@ -1739,6 +2006,7 @@ const AboutMeDialog = ({
               size="md"
               variant="ghost"
               visual="gray"
+              aria-label="Close"
             >
               <X className="size-5" />
             </IconButton>
@@ -1801,9 +2069,8 @@ const AboutMeDialog = ({
 
 const skillsFormSchema = z.object({
   skills: z
-    .array(z.object({ id: z.number(), name: z.string() }))
-    .min(1, "Please select at least 1 skill(s)")
-    .max(50, "You have reached the maximum limit of 50 skills"),
+    .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
+    .max(100, "You have reached the maximum limit of 100 skills."),
 })
 
 type SkillsFormValues = z.infer<typeof skillsFormSchema>
@@ -1817,6 +2084,9 @@ const SkillsDialog = ({
   userId,
   progressPercent,
   profile,
+  profileLoading,
+  profileError,
+  onReloadProfile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -1826,6 +2096,9 @@ const SkillsDialog = ({
   userId: string
   progressPercent?: number
   profile?: UserProfile | null
+  profileLoading?: boolean
+  profileError?: boolean
+  onReloadProfile?: () => void
 }) => {
   const onFinished = useCallbackRef(onFinishedProp)
   const [open, setOpen] = useControllableState({
@@ -1833,31 +2106,29 @@ const SkillsDialog = ({
     value: opened,
     onChange: onOpenedChange,
   })
-  const [users] = React.useState([
-    { id: 1, name: "Wade Cooper" },
-    { id: 2, name: "Arlene Mccoy" },
-    { id: 3, name: "Devon Webb" },
-    { id: 4, name: "Tom Cook" },
-    { id: 5, name: "Tanya Fox" },
-    { id: 6, name: "Hellen Schmidt" },
-    { id: 7, name: "Chris Torres" },
-    { id: 8, name: "Max" },
-    { id: 9, name: "David" },
-    { id: 10, name: "Logan" },
-    { id: 11, name: "Andrew" },
-  ])
-
   const [query, setQuery] = React.useState("")
+  const [filteredSkills, setFilteredSkills] = useState<{ id: number | string; name: string }[]>([])
 
-  const filteredPeople =
-    query === ""
-      ? users
-      : users.filter((user) =>
-          user.name
-            .toLowerCase()
-            .replace(/\s+/g, "")
-            .includes(query.toLowerCase().replace(/\s+/g, ""))
-        )
+  const fetchSkills = React.useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setFilteredSkills([])
+      return
+    }
+    try {
+      const res = await fetch(
+        `${getPublicApiUrl()}/autocomplete/skills?q=${encodeURIComponent(q)}`
+      )
+      if (!res.ok) return
+      const data = await res.json()
+      const entries: { id: string; label: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
+      setFilteredSkills(entries.map((e) => ({ id: e.id ?? e.label, name: e.label })))
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => fetchSkills(query), 300)
+    return () => clearTimeout(timer)
+  }, [query, fetchSkills])
   const {
     control,
     handleSubmit,
@@ -1880,16 +2151,53 @@ const SkillsDialog = ({
     }
   }, [profile, setValue])
 
-  const onSubmit: SubmitHandler<SkillsFormValues> = ({ skills }) => {
-    next?.()
-    if (userId) {
-      // Only add skills that don't already exist in DB
-      const newSkills = skills.filter((s) => !existingSkillNamesRef.current.has(s.name))
-      if (newSkills.length) {
-        Promise.all(
-          newSkills.map((s) => UserAPI.addSkill(userId, { name: s.name }))
-        ).catch(() => {})
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const onSubmit: SubmitHandler<SkillsFormValues> = async ({ skills }) => {
+    setServerError(null)
+    if (!userId) {
+      next?.()
+      return
+    }
+    const newSkills = skills.filter(
+      (s) => !existingSkillNamesRef.current.has(s.name)
+    )
+    if (!newSkills.length) {
+      next?.()
+      return
+    }
+    setIsSaving(true)
+    try {
+      await Promise.all(
+        newSkills.map((s) => UserAPI.addSkill({ name: s.name }))
+      )
+      newSkills.forEach((s) => existingSkillNamesRef.current.add(s.name))
+      setIsSaving(false)
+      next?.()
+    } catch (err: any) {
+      setIsSaving(false)
+      const status = err?.response?.status
+      const isTimeout =
+        err?.code === "ECONNABORTED" ||
+        /timeout/i.test(err?.message ?? "")
+      if (status === 401) {
+        try {
+          sessionStorage.setItem(
+            "complete-profile.skills.pending",
+            JSON.stringify(skills.map((s) => s.name))
+          )
+        } catch {}
+        setServerError("Your session has expired. Please sign in again.")
+      } else if (isTimeout) {
+        setServerError(
+          "This is taking longer than usual. Please try again."
+        )
+      } else {
+        setServerError(
+          "We could not save your changes. Please try again."
+        )
       }
+      console.error("[skills wizard] save failed", err)
     }
   }
 
@@ -1914,52 +2222,115 @@ const SkillsDialog = ({
             </div>
 
             <div className="mt-6">
-              <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
-                Skills
-              </h1>
-              <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
-                Share your expertise and make your profile unforgettable!
-              </p>
+              <DialogTitle asChild>
+                <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
+                  Skills
+                </h1>
+              </DialogTitle>
+              {profileLoading && !profileError ? (
+                <div className="mt-1 h-6 w-[280px] bg-gray-200 rounded animate-pulse" />
+              ) : (
+                <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
+                  Share your expertise and make your profile unforgettable!
+                </p>
+              )}
             </div>
 
+            {profileError && (
+              <div className="mt-6 flex flex-col items-start gap-y-3">
+                <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
+                <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+              </div>
+            )}
+
+            {!profileError && profileLoading && (
+              <div className="mt-6 space-y-3" aria-busy="true" aria-label="Loading">
+                <div className="h-11 w-full bg-gray-200 rounded animate-pulse" />
+                <div className="h-8 w-[160px] bg-gray-200 rounded animate-pulse" />
+              </div>
+            )}
+
+            {!profileError && !profileLoading && (
             <div className="mt-6">
+              {serverError && (
+                <div
+                  role="alert"
+                  className="mb-4 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm font-medium text-error-700"
+                >
+                  {serverError}
+                </div>
+              )}
               <Controller
                 name="skills"
                 control={control}
-                render={({ field: { value, onChange } }) => (
-                  <Combobox
-                    className="w-full"
-                    value={value}
-                    onChange={onChange}
-                    multiple
-                  >
-                    <ComboboxTrigger>
-                      <ComboboxInput
-                        size="lg"
-                        displayValue={(user: { id: number; name: string }) =>
-                          user.name
-                        }
-                        placeholder="Search for skills"
-                        onChange={(event) => setQuery(event.target.value)}
-                        invalid={hookFormHasError({ errors, name: "skills" })}
-                      />
-                      <ComboboxButton size="lg">
-                        <SearchMd className="h-5 w-5" />
-                      </ComboboxButton>
-                    </ComboboxTrigger>
-                    <ScaleOutIn afterLeave={() => setQuery("")}>
-                      <ComboboxOptions>
-                        <ScrollArea viewportClassName="max-h-[304px]">
-                          {filteredPeople.map((user) => (
-                            <ComboboxOption key={user.id} value={user}>
-                              {user.name}
-                            </ComboboxOption>
-                          ))}
-                        </ScrollArea>
-                      </ComboboxOptions>
-                    </ScaleOutIn>
-                  </Combobox>
-                )}
+                render={({ field: { value, onChange } }) => {
+                  const atSkillsLimit = (value ?? []).length >= 100
+                  return (
+                    <>
+                      <Combobox
+                        className="w-full"
+                        value={value}
+                        onChange={(val: typeof value) => {
+                          const capped = val.slice(0, 100)
+                          const unique = capped.filter((s, i, arr) =>
+                            arr.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase()) === i
+                          )
+                          onChange(unique)
+                          setQuery("")
+                        }}
+                        multiple
+                        disabled={atSkillsLimit}
+                      >
+                        <ComboboxTrigger>
+                          <ComboboxInput
+                            size="lg"
+                            displayValue={() => query}
+                            placeholder="Search for skills"
+                            onChange={(event) => setQuery(event.target.value)}
+                            invalid={hookFormHasError({ errors, name: "skills" })}
+                            disabled={atSkillsLimit}
+                          />
+                          <ComboboxButton size="lg">
+                            <SearchMd className="h-5 w-5" />
+                          </ComboboxButton>
+                        </ComboboxTrigger>
+                        <ScaleOutIn afterLeave={() => setQuery("")}>
+                          <ComboboxOptions>
+                            <ScrollArea viewportClassName="max-h-[304px]">
+                              {filteredSkills
+                                .filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
+                                .map((skill) => (
+                                  <ComboboxOption key={`${skill.id}-${skill.name}`} value={skill}>
+                                    {skill.name}
+                                  </ComboboxOption>
+                                ))}
+                              {(() => {
+                                const q = query.trim().toLowerCase()
+                                const alreadySelected = (value ?? []).some((s) => s.name.toLowerCase() === q)
+                                const visibleOptions = filteredSkills.filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
+                                if (!q || alreadySelected || visibleOptions.length > 0) return null
+                                return (
+                                  <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
+                                    Add &ldquo;{query.trim()}&rdquo;
+                                  </ComboboxOption>
+                                )
+                              })()}
+                            </ScrollArea>
+                          </ComboboxOptions>
+                        </ScaleOutIn>
+                      </Combobox>
+                      {atSkillsLimit && (
+                        <p
+                          role="status"
+                          aria-live="assertive"
+                          className="mt-1.5 text-sm font-medium text-error-700"
+                        >
+                          You have reached the maximum limit of 100 skills.
+                        </p>
+                      )}
+                    </>
+                  )
+                }}
               />
 
               <HookFormErrorMessage
@@ -1972,27 +2343,36 @@ const SkillsDialog = ({
                 )}
               />
 
-              <div className="mt-3 flex gap-3 flex-wrap">
-                {skills?.map((skill) => (
-                  <Badge key={skill.id} visual="primary">
-                    {skill.name}
-                    <button
-                      type="button"
-                      className="focus-visible:outline-none"
-                      onClick={() => {
-                        setValue(
-                          "skills",
-                          skills.filter((s) => s.id !== skill.id)
-                        )
-                        trigger()
-                      }}
+              <ScrollArea
+                viewportClassName="max-h-[200px]"
+                scrollBar={<ScrollBar className="w-4 p-1" />}
+              >
+                <div className="mt-3 flex gap-3 flex-wrap pr-1">
+                  {skills?.map((skill) => (
+                    <Badge
+                      key={`${skill.id}-${skill.name}`}
+                      visual="primary"
                     >
-                      <X2 className="size-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
+                      {skill.name}
+                      <button
+                        type="button"
+                        className="focus-visible:outline-none"
+                        onClick={() => {
+                          setValue(
+                            "skills",
+                            skills.filter((s) => s.name !== skill.name)
+                          )
+                          trigger()
+                        }}
+                      >
+                        <X2 className="size-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </ScrollArea>
             </div>
+            )}
           </div>
           <div className="border rounded-b-[10px] flex items-center justify-between border-gray-200 bg-white py-4 px-6">
             <Button
@@ -2002,6 +2382,7 @@ const SkillsDialog = ({
               visual="gray"
               type="button"
               onClick={previous}
+              disabled={profileLoading || profileError}
             >
               Back
             </Button>
@@ -2012,10 +2393,15 @@ const SkillsDialog = ({
                 variant="ghost"
                 visual="gray"
                 onClick={next}
+                disabled={profileLoading || profileError || isSaving}
               >
                 Skip
               </Button>
-              <Button size="md" disabled={!isValid}>
+              <Button
+                size="md"
+                disabled={!isValid || profileLoading || profileError || isSaving}
+                loading={isSaving}
+              >
                 Save & Continue
               </Button>
             </div>
@@ -2028,6 +2414,7 @@ const SkillsDialog = ({
               size="md"
               variant="ghost"
               visual="gray"
+              aria-label="Close"
             >
               <X className="size-5" />
             </IconButton>
@@ -2071,8 +2458,15 @@ const SkillsDialog = ({
 
 const workExperienceFormSchema = z
   .object({
-    employer: z.string().min(1, "Please enter at least 1 character(s)"),
-    jobTitle: z.string().min(1, "Please enter at least 1 character(s)"),
+    id: z.string().optional(),
+    employer: z
+      .string()
+      .min(1, "Please enter at least 1 character(s)")
+      .max(200, "Employer must be 200 characters or fewer"),
+    jobTitle: z
+      .string()
+      .min(1, "Please enter at least 1 character(s)")
+      .max(120, "Job Title must be 120 characters or fewer"),
     startDate: z.object({
       month: z
         .number()
@@ -2098,9 +2492,19 @@ const workExperienceFormSchema = z
         .optional(),
     }),
     currentlyWorkHere: z.boolean(),
-    jobDescription: z.string().min(1, "Please enter at least 1 character(s)"),
+    jobDescription: z
+      .string()
+      .min(1, "Please enter at least 1 character(s)")
+      .max(1000, "Job Description must be 1000 characters or fewer"),
   })
   .merge(skillsFormSchema)
+  .extend({
+    skills: z
+      .array(
+        z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
+      )
+      .max(10, "Maximum 10 skills per work experience entry."),
+  })
   .refine(
     (data) =>
       data.currentlyWorkHere
@@ -2132,8 +2536,29 @@ const workExperienceFormSchema = z
       path: ["endDate.year"],
     }
   )
+  .refine(
+    (data) => {
+      if (data.currentlyWorkHere) return true
+      if (!data.endDate?.year || !data.endDate?.month) return true
+      const start = data.startDate.year * 12 + data.startDate.month
+      const end = data.endDate.year * 12 + data.endDate.month
+      return end >= start
+    },
+    {
+      message: "End date must be on or after start date",
+      path: ["endDate.year"],
+    }
+  )
 
 type WorkExperienceFormValues = z.infer<typeof workExperienceFormSchema>
+
+const workExperienceFormDefaultValues = {
+  currentlyWorkHere: false,
+  jobDescription: "",
+  jobTitle: "",
+  employer: "",
+  skills: [],
+} as DefaultValues<WorkExperienceFormValues>
 
 const months = [
   { name: "January", value: 1 },
@@ -2150,6 +2575,11 @@ const months = [
   { name: "December", value: 12 },
 ]
 
+const workExperienceYears: number[] = (() => {
+  const currentYear = new Date().getFullYear()
+  return Array.from({ length: 60 }, (_, i) => currentYear - i)
+})()
+
 const WorkExperienceDialog = ({
   onFinished,
   onOpenedChange,
@@ -2159,6 +2589,9 @@ const WorkExperienceDialog = ({
   userId,
   progressPercent,
   profile,
+  profileLoading,
+  profileError,
+  onReloadProfile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -2168,6 +2601,9 @@ const WorkExperienceDialog = ({
   userId: string
   progressPercent?: number
   profile?: UserProfile | null
+  profileLoading?: boolean
+  profileError?: boolean
+  onReloadProfile?: () => void
 }) => {
   const [open, setOpen] = useControllableState({
     defaultValue: false,
@@ -2175,31 +2611,29 @@ const WorkExperienceDialog = ({
     onChange: onOpenedChange,
   })
   const [isOpen, setIsOpen] = useState(false)
-  const [skills] = React.useState([
-    { id: 1, name: "Wade Cooper" },
-    { id: 2, name: "Arlene Mccoy" },
-    { id: 3, name: "Devon Webb" },
-    { id: 4, name: "Tom Cook" },
-    { id: 5, name: "Tanya Fox" },
-    { id: 6, name: "Hellen Schmidt" },
-    { id: 7, name: "Chris Torres" },
-    { id: 8, name: "Max" },
-    { id: 9, name: "David" },
-    { id: 10, name: "Logan" },
-    { id: 11, name: "Andrew" },
-  ])
-
   const [query, setQuery] = React.useState("")
+  const [filteredSkills, setFilteredSkills] = useState<{ id: number | string; name: string }[]>([])
 
-  const filteredSkills =
-    query === ""
-      ? skills
-      : skills.filter((skill) =>
-          skill.name
-            .toLowerCase()
-            .replace(/\s+/g, "")
-            .includes(query.toLowerCase().replace(/\s+/g, ""))
-        )
+  const fetchSkills = React.useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setFilteredSkills([])
+      return
+    }
+    try {
+      const res = await fetch(
+        `${getPublicApiUrl()}/autocomplete/skills?q=${encodeURIComponent(q)}`
+      )
+      if (!res.ok) return
+      const data = await res.json()
+      const entries: { id: string; label: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
+      setFilteredSkills(entries.map((e) => ({ id: e.id ?? e.label, name: e.label })))
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => fetchSkills(query), 300)
+    return () => clearTimeout(timer)
+  }, [query, fetchSkills])
   const [state, setState] = useState<"default" | "preview" | "action">(
     "default"
   )
@@ -2218,19 +2652,27 @@ const WorkExperienceDialog = ({
   useEffect(() => {
     if (profile?.experience?.length && !profileLoaded) {
       setProfileLoaded(true)
-      const mapped: WorkExperienceFormValues[] = profile.experience.map((exp) => {
-        const [startYear, startMonth] = (exp.startDate ?? "").split("-").map(Number)
-        const [endYear, endMonth] = (exp.endDate ?? "").split("-").map(Number)
-        return {
-          employer: exp.company,
-          jobTitle: exp.role,
-          startDate: { month: startMonth || 1, year: startYear || 2020 },
-          endDate: { month: endMonth || undefined, year: endYear || undefined },
-          currentlyWorkHere: !exp.endDate,
-          jobDescription: exp.description ?? "",
-          skills: [],
+      const mapped: WorkExperienceFormValues[] = profile.experience.map(
+        (exp) => {
+          const [startYear, startMonth] = (exp.startDate ?? "")
+            .split("-")
+            .map(Number)
+          const [endYear, endMonth] = (exp.endDate ?? "").split("-").map(Number)
+          return {
+            id: exp.id,
+            employer: exp.company,
+            jobTitle: exp.title,
+            startDate: { month: startMonth || 1, year: startYear || 2020 },
+            endDate: {
+              month: endMonth || undefined,
+              year: endYear || undefined,
+            },
+            currentlyWorkHere: Boolean(exp.isCurrentRole),
+            jobDescription: exp.description ?? "",
+            skills: (exp.skills ?? []).map((name, i) => ({ id: i + 1, name })),
+          }
         }
-      })
+      )
       setWorkExperiences(mapped)
       setState("preview")
     }
@@ -2240,48 +2682,86 @@ const WorkExperienceDialog = ({
     handleSubmit,
     formState: { errors, isValid, isDirty },
     trigger,
+    getValues,
     setValue,
     register,
     reset,
   } = useForm<WorkExperienceFormValues>({
     resolver: zodResolver(workExperienceFormSchema),
-    defaultValues: {
-      currentlyWorkHere: false,
-      jobDescription: "",
-      jobTitle: "",
-      employer: "",
-    },
+    mode: "onChange",
+    defaultValues: workExperienceFormDefaultValues,
   })
-  const onSubmit: SubmitHandler<WorkExperienceFormValues> = (values) => {
-    if (editingIndex !== undefined) {
-      setWorkExperiences(
-        workExperiences?.map((workExperience, index) =>
-          index === editingIndex ? values : workExperience
-        )
-      )
-      setEditingIndex(undefined)
-    } else {
-      setWorkExperiences((prev) => (prev ? [...prev, values] : [values]))
-      if (userId) {
-        const payload: ExperiencePayload = {
-          company: values.employer,
-          role: values.jobTitle,
-          startDate: `${values.startDate.year}-${String(values.startDate.month).padStart(2, "0")}`,
-          endDate: values.currentlyWorkHere ? undefined : values.endDate?.year ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}` : undefined,
-          description: values.jobDescription,
-        }
-        UserAPI.addExperience(userId, payload).catch(() => {})
-      }
+  const [serverError, setServerError] = useState<string | null>(null)
+  const onSubmit: SubmitHandler<WorkExperienceFormValues> = async (values) => {
+    setServerError(null)
+    const payload: ExperiencePayload = {
+      company: values.employer,
+      title: values.jobTitle,
+      startDate: `${values.startDate.year}-${String(values.startDate.month).padStart(2, "0")}-01`,
+      endDate: values.currentlyWorkHere
+        ? undefined
+        : values.endDate?.year && values.endDate?.month
+          ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}-01`
+          : undefined,
+      isCurrentRole: values.currentlyWorkHere,
+      description: values.jobDescription,
+      skills: values.skills.map((s) => s.name),
     }
-    reset()
-    setState("preview")
+    try {
+      if (editingIndex !== undefined) {
+        const editingExp = workExperiences?.[editingIndex]
+        let savedId = editingExp?.id
+        if (editingExp?.id) {
+          await UserAPI.updateExperience(editingExp.id, payload)
+        } else if (userId) {
+          const res = await UserAPI.addExperience(payload)
+          savedId = res?.data?.id ?? undefined
+        }
+        setWorkExperiences(
+          workExperiences?.map((workExperience, index) =>
+            index === editingIndex
+              ? { ...values, id: savedId ?? workExperience.id }
+              : workExperience
+          )
+        )
+        setEditingIndex(undefined)
+      } else {
+        let savedId: string | undefined
+        if (userId) {
+          const res = await UserAPI.addExperience(payload)
+          savedId = res?.data?.id ?? undefined
+        }
+        setWorkExperiences((prev) =>
+          prev ? [...prev, { ...values, id: savedId }] : [{ ...values, id: savedId }]
+        )
+      }
+      reset()
+      setState("preview")
+    } catch {
+      setServerError(
+        "We couldn't save your work experience. Please try again."
+      )
+    }
   }
 
   const skillsField = useWatch({ control, name: "skills" })
+  const jobDescriptionField = useWatch({ control, name: "jobDescription" })
   const currentlyWorkHereField = useWatch({
     control,
     name: "currentlyWorkHere",
   })
+  useEffect(() => {
+    if (currentlyWorkHereField) {
+      setValue("endDate.month", undefined as any, {
+        shouldDirty: true,
+        shouldValidate: true,
+      })
+      setValue("endDate.year", undefined as any, {
+        shouldDirty: true,
+        shouldValidate: true,
+      })
+    }
+  }, [currentlyWorkHereField, setValue])
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -2294,7 +2774,7 @@ const WorkExperienceDialog = ({
         <form
           onSubmit={handleSubmit(onSubmit)}
           className={cn(
-            "transition-all duration-300",
+            "transition-all duration-300 min-w-0",
             state === "action" && "col-span-3"
           )}
         >
@@ -2315,7 +2795,7 @@ const WorkExperienceDialog = ({
                     <Button
                       onClick={() => {
                         setEditingIndex(undefined)
-                        reset()
+                        reset(workExperienceFormDefaultValues)
                         setState("action")
                       }}
                       className="bg-white"
@@ -2354,12 +2834,18 @@ const WorkExperienceDialog = ({
             </div>
 
             <div className="px-[30px] mt-6 pb-6">
-              <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
-                Work Experience
-              </h1>
-              <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
-                Tell us where you&apos;ve worked before!
-              </p>
+              <DialogTitle asChild>
+                <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
+                  Work Experience
+                </h1>
+              </DialogTitle>
+              {state === "default" && profileLoading && !profileError ? (
+                <div className="mt-1 h-6 w-[280px] bg-gray-200 rounded animate-pulse" />
+              ) : (
+                <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
+                  Tell us where you&apos;ve worked before!
+                </p>
+              )}
             </div>
 
             <ScrollArea
@@ -2368,9 +2854,34 @@ const WorkExperienceDialog = ({
             >
               <div className="pb-[30px] px-1">
                 <div className="mt-6">
-                  {state === "default" && (
+                  {state === "default" && profileError && (
+                    <div className="flex flex-col items-start gap-y-3">
+                      <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
+                      <Button
+                        type="button"
+                        variant="outlined"
+                        visual="gray"
+                        onClick={() => onReloadProfile?.()}
+                      >
+                        Retry
+                      </Button>
+                    </div>
+                  )}
+
+                  {state === "default" && !profileError && profileLoading && (
+                    <div className="space-y-3" aria-busy="true" aria-label="Loading">
+                      <div className="h-9 w-[200px] bg-gray-200 rounded animate-pulse" />
+                      <div className="h-4 w-[260px] bg-gray-200 rounded animate-pulse" />
+                    </div>
+                  )}
+
+                  {state === "default" && !profileError && !profileLoading && (
                     <Button
-                      onClick={() => setState("action")}
+                      onClick={() => {
+                        setEditingIndex(undefined)
+                        reset(workExperienceFormDefaultValues)
+                        setState("action")
+                      }}
                       className="bg-white"
                       variant="outlined"
                       visual="gray"
@@ -2383,7 +2894,25 @@ const WorkExperienceDialog = ({
 
                   {state === "preview" && (
                     <div className="space-y-3">
-                      {workExperiences?.map((workExperience, index) => (
+                      {workExperiences
+                        ?.map((workExperience, index) => ({
+                          workExperience,
+                          index,
+                        }))
+                        .sort((a, b) => {
+                          if (
+                            a.workExperience.currentlyWorkHere !==
+                            b.workExperience.currentlyWorkHere
+                          )
+                            return a.workExperience.currentlyWorkHere ? -1 : 1
+                          return (
+                            (b.workExperience.startDate?.year ?? 0) -
+                              (a.workExperience.startDate?.year ?? 0) ||
+                            (b.workExperience.startDate?.month ?? 0) -
+                              (a.workExperience.startDate?.month ?? 0)
+                          )
+                        })
+                        .map(({ workExperience, index }) => (
                         <WorkExperienceCard
                           onRemove={() => {
                             const updated = workExperiences?.filter(
@@ -2408,6 +2937,14 @@ const WorkExperienceDialog = ({
 
                   {state === "action" && (
                     <>
+                      {serverError && (
+                        <div
+                          role="alert"
+                          className="mb-4 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm font-medium text-error-700"
+                        >
+                          {serverError}
+                        </div>
+                      )}
                       <div className="grid gap-4 grid-cols-2">
                         <div className="space-y-1.5">
                           <Label
@@ -2421,6 +2958,12 @@ const WorkExperienceDialog = ({
                             id="employer"
                             placeholder="Acme Inc."
                             {...register("employer")}
+                            onBlur={(e) => {
+                              setValue(
+                                "employer",
+                                capitalizeCompanyName(e.target.value)
+                              )
+                            }}
                             isInvalid={hookFormHasError({
                               errors,
                               name: "employer",
@@ -2447,7 +2990,10 @@ const WorkExperienceDialog = ({
                             placeholder="CEO"
                             {...register("jobTitle")}
                             onBlur={(e) => {
-                              setValue("jobTitle", formatJobTitle(e.target.value))
+                              setValue(
+                                "jobTitle",
+                                formatJobTitle(e.target.value)
+                              )
                             }}
                             isInvalid={hookFormHasError({
                               errors,
@@ -2476,10 +3022,19 @@ const WorkExperienceDialog = ({
                                 control={control}
                                 name="startDate.month"
                                 render={({ field: { value, onChange } }) => (
-                                  <Listbox value={value} onChange={onChange}>
+                                  <Listbox
+                                    value={value}
+                                    onChange={(v) => {
+                                      onChange(v)
+                                      if (getValues("endDate.year")) trigger("endDate.year")
+                                    }}
+                                  >
                                     <ListboxButton
                                       placeholder="Month"
-                                      displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
+                                      displayValue={(value: number) =>
+                                        months.find((m) => m.value === value)
+                                          ?.name ?? ""
+                                      }
                                       isInvalid={hookFormHasError({
                                         errors,
                                         name: "startDate.month",
@@ -2492,13 +3047,11 @@ const WorkExperienceDialog = ({
                                           <ScrollBar className="w-4 p-1" />
                                         }
                                       >
-                                        {months
-                                          .map((month) => month.value)
-                                          .map((m) => (
-                                            <ListboxOption key={m} value={m}>
-                                              {m}
-                                            </ListboxOption>
-                                          ))}
+                                        {months.map((m) => (
+                                          <ListboxOption key={m.value} value={m.value}>
+                                            {m.value}
+                                          </ListboxOption>
+                                        ))}
                                       </ScrollArea>
                                     </ListboxOptions>
                                   </Listbox>
@@ -2520,7 +3073,13 @@ const WorkExperienceDialog = ({
                                 control={control}
                                 name="startDate.year"
                                 render={({ field: { value, onChange } }) => (
-                                  <Listbox value={value} onChange={onChange}>
+                                  <Listbox
+                                    value={value}
+                                    onChange={(v) => {
+                                      onChange(v)
+                                      if (getValues("endDate.year")) trigger("endDate.year")
+                                    }}
+                                  >
                                     <ListboxButton
                                       placeholder="Year"
                                       displayValue={(value: number) => value}
@@ -2536,14 +3095,12 @@ const WorkExperienceDialog = ({
                                           <ScrollBar className="w-4 p-1" />
                                         }
                                       >
-                                        {[
-                                          2020, 2021, 2022, 2023, 2024, 2025,
-                                        ].map((month) => (
+                                        {workExperienceYears.map((year) => (
                                           <ListboxOption
-                                            key={month}
-                                            value={month}
+                                            key={year}
+                                            value={year}
                                           >
-                                            {month}
+                                            {year}
                                           </ListboxOption>
                                         ))}
                                       </ScrollArea>
@@ -2585,10 +3142,20 @@ const WorkExperienceDialog = ({
                                 control={control}
                                 name="endDate.month"
                                 render={({ field: { value, onChange } }) => (
-                                  <Listbox value={value} onChange={onChange}>
+                                  <Listbox
+                                    key={`end-month-${currentlyWorkHereField}`}
+                                    value={value}
+                                    onChange={(v) => {
+                                      onChange(v)
+                                      if (getValues("endDate.year")) trigger("endDate.year")
+                                    }}
+                                  >
                                     <ListboxButton
                                       placeholder="Month"
-                                      displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
+                                      displayValue={(value: number) =>
+                                        months.find((m) => m.value === value)
+                                          ?.name ?? ""
+                                      }
                                       isInvalid={hookFormHasError({
                                         errors,
                                         name: "endDate.month",
@@ -2601,13 +3168,11 @@ const WorkExperienceDialog = ({
                                           <ScrollBar className="w-4 p-1" />
                                         }
                                       >
-                                        {months
-                                          .map((month) => month.value)
-                                          .map((m) => (
-                                            <ListboxOption key={m} value={m}>
-                                              {m}
-                                            </ListboxOption>
-                                          ))}
+                                        {months.map((m) => (
+                                          <ListboxOption key={m.value} value={m.value}>
+                                            {m.value}
+                                          </ListboxOption>
+                                        ))}
                                       </ScrollArea>
                                     </ListboxOptions>
                                   </Listbox>
@@ -2629,7 +3194,14 @@ const WorkExperienceDialog = ({
                                 control={control}
                                 name="endDate.year"
                                 render={({ field: { value, onChange } }) => (
-                                  <Listbox value={value} onChange={onChange}>
+                                  <Listbox
+                                    key={`end-year-${currentlyWorkHereField}`}
+                                    value={value}
+                                    onChange={(v) => {
+                                      onChange(v)
+                                      if (getValues("endDate.year")) trigger("endDate.year")
+                                    }}
+                                  >
                                     <ListboxButton
                                       placeholder="Year"
                                       displayValue={(value: number) => value}
@@ -2645,14 +3217,12 @@ const WorkExperienceDialog = ({
                                           <ScrollBar className="w-4 p-1" />
                                         }
                                       >
-                                        {[
-                                          2020, 2021, 2022, 2023, 2024, 2025,
-                                        ].map((month) => (
+                                        {workExperienceYears.map((year) => (
                                           <ListboxOption
-                                            key={month}
-                                            value={month}
+                                            key={year}
+                                            value={year}
                                           >
-                                            {month}
+                                            {year}
                                           </ListboxOption>
                                         ))}
                                       </ScrollArea>
@@ -2716,33 +3286,50 @@ const WorkExperienceDialog = ({
                               name: "jobDescription",
                             })}
                           />
-                          <HookFormErrorMessage
-                            name="jobDescription"
-                            errors={errors}
-                            render={({ message }) => (
-                              <ErrorMessage size="sm">{message}</ErrorMessage>
-                            )}
-                          />
+                          <div className="flex items-start justify-between gap-x-2">
+                            <HookFormErrorMessage
+                              name="jobDescription"
+                              errors={errors}
+                              render={({ message }) => (
+                                <ErrorMessage size="sm">{message}</ErrorMessage>
+                              )}
+                            />
+                            <span
+                              className={cn(
+                                "ml-auto text-xs font-light text-gray-500",
+                                (jobDescriptionField?.length ?? 0) > 1000 &&
+                                  "text-error-600 font-medium"
+                              )}
+                            >
+                              {jobDescriptionField?.length ?? 0} / 1000
+                            </span>
+                          </div>
                         </div>
                       </div>
 
                       <Controller
                         name="skills"
                         control={control}
-                        render={({ field: { value, onChange } }) => (
+                        render={({ field: { value, onChange } }) => {
+                          const atSkillsLimit = (value ?? []).length >= 10
+                          return (
+                          <>
                           <Combobox
                             className="w-full mt-[30px]"
                             value={value}
-                            onChange={onChange}
+                            onChange={(val: typeof value) => {
+                              const unique = val.filter((s, i, arr) =>
+                                arr.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase()) === i
+                              )
+                              onChange(unique.slice(0, 10))
+                              setQuery("")
+                            }}
                             multiple
                           >
                             <ComboboxTrigger>
                               <ComboboxInput
                                 size="lg"
-                                displayValue={(user: {
-                                  id: number
-                                  name: string
-                                }) => user.name}
+                                displayValue={() => query}
                                 placeholder="Search for skills"
                                 onChange={(event) =>
                                   setQuery(event.target.value)
@@ -2759,19 +3346,43 @@ const WorkExperienceDialog = ({
                             <ScaleOutIn afterLeave={() => setQuery("")}>
                               <ComboboxOptions>
                                 <ScrollArea viewportClassName="max-h-[304px]">
-                                  {filteredSkills.map((skill) => (
-                                    <ComboboxOption
-                                      key={skill.id}
-                                      value={skill}
-                                    >
-                                      {skill.name}
-                                    </ComboboxOption>
-                                  ))}
+                                  {filteredSkills
+                                    .filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
+                                    .map((skill) => (
+                                      <ComboboxOption
+                                        key={`${skill.id}-${skill.name}`}
+                                        value={skill}
+                                      >
+                                        {skill.name}
+                                      </ComboboxOption>
+                                    ))}
+                                  {(() => {
+                                    const q = query.trim().toLowerCase()
+                                    const alreadySelected = (value ?? []).some((s) => s.name.toLowerCase() === q)
+                                    const visibleOptions = filteredSkills.filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
+                                    if (!q || alreadySelected || visibleOptions.length > 0) return null
+                                    return (
+                                      <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
+                                        Add &ldquo;{query.trim()}&rdquo;
+                                      </ComboboxOption>
+                                    )
+                                  })()}
                                 </ScrollArea>
                               </ComboboxOptions>
                             </ScaleOutIn>
                           </Combobox>
-                        )}
+                          {atSkillsLimit && (
+                            <p
+                              role="status"
+                              aria-live="assertive"
+                              className="mt-1.5 text-sm font-medium text-error-700"
+                            >
+                              Maximum 10 skills per work experience entry.
+                            </p>
+                          )}
+                          </>
+                          )
+                        }}
                       />
 
                       <HookFormErrorMessage
@@ -2786,7 +3397,10 @@ const WorkExperienceDialog = ({
 
                       <div className="mt-3 flex gap-3 flex-wrap">
                         {skillsField?.map((skill) => (
-                          <Badge key={skill.id} visual="primary">
+                          <Badge
+                            key={`${skill.id}-${skill.name}`}
+                            visual="primary"
+                          >
                             {skill.name}
                             <button
                               type="button"
@@ -2794,7 +3408,9 @@ const WorkExperienceDialog = ({
                               onClick={() => {
                                 setValue(
                                   "skills",
-                                  skillsField.filter((s) => s.id !== skill.id)
+                                  skillsField.filter(
+                                    (s) => s.name !== skill.name
+                                  )
                                 )
                                 trigger("skills")
                               }}
@@ -2821,6 +3437,7 @@ const WorkExperienceDialog = ({
                   visual="gray"
                   type="button"
                   onClick={previous}
+                  disabled={profileLoading || profileError}
                 >
                   Back
                 </Button>
@@ -2831,14 +3448,15 @@ const WorkExperienceDialog = ({
                     variant="ghost"
                     visual="gray"
                     type="button"
+                    disabled={profileLoading || profileError}
                   >
                     Skip
                   </Button>
                   <Button
                     size="md"
                     type="button"
-                    disabled={!Boolean(workExperiences?.length)}
                     onClick={next}
+                    disabled={!Boolean(workExperiences?.length) || profileLoading || profileError}
                   >
                     Save & Continue
                   </Button>
@@ -2864,7 +3482,13 @@ const WorkExperienceDialog = ({
                 >
                   <X className="size-[15px]" /> Cancel
                 </Button>
-                <Button ref={submitTriggerRef} type="submit" disabled={!isValid}>Save</Button>
+                <Button
+                  ref={submitTriggerRef}
+                  type="submit"
+                  disabled={!isValid}
+                >
+                  Save
+                </Button>
 
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                   <DialogContent className="max-w-[409px] p-0">
@@ -2924,6 +3548,7 @@ const WorkExperienceDialog = ({
               size="md"
               variant="ghost"
               visual="gray"
+              aria-label="Close"
             >
               <X className="size-5" />
             </IconButton>
@@ -2967,11 +3592,12 @@ const WorkExperienceDialog = ({
 
 const educationFormSchema = z
   .object({
+    id: z.string().optional(),
     schoolOrUniversity: z
       .string()
       .min(1, "Please enter at least 1 character(s)"),
     degree: z.string().min(1, "Please enter at least 1 character(s)"),
-    major: z.string().min(1, "Please enter at least 1 character(s)"),
+    major: z.string().optional(),
     startDate: z.object({
       month: z
         .number()
@@ -3029,8 +3655,28 @@ const educationFormSchema = z
       path: ["endDate.year"],
     }
   )
+  .refine(
+    (data) => {
+      if (data.currentlyAttending) return true
+      if (!data.endDate?.year || !data.endDate?.month) return true
+      const start = data.startDate.year * 12 + data.startDate.month
+      const end = data.endDate.year * 12 + data.endDate.month
+      return end >= start
+    },
+    {
+      message: "End date must be on or after the start date.",
+      path: ["endDate.year"],
+    }
+  )
 
 type EducationFormValues = z.infer<typeof educationFormSchema>
+
+const educationFormDefaultValues = {
+  currentlyAttending: false,
+  degree: "",
+  major: "",
+  schoolOrUniversity: "",
+} as EducationFormValues
 
 const EducationDialog = ({
   onFinished,
@@ -3041,6 +3687,9 @@ const EducationDialog = ({
   userId,
   progressPercent,
   profile,
+  profileLoading,
+  profileError,
+  onReloadProfile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -3050,6 +3699,9 @@ const EducationDialog = ({
   userId: string
   progressPercent?: number
   profile?: UserProfile | null
+  profileLoading?: boolean
+  profileError?: boolean
+  onReloadProfile?: () => void
 }) => {
   const submitTriggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useControllableState({
@@ -3064,14 +3716,13 @@ const EducationDialog = ({
     formState: { errors, isValid, isDirty },
     register,
     reset,
+    trigger,
+    getValues,
+    setValue: setFormValue,
   } = useForm<EducationFormValues>({
     resolver: zodResolver(educationFormSchema),
-    defaultValues: {
-      currentlyAttending: false,
-      degree: "",
-      major: "",
-      schoolOrUniversity: "",
-    },
+    mode: "onChange",
+    defaultValues: educationFormDefaultValues,
   })
   const [state, setState] = useState<"default" | "preview" | "action">(
     "default"
@@ -3089,15 +3740,20 @@ const EducationDialog = ({
     if (profile?.education?.length && !profileLoaded) {
       setProfileLoaded(true)
       const mapped: EducationFormValues[] = profile.education.map((edu) => {
-        const [startYear, startMonth] = (edu.startDate ?? "").split("-").map(Number)
-        const [endYear, endMonth] = (edu.endDate ?? "").split("-").map(Number)
         return {
-          schoolOrUniversity: edu.institution,
+          id: edu.id,
+          schoolOrUniversity: edu.school,
           degree: edu.degree,
-          major: edu.field,
-          startDate: { month: startMonth || 1, year: startYear || 2020 },
-          endDate: { month: endMonth || undefined, year: endYear || undefined },
-          currentlyAttending: !edu.endDate,
+          major: edu.fieldOfStudy ?? "",
+          startDate: {
+            month: edu.startMonth ?? 1,
+            year: edu.startYear || 2020,
+          },
+          endDate: {
+            month: edu.endMonth ?? undefined,
+            year: edu.endYear ?? undefined,
+          },
+          currentlyAttending: Boolean(edu.currentlyStudying),
         }
       })
       setEducationQualifications(mapped)
@@ -3105,34 +3761,96 @@ const EducationDialog = ({
     }
   }, [profile, profileLoaded, setEducationQualifications])
 
-  const onSubmit: SubmitHandler<EducationFormValues> = (values) => {
-    if (editingIndex !== undefined) {
-      setEducationQualifications(
-        educationQualifications?.map((qualification, index) =>
-          index === editingIndex ? values : qualification
-        )
-      )
-      setEditingIndex(undefined)
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleSaveError = (err: any) => {
+    const status = err?.response?.status
+    const isTimeout =
+      err?.code === "ECONNABORTED" ||
+      /timeout/i.test(err?.message ?? "")
+    if (status === 401) {
+      setServerError("Your session has expired. Please sign in again.")
+    } else if (isTimeout) {
+      setServerError("This is taking longer than usual. Please try again.")
     } else {
-      setEducationQualifications((prev) =>
-        prev ? [...prev, values] : [values]
-      )
-      if (userId) {
-        const payload: EducationPayload = {
-          institution: values.schoolOrUniversity,
-          degree: values.degree,
-          field: values.major,
-          startDate: `${values.startDate.year}-${String(values.startDate.month).padStart(2, "0")}`,
-          endDate: values.currentlyAttending ? undefined : values.endDate?.year ? `${values.endDate.year}-${String(values.endDate.month).padStart(2, "0")}` : undefined,
-        }
-        UserAPI.addEducation(userId, payload).catch(() => {})
-      }
+      setServerError("We could not save your changes. Please try again.")
     }
-    reset()
-    setState("preview")
+  }
+
+  const onSubmit: SubmitHandler<EducationFormValues> = async (values) => {
+    setServerError(null)
+    const payload: EducationPayload = {
+      school: values.schoolOrUniversity,
+      degree: values.degree,
+      fieldOfStudy: values.major,
+      startYear: values.startDate.year,
+      startMonth: values.startDate.month,
+      endYear: values.currentlyAttending ? undefined : values.endDate?.year,
+      endMonth: values.currentlyAttending ? undefined : values.endDate?.month,
+      currentlyStudying: values.currentlyAttending,
+    }
+    setIsSaving(true)
+    try {
+      if (editingIndex !== undefined) {
+        const editingEdu = educationQualifications?.[editingIndex]
+        if (editingEdu?.id) {
+          await UserAPI.updateEducation(editingEdu.id, payload)
+          setEducationQualifications(
+            educationQualifications?.map((qualification, index) =>
+              index === editingIndex
+                ? { ...values, id: qualification.id }
+                : qualification
+            )
+          )
+        } else if (userId) {
+          const res = await UserAPI.addEducation(payload)
+          const newId = res?.data?.id
+          setEducationQualifications(
+            educationQualifications?.map((qualification, index) =>
+              index === editingIndex
+                ? { ...values, id: newId ?? qualification.id }
+                : qualification
+            )
+          )
+        }
+        setEditingIndex(undefined)
+      } else if (userId) {
+        const res = await UserAPI.addEducation(payload)
+        const newId = res?.data?.id
+        setEducationQualifications((prev) =>
+          prev ? [...prev, { ...values, id: newId }] : [{ ...values, id: newId }]
+        )
+      } else {
+        setEducationQualifications((prev) =>
+          prev ? [...prev, values] : [values]
+        )
+      }
+      reset()
+      setState("preview")
+    } catch (err) {
+      handleSaveError(err)
+      console.error("[education wizard] save failed", err)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const currentlyAttending = useWatch({ control, name: "currentlyAttending" })
+  useEffect(() => {
+    if (currentlyAttending) {
+      setFormValue("endDate.month", undefined as any, {
+        shouldDirty: true,
+        shouldValidate: true,
+        shouldTouch: true,
+      })
+      setFormValue("endDate.year", undefined as any, {
+        shouldDirty: true,
+        shouldValidate: true,
+        shouldTouch: true,
+      })
+    }
+  }, [currentlyAttending, setFormValue])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -3153,7 +3871,7 @@ const EducationDialog = ({
             scrollBar={<ScrollBar className="w-4 p-1" />}
             className="h-[571px]"
           >
-            <div className="border-x min-h-full border-t rounded-t-[10px] p-[30px] border-gray-200 bg-gray-50">
+            <div className="border-x min-h-[567px] border-t rounded-t-[10px] p-[30px] border-gray-200 bg-gray-50">
               {state !== "action" ? (
                 <div className="flex items-start justify-between">
                   <div className="max-w-[157px] flex-auto flex items-center gap-x-3">
@@ -3169,7 +3887,7 @@ const EducationDialog = ({
                     <Button
                       onClick={() => {
                         setEditingIndex(undefined)
-                        reset()
+                        reset(educationFormDefaultValues)
                         setState("action")
                       }}
                       className="bg-white"
@@ -3207,18 +3925,42 @@ const EducationDialog = ({
               )}
 
               <div className="mt-6">
-                <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
-                  Education
-                </h1>
-                <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
-                  Show your qualifications to give clients confidence.
-                </p>
+                <DialogTitle asChild>
+                  <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
+                    Education
+                  </h1>
+                </DialogTitle>
+                {state === "default" && profileLoading && !profileError ? (
+                  <div className="mt-1 h-6 w-[280px] bg-gray-200 rounded animate-pulse" />
+                ) : (
+                  <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
+                    Show your qualifications to give clients confidence.
+                  </p>
+                )}
               </div>
 
               <div className="mt-6">
-                {state === "default" && (
+                {state === "default" && profileError && (
+                  <div className="flex flex-col items-start gap-y-3">
+                    <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
+                    <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+                  </div>
+                )}
+
+                {state === "default" && !profileError && profileLoading && (
+                  <div className="space-y-3" aria-busy="true" aria-label="Loading">
+                    <div className="h-9 w-[200px] bg-gray-200 rounded animate-pulse" />
+                    <div className="h-4 w-[260px] bg-gray-200 rounded animate-pulse" />
+                  </div>
+                )}
+
+                {state === "default" && !profileError && !profileLoading && (
                   <Button
-                    onClick={() => setState("action")}
+                    onClick={() => {
+                      setEditingIndex(undefined)
+                      reset(educationFormDefaultValues)
+                      setState("action")
+                    }}
                     className="bg-white"
                     variant="outlined"
                     visual="gray"
@@ -3231,7 +3973,25 @@ const EducationDialog = ({
 
                 {state === "preview" && (
                   <div className="space-y-3">
-                    {educationQualifications?.map((qualification, index) => (
+                    {educationQualifications
+                      ?.map((qualification, index) => ({
+                        qualification,
+                        index,
+                      }))
+                      .sort((a, b) => {
+                        if (
+                          a.qualification.currentlyAttending !==
+                          b.qualification.currentlyAttending
+                        )
+                          return a.qualification.currentlyAttending ? -1 : 1
+                        return (
+                          (b.qualification.startDate?.year ?? 0) -
+                            (a.qualification.startDate?.year ?? 0) ||
+                          (b.qualification.startDate?.month ?? 0) -
+                            (a.qualification.startDate?.month ?? 0)
+                        )
+                      })
+                      .map(({ qualification, index }) => (
                       <EducationCard
                         onRemove={() => {
                           const updated = educationQualifications?.filter(
@@ -3256,6 +4016,15 @@ const EducationDialog = ({
 
                 {state === "action" && (
                   <>
+                    {serverError && (
+                      <div
+                        role="alert"
+                        aria-live="assertive"
+                        className="mb-4 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm font-medium text-error-700"
+                      >
+                        {serverError}
+                      </div>
+                    )}
                     <div className="grid gap-4 grid-cols-2">
                       <div className="space-y-1.5 col-span-2">
                         <Label
@@ -3310,8 +4079,8 @@ const EducationDialog = ({
                                   "Bachelor's Degree",
                                   "Master's Degree",
                                   "Doctoral Degree (PhD)",
-                                  "Professional Degree",
-                                  "Certificate / Diploma",
+                                  "Professional Degree (MD, JD, etc.)",
+                                  "Certificate",
                                   "Other",
                                 ].map((degree) => (
                                   <ListboxOption key={degree} value={degree}>
@@ -3369,9 +4138,18 @@ const EducationDialog = ({
                               name="startDate.month"
                               control={control}
                               render={({ field: { value, onChange } }) => (
-                                <Listbox value={value} onChange={onChange}>
+                                <Listbox
+                                  value={value}
+                                  onChange={(v) => {
+                                    onChange(v)
+                                    if (getValues("endDate.year")) trigger("endDate.year")
+                                  }}
+                                >
                                   <ListboxButton
-                                    displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
+                                    displayValue={(value: number) =>
+                                      months.find((m) => m.value === value)
+                                        ?.name ?? ""
+                                    }
                                     placeholder="Month"
                                     isInvalid={hookFormHasError({
                                       errors,
@@ -3379,13 +4157,11 @@ const EducationDialog = ({
                                     })}
                                   />
                                   <ListboxOptions>
-                                    {months
-                                      .map((month) => month.value)
-                                      .map((m) => (
-                                        <ListboxOption key={m} value={m}>
-                                          {m}
-                                        </ListboxOption>
-                                      ))}
+                                    {months.map((m) => (
+                                      <ListboxOption key={m.value} value={m.value}>
+                                        {m.value}
+                                      </ListboxOption>
+                                    ))}
                                   </ListboxOptions>
                                 </Listbox>
                               )}
@@ -3404,7 +4180,13 @@ const EducationDialog = ({
                               name="startDate.year"
                               control={control}
                               render={({ field: { value, onChange } }) => (
-                                <Listbox value={value} onChange={onChange}>
+                                <Listbox
+                                  value={value}
+                                  onChange={(v) => {
+                                    onChange(v)
+                                    if (getValues("endDate.year")) trigger("endDate.year")
+                                  }}
+                                >
                                   <ListboxButton
                                     displayValue={(value: number) => `${value}`}
                                     placeholder="Year"
@@ -3414,12 +4196,9 @@ const EducationDialog = ({
                                     })}
                                   />
                                   <ListboxOptions>
-                                    {[
-                                      2020, 2021, 2022, 2023, 2024, 2025, 2026,
-                                      2027,
-                                    ].map((month) => (
-                                      <ListboxOption key={month} value={month}>
-                                        {month}
+                                    {workExperienceYears.map((year) => (
+                                      <ListboxOption key={year} value={year}>
+                                        {year}
                                       </ListboxOption>
                                     ))}
                                   </ListboxOptions>
@@ -3457,9 +4236,19 @@ const EducationDialog = ({
                               name="endDate.month"
                               control={control}
                               render={({ field: { value, onChange } }) => (
-                                <Listbox value={value} onChange={onChange}>
+                                <Listbox
+                                  key={`edu-wiz-end-month-${currentlyAttending}`}
+                                  value={value ?? null}
+                                  onChange={(v) => {
+                                    onChange(v)
+                                    if (getValues("endDate.year")) trigger("endDate.year")
+                                  }}
+                                >
                                   <ListboxButton
-                                    displayValue={(value: number) => months.find((m) => m.value === value)?.name ?? ""}
+                                    displayValue={(value: number) =>
+                                      months.find((m) => m.value === value)
+                                        ?.name ?? ""
+                                    }
                                     placeholder="Month"
                                     isInvalid={hookFormHasError({
                                       errors,
@@ -3467,13 +4256,11 @@ const EducationDialog = ({
                                     })}
                                   />
                                   <ListboxOptions>
-                                    {months
-                                      .map((month) => month.value)
-                                      .map((m) => (
-                                        <ListboxOption key={m} value={m}>
-                                          {m}
-                                        </ListboxOption>
-                                      ))}
+                                    {months.map((m) => (
+                                      <ListboxOption key={m.value} value={m.value}>
+                                        {m.value}
+                                      </ListboxOption>
+                                    ))}
                                   </ListboxOptions>
                                 </Listbox>
                               )}
@@ -3492,7 +4279,14 @@ const EducationDialog = ({
                               name="endDate.year"
                               control={control}
                               render={({ field: { value, onChange } }) => (
-                                <Listbox value={value} onChange={onChange}>
+                                <Listbox
+                                  key={`edu-wiz-end-year-${currentlyAttending}`}
+                                  value={value ?? null}
+                                  onChange={(v) => {
+                                    onChange(v)
+                                    if (getValues("endDate.year")) trigger("endDate.year")
+                                  }}
+                                >
                                   <ListboxButton
                                     displayValue={(value: number) => `${value}`}
                                     placeholder="Year"
@@ -3502,12 +4296,9 @@ const EducationDialog = ({
                                     })}
                                   />
                                   <ListboxOptions>
-                                    {[
-                                      2020, 2021, 2022, 2023, 2024, 2025, 2026,
-                                      2027,
-                                    ].map((month) => (
-                                      <ListboxOption key={month} value={month}>
-                                        {month}
+                                    {workExperienceYears.map((year) => (
+                                      <ListboxOption key={year} value={year}>
+                                        {year}
                                       </ListboxOption>
                                     ))}
                                   </ListboxOptions>
@@ -3562,6 +4353,7 @@ const EducationDialog = ({
                   visual="gray"
                   type="button"
                   onClick={previous}
+                  disabled={profileLoading || profileError}
                 >
                   Back
                 </Button>
@@ -3572,13 +4364,14 @@ const EducationDialog = ({
                     variant="ghost"
                     visual="gray"
                     type="button"
+                    disabled={profileLoading || profileError}
                   >
                     Skip
                   </Button>
                   <Button
                     size="md"
                     type="button"
-                    disabled={!Boolean(educationQualifications?.length)}
+                    disabled={!Boolean(educationQualifications?.length) || profileLoading || profileError}
                     onClick={next}
                   >
                     Save & Continue
@@ -3606,7 +4399,14 @@ const EducationDialog = ({
                   <X className="size-[15px]" /> Cancel
                 </Button>
 
-                <Button ref={submitTriggerRef} type="submit" disabled={!isValid}>Save</Button>
+                <Button
+                  ref={submitTriggerRef}
+                  type="submit"
+                  disabled={!isValid || isSaving}
+                  loading={isSaving}
+                >
+                  Save
+                </Button>
 
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                   <DialogContent className="max-w-[409px] p-0">
@@ -3666,6 +4466,7 @@ const EducationDialog = ({
               size="md"
               variant="ghost"
               visual="gray"
+              aria-label="Close"
             >
               <X className="size-5" />
             </IconButton>
@@ -3743,6 +4544,9 @@ const Portfolio = ({
   next,
   previous,
   progressPercent,
+  profileLoading,
+  profileError,
+  onReloadProfile,
 }: {
   onFinished?: (isFinished: boolean) => void
   opened?: boolean
@@ -3750,6 +4554,9 @@ const Portfolio = ({
   next?: () => void
   previous?: () => void
   progressPercent?: number
+  profileLoading?: boolean
+  profileError?: boolean
+  onReloadProfile?: () => void
 }) => {
   const [open, setOpen] = useControllableState({
     value: opened,
@@ -3761,18 +4568,26 @@ const Portfolio = ({
 
   return (
     <>
-      {caseStudyOpen && (
-        <div className="fixed inset-0 z-[100] bg-white">
+      <Dialog open={caseStudyOpen} onOpenChange={setCaseStudyOpen}>
+        <DialogContent
+          variant="unanimated"
+          className="inset-0 h-full z-[100] bg-white p-0 overflow-y-auto"
+        >
+          <DialogTitle className="sr-only">Case Study Builder</DialogTitle>
           <CaseStudyBuilder
             onClose={() => setCaseStudyOpen(false)}
             onSave={() => {
-              setPortfolioItems((prev) => [...prev, `Case Study ${prev.length + 1}`])
+              setPortfolioItems((prev) => [
+                ...prev,
+                `Case Study ${prev.length + 1}`,
+              ])
               onFinished?.(true)
               setCaseStudyOpen(false)
             }}
           />
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-[1090px] grid grid-cols-2 rounded-[24px] p-[30px]">
           <form>
@@ -3787,14 +4602,35 @@ const Portfolio = ({
               </div>
 
               <div className="mt-6">
-                <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
-                  Portfolio
-                </h1>
-                <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
-                  Show the quality and style that clients are looking for.
-                </p>
+                <DialogTitle asChild>
+                  <h1 className="text-[36px] leading-[44px] font-semibold text-dark-blue-400">
+                    Portfolio
+                  </h1>
+                </DialogTitle>
+                {profileLoading && !profileError ? (
+                  <div className="mt-1 h-6 w-[280px] bg-gray-200 rounded animate-pulse" />
+                ) : (
+                  <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
+                    Show the quality and style that clients are looking for.
+                  </p>
+                )}
               </div>
 
+              {profileError && (
+                <div className="mt-6 flex flex-col items-start gap-y-3">
+                  <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
+                  <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+                </div>
+              )}
+
+              {!profileError && profileLoading && (
+                <div className="mt-6 grid grid-cols-2 gap-3" aria-busy="true" aria-label="Loading">
+                  <div className="h-[150px] bg-gray-200 rounded animate-pulse" />
+                  <div className="h-[150px] bg-gray-200 rounded animate-pulse" />
+                </div>
+              )}
+
+              {!profileError && !profileLoading && (
               <div className="mt-6 grid grid-cols-2 gap-3">
                 {portfolioItems.map((item, index) => (
                   <article
@@ -3804,12 +4640,16 @@ const Portfolio = ({
                     <div className="size-10 shrink-0 rounded-full border-2 border-success-500 inline-flex items-center justify-center text-success-500">
                       <Check className="size-4" />
                     </div>
-                    <h3 className="text-center text-sm font-semibold text-dark-blue-400">{item}</h3>
+                    <h3 className="text-center text-sm font-semibold text-dark-blue-400">
+                      {item}
+                    </h3>
                     <button
                       type="button"
                       className="text-xs text-error-500 hover:underline"
                       onClick={() => {
-                        const updated = portfolioItems.filter((_, i) => i !== index)
+                        const updated = portfolioItems.filter(
+                          (_, i) => i !== index
+                        )
                         setPortfolioItems(updated)
                         if (updated.length === 0) onFinished?.(false)
                       }}
@@ -3832,6 +4672,7 @@ const Portfolio = ({
                   </h3>
                 </button>
               </div>
+              )}
             </div>
             <div className="border rounded-b-[10px] flex items-center justify-between border-gray-200 bg-white py-4 px-6">
               <Button
@@ -3841,6 +4682,7 @@ const Portfolio = ({
                 visual="gray"
                 type="button"
                 onClick={previous}
+                disabled={profileLoading || profileError}
               >
                 Back
               </Button>
@@ -3851,13 +4693,14 @@ const Portfolio = ({
                   variant="ghost"
                   visual="gray"
                   onClick={next}
+                  disabled={profileLoading || profileError}
                 >
                   Skip
                 </Button>
                 <Button
                   size="md"
                   type="button"
-                  disabled={portfolioItems.length === 0}
+                  disabled={portfolioItems.length === 0 || profileLoading || profileError}
                   onClick={() => {
                     onFinished?.(true)
                     next?.()
@@ -3868,51 +4711,52 @@ const Portfolio = ({
               </div>
             </div>
           </form>
-        <div className="p-[50px] relative">
-          <DialogClose asChild>
-            <IconButton
-              className="absolute text-gray-500 right-0 top-0"
-              size="md"
-              variant="ghost"
-              visual="gray"
-            >
-              <X className="size-5" />
-            </IconButton>
-          </DialogClose>
-          <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-            Show Off Your Best Work!
-          </h1>
-          <p className="text-base text-dark-blue-400 mt-2.5">
-            Your portfolio isn’t just a section, it’s the proof that you’re the
-            real deal. It’s where talent meets results and leaves clients
-            saying, ‘I need this!
-          </p>
+          <div className="p-[50px] relative">
+            <DialogClose asChild>
+              <IconButton
+                className="absolute text-gray-500 right-0 top-0"
+                size="md"
+                variant="ghost"
+                visual="gray"
+                aria-label="Close"
+              >
+                <X className="size-5" />
+              </IconButton>
+            </DialogClose>
+            <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+              Show Off Your Best Work!
+            </h1>
+            <p className="text-base text-dark-blue-400 mt-2.5">
+              Your portfolio isn’t just a section, it’s the proof that you’re
+              the real deal. It’s where talent meets results and leaves clients
+              saying, ‘I need this!
+            </p>
 
-          <div className="mt-[49px]">
-            <ul className="mt-4 space-y-[15px]">
-              <li className="flex items-start gap-x-5">
-                <Bulb className="shrink-0 text-warning-300" />
-                <span className="text-base text-dark-blue-400 leading-none">
-                  Highlighting your strengths means the right clients can find
-                  you faster.
-                </span>
-              </li>
-              <li className="flex items-start gap-x-5">
-                <Bulb className="shrink-0 text-warning-300" />
-                <span className="text-base text-dark-blue-400 leading-none">
-                  What makes you passionate about what you do?
-                </span>
-              </li>
-              <li className="flex items-start gap-x-5">
-                <Bulb className="shrink-0 text-warning-300" />
-                <span className="text-base text-dark-blue-400 leading-none">
-                  What’s that one thing that’ll make someone remember you?
-                </span>
-              </li>
-            </ul>
+            <div className="mt-[49px]">
+              <ul className="mt-4 space-y-[15px]">
+                <li className="flex items-start gap-x-5">
+                  <Bulb className="shrink-0 text-warning-300" />
+                  <span className="text-base text-dark-blue-400 leading-none">
+                    Highlighting your strengths means the right clients can find
+                    you faster.
+                  </span>
+                </li>
+                <li className="flex items-start gap-x-5">
+                  <Bulb className="shrink-0 text-warning-300" />
+                  <span className="text-base text-dark-blue-400 leading-none">
+                    What makes you passionate about what you do?
+                  </span>
+                </li>
+                <li className="flex items-start gap-x-5">
+                  <Bulb className="shrink-0 text-warning-300" />
+                  <span className="text-base text-dark-blue-400 leading-none">
+                    What’s that one thing that’ll make someone remember you?
+                  </span>
+                </li>
+              </ul>
+            </div>
           </div>
-        </div>
-      </DialogContent>
+        </DialogContent>
       </Dialog>
     </>
   )
@@ -4001,6 +4845,7 @@ const Congratulations = ({
               size="md"
               variant="ghost"
               visual="gray"
+              aria-label="Close"
             >
               <X className="size-5" />
             </IconButton>
@@ -4015,12 +4860,48 @@ const Congratulations = ({
           <div className="mt-[30px]">
             <ul className="space-y-[19px]">
               {[
-                { icon: <CreditCard02 className="shrink-0 size-8 text-dark-blue-400" />, label: "Set up payments", href: "/talent-dashboard" },
-                { icon: <Search className="shrink-0 size-8 text-dark-blue-400" />, label: "Find open projects", href: "/search" },
-                { icon: <UsersPlus className="shrink-0 size-8 text-dark-blue-400" />, label: "Join a team", href: "/search" },
-                { icon: <Briefcase02 className="shrink-0 size-8 text-dark-blue-400" />, label: "Create a new project", href: "/submit-project" },
-                { icon: <RefreshCw className="shrink-0 size-8 text-dark-blue-400" />, label: "Start a new service", href: "/talent-dashboard" },
-                { icon: <UserPlus01 className="shrink-0 size-8 text-dark-blue-400" />, label: "Set up my account", href: "/account-settings" },
+                {
+                  icon: (
+                    <CreditCard02 className="shrink-0 size-8 text-dark-blue-400" />
+                  ),
+                  label: "Set up payments",
+                  href: "/talent-dashboard",
+                },
+                {
+                  icon: (
+                    <Search className="shrink-0 size-8 text-dark-blue-400" />
+                  ),
+                  label: "Find open projects",
+                  href: "/search",
+                },
+                {
+                  icon: (
+                    <UsersPlus className="shrink-0 size-8 text-dark-blue-400" />
+                  ),
+                  label: "Join a team",
+                  href: "/search",
+                },
+                {
+                  icon: (
+                    <Briefcase02 className="shrink-0 size-8 text-dark-blue-400" />
+                  ),
+                  label: "Create a new project",
+                  href: "/submit-project",
+                },
+                {
+                  icon: (
+                    <RefreshCw className="shrink-0 size-8 text-dark-blue-400" />
+                  ),
+                  label: "Start a new service",
+                  href: "/talent-dashboard",
+                },
+                {
+                  icon: (
+                    <UserPlus01 className="shrink-0 size-8 text-dark-blue-400" />
+                  ),
+                  label: "Set up my account",
+                  href: "/account-settings",
+                },
               ].map(({ icon, label, href }) => (
                 <li key={label}>
                   <DialogClose asChild>
@@ -4185,18 +5066,42 @@ const WorkExperienceCard = ({
 }: WorkExperienceCardProps) => {
   return (
     <article className="p-5 rounded-lg flex items-start gap-x-6 bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-      <div className="border size-[55px] shrink-0 inline-flex items-center justify-center rounded-lg border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-        <div className="relative size-[45px] shrink-0">
-          <NextImage
-            className="object-cover"
-            src="/android-01.png"
-            alt="Android"
-            sizes="10vw"
-            fill
-          />
-        </div>
+      <div className="border size-[55px] shrink-0 inline-flex items-center justify-center rounded-lg border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] overflow-hidden relative">
+        <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
+          {employer?.charAt(0)?.toUpperCase() || "W"}
+        </span>
+        {(() => {
+          const brand = getCompanyBrandFromName(employer)
+          if (brand?.type === "component") {
+            return <brand.Icon className="size-9 relative bg-white" />
+          }
+          if (brand?.type === "remote-svg") {
+            return (
+              <img
+                key={brand.url}
+                src={brand.url}
+                alt={employer || brand.name}
+                width={36}
+                height={36}
+                className="object-contain size-9 relative bg-white"
+                loading="lazy"
+                data-fallback="0"
+                onError={(e) => {
+                  const el = e.currentTarget
+                  if (el.dataset.fallback === "0") {
+                    el.dataset.fallback = "1"
+                    el.src = brand.faviconUrl
+                  } else {
+                    el.style.display = "none"
+                  }
+                }}
+              />
+            )
+          }
+          return null
+        })()}
       </div>
-      <div className="flex-auto">
+      <div className="flex-auto min-w-0">
         <div className="flex items-start justify-between">
           <h1 className="text-base leading-none font-bold text-dark-blue-400">
             {jobTitle}
@@ -4204,7 +5109,7 @@ const WorkExperienceCard = ({
 
           <div className="inline-flex items-center gap-x-2">
             <IconButton
-              className="text-gray-400"
+              className="text-gray-400 rounded-full"
               size="md"
               visual="gray"
               variant="ghost"
@@ -4217,7 +5122,7 @@ const WorkExperienceCard = ({
             <Dialog>
               <DialogTrigger asChild>
                 <IconButton
-                  className="text-gray-400"
+                  className="text-gray-400 rounded-full hover:text-error-500 hover:bg-error-50"
                   size="md"
                   visual="gray"
                   variant="ghost"
@@ -4256,7 +5161,7 @@ const WorkExperienceCard = ({
         </div>
         <div className="mt-1.5">
           <span className="text-[13px] leading-none text-dark-blue-400">
-            {employer}
+            {capitalizeCompanyName(employer)}
           </span>
         </div>
         <div className="mt-1.5 items-center flex gap-x-1.5">
@@ -4272,21 +5177,33 @@ const WorkExperienceCard = ({
               </>
             )}
           </span>
-          <span className="inline-block shrink-0 size-1 rounded-full bg-gray-300" />
-          <span className="text-[12px] leading-none font-semibold text-dark-blue-400">
-            5 yrs 2 mos
-          </span>
+          {formatExperienceDuration(startDate, endDate, currentlyWorkHere) && (
+            <>
+              <span className="inline-block shrink-0 size-1 rounded-full bg-gray-300" />
+              <span className="text-[12px] leading-none font-semibold text-dark-blue-400">
+                {formatExperienceDuration(
+                  startDate,
+                  endDate,
+                  currentlyWorkHere
+                )}
+              </span>
+            </>
+          )}
         </div>
 
-        <div className="mt-3">
-          <span className="text-sm inline-block leading-none text-dark-blue-400 line-clamp-2">
+        <div className="mt-3 min-w-0 overflow-hidden">
+          <p className="text-sm leading-none text-dark-blue-400 line-clamp-2 break-all">
             {jobDescription}
-          </span>
+          </p>
         </div>
 
-        <div className="mt-3 flex items-center gap-x-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           {skills?.map((skill) => (
-            <Badge key={skill.id} visual="gray">
+            <Badge
+              key={`${skill.id}-${skill.name}`}
+              visual="gray"
+              className="max-w-full break-all"
+            >
               {skill.name}
             </Badge>
           ))}
@@ -4313,16 +5230,42 @@ const EducationCard = ({
 }: EducationCardProps) => {
   return (
     <article className="p-5 rounded-lg flex items-start gap-x-6 bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-      <div className="border size-[55px] shrink-0 inline-flex items-center justify-center rounded-lg border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
-        <div className="relative size-[45px] shrink-0">
-          <NextImage
-            className="object-cover"
-            src="/cambridge.png"
-            alt="Android"
-            sizes="10vw"
-            fill
-          />
-        </div>
+      <div className="border size-[55px] shrink-0 inline-flex items-center justify-center rounded-lg border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] overflow-hidden relative">
+        <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
+          {schoolOrUniversity?.charAt(0)?.toUpperCase() || "E"}
+        </span>
+        {(() => {
+          const brand = getCompanyBrandFromName(schoolOrUniversity, {
+            faviconTld: "edu",
+          })
+          if (brand?.type === "component") {
+            return <brand.Icon className="size-9 relative bg-white" />
+          }
+          if (brand?.type === "remote-svg") {
+            return (
+              <img
+                key={brand.url}
+                src={brand.url}
+                alt={schoolOrUniversity || brand.name}
+                width={36}
+                height={36}
+                className="object-contain size-9 relative bg-white"
+                loading="lazy"
+                data-fallback="0"
+                onError={(e) => {
+                  const el = e.currentTarget
+                  if (el.dataset.fallback === "0") {
+                    el.dataset.fallback = "1"
+                    el.src = brand.faviconUrl
+                  } else {
+                    el.style.display = "none"
+                  }
+                }}
+              />
+            )
+          }
+          return null
+        })()}
       </div>
       <div className="flex-auto">
         <div className="flex items-start justify-between">
@@ -4362,7 +5305,7 @@ const EducationCard = ({
 
           <div className="inline-flex items-center gap-x-2">
             <IconButton
-              className="text-gray-400"
+              className="text-gray-400 rounded-full"
               size="md"
               visual="gray"
               variant="ghost"
@@ -4375,7 +5318,7 @@ const EducationCard = ({
             <Dialog>
               <DialogTrigger asChild>
                 <IconButton
-                  className="text-gray-400"
+                  className="text-gray-400 rounded-full hover:text-error-500 hover:bg-error-50"
                   size="md"
                   visual="gray"
                   variant="ghost"

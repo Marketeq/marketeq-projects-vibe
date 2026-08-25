@@ -1,22 +1,22 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Edit01, Plus } from "@blend-metrics/icons"
-import { Button, Switch, useToast } from "@/components/ui"
-import { cn } from "@/utils/functions"
 import type {
   ChannelKey,
   GlobalChannelPrefs,
 } from "@/service/http/notifications"
-import {
-  channelIcons,
-  channelLabels,
-  requestBrowserNotificationPermission,
-  SMS_ENABLED,
-} from "./shared"
+import { cn } from "@/utils/functions"
+import { Edit01, Plus } from "@blend-metrics/icons"
+import { Button, Switch, useToast } from "@/components/ui"
 import BrowserAlertsModal from "./modals/browser-alerts-modal"
 import EditEmailModal from "./modals/edit-email-modal"
 import EditPhoneModal from "./modals/edit-phone-modal"
+import {
+  SMS_ENABLED,
+  channelIcons,
+  channelLabels,
+  requestBrowserNotificationPermission,
+} from "./shared"
 
 interface Props {
   channels: GlobalChannelPrefs
@@ -38,7 +38,9 @@ export default function NotificationGlobalChannels({
   onSetAccountPhone,
 }: Props) {
   const { toast } = useToast()
-  const [browserMode, setBrowserMode] = useState<"enable" | "disable" | null>(null)
+  const [browserMode, setBrowserMode] = useState<"enable" | "disable" | null>(
+    null
+  )
   const [browserLoading, setBrowserLoading] = useState(false)
   const [editEmailOpen, setEditEmailOpen] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
@@ -90,7 +92,9 @@ export default function NotificationGlobalChannels({
     } catch (err: any) {
       toast({
         title:
-          err?.response?.data?.message || err?.message || "Failed to update email",
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to update email",
         variant: "destructive",
       })
     } finally {
@@ -103,13 +107,17 @@ export default function NotificationGlobalChannels({
     try {
       await onSetAccountPhone(phone)
       toast({
-        title: phone ? "Your phone number has been updated" : "Phone number removed",
+        title: phone
+          ? "Your phone number has been updated"
+          : "Phone number removed",
         variant: "success",
       })
     } catch (err: any) {
       toast({
         title:
-          err?.response?.data?.message || err?.message || "Failed to update phone",
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to update phone",
         variant: "destructive",
       })
     } finally {
@@ -148,13 +156,15 @@ export default function NotificationGlobalChannels({
           <h3 className="text-base font-semibold text-dark-blue-400">
             Notifications by type
           </h3>
-          <p className="text-sm text-gray-500">Control all notifications at once</p>
+          <p className="text-sm text-gray-500">
+            Control all notifications at once
+          </p>
         </div>
         <div className="px-5 pb-5 space-y-2">
           {/* In App */}
           <div
             className={cn(
-              "group flex items-center gap-3 bg-gray-50 rounded-lg px-4 h-[52px]",
+              "group flex items-center gap-3 bg-gray-50 rounded-lg px-4 h-[52px]"
             )}
           >
             <InAppIcon />
@@ -165,7 +175,7 @@ export default function NotificationGlobalChannels({
             <span
               className={cn(
                 "text-xs text-gray-400 group-hover:hidden",
-                !channels.inApp.enabled && "opacity-50",
+                !channels.inApp.enabled && "opacity-50"
               )}
             >
               {inAppDetail.map((part, i) => (
@@ -195,7 +205,7 @@ export default function NotificationGlobalChannels({
             <span
               className={cn(
                 "text-xs text-gray-400 group-hover:hidden",
-                !channels.email.enabled && "opacity-50",
+                !channels.email.enabled && "opacity-50"
               )}
             >
               {channels.email.address ?? accountEmail}
@@ -277,4 +287,3 @@ function SmsIcon() {
   const Icon = channelIcons.sms
   return <Icon className="size-5 text-gray-500" />
 }
-

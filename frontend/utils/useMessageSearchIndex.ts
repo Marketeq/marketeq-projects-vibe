@@ -2,16 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
+  type SearchDoc,
   buildSearchIndex,
   loadCachedDocs,
   makeSearcher,
   saveCachedDocs,
-  type SearchDoc,
 } from "@/src/search/message-search"
 
 interface UseMessageSearchIndexOptions {
   userId: string | null | undefined
-  token: string | null | undefined
+  token?: string | null | undefined
   privateKey: CryptoKey | null
 }
 
@@ -40,7 +40,7 @@ export interface MessageSearchIndexState {
  */
 export function useMessageSearchIndex({
   userId,
-  token,
+  token: _token,
   privateKey,
 }: UseMessageSearchIndexOptions): MessageSearchIndexState {
   const [docs, setDocs] = useState<SearchDoc[]>([])
@@ -71,10 +71,10 @@ export function useMessageSearchIndex({
     }
   }, [userId])
 
-  // Phase 2: once we have a token + private key, rebuild/refresh the index
+  // Phase 2: once we have a private key, rebuild/refresh the index
   // in the background. Merges new messages into whatever was cached.
   useEffect(() => {
-    if (!userId || !token || !privateKey || !ready) return
+    if (!userId || !privateKey || !ready) return
     if (indexingRef.current) return
 
     indexingRef.current = true
@@ -87,7 +87,6 @@ export function useMessageSearchIndex({
       try {
         const result = await buildSearchIndex({
           userId,
-          token,
           privateKey,
           existing: docs,
           signal: controller.signal,
@@ -119,7 +118,7 @@ export function useMessageSearchIndex({
     // not a rebuild every time the docs ref changes. Incremental updates
     // on new message arrival should be handled at a higher level.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, token, privateKey, ready])
+  }, [userId, privateKey, ready])
 
   const search = useCallback((query: string) => {
     return searcherRef.current(query)
@@ -139,13 +138,13 @@ export function useMessageSearchIndex({
             userId,
             next,
             // We don't track threadsIndexed here; saveCachedDocs handles it.
-            [],
+            []
           ).catch(() => {})
         }
         return next
       })
     },
-    [userId],
+    [userId]
   )
 
   // Stable object identity — consumers put this in effect deps.

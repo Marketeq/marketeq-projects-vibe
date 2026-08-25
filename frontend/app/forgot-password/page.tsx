@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import { AuthAPI } from "@/service/http/auth"
 import { hookFormHasError } from "@/utils/functions"
 import { ArrowLeft, Lock01 } from "@blend-metrics/icons"
@@ -9,48 +10,84 @@ import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { SubmitHandler, useForm } from "react-hook-form"
 import { z } from "zod"
-import { MarketeqLogo } from "@/components/icons/marketeq-logo"
 import { Spinner } from "@/components/ui/spinner/spinner"
-import {
-  Button,
-  ErrorMessage,
-  Input,
-  Label,
-  useToast,
-} from "@/components/ui"
+import { MarketeqLogo } from "@/components/icons/marketeq-logo"
+import { Button, ErrorMessage, Input, Label, useToast } from "@/components/ui"
+import { MagicLinkSentShowcase } from "@/components/magic-link-sent-showcase"
+import { AccountNotFoundShowcase } from "@/components/account-not-found-showcaset"
+
+const SENT_EMAIL_STORAGE_KEY = "forgotPasswordEmail"
+const ACCOUNT_FOUND_STORAGE_KEY = "forgotPasswordAccountFound"
 
 const schema = z.object({
   email: z
     .string()
+    .trim()
     .min(1, "Please enter your email")
     .email("Please enter a valid email"),
 })
 
 type FormValues = z.infer<typeof schema>
 
-export default function ForgotPassword() {
+function ForgotPassword() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
+  const [isResending, setIsResending] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [sentEmail, setSentEmail] = useState("")
+  const [accountFound, setAccountFound] = useState(true)
+
+  useEffect(() => {
+    if (searchParams?.get("sent") !== "1") return
+    const storedEmail =
+      typeof window !== "undefined"
+        ? window.sessionStorage.getItem(SENT_EMAIL_STORAGE_KEY)
+        : null
+    if (storedEmail) {
+      setSentEmail(storedEmail)
+      setAccountFound(
+        window.sessionStorage.getItem(ACCOUNT_FOUND_STORAGE_KEY) !== "0",
+      )
+      setSubmitted(true)
+    }
+  }, [searchParams])
 
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isValid },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { email: "" },
+    mode: "onChange",
   })
+
+  const requestReset = async (email: string) => {
+    const redirectUrl =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/reset-password`
+        : undefined
+    const response = await AuthAPI.ForgotPassword({ email, redirectUrl })
+    return Boolean(response?.data?.accountFound)
+  }
 
   const onSubmit: SubmitHandler<FormValues> = async ({ email }) => {
     setIsLoading(true)
     try {
-      const redirectUrl =
-        typeof window !== "undefined"
-          ? `${window.location.origin}/reset-password`
-          : undefined
-      await AuthAPI.ForgotPassword({ email, redirectUrl })
+      const found = await requestReset(email)
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(SENT_EMAIL_STORAGE_KEY, email)
+        window.sessionStorage.setItem(
+          ACCOUNT_FOUND_STORAGE_KEY,
+          found ? "1" : "0",
+        )
+      }
+      setSentEmail(email)
+      setAccountFound(found)
       setSubmitted(true)
+      router.replace("/forgot-password?sent=1")
     } catch (error: any) {
       toast({
         title:
@@ -62,6 +99,47 @@ export default function ForgotPassword() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleResend = async () => {
+    if (!sentEmail) return
+    setIsResending(true)
+    try {
+      const found = await requestReset(sentEmail)
+      setAccountFound(found)
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(
+          ACCOUNT_FOUND_STORAGE_KEY,
+          found ? "1" : "0",
+        )
+      }
+      toast({
+        title: found
+          ? "Magic link resent. Please check your inbox."
+          : "No account found for this email.",
+      })
+    } catch (error: any) {
+      toast({
+        title:
+          error?.response?.data?.errors?.message ??
+          error?.response?.data?.message ??
+          "Something went wrong. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsResending(false)
+    }
+  }
+
+  const handleBack = () => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(SENT_EMAIL_STORAGE_KEY)
+      window.sessionStorage.removeItem(ACCOUNT_FOUND_STORAGE_KEY)
+    }
+    setSubmitted(false)
+    setSentEmail("")
+    setAccountFound(true)
+    router.replace("/forgot-password")
   }
 
   return (
@@ -83,24 +161,29 @@ export default function ForgotPassword() {
       </div>
 
       <div className="py-10 px-5 md:p-10 3xl:px-[120px] 3xl:py-[50px]">
-        <form
-          onSubmit={handleSubmit(onSubmit)}
-          className="max-w-[467px] w-full mx-auto p-5 md:p-[50px] bg-white border rounded-xl border-gray-100 shadow-[0px_32px_64px_-12px_rgba(16,24,40,.05)]"
-        >
-          <h1 className="text-lg font-semibold text-dark-blue-400">
-            Reset your password
-          </h1>
-          <p className="mt-2 text-sm leading-5 text-dark-blue-400">
-            Enter the email address associated with your account and we'll send
-            you a link to reset your password.
-          </p>
-
-          {submitted ? (
-            <div className="mt-[30px] rounded-md border border-green-200 bg-green-50 p-4 text-sm text-dark-blue-400">
-              If an account with that email exists, we've sent a password reset
-              link. Please check your inbox.
-            </div>
+        {submitted ? (
+          accountFound ? (
+            <MagicLinkSentShowcase
+              email={sentEmail}
+              onResend={handleResend}
+              goBack={handleBack}
+              isResending={isResending}
+            />
           ) : (
+            <AccountNotFoundShowcase email={sentEmail} goBack={handleBack} />
+          )
+        ) : (
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="max-w-[467px] w-full mx-auto p-5 md:p-[50px] bg-white border rounded-xl border-gray-100 shadow-[0px_32px_64px_-12px_rgba(16,24,40,.05)]"
+          >
+            <h1 className="text-lg font-semibold text-dark-blue-400">
+              Reset your password
+            </h1>
+            <p className="mt-2 text-sm leading-5 text-dark-blue-400">
+              Enter your email address below in order to reset your password.
+            </p>
+
             <div className="mt-[30px]">
               <Label htmlFor="email" size="sm">
                 Email
@@ -121,11 +204,9 @@ export default function ForgotPassword() {
                 )}
               />
             </div>
-          )}
 
-          <div className="mt-6 flex flex-col gap-y-3">
-            {!submitted && (
-              <Button size="sm" disabled={isLoading} type="submit">
+            <div className="mt-6 flex flex-col gap-y-3">
+              <Button size="sm" disabled={isLoading || !isValid} type="submit">
                 {isLoading ? (
                   <Spinner
                     size={20}
@@ -134,17 +215,27 @@ export default function ForgotPassword() {
                     strokeWidth={2}
                   />
                 ) : (
-                  "Send reset link"
+                  "Continue"
                 )}
               </Button>
-            )}
-            <Link href="/sign-in">
-              <Button size="sm" variant="link" type="button" className="w-full">
-                <ArrowLeft className="size-[15px]" /> Back to sign in
-              </Button>
-            </Link>
-          </div>
-        </form>
+              <Link href="/sign-in">
+                <Button size="sm" variant="link" type="button" className="w-full">
+                  <ArrowLeft className="size-[15px]" /> Back
+                </Button>
+              </Link>
+            </div>
+
+            <p className="mt-5 text-sm leading-5 text-dark-blue-400">
+              Still having trouble?{" "}
+              <Link
+                href="mailto:support@marketeqdigital.com"
+                className="underline font-semibold text-primary-500"
+              >
+                Start account recovery
+              </Link>
+            </p>
+          </form>
+        )}
 
         <div className="max-w-[467px] mt-10 3xl:mt-[50px] mx-auto px-5 md:px-[50px] w-full">
           <div className="flex items-center gap-x-2">
@@ -156,11 +247,19 @@ export default function ForgotPassword() {
           <div className="mt-2.5">
             <span className="text-sm leading-5 text-dark-blue-400">
               Marketeq will never ask for your password over email. Always make
-              sure you're on marketeq.com before entering your credentials.
+              sure you're on marketeqdigital.com before entering your credentials.
             </span>
           </div>
         </div>
       </div>
     </>
+  )
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense>
+      <ForgotPassword />
+    </Suspense>
   )
 }

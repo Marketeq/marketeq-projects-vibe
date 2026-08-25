@@ -12,7 +12,6 @@
  *   2. Payment       — choose a saved card or add a new one
  *   3. Confirm       — review + complete
  */
-
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/utils/functions"
@@ -89,11 +88,11 @@ const StepPill = ({
 }
 
 // ── Top bar (mirrors checkout header) ──────────────────────────────────────
-const TopBar = ({ current }: { current: StepId }) => (
+const TopBar = ({ current, onLogoClick }: { current: StepId; onLogoClick: () => void }) => (
   <div className="bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)]">
     <div className="max-w-[1140px] h-[64px] mx-auto px-6 flex items-center justify-between">
       <div className="flex items-center gap-x-6">
-        <Logo3 className="w-[128px] h-[18.81px] shrink-0" />
+        <button onClick={onLogoClick} className="focus-visible:outline-none"><Logo3 className="w-[128px] h-[18.81px] shrink-0" /></button>
         <span className="inline-block h-[18px] w-px shrink-0 bg-gray-200" />
         <div className="inline-flex items-center gap-x-2">
           <Lock className="size-[18px] text-gray-500" />
@@ -330,7 +329,7 @@ export default function AddFundsPage() {
   if (done) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <TopBar current={3} />
+        <TopBar current={3} onLogoClick={() => router.push("/")} />
         <div className="px-6 py-[80px]">
           <div className="max-w-[560px] mx-auto bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] p-10 text-center">
             <div className="mx-auto size-14 rounded-full bg-green-100 flex items-center justify-center">
@@ -370,7 +369,7 @@ export default function AddFundsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <TopBar current={step} />
+      <TopBar current={step} onLogoClick={() => router.push("/")} />
 
       <div className="px-6 py-[50px]">
         <div className="max-w-[720px] mx-auto">
@@ -391,9 +390,7 @@ export default function AddFundsPage() {
           </p>
 
           <div className="mt-6">
-            {step === 1 && (
-              <AmountStep amount={amount} setAmount={setAmount} />
-            )}
+            {step === 1 && <AmountStep amount={amount} setAmount={setAmount} />}
             {step === 2 && (
               <PaymentStep cardId={cardId} setCardId={setCardId} />
             )}
@@ -419,7 +416,9 @@ export default function AddFundsPage() {
             )}
             {step === 3 && (
               <Button onClick={submit} disabled={submitting}>
-                {submitting ? "Processing…" : `Pay $${Number(amount).toFixed(2)}`}
+                {submitting
+                  ? "Processing…"
+                  : `Pay $${Number(amount).toFixed(2)}`}
               </Button>
             )}
           </div>

@@ -4,6 +4,7 @@ import { useDocumentInfo } from "payload/components/utilities";
 
 import {
   FALLBACK_INDUSTRY_OPTIONS,
+  FALLBACK_LANGUAGE_OPTIONS,
   FALLBACK_SKILL_OPTIONS,
   FALLBACK_TAG_OPTIONS,
   loadAutocompleteOptions,
@@ -145,14 +146,18 @@ export function createChipArrayTagsField(
     );
     const docInfo = useDocumentInfo();
 
-    // If Payload admin form state fails to hydrate seeded array values (observed after refresh
-    // with array Field overrides), pull the persisted value via same-origin REST and hydrate it
-    // once. This does NOT overwrite non-empty form state.
+    // Hydrate seeded/persisted array values once on mount when Payload's form
+    // state is empty (observed with array Field overrides after page refresh).
+    // A ref guard ensures this runs exactly once — re-running on rows.length
+    // change would undo user removals by re-fetching the saved value.
+    const hydratedRef = React.useRef(false);
     React.useEffect(() => {
+      if (hydratedRef.current) return;
       let cancelled = false;
       const run = async () => {
         try {
-          if (rows.length > 0) return;
+          const currentRows = normalizeRowsWithKey(value, rowValueKey);
+          if (currentRows.length > 0) { hydratedRef.current = true; return; }
           const id = (docInfo as any)?.id ?? (docInfo as any)?.docID ?? null;
           if (!id) return;
           const pathName =
@@ -167,9 +172,11 @@ export function createChipArrayTagsField(
           );
           if (!res.ok) return;
           const doc = (await res.json()) as any;
-          const nextVal = doc?.[path];
+          // path may be a dot-path (e.g. "roleDescriptions.0.skills") — traverse it
+          const nextVal = path.split('.').reduce((obj: any, key) => obj?.[key], doc);
           const parsed = normalizeRowsWithKey(nextVal, rowValueKey);
           if (!cancelled && parsed.length > 0) {
+            hydratedRef.current = true;
             setValue(rowsToFormValueWithKey(parsed, rowValueKey));
           }
         } catch {
@@ -180,7 +187,8 @@ export function createChipArrayTagsField(
       return () => {
         cancelled = true;
       };
-    }, [docInfo, path, rowValueKey, rows.length, setValue]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [docInfo, path, rowValueKey, setValue]);
     const selectedLower = React.useMemo(
       () => new Set(rows.map((r) => r.value.toLowerCase())),
       [rows],
@@ -492,6 +500,48 @@ export const TalentSkillsChipField = createChipArrayTagsField({
   placeholder: "Add Skill",
   getHelperText: (maxRows) =>
     `Add up to ${String(maxRows)} skills for this profile.`,
+  defaultMaxRows: 20,
+  suggestedOptions: FALLBACK_SKILL_OPTIONS,
+  suggestedHeading: "Suggested Skills",
+  fetchErrorLabel: "Failed to load skill suggestions",
+});
+
+export const JobListingIndustriesChipField = createChipArrayTagsField({
+  title: "Industries",
+  autocompleteType: "industries",
+  submitType: "industry",
+  submitSource: "cms-service:job-listings",
+  placeholder: "Add Industry",
+  getHelperText: (maxRows) =>
+    `Add up to ${String(maxRows)} industries that align with this listing.`,
+  defaultMaxRows: 10,
+  suggestedOptions: FALLBACK_INDUSTRY_OPTIONS,
+  suggestedHeading: "Suggested Industries",
+  fetchErrorLabel: "Failed to load industry suggestions",
+});
+
+export const JobListingLanguagesChipField = createChipArrayTagsField({
+  title: "Languages",
+  autocompleteType: "languages",
+  submitType: "language",
+  submitSource: "cms-service:job-listings",
+  placeholder: "Add Language",
+  getHelperText: (maxRows) =>
+    `Add up to ${String(maxRows)} languages required for this listing.`,
+  defaultMaxRows: 10,
+  suggestedOptions: FALLBACK_LANGUAGE_OPTIONS,
+  suggestedHeading: "Suggested Languages",
+  fetchErrorLabel: "Failed to load language suggestions",
+});
+
+export const JobListingSkillsChipField = createChipArrayTagsField({
+  title: "Skills",
+  autocompleteType: "skills",
+  submitType: "skill",
+  submitSource: "cms-service:job-listings",
+  placeholder: "Add Skill",
+  getHelperText: (maxRows) =>
+    `Add up to ${String(maxRows)} skills required for this role.`,
   defaultMaxRows: 20,
   suggestedOptions: FALLBACK_SKILL_OPTIONS,
   suggestedHeading: "Suggested Skills",

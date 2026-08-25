@@ -355,13 +355,14 @@ export class InvitationsService {
         throw new NotFoundException('Invalid invitation token');
       }
 
-      // Link-based accept — add to team_members directly
-      await this.dataSource.query(
-        `INSERT INTO team_members (team_id, user_id, role, created_at)
-         VALUES ($1, $2, $3, now())
-         ON CONFLICT (team_id, user_id) DO NOTHING`,
-        [linkPayload.teamId, invitee.id, linkPayload.role],
-      ).catch(() => null);
+      // Link-based accept — add to the team roster via user-service.
+      await this.userService
+        .addTeamMember({
+          teamId: linkPayload.teamId,
+          userId: invitee.id,
+          role: linkPayload.role,
+        })
+        .catch(() => null);
 
       const updatedUserSummary = await this.getSafeDismissedUserSummary(invitee);
 
@@ -391,13 +392,15 @@ export class InvitationsService {
       throw new ForbiddenException('Email does not match invitation');
     }
 
-    // Idempotent team_members insert
-    await this.dataSource.query(
-      `INSERT INTO team_members (team_id, user_id, role, created_at)
-       VALUES ($1, $2, $3, now())
-       ON CONFLICT (team_id, user_id) DO NOTHING`,
-      [inv.teamId, invitee.id, inv.role],
-    ).catch(() => null); // ignore if team_members table not yet created
+    // Add to the team roster via user-service (idempotent; user-service
+    // owns the user_service.team_members table the roster is read from).
+    await this.userService
+      .addTeamMember({
+        teamId: inv.teamId,
+        userId: invitee.id,
+        role: inv.role,
+      })
+      .catch(() => null);
 
     inv.status = InvitationStatus.ACCEPTED;
     inv.acceptedAt = new Date();

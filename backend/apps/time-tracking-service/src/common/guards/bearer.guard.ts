@@ -20,7 +20,13 @@ export class BearerGuard implements CanActivate {
     const auth = (req.headers['authorization'] as string | undefined) ?? '';
     if (!auth.startsWith('Bearer ')) throw new UnauthorizedException('Missing bearer token');
     const token = auth.slice(7);
-    if (token !== this.expected) throw new UnauthorizedException('Invalid token');
-    return true;
+    if (token === this.expected) return true;
+    // Also accept requests from the gateway (JWT already validated, x-user-id set)
+    const gatewayUserId = req.headers['x-user-id'];
+    if (gatewayUserId) {
+      req.user = { sub: gatewayUserId, email: req.headers['x-user-email'] };
+      return true;
+    }
+    throw new UnauthorizedException('Invalid token');
   }
 }

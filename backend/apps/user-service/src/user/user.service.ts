@@ -52,7 +52,17 @@ export class UserService {
   }
 
   async getUserById(id: string): Promise<User> {
-    const user = await this.userRepository.findOne({ where: { id } });
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: [
+        'languages',
+        'experiences',
+        'educations',
+        'certifications',
+        'industries',
+        'portfolioItems',
+      ],
+    });
     if (!user) throw new NotFoundException("User not found");
 
     try {
@@ -69,7 +79,12 @@ export class UserService {
       user.skills = [];
     }
 
-    return user;
+    return {
+      ...user,
+      experience: user.experiences,
+      education: user.educations,
+      portfolio: user.portfolioItems,
+    } as User;
   }
 
   async updateAvatarUrl(id: string, avatarUrl: string): Promise<User> {
@@ -210,6 +225,18 @@ export class UserService {
     return this.updateUser(id, { timezone });
   }
 
+  async updateCurrency(id: string, currency: string): Promise<User> {
+    return this.updateUser(id, { preferredCurrency: currency });
+  }
+
+  async getPreferredCurrency(id: string): Promise<string | null> {
+    const user = await this.userRepository.findOne({
+      where: { id },
+      select: ['id', 'preferredCurrency'],
+    });
+    return user?.preferredCurrency ?? null;
+  }
+
   async refreshTimezone(
     claims: { sub?: string; id?: string; email?: string },
     req: Request,
@@ -263,10 +290,19 @@ export class UserService {
           ? "client"
           : undefined;
 
+    const now = new Date().toISOString();
+    const roleTimestamp =
+      role === UserRole.TALENT
+        ? { talentOnboardedAt: now }
+        : role === UserRole.CLIENT
+          ? { clientOnboardedAt: now }
+          : {};
+
     return this.updateUser(id, {
       onboardingDismissed: true,
       ...(userType ? { userType } : {}),
-    });
+      ...roleTimestamp,
+    } as any);
   }
 
   async deactivateUser(id: string): Promise<void> {
@@ -289,7 +325,6 @@ export class UserService {
     if (normalizedIncomingUsername === "")
       normalizedIncomingUsername = undefined;
     const fallbackUsername = `user_${dto.id.replace(/-/g, "").slice(0, 12)}`;
-    const resolvedRole = dto.role ?? UserRole.CLIENT;
     const resolvedProvider = dto.provider ?? "EMAIL";
     const resolvedHasPassword = dto.hasPassword ?? false;
 
@@ -300,7 +335,11 @@ export class UserService {
     if (existingById) {
       Object.assign(existingById, {
         email: dto.email ?? existingById.email,
-        role: resolvedRole ?? existingById.role,
+        // Only overwrite role if this sync payload actually carried one.
+        // Login syncs (every provider) never send `role`, so defaulting it
+        // here would silently reset an existing user's real role on every
+        // login instead of leaving it untouched.
+        role: dto.role ?? existingById.role,
         ...(dto.firstName && { firstName: dto.firstName }),
         ...(dto.lastName && { lastName: dto.lastName }),
         provider: dto.provider ?? existingById.provider ?? resolvedProvider,
@@ -322,7 +361,7 @@ export class UserService {
         throw new ConflictException("User already exists with a different id");
       }
       Object.assign(existingByEmail, {
-        role: resolvedRole ?? existingByEmail.role,
+        role: dto.role ?? existingByEmail.role,
         provider: dto.provider ?? existingByEmail.provider ?? resolvedProvider,
         hasPassword:
           dto.hasPassword ?? existingByEmail.hasPassword ?? resolvedHasPassword,
@@ -337,7 +376,7 @@ export class UserService {
       id: dto.id,
       email: dto.email,
       username: normalizedIncomingUsername ?? fallbackUsername,
-      role: resolvedRole,
+      role: dto.role ?? UserRole.CLIENT,
       ...(dto.firstName && { firstName: dto.firstName }),
       ...(dto.lastName && { lastName: dto.lastName }),
       provider: resolvedProvider,

@@ -35,6 +35,9 @@ const JSON_DATA_TYPES = new Set([
   "languages",
   "project_types",
   "search_keywords",
+  "companies",
+  "universities",
+  "locations",
 ]);
 
 function resolveAutocompleteDataPath(type: string): string | null {
@@ -470,19 +473,22 @@ export class AutocompleteService {
     // Keep route type for JSON file resolution (e.g. "skills.json", "job_titles.json").
     // Map separately for DB enum-backed entries (e.g. skill, title).
     const routeType = type;
-    const dbType = (AUTOCOMPLETE_ROUTE_TYPE_MAP[type] ?? type) as EntryType;
+    const dbType = AUTOCOMPLETE_ROUTE_TYPE_MAP[type] as EntryType | undefined;
     const filepath = resolveAutocompleteDataPath(routeType);
     let approvedDbEntries: AutocompleteEntry[] = [];
-    try {
-      approvedDbEntries = await this.entryRepo.find({
-        where: { type: dbType, status: EntryStatus.APPROVED },
-        order: { frequency: "DESC", createdAt: "ASC" },
-        take: 500,
-      });
-    } catch {
-      // If the live DB schema is missing a newer enum value, still serve the
-      // JSON-backed autocomplete list instead of failing the whole request.
-      approvedDbEntries = [];
+    // Only query the DB if this type has a known DB enum mapping
+    if (dbType) {
+      try {
+        approvedDbEntries = await this.entryRepo.find({
+          where: { type: dbType, status: EntryStatus.APPROVED },
+          order: { frequency: "DESC", createdAt: "ASC" },
+          take: 500,
+        });
+      } catch {
+        // If the live DB schema is missing a newer enum value, still serve the
+        // JSON-backed autocomplete list instead of failing the whole request.
+        approvedDbEntries = [];
+      }
     }
 
     const approvedSuggestions = approvedDbEntries.map((entry) => ({

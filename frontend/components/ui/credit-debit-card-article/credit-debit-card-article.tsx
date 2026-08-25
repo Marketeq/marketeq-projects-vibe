@@ -1,16 +1,31 @@
 "use client"
 
 import React from "react"
+import {
+  Check,
+  CreditCard,
+  Edit03,
+  MoreHorizontal,
+  Trash03,
+  Trash2,
+} from "@blend-metrics/icons"
+import { MastercardDefault } from "@blend-metrics/icons/payment-methods"
 import { Control, useWatch } from "react-hook-form"
+import type { BillingAddressFormValues } from "@/types/checkout-core"
+import RmDialog from "@/components/ui/rm-dialog/rm-dialog"
 import { getCardType } from "@/components/credit-card-input"
 import { Amex, Discover, Visa } from "@/components/icons/payment-icons"
-import { MastercardDefault } from "@blend-metrics/icons/payment-methods"
-import { Check, CreditCard, Edit03, MoreHorizontal, Trash03, Trash2 } from "@blend-metrics/icons"
-import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, IconButton } from "@/components/ui"
-import RmDialog from "@/components/ui/rm-dialog/rm-dialog"
-import type { BillingAddressFormValues } from "@/types/checkout-core"
+import {
+  Badge,
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  IconButton,
+} from "@/components/ui"
 
-export default function CreditDebitCardArticle1 ({
+export default function CreditDebitCardArticle1({
   onEdit,
   onRemove,
   cardNumber,
@@ -22,8 +37,19 @@ export default function CreditDebitCardArticle1 ({
   cardNumber?: string
   saveDefaultPaymentMethod?: boolean
   onChange?: () => void
-})  {
+}) {
   const kind = getCardType(cardNumber || "")
+  const cardBrand =
+    kind === "visa"
+      ? "Visa"
+      : kind === "amex"
+        ? "American Express"
+        : kind === "discover"
+          ? "Discover"
+          : kind === "mastercard"
+            ? "Mastercard"
+            : "Credit Card"
+  const cardLastFour = (cardNumber ?? "").slice(-4)
 
   return (
     <div className="rounded-lg bg-white border border-gray-200 p-[15px] flex items-center justify-between">
@@ -44,61 +70,45 @@ export default function CreditDebitCardArticle1 ({
         <div className="inline-flex flex-col gap-y-1">
           <div className="inline-flex items-center gap-x-2">
             <span className="inline-block text-sm text-dark-blue-400">
-              {kind === "visa"
-                ? "Visa"
-                : kind === "amex"
-                  ? "American Express"
-                  : kind === "discover"
-                    ? "Discover"
-                    : kind === "mastercard"
-                      ? "Mastercard"
-                      : "Credit Card"}
+              {cardBrand}
             </span>
             {saveDefaultPaymentMethod && (
               <Badge visual="primary">Default</Badge>
             )}
           </div>
           <span className="inline-block text-xs text-[#858585] leading-none">
-            Credit ****{(cardNumber ?? "").slice(-4)}
+            {cardLastFour ? `Credit ****${cardLastFour}` : "Credit card"}
           </span>
         </div>
       </div>
 
-      <div className="flex items-center gap-x-5">
-        <Button variant="link" visual="gray" onClick={onChange}>
-          Change
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+      <div className="flex items-center gap-x-2">
+        <IconButton
+          className="rounded-full opacity-50 hover:opacity-100"
+          variant="ghost"
+          visual="gray"
+          onClick={onEdit ?? onChange}
+        >
+          <Edit03 className="size-[18px]" />
+        </IconButton>
+
+        <RmDialog
+          onRemove={onRemove}
+          title="Remove Payment Method?"
+          description={`Are you sure you want to remove ${
+            cardLastFour ? `${cardBrand} Credit ****${cardLastFour}` : cardBrand
+          } from your payment methods?`}
+          trigger={({ isOpen, setIsOpen }) => (
             <IconButton
-              visual="gray"
+              className="rounded-full opacity-50 hover:opacity-100 hover:bg-error-100 hover:text-error-500"
               variant="ghost"
-              className="h-6 w-6 text-gray-500"
+              visual="gray"
+              onClick={() => setIsOpen(!isOpen)}
             >
-              <MoreHorizontal className="h-5 w-5" />
+              <Trash03 className="size-[18px]" />
             </IconButton>
-          </DropdownMenuTrigger>
-
-          <DropdownMenuContent className="w-[165px]" align="end">
-            <DropdownMenuItem onSelect={onEdit}>
-              <Edit03 className="h-4 w-4" /> Edit
-            </DropdownMenuItem>
-
-            <RmDialog
-              onRemove={onRemove}
-              title="Remove Payment Method?"
-              description="Are you sure you want to remove American Express Credit ****1234 from your payment methods?"
-              trigger={({ isOpen, setIsOpen }) => (
-                <DropdownMenuItem
-                  visual="destructive"
-                  onSelect={() => setIsOpen(!isOpen)}
-                >
-                  <Trash2 className="h-4 w-4" /> Delete
-                </DropdownMenuItem>
-              )}
-            />
-          </DropdownMenuContent>
-        </DropdownMenu>
+          )}
+        />
       </div>
     </div>
   )
@@ -171,7 +181,7 @@ const CreditDebitCardArticle2 = ({
           <RmDialog
             onRemove={onRemove}
             title="Remove Payment Method?"
-            description="Are you sure you want to remove American Express Credit ****1234 from your payment methods?"
+            description="Are you sure you want to remove this payment method?"
             trigger={({ isOpen, setIsOpen }) => (
               <IconButton
                 className="rounded-full opacity-50 hover:opacity-100 hover:bg-error-100 hover:text-error-500"
@@ -350,7 +360,7 @@ const CreditDebitCardArticle = ({
             <RmDialog
               onRemove={onRemove}
               title="Remove Payment Method?"
-              description="Are you sure you want to remove American Express Credit ****1234 from your payment methods?"
+              description="Are you sure you want to remove this payment method?"
               trigger={({ isOpen, setIsOpen }) => (
                 <DropdownMenuItem
                   visual="destructive"
@@ -769,4 +779,9 @@ const CreditCardCvvOrCvc = (props: React.SVGProps<SVGSVGElement>) => {
     </svg>
   )
 }
-export { CreditDebitCardArticle, CreditDebitCardArticle2, CreditDebitCardArticle3, CreditCardCvvOrCvc }
+export {
+  CreditDebitCardArticle,
+  CreditDebitCardArticle2,
+  CreditDebitCardArticle3,
+  CreditCardCvvOrCvc,
+}

@@ -42,7 +42,9 @@ export default function EditPhoneModal({
     }
     const normalized = trimmed.replace(/[\s()\-]/g, "")
     if (!PHONE_REGEX.test(normalized)) {
-      setError("Enter a valid phone number with country code, e.g. +15551234567")
+      setError(
+        "Enter a valid phone number with country code, e.g. +15551234567"
+      )
       return
     }
     setError(null)

@@ -8,6 +8,8 @@ import {
   ListingDeletedPayload,
   TalentEventPayload,
   TalentDeletedPayload,
+  TeamEventPayload,
+  TeamDeletedPayload,
 } from '../types/event-payloads'
 
 @Controller('algolia')
@@ -29,7 +31,7 @@ export class SyncController {
     return this.svc.batchSync(records)
   }
 
-  // RabbitMQ — event-driven sync from other services
+  // RabbitMQ — generic sync commands
   @MessagePattern('algolia.sync')
   handleSync(@Payload() dto: SyncRecordDto) {
     return this.svc.sync(dto)
@@ -60,7 +62,7 @@ export class SyncController {
     })
   }
 
-  // Domain events from user-service
+  // Domain events from user-service (talent profiles)
   @EventPattern('talent.updated')
   onTalentUpdated(@Payload() user: TalentEventPayload) {
     return this.svc.syncTalent(user, SyncOperation.UPSERT)
@@ -70,6 +72,26 @@ export class SyncController {
   onTalentDeleted(@Payload() data: TalentDeletedPayload) {
     return this.svc.sync({
       index: AlgoliaIndex.TALENT,
+      operation: SyncOperation.DELETE,
+      objectID: data.id,
+    })
+  }
+
+  // Domain events from listings-service (teams)
+  @EventPattern('team.created')
+  onTeamCreated(@Payload() team: TeamEventPayload) {
+    return this.svc.syncTeam(team, SyncOperation.UPSERT)
+  }
+
+  @EventPattern('team.updated')
+  onTeamUpdated(@Payload() team: TeamEventPayload) {
+    return this.svc.syncTeam(team, SyncOperation.UPSERT)
+  }
+
+  @EventPattern('team.deleted')
+  onTeamDeleted(@Payload() data: TeamDeletedPayload) {
+    return this.svc.sync({
+      index: AlgoliaIndex.TEAMS,
       operation: SyncOperation.DELETE,
       objectID: data.id,
     })

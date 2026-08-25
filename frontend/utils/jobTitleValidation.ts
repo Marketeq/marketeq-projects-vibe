@@ -1,7 +1,7 @@
 import leoProfanity from "leo-profanity"
+import { getPublicBackendUrl } from "@/lib/runtime-urls"
 import { blacklist } from "../utils/blacklist"
 import { categoryRules } from "../utils/blacklist"
-import { getPublicBackendUrl } from "@/lib/runtime-urls"
 
 // Initialize the profanity dictionary once
 leoProfanity.loadDictionary("en")
@@ -185,16 +185,13 @@ export async function submitTextToModerationQueue(
 
   try {
     const endpoint = "/talent/job-titles/queue"
-    const response = await fetch(
-      `${getPublicBackendUrl()}${endpoint}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ title: input, type }),
-      }
-    )
+    const response = await fetch(`${getPublicBackendUrl()}${endpoint}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: input, type }),
+    })
 
     if (!response.ok) throw new Error("Failed to queue")
 

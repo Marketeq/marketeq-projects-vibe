@@ -5,7 +5,9 @@
 **Applies to:** every PR targeting `dev-main`, `staging`, or `live-mvp`
 
 **Companion doc:** `docs/DEVOPS_SOP.md` owns all deployment, branch topology, env template, and QA promotion rules. This document stays focused on code review. Do not add deployment rules here.
-**Last updated:** 2026-04-11
+**Last updated:** 2026-05-22
+
+> **CI/CD Architecture (2026-05-22):** All CI/CD runs on **Jenkins** (72.61.77.231:8080). GitHub Actions are disabled (free plan minutes exhausted). GitHub webhook delivers PR events to the Jenkins `github-webhook-dispatcher`, which runs all 5 PR gate checks in parallel and posts commit statuses (`Jenkins / SOP Check`, `Jenkins / AI Breakage Detector`, `Jenkins / Secret Scan`, `Jenkins / Login Gate`, `Jenkins / Code Review`) back to GitHub. The `.github/workflows/*.yml` files are retained as reference but disabled. Old docs archived in `docs/md/Deployment (CI-CD)/old devops docs/`.
 
 This is the single source of truth for how pull requests are reviewed, merged, and cleaned up in this repository. Nothing in this document is optional. If any step cannot be completed, the PR **does not merge**.
 
@@ -44,31 +46,52 @@ If a PR modifies any of the above, the author must confirm **in writing in the P
 
 Without all four confirmations, block the PR.
 
-### 1.4 Login files are FROZEN — four-point confirmation required
-Once local login works against a fresh `.env.local` copied from `frontend/.env.local.example`, **no PR changes the login path without explicit CTO sign-off**. Per the repo-wide rule: *if login works locally, it should not be broken on dev, staging, or anywhere else*. The only way this is possible is if the code is environment-agnostic and reads every value from `process.env.*` — which is the invariant `docs/DEVOPS_SOP.md` §6 owns.
+### 1.4 Login files are PERMANENTLY LOCKED — CTO ONLY, NO EXCEPTIONS
 
-**Review-side rules this SOP enforces:**
+**ABSOLUTE HARD BLOCK: Nobody is allowed to change login/auth files. Ever. Period.**
 
-- **Frozen files** (any change to any of these triggers the four-point confirmation below):
-  - `frontend/app/sign-in/**`, `frontend/app/sign-up/**`
-  - `frontend/contexts/auth.tsx`
-  - `frontend/src/lib/api/auth.ts`
-  - `frontend/middleware.ts`
-  - `backend/apps/auth-service/**`
-  - `backend/libs/shared/src/guards/**`, `backend/libs/shared/src/decorators/**`
-  - Any of the six frozen env templates: `frontend/.env.{local,staging,production}.example`, `backend/.env.{local,staging,production}.example`
+Login is working. Every single login regression in this repo's history happened because someone opened a ticket, touched login files, and broke everything. This will never happen again. The login files listed below are permanently locked. No developer, no contractor, no agent, no ticket, no feature request overrides this rule. Only the CTO (@CTorres9800) may modify these files, and only by pushing directly or approving a PR with an explicit review.
 
-- **Four-point local confirmation** — required verbatim in the PR description of any PR to `dev-main` touching any frozen file:
-  1. `local dev login on the frontend still works against a fresh .env`
-  2. `backend JWT signing, verification, and guards are unchanged`
-  3. `manual QA was performed locally with a client account and a talent account`
-  4. `no credentials, keys, or secrets are committed in this PR`
+**If a PR touches ANY of these files and the author is not @CTorres9800, the PR is BLOCKED. No four-point confirmation makes it OK. No justification makes it OK. The PR does not merge.**
 
-- Staging and production templates have their own four-point confirmations (see `docs/DEVOPS_SOP.md` §5.1) and must target the matching branch (`staging` or `live-mvp`).
+**Permanently locked files:**
 
-- **No hardcoded env values** in login code. Block any PR that adds a literal `*.onrender.com` URL, a literal `sameSite:` / `secure:` flag, a literal CORS origin string, or a literal JWT secret inside the frozen files. All values come from `process.env.*`.
+- `frontend/app/top-most-header.tsx` — the single master navigation bar component. No replacements, no duplicates, no deletions. The shadow and gap-free layout between primary and secondary nav is intentional and must never be reverted.
+- `frontend/components/navigation/marketplace-secondary-nav.tsx` — part of the master nav bar unit. The negative margin overlap and shadow placement are intentional fixes. Never overwrite.
+- `frontend/components/auth/auth-modal.tsx` — the auth modal for in-marketplace login/signup. Marketplace login MUST use this modal, never redirect to `/sign-in`. See §1.4.1.
+- `frontend/hoc/AuthenticatedRoute.tsx` — opens auth modal for unauthenticated users. Must call `openAuthModal()`, never `router.push("/sign-in")`. See §1.4.1.
+- `frontend/hoc/UnauthenticatedRoute.tsx`
+- `frontend/app/sign-in/**`, `frontend/app/sign-up/**`
+- `frontend/app/forgot-password/**`, `frontend/app/reset-password/**`
+- `frontend/contexts/auth.tsx`
+- `frontend/service/http/auth.ts`
+- `frontend/src/lib/api/auth.ts`
+- `frontend/middleware.ts`
+- `frontend/components/auth/**` (all auth components)
+- `backend/apps/auth-service/**`
+- `backend/apps/user-service/src/guards/**`
+- `backend/apps/api-gateway/src/proxy/proxy.service.ts`
+- `backend/libs/shared/src/guards/**`, `backend/libs/shared/src/decorators/**`
+- Any of the six frozen env templates: `frontend/.env.{local,staging,production}.example`, `backend/.env.{local,staging,production}.example`
+- `frontend/app/(group)/active-project/[id]/page.tsx` — the active project task screen. Locked 2026-08-22. Covers the task tables, pinned section bars and column headers, the bulk-select bar, the create/edit task dialog, the checklist, the attachments views, and the components defined in this file (`AssigneePicker`, `TaskStatusMenu`, `TaskDueDatePicker`, `SortableTaskRow`, `StickySectionBar`). Every spacing, sticky offset, hover shade, and border position in this screen was set deliberately after extensive correction. No refactors, no cleanup, no restyling. Surgical edits only, and only with explicit @CTorres9800 approval.
+  - **Frozen specifically:** all markup, layout, spacing, hover states, borders, sticky offsets, and **transitions/animations** (section collapse slides, folder row slide, row reveal, drag states, toast and tooltip timing). Do not retime, replace, or remove any transition.
+  - **The only permitted change:** wiring these components to backend APIs — swapping the seeded arrays for real data, adding fetch/mutation calls, and hooking up handlers that are currently no-ops. Data wiring must not alter a single class name, element, or transition.
 
-- `sop-check.yml` auto-labels frozen-file PRs `login-touched`, posts a 🚨 LOGIN TOUCHED sticky comment, and auto-requests @CTorres9800.
+**Enforcement layers (all active, all blocking):**
+
+1. **`.github/CODEOWNERS`** — requires @CTorres9800 review on all login/auth file paths
+2. **Login Gate workflow** (`.github/workflows/login-gate.yml`) — CI hard-blocks any PR to `dev-main`, `staging`, or `live` that touches login files unless @CTorres9800 is the author or has submitted an Approved review
+3. **Jenkins SOP Check** — auto-labels `login-touched`, posts sticky comment, auto-requests @CTorres9800
+4. **Post-merge audit** — auto-reverts merges that bypassed login gate
+5. **Login violation alert** — opens issues when login files are merged without owner approval
+6. **This SOP** — any Claude Code agent reviewing a PR MUST block it if login files are touched by anyone other than @CTorres9800
+
+**What to do if someone creates a login-related ticket:**
+- Close the ticket. Login is not open for changes.
+- If there is a genuine login bug, only @CTorres9800 diagnoses and fixes it.
+- If a feature requires auth changes, only @CTorres9800 implements the auth portion.
+
+**No hardcoded env values** in login code. Block any PR that adds a literal `*.onrender.com` URL, a literal `sameSite:` / `secure:` flag, a literal CORS origin string, or a literal JWT secret inside the locked files. All values come from `process.env.*`.
 
 **The bidirectional invariant (said plainly, because this is the real pain):**
 
@@ -76,9 +99,32 @@ Once local login works against a fresh `.env.local` copied from `frontend/.env.l
 > If login works on Vercel dev / staging / live, a PR must not break login locally.
 > "Fixing" login in one environment by hardcoding a value that only works there is **the bug**, not the fix.
 
-Every login regression in this repo's history has been a violation of this invariant: someone changed a hardcoded cookie flag, or a hardcoded backend URL, or a hardcoded CORS origin, in one environment to make that environment work — and silently broke the others. The only code that satisfies the invariant is code that reads every environment-specific value from `process.env.*` and has **zero** literals for URLs, cookie flags, CORS origins, or JWT material in the frozen files. This is what `sop-check.yml` blocks, in both directions, on every PR.
+Every login regression in this repo's history has been a violation of this invariant: someone changed a hardcoded cookie flag, or a hardcoded backend URL, or a hardcoded CORS origin, in one environment to make that environment work -- and silently broke the others. The only code that satisfies the invariant is code that reads every environment-specific value from `process.env.*` and has **zero** literals for URLs, cookie flags, CORS origins, or JWT material in the locked files.
 
-**Everything else about the login/env topology — Render wiring, Vercel deploy gating, env template ownership, branch-to-template mapping — lives in `docs/DEVOPS_SOP.md`. Do not duplicate those rules here.**
+**Everything else about the login/env topology -- Render wiring, Vercel deploy gating, env template ownership, branch-to-template mapping -- lives in `docs/DEVOPS_SOP.md`. Do not duplicate those rules here.**
+
+### 1.4.1 Auth modal login flow is FROZEN — block any PR that changes it
+
+The marketplace uses a **dual login flow** that must never be changed:
+
+1. **Marketplace (in-app):** When a logged-out user clicks any protected feature (Dashboard, profile, etc.) or clicks Sign In / Sign Up in the nav bar, a **popup modal** opens on the current page. The user never leaves the page they're on. This is powered by:
+   - `frontend/components/auth/auth-modal.tsx` — the AuthModal component with SignInForm and SignUpForm
+   - `frontend/contexts/auth.tsx` — exposes `openAuthModal()` / `closeAuthModal()` via AuthContext
+   - `frontend/hoc/AuthenticatedRoute.tsx` — calls `openAuthModal("sign-in")` instead of redirecting to `/sign-in`
+   - `frontend/app/top-most-header.tsx` — nav bar buttons call `openAuthModal()` for logged-out users
+
+2. **Marketing website:** When a user clicks Login/Sign Up from the marketing website (marketeqdigital.com), they navigate to the full `/sign-in` or `/sign-up` page with the sidebar layout.
+
+**Block any PR that:**
+- Replaces `openAuthModal()` with `router.push("/sign-in")` in `AuthenticatedRoute.tsx`
+- Removes or bypasses the auth modal in favor of page navigation within the marketplace
+- Removes `authModalOpen` / `openAuthModal` / `closeAuthModal` from the AuthContext
+- Deletes or guts `auth-modal.tsx`
+- Changes the nav bar to navigate to `/sign-in` instead of opening the modal
+
+**These files are frozen for this purpose** (in addition to §1.4 frozen rules):
+- `frontend/components/auth/auth-modal.tsx`
+- `frontend/hoc/AuthenticatedRoute.tsx`
 
 ### 1.5 Incremental changes only
 - No mega-PRs that mix unrelated concerns (e.g., "fix login" should not also include a CSS refactor).
@@ -157,9 +203,10 @@ Run every PR through this checklist in order. A single "❌ fail" blocks the mer
 - [ ] React render props and `useEffect` dependency arrays look correct.
 - [ ] Next.js route groups (`(group)/(group)/`) are respected — no files dropped in the wrong layout folder.
 
-### ✅ 3.6 Merge-conflict status
+### ✅ 3.6 Merge-conflict status and branch freshness
 - [ ] `mergeable: MERGEABLE` in `gh pr view`. If `CONFLICTING`, the PR cannot merge — see §5.
-- [ ] Branch is not more than ~10 commits behind `dev-main`. If it is, request a rebase before review.
+- [ ] **Branch MUST be up to date with its base before merge.** Check with: `git rev-list --count origin/<base>..origin/<head>` and `git rev-list --count origin/<head>..origin/<base>`. If the branch is more than 5 commits behind, **block the PR and require a rebase**. Do NOT use `--admin` to bypass this.
+- [ ] **NEVER merge a stale branch.** A squash merge from a stale branch silently overwrites any changes made to the same files on the base branch since the branch point. This has caused code loss in this repo. See §8.11.
 
 ### ✅ 3.7 Memory & performance
 - [ ] No new infinite loops, unbounded queries, or `while(true)` without break conditions.
@@ -181,6 +228,16 @@ After the checklist, apply this matrix:
 | Author explicitly marked `[DO NOT MERGE]` or draft | **Do not merge** regardless of checklist |
 
 **Default posture:** when in doubt, block. The cost of a bad merge is much higher than the cost of another review cycle.
+
+### 4.1 Selective Merge — never waste code
+
+When a PR has **mixed quality** (some good code, some violations), **never close the entire PR**. Instead:
+
+1. **Cherry-pick the good code** — manually apply usable changes (backend logic, data wiring, API endpoints, bug fixes) to `dev-main`
+2. **Reject only the specific violations** — layout deletions, security issues, off-limits changes
+3. **Close the PR** with a comment listing exactly what was merged and what was rejected, with line references
+
+Code takes time and money to write. Closing an entire PR because of one bad file wastes all the good work in it. Always extract value before closing.
 
 ---
 
@@ -206,17 +263,35 @@ git push --force-with-lease
 
 ## 6. How to Merge — the only approved procedure
 
-Once the checklist passes and the PR is `MERGEABLE`, merge with:
+Once the checklist passes and the PR is `MERGEABLE`, **verify the branch is up to date first**:
 
 ```bash
-gh pr merge <NUMBER> --squash --delete-branch
+# Check how far behind the branch is
+gh api repos/Marketeq/marketeq-projects-vibe/compare/<base>...<head> --jq '.behind_by'
+# If behind_by > 0, the branch MUST be updated before merging
+gh pr update-branch <NUMBER>  # or ask the author to rebase
 ```
 
+Only after the branch is up to date, merge with:
+
+```bash
+# Full merge (all code in the PR is being merged):
+gh pr merge <NUMBER> --squash --delete-branch
+
+# Cherry-pick or partial merge (only some commits/changes taken):
+gh pr merge <NUMBER> --squash
+# Do NOT use --delete-branch — the source branch may still have unmerged work
+```
+
+**Branch deletion rule:** Only delete a branch when merging ALL of its code. If you are cherry-picking, partially merging, or not taking every change from the branch, keep the original branch intact.
+
 **Never:**
-- `--admin` (bypasses checks) unless explicitly instructed by the user
+- `--admin` (bypasses checks) — **HARD BLOCK, no exceptions unless CTO explicitly types "use --admin"**
 - `--merge` (no commit-squashing — pollutes history)
 - `--rebase` without user approval
 - Skip `--delete-branch` — stale branches accumulate
+- Merge a branch that is behind the base — **this causes silent code loss** (see §8.11)
+- Delete a branch that still has unmerged work
 
 **After merging, verify:**
 
@@ -233,7 +308,7 @@ git fetch origin dev-main
 # Optional: quick sanity checkout of dev-main and look for obvious build breakage
 ```
 
-Branches are only deleted by `gh pr merge --delete-branch`. **Do not manually `git push origin --delete` remote branches** unless the user explicitly tells you to.
+Branches are only deleted when ALL code from the branch has been merged. If a cherry-pick or partial merge was done, the branch must be kept. **Do not manually `git push origin --delete` remote branches** unless the user explicitly tells you to.
 
 ---
 
@@ -329,8 +404,19 @@ Two contributors independently touch the same file — or touch different files 
 
 **This is the bug class the AI Breakage Detector (§9.6) and directory-scoped CODEOWNERS exist to catch.** Every reviewer must also manually apply §3.3 and specifically compare the full new version of each changed file against the `dev-main` version to verify no existing fix was lost in a rewrite.
 
+### 8.11 Silent code loss from stale branch squash merges (the #3 recurring bug)
+A feature branch is created from `dev-main` at commit A. Meanwhile, 20+ commits land on `dev-main` (commits B through T), modifying files X, Y, Z. The feature branch also modifies files X and Y. The branch is squash-merged **without rebasing** — GitHub creates a single commit on `dev-main` that contains the feature branch's version of X and Y, silently overwriting the changes from commits B-T on those same files. The code from B-T on files X and Y is now gone. There is no merge conflict because squash merges do not compare against intermediate commits.
+
+**This has caused actual code loss in this repo.** Audit of PRs #296-#324 found branches merged 40-68 commits behind their base.
+
+**Prevention:**
+- §3.6 now requires branches to be up to date before merge
+- `--admin` is hard-blocked (no exceptions without CTO typing the words)
+- Never duplicate commits across branches (commit to dev-main first, promote to staging, promote to live-mvp)
+- Never push directly to staging or live-mvp with separate commits
+
 ### 8.10 Broken login after a cross-environment "fix" (the #2 recurring bug)
-A PR modifies `sign-in/page.tsx`, `contexts/auth.tsx`, `auth-service`, or a guard decorator to "fix login" in one environment. The feature work is fine for the author's environment but silently breaks login in the others — typically because the fix hardcoded a cookie flag, a backend URL, a CORS origin, or a JWT setting that only works in the author's environment. Every instance of this bug in the repo's history has been a violation of the bidirectional invariant in §1.4: *fixing login in any one environment must never break any other environment*. PRs touching login-frozen files are automatically labeled `login-touched`, post a sentinel comment, and auto-request CTO review. `sop-check.yml` also fails the PR on any hardcoded URL, cookie flag, CORS origin, or JWT secret in a frozen file.
+A PR modifies `sign-in/page.tsx`, `contexts/auth.tsx`, `auth-service`, or a guard decorator to "fix login" in one environment. The feature work is fine for the author's environment but silently breaks login in the others — typically because the fix hardcoded a cookie flag, a backend URL, a CORS origin, or a JWT setting that only works in the author's environment. Every instance of this bug in the repo's history has been a violation of the bidirectional invariant in §1.4: *fixing login in any one environment must never break any other environment*. PRs touching login-frozen files are automatically labeled `login-touched`, post a sentinel comment, and auto-request CTO review. GitHub Actions `sop-check` workflow also fails the PR on any hardcoded URL, cookie flag, CORS origin, or JWT secret in a frozen file.
 
 ---
 
@@ -339,7 +425,7 @@ A PR modifies `sign-in/page.tsx`, `contexts/auth.tsx`, `auth-service`, or a guar
 GitHub's classic branch protection, rulesets, and native push protection **all require GitHub Team or GHAS** on private organization repos. This repo is on the free org plan, so we enforce protection through **CI checks and conventions** instead. Everything below is live as of 2026-04-11.
 
 ### 9.1 Gitleaks secret scanning — **ENFORCED**
-- **Workflow:** `.github/workflows/gitleaks.yml`
+- **Workflow:** GitHub Actions `gitleaks`
 - **Config:** `.gitleaks.toml` (extends default ruleset + adds PEM private-key and `.env` file rules)
 - **Triggers:** every PR to any branch, plus every push to `dev-main`, `staging`, `live-mvp`
 - **Behavior:** fails the check if any committed secret is detected. Reviewer **must not merge** a PR with a failed gitleaks check, regardless of the author or urgency.
@@ -368,21 +454,21 @@ This prevents developers from accidentally staging key material. It does not sto
 - **Behavior:** every PR automatically requests a review from the `@Marketeq/code-review` team. The team currently has `push` (write) permission on the repo, so their approvals would count toward a protected-branch check if one were active.
 - **Limitation:** because classic branch protection is paywalled on free org plans, the team review is **requested but not required**. A reviewer with write access could technically click "Merge" without their approval. SOP rule §1 treats the team review as **mandatory** by convention.
 
-### 9.4 AI Code Review workflow — **ENFORCED (advisory)**
-- **File:** `.github/workflows/code-review.yml`
+### 9.4 AI Code Review — **ENFORCED (advisory)**
+- **Workflow:** GitHub Actions `code-review`
 - **Triggers:** PRs targeting `dev-main`, `staging`, or `live-mvp`
 - **Behavior:** posts an AI-generated review comment using Claude Sonnet 4.6. Treat its findings as a second opinion, not as authoritative.
 
 ### 9.6 Mechanical SOP Checker — **ENFORCED (blocking)**
-- **File:** `.github/workflows/sop-check.yml`
+- **Pipeline:** GitHub Actions `sop-check` workflow
 - **Triggers:** every PR (opened, synchronize, reopened, edited)
 - **Behavior:** runs ~10 mechanical checks derived from this SOP and fails the check on any violation. Posts a single consolidated comment listing every violation with SOP section references. Specifically blocks:
   - Committed `*.pem`, `*.key`, `*.p12`, `*.pfx`, `.env`, `.env.*` files
   - Embedded PEM private-key headers in any added file
   - Root-level `package.json` / `package-lock.json` / `yarn.lock`
   - Off-limits profile files touched without the four-point confirmation (§1.3)
-  - Off-limits login files touched without the four-point login confirmation (§1.4)
-  - Any hardcoded URL, cookie flag, CORS origin, or JWT secret inside a frozen login file — bidirectional (§1.4)
+  - Login/auth files touched by anyone other than @CTorres9800 — ABSOLUTE BLOCK, no exceptions (§1.4)
+  - Any hardcoded URL, cookie flag, CORS origin, or JWT secret inside a locked login file — bidirectional (§1.4)
   - TypeORM entity changes without a matching migration
   - Env template branch mismatches — `*.local.example` only on `dev-main`, `*.staging.example` only on `staging`, `*.production.example` only on `live-mvp` (see `docs/DEVOPS_SOP.md` §5.2)
   - Junk files (`.DS_Store`, `dist/`, `build/`, `node_modules/`, `.next/`)
@@ -390,10 +476,11 @@ This prevents developers from accidentally staging key material. It does not sto
   - `--no-verify` or `gh pr merge --admin` in scripts
   - Oversized PRs (>2000 lines) without `[EPIC]` prefix
   - New `@ts-ignore` without a `-- justification` comment
-- **Login sentinel:** if any login-frozen file is touched, the workflow also auto-labels the PR `login-touched`, auto-requests @CTorres9800 as a reviewer, and posts a sticky 🚨 LOGIN TOUCHED comment regardless of confirmation status. See §1.4.
+  - **Stale branches:** PR branch is more than 5 commits behind the base branch — blocks with "Rebase required" message
+- **Login sentinel:** if any locked login file is touched, the workflow auto-labels `login-touched`, auto-requests @CTorres9800, and posts a sticky comment. If the PR author is not @CTorres9800, the PR is HARD BLOCKED — no confirmation or justification overrides this. See §1.4.
 
 ### 9.7 AI Breakage Detector — **ENFORCED (blocking)**
-- **File:** `.github/workflows/ai-breakage-check.yml`
+- **Workflow:** GitHub Actions `ai-breakage-check`
 - **Triggers:** every PR (opened, synchronize, reopened)
 - **Behavior:** purpose-built to catch §8.9 silent regressions. On each PR it:
   1. Gets the full diff
@@ -411,7 +498,7 @@ This prevents developers from accidentally staging key material. It does not sto
 - **Behavior:** every PR automatically requests review from the owner(s) of every directory it touches. Critical paths (sign-in, auth, profile, onboarding, publish-project, top-header, render.yaml, env files) route to @CTorres9800 **and** @Marketeq/code-review. Everything else routes to @Marketeq/code-review. Review is advisory by default (free org plan limitation) but mandatory by SOP convention.
 
 ### 9.9 Post-Merge SOP Audit + Auto-Revert — **ENFORCED (post-hoc, binding)**
-- **File:** `.github/workflows/post-merge-audit.yml`
+- **Workflow:** GitHub Actions `post-merge-audit` (+ Jenkins safety net)
 - **Triggers:** `push` event on `dev-main`, `staging`, `live-mvp` (i.e., fires the moment a merge lands)
 - **Behavior:** this is the keystone enforcement on the free plan. Since GitHub won't technically block a merge despite a red check, this workflow catches the bypass **after the merge** and undoes it automatically.
   1. Finds the PR associated with the push
@@ -490,7 +577,8 @@ branch if it passes every one of the following checks:
    (5) Standards — no new any types, no @ts-ignore without a reason,
        NestJS exceptions for errors, correct useEffect deps, correct
        Next.js route group placement.
-   (6) Merge status — MERGEABLE and not >10 commits behind dev-main.
+   (6) Branch freshness — MERGEABLE and not >5 commits behind base.
+       If behind, block and require rebase. NEVER use --admin to bypass.
    (7) Memory/perf — no infinite loops, unbounded queries, heap risks.
 
 6. Confirm the gitleaks "Scan for committed secrets" check is passing.
@@ -501,6 +589,8 @@ branch if it passes every one of the following checks:
 
 If every check passes, merge with:
   gh pr merge <N> --squash --delete-branch
+  # Only use --delete-branch when merging ALL code from the branch.
+  # For cherry-picks or partial merges, omit --delete-branch.
 
 Then verify with:
   gh pr view <N> --json state,mergedAt,mergeCommit
@@ -572,8 +662,10 @@ gh pr diff <N> > /tmp/pr<N>.diff
 # Check CI status
 gh pr checks <N>
 
-# Merge (the only approved form)
+# Merge (full merge — all code taken, delete branch)
 gh pr merge <N> --squash --delete-branch
+# Merge (partial/cherry-pick — keep branch for remaining work)
+gh pr merge <N> --squash
 
 # Verify merge
 gh pr view <N> --json state,mergedAt,mergeCommit
@@ -593,13 +685,13 @@ The #1 recurring bug class in this repo (SOP §8.9) is **silent regressions from
 
 **Four layers, applied on every PR in order:**
 
-1. **Mechanical SOP check (`sop-check.yml`)** — catches the "obvious" regressions: committed secrets, junk files, off-limits files, hardcoded env values, entity without migration, Render/Vercel coupling. Grep-based, fast (<30s), deterministic.
+1. **Mechanical SOP check (GitHub Actions `sop-check` workflow)** — catches the "obvious" regressions: committed secrets, junk files, off-limits files, hardcoded env values, entity without migration, Render/Vercel coupling. Grep-based, fast (<30s), deterministic.
 
-2. **AI Breakage Detector (`ai-breakage-check.yml`)** — catches the "subtle" regressions. Extracts every exported symbol from the base version of each changed file, greps the repo for callers, and asks Claude Sonnet 4.6 to read the diff + caller snippets and flag any signature / prop / API-shape change that a caller still expects in the old form. This is the layer that catches the "Dev B overwrote Dev A's fix" bug class.
+2. **AI Breakage Detector (GitHub Actions `ai-breakage-check`)** — catches the "subtle" regressions. Extracts every exported symbol from the base version of each changed file, greps the repo for callers, and asks Claude Sonnet 4.6 to read the diff + caller snippets and flag any signature / prop / API-shape change that a caller still expects in the old form. This is the layer that catches the "Dev B overwrote Dev A's fix" bug class.
 
 3. **Directory-scoped CODEOWNERS (`CODEOWNERS`)** — auto-requests review from the domain expert for the touched directory. Login changes always route to @CTorres9800. Profile changes always route to @CTorres9800. This ensures the person who last fixed a bug in that area sees the PR before it merges.
 
-4. **Post-Merge SOP Audit (`post-merge-audit.yml`)** — the safety net. Even if a bypass makes it past layers 1–3 (e.g., reviewer clicks Merge despite red checks), this workflow detects the bypass within ~60 seconds and opens an auto-revert PR assigned to the CTO.
+4. **Post-Merge SOP Audit (GitHub Actions `post-merge-audit` + Jenkins safety net)** — the safety net. Even if a bypass makes it past layers 1–3 (e.g., reviewer clicks Merge despite red checks), this workflow detects the bypass within ~60 seconds and opens an auto-revert PR assigned to the CTO.
 
 **Follow-up layer (separate PR, tracked in the EPIC enforcement PR description):**
 
@@ -611,7 +703,7 @@ The #1 recurring bug class in this repo (SOP §8.9) is **silent regressions from
 
 ## 15. The AI Breakage Detector Prompt (load-bearing)
 
-This is the prompt used by `.github/workflows/ai-breakage-check.yml`. Do not modify it casually — it is tuned specifically for the "Dev B overwrote Dev A's fix" failure mode. If you need to change it, open a PR, get a human code review, and update this section in the same commit.
+This is the prompt used by the GitHub Actions `ai-breakage-check` workflow (`.github/workflows/ai-breakage-check.yml`) and duplicated in the Jenkins safety-net pipeline (`/var/jenkins_home/pipelines/jenkins_pipeline_ai_breakage.groovy`). Do not modify it casually — it is tuned specifically for the "Dev B overwrote Dev A's fix" failure mode. If you need to change it, update the GitHub Actions workflow, the Jenkins pipeline, and this section in the same commit.
 
 ```text
 You are the Regression Detector for the Marketeq freelance marketplace repo (Next.js frontend + NestJS backend). Your ONLY job is to find places where this pull request silently breaks code that was working before.
@@ -626,7 +718,7 @@ Analyze the diff against the caller snippets and answer these questions explicit
 2. Does this PR remove, rename, or inline any exported symbol that callers still reference?
 3. Does this PR rewrite any file that currently contains a fix, guard, null check, error handler, or early return — and does the rewrite preserve that logic verbatim?
 4. Does this PR touch profile loading logic? If yes, does the PR description contain the four-point confirmation from SOP §1.3?
-5. Does this PR touch authentication or local dev login? If yes, does the PR description contain the four-point login confirmation from SOP §1.4?
+5. Does this PR touch authentication or local dev login? If yes, is the PR author @CTorres9800? If not, BLOCK immediately — login files are permanently locked per SOP §1.4. No exceptions.
 6. Does this PR touch onboarding? If yes, does it preserve every existing form validation, error state, and field?
 7. Are there any CSS/Tailwind class changes that could visually break shared components?
 8. Does the PR change any shared utility function? If yes, read every caller before approving.
@@ -634,7 +726,7 @@ Analyze the diff against the caller snippets and answer these questions explicit
 Respond with Verdict (SAFE / RISKY / BLOCK), Regression Risks Found (list), What I Could Not Verify, and Reviewer Action Required. Be paranoid. Prefer false positives over false negatives.
 ```
 
-Full prompt source lives in `.github/workflows/ai-breakage-check.yml`.
+Primary prompt source: GitHub Actions `.github/workflows/ai-breakage-check.yml`. Jenkins duplicate: `/var/jenkins_home/pipelines/jenkins_pipeline_ai_breakage.groovy`.
 
 ---
 
@@ -644,3 +736,7 @@ Full prompt source lives in `.github/workflows/ai-breakage-check.yml`.
 |---|---|
 | 2026-04-11 | Initial document. Captures the review rules, block-comment format, branch rules enforceable on the free org plan, and the exact Claude CLI prompt used for reviews. |
 | 2026-04-11 | Split devops concerns into `docs/DEVOPS_SOP.md`. This doc is now code-review-only. Removed former §1.8/§1.9/§1.10/§1.11/§1.12 (now consolidated in DEVOPS_SOP §3–§8) and kept only the §1.4 "login files are frozen" rule as a review-side concern with the bidirectional invariant stated plainly. Removed former §16 QA promotion SOP (moved to DEVOPS_SOP §7). Renamed production branch `main-live` → `live-mvp` throughout (actual branch name on origin). Added §14 regression prevention architecture and §15 AI breakage prompt (both review concerns, kept). |
+| 2026-05-22 | CI/CD split: PR gate checks on GitHub Actions, post-merge on both GitHub Actions + Jenkins, post-deploy on Jenkins only. All workflow/pipeline references updated accordingly. |
+| 2026-07-08 | Added §4.1 Selective Merge rule: never close entire PRs with mixed quality. Cherry-pick good code, reject only specific violations. |
+| 2026-07-09 | Added §8.11 stale branch code loss bug. Hardened §3.6 to require branches up to date before merge (max 5 commits behind). Hard-blocked `--admin` flag. Added staleness check to `sop-check.yml` workflow. Updated §6 merge procedure to require `gh pr update-branch` before merge. Updated review prompt §10 accordingly. |
+| 2026-08-11 | **ABSOLUTE LOGIN LOCKDOWN.** §1.4 upgraded from "four-point confirmation required" to "CTO ONLY, NO EXCEPTIONS." Login files are permanently locked. No developer, contractor, or agent may touch them. Only @CTorres9800 may modify login/auth files. Login Gate workflow expanded to cover dev-main, staging, and live branches. All review prompts updated to hard-block login PRs from non-CTO authors. |

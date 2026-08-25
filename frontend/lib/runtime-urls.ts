@@ -4,9 +4,12 @@ const RETIRED_BACKEND_HOSTS: Record<string, string> = {
 }
 
 const firstNonEmpty = (...values: Array<string | undefined | null>): string =>
-  values.find((value) => typeof value === "string" && value.trim().length > 0)?.trim() ?? ""
+  values
+    .find((value) => typeof value === "string" && value.trim().length > 0)
+    ?.trim() ?? ""
 
-const stripApiSuffix = (value: string): string => value.replace(/\/api\/?$/i, "")
+const stripApiSuffix = (value: string): string =>
+  value.replace(/\/api\/?$/i, "")
 
 export const normalizePublicUrl = (rawValue?: string | null): string => {
   const value = rawValue?.trim() ?? ""
@@ -27,7 +30,7 @@ export const normalizePublicUrl = (rawValue?: string | null): string => {
   } catch {
     return value.replace(
       /marketeq-vibe-backend-staging\.onrender\.com|marketeq-vibe-backend\.onrender\.com/g,
-      "marketeq-backend.onrender.com",
+      "marketeq-backend.onrender.com"
     )
   }
 }
@@ -37,8 +40,8 @@ export const getPublicApiUrl = (): string =>
     firstNonEmpty(
       process.env.NEXT_PUBLIC_API_URL,
       process.env.NEXT_PUBLIC_AUTH_URL,
-      process.env.NEXT_PUBLIC_BACKEND_URL,
-    ),
+      process.env.NEXT_PUBLIC_BACKEND_URL
+    )
   )
 
 export const getPublicAuthUrl = (): string =>
@@ -46,8 +49,8 @@ export const getPublicAuthUrl = (): string =>
     firstNonEmpty(
       process.env.NEXT_PUBLIC_AUTH_URL,
       process.env.NEXT_PUBLIC_API_URL,
-      process.env.NEXT_PUBLIC_BACKEND_URL,
-    ),
+      process.env.NEXT_PUBLIC_BACKEND_URL
+    )
   )
 
 export const getPublicUserUrl = (): string =>
@@ -56,8 +59,8 @@ export const getPublicUserUrl = (): string =>
       process.env.NEXT_PUBLIC_USER_URL,
       process.env.NEXT_PUBLIC_API_URL,
       process.env.NEXT_PUBLIC_AUTH_URL,
-      process.env.NEXT_PUBLIC_BACKEND_URL,
-    ),
+      process.env.NEXT_PUBLIC_BACKEND_URL
+    )
   )
 
 export const getPublicBackendUrl = (): string =>
@@ -66,8 +69,8 @@ export const getPublicBackendUrl = (): string =>
       process.env.NEXT_PUBLIC_BACKEND_URL,
       process.env.NEXT_PUBLIC_API_BASE_URL,
       process.env.NEXT_PUBLIC_API_URL,
-      process.env.NEXT_PUBLIC_AUTH_URL,
-    ),
+      process.env.NEXT_PUBLIC_AUTH_URL
+    )
   )
 
 export const getPublicHomepageUrl = (): string => {
@@ -75,10 +78,25 @@ export const getPublicHomepageUrl = (): string => {
     process.env.NEXT_PUBLIC_BACKEND_URL,
     process.env.NEXT_PUBLIC_API_BASE_URL,
     process.env.NEXT_PUBLIC_API_URL,
-    process.env.NEXT_PUBLIC_AUTH_URL,
+    process.env.NEXT_PUBLIC_AUTH_URL
   )
 
   return normalizePublicUrl(stripApiSuffix(homepageBase))
+}
+
+export const getServerBackendUrl = (): string => {
+  const publicUrl = getPublicHomepageUrl()
+  if (/^https?:\/\//i.test(publicUrl)) return publicUrl
+
+  const proxyTarget = (process.env.API_PROXY_TARGET ?? "").trim()
+  if (/^https?:\/\//i.test(proxyTarget)) {
+    return proxyTarget
+      .replace(/\/+$/, "")
+      .replace(/\/api$/i, "")
+      .replace(/\/+$/, "")
+  }
+
+  return ""
 }
 
 export const getPublicListingsUrl = (): string =>
@@ -87,8 +105,8 @@ export const getPublicListingsUrl = (): string =>
       process.env.NEXT_PUBLIC_LISTINGS_URL,
       process.env.NEXT_PUBLIC_API_URL,
       process.env.NEXT_PUBLIC_AUTH_URL,
-      process.env.NEXT_PUBLIC_BACKEND_URL,
-    ),
+      process.env.NEXT_PUBLIC_BACKEND_URL
+    )
   )
 
 export const getPublicLegalUrl = (): string =>

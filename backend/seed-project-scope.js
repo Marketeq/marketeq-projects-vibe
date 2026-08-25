@@ -408,6 +408,80 @@ const SERVICE_DATA = {
   },
 };
 
+/**
+ * Heuristic deliverable derivation — mirrors
+ * listings-service/src/project-sync/deliverables/deliverables.adapter.heuristic.ts
+ * Produces DeliverableGroup[] grouped per phase, 6 items each.
+ */
+const ARTIFACT_RULES = [
+  { pattern: /\b(design|architect)\b/i, suffix: 'Blueprint' },
+  { pattern: /\b(test|testing|qa|coverage)\b/i, suffix: 'Report' },
+  { pattern: /\b(deploy|launch|release|provision)\b/i, suffix: 'Package' },
+  { pattern: /\b(setup|config|install)\b/i, suffix: 'Configuration' },
+  { pattern: /\b(document|handoff|write)\b/i, suffix: 'Documentation' },
+  { pattern: /\b(develop|implement|build|creat)\b/i, suffix: 'Module' },
+  { pattern: /\b(migrat)\b/i, suffix: 'Migration Script' },
+  { pattern: /\b(monitor|log|observ)\b/i, suffix: 'Dashboard' },
+  { pattern: /\b(review|audit|assess|evaluat)\b/i, suffix: 'Report' },
+  { pattern: /\b(gather|research|analys|discover)\b/i, suffix: 'Analysis' },
+  { pattern: /\b(integrat)\b/i, suffix: 'Integration Layer' },
+  { pattern: /\b(secur|vulnerab|encrypt)\b/i, suffix: 'Audit Report' },
+];
+const FALLBACK_SUFFIXES = ['Deliverable', 'Package', 'Specifications', 'Report', 'Document', 'Artifacts'];
+const STRIP_WORDS = /\b(implementation|execution|gathering|provisioning)\b/gi;
+
+function titleCase(str) {
+  return str.replace(/\b\w/g, c => c.toUpperCase()).replace(/\bAnd\b/g, '&');
+}
+
+function taskToArtifact(title) {
+  let suffix = '';
+  for (const rule of ARTIFACT_RULES) {
+    if (rule.pattern.test(title)) { suffix = rule.suffix; break; }
+  }
+  const subject = title.replace(STRIP_WORDS, '').replace(/[^a-zA-Z0-9\s&]/g, '').replace(/\s+/g, ' ').trim();
+  if (!subject) return null;
+  const words = titleCase(subject).split(' ').filter(Boolean);
+  const sliceByReal = (ws, max) => {
+    const r = []; let c = 0;
+    for (const w of ws) { if (w === '&') { r.push(w); continue; } if (c >= max) break; r.push(w); c++; }
+    return r;
+  };
+  if (suffix) {
+    const suffixWords = suffix.split(' ').filter(w => w !== '&').length;
+    const subjectWords = sliceByReal(words, Math.max(1, 3 - suffixWords));
+    const subjectPart = subjectWords.join(' ');
+    if (suffix.split(' ').some(sw => subjectPart.toLowerCase().includes(sw.toLowerCase()))) {
+      return sliceByReal(words, 3).join(' ');
+    }
+    return `${subjectPart} ${suffix}`;
+  }
+  return sliceByReal(words, 3).join(' ');
+}
+
+function deriveDeliverablesFromScope(scope) {
+  return scope.map((phase, index) => {
+    const items = [];
+    for (const task of (phase.tasks || [])) {
+      const rawTitle = typeof task.title === 'string' ? task.title.trim() : '';
+      if (!rawTitle) continue;
+      const artifact = taskToArtifact(rawTitle);
+      if (artifact && !items.includes(artifact)) items.push(artifact);
+    }
+    if (items.length === 0) return null;
+    // Pad to exactly 6
+    const cleanPhase = titleCase((phase.phaseName || '').replace(/[^a-zA-Z0-9\s&]/g, '').replace(/\s+/g, ' ').trim());
+    let idx = 0;
+    while (items.length < 6) {
+      const candidate = `${cleanPhase} ${FALLBACK_SUFFIXES[idx % FALLBACK_SUFFIXES.length]}`;
+      if (!items.includes(candidate)) items.push(candidate);
+      idx++;
+      if (idx > 20) break;
+    }
+    return { phaseLabel: `Phase ${index + 1}`, phaseName: phase.phaseName, items: items.slice(0, 6) };
+  }).filter(Boolean);
+}
+
 async function main() {
   const client = new Client({ connectionString: DATABASE_URL });
   await client.connect();
@@ -417,7 +491,7 @@ async function main() {
   const projectCols = [
     '"shortDescription" TEXT',
     '"videoUrl" TEXT',
-    'deliverables TEXT[] DEFAULT \'{}\'',
+    'deliverables JSONB DEFAULT \'[]\'',
     'faqs JSONB DEFAULT \'[]\'',
     'scope JSONB DEFAULT \'[]\'',
     '"estimatedHours" INT',
@@ -430,7 +504,7 @@ async function main() {
   const serviceCols = [
     '"shortDescription" TEXT',
     '"videoUrl" TEXT',
-    'deliverables TEXT[] DEFAULT \'{}\'',
+    'deliverables JSONB DEFAULT \'[]\'',
     'faqs JSONB DEFAULT \'[]\'',
   ];
   for (const col of serviceCols) {
@@ -438,9 +512,11 @@ async function main() {
   }
   console.log('Columns added\n');
 
-  // Update projects
+  // Update projects — derive grouped deliverables from scope
   console.log('=== Updating Projects ===');
   for (const [slug, data] of Object.entries(PROJECT_DATA)) {
+    const groupedDeliverables = deriveDeliverablesFromScope(data.scope);
+    const totalItems = groupedDeliverables.reduce((sum, g) => sum + g.items.length, 0);
     const result = await client.query(
       `UPDATE ${SCHEMA}.projects SET
         "shortDescription" = $1,
@@ -449,28 +525,29 @@ async function main() {
         scope = $4,
         "estimatedHours" = $5
       WHERE slug = $6 RETURNING title`,
-      [data.shortDescription, data.deliverables, JSON.stringify(data.faqs), JSON.stringify(data.scope), data.estimatedHours, slug]
+      [data.shortDescription, JSON.stringify(groupedDeliverables), JSON.stringify(data.faqs), JSON.stringify(data.scope), data.estimatedHours, slug]
     );
     if (result.rows.length > 0) {
-      console.log(`  ✅ ${result.rows[0].title} (${data.estimatedHours}h, ${data.scope.length} phases, ${data.deliverables.length} deliverables)`);
+      console.log(`  ✅ ${result.rows[0].title} (${data.estimatedHours}h, ${data.scope.length} phases, ${groupedDeliverables.length} groups, ${totalItems} deliverables)`);
     } else {
       console.log(`  ⚠️  No project for slug: ${slug}`);
     }
   }
 
-  // Update services
+  // Update services (no scope, keep flat deliverables as single group)
   console.log('\n=== Updating Services ===');
   for (const [slug, data] of Object.entries(SERVICE_DATA)) {
+    const groupedDeliverables = [{ phaseLabel: 'Phase 1', phaseName: 'Service Delivery', items: data.deliverables.slice(0, 6) }];
     const result = await client.query(
       `UPDATE ${SCHEMA}.services SET
         "shortDescription" = $1,
         deliverables = $2,
         faqs = $3
       WHERE slug = $4 RETURNING title`,
-      [data.shortDescription, data.deliverables, JSON.stringify(data.faqs), slug]
+      [data.shortDescription, JSON.stringify(groupedDeliverables), JSON.stringify(data.faqs), slug]
     );
     if (result.rows.length > 0) {
-      console.log(`  ✅ ${result.rows[0].title} (${data.deliverables.length} deliverables)`);
+      console.log(`  ✅ ${result.rows[0].title} (${groupedDeliverables[0].items.length} deliverables)`);
     } else {
       console.log(`  ⚠️  No service for slug: ${slug}`);
     }

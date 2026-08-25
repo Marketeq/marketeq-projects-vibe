@@ -1,6 +1,23 @@
 /** @type {import('next').NextConfig} */
 const path = require("path")
 
+function normalizeProxyTarget(value) {
+  const target = (value || "").trim()
+  if (!/^https?:\/\//i.test(target)) return "http://localhost:4000"
+  return target
+    .replace(/\/+$/, "")
+    .replace(/\/api$/i, "")
+    .replace(/\/+$/, "")
+}
+
+const apiProxyTarget = normalizeProxyTarget(
+  process.env.API_PROXY_TARGET ||
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.NEXT_PUBLIC_AUTH_URL ||
+    "http://localhost:4000"
+)
+
 const nextConfig = {
   typescript: {
     // Pre-existing type errors from merged PRs — tracked for cleanup separately.
@@ -34,6 +51,10 @@ const nextConfig = {
       },
       {
         protocol: "https",
+        hostname: "pub-c5d22f4620534d09b4af76acaa0406cb.r2.dev",
+      },
+      {
+        protocol: "https",
         hostname: "94ccb1ac46d66f225f369bd07f044f56.r2.cloudflarestorage.com",
       },
       {
@@ -43,6 +64,10 @@ const nextConfig = {
       {
         protocol: "https",
         hostname: "images.unsplash.com",
+      },
+      {
+        protocol: "https",
+        hostname: "images.pexels.com",
       },
       {
         protocol: "https",
@@ -58,6 +83,15 @@ const nextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: "/:kind(projects|teams|talent|services)/:l1/:l2/:l3",
+        destination: "/search?q=:l3&category=:kind",
+        permanent: false,
+      },
+    ]
+  },
   async rewrites() {
     // Bare kind routes (`/projects`, `/services`, `/teams`, `/talent`) are
     // real pages at `app/(group)/(group)/<kind>/page.tsx` — no rewrite.
@@ -68,13 +102,20 @@ const nextConfig = {
     //
     //   /projects/:l1                    → /c/:l1/projects
     //   /projects/:l1/:l2                → /c/:l1/:l2/projects
-    //   /projects/:l1/:l2/:l3            → /c/:l1/:l2/:l3/projects
-    const kinds = ["talent", "projects", "services", "teams"]
+    //   /projects/:l1/:l2/:l3            → handled by redirects() above,
+    //                                       not rewritten (see redirect rule)
     const rewrites = []
+    rewrites.push({
+      source: "/api/:path*",
+      destination: `${apiProxyTarget}/:path*`,
+    })
+    const kinds = ["talent", "projects", "services", "teams"]
     for (const kind of kinds) {
       rewrites.push({ source: `/${kind}/:l1`, destination: `/c/:l1/${kind}` })
-      rewrites.push({ source: `/${kind}/:l1/:l2`, destination: `/c/:l1/:l2/${kind}` })
-      rewrites.push({ source: `/${kind}/:l1/:l2/:l3`, destination: `/c/:l1/:l2/:l3/${kind}` })
+      rewrites.push({
+        source: `/${kind}/:l1/:l2`,
+        destination: `/c/:l1/:l2/${kind}`,
+      })
     }
     // CMS media proxy. In dev the Payload cloud-storage plugin uploads to a
     // MinIO container on localhost:9000; we expose them on a same-origin

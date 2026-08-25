@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { blockUser } from "@/src/lib/api/blocks"
+import { reportUser } from "@/src/lib/api/reports"
 import { AlertTriangle, Send03 } from "@blend-metrics/icons"
 import {
   Button,
@@ -11,8 +13,6 @@ import {
   DialogTitle,
   Textarea,
 } from "@/components/ui"
-import { blockUser } from "@/src/lib/api/blocks"
-import { reportUser } from "@/src/lib/api/reports"
 
 type View = "choose" | "block" | "report"
 

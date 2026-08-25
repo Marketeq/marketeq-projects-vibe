@@ -27,7 +27,13 @@ export interface TalentUser {
   rateMin?: number | null
   rateMax?: number | null
   jobTitles?: Array<
-    { jobTitle?: string; title?: string; isDefault?: boolean } | string
+    | {
+        jobTitle?: string
+        title?: string
+        isDefault?: boolean
+        saveAsDefault?: boolean
+      }
+    | string
   >
   recentJobTitle?: string | null
   skills?: Array<{ name?: string } | string>
@@ -160,8 +166,14 @@ export function talentToCardProps(
     .filter(Boolean)
   const role =
     (u.jobTitles ?? []).find(
-      (j): j is { jobTitle?: string; title?: string; isDefault?: boolean } =>
-        typeof j !== "string" && Boolean(j?.isDefault)
+      (
+        j
+      ): j is {
+        jobTitle?: string
+        title?: string
+        isDefault?: boolean
+        saveAsDefault?: boolean
+      } => typeof j !== "string" && Boolean(j?.isDefault || j?.saveAsDefault)
     )?.jobTitle ||
     jobTitleLabels[0] ||
     u.recentJobTitle ||

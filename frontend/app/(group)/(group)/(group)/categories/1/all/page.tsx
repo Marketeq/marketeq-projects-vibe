@@ -1,4 +1,5 @@
 "use client"
+
 import { fromLength } from "@/utils/functions"
 import {
   ArrowRight,
@@ -18,6 +19,7 @@ import {
 import { AdobeBrand } from "@blend-metrics/icons/brands"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs"
 import { SwiperSlide } from "swiper/react"
+import { CategoryBanner } from "@/components/category-banner"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
@@ -51,7 +53,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
-import { CategoryBanner } from "@/components/category-banner"
 
 export default function All() {
   return (
@@ -66,8 +67,12 @@ export default function All() {
             breadcrumbs={
               <div className="flex items-center gap-x-2">
                 <Home03 className="size-[18px] text-white opacity-60" />
-                <span className="text-xs leading-6 font-semibold text-white opacity-60">/</span>
-                <span className="text-xs leading-6 font-semibold text-white opacity-60">Software Development</span>
+                <span className="text-xs leading-6 font-semibold text-white opacity-60">
+                  /
+                </span>
+                <span className="text-xs leading-6 font-semibold text-white opacity-60">
+                  Software Development
+                </span>
               </div>
             }
           />
@@ -97,7 +102,7 @@ export default function All() {
               </div>
             </div>
             <div className="mt-6 grid grid-cols-5 gap-[15px]">
-              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer hover:shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300">
+              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer transition duration-300">
                 <div className="size-[35px] rounded-lg bg-gray-200" />
 
                 <div className="mt-5">
@@ -109,7 +114,7 @@ export default function All() {
                   </p>
                 </div>
               </article>
-              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer hover:shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300">
+              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer transition duration-300">
                 <div className="size-[35px] rounded-lg bg-gray-200" />
 
                 <div className="mt-5">
@@ -121,7 +126,7 @@ export default function All() {
                   </p>
                 </div>
               </article>
-              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer hover:shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300">
+              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer transition duration-300">
                 <div className="size-[35px] rounded-lg bg-gray-200" />
 
                 <div className="mt-5">
@@ -133,7 +138,7 @@ export default function All() {
                   </p>
                 </div>
               </article>
-              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer hover:shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300">
+              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer transition duration-300">
                 <div className="size-[35px] rounded-lg bg-gray-200" />
 
                 <div className="mt-5">
@@ -145,7 +150,7 @@ export default function All() {
                   </p>
                 </div>
               </article>
-              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer hover:shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300">
+              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer transition duration-300">
                 <div className="size-[35px] rounded-lg bg-gray-200" />
 
                 <div className="mt-5">

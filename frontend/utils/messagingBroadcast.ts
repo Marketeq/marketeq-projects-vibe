@@ -45,7 +45,7 @@ type DistributiveOmit<T, K extends keyof any> = T extends any
   : never
 
 export function publishMessagingEvent(
-  evt: DistributiveOmit<MessagingBroadcastEvent, "origin">,
+  evt: DistributiveOmit<MessagingBroadcastEvent, "origin">
 ): void {
   const c = getChannel()
   if (!c) return
@@ -57,7 +57,7 @@ export function publishMessagingEvent(
 }
 
 export function subscribeMessagingEvents(
-  listener: (evt: MessagingBroadcastEvent) => void,
+  listener: (evt: MessagingBroadcastEvent) => void
 ): () => void {
   const c = getChannel()
   if (!c) return () => {}

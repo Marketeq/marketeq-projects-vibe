@@ -45,4 +45,37 @@ export class EventsService {
   manualTimeRejected(manualTimeId: string, userId: string, reviewedBy: string, reason: string | null): void {
     this.emit('timetracking.manual_time.rejected', { manualTimeId, userId, reviewedBy, reason });
   }
+
+  screenshotConfirmed(data: {
+    userId: string;
+    contractId: string;
+    taskId: string | null;
+    taskName: string | null;
+    day: string;
+    screenshotCount: number;
+    firstAt: string;
+    lastAt: string;
+    avgKbd: number;
+    avgMouse: number;
+  }): void {
+    this.emit('earnings.screenshot_confirmed', data);
+  }
+
+  // Approving a manual time entry is the manual-entry equivalent of a
+  // confirmed screenshot batch — earnings-service needs its own event
+  // (distinct from the pre-existing timetracking.hours.approved, which
+  // carries only {userId, manualTimeId, hours} and has no consumer) since
+  // it needs contractId/taskId/day to build an earnings_cache row.
+  manualTimeConfirmed(data: {
+    userId: string;
+    contractId: string;
+    taskId: string | null;
+    taskName: string | null;
+    manualTimeId: string;
+    startTime: string;
+    endTime: string;
+    durationMinutes: number;
+  }): void {
+    this.emit('earnings.manual_time_confirmed', data);
+  }
 }

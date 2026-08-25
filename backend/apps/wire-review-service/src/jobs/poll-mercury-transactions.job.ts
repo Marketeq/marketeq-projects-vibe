@@ -17,47 +17,38 @@ export class PollMercuryTransactionsJob {
     private readonly wireRepo: Repository<WireMatchCandidate>
   ) {}
 
-  @Cron(CronExpression.EVERY_5_SECONDS)
+  @Cron(CronExpression.EVERY_10_MINUTES)
   async handle() {
-    this.logger.debug('Polling Mercury API for new wire transfers...');
+    try {
+      this.logger.debug('Polling Mercury API for new wire transfers...');
 
-    // TEMPORARY: Call and log account IDs
-    const accountIds = await this.mercuryApi.fetchAccountIds();
-    this.logger.debug(`Found Mercury Account IDs: ${accountIds.join(', ')}`);
+      const txs = await this.mercuryApi.fetchTransactions();
+      this.logger.debug(`Received ${txs.length} transactions from Mercury`);
 
-    const txs = await this.mercuryApi.fetchTransactions();
-    this.logger.debug(`Received ${txs.length} transactions from Mercury`);
+      for (const tx of txs) {
+        if (tx.kind !== 'incomingDomesticWire' && tx.kind !== 'incomingInternationalWire') {
+          continue;
+        }
 
-    for (const tx of txs) {
-      // Log transaction details for debugging
-      this.logger.debug(`Processing transaction: ${tx.id}, kind: ${tx.kind}, amount: ${tx.amount}`);
+        const existing = await this.wireRepo.findOne({ where: { transactionId: tx.id } });
+        if (existing) continue;
 
-      // Check if it's a wire transfer based on Mercury's 'kind' field
-      if (tx.kind !== 'incomingDomesticWire' && tx.kind !== 'incomingInternationalWire') {
-        this.logger.debug(`Skipping non-wire tx ${tx.id} (Kind: ${tx.kind})`);
-        continue;
+        const match = await this.matcher.scoreTransaction(tx);
+
+        const entry = new WireMatchCandidate();
+        entry.transactionId = tx.id;
+        entry.amount = tx.amount;
+        entry.memo = tx.note || tx.externalMemo || tx.bankDescription || '';
+        entry.receivedAt = new Date(tx.createdAt);
+        entry.matchScore = match.score;
+        entry.resolvedProjectId = match.projectId ?? undefined;
+        entry.status = 'pending_review';
+
+        await this.wireRepo.save(entry);
+        this.logger.log(`Inserted wire from Mercury: ${tx.id} - ${tx.kind} - $${tx.amount}`);
       }
-
-      const existing = await this.wireRepo.findOne({ where: { transactionId: tx.id } });
-      if (existing) {
-        this.logger.debug(`Skipping already-processed tx ${tx.id}`);
-        continue;
-      }
-
-      const match = await this.matcher.scoreTransaction(tx);
-
-      const entry = new WireMatchCandidate();
-      entry.transactionId = tx.id;
-      entry.amount = tx.amount;
-      // Use the correct field names from Mercury API
-      entry.memo = tx.note || tx.externalMemo || tx.bankDescription || '';
-      entry.receivedAt = new Date(tx.createdAt);
-      entry.matchScore = match.score;
-      entry.resolvedProjectId = match.projectId ?? undefined;
-      entry.status = 'pending_review';
-
-      await this.wireRepo.save(entry);
-      this.logger.log(`✅ Inserted wire from Mercury: ${tx.id} - ${tx.kind} - $${tx.amount}`);
+    } catch (err: any) {
+      this.logger.warn(`Mercury poll skipped: ${err.message}`);
     }
   }
 }

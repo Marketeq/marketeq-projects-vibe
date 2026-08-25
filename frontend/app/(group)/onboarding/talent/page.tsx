@@ -165,6 +165,7 @@ const IntroduceYourself = ({
   stepData: CreateTalentType | null
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
 }) => {
+  const router = useRouter()
   const [formError, setFormError] = useState<string | null>(null)
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null)
 
@@ -394,7 +395,7 @@ const IntroduceYourself = ({
               variant="outlined"
               visual="gray"
               type="button"
-              disabled
+              onClick={() => router.push("/onboarding")}
             >
               Back
             </Button>
@@ -462,16 +463,19 @@ const CreateYourUsername = ({
     },
   })
 
+  const { user } = useAuth()
   const { username } = watch()
-  const generatedUsernameSuggestions = useMemo(
-    () =>
-      generateUsernameSuggestions(
-        stepData?.firstName || "",
-        stepData?.lastName || "",
-        stepData?.recentJobTitle || ""
-      ),
-    [stepData?.firstName, stepData?.lastName, stepData?.recentJobTitle]
-  )
+  const generatedUsernameSuggestions = useMemo(() => {
+    const contextParts = [stepData?.recentJobTitle, user?.email]
+      .filter(Boolean)
+      .join(" ")
+      .trim()
+    return generateUsernameSuggestions(
+      stepData?.firstName || "",
+      "",
+      contextParts
+    )
+  }, [stepData?.firstName, stepData?.recentJobTitle, user?.email])
 
   const { toggleValidation } = useStepContext()
   const { nextStep, prevStep, setStep } = useStepperContext()
@@ -1888,11 +1892,15 @@ const TopSkills = ({
   })
   const [open, setOpen] = useState(false)
   const [customSkillOptions, setCustomSkillOptions] = useState<string[]>([])
-  const [skillOptions, setSkillOptions] =
-    useState<string[]>(sortAlphabetically(FALLBACK_TOP_SKILLS))
+  const [skillOptions, setSkillOptions] = useState<string[]>(
+    sortAlphabetically(FALLBACK_TOP_SKILLS)
+  )
   const requestIdRef = useRef(0)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const skillsVocabulary = useMemo(() => toVocabulary(skillOptions), [skillOptions])
+  const skillsVocabulary = useMemo(
+    () => toVocabulary(skillOptions),
+    [skillOptions]
+  )
 
   const resetInputValue = () => setInputValue("")
 
@@ -1904,7 +1912,9 @@ const TopSkills = ({
       (option) => option.trim().toLowerCase() === trimmedValue.toLowerCase()
     )
 
-    return exactMatch ? formatSkillLabel(exactMatch) : formatSkillLabel(trimmedValue)
+    return exactMatch
+      ? formatSkillLabel(exactMatch)
+      : formatSkillLabel(trimmedValue)
   }
 
   const addValue = async (nextValue = inputValue) => {
@@ -1949,9 +1959,7 @@ const TopSkills = ({
         sortAlphabetically([...prev, normalizedValue])
       )
     }
-    setSkillOptions((prev) =>
-      sortAlphabetically([...prev, normalizedValue])
-    )
+    setSkillOptions((prev) => sortAlphabetically([...prev, normalizedValue]))
     setValues((prev) => getUniqueOptions([...prev, normalizedValue]))
     resetInputValue()
     setOpen(false)
@@ -2048,12 +2056,11 @@ const TopSkills = ({
   }, [inputValue, customSkillOptions])
 
   const filteredRoles = inputValue.trim()
-    ? skillOptions
-        .filter(
-          (skill) =>
-            !hasCaseInsensitiveExactMatch(values, skill) &&
-            skill.toLowerCase().startsWith(inputValue.trim().toLowerCase())
-        )
+    ? skillOptions.filter(
+        (skill) =>
+          !hasCaseInsensitiveExactMatch(values, skill) &&
+          skill.toLowerCase().startsWith(inputValue.trim().toLowerCase())
+      )
     : []
 
   return (
@@ -2450,10 +2457,7 @@ const ShowcaseYourTalent = ({
                                   sortAlphabetically([...prev, normalizedValue])
                                 )
                                 setJobTitleOptions((prev) =>
-                                  sortAlphabetically([
-                                    ...prev,
-                                    normalizedValue,
-                                  ])
+                                  sortAlphabetically([...prev, normalizedValue])
                                 )
                                 clearErrors("recentJobTitle")
                                 setJobTitleQuery("")
@@ -3085,7 +3089,7 @@ const setYourPreferencesFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["customAvailability"],
-        message: "End time cannot be earlier than start time",
+        message: "Please ensure end time is later than start time.",
       })
     }
 
@@ -3093,7 +3097,7 @@ const setYourPreferencesFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["customAvailability"],
-        message: "Custom availability times cannot overlap.",
+        message: "Please adjust your times so they do not overlap.",
       })
     }
   })
@@ -3494,33 +3498,39 @@ const SetYourPreferences = ({
 
     TalentAPI.CreateTalent(formData)
       .then((response) => {
-        if (
-          response?.status === 201 &&
-          response?.data &&
-          response?.data?.user
-        ) {
+        if (response?.status === 201) {
           nextStep()
           setStepData(null)
-          setTalentUser(response?.data?.user)
+          const returnedUser = response?.data?.user ?? response?.data
+          if (returnedUser) {
+            setTalentUser(returnedUser)
+          }
         }
       })
       .catch((error) => {
+        const status = error?.response?.status
+        const msg = error?.response?.data?.message
+
+        // 422 means talent profile already exists — advance anyway.
+        if (status === 422) {
+          nextStep()
+          setStepData(null)
+          return
+        }
+
         if (error?.response?.data?.errors?.message) {
           toast({
             title: error?.response?.data?.errors?.message,
             variant: "destructive",
           })
-        } else if (
-          Array.isArray(error?.response?.data?.message) &&
-          error?.response?.data?.message?.length > 0
-        ) {
+        } else if (Array.isArray(msg) && msg.length > 0) {
           toast({
-            title: error?.response?.data?.message?.[0],
+            title: msg[0],
             variant: "destructive",
           })
         } else {
           toast({
-            title: error?.response?.data?.message,
+            title: msg || "Something went wrong. Please try again.",
             variant: "destructive",
           })
         }
@@ -3807,51 +3817,38 @@ const DoNext = ({
     return requiresPasswordSetup(candidate) ? "/talent-dashboard" : targetRoute
   }
 
-  const handleFinish = async () => {
-    try {
-      setIsLoading(true)
-      const response = await UserAPI.handleSkip({ role: ROLE.TALENT })
+  const completeOnboardingAndNavigate = async (targetRoute: string) => {
+    setIsLoading(true)
 
-      let nextUser = response?.data?.user as User | undefined
-      if (!nextUser) {
-        const fallbackUser = talentUser ?? user
-        if (fallbackUser) {
-          nextUser = {
-            ...fallbackUser,
-            onboardingDismissed: true,
-            userType: "talent",
-          }
+    // Mark onboarding as dismissed locally first so AuthenticatedRoute won't bounce back
+    const fallbackUser = talentUser ?? user
+    const finishedUser = fallbackUser
+      ? {
+          ...fallbackUser,
+          onboardingDismissed: true,
+          talentOnboardedAt: new Date().toISOString(),
+          userType: "talent",
         }
-      }
-
-      if (nextUser) {
-        setUser(nextUser)
-      }
-
-      let refreshedUser = nextUser
-      try {
-        const userResponse = await UserAPI.me()
-        if (userResponse?.data?.user) {
-          refreshedUser = userResponse.data.user
-          setUser(userResponse.data.user)
-        }
-      } catch (error) {
-        console.error("Failed to refresh user after onboarding", error)
-      }
-
-      router.push(
-        getPostOnboardingRoute(
-          "/talent-dashboard",
-          refreshedUser ?? talentUser ?? user
-        )
-      )
-    } catch (error) {
-      console.error("Failed to complete onboarding", error)
-      // Show error toast if needed
-    } finally {
-      setIsLoading(false)
+      : null
+    if (finishedUser) {
+      setUser(finishedUser as User)
     }
+
+    try {
+      await UserAPI.handleSkip({ role: ROLE.TALENT })
+      const userResponse = await UserAPI.me()
+      if (userResponse?.data?.user) {
+        setUser(userResponse.data.user)
+      }
+    } catch (error) {
+      console.error("Failed to complete onboarding on server", error)
+    }
+
+    setIsLoading(false)
+    router.push(targetRoute)
   }
+
+  const handleFinish = () => completeOnboardingAndNavigate("/talent-dashboard")
 
   return (
     <div className="min-h-screen flex md:pl-[480px] bg-white">
@@ -3869,17 +3866,7 @@ const DoNext = ({
           <div className="mt-10 2xl:mt-[50px] grid md:grid-cols-2 gap-2.5 2xl:gap-5">
             <div
               className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-              onClick={() => {
-                if (talentUser) {
-                  setUser(talentUser)
-                }
-                router.push(
-                  getPostOnboardingRoute(
-                    "/talent-dashboard",
-                    talentUser ?? user
-                  )
-                )
-              }}
+              onClick={() => completeOnboardingAndNavigate("/projects")}
             >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
@@ -3895,14 +3882,7 @@ const DoNext = ({
 
             <div
               className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-              onClick={() => {
-                if (talentUser) {
-                  setUser(talentUser)
-                }
-                router.push(
-                  getPostOnboardingRoute("/publish-project", talentUser ?? user)
-                )
-              }}
+              onClick={() => completeOnboardingAndNavigate("/teams")}
             >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
@@ -3918,14 +3898,7 @@ const DoNext = ({
 
             <div
               className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-              onClick={() => {
-                if (talentUser) {
-                  setUser(talentUser)
-                }
-                router.push(
-                  getPostOnboardingRoute("/publish-project", talentUser ?? user)
-                )
-              }}
+              onClick={() => completeOnboardingAndNavigate("/publish-project")}
             >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">
@@ -3941,14 +3914,7 @@ const DoNext = ({
 
             <div
               className="p-3 flex items-center justify-between bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] hover:ring-1 hover:ring-gray-300 hover:border-gray-300 cursor-pointer transition duration-300"
-              onClick={() => {
-                if (talentUser) {
-                  setUser(talentUser)
-                }
-                router.push(
-                  getPostOnboardingRoute("/publish-project", talentUser ?? user)
-                )
-              }}
+              onClick={() => completeOnboardingAndNavigate("/services")}
             >
               <div className="flex items-center gap-x-3">
                 <div className="size-11 rounded-lg border-[1.5px] shrink-0 inline-flex items-center justify-center border-[#EAECF0] text-primary-500">

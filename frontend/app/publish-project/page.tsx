@@ -1544,8 +1544,8 @@ const projectInfoSchema = z.object({
     .max(5, "Please do not enter more than 5 industry(s)"),
   shortDescription: z
     .string()
-    .min(50, "Please enter at least 50 character(s)")
-    .max(300, "Please do not enter more than 300 character(s)"),
+    .min(350, "Please enter at least 350 character(s)")
+    .max(450, "Please do not enter more than 450 character(s)"),
   fullDescription: z.string().superRefine((value, ctx) => {
     const contentLength = getRichTextCharacterCount(value)
 
@@ -1640,11 +1640,11 @@ const scrollToPublishField = (targetId: string) => {
 }
 
 const TITLE_MAX_LENGTH = 120
-const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const SHORT_DESCRIPTION_MAX_LENGTH = 450
 const FULL_DESCRIPTION_MAX_LENGTH = 5000
 const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
 const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 300 character(s)"
+  "Please do not enter more than 450 character(s)"
 const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
   "Please do not enter more than 5,000 character(s)"
 
@@ -6428,11 +6428,12 @@ function PublishProject({
         additionalImages: additionalMeta.map((item: any) =>
           isPersistedMediaFile(item) ? item.__persistedUrl : (item?.name ?? "")
         ),
-        featuredVideo: videoUrl,
       })
 
       if (signature === lastMediaPayloadRef.current) return
       if (!featuredMeta) return
+
+      lastMediaPayloadRef.current = signature
 
       const formData = new FormData()
       formData.append("projectId", draftProjectId)
@@ -6454,13 +6455,6 @@ function PublishProject({
         }
       }
 
-      if (videoUrl) {
-        formData.append(
-          "videoUrl",
-          videoUrl.replace(/^(https?:\/\/)+/i, "https://")
-        )
-      }
-
       try {
         const response = await ProjectAPI.UploadMedia(formData)
         const nextMedia = {
@@ -6472,14 +6466,14 @@ function PublishProject({
             response?.data?.additionalImages ??
             persistedMediaRef.current?.additionalImages ??
             [],
-          featuredVideo:
-            response?.data?.featuredVideo ??
-            response?.data?.videoUrl ??
-            videoUrl,
+          featuredVideo: videoUrl,
         }
 
         persistedMediaRef.current = nextMedia
-        lastMediaPayloadRef.current = JSON.stringify(nextMedia)
+        lastMediaPayloadRef.current = JSON.stringify({
+          featuredImage: nextMedia.featuredImage,
+          additionalImages: nextMedia.additionalImages ?? [],
+        })
 
         mediaMethods.reset({
           featuredImages: nextMedia.featuredImage

@@ -86,6 +86,7 @@ export default buildConfig({
       connectionString: process.env.DATABASE_URL,
     },
     schemaName: "cms",
+    migrationDir: './src/migrations',
   }),
 
   collections: [

@@ -1,9 +1,9 @@
 "use client"
 
-import { getPublicBackendUrl } from "@/lib/runtime-urls"
 import { encryptAES } from "@/src/crypto/e2ee"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
+import { getPublicBackendUrl } from "@/lib/runtime-urls"
 
 interface FileUploadResponse {
   message: {
@@ -36,12 +36,10 @@ interface FileUploadResponse {
   }
 }
 
-const API_BASE_URL =
-  getPublicBackendUrl() ||
-  "http://localhost:3002/api"
+const API_BASE_URL = getPublicBackendUrl() || "http://localhost:3002/api"
 
 export function useFileUpload(
-  token: string,
+  _token: string,
   privateKey: CryptoKey | null,
   isGroup: boolean = false
 ) {
@@ -50,7 +48,7 @@ export function useFileUpload(
     file: File,
     textMessage?: string
   ): Promise<FileUploadResponse> {
-    if (!conversationId || !token || !file) {
+    if (!conversationId || !file) {
       throw new Error("Missing required parameters for file upload")
     }
 
@@ -74,8 +72,7 @@ export function useFileUpload(
       }
 
       const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-        `/messaging/conversations/${conversationId}/key?isGroup=${isGroup}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        `/messaging/conversations/${conversationId}/key?isGroup=${isGroup}`
       )
 
       // Decrypt the wrapped key
@@ -125,9 +122,7 @@ export function useFileUpload(
     try {
       const response = await fetch(`${API_BASE_URL}/messaging/upload`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: "include",
         body: formData,
       })
 

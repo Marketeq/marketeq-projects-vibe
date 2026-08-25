@@ -18,8 +18,11 @@ export const AutocompleteAPI = {
       `/autocomplete/categories?q=${encodeURIComponent(q)}`
     )
   },
-  getByType: (type: string, q = "") => {
-    const suffix = q ? `?q=${encodeURIComponent(q)}` : ""
+  getByType: (type: string, q = "", limit?: number) => {
+    const params = new URLSearchParams()
+    if (q) params.set("q", q)
+    if (limit) params.set("limit", String(limit))
+    const suffix = params.toString() ? `?${params.toString()}` : ""
     return AxiosRequest.get(`/autocomplete/${type}${suffix}`)
   },
   submit: (data: { type: string; value: string; source?: string }) => {

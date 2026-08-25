@@ -38,6 +38,24 @@ export class PhaseEntity extends EntityRelationalHelper implements Phase {
   @Column({ type: 'int', nullable: true })
   order: number;
 
+  // Service-scope phase model: 'setup' | 'recurring' | 'ongoing'.
+  // NULL for project (flat day-based) phases.
+  @Column({ name: 'phaseType', type: String, length: 20, nullable: true })
+  phaseType: string | null;
+
+  // Recurring phases only: 'weekly' | 'monthly' | 'quarterly'.
+  @Column({
+    name: 'recurrenceSchedule',
+    type: String,
+    length: 20,
+    nullable: true,
+  })
+  recurrenceSchedule: string | null;
+
+  // Recurring phases only: how many times the phase repeats (1..99).
+  @Column({ name: 'recurrenceCount', type: 'int', nullable: true })
+  recurrenceCount: number | null;
+
   @ManyToOne(() => ProjectEntity, (project) => project.id, {
     onDelete: 'CASCADE',
   })

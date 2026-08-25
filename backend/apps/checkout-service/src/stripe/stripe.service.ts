@@ -112,22 +112,46 @@ export class StripeService {
     currency?: string;
     customerId?: string;
     paymentMethodTypes?: string[];
+    paymentMethodOptions?: Stripe.PaymentIntentCreateParams.PaymentMethodOptions;
     paymentMethodId?: string;
     metadata?: Record<string, string>;
     confirm?: boolean;
+    setupFutureUsage?: 'off_session' | 'on_session';
   }) {
     return this.stripe.paymentIntents.create({
       amount: Math.round(params.amount * 100),
       currency: params.currency || 'usd',
       customer: params.customerId,
       payment_method_types: params.paymentMethodTypes || ['card'],
+      payment_method_options: params.paymentMethodOptions,
       payment_method: params.paymentMethodId,
       confirm: params.confirm || false,
+      setup_future_usage: params.setupFutureUsage,
       metadata: params.metadata || {},
+    });
+  }
+
+  async retrievePaymentIntent(paymentIntentId: string) {
+    return this.stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ['payment_method'],
     });
   }
 
   async retrievePaymentMethod(paymentMethodId: string) {
     return this.stripe.paymentMethods.retrieve(paymentMethodId);
+  }
+
+  async createCustomer(params: {
+    userId: string;
+    email?: string;
+    name?: string;
+  }) {
+    return this.stripe.customers.create({
+      email: params.email,
+      name: params.name,
+      metadata: {
+        userId: params.userId,
+      },
+    });
   }
 }

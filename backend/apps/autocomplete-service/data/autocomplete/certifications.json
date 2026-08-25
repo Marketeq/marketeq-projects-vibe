@@ -1,398 +1,350 @@
 [
-  {
-    "id": "cert-001",
-    "label": "AWS Certified Solutions Architect \u2013 Associate"
-  },
-  {
-    "id": "cert-002",
-    "label": "AWS Certified Developer \u2013 Associate"
-  },
-  {
-    "id": "cert-003",
-    "label": "AWS Certified SysOps Administrator \u2013 Associate"
-  },
-  {
-    "id": "cert-004",
-    "label": "AWS Certified Solutions Architect \u2013 Professional"
-  },
-  {
-    "id": "cert-005",
-    "label": "AWS Certified DevOps Engineer \u2013 Professional"
-  },
-  {
-    "id": "cert-006",
-    "label": "Microsoft Certified: Azure Fundamentals"
-  },
-  {
-    "id": "cert-007",
-    "label": "Microsoft Certified: Azure Administrator Associate"
-  },
-  {
-    "id": "cert-008",
-    "label": "Microsoft Certified: Azure Solutions Architect Expert"
-  },
-  {
-    "id": "cert-009",
-    "label": "Microsoft Certified: DevOps Engineer Expert"
-  },
-  {
-    "id": "cert-010",
-    "label": "Google Associate Cloud Engineer"
-  },
-  {
-    "id": "cert-011",
-    "label": "Google Professional Cloud Architect"
-  },
-  {
-    "id": "cert-012",
-    "label": "Google Professional Data Engineer"
-  },
-  {
-    "id": "cert-013",
-    "label": "Google Professional Cloud Developer"
-  },
-  {
-    "id": "cert-014",
-    "label": "Certified Kubernetes Administrator (CKA)"
-  },
-  {
-    "id": "cert-015",
-    "label": "Certified Kubernetes Application Developer (CKAD)"
-  },
-  {
-    "id": "cert-016",
-    "label": "CompTIA A+"
-  },
-  {
-    "id": "cert-017",
-    "label": "CompTIA Network+"
-  },
-  {
-    "id": "cert-018",
-    "label": "CompTIA Security+"
-  },
-  {
-    "id": "cert-019",
-    "label": "CompTIA Linux+"
-  },
-  {
-    "id": "cert-020",
-    "label": "CompTIA Cloud+"
-  },
-  {
-    "id": "cert-021",
-    "label": "Certified Ethical Hacker (CEH)"
-  },
-  {
-    "id": "cert-022",
-    "label": "Offensive Security Certified Professional (OSCP)"
-  },
-  {
-    "id": "cert-023",
-    "label": "Cisco Certified Network Associate (CCNA)"
-  },
-  {
-    "id": "cert-024",
-    "label": "Cisco Certified Network Professional (CCNP)"
-  },
-  {
-    "id": "cert-025",
-    "label": "Cisco Certified Internetwork Expert (CCIE)"
-  },
-  {
-    "id": "cert-026",
-    "label": "Red Hat Certified System Administrator (RHCSA)"
-  },
-  {
-    "id": "cert-027",
-    "label": "Red Hat Certified Engineer (RHCE)"
-  },
-  {
-    "id": "cert-028",
-    "label": "VMware Certified Professional \u2013 Data Center Virtualization (VCP-DCV)"
-  },
-  {
-    "id": "cert-029",
-    "label": "VMware Certified Advanced Professional (VCAP)"
-  },
-  {
-    "id": "cert-030",
-    "label": "Oracle Certified Java Programmer"
-  },
-  {
-    "id": "cert-031",
-    "label": "Oracle Cloud Infrastructure Architect Associate"
-  },
-  {
-    "id": "cert-032",
-    "label": "Salesforce Certified Administrator"
-  },
-  {
-    "id": "cert-033",
-    "label": "Salesforce Certified Platform Developer I"
-  },
-  {
-    "id": "cert-034",
-    "label": "Salesforce Certified Platform Developer II"
-  },
-  {
-    "id": "cert-035",
-    "label": "PMP \u2013 Project Management Professional"
-  },
-  {
-    "id": "cert-036",
-    "label": "Certified ScrumMaster (CSM)"
-  },
-  {
-    "id": "cert-037",
-    "label": "Scrum Product Owner Certified (SPOC)"
-  },
-  {
-    "id": "cert-038",
-    "label": "Certified Information Systems Security Professional (CISSP)"
-  },
-  {
-    "id": "cert-039",
-    "label": "Certified Information Security Manager (CISM)"
-  },
-  {
-    "id": "cert-040",
-    "label": "Certified Information Systems Auditor (CISA)"
-  },
-  {
-    "id": "cert-041",
-    "label": "Certified Cloud Security Professional (CCSP)"
-  },
-  {
-    "id": "cert-042",
-    "label": "ITIL Foundation"
-  },
-  {
-    "id": "cert-043",
-    "label": "ITIL Practitioner"
-  },
-  {
-    "id": "cert-044",
-    "label": "Tableau Desktop Specialist"
-  },
-  {
-    "id": "cert-045",
-    "label": "Tableau Certified Data Analyst"
-  },
-  {
-    "id": "cert-046",
-    "label": "Google Data Analytics Professional Certificate"
-  },
-  {
-    "id": "cert-047",
-    "label": "IBM Data Science Professional Certificate"
-  },
-  {
-    "id": "cert-048",
-    "label": "Meta Front-End Developer Certificate"
-  },
-  {
-    "id": "cert-049",
-    "label": "Meta Back-End Developer Certificate"
-  },
-  {
-    "id": "cert-051",
-    "label": "Certified Artificial Intelligence Practitioner (CAIP)"
-  },
-  {
-    "id": "cert-052",
-    "label": "Azure AI Engineer Associate"
-  },
-  {
-    "id": "cert-053",
-    "label": "AWS Certified Machine Learning \u2013 Specialty"
-  },
-  {
-    "id": "cert-054",
-    "label": "TensorFlow Developer Certificate"
-  },
-  {
-    "id": "cert-055",
-    "label": "Microsoft Certified: Power BI Data Analyst Associate"
-  },
-  {
-    "id": "cert-056",
-    "label": "Certified Blockchain Developer"
-  },
-  {
-    "id": "cert-057",
-    "label": "Certified Internet of Things (IoT) Practitioner"
-  },
-  {
-    "id": "cert-058",
-    "label": "Google Professional Machine Learning Engineer"
-  },
-  {
-    "id": "cert-059",
-    "label": "Google Cybersecurity Professional Certificate"
-  },
-  {
-    "id": "cert-060",
-    "label": "Adobe Certified Expert (ACE): Photoshop"
-  },
-  {
-    "id": "cert-061",
-    "label": "Adobe Certified Expert (ACE): Illustrator"
-  },
-  {
-    "id": "cert-062",
-    "label": "Unity Certified Associate: Game Developer"
-  },
-  {
-    "id": "cert-063",
-    "label": "Unity Certified Programmer"
-  },
-  {
-    "id": "cert-064",
-    "label": "Unreal Engine Developer Certification"
-  },
-  {
-    "id": "cert-065",
-    "label": "SAP Certified Application Associate"
-  },
-  {
-    "id": "cert-066",
-    "label": "SAP Certified Development Associate"
-  },
-  {
-    "id": "cert-067",
-    "label": "MongoDB Certified Developer Associate"
-  },
-  {
-    "id": "cert-068",
-    "label": "MongoDB Certified DBA Associate"
-  },
-  {
-    "id": "cert-069",
-    "label": "Cloudera Certified Associate (CCA) Data Analyst"
-  },
-  {
-    "id": "cert-070",
-    "label": "Cloudera Certified Professional (CCP) Data Engineer"
-  },
-  {
-    "id": "cert-071",
-    "label": "Snowflake SnowPro Core Certification"
-  },
-  {
-    "id": "cert-072",
-    "label": "Neo4j Certified Professional"
-  },
-  {
-    "id": "cert-073",
-    "label": "Elastic Certified Engineer"
-  },
-  {
-    "id": "cert-074",
-    "label": "Microsoft Certified: Dynamics 365 Fundamentals"
-  },
-  {
-    "id": "cert-075",
-    "label": "Microsoft Certified: Security, Compliance, and Identity Fundamentals"
-  },
-  {
-    "id": "cert-076",
-    "label": "Autodesk Certified Professional: AutoCAD"
-  },
-  {
-    "id": "cert-077",
-    "label": "Autodesk Certified Professional: Revit"
-  },
-  {
-    "id": "cert-078",
-    "label": "Certified Jenkins Engineer"
-  },
-  {
-    "id": "cert-079",
-    "label": "HashiCorp Certified: Terraform Associate"
-  },
-  {
-    "id": "cert-080",
-    "label": "HashiCorp Certified: Vault Associate"
-  },
-  {
-    "id": "cert-081",
-    "label": "Terraform Cloud Operator: Associate"
-  },
-  {
-    "id": "cert-082",
-    "label": "Docker Certified Associate (DCA)"
-  },
-  {
-    "id": "cert-083",
-    "label": "Ansible Automation Certification"
-  },
-  {
-    "id": "cert-084",
-    "label": "Apache Cassandra Developer Associate"
-  },
-  {
-    "id": "cert-085",
-    "label": "Apache Spark Developer Certification"
-  },
-  {
-    "id": "cert-086",
-    "label": "Certified Big Data Professional"
-  },
-  {
-    "id": "cert-087",
-    "label": "Certified Agile Leadership (CAL)"
-  },
-  {
-    "id": "cert-088",
-    "label": "AgilePM Foundation"
-  },
-  {
-    "id": "cert-089",
-    "label": "ICAgile Certified Professional"
-  },
-  {
-    "id": "cert-090",
-    "label": "DevSecOps Foundation"
-  },
-  {
-    "id": "cert-091",
-    "label": "Lean Six Sigma Green Belt"
-  },
-  {
-    "id": "cert-092",
-    "label": "Lean Six Sigma Black Belt"
-  },
-  {
-    "id": "cert-093",
-    "label": "Business Analyst Certification (CBAP)"
-  },
-  {
-    "id": "cert-094",
-    "label": "TOGAF 9 Certification"
-  },
-  {
-    "id": "cert-095",
-    "label": "SAFe Agilist Certification"
-  },
-  {
-    "id": "cert-096",
-    "label": "SAFe Scrum Master Certification"
-  },
-  {
-    "id": "cert-097",
-    "label": "Certified Digital Marketing Professional (CDMP)"
-  },
-  {
-    "id": "cert-098",
-    "label": "CIW Web Development Professional"
-  },
-  {
-    "id": "cert-099",
-    "label": "CIW JavaScript Specialist"
-  },
-  {
-    "id": "cert-100",
-    "label": "Cisco CyberOps Associate"
-  }
+  { "label": "ACSM Certified Personal Trainer" },
+  { "label": "Adobe Certified Expert (ACE): After Effects" },
+  { "label": "Adobe Certified Expert (ACE): Illustrator" },
+  { "label": "Adobe Certified Expert (ACE): InDesign" },
+  { "label": "Adobe Certified Expert (ACE): Photoshop" },
+  { "label": "Adobe Certified Expert (ACE): Premiere Pro" },
+  { "label": "Adobe Certified Professional: Creative Cloud" },
+  { "label": "AgilePM Foundation" },
+  { "label": "AgilePM Practitioner" },
+  { "label": "Alibaba Cloud Certified Associate" },
+  { "label": "Alibaba Cloud Certified Professional" },
+  { "label": "Amazon Web Services (AWS) Certified Advanced Networking - Specialty" },
+  { "label": "Amazon Web Services (AWS) Certified Cloud Practitioner" },
+  { "label": "Amazon Web Services (AWS) Certified Data Analytics - Specialty" },
+  { "label": "Amazon Web Services (AWS) Certified Data Engineer - Associate" },
+  { "label": "Amazon Web Services (AWS) Certified Database - Specialty" },
+  { "label": "Amazon Web Services (AWS) Certified Developer - Associate" },
+  { "label": "Amazon Web Services (AWS) Certified DevOps Engineer - Professional" },
+  { "label": "Amazon Web Services (AWS) Certified Machine Learning - Specialty" },
+  { "label": "Amazon Web Services (AWS) Certified SAP on AWS - Specialty" },
+  { "label": "Amazon Web Services (AWS) Certified Security - Specialty" },
+  { "label": "Amazon Web Services (AWS) Certified Solutions Architect - Associate" },
+  { "label": "Amazon Web Services (AWS) Certified Solutions Architect - Professional" },
+  { "label": "Amazon Web Services (AWS) Certified SysOps Administrator - Associate" },
+  { "label": "Ansible Automation Certification" },
+  { "label": "Apache Cassandra Developer Associate" },
+  { "label": "Apache Kafka Certification" },
+  { "label": "Apache Spark Developer Certification" },
+  { "label": "Apigee Certified API Engineer" },
+  { "label": "Associate Business Continuity Professional (ABCP)" },
+  { "label": "Atlassian Certified Jira Administrator" },
+  { "label": "Atlassian Certified Jira Project Administrator" },
+  { "label": "Autodesk Certified Professional: 3ds Max" },
+  { "label": "Autodesk Certified Professional: AutoCAD" },
+  { "label": "Autodesk Certified Professional: Inventor" },
+  { "label": "Autodesk Certified Professional: Maya" },
+  { "label": "Autodesk Certified Professional: Revit" },
+  { "label": "Blockchain Council Certified Blockchain Developer" },
+  { "label": "Blockchain Council Certified Blockchain Expert" },
+  { "label": "Business Analyst Certification (CBAP)" },
+  { "label": "CAMS - Certified Anti-Money Laundering Specialist" },
+  { "label": "CFA - Chartered Financial Analyst Level I" },
+  { "label": "CFA - Chartered Financial Analyst Level II" },
+  { "label": "CFA - Chartered Financial Analyst Level III" },
+  { "label": "CFP - Certified Financial Planner" },
+  { "label": "CIMA - Chartered Institute of Management Accountants" },
+  { "label": "CIW JavaScript Specialist" },
+  { "label": "CIW Web Development Professional" },
+  { "label": "CIW Web Foundations Associate" },
+  { "label": "CMA - Certified Management Accountant" },
+  { "label": "COBIT 2019 Foundation" },
+  { "label": "COBIT 2019 Implementation" },
+  { "label": "CPA - Certified Public Accountant" },
+  { "label": "Certified Agile Leadership (CAL)" },
+  { "label": "Certified Artificial Intelligence Practitioner (CAIP)" },
+  { "label": "Certified Associate in Project Management (CAPM)" },
+  { "label": "Certified Authorization Professional (CAP)" },
+  { "label": "Certified Big Data Professional" },
+  { "label": "Certified Blockchain Developer" },
+  { "label": "Certified Cloud Security Professional (CCSP)" },
+  { "label": "Certified Compensation Professional (CCP)" },
+  { "label": "Certified Data Privacy Solutions Engineer (CDPSE)" },
+  { "label": "Certified Digital Marketing Professional (CDMP)" },
+  { "label": "Certified Employee Benefits Specialist (CEBS)" },
+  { "label": "Certified Ethical Hacker (CEH)" },
+  { "label": "Certified Fraud Examiner (CFE)" },
+  { "label": "Certified HIPAA Professional (CHP)" },
+  { "label": "Certified in Risk and Information Systems Control (CRISC)" },
+  { "label": "Certified in the Governance of Enterprise IT (CGEIT)" },
+  { "label": "Certified Information Privacy Professional (CIPP)" },
+  { "label": "Certified Information Security Manager (CISM)" },
+  { "label": "Certified Information Systems Auditor (CISA)" },
+  { "label": "Certified Information Systems Security Professional (CISSP)" },
+  { "label": "Certified Internal Auditor (CIA)" },
+  { "label": "Certified Internet of Things (IoT) Practitioner" },
+  { "label": "Certified Jenkins Engineer" },
+  { "label": "Certified Kubernetes Administrator (CKA)" },
+  { "label": "Certified Kubernetes Application Developer (CKAD)" },
+  { "label": "Certified Kubernetes Security Specialist (CKS)" },
+  { "label": "Certified Paralegal (CP) - NALA" },
+  { "label": "Certified Penetration Testing Engineer (CPTE)" },
+  { "label": "Certified Professional in Accessibility Core Competencies (CPACC)" },
+  { "label": "Certified ScrumMaster (CSM)" },
+  { "label": "Certified Scrum Product Owner (CSPO)" },
+  { "label": "Certified Secure Software Lifecycle Professional (CSSLP)" },
+  { "label": "Certified Six Sigma Green Belt (CSSGB)" },
+  { "label": "Certified Six Sigma Black Belt (CSSBB)" },
+  { "label": "Certified Six Sigma Master Black Belt" },
+  { "label": "Certified Six Sigma Yellow Belt (CSSYB)" },
+  { "label": "Certified Software Quality Engineer (CSQE)" },
+  { "label": "Certified Supply Chain Professional (CSCP)" },
+  { "label": "Certified Usability Analyst (CUA)" },
+  { "label": "Cisco Certified CyberOps Associate" },
+  { "label": "Cisco Certified CyberOps Professional" },
+  { "label": "Cisco Certified Design Professional (CCDP)" },
+  { "label": "Cisco Certified DevNet Associate" },
+  { "label": "Cisco Certified DevNet Professional" },
+  { "label": "Cisco Certified Internetwork Expert (CCIE) - Collaboration" },
+  { "label": "Cisco Certified Internetwork Expert (CCIE) - Data Center" },
+  { "label": "Cisco Certified Internetwork Expert (CCIE) - Enterprise Infrastructure" },
+  { "label": "Cisco Certified Internetwork Expert (CCIE) - Security" },
+  { "label": "Cisco Certified Network Associate (CCNA)" },
+  { "label": "Cisco Certified Network Professional (CCNP) - Enterprise" },
+  { "label": "Cisco Certified Network Professional (CCNP) - Security" },
+  { "label": "Cisco Certified Network Professional (CCNP) - Service Provider" },
+  { "label": "Cloudera Certified Associate (CCA) Data Analyst" },
+  { "label": "Cloudera Certified Professional (CCP) Data Engineer" },
+  { "label": "CompTIA A+" },
+  { "label": "CompTIA Advanced Security Practitioner (CASP+)" },
+  { "label": "CompTIA Cloud+" },
+  { "label": "CompTIA CySA+" },
+  { "label": "CompTIA Data+" },
+  { "label": "CompTIA Linux+" },
+  { "label": "CompTIA Network+" },
+  { "label": "CompTIA PenTest+" },
+  { "label": "CompTIA Project+" },
+  { "label": "CompTIA Security+" },
+  { "label": "CompTIA Server+" },
+  { "label": "Confluent Certified Administrator for Apache Kafka" },
+  { "label": "Confluent Certified Developer for Apache Kafka" },
+  { "label": "Databricks Certified Associate Developer for Apache Spark" },
+  { "label": "Databricks Certified Data Analyst Associate" },
+  { "label": "Databricks Certified Data Engineer Associate" },
+  { "label": "Databricks Certified Data Engineer Professional" },
+  { "label": "Databricks Certified Machine Learning Associate" },
+  { "label": "Databricks Certified Machine Learning Professional" },
+  { "label": "Dell Technologies Certified Associate" },
+  { "label": "DevSecOps Foundation" },
+  { "label": "Docker Certified Associate (DCA)" },
+  { "label": "EC-Council Certified Security Analyst (ECSA)" },
+  { "label": "Elastic Certified Analyst" },
+  { "label": "Elastic Certified Engineer" },
+  { "label": "Elastic Certified Observability Engineer" },
+  { "label": "FRM - Financial Risk Manager" },
+  { "label": "GIAC Certified Enterprise Defender (GCED)" },
+  { "label": "GIAC Certified Incident Handler (GCIH)" },
+  { "label": "GIAC Security Essentials (GSEC)" },
+  { "label": "GIAC Web Application Penetration Tester (GWAPT)" },
+  { "label": "Google Ads - Display Certification" },
+  { "label": "Google Ads - Measurement Certification" },
+  { "label": "Google Ads - Search Certification" },
+  { "label": "Google Ads - Shopping Certification" },
+  { "label": "Google Ads - Video Certification" },
+  { "label": "Google Analytics Individual Qualification (GAIQ)" },
+  { "label": "Google Associate Cloud Engineer" },
+  { "label": "Google Cloud Certified - Cloud Digital Leader" },
+  { "label": "Google Cloud Professional Cloud Architect" },
+  { "label": "Google Cloud Professional Cloud Database Engineer" },
+  { "label": "Google Cloud Professional Cloud Developer" },
+  { "label": "Google Cloud Professional Cloud DevOps Engineer" },
+  { "label": "Google Cloud Professional Cloud Network Engineer" },
+  { "label": "Google Cloud Professional Cloud Security Engineer" },
+  { "label": "Google Cloud Professional Data Engineer" },
+  { "label": "Google Cloud Professional Machine Learning Engineer" },
+  { "label": "Google Cloud Professional Workspace Administrator" },
+  { "label": "Google Cybersecurity Professional Certificate" },
+  { "label": "Google Data Analytics Professional Certificate" },
+  { "label": "Google Digital Marketing & E-commerce Certificate" },
+  { "label": "Google IT Automation with Python Professional Certificate" },
+  { "label": "Google IT Support Professional Certificate" },
+  { "label": "Google Project Management Professional Certificate" },
+  { "label": "Google UX Design Professional Certificate" },
+  { "label": "GraphQL Certified Developer" },
+  { "label": "HashiCorp Certified: Consul Associate" },
+  { "label": "HashiCorp Certified: Terraform Associate" },
+  { "label": "HashiCorp Certified: Vault Associate" },
+  { "label": "HashiCorp Certified: Vault Operations Professional" },
+  { "label": "HubSpot Content Marketing Certification" },
+  { "label": "HubSpot Digital Marketing Certification" },
+  { "label": "HubSpot Email Marketing Certification" },
+  { "label": "HubSpot Inbound Marketing Certification" },
+  { "label": "HubSpot Sales Software Certification" },
+  { "label": "HubSpot Social Media Marketing Certification" },
+  { "label": "Human Factors International Certified Usability Analyst" },
+  { "label": "IBM Certified Data Engineer" },
+  { "label": "IBM Certified Data Scientist" },
+  { "label": "IBM Data Science Professional Certificate" },
+  { "label": "ICAgile Certified Professional (ICP)" },
+  { "label": "ICAgile Certified Professional in Agile Coaching (ICP-ACC)" },
+  { "label": "ISC2 Certified in Cybersecurity (CC)" },
+  { "label": "ISTQB Certified Tester - Advanced Level" },
+  { "label": "ISTQB Certified Tester - Foundation Level" },
+  { "label": "ITIL 4 Foundation" },
+  { "label": "ITIL 4 Managing Professional" },
+  { "label": "ITIL 4 Strategic Leader" },
+  { "label": "Juniper Networks Certified Associate (JNCIA)" },
+  { "label": "Juniper Networks Certified Professional (JNCIP)" },
+  { "label": "Juniper Networks Certified Specialist (JNCIS)" },
+  { "label": "Lean Six Sigma Black Belt" },
+  { "label": "Lean Six Sigma Green Belt" },
+  { "label": "Lean Six Sigma Master Black Belt" },
+  { "label": "Lean Six Sigma White Belt" },
+  { "label": "Lean Six Sigma Yellow Belt" },
+  { "label": "Linux Foundation Certified System Administrator (LFCS)" },
+  { "label": "Linux Professional Institute (LPI) Level 1" },
+  { "label": "Linux Professional Institute (LPI) Level 2" },
+  { "label": "Meta Back-End Developer Certificate" },
+  { "label": "Meta Blueprint Certification" },
+  { "label": "Meta Certified Community Manager" },
+  { "label": "Meta Certified Digital Marketing Associate" },
+  { "label": "Meta Certified Media Buying Professional" },
+  { "label": "Meta Certified Media Planning Professional" },
+  { "label": "Meta Front-End Developer Certificate" },
+  { "label": "Microsoft Certified: Azure AI Engineer Associate" },
+  { "label": "Microsoft Certified: Azure Administrator Associate (AZ-104)" },
+  { "label": "Microsoft Certified: Azure Cosmos DB Developer Specialty" },
+  { "label": "Microsoft Certified: Azure Data Engineer Associate (DP-203)" },
+  { "label": "Microsoft Certified: Azure Data Scientist Associate (DP-100)" },
+  { "label": "Microsoft Certified: Azure Database Administrator Associate (DP-300)" },
+  { "label": "Microsoft Certified: Azure Developer Associate (AZ-204)" },
+  { "label": "Microsoft Certified: Azure DevOps Engineer Expert (AZ-400)" },
+  { "label": "Microsoft Certified: Azure Fundamentals (AZ-900)" },
+  { "label": "Microsoft Certified: Azure IoT Developer Specialty" },
+  { "label": "Microsoft Certified: Azure Network Engineer Associate (AZ-700)" },
+  { "label": "Microsoft Certified: Azure Security Engineer Associate (AZ-500)" },
+  { "label": "Microsoft Certified: Azure Solutions Architect Expert (AZ-305)" },
+  { "label": "Microsoft Certified: Cybersecurity Architect Expert" },
+  { "label": "Microsoft Certified: DevOps Engineer Expert" },
+  { "label": "Microsoft Certified: Dynamics 365 Business Central Functional Consultant" },
+  { "label": "Microsoft Certified: Dynamics 365 Fundamentals" },
+  { "label": "Microsoft Certified: Fabric Analytics Engineer Associate" },
+  { "label": "Microsoft Certified: Identity and Access Administrator Associate" },
+  { "label": "Microsoft Certified: Information Protection and Compliance Administrator" },
+  { "label": "Microsoft Certified: Microsoft 365 Fundamentals (MS-900)" },
+  { "label": "Microsoft Certified: Power BI Data Analyst Associate (PL-300)" },
+  { "label": "Microsoft Certified: Power Platform App Maker Associate" },
+  { "label": "Microsoft Certified: Power Platform Developer Associate" },
+  { "label": "Microsoft Certified: Power Platform Fundamentals (PL-900)" },
+  { "label": "Microsoft Certified: Security Operations Analyst Associate" },
+  { "label": "Microsoft Certified: Security, Compliance, and Identity Fundamentals (SC-900)" },
+  { "label": "MongoDB Certified DBA Associate" },
+  { "label": "MongoDB Certified Developer Associate" },
+  { "label": "Neo4j Certified Professional" },
+  { "label": "Nielsen Norman Group UX Certification" },
+  { "label": "Nutanix Certified Professional" },
+  { "label": "OWASP Certified Web Application Security Testing" },
+  { "label": "Offensive Security Certified Expert (OSCE)" },
+  { "label": "Offensive Security Certified Professional (OSCP)" },
+  { "label": "Offensive Security Web Expert (OSWE)" },
+  { "label": "Offensive Security Wireless Professional (OSWP)" },
+  { "label": "Oracle Certified Associate: Java SE Programmer" },
+  { "label": "Oracle Certified Professional: Java SE Developer" },
+  { "label": "Oracle Cloud Infrastructure Architect Associate" },
+  { "label": "Oracle Cloud Infrastructure Architect Professional" },
+  { "label": "Oracle Cloud Infrastructure Developer Associate" },
+  { "label": "Oracle Cloud Infrastructure Foundations Associate" },
+  { "label": "Oracle Database SQL Certified Associate" },
+  { "label": "Oracle PL/SQL Developer Certified Professional" },
+  { "label": "PCM - Professional Certified Marketer (AMA)" },
+  { "label": "PHR - Professional in Human Resources" },
+  { "label": "PMI Agile Certified Practitioner (PMI-ACP)" },
+  { "label": "PMI Risk Management Professional (PMI-RMP)" },
+  { "label": "PMI Scheduling Professional (PMI-SP)" },
+  { "label": "PMP - Project Management Professional" },
+  { "label": "PRINCE2 Agile Foundation" },
+  { "label": "PRINCE2 Agile Practitioner" },
+  { "label": "PRINCE2 Foundation" },
+  { "label": "PRINCE2 Practitioner" },
+  { "label": "Palo Alto Networks Certified Cybersecurity Associate (PCCSA)" },
+  { "label": "Palo Alto Networks Certified Network Security Administrator (PCNSA)" },
+  { "label": "Palo Alto Networks Certified Network Security Engineer (PCNSE)" },
+  { "label": "Professional Scrum Developer (PSD)" },
+  { "label": "Professional Scrum Master I (PSM I)" },
+  { "label": "Professional Scrum Master II (PSM II)" },
+  { "label": "Professional Scrum Product Owner I (PSPO I)" },
+  { "label": "Professional Scrum Product Owner II (PSPO II)" },
+  { "label": "Puppet Certified Professional" },
+  { "label": "Qlik Sense Business Analyst Certification" },
+  { "label": "Qlik Sense Data Architect Certification" },
+  { "label": "Red Hat Certified Architect (RHCA)" },
+  { "label": "Red Hat Certified Engineer (RHCE)" },
+  { "label": "Red Hat Certified OpenShift Administrator" },
+  { "label": "Red Hat Certified Specialist in Ansible Automation" },
+  { "label": "Red Hat Certified System Administrator (RHCSA)" },
+  { "label": "SAFe 6 Agilist (SA)" },
+  { "label": "SAFe 6 DevOps Practitioner" },
+  { "label": "SAFe 6 Lean Portfolio Manager" },
+  { "label": "SAFe 6 Product Owner/Product Manager" },
+  { "label": "SAFe 6 Practitioner" },
+  { "label": "SAFe 6 Release Train Engineer" },
+  { "label": "SAFe 6 Scrum Master" },
+  { "label": "SAP Certified Application Associate - SAP Analytics Cloud" },
+  { "label": "SAP Certified Application Associate - SAP S/4HANA" },
+  { "label": "SAP Certified Application Associate - SAP SuccessFactors" },
+  { "label": "SAP Certified Development Associate - ABAP" },
+  { "label": "SAP Certified Development Associate - SAP Fiori" },
+  { "label": "SAP Certified Technology Associate - SAP HANA" },
+  { "label": "SHRM Certified Professional (SHRM-CP)" },
+  { "label": "SHRM Senior Certified Professional (SHRM-SCP)" },
+  { "label": "SPHR - Senior Professional in Human Resources" },
+  { "label": "Salesforce Certified Administrator" },
+  { "label": "Salesforce Certified Advanced Administrator" },
+  { "label": "Salesforce Certified Application Architect" },
+  { "label": "Salesforce Certified B2B Solution Architect" },
+  { "label": "Salesforce Certified B2C Commerce Developer" },
+  { "label": "Salesforce Certified Data Architect" },
+  { "label": "Salesforce Certified Development Lifecycle and Deployment Architect" },
+  { "label": "Salesforce Certified Integration Architect" },
+  { "label": "Salesforce Certified JavaScript Developer I" },
+  { "label": "Salesforce Certified Marketing Cloud Administrator" },
+  { "label": "Salesforce Certified Marketing Cloud Consultant" },
+  { "label": "Salesforce Certified Marketing Cloud Developer" },
+  { "label": "Salesforce Certified Platform App Builder" },
+  { "label": "Salesforce Certified Platform Developer I" },
+  { "label": "Salesforce Certified Platform Developer II" },
+  { "label": "Salesforce Certified Service Cloud Consultant" },
+  { "label": "Salesforce Certified Sharing and Visibility Architect" },
+  { "label": "Salesforce Certified System Architect" },
+  { "label": "Salesforce Certified Technical Architect" },
+  { "label": "Scrum Alliance Advanced Certified Scrum Developer (A-CSD)" },
+  { "label": "Scrum Alliance Advanced Certified ScrumMaster (A-CSM)" },
+  { "label": "Scrum Alliance Certified Scrum Developer (CSD)" },
+  { "label": "Semrush SEO Toolkit Certification" },
+  { "label": "Series 63 - Uniform Securities Agent State Law Examination" },
+  { "label": "Series 65 - Uniform Investment Adviser Law Examination" },
+  { "label": "Series 66 - Uniform Combined State Law Examination" },
+  { "label": "Series 7 - General Securities Representative Examination" },
+  { "label": "ServiceNow Certified Application Developer" },
+  { "label": "ServiceNow Certified Implementation Specialist" },
+  { "label": "ServiceNow Certified System Administrator" },
+  { "label": "ServiceNow Certified Technical Architect" },
+  { "label": "Snowflake SnowPro Advanced: Architect" },
+  { "label": "Snowflake SnowPro Advanced: Data Engineer" },
+  { "label": "Snowflake SnowPro Core Certification" },
+  { "label": "Splunk Certified Admin" },
+  { "label": "Splunk Certified Developer" },
+  { "label": "Splunk Core Certified User" },
+  { "label": "State Bar Admission (Juris Doctor)" },
+  { "label": "Tableau Certified Data Analyst" },
+  { "label": "Tableau Desktop Specialist" },
+  { "label": "Tableau Server Certified Associate" },
+  { "label": "TensorFlow Developer Certificate" },
+  { "label": "Teradata Certified Professional" },
+  { "label": "Terraform Cloud Operator: Associate" },
+  { "label": "The Open Group TOGAF 9 Certified" },
+  { "label": "The Open Group TOGAF 9 Foundation" },
+  { "label": "Tigera Certified Calico Operator" },
+  { "label": "Twitter Flight School Certification" },
+  { "label": "UiPath Certified Advanced RPA Developer" },
+  { "label": "UiPath Certified RPA Associate" },
+  { "label": "Unity Certified Associate: Game Developer" },
+  { "label": "Unity Certified Expert: Programmer" },
+  { "label": "Unity Certified Programmer" },
+  { "label": "Unreal Engine Developer Certification" },
+  { "label": "VMware Certified Advanced Professional (VCAP)" },
+  { "label": "VMware Certified Professional - Data Center Virtualization (VCP-DCV)" },
+  { "label": "VMware Certified Professional - Network Virtualization (VCP-NV)" },
+  { "label": "Zend Certified PHP Engineer" }
 ]

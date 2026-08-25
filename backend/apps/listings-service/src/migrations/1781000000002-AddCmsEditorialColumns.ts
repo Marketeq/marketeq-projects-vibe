@@ -4,41 +4,27 @@ export class AddCmsEditorialColumns1781000000002 implements MigrationInterface {
   name = 'AddCmsEditorialColumns1781000000002';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
-      DO $$
-      BEGIN
-        -- teams
-        ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "payloadId" character varying;
-        ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "editorialLabel" character varying;
+    const schema = 'listings';
+    for (const tbl of ['teams', 'services', 'jobs']) {
+      const [exists] = await queryRunner.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = $2`,
+        [schema, tbl],
+      );
+      if (!exists) continue;
 
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_indexes WHERE tablename = 'teams' AND indexname = 'UQ_teams_payloadId'
-        ) THEN
-          CREATE UNIQUE INDEX "UQ_teams_payloadId" ON "teams" ("payloadId") WHERE "payloadId" IS NOT NULL;
-        END IF;
-
-        -- services
-        ALTER TABLE "services" ADD COLUMN IF NOT EXISTS "payloadId" character varying;
-        ALTER TABLE "services" ADD COLUMN IF NOT EXISTS "editorialLabel" character varying;
-
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_indexes WHERE tablename = 'services' AND indexname = 'UQ_services_payloadId'
-        ) THEN
-          CREATE UNIQUE INDEX "UQ_services_payloadId" ON "services" ("payloadId") WHERE "payloadId" IS NOT NULL;
-        END IF;
-
-        -- jobs
-        ALTER TABLE "jobs" ADD COLUMN IF NOT EXISTS "payloadId" character varying;
-        ALTER TABLE "jobs" ADD COLUMN IF NOT EXISTS "editorialLabel" character varying;
-        ALTER TABLE "jobs" ADD COLUMN IF NOT EXISTS "featured" boolean NOT NULL DEFAULT false;
-
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_indexes WHERE tablename = 'jobs' AND indexname = 'UQ_jobs_payloadId'
-        ) THEN
-          CREATE UNIQUE INDEX "UQ_jobs_payloadId" ON "jobs" ("payloadId") WHERE "payloadId" IS NOT NULL;
-        END IF;
-      END $$;
-    `);
+      await queryRunner.query(`ALTER TABLE "${schema}"."${tbl}" ADD COLUMN IF NOT EXISTS "payloadId" character varying`);
+      await queryRunner.query(`ALTER TABLE "${schema}"."${tbl}" ADD COLUMN IF NOT EXISTS "editorialLabel" character varying`);
+      if (tbl === 'jobs') {
+        await queryRunner.query(`ALTER TABLE "${schema}"."${tbl}" ADD COLUMN IF NOT EXISTS "featured" boolean NOT NULL DEFAULT false`);
+      }
+      await queryRunner.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = '${schema}' AND tablename = '${tbl}' AND indexname = 'UQ_${tbl}_payloadId') THEN
+            CREATE UNIQUE INDEX "UQ_${tbl}_payloadId" ON "${schema}"."${tbl}" ("payloadId") WHERE "payloadId" IS NOT NULL;
+          END IF;
+        END $$;
+      `);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

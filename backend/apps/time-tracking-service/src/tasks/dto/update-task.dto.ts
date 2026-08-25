@@ -5,7 +5,7 @@ export class UpdateContractTaskDto {
   @IsOptional()
   name?: string;
 
-  @IsBoolean()
   @IsOptional()
+  @IsBoolean()
   archived?: boolean;
 }

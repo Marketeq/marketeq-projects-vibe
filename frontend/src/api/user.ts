@@ -8,20 +8,12 @@
 // src/api/user.ts or wherever you define your API helpers
 import { apiFetch } from "../lib/api"
 
-export async function getRecipientPublicKey(
-  userId: string,
-  token: string
-): Promise<string> {
+export async function getRecipientPublicKey(userId: string): Promise<string> {
   console.log("Fetching public key for userId:", userId)
 
   const data = await apiFetch<{ publicKey: string }>(
     `/messaging/get-public-key?userId=${userId}`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
+    { method: "GET" }
   )
 
   console.log("Received public key:", data.publicKey)

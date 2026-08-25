@@ -1,8 +1,8 @@
 import React from "react"
-import RmDialog from "../rm-dialog/rm-dialog"
-import { IconButton } from "@/components/ui"
 import { Trash03 } from "@blend-metrics/icons"
 import { ApplePay1, GPay1 } from "@/components/icons/payment-icons"
+import { IconButton } from "@/components/ui"
+import RmDialog from "../rm-dialog/rm-dialog"
 
 export default function ApplePayCard({
   onRemove,
@@ -32,7 +32,7 @@ export default function ApplePayCard({
           <RmDialog
             onRemove={onRemove}
             title="Remove Payment Method?"
-            description="Are you sure you want to remove American Express Credit ****1234 from your payment methods?"
+            description="Are you sure you want to remove this payment method?"
             trigger={({ isOpen, setIsOpen }) => (
               <IconButton
                 className="rounded-full opacity-50 hover:opacity-100 hover:bg-error-100 hover:text-error-500"
@@ -87,7 +87,7 @@ const GooglePayCard = ({
           <RmDialog
             onRemove={onRemove}
             title="Remove Payment Method?"
-            description="Are you sure you want to remove American Express Credit ****1234 from your payment methods?"
+            description="Are you sure you want to remove this payment method?"
             trigger={({ isOpen, setIsOpen }) => (
               <IconButton
                 className="rounded-full opacity-50 hover:opacity-100 hover:bg-error-100 hover:text-error-500"

@@ -1,8 +1,10 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { useAuth } from "@/contexts/auth"
+import { useRouter } from "next/navigation"
+import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import { ROLE } from "@/types/user"
 import { ChevronRight, X } from "@blend-metrics/icons"
 import SecuritySettingsStepper from "@/components/security-settings"
 import {
@@ -31,9 +33,21 @@ import { StatusDialog } from "@/app/(group)/complete-profile/page"
 export default function TalentDashboard() {
   const [isOpen, setIsOpen] = useState(false)
   const { user } = useAuth()
+  const router = useRouter()
   const [showSecurityModal, setShowSecurityModal] = useState(false)
   const [showCompleteProfile, setShowCompleteProfile] = useState(false)
   const [profileProgress, setProfileProgress] = useState(0)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("marketeq-profile-completion")
+      if (!saved) return
+      const parsed = JSON.parse(saved)
+      if (Object.values(parsed).some((v: unknown) => (v as Record<string, unknown>)?.opened)) {
+        setShowCompleteProfile(true)
+      }
+    } catch {}
+  }, [])
 
   const handleCompleteProfile = useCallback(() => {
     setShowCompleteProfile(true)
@@ -53,6 +67,15 @@ export default function TalentDashboard() {
     }
     // setShowSecurityModal(true)
   }, [user])
+
+  // Redirect if the user's active role is not Talent
+  useEffect(() => {
+    if (!user) return
+    const role = resolveDashboardRole(user)
+    if (role && role !== ROLE.TALENT) {
+      router.replace("/client-dashboard")
+    }
+  }, [user, router])
 
   return (
     <>

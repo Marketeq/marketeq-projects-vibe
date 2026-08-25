@@ -1,9 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown, SearchMd } from "@blend-metrics/icons"
-import { Switch } from "@/components/ui"
-import { cn } from "@/utils/functions"
 import type {
   CatalogCategory,
   CategoryPref,
@@ -11,14 +8,17 @@ import type {
   GlobalChannelPrefs,
   NotificationItemPref,
 } from "@/service/http/notifications"
+import { cn } from "@/utils/functions"
+import { ChevronDown, SearchMd } from "@blend-metrics/icons"
+import { Switch } from "@/components/ui"
+import NotificationItemRow from "./notification-item-row"
 import {
+  SMS_ENABLED,
   channelIcons,
   channelLabels,
   channelOrder,
   resolveIcon,
-  SMS_ENABLED,
 } from "./shared"
-import NotificationItemRow from "./notification-item-row"
 
 interface Props {
   category: CatalogCategory
@@ -48,12 +48,14 @@ export default function NotificationCategoryDetail({
   onToggleItemChannel,
 }: Props) {
   const [byTypeOpen, setByTypeOpen] = useState(true)
-  const [expandedNotification, setExpandedNotification] = useState<string | null>(null)
+  const [expandedNotification, setExpandedNotification] = useState<
+    string | null
+  >(null)
   const [notificationSearch, setNotificationSearch] = useState("")
 
   const CategoryIcon = resolveIcon(category.icon)
   const visible = category.notifications.filter((n) =>
-    n.title.toLowerCase().includes(notificationSearch.toLowerCase()),
+    n.title.toLowerCase().includes(notificationSearch.toLowerCase())
   )
 
   const channelDetail = (key: ChannelKey) => {
@@ -135,41 +137,43 @@ export default function NotificationCategoryDetail({
             <ChevronDown
               className={cn(
                 "size-5 text-gray-400 transition-transform",
-                byTypeOpen ? "rotate-180" : "",
+                byTypeOpen ? "rotate-180" : ""
               )}
             />
           </button>
 
           {byTypeOpen && (
             <div className="mt-4 space-y-2">
-              {channelOrder.filter((k) => SMS_ENABLED || k !== "sms").map((key) => {
-                const ChannelIcon = channelIcons[key]
-                const globalOff = !globalChannels[key].enabled
-                return (
-                  <div
-                    key={key}
-                    className={cn(
-                      "flex items-center gap-3 bg-gray-50 rounded-lg px-4 h-[52px]",
-                      globalOff && "opacity-50",
-                    )}
-                  >
-                    <ChannelIcon className="size-5 text-gray-500" />
-                    <span className="text-sm font-semibold text-dark-blue-400">
-                      {channelLabels[key]}
-                    </span>
-                    <span className="flex-1" />
-                    <span className="text-xs text-gray-400">
-                      {channelDetail(key)}
-                    </span>
-                    <Switch
-                      checked={categoryState.channels[key] && !globalOff}
-                      onCheckedChange={() => onToggleCategoryChannel(key)}
-                      disabled={globalOff || !categoryState.enabled}
-                      size="sm"
-                    />
-                  </div>
-                )
-              })}
+              {channelOrder
+                .filter((k) => SMS_ENABLED || k !== "sms")
+                .map((key) => {
+                  const ChannelIcon = channelIcons[key]
+                  const globalOff = !globalChannels[key].enabled
+                  return (
+                    <div
+                      key={key}
+                      className={cn(
+                        "flex items-center gap-3 bg-gray-50 rounded-lg px-4 h-[52px]",
+                        globalOff && "opacity-50"
+                      )}
+                    >
+                      <ChannelIcon className="size-5 text-gray-500" />
+                      <span className="text-sm font-semibold text-dark-blue-400">
+                        {channelLabels[key]}
+                      </span>
+                      <span className="flex-1" />
+                      <span className="text-xs text-gray-400">
+                        {channelDetail(key)}
+                      </span>
+                      <Switch
+                        checked={categoryState.channels[key] && !globalOff}
+                        onCheckedChange={() => onToggleCategoryChannel(key)}
+                        disabled={globalOff || !categoryState.enabled}
+                        size="sm"
+                      />
+                    </div>
+                  )
+                })}
             </div>
           )}
         </div>
@@ -203,7 +207,9 @@ export default function NotificationCategoryDetail({
               isExpanded={expandedNotification === notification.id}
               onToggleExpand={() =>
                 setExpandedNotification(
-                  expandedNotification === notification.id ? null : notification.id,
+                  expandedNotification === notification.id
+                    ? null
+                    : notification.id
                 )
               }
               onToggleEnabled={() => onToggleItemEnabled(notification.id)}

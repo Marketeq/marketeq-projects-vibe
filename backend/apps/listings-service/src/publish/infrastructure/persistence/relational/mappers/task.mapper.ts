@@ -13,6 +13,7 @@ export class TaskMapper {
       experienceLevel: raw.experienceLevel,
       duration: raw.duration,
       estimatedHours: raw.estimatedHours,
+      assigneeUserId: raw.assigneeUserId ?? null,
       phaseId: raw.phaseId,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
@@ -35,6 +36,7 @@ export class TaskMapper {
     taskEntity.experienceLevel = task.experienceLevel;
     taskEntity.duration = task.duration;
     taskEntity.estimatedHours = task.estimatedHours!;
+    taskEntity.assigneeUserId = task.assigneeUserId ?? null;
     taskEntity.phaseId = task.phaseId;
 
     taskEntity.createdAt = task.createdAt;

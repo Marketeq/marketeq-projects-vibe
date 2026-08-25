@@ -31,8 +31,7 @@ type UpdateTaskPayload = Pick<
 >
 // Prefer a dedicated listings URL if set; otherwise fall back to the general
 // API URL so existing Vercel deployments keep working without a new env var.
-const LISTINGS_BASE =
-  getPublicListingsUrl()
+const LISTINGS_BASE = getPublicListingsUrl()
 
 const API_BASE = getPublicApiUrl() || "http://localhost:4000"
 
@@ -57,10 +56,79 @@ export const ProjectAPI = {
       fullDescription?: string
     }
   ) => {
-    return AxiosRequest.put(`${LISTINGS_BASE}/publish/project/${projectId}`, data)
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/project/${projectId}`,
+      data
+    )
   },
   GetMyProjects: () => {
     return AxiosRequest.get(`${LISTINGS_BASE}/publish/projects/mine`)
+  },
+  GetProjectMembers: (projectId: string) => {
+    return AxiosRequest.get(
+      `${LISTINGS_BASE}/publish/project/${projectId}/members`
+    )
+  },
+  SaveProjectMembers: (
+    projectId: string,
+    members: Array<{
+      userId: string
+      projectRole?: string | null
+      status?: string | null
+      isLead?: boolean | null
+      leadLabel?: string | null
+    }>
+  ) => {
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/project/${projectId}/members`,
+      { members }
+    )
+  },
+  GetProjectQuestions: (projectId: string) => {
+    return AxiosRequest.get(
+      `${LISTINGS_BASE}/publish/project/${projectId}/questions`
+    )
+  },
+  SaveProjectQuestions: (
+    projectId: string,
+    questions: Array<{
+      id?: string
+      question: string
+      answer?: string | null
+      askedByName?: string | null
+      askedByUsername?: string | null
+      askedAt?: string | null
+      answeredByUserId?: string | null
+      answeredByName?: string | null
+      answeredByRole?: string | null
+      assignedToUserId?: string | null
+      hidden?: boolean
+    }>
+  ) => {
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/project/${projectId}/questions`,
+      { questions }
+    )
+  },
+  SuggestFaqs: (projectId: string) => {
+    return AxiosRequest.post(
+      `${LISTINGS_BASE}/publish/project/${projectId}/faqs/suggest`,
+      {}
+    )
+  },
+  SuggestFaqAnswer: (projectId: string, question: string) => {
+    return AxiosRequest.post(
+      `${LISTINGS_BASE}/publish/project/${projectId}/faqs/answer`,
+      { question }
+    )
+  },
+  SuggestSkills: (input: {
+    description?: string
+    category?: string
+    tags?: string[]
+    scopeTaskTitles?: string[]
+  }) => {
+    return AxiosRequest.post(`${LISTINGS_BASE}/publish/suggest-skills`, input)
   },
   ReplaceProjectScope: (
     projectId: string,
@@ -83,9 +151,12 @@ export const ProjectAPI = {
       }>
     }>
   ) => {
-    return AxiosRequest.put(`${LISTINGS_BASE}/publish/project/${projectId}/scope`, {
-      scope,
-    })
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/project/${projectId}/scope`,
+      {
+        scope,
+      }
+    )
   },
   CreateProject: (data: CreateProjectType | FormData) => {
     return AxiosRequest.post(`${LISTINGS_BASE}/publish/project`, data, {
@@ -96,7 +167,10 @@ export const ProjectAPI = {
     })
   },
   CreateModeratedSubcategory: (data: { name: string; parentUuid?: string }) => {
-    return AxiosRequest.post(`${LISTINGS_BASE}/publish/category/subcategory`, data)
+    return AxiosRequest.post(
+      `${LISTINGS_BASE}/publish/category/subcategory`,
+      data
+    )
   },
   UploadMedia: (data: FormData) => {
     return AxiosRequest.post(`${LISTINGS_BASE}/publish/media`, data, {
@@ -105,8 +179,15 @@ export const ProjectAPI = {
       },
     })
   },
-  UpdateGalleryImages: (projectId: string, additionalImages: string[]) => {
-    return AxiosRequest.put(`${LISTINGS_BASE}/publish/media/${projectId}/gallery`, { additionalImages })
+  UpdateGalleryImages: (
+    projectId: string,
+    additionalImages: string[],
+    hiddenImages?: string[]
+  ) => {
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/media/${projectId}/gallery`,
+      { additionalImages, hiddenImages }
+    )
   },
   UploadRichTextImage: (data: FormData) => {
     return AxiosRequest.post(`${LISTINGS_BASE}/publish/rich-text-image`, data, {
@@ -142,6 +223,12 @@ export const ProjectAPI = {
       {}
     )
   },
+  UnpublishProject: (projectId: string) => {
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/project/${projectId}/unpublish`,
+      {}
+    )
+  },
   UpdateTask: (id: string, data: UpdateTaskPayload) => {
     return AxiosRequest.put(`${LISTINGS_BASE}/publish/task/update/${id}`, data)
   },
@@ -155,5 +242,15 @@ export const ProjectAPI = {
       // not found
     }
     return null
+  },
+  getRecommended: (skills: string[], limit = 10) => {
+    const params = new URLSearchParams({ limit: String(limit) })
+    if (skills.length) params.set("skills", skills.join(","))
+    return AxiosRequest.get(`${LISTINGS_BASE}/v1/projects/recommended?${params}`)
+  },
+  GetSuggestedQuestions: (projectId: string) => {
+    return AxiosRequest.get(
+      `${LISTINGS_BASE}/v1/projects/${projectId}/suggested-questions`
+    )
   },
 }

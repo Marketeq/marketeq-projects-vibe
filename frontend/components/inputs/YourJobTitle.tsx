@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react"
-import { getPublicApiUrl } from "@/lib/runtime-urls"
 import jobTitles from "@/public/mock/job_titles.json"
 import { useControllableState } from "@/utils/hooks"
 import {
@@ -10,6 +9,7 @@ import {
   submitTextToModerationQueue,
 } from "@/utils/jobTitleValidation"
 import Fuse from "fuse.js"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import {
   Badge,
   Combobox,
@@ -48,9 +48,7 @@ export const YourJobTitle = ({ value, onValueChange, invalid }: Props) => {
     const loadJobTitles = async () => {
       try {
         const apiBase = getPublicApiUrl()
-        const res = await fetch(
-          `${apiBase}/talent/autocomplete?type=job-title`
-        )
+        const res = await fetch(`${apiBase}/talent/autocomplete?type=job-title`)
         const data = await res.json()
         const dynamic = data.map((entry: any) => entry.value)
         const combined = Array.from(

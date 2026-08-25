@@ -7,11 +7,12 @@ import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import {
-  MY_LISTINGS_STORAGE_KEY,
   formatRelativeTime,
   statusToBadgeVisual,
   useMyListings,
 } from "@/src/lib/my-listings"
+import { ProjectAPI } from "@/service/http/project"
+import { cn } from "@/utils/functions"
 import {
   Archive,
   Briefcase,
@@ -60,28 +61,12 @@ const newListingOptions = [
     label: "Project",
     description: "Post a project and hire talent to complete it",
     icon: Briefcase,
-    href: "/publish-project",
   },
   {
     type: "service",
     label: "Service",
     description: "Offer a service that clients can purchase",
     icon: Monitor,
-    href: "/publish-project",
-  },
-  {
-    type: "team",
-    label: "Team",
-    description: "Create a team listing to find collaborators",
-    icon: Users,
-    href: "/publish-project",
-  },
-  {
-    type: "job",
-    label: "Job",
-    description: "Post a job opening for your organization",
-    icon: Briefcase,
-    href: "/publish-project",
   },
 ]
 
@@ -90,11 +75,14 @@ export default function MyListingsPage() {
   const { user } = useAuth()
   const isTalent = resolveDashboardRole(user) === ROLE.TALENT
   const [showNewListingDialog, setShowNewListingDialog] = useState(false)
+  const [creatingType, setCreatingType] = useState<string | null>(null)
   const { listings, isLoading } = useMyListings()
   const [viewMode, setViewMode] = useState("grid")
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [searchVisible, setSearchVisible] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState("All")
+  const [sortBy, setSortBy] = useState<string>("recent")
 
   // Redirect clients to their dashboard — listings is a talent-only page
   useEffect(() => {
@@ -112,8 +100,30 @@ export default function MyListingsPage() {
       const q = searchQuery.toLowerCase()
       items = items.filter((l) => l.title.toLowerCase().includes(q))
     }
-    return items
-  }, [listings, activeTab, searchQuery])
+    // Sort
+    const sorted = [...items]
+    switch (sortBy) {
+      case "oldest":
+        sorted.sort((a, b) => {
+          const aT = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+          const bT = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+          return aT - bT
+        })
+        break
+      case "a-z":
+        sorted.sort((a, b) => a.title.localeCompare(b.title))
+        break
+      case "z-a":
+        sorted.sort((a, b) => b.title.localeCompare(a.title))
+        break
+      case "recent":
+      case "modified":
+      default:
+        // Already sorted by recent activity from useMyListings
+        break
+    }
+    return sorted
+  }, [listings, activeTab, searchQuery, sortBy])
 
   const goEdit = (id: string) => router.push(editProjectListingUrl(id))
 
@@ -155,7 +165,7 @@ export default function MyListingsPage() {
 
         <div className="flex-1 p-[32px] min-[1024px]:pl-[248px]">
           <div className="flex items-center justify-between">
-            <h1 className="text-base font-bold text-dark-blue-400">
+            <h1 className="text-xl font-bold text-dark-blue-400">
               My Listings
             </h1>
 
@@ -260,12 +270,21 @@ export default function MyListingsPage() {
                       align="end"
                       className="min-w-[11.25rem]"
                     >
-                      <DropdownMenuItem>Recently Created</DropdownMenuItem>
-                      <DropdownMenuItem>Oldest First</DropdownMenuItem>
-                      <DropdownMenuItem>A - Z</DropdownMenuItem>
-                      <DropdownMenuItem>Z - A</DropdownMenuItem>
-                      <DropdownMenuItem>Last Modified</DropdownMenuItem>
-                      <DropdownMenuItem>Last Published</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy("recent")}>
+                        Recently Created{sortBy === "recent" ? " ✓" : ""}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy("oldest")}>
+                        Oldest First{sortBy === "oldest" ? " ✓" : ""}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy("a-z")}>
+                        A - Z{sortBy === "a-z" ? " ✓" : ""}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy("z-a")}>
+                        Z - A{sortBy === "z-a" ? " ✓" : ""}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy("modified")}>
+                        Last Modified{sortBy === "modified" ? " ✓" : ""}
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
 
@@ -319,28 +338,51 @@ export default function MyListingsPage() {
                     )}
                   </div>
                 ) : viewMode === "grid" ? (
-                  <div className="grid grid-cols-4 gap-3 pt-[20px]">
+                  <div className="grid grid-cols-4 gap-4 pt-[20px]">
                     {filteredListings.map((listing) => (
-                      <article key={listing.id}>
-                        <div className="group h-[170px] relative rounded-lg overflow-hidden bg-gray-100">
+                      <article
+                        key={listing.id}
+                        className="group rounded-xl bg-white shadow-sm border border-gray-200 overflow-hidden"
+                      >
+                        <div className="h-[170px] relative overflow-hidden bg-gray-100">
                           {listing.mediaUrl ? (
                             <Image
-                              className="object-cover"
+                              className="object-cover group-hover:scale-105 transition-transform duration-300"
                               src={listing.mediaUrl}
                               alt={listing.title}
                               fill
                             />
                           ) : (
-                            <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-150">
                               <Briefcase className="size-10 text-gray-300" />
                             </div>
                           )}
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/50 group-hover:opacity-100 opacity-0 transition duration-300">
-                            <div className="absolute top-2.5 right-2.5">
-                              <DropdownMenu>
+                          <div
+                            className={cn(
+                              "absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[2px] transition duration-300 cursor-pointer",
+                              openMenuId === listing.id
+                                ? "opacity-100"
+                                : "opacity-0 group-hover:opacity-100"
+                            )}
+                            onClick={() => goEdit(listing.id)}
+                          >
+                            <div
+                              className="absolute top-2.5 right-2.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <DropdownMenu
+                                open={openMenuId === listing.id}
+                                onOpenChange={(open) =>
+                                  setOpenMenuId(open ? listing.id : null)
+                                }
+                              >
                                 <DropdownMenuTrigger asChild>
                                   <IconButton
-                                    className="text-white size-[27px] rounded-full bg-white/20 hover:text-dark-blue-400 hover:bg-white"
+                                    className={cn(
+                                      "text-white size-[27px] rounded-full bg-white/20 hover:text-dark-blue-400 hover:bg-white",
+                                      openMenuId === listing.id &&
+                                        "text-dark-blue-400 bg-white"
+                                    )}
                                     visual="gray"
                                     asChild
                                   >
@@ -352,37 +394,30 @@ export default function MyListingsPage() {
                                 {renderListingMenu(listing.id)}
                               </DropdownMenu>
                             </div>
-                            <button
-                              onClick={() => goEdit(listing.id)}
-                              className="focus-visible:outline-none text-white text-xs leading-none font-semibold"
-                            >
+                            <span className="text-white text-sm font-medium tracking-wide">
                               View Details
-                            </button>
+                            </span>
+                          </div>
+                          {/* Status indicator on image */}
+                          <div className="absolute top-2.5 left-2.5 opacity-100 group-hover:opacity-0 transition-opacity duration-300">
+                            <Badge
+                              size="md"
+                              visual={statusToBadgeVisual(listing.status)}
+                            >
+                              {listing.status}
+                            </Badge>
                           </div>
                         </div>
-                        <div className="mt-2">
-                          <div className="flex items-start gap-x-3">
-                            <div className="space-y-1.5 flex-auto min-w-0">
-                              <h2
-                                className="text-sm font-semibold text-dark-blue-400 line-clamp-2 hover:underline cursor-pointer"
-                                onClick={() => goEdit(listing.id)}
-                              >
-                                {listing.title}
-                              </h2>
-                              <div className="flex items-center gap-x-1.5 mt-1.5">
-                                <Badge
-                                  size="md"
-                                  visual={statusToBadgeVisual(listing.status)}
-                                >
-                                  {listing.status}
-                                </Badge>
-                                <span className="text-xs leading-none text-dark-blue-400">
-                                  Updated{" "}
-                                  {formatRelativeTime(listing.updatedAt)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
+                        <div className="px-3.5 py-3">
+                          <h2
+                            className="text-sm font-semibold text-dark-blue-400 line-clamp-1 hover:text-primary-500 cursor-pointer transition-colors duration-150"
+                            onClick={() => goEdit(listing.id)}
+                          >
+                            {listing.title || "Untitled Listing"}
+                          </h2>
+                          <p className="text-xs text-gray-400 mt-1.5">
+                            Updated {formatRelativeTime(listing.updatedAt)}
+                          </p>
                         </div>
                       </article>
                     ))}
@@ -469,7 +504,10 @@ export default function MyListingsPage() {
 
         <Dialog
           open={showNewListingDialog}
-          onOpenChange={setShowNewListingDialog}
+          onOpenChange={(open) => {
+            setShowNewListingDialog(open)
+            if (!open) setCreatingType(null)
+          }}
         >
           <DialogContent className="sm:max-w-md p-0 overflow-hidden">
             <div className="p-6 pb-2">
@@ -484,34 +522,28 @@ export default function MyListingsPage() {
               {newListingOptions.map((option) => (
                 <button
                   key={option.type}
-                  className="w-full flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 transition-colors text-left group"
-                  onClick={() => {
-                    setShowNewListingDialog(false)
-                    // Pre-create an "Untitled" draft so that simply clicking
-                    // this button results in a listing, even if the user
-                    // never enters anything and navigates away.
-                    const draftId = `draft-${Date.now()}-${Math.random()
-                      .toString(36)
-                      .slice(2, 8)}`
+                  disabled={creatingType !== null}
+                  className="w-full flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 transition-colors text-left group disabled:opacity-50"
+                  onClick={async () => {
+                    setCreatingType(option.type)
                     try {
-                      const key = MY_LISTINGS_STORAGE_KEY
-                      const raw = window.localStorage.getItem(key)
-                      const drafts = raw ? JSON.parse(raw) : {}
-                      drafts[draftId] = {
-                        id: draftId,
-                        projectInfo: { title: "Untitled" },
-                        media: {},
-                        projectScope: [],
-                        currentStep: 0,
-                        savedAt: new Date().toISOString(),
+                      const res = await ProjectAPI.CreateProjectDraft({
+                        title: "",
+                        listingType: option.type,
+                      })
+                      const draftId =
+                        res?.data?.projectId ?? res?.data?.id
+                      if (draftId) {
+                        setShowNewListingDialog(false)
+                        router.push(`/my-listings/${draftId}`)
+                      } else {
+                        console.error("No draft ID returned", res)
+                        setCreatingType(null)
                       }
-                      window.localStorage.setItem(key, JSON.stringify(drafts))
-                    } catch {
-                      /* ignore */
+                    } catch (err) {
+                      console.error("Failed to create draft", err)
+                      setCreatingType(null)
                     }
-                    router.push(
-                      `${option.href}?type=${option.type}&draftId=${draftId}`
-                    )
                   }}
                 >
                   <div className="size-10 rounded-lg bg-primary-50 flex items-center justify-center flex-none">
@@ -525,7 +557,11 @@ export default function MyListingsPage() {
                       {option.description}
                     </p>
                   </div>
-                  <ChevronRight className="size-4 text-gray-300 group-hover:text-gray-500 flex-none" />
+                  {creatingType === option.type ? (
+                    <div className="size-4 border-2 border-primary-500 border-t-transparent rounded-full animate-spin flex-none" />
+                  ) : (
+                    <ChevronRight className="size-4 text-gray-300 group-hover:text-gray-500 flex-none" />
+                  )}
                 </button>
               ))}
             </div>

@@ -364,6 +364,11 @@ async function bootstrap(): Promise<void> {
     const api = createApiClient({
       baseUrl: apiBaseUrl,
       logger,
+      // doc 15 §7: the HttpClient itself is responsible for guaranteeing
+      // "no stale tokens are possible" — on a 401 it refreshes and
+      // transparently retries the same request, so no caller (including
+      // the doc 16 sync queue) ever needs to know a token expired.
+      onUnauthorized: () => authService?.handleUnauthorized() ?? Promise.resolve(false),
     });
     const outbox = createOutbox({
       store: createSqliteOutboxStore(db),
@@ -396,6 +401,8 @@ async function bootstrap(): Promise<void> {
         screenshotService: screenshotService ?? undefined,
         getDeviceId: () => repos.device.findSelf()?.id ?? null,
         getUserId: () => authService?.getCurrentUser()?.id ?? null,
+        getSessionById: (id) => repos.session.findById(id),
+        listTimeEntriesForSession: (sessionId) => repos.timeEntry.listForSession(sessionId),
         logger,
       }).detach;
     }
@@ -468,7 +475,7 @@ async function bootstrap(): Promise<void> {
     // Resolve tray icon dir from packaged resources or dev tree.
     const resourcesRoot = app.isPackaged
       ? process.resourcesPath
-      : path.join(__dirname, '..', '..', 'resources');
+      : path.join(__dirname, '..', '..', '..', 'resources');
     const fallbackIcon = path.join(resourcesRoot, 'icon.png');
 
     trayService = createTrayService({

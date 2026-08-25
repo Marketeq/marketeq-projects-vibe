@@ -113,7 +113,9 @@ const EmojiPickerImpl = ({
 
   const filteredEmojis = React.useMemo(
     () =>
-      keys(omit(configByCategory, Categories.CUSTOM, Categories.SUGGESTED)).reduce(
+      keys(
+        omit(configByCategory, Categories.CUSTOM, Categories.SUGGESTED)
+      ).reduce(
         (prev, current) => {
           const values = emojis[current].reduce(
             (prev, current) =>
@@ -150,6 +152,7 @@ const EmojiPickerImpl = ({
     const response = await fetch(url)
     return response.json() as Promise<Gifs>
   }, [url])
+  const gifResults = value?.results ?? []
 
   return (
     <Popover>
@@ -268,8 +271,8 @@ const EmojiPickerImpl = ({
               >
                 <div className="grid grid-cols-2 gap-x-1">
                   <div className="grid gap-y-1">
-                    {value?.results
-                      .slice(0, getMiddleIndex(value.results))
+                    {gifResults
+                      .slice(0, getMiddleIndex(gifResults))
                       .map((gif) => (
                         <button
                           key={gif.id}
@@ -285,21 +288,19 @@ const EmojiPickerImpl = ({
                       ))}
                   </div>
                   <div className="grid gap-y-1">
-                    {value?.results
-                      .slice(getMiddleIndex(value.results))
-                      .map((gif) => (
-                        <button
-                          key={gif.id}
-                          onClick={() => handleGifClick(gif)}
-                          className="focus-visible:outline-none"
-                        >
-                          <img
-                            src={first(gif.media).gif.url}
-                            className="object-contain"
-                            alt={gif.content_description}
-                          />
-                        </button>
-                      ))}
+                    {gifResults.slice(getMiddleIndex(gifResults)).map((gif) => (
+                      <button
+                        key={gif.id}
+                        onClick={() => handleGifClick(gif)}
+                        className="focus-visible:outline-none"
+                      >
+                        <img
+                          src={first(gif.media).gif.url}
+                          className="object-contain"
+                          alt={gif.content_description}
+                        />
+                      </button>
+                    ))}
                   </div>
                 </div>
               </ScrollArea>
@@ -315,9 +316,11 @@ const EmojiPickerImpl = ({
 // The trigger is a static IconButton — re-creating its element on every
 // parent render shouldn't force EmojiPicker to re-render and rebuild its
 // entire popover content tree.
-export const EmojiPicker = React.memo(EmojiPickerImpl, (prev, next) =>
-  prev.onEmojiSelect === next.onEmojiSelect &&
-  prev.onGifSelect === next.onGifSelect &&
-  prev.align === next.align &&
-  prev.side === next.side,
+export const EmojiPicker = React.memo(
+  EmojiPickerImpl,
+  (prev, next) =>
+    prev.onEmojiSelect === next.onEmojiSelect &&
+    prev.onGifSelect === next.onGifSelect &&
+    prev.align === next.align &&
+    prev.side === next.side
 )

@@ -27,8 +27,15 @@ export class EarningsClient {
     private readonly http: HttpService,
     private readonly config: ConfigService,
   ) {
-    this.baseUrl = this.config.getOrThrow('EARNINGS_SERVICE_URL');
-    this.serviceToken = this.config.getOrThrow('INTERNAL_SERVICE_TOKEN');
+    // ecosystem.config.js runs earnings-service on 3026 — EARNINGS_SERVICE_URL
+    // is never actually set in any env file, so this fallback is the real
+    // value in practice. It previously pointed at 3027, where nothing
+    // listens, silently breaking every withdrawal validate-amount/initiate
+    // call (ECONNREFUSED -> generic 500 ERR_INTERNAL) and the scheduled
+    // payout engine's balance check (schedule.service.ts uses this same
+    // client).
+    this.baseUrl = this.config.get('EARNINGS_SERVICE_URL') ?? 'http://localhost:3026';
+    this.serviceToken = this.config.get('INTERNAL_SERVICE_TOKEN') ?? '';
   }
 
   /**

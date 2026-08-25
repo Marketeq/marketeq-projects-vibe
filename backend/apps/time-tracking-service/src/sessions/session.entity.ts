@@ -31,6 +31,30 @@ export class Session {
   @Column({ name: 'billable_seconds', type: 'int', default: 0 })
   billableSeconds!: number;
 
+  @Column({ name: 'paid_break_seconds', type: 'int', default: 0 })
+  paidBreakSeconds!: number;
+
+  @Column({ name: 'unpaid_break_seconds', type: 'int', default: 0 })
+  unpaidBreakSeconds!: number;
+
+  @Column({ name: 'idle_seconds', type: 'int', default: 0 })
+  idleSeconds!: number;
+
+  @Column({ type: 'boolean', default: false })
+  disputed!: boolean;
+
+  @Column({ type: 'boolean', nullable: true })
+  approved!: boolean | null;
+
+  @Column({ name: 'approved_at', type: 'timestamptz', nullable: true })
+  approvedAt!: Date | null;
+
+  @Column({ name: 'approved_by', type: 'text', nullable: true })
+  approvedBy!: string | null;
+
+  @Column({ name: 'idempotency_key', type: 'text', nullable: true })
+  idempotencyKey!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

@@ -1,19 +1,19 @@
-import { Given, When, Then } from '@cucumber/cucumber';
-import { expect } from '@playwright/test';
+import { Given, Then, When } from "@cucumber/cucumber"
+import { expect } from "@playwright/test"
 
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000"
 
 /**
  * SHARED NAVIGATION
  * Matches: Given I am on the "Sign Up" page
  */
-Given('I am on the {string} page', async function (pageName: string) {
-  let path = '/';
-  if (pageName.toLowerCase().includes('sign up')) path = '/sign-up';
-  if (pageName.toLowerCase().includes('sign in')) path = '/sign-in';
-  
-  await this.page.goto(`${BASE_URL}${path}`, { waitUntil: 'domcontentloaded' });
-});
+Given("I am on the {string} page", async function (pageName: string) {
+  let path = "/"
+  if (pageName.toLowerCase().includes("sign up")) path = "/sign-up"
+  if (pageName.toLowerCase().includes("sign in")) path = "/sign-in"
+
+  await this.page.goto(`${BASE_URL}${path}`, { waitUntil: "domcontentloaded" })
+})
 
 /**
  * SHARED BUTTON ACTIONS
@@ -22,62 +22,72 @@ Given('I am on the {string} page', async function (pageName: string) {
  * Matches: And I click "Go to Dashboard"
  */
 
-When('I click {string}', async function (btnText: string) {
-  console.log(`🔍 Looking for button: "${btnText}"`);
-  
+When("I click {string}", async function (btnText: string) {
+  console.log(`🔍 Looking for button: "${btnText}"`)
+
   // Try exact match first
-  let button = this.page.getByRole("button", { name: new RegExp(`^${btnText}$`, "i") }).last();
-  
-  let isVisible = await button.isVisible().catch(() => false);
-  
+  let button = this.page
+    .getByRole("button", { name: new RegExp(`^${btnText}$`, "i") })
+    .last()
+
+  let isVisible = await button.isVisible().catch(() => false)
+
   // If exact match not found, try partial match for "Go to Dashboard"
   if (!isVisible && btnText.toLowerCase().includes("go to dashboard")) {
-    console.log(`⚠️ Exact match not found, trying variations...`);
+    console.log(`⚠️ Exact match not found, trying variations...`)
     // Try variations
     const variations = [
       /go to dashboard/i,
       /dashboard/i,
       /continue/i,
       /next/i,
-      /proceed/i
-    ];
-    
+      /proceed/i,
+    ]
+
     for (const pattern of variations) {
-      button = this.page.getByRole("button", { name: pattern }).last();
-      isVisible = await button.isVisible().catch(() => false);
+      button = this.page.getByRole("button", { name: pattern }).last()
+      isVisible = await button.isVisible().catch(() => false)
       if (isVisible) {
-        console.log(`✅ Found button with pattern: ${pattern}`);
-        break;
+        console.log(`✅ Found button with pattern: ${pattern}`)
+        break
       }
     }
   }
-  
+
   // Wait for it to be ready
-  await expect(button).toBeVisible({ timeout: 15000 });
-  await expect(button).toBeEnabled();
-  console.log(`✅ Button found and enabled`);
-  
+  await expect(button).toBeVisible({ timeout: 15000 })
+  await expect(button).toBeEnabled()
+  console.log(`✅ Button found and enabled`)
+
   // Standard "Continue" logic: handle potential overlays
-  if (btnText.toLowerCase() === 'continue') {
-    await this.page.keyboard.press("Escape").catch(() => {});
+  if (btnText.toLowerCase() === "continue") {
+    await this.page.keyboard.press("Escape").catch(() => {})
   }
-  
-  await button.click({ force: true });
-});
+
+  await button.click({ force: true })
+})
 
 /**
  * SHARED REDIRECTS
  * Matches: Then I should be redirected to the /talent-dashboard
  */
-Then('I should be redirected to the {string}', async function (expectedPath: string) {
-  // Wait for the URL to change to the expected path
-  await expect(this.page).toHaveURL(new RegExp(expectedPath), { timeout: 15000 });
-});
+Then(
+  "I should be redirected to the {string}",
+  async function (expectedPath: string) {
+    // Wait for the URL to change to the expected path
+    await expect(this.page).toHaveURL(new RegExp(expectedPath), {
+      timeout: 15000,
+    })
+  }
+)
 
 /**
  * SHARED STATE VERIFICATION
  * Matches: Then I should reach the final "What would you like to do next?" success screen
  */
-Then('I should reach the final {string} success screen', async function (message: string) {
-  await expect(this.page.getByText(message)).toBeVisible({ timeout: 15000 });
-});
+Then(
+  "I should reach the final {string} success screen",
+  async function (message: string) {
+    await expect(this.page.getByText(message)).toBeVisible({ timeout: 15000 })
+  }
+)

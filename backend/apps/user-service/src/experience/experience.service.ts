@@ -142,8 +142,11 @@ export class ExperienceService {
 
     Object.assign(experience, {
       ...dto,
-      startDate: dto.startDate ? new Date(dto.startDate) : experience.startDate,
-      endDate: dto.endDate ? new Date(dto.endDate) : experience.endDate,
+      startDate: dto.startDate ?? experience.startDate,
+      endDate:
+        dto.isCurrentRole === true
+          ? null
+          : (dto.endDate ?? experience.endDate),
     });
 
     return this.experienceRepository.save(experience);

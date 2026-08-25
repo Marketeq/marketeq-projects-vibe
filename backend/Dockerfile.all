@@ -26,9 +26,11 @@ RUN npx nest build legal-service
 RUN npx nest build listings-service
 RUN npx nest build messaging-service
 RUN npx nest build notification-service
+RUN npx nest build offer-service
 RUN npx nest build payout-service
 RUN npx nest build portfolio-service
 RUN npx nest build pricing-service
+RUN npx nest build resume-parsing-service
 RUN npx nest build search-service
 RUN npx nest build suggestions-service
 RUN npx nest build time-tracking-service
@@ -47,6 +49,7 @@ WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/boot-all.js ./boot-all.js
+COPY --from=builder /app/run-migrations.js ./run-migrations.js
 COPY --from=builder /app/libs/owner-target-grpc/proto ./libs/owner-target-grpc/proto
 
 EXPOSE 10000

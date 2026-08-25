@@ -1,16 +1,21 @@
 import {
   BadRequestException,
+  GatewayTimeoutException,
+  HttpException,
+  HttpStatus,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scryptSync } from 'crypto';
+import { resolve4, resolveMx } from 'dns/promises';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, Not, Repository } from 'typeorm';
+import { LessThan, Not, QueryFailedError, Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
@@ -24,6 +29,7 @@ import { BrevoService } from '../brevo/brevo.service';
 
 import { User } from '../user/entities/user.entity';
 import { Session } from '../session/entities/session.entity';
+import { PasswordHistory } from '../password-history/entities/password-history.entity';
 import { SessionResponseDto } from './dto/session-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -58,6 +64,9 @@ type AuthUserPayload = {
   twoFactorMethod?: string | null;
   firstName?: string;
   lastName?: string;
+  isNewUser?: boolean;
+  accountLinked?: boolean;
+  linkedProvider?: string;
 };
 
 type LoginResult =
@@ -74,13 +83,31 @@ type SyncRetryItem = {
 const normalizeKey = (value?: string) =>
   value ? value.replace(/\\n/g, '\n') : value;
 
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
+
 const parseExpiresIn = (value: string): number | StringValue =>
   /^\d+$/.test(value) ? Number(value) : (value as StringValue);
 
+const INVALID_EMAIL_OR_PASSWORD_MESSAGE = 'Invalid email or password';
+const PASSWORD_RESET_RATE_LIMIT_MESSAGE =
+  'Too many requests. Please try again later.';
+const PASSWORD_HISTORY_LIMIT = 5;
+
+type RateLimitBucket = {
+  count: number;
+  resetAt: number;
+};
+
 @Injectable()
 export class AuthService implements OnModuleInit, OnModuleDestroy {
+  // Hard ceiling on the signup-time domain check. Node's resolver retries
+  // internally and can stall for many seconds, and this sits in the
+  // synchronous registration path.
+  private static readonly DNS_LOOKUP_TIMEOUT_MS = 3000;
+
   private readonly logger = new Logger(AuthService.name);
   private readonly syncRetryQueue = new Map<string, SyncRetryItem>();
+  private readonly passwordResetRateLimits = new Map<string, RateLimitBucket>();
   private retryTimer: NodeJS.Timeout | null = null;
   private readonly syncRetryTickMs = 5000;
   private readonly syncRetryBaseDelayMs = 5000;
@@ -94,6 +121,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Session)
     private readonly sessionRepository: Repository<Session>,
+    @InjectRepository(PasswordHistory)
+    private readonly passwordHistoryRepository: Repository<PasswordHistory>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly brevoService: BrevoService,
@@ -122,7 +151,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private serializeUser(
     user: Pick<User, 'id' | 'username' | 'email' | 'provider' | 'hasPassword' | 'twoFactorEnabled'> & { twoFactorMethod?: string | null },
-    extra?: Pick<AuthUserPayload, 'firstName' | 'lastName'>,
+    extra?: Pick<AuthUserPayload, 'firstName' | 'lastName' | 'isNewUser' | 'accountLinked' | 'linkedProvider'>,
   ): AuthUserPayload {
     return {
       id: user.id,
@@ -137,8 +166,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   async register(dto: RegisterDto, userAgent = '', ipAddress = '') {
+    const email = normalizeEmail(dto.email);
+    await this.assertValidEmailDomain(email);
+
     const existingUser = await this.userRepository.findOne({
-      where: { email: dto.email },
+      where: { email },
     });
 
     if (existingUser) {
@@ -149,13 +181,18 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     const user = this.userRepository.create({
       username: dto.username,
-      email: dto.email,
+      email,
       password: hashedPassword,
       provider: 'EMAIL',
       hasPassword: true,
     });
 
-    await this.userRepository.save(user);
+    try {
+      await this.userRepository.save(user);
+    } catch (error) {
+      this.throwDuplicateEmailIfNeeded(error);
+      throw error;
+    }
 
     try {
       await this.syncUserProfile(user);
@@ -164,6 +201,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         `register: user profile sync failed for ${user.email}; continuing with auth user. reason=${(error as Error)?.message}`,
       );
     }
+
+    await this.sendPasswordCreatedEmail(user.email, user.username, 'register');
 
     const sessionId = randomUUID();
     const tokens = await this.issueTokens({
@@ -182,8 +221,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   async registerEmail(dto: RegisterEmailDto, userAgent = '', ipAddress = '') {
+    const email = normalizeEmail(dto.email);
+    await this.assertValidEmailDomain(email);
+
     const existingUser = await this.userRepository.findOne({
-      where: { email: dto.email },
+      where: { email },
     });
 
     if (existingUser) {
@@ -196,13 +238,18 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     const user = this.userRepository.create({
       username,
-      email: dto.email,
+      email,
       password: hashedPassword,
       provider: 'EMAIL',
       hasPassword: false,
     });
 
-    await this.userRepository.save(user);
+    try {
+      await this.userRepository.save(user);
+    } catch (error) {
+      this.throwDuplicateEmailIfNeeded(error);
+      throw error;
+    }
 
     try {
       await this.syncUserProfile(user);
@@ -235,6 +282,113 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     return { available: !existingUser };
+  }
+
+  // Format validation (@IsEmail) only checks shape, not whether the domain
+  // can actually receive mail — catches typos like "gmial.con" or made-up
+  // domains at sign-up time instead of a verification email silently
+  // going nowhere.
+  //
+  // Deliberately FAILS OPEN. Only a definitive NXDOMAIN/ENODATA on both the
+  // MX and the A record rejects a signup; a resolver timeout, SERVFAIL or
+  // network blip lets it through. A fail-closed check would turn one flaky
+  // resolver into a total signup outage that blames the user's address —
+  // catching a typo is never worth that trade.
+  private async assertValidEmailDomain(email: string): Promise<void> {
+    const domain = email.split('@')[1];
+    if (!domain) {
+      throw new BadRequestException('Invalid email address');
+    }
+
+    // NXDOMAIN / ENODATA are the only answers that definitively mean "this
+    // domain cannot receive mail". Anything else — timeout, SERVFAIL,
+    // EAI_AGAIN, refused — is inconclusive and must NOT reject the signup.
+    const isDefinitiveMiss = (err: unknown) => {
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      return code === 'ENOTFOUND' || code === 'ENODATA';
+    };
+
+    const lookup = async (
+      fn: (host: string) => Promise<unknown[]>,
+      kind: string,
+    ): Promise<'found' | 'missing' | 'inconclusive'> => {
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        const records = await Promise.race([
+          fn(domain),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () =>
+                reject(
+                  Object.assign(new Error(`${kind} lookup timed out`), {
+                    code: 'ETIMEOUT',
+                  }),
+                ),
+              AuthService.DNS_LOOKUP_TIMEOUT_MS,
+            );
+          }),
+        ]);
+        return Array.isArray(records) && records.length > 0
+          ? 'found'
+          : 'missing';
+      } catch (error) {
+        if (isDefinitiveMiss(error)) return 'missing';
+        this.logger.warn(
+          `${kind} lookup for "${domain}" was inconclusive (${
+            (error as NodeJS.ErrnoException)?.code ?? error
+          }) — allowing signup rather than blocking on DNS`,
+        );
+        return 'inconclusive';
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    const mx = await lookup(resolveMx, 'MX');
+    if (mx !== 'missing') return;
+
+    // A domain with no MX record is NOT necessarily undeliverable: RFC 5321
+    // §5.1 falls back to the A/AAAA record (implicit MX), which plenty of
+    // small self-hosted domains rely on. Only reject once both are absent.
+    const a = await lookup(resolve4, 'A');
+    if (a !== 'missing') return;
+
+    throw new BadRequestException("Email domain can't receive mail");
+  }
+
+  private throwDuplicateEmailIfNeeded(error: unknown): never | void {
+    if (this.isDuplicateEmailError(error)) {
+      throw new BadRequestException('User already exists');
+    }
+  }
+
+  private isDuplicateEmailError(error: unknown): boolean {
+    if (!(error instanceof QueryFailedError)) {
+      return false;
+    }
+
+    const driverError = error.driverError as
+      | {
+          code?: string;
+          constraint?: string;
+          detail?: string;
+          message?: string;
+        }
+      | undefined;
+
+    if (driverError?.code !== '23505') {
+      return false;
+    }
+
+    const constraint = driverError.constraint?.toLowerCase() ?? '';
+    const detail = driverError.detail?.toLowerCase() ?? '';
+    const message = driverError.message?.toLowerCase() ?? '';
+
+    return (
+      constraint.includes('email') ||
+      detail.includes('(email)=') ||
+      message.includes('(email)=')
+    );
   }
 
   async updateUsername(
@@ -289,6 +443,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       throw new UnauthorizedException('Invalid user');
     }
 
+    const hadPassword = current.hasPassword;
     current.password = await bcrypt.hash(dto.password, 10);
     current.hasPassword = true;
     await this.userRepository.save(current);
@@ -299,6 +454,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         `setPassword: user profile sync failed for ${current.email}; continuing with auth user. reason=${(error as Error)?.message}`,
       );
+    }
+
+    if (!hadPassword) {
+      await this.sendPasswordCreatedEmail(current.email, current.username, 'setPassword');
     }
 
     return {
@@ -312,18 +471,18 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'twoFactorEnabled', 'twoFactorMethod'],
     });
 
-    if (!user) throw new UnauthorizedException('Invalid credentials');
+    if (!user) throw new UnauthorizedException(INVALID_EMAIL_OR_PASSWORD_MESSAGE);
 
     if (!user.hasPassword || !user.password) {
-      throw new UnauthorizedException('Incorrect email or password');
+      throw new UnauthorizedException(INVALID_EMAIL_OR_PASSWORD_MESSAGE);
     }
 
     const isMatch = await bcrypt.compare(dto.password, user.password);
-    if (!isMatch) throw new UnauthorizedException('Invalid credentials');
+    if (!isMatch) throw new UnauthorizedException(INVALID_EMAIL_OR_PASSWORD_MESSAGE);
 
     if (user.twoFactorEnabled) {
       const method = user.twoFactorMethod ?? 'totp';
-      const partialToken = await this.issuePartialToken(user);
+      const partialToken = await this.issuePartialToken(user, dto.rememberMe ?? false);
 
       if (method === 'sms') {
         try {
@@ -345,9 +504,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const sessionId = randomUUID();
-    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId });
+    const rememberMe = dto.rememberMe ?? false;
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, rememberMe });
 
-    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe });
 
     return {
       ...tokens,
@@ -405,18 +565,44 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async forgotPassword(dto: ForgotPasswordDto) {
+  async forgotPassword(dto: ForgotPasswordDto, ipAddress = '') {
+    const normalizedEmail = normalizeEmail(dto.email);
+    this.enforcePasswordResetRateLimit(
+      `forgot-password:ip:${this.normalizeRateLimitIp(ipAddress)}`,
+      'AUTH_FORGOT_PASSWORD_IP_LIMIT',
+      10,
+      'AUTH_FORGOT_PASSWORD_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+    this.enforcePasswordResetRateLimit(
+      `forgot-password:email:${normalizedEmail}`,
+      'AUTH_FORGOT_PASSWORD_EMAIL_LIMIT',
+      3,
+      'AUTH_FORGOT_PASSWORD_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+
     const user = await this.userRepository.findOne({
-      where: { email: dto.email },
-      select: ['id', 'email', 'username'],
+      where: { email: normalizedEmail },
+      select: ['id', 'email', 'username', 'passwordResetVersion'],
     });
 
     const message =
       'If an account exists for this email, password reset instructions will be sent.';
 
     if (!user) {
-      return { message };
+      this.logger.log(
+        `forgotPassword: reset requested for unknown email (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
+      return { accountFound: false };
     }
+
+    this.logger.log(
+      `forgotPassword: reset requested for userId=${user.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
+
+    user.passwordResetVersion = randomUUID();
+    await this.userRepository.save(user);
 
     const resetToken = await this.issuePasswordResetToken(user);
 
@@ -426,16 +612,35 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         ? `${this.configService.get<string>('FRONTEND_URL')!.replace(/\/$/, '')}/reset-password`
         : undefined);
 
-    const base = dto.redirectUrl ?? fallbackBase;
+    const base = this.resolveTrustedPasswordResetBase(dto.redirectUrl, fallbackBase);
     const resetUrl =
       base && resetToken
         ? `${base}${base.includes('?') ? '&' : '?'}token=${encodeURIComponent(resetToken)}`
         : undefined;
 
     if (resetUrl) {
+      // Try to fetch the user's first name from user-service for a friendlier email
+      let displayName = user.username;
+      try {
+        const userServiceUrl =
+          this.configService.get<string>('USER_SERVICE_URL') ?? 'http://localhost:3002';
+        const internalToken = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+        const profileRes = await axios.get(
+          `${userServiceUrl.replace(/\/$/, '')}/internal/users/${user.id}/summary`,
+          {
+            headers: internalToken ? { 'x-internal-token': internalToken } : {},
+            timeout: 3000,
+          },
+        );
+        const firstName = profileRes?.data?.firstName;
+        if (firstName) displayName = firstName;
+      } catch {
+        // fall back to username
+      }
+
       try {
         await this.brevoService.sendPasswordResetEmail(user.email, {
-          firstName: user.username,
+          firstName: displayName,
           resetUrl,
         });
       } catch (error) {
@@ -448,42 +653,176 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const isDev = this.configService.get<string>('NODE_ENV') !== 'production';
 
     return {
+      accountFound: true,
       message,
       ...(isDev && { reset_token: resetToken, reset_url: resetUrl }),
     };
   }
 
-  async resetPassword(dto: ResetPasswordDto) {
-    let payload: { sub?: string; email?: string; type?: string };
+  async resetPassword(dto: ResetPasswordDto, ipAddress = '', userAgent = '') {
+    this.enforcePasswordResetRateLimit(
+      `reset-password:ip:${this.normalizeRateLimitIp(ipAddress)}`,
+      'AUTH_RESET_PASSWORD_IP_LIMIT',
+      20,
+      'AUTH_RESET_PASSWORD_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+
+    let payload: {
+      sub?: string;
+      email?: string;
+      type?: string;
+      resetVersion?: string;
+    };
 
     try {
       payload = await this.jwtService.verifyAsync(dto.token, {
         algorithms: ['RS256'],
       });
     } catch {
+      this.logger.warn(
+        `resetPassword: rejected invalid/expired token (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
-    if (!payload?.sub || payload.type !== 'reset') {
+    if (!payload?.sub || payload.type !== 'reset' || !payload.resetVersion) {
+      this.logger.warn(
+        `resetPassword: rejected malformed token payload (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
     const user = await this.userRepository.findOne({
       where: { id: payload.sub },
-      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'twoFactorEnabled'],
+      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'twoFactorEnabled', 'passwordResetVersion'],
     });
 
-    if (!user) {
+    if (!user || user.passwordResetVersion !== payload.resetVersion) {
+      this.logger.warn(
+        `resetPassword: rejected reused/stale token for userId=${payload.sub} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
       throw new UnauthorizedException('Invalid or expired reset token');
     }
 
-    user.password = await bcrypt.hash(dto.password, 10);
+    await this.assertPasswordNotReused(user, dto.password);
+
+    const nextResetVersion = randomUUID();
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+    await this.userRepository.manager.transaction(async (manager) => {
+      const updateResult = await manager.getRepository(User).update(
+        { id: user.id, passwordResetVersion: payload.resetVersion },
+        {
+          password: hashedPassword,
+          hasPassword: true,
+          passwordResetVersion: nextResetVersion,
+        },
+      );
+
+      if (!updateResult.affected) {
+        throw new UnauthorizedException('Invalid or expired reset token');
+      }
+
+      await manager.getRepository(PasswordHistory).save({
+        userId: user.id,
+        passwordHash: hashedPassword,
+      });
+
+      const staleHistory = await manager
+        .getRepository(PasswordHistory)
+        .find({
+          where: { userId: user.id },
+          order: { createdAt: 'DESC' },
+          skip: PASSWORD_HISTORY_LIMIT,
+        });
+
+      if (staleHistory.length) {
+        await manager
+          .getRepository(PasswordHistory)
+          .delete(staleHistory.map((entry) => entry.id));
+      }
+    });
+
     user.hasPassword = true;
-    await this.userRepository.save(user);
+    user.passwordResetVersion = nextResetVersion;
 
     await this.syncUserProfile(user);
 
-    return { success: true };
+    this.logger.log(
+      `resetPassword: password reset for userId=${user.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
+
+    const sessionId = randomUUID();
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId });
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+
+    return {
+      success: true,
+      ...tokens,
+      sessionId,
+      user: this.serializeUser(user),
+    };
+  }
+
+  private async assertPasswordNotReused(
+    user: Pick<User, 'id' | 'password'>,
+    newPassword: string,
+  ): Promise<void> {
+    const recentHashes: string[] = [];
+
+    if (user.password) {
+      recentHashes.push(user.password);
+    }
+
+    const history = await this.passwordHistoryRepository.find({
+      where: { userId: user.id },
+      order: { createdAt: 'DESC' },
+      take: PASSWORD_HISTORY_LIMIT - 1,
+      select: ['passwordHash'],
+    });
+    recentHashes.push(...history.map((entry) => entry.passwordHash));
+
+    for (const hash of recentHashes) {
+      if (await bcrypt.compare(newPassword, hash)) {
+        throw new BadRequestException(
+          `You cannot reuse one of your last ${PASSWORD_HISTORY_LIMIT} passwords.`,
+        );
+      }
+    }
+  }
+
+  /**
+   * True if the error means the provider was unreachable or too slow to
+   * respond (network error, timeout) rather than a genuine 4xx rejection.
+   */
+  private isProviderUnreachable(error: unknown): boolean {
+    return (
+      axios.isAxiosError(error) &&
+      (!error.response || error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT')
+    );
+  }
+
+  /**
+   * Classifies a failed outbound OAuth provider call (Google/LinkedIn) and
+   * throws the appropriate exception: a timeout/no-response distinguishes
+   * "provider unreachable" from a genuine 4xx "token/code rejected" case,
+   * so the frontend shows a non-technical "try again" message instead of
+   * a misleading "invalid token" during a provider outage or timeout.
+   * Timeout (504) vs. unreachable (503) is kept distinct at the status-code
+   * level for logs/monitoring, but both use the same user-facing message.
+   */
+  private throwProviderError(error: unknown, provider: 'Google' | 'LinkedIn', invalidMessage: string): never {
+    const unavailableMessage = `${provider} sign-in is unavailable right now. Please try again shortly.`;
+    if (axios.isAxiosError(error)) {
+      if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        throw new GatewayTimeoutException(unavailableMessage);
+      }
+      if (!error.response) {
+        throw new ServiceUnavailableException(unavailableMessage);
+      }
+    }
+    throw new UnauthorizedException(invalidMessage);
   }
 
   async loginWithGoogle(dto: GoogleLoginDto, userAgent = '', ipAddress = '') {
@@ -534,13 +873,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           body.toString(),
           {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 10000,
           },
         );
 
         accessToken = response.data?.access_token ?? accessToken;
         idToken = response.data?.id_token ?? idToken;
-      } catch {
-        throw new UnauthorizedException('Invalid Google auth code');
+      } catch (error) {
+        this.throwProviderError(error, 'Google', 'Invalid Google auth code');
       }
     }
 
@@ -571,11 +911,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           'https://oauth2.googleapis.com/tokeninfo',
           {
             params: { id_token: idToken },
+            timeout: 10000,
           },
         );
         tokenInfo = response.data ?? {};
-      } catch {
-        throw new UnauthorizedException('Invalid Google token');
+      } catch (error) {
+        this.throwProviderError(error, 'Google', 'Invalid Google token');
       }
 
       if (!tokenInfo?.email || !tokenInfo?.sub) {
@@ -603,11 +944,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           'https://oauth2.googleapis.com/tokeninfo',
           {
             params: { access_token: accessToken },
+            timeout: 10000,
           },
         );
         tokenInfo = response.data ?? {};
-      } catch {
-        throw new UnauthorizedException('Invalid Google access token');
+      } catch (error) {
+        this.throwProviderError(error, 'Google', 'Invalid Google access token');
       }
 
       aud = tokenInfo.audience ?? tokenInfo.aud ?? tokenInfo.issued_to;
@@ -625,15 +967,16 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           'https://www.googleapis.com/oauth2/v3/userinfo',
           {
             headers: { Authorization: `Bearer ${accessToken}` },
+            timeout: 10000,
           },
         );
         email = email ?? response.data?.email;
         emailVerified = emailVerified ?? response.data?.email_verified;
         firstName = response.data?.given_name;
         lastName = response.data?.family_name;
-      } catch {
+      } catch (error) {
         if (!email) {
-          throw new UnauthorizedException('Invalid Google access token');
+          this.throwProviderError(error, 'Google', 'Invalid Google access token');
         }
       }
 
@@ -658,6 +1001,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     let createdUser = false;
+    let accountLinked = false;
     if (!user) {
       const username = await this.generatePlaceholderUsername();
       const hashedPassword = await bcrypt.hash(
@@ -675,20 +1019,23 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
       await this.userRepository.save(user);
       createdUser = true;
+    } else if (user.provider !== 'GOOGLE') {
+      // Existing account (created via email/password or another provider)
+      // is being accessed with Google for the first time — link it rather
+      // than creating a duplicate account.
+      accountLinked = true;
+      user.provider = 'GOOGLE';
+      await this.userRepository.update({ id: user.id }, { provider: 'GOOGLE' });
     }
 
     try {
       await this.syncUserProfile(user, { firstName, lastName });
     } catch (error) {
-      if (createdUser) {
-        // New user: rollback the auth record so the user can retry cleanly.
-        await this.userRepository.delete({ id: user.id });
-        throw error;
-      }
-      // Existing user: profile already exists in user-service — do not
-      // block login just because the sync refresh failed.
+      // Profile sync failure should never block OAuth login.
+      // For new users the profile will be created during onboarding.
+      // For existing users the profile already exists in user-service.
       this.logger.warn(
-        `[google] sync failed for existing user ${user.id} but proceeding with login`,
+        `[google] sync failed for ${createdUser ? 'new' : 'existing'} user ${user.id} but proceeding with login: ${(error as Error)?.message}`,
       );
     }
 
@@ -704,7 +1051,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return {
       ...tokens,
       sessionId,
-      user: this.serializeUser(user, { firstName, lastName }),
+      user: this.serializeUser(user, {
+        firstName,
+        lastName,
+        isNewUser: createdUser,
+        ...(accountLinked && { accountLinked: true, linkedProvider: 'GOOGLE' }),
+      }),
     };
   }
 
@@ -749,12 +1101,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           body.toString(),
           {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 10000,
           },
         );
 
         accessToken = response.data?.access_token ?? accessToken;
-      } catch {
-        throw new UnauthorizedException('Invalid LinkedIn auth code');
+      } catch (error) {
+        this.throwProviderError(error, 'LinkedIn', 'Invalid LinkedIn auth code');
       }
     }
 
@@ -781,6 +1134,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     let createdUser = false;
+    let accountLinked = false;
     if (!user) {
       const username = await this.generatePlaceholderUsername();
       const hashedPassword = await bcrypt.hash(
@@ -798,17 +1152,23 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
       await this.userRepository.save(user);
       createdUser = true;
+    } else if (user.provider !== 'LINKEDIN') {
+      // Existing account (created via email/password or another provider)
+      // is being accessed with LinkedIn for the first time — link it rather
+      // than creating a duplicate account.
+      accountLinked = true;
+      user.provider = 'LINKEDIN';
+      await this.userRepository.update({ id: user.id }, { provider: 'LINKEDIN' });
     }
 
     try {
       await this.syncUserProfile(user, { firstName, lastName });
     } catch (error) {
-      if (createdUser) {
-        await this.userRepository.delete({ id: user.id });
-        throw error;
-      }
+      // Profile sync failure should never block OAuth login.
+      // For new users the profile will be created during onboarding.
+      // For existing users the profile already exists in user-service.
       this.logger.warn(
-        `[linkedin] sync failed for existing user ${user.id} but proceeding with login`,
+        `[linkedin] sync failed for ${createdUser ? 'new' : 'existing'} user ${user.id} but proceeding with login: ${(error as Error)?.message}`,
       );
     }
 
@@ -824,13 +1184,22 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return {
       ...tokens,
       sessionId,
-      user: this.serializeUser(user, { firstName, lastName }),
+      user: this.serializeUser(user, {
+        firstName,
+        lastName,
+        isNewUser: createdUser,
+        ...(accountLinked && { accountLinked: true, linkedProvider: 'LINKEDIN' }),
+      }),
     };
   }
 
   async refresh(dto: RefreshDto): Promise<JwtPair & { sessionId?: string }> {
+    if (!dto.refresh_token) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
     const refreshSecret = this.getRefreshSecret();
-    let payload: { sub: string; email?: string; type?: string; sid?: string };
+    let payload: { sub: string; email?: string; type?: string; sid?: string; rememberMe?: boolean };
 
     try {
       payload = await this.jwtService.verifyAsync(dto.refresh_token, {
@@ -851,16 +1220,24 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         throw new UnauthorizedException('Session has been revoked');
       }
 
-      const newTokens = await this.issueTokens({ sub: payload.sub, email: payload.email ?? '', sessionId: payload.sid });
+      const submittedRefreshTokenHash = createHash('sha256').update(dto.refresh_token).digest('hex');
+      if (session.refreshTokenHash !== submittedRefreshTokenHash) {
+        await this.sessionRepository.delete({ id: session.id });
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      const rememberMe = payload.rememberMe ?? false;
+      const newTokens = await this.issueTokens({ sub: payload.sub, email: payload.email ?? '', sessionId: payload.sid, rememberMe });
 
       session.refreshTokenHash = createHash('sha256').update(newTokens.refresh_token).digest('hex');
       session.lastActiveAt = new Date();
+      session.expiresAt = new Date(Date.now() + this.refreshTtlMs(rememberMe));
       await this.sessionRepository.save(session);
 
       return { ...newTokens, sessionId: payload.sid };
     }
 
-    return this.issueTokens({ sub: payload.sub, email: payload.email ?? '' });
+    return this.issueTokens({ sub: payload.sub, email: payload.email ?? '', rememberMe: payload.rememberMe ?? false });
   }
 
   async logout(user: { id?: string; sub?: string }, refreshToken?: string) {
@@ -1074,7 +1451,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   async verifyTwoFactorLogin(partialToken: string, code: string, userAgent = '', ipAddress = '') {
-    let payload: { sub?: string; email?: string; type?: string };
+    let payload: { sub?: string; email?: string; type?: string; rememberMe?: boolean };
 
     try {
       payload = await this.jwtService.verifyAsync(partialToken, {
@@ -1113,9 +1490,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     await this.syncUserProfile(user);
 
     const sessionId = randomUUID();
-    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId });
+    const rememberMe = payload.rememberMe ?? false;
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, rememberMe });
 
-    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe });
 
     return { ...tokens, sessionId, user: this.serializeUser(user) };
   }
@@ -1321,9 +1699,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return payload.sub;
   }
 
-  private async issuePartialToken(user: { id: string; email: string }): Promise<string> {
+  private async issuePartialToken(user: { id: string; email: string }, rememberMe: boolean): Promise<string> {
     return this.jwtService.signAsync(
-      { sub: user.id, email: user.email, type: '2fa-pending' },
+      { sub: user.id, email: user.email, type: '2fa-pending', rememberMe },
       { expiresIn: '5m' },
     );
   }
@@ -1370,11 +1748,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     refreshToken: string;
     userAgent: string;
     ipAddress: string;
+    rememberMe?: boolean;
   }): Promise<void> {
     const hash = createHash('sha256').update(params.refreshToken).digest('hex');
-    const expiresInStr = this.configService.get<string>('AUTH_REFRESH_TOKEN_EXPIRES_IN') ?? '7d';
-    const expiresMs = this.parseExpiresInMs(expiresInStr);
-    const expiresAt = new Date(Date.now() + expiresMs);
+    const expiresAt = new Date(Date.now() + this.refreshTtlMs(params.rememberMe ?? false));
 
     const parser = new UAParser(params.userAgent);
     const browser = parser.getBrowser();
@@ -1407,6 +1784,17 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return num * (multipliers[unit] ?? 1000);
   }
 
+  private refreshTtlValue(rememberMe?: boolean): string {
+    if (rememberMe) {
+      return this.configService.get<string>('AUTH_REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN') ?? '14d';
+    }
+    return this.configService.get<string>('AUTH_REFRESH_TOKEN_EXPIRES_IN') ?? '5h';
+  }
+
+  private refreshTtlMs(rememberMe: boolean): number {
+    return this.parseExpiresInMs(this.refreshTtlValue(rememberMe));
+  }
+
   private async cleanupExpiredSessions(): Promise<void> {
     const result = await this.sessionRepository.delete({ expiresAt: LessThan(new Date()) });
     if (result.affected && result.affected > 0) {
@@ -1418,6 +1806,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     sub: string;
     email: string;
     sessionId?: string;
+    rememberMe?: boolean;
   }): Promise<JwtPair> {
     const accessPayload: Record<string, any> = { sub: payload.sub, email: payload.email };
     if (payload.sessionId) {
@@ -1426,14 +1815,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const access_token = this.jwtService.sign(accessPayload);
 
     const refreshSecret = this.getRefreshSecret();
-    const refreshExpires = parseExpiresIn(
-      this.configService.get<string>('AUTH_REFRESH_TOKEN_EXPIRES_IN') ?? '7d',
-    );
+    const rememberMe = payload.rememberMe ?? false;
+    const refreshExpires = parseExpiresIn(this.refreshTtlValue(rememberMe));
 
     const refreshPayload: Record<string, any> = {
       sub: payload.sub,
       email: payload.email,
       type: 'refresh',
+      rememberMe,
     };
     if (payload.sessionId) {
       refreshPayload.sid = payload.sessionId;
@@ -1451,15 +1840,111 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private async issuePasswordResetToken(user: {
     id: string;
     email: string;
+    passwordResetVersion?: string | null;
   }): Promise<string> {
     const resetExpires = parseExpiresIn(
-      this.configService.get<string>('AUTH_RESET_TOKEN_EXPIRES_IN') ?? '15m',
+      this.configService.get<string>('AUTH_RESET_TOKEN_EXPIRES_IN') ?? '24h',
     );
 
     return this.jwtService.signAsync(
-      { sub: user.id, email: user.email, type: 'reset' },
+      {
+        sub: user.id,
+        email: user.email,
+        type: 'reset',
+        resetVersion: user.passwordResetVersion,
+      },
       { expiresIn: resetExpires },
     );
+  }
+
+  private resolveTrustedPasswordResetBase(
+    requestedBase?: string,
+    fallbackBase?: string,
+  ): string | undefined {
+    if (!requestedBase) {
+      return fallbackBase;
+    }
+
+    const trustedOrigins = [
+      ...(this.configService.get<string>('FRONTEND_URL') ?? '')
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean),
+      fallbackBase,
+    ]
+      .filter((value): value is string => !!value)
+      .map((value) => {
+        try {
+          return new URL(value).origin;
+        } catch {
+          return undefined;
+        }
+      })
+      .filter((value): value is string => !!value);
+
+    try {
+      const requestedUrl = new URL(requestedBase);
+      if (trustedOrigins.includes(requestedUrl.origin)) {
+        return requestedBase;
+      }
+    } catch {
+      // Fall back to configured URL below.
+    }
+
+    return fallbackBase;
+  }
+
+  private enforcePasswordResetRateLimit(
+    key: string,
+    limitEnvKey: string,
+    defaultLimit: number,
+    windowEnvKey: string,
+    defaultWindowMs: number,
+  ): void {
+    const now = Date.now();
+    const limit = this.getPositiveIntegerConfig(limitEnvKey, defaultLimit);
+    const windowMs = this.getPositiveIntegerConfig(
+      windowEnvKey,
+      defaultWindowMs,
+    );
+
+    this.cleanupExpiredPasswordResetRateLimits(now);
+
+    const bucket = this.passwordResetRateLimits.get(key);
+    if (!bucket || bucket.resetAt <= now) {
+      this.passwordResetRateLimits.set(key, {
+        count: 1,
+        resetAt: now + windowMs,
+      });
+      return;
+    }
+
+    if (bucket.count >= limit) {
+      throw new HttpException(
+        PASSWORD_RESET_RATE_LIMIT_MESSAGE,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    bucket.count += 1;
+  }
+
+  private cleanupExpiredPasswordResetRateLimits(now = Date.now()): void {
+    for (const [key, bucket] of this.passwordResetRateLimits.entries()) {
+      if (bucket.resetAt <= now) {
+        this.passwordResetRateLimits.delete(key);
+      }
+    }
+  }
+
+  private normalizeRateLimitIp(ipAddress: string): string {
+    return ipAddress.trim() || 'unknown';
+  }
+
+  private getPositiveIntegerConfig(key: string, fallback: number): number {
+    const raw = this.configService.get<string>(key);
+    const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 
   private getRefreshSecret(): string {
@@ -1593,9 +2078,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   private async fetchLinkedInProfile(
     accessToken: string,
   ): Promise<{ email?: string; emailVerified?: boolean; firstName?: string; lastName?: string }> {
+    let firstStepUnreachable = false;
+
     try {
       const response = await axios.get('https://api.linkedin.com/v2/userinfo', {
         headers: { Authorization: `Bearer ${accessToken}` },
+        timeout: 10000,
       });
 
       const email = response.data?.email;
@@ -1612,7 +2100,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       if (email) {
         return { email, emailVerified, firstName, lastName };
       }
-    } catch {
+    } catch (error) {
+      firstStepUnreachable = this.isProviderUnreachable(error);
       // fallback below
     }
 
@@ -1625,13 +2114,17 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
             q: 'members',
             projection: '(elements*(handle~))',
           },
+          timeout: 10000,
         },
       );
 
       const email =
         response.data?.elements?.[0]?.['handle~']?.emailAddress ?? undefined;
       return { email };
-    } catch {
+    } catch (error) {
+      if (firstStepUnreachable || this.isProviderUnreachable(error)) {
+        this.throwProviderError(error, 'LinkedIn', 'Invalid LinkedIn token');
+      }
       return {};
     }
   }
@@ -1658,5 +2151,27 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private generateRandomPassword(): string {
     return randomBytes(16).toString('hex');
+  }
+
+  private async sendPasswordCreatedEmail(
+    email: string,
+    firstName: string | undefined,
+    context: string,
+  ): Promise<void> {
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL')?.replace(/\/$/, '');
+    const signInUrl =
+      this.configService.get<string>('PASSWORD_CREATED_LOGIN_URL') ??
+      (frontendUrl ? `${frontendUrl}/login` : undefined);
+
+    try {
+      await this.brevoService.sendPasswordCreatedEmail(email, {
+        firstName,
+        signInUrl,
+      });
+    } catch (error) {
+      this.logger.error(
+        `${context}: Brevo password created email failed for ${email}: ${(error as Error)?.message}`,
+      );
+    }
   }
 }

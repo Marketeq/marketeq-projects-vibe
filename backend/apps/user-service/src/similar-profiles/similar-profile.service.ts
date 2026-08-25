@@ -103,9 +103,13 @@ export class SimilarProfileService {
     // Get all talent candidates
     const candidateUsers = await this.getAllTalents();
 
-    // Filter out the target user from candidates
+    // Filter out the target user, and exclude profiles without an avatar
+    // (treated as incomplete and not surfaced in similar profiles / search)
     const filteredCandidates = candidateUsers.filter(
-      (user) => user.id !== userId,
+      (user) =>
+        user.id !== userId &&
+        !!user.avatarUrl &&
+        user.avatarUrl.trim() !== '',
     );
 
     // Convert User[] to TalentProfile[] using the mapper

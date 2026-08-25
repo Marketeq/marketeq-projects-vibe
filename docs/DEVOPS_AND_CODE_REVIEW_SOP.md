@@ -128,17 +128,25 @@ All four must pass before merge. See §5 for details on each.
 
 ### 3.5 Merging
 
-Only one approved merge command:
+Approved merge commands:
 
 ```bash
+# Full merge (all code in the PR is being merged):
 gh pr merge <NUMBER> --squash --delete-branch
+
+# Cherry-pick or partial merge (only some changes taken):
+gh pr merge <NUMBER> --squash
+# Do NOT use --delete-branch — the source branch may still have unmerged work
 ```
+
+**Branch deletion rule:** Only delete a branch when merging ALL of its code. If cherry-picking or partially merging, keep the original branch intact.
 
 **Never:**
 - `--admin` (bypasses checks)
 - `--merge` (pollutes history — disabled server-side anyway)
 - `--rebase` without user approval (disabled server-side anyway)
 - `--no-verify`
+- Delete a branch that still has unmerged work
 
 After merge, verify:
 ```bash
@@ -486,11 +494,11 @@ QA's entire workflow is two scripts. QA never hand-edits any protected branch, n
 
 ### 10.1 Promote dev-main → staging
 
-**Script:** `scripts/qa-promote-dev-to-staging.sh`
+**Script:** `scripts/devops/qa-promote-dev-to-staging.sh`
 
 ```bash
-./scripts/qa-promote-dev-to-staging.sh        # run promotion
-./scripts/qa-promote-dev-to-staging.sh --dry-run  # preview only
+./scripts/devops/qa-promote-dev-to-staging.sh        # run promotion
+./scripts/devops/qa-promote-dev-to-staging.sh --dry-run  # preview only
 ```
 
 **What it does (step by step):**
@@ -511,11 +519,11 @@ QA's entire workflow is two scripts. QA never hand-edits any protected branch, n
 
 ### 10.2 Promote staging → live-mvp (PRODUCTION)
 
-**Script:** `scripts/qa-promote-staging-to-live.sh`
+**Script:** `scripts/devops/qa-promote-staging-to-live.sh`
 
 ```bash
-./scripts/qa-promote-staging-to-live.sh        # run promotion
-./scripts/qa-promote-staging-to-live.sh --dry-run  # preview only
+./scripts/devops/qa-promote-staging-to-live.sh        # run promotion
+./scripts/devops/qa-promote-staging-to-live.sh --dry-run  # preview only
 ```
 
 **What it does (step by step):**
@@ -663,8 +671,8 @@ Every reviewer must watch for these — they are bugs we have actually hit.
 ### QA Promotion Scripts
 | Script | Purpose |
 |---|---|
-| `scripts/qa-promote-dev-to-staging.sh` | Promote dev-main → staging |
-| `scripts/qa-promote-staging-to-live.sh` | Promote staging → live-mvp (production) |
+| `scripts/devops/qa-promote-dev-to-staging.sh` | Promote dev-main → staging |
+| `scripts/devops/qa-promote-staging-to-live.sh` | Promote staging → live-mvp (production) |
 | `scripts/devops/check-devops-drift.mjs` | Detect live n8n / gist / env contract drift from the repo-controlled DevOps contract |
 | `scripts/devops/check-runtime-env-drift.mjs` | Compare the exact staging Vercel runtime contract and the shared Render auth/runtime contract against live envs |
 | `scripts/devops/sync-staging-runtime-envs.mjs` | Repair staging Vercel env drift and shared Render auth/runtime drift before promotions or during recovery |

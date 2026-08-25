@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query,
-         UseGuards, Request, HttpCode, ParseUUIDPipe } from '@nestjs/common';
+         UseGuards, Request, HttpCode, ParseUUIDPipe, 
+         ForbiddenException} from '@nestjs/common';
 import { MethodsService }   from './methods.service';
 import { JwtAuthGuard }     from '../guards/jwt-auth.guard';
 import { AddMethodDto }     from './dto/add-method.dto';
@@ -26,6 +27,14 @@ export class MethodsController {
   @HttpCode(201)
   async add(@Request() req: any, @Body() dto: AddMethodDto) {
     return this.methodsService.addMethod(req.user.userId, dto);
+  }
+
+  // SCR-20: declared before ':id' below so 'config' is never swallowed by the
+  // UUID param route — feature-flag state must be server-fetched, not hardcoded.
+  @Get('config')
+  @HttpCode(200)
+  async config() {
+    return this.methodsService.getMethodTypeConfig();
   }
 
   @Get(':id')
@@ -62,14 +71,23 @@ export class MethodsController {
 
   @Post('stripe/finalise')
   @HttpCode(200)
-  async stripeFinalize(@Request() req: any, @Body() body: { sessionId: string; linkedAccountId: string }) {
-    return this.stripeProvider.finaliseBankStripe(req.user.userId, body.sessionId, body.linkedAccountId);
+  async stripeFinalize(@Request() req: any, @Body() body: { sessionId: string }) {
+    return this.stripeProvider.finaliseBankStripe(req.user.userId, body.sessionId);
   }
 
   @Post('stripe/restart')
   @HttpCode(200)
   async stripeRestart(@Request() req: any, @Body() body: { oldMethodId?: string }) {
     return this.stripeProvider.restartStripeFC(req.user.userId, body.oldMethodId);
+  }
+
+  @Get(':id/verification-amounts')
+  @HttpCode(200)
+  async verificationAmounts(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('This endpoint is disabled in production');
+    }
+    return this.microDepositSvc.getVerificationAmounts(req.user.userId, id);
   }
 
   @Post(':id/verify-micro-deposits')

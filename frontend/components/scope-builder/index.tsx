@@ -27,6 +27,7 @@ import {
   Check,
   ChevronDown,
   ChevronsDown,
+  Calendar,
   ChevronsUp,
   Clock,
   Copy,
@@ -76,10 +77,7 @@ import {
   useForm,
   useWatch,
 } from "react-hook-form"
-import {
-  useIsomorphicLayoutEffect,
-  useUpdateEffect,
-} from "react-use"
+import { useIsomorphicLayoutEffect, useUpdateEffect } from "react-use"
 import { z } from "zod"
 import { Prettify } from "@/types/core"
 import { GripVertical2 } from "@/components/icons/grip-vertical-2"
@@ -88,7 +86,11 @@ import { Network1 } from "@/components/icons/network-1"
 import { Network2 } from "@/components/icons/network-2"
 import { Network3 } from "@/components/icons/network-3"
 import { Network4 } from "@/components/icons/network-4"
-import { CountriesCombobox, OwnCombobox, getFlagUrlByName } from "@/components/own-combobox"
+import {
+  CountriesCombobox,
+  OwnCombobox,
+  getStaticFlagUrl,
+} from "@/components/own-combobox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -107,9 +109,6 @@ import {
   AvatarFallback,
   AvatarImage,
   Button,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
   Dialog,
   DialogClose,
   DialogContent,
@@ -128,6 +127,9 @@ import {
   ListboxButton,
   ListboxOption,
   ListboxOptions,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   ScrollArea,
   ScrollBar,
   Select,
@@ -224,9 +226,7 @@ const pickFromProjectScopeSchema = (
       const { success } = z
         .array(
           z.object({
-            phaseName: z
-              .string()
-              .min(1, "Please enter a phase name"),
+            phaseName: z.string().min(1, "Please enter a phase name"),
             rows: z
               .array(rowSchema.pick(options))
               .min(1, "Please add at least one task"),
@@ -272,16 +272,18 @@ export interface TeamMember {
 }
 
 /** Convert a duration to billable hours based on work schedule */
-function durationToHours(
+export function durationToHours(
   durationValue: number,
   durationType: string,
   workSchedule?: string | null,
-  customHoursPerWeek?: number | null,
+  customHoursPerWeek?: number | null
 ): number {
   const hoursPerWeek =
-    workSchedule === "part_time" ? 20 :
-    workSchedule === "custom" && customHoursPerWeek ? customHoursPerWeek :
-    40 // full_time default
+    workSchedule === "part_time"
+      ? 20
+      : workSchedule === "custom" && customHoursPerWeek
+        ? customHoursPerWeek
+        : 40 // full_time default
   const hoursPerDay = hoursPerWeek / 5
 
   if (durationType === "hours") return durationValue
@@ -290,18 +292,89 @@ function durationToHours(
   return durationValue * hoursPerDay
 }
 
+// Stand-in rate card (USD/hour by experience level) — mirrors the backend's
+// cms-projects deriveBudgetFromScope. Swap for pricing-service rates once the
+// roles/rate table is wired (docs §14.7 HOURLY_RATE_BY_LEVEL stand-in).
+export const HOURLY_RATE_BY_LEVEL: Record<string, number> = {
+  Student: 25,
+  Junior: 55,
+  Medior: 85,
+  Senior: 125,
+  Guru: 175,
+}
+
+// Role-specific hourly rates (USD/hr), reusing the pricing-service test seed
+// (PS-07 / ps_platform_rate_averages median). Roles not listed fall back to
+// HOURLY_RATE_BY_LEVEL by experience level.
+export const HOURLY_RATE_BY_ROLE: Record<string, number> = {
+  "ux designer": 100,
+  "backend developer": 70,
+  "product manager": 55,
+  "devops engineer": 45,
+}
+
+// startingPriceTotal (docs §14.7): Σ (hours × rate), returned in USD cents.
+// Hours come from an explicit estimatedHours, else derived from the task's
+// duration via durationToHours (respecting workSchedule).
+export function estimateScopeBudgetCents(
+  phases: any[] | null | undefined
+): number {
+  if (!Array.isArray(phases)) return 0
+  let totalUsd = 0
+  for (const phase of phases) {
+    const rows = phase?.rows ?? phase?.tasks ?? []
+    for (const row of rows) {
+      if (!row) continue
+      const explicit = Number(row.estimatedHours)
+      let hours = Number.isFinite(explicit) && explicit > 0 ? explicit : 0
+      if (hours <= 0 && row.duration) {
+        const dur = row.duration
+        const value =
+          typeof dur === "object"
+            ? Number(dur?.value)
+            : Number(String(dur).trim().split(/\s+/)[0])
+        const type =
+          typeof dur === "object"
+            ? dur?.type
+            : String(dur).trim().split(/\s+/)[1]
+        if (Number.isFinite(value) && value > 0) {
+          hours = durationToHours(value, type ?? "days", row.workSchedule)
+        }
+      }
+      if (hours <= 0) continue
+      const level = Array.isArray(row.experience)
+        ? row.experience[0]
+        : row.experienceLevel || row.experience || "Medior"
+      const roleKey = String(row.role ?? "")
+        .trim()
+        .toLowerCase()
+      const memberRate = Number(row.assignedMember?.hourlyRate)
+      const fallbackRate =
+        HOURLY_RATE_BY_ROLE[roleKey] ??
+        HOURLY_RATE_BY_LEVEL[level] ??
+        HOURLY_RATE_BY_LEVEL.Medior
+      const rate =
+        Number.isFinite(memberRate) && memberRate > 0
+          ? memberRate
+          : fallbackRate
+      totalUsd += hours * rate
+    }
+  }
+  return Math.round(totalUsd * 100)
+}
+
 /** Calculate task cost for an assigned team member */
 export function calculateTaskCost(
   member: TeamMember,
   durationValue: number,
-  durationType: string,
+  durationType: string
 ): number | null {
   if (!member.hourlyRate) return null
   const hours = durationToHours(
     durationValue,
     durationType,
     member.workSchedule,
-    member.customHoursPerWeek,
+    member.customHoursPerWeek
   )
   return Math.round(member.hourlyRate * hours * 100) // USD cents
 }
@@ -316,9 +389,16 @@ export type PhaseRow = Prettify<
   } & TaskFormValues
 >
 
+export type PhaseType = "setup" | "recurring" | "ongoing"
+export type RecurrenceSchedule = "weekly" | "monthly" | "quarterly"
+
 export interface Phase {
   phaseName?: string
   rows?: PhaseRow[]
+  // Service-scope only. Undefined on project (flat) phases.
+  phaseType?: PhaseType
+  recurrenceSchedule?: RecurrenceSchedule
+  recurrenceCount?: number
 }
 
 // ─── Table meta augmentation ────────────────────────────────────────────
@@ -327,7 +407,10 @@ declare module "@tanstack/react-table" {
   // @ts-expect-error
   interface TableMeta<TData extends PhaseRow> {
     updateData: (rowIndex: number, columnId: string, value: unknown) => void
-    batchUpdateData?: (rowIndex: number, updates: Record<string, unknown>) => void
+    batchUpdateData?: (
+      rowIndex: number,
+      updates: Record<string, unknown>
+    ) => void
     openDurationDialog: (index: number) => void
     roles: string[]
     teamMembers?: TeamMember[]
@@ -372,6 +455,204 @@ const getPhaseDayRangeLabel = (phases: Phase[], phaseIndex: number) => {
   return `Day ${startDay} - Day ${endDay}`
 }
 
+// Setup phases show their TOTAL duration (e.g. "2 weeks"), not a day range.
+export const getPhaseDurationLabel = (phases: Phase[], phaseIndex: number) => {
+  const days = getPhaseDurationInDays(phases[phaseIndex])
+  if (days <= 0) return getPhaseDayRangeLabel(phases, phaseIndex)
+  if (days % 7 === 0) {
+    const weeks = days / 7
+    return `${weeks} ${formatDurationUnit(weeks, "weeks")}`
+  }
+  return `${days} ${formatDurationUnit(days, "days")}`
+}
+
+const RECURRENCE_LABEL: Record<RecurrenceSchedule, string> = {
+  weekly: "Weekly",
+  monthly: "Monthly",
+  quarterly: "Quarterly",
+}
+
+// Service phases are titled by their type (Setup / Recurring / Ongoing) rather
+// than "Phase One/Two" (design: whole table.png).
+export const PHASE_TYPE_TITLE: Record<PhaseType, string> = {
+  setup: "Setup",
+  recurring: "Recurring",
+  ongoing: "Ongoing",
+}
+
+// Recurring-phase editor (docs: Scope edit.png) — schedule + repeats count.
+const RecurrenceEditor = ({
+  schedule,
+  count,
+  onChange,
+}: {
+  schedule?: RecurrenceSchedule
+  count?: number
+  onChange: (schedule: RecurrenceSchedule, count: number) => void
+}) => {
+  const [open, setOpen] = useState(false)
+  const [draftSchedule, setDraftSchedule] = useState<RecurrenceSchedule>(
+    schedule ?? "monthly"
+  )
+  const [draftCount, setDraftCount] = useState<number>(count ?? 1)
+  useEffect(() => {
+    if (open) {
+      setDraftSchedule(schedule ?? "monthly")
+      setDraftCount(count ?? 1)
+    }
+  }, [open, schedule, count])
+
+  const value =
+    schedule && count
+      ? `${RECURRENCE_LABEL[schedule]}, ${count} time${count > 1 ? "s" : ""}`
+      : null
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-[13px] font-semibold text-dark-blue-400 focus-visible:outline-none"
+        >
+          <RefreshCcw05 className="size-3.5 shrink-0" style={{ color: "#12B76A" }} />
+          {value ? (
+            <>
+              <span>Recurs:</span>
+              <span
+                className="rounded-md px-2 py-0.5 text-[13px] font-medium"
+                style={{ backgroundColor: "#F2F4F7", color: "#344054" }}
+              >
+                {value}
+              </span>
+            </>
+          ) : (
+            <span>Set recurrence</span>
+          )}
+        </button>
+      </DialogTrigger>
+      <DialogContent className="max-w-[360px] p-6">
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label size="sm" className="text-dark-blue-400">
+              Recurring schedule
+            </Label>
+            <Listbox value={draftSchedule} onChange={setDraftSchedule}>
+              <ListboxButton>
+                {({ value }) => (
+                  <span className="text-gray-black">
+                    {RECURRENCE_LABEL[value as RecurrenceSchedule]}
+                  </span>
+                )}
+              </ListboxButton>
+              <ListboxOptions>
+                <ListboxOption value="weekly">Weekly</ListboxOption>
+                <ListboxOption value="monthly">Monthly</ListboxOption>
+                <ListboxOption value="quarterly">Quarterly</ListboxOption>
+              </ListboxOptions>
+            </Listbox>
+          </div>
+          <div className="space-y-1.5">
+            <Label size="sm" className="text-dark-blue-400">
+              Repeats
+            </Label>
+            <div className="flex items-center rounded-md border border-gray-300">
+              <button
+                type="button"
+                className="px-3.5 py-2.5 text-gray-500 hover:text-gray-900 focus-visible:outline-none"
+                onClick={() => setDraftCount((v) => Math.max(1, v - 1))}
+              >
+                −
+              </button>
+              <span className="flex-auto text-center text-sm text-gray-900">
+                {draftCount} times
+              </span>
+              <button
+                type="button"
+                className="px-3.5 py-2.5 text-gray-500 hover:text-gray-900 focus-visible:outline-none"
+                onClick={() => setDraftCount((v) => Math.min(99, v + 1))}
+              >
+                +
+              </button>
+            </div>
+          </div>
+          <div className="flex justify-end gap-x-3 pt-2">
+            <DialogClose asChild>
+              <Button type="button" variant="outlined" visual="gray">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              type="button"
+              onClick={() => {
+                onChange(draftSchedule, draftCount)
+                setOpen(false)
+              }}
+            >
+              Done
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// Phase-header meta: service phases show a type chip (Setup duration /
+// Recurs editor / Ongoing); project phases show the Day range.
+export const PhaseHeaderMeta = ({
+  phases,
+  index,
+  onRecurrenceChange,
+}: {
+  phases: Phase[]
+  index: number
+  onRecurrenceChange: (schedule: RecurrenceSchedule, count: number) => void
+}) => {
+  const phase = phases[index]
+  if (phase?.phaseType === "ongoing") {
+    return (
+      <span className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-[13px] font-semibold text-dark-blue-400">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="size-4 shrink-0"
+          style={{ color: "#12B76A" }}
+          aria-hidden="true"
+        >
+          <path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.74-8z" />
+        </svg>
+        Ongoing
+      </span>
+    )
+  }
+  if (phase?.phaseType === "recurring") {
+    return (
+      <RecurrenceEditor
+        schedule={phase.recurrenceSchedule}
+        count={phase.recurrenceCount}
+        onChange={onRecurrenceChange}
+      />
+    )
+  }
+  if (phase?.phaseType === "setup") {
+    return (
+      <span className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] font-semibold text-dark-blue-400">
+        <Calendar className="size-3.5 shrink-0" style={{ color: "#12B76A" }} />
+        {getPhaseDurationLabel(phases, index)}
+      </span>
+    )
+  }
+  return (
+    <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold whitespace-nowrap">
+      {getPhaseDayRangeLabel(phases, index)}
+    </span>
+  )
+}
+
 const getPhaseSearchTargetId = (phaseIndex: number) =>
   `project-scope-phase-${phaseIndex}`
 
@@ -397,28 +678,56 @@ const numberToWord = (num: number) => {
   return words[num] || num + 1 // fallback for numbers > 10
 }
 
-// ─── Country code lookup (static fallback for flags before API loads) ────
-const COUNTRY_CODES: Record<string, string> = {
-  "United States": "us", "United Kingdom": "gb", "Canada": "ca", "India": "in",
-  "Germany": "de", "Australia": "au", "Brazil": "br", "Philippines": "ph",
-  "Ukraine": "ua", "Poland": "pl", "France": "fr", "Japan": "jp",
-  "South Korea": "kr", "China": "cn", "Mexico": "mx", "Spain": "es",
-  "Italy": "it", "Netherlands": "nl", "Sweden": "se", "Norway": "no",
-  "Denmark": "dk", "Finland": "fi", "Switzerland": "ch", "Austria": "at",
-  "Belgium": "be", "Ireland": "ie", "New Zealand": "nz", "Singapore": "sg",
-  "Israel": "il", "Portugal": "pt", "Argentina": "ar", "Colombia": "co",
-  "Chile": "cl", "Romania": "ro", "Czech Republic": "cz", "Hungary": "hu",
-  "Turkey": "tr", "Thailand": "th", "Vietnam": "vn", "Indonesia": "id",
-  "Malaysia": "my", "Nigeria": "ng", "Kenya": "ke", "South Africa": "za",
-  "Egypt": "eg", "Pakistan": "pk", "Bangladesh": "bd", "Sri Lanka": "lk",
-  "Russia": "ru", "Estonia": "ee", "Latvia": "lv", "Lithuania": "lt",
-  "Croatia": "hr", "Serbia": "rs", "Bulgaria": "bg", "Greece": "gr",
+// Member locations are free-text and inconsistent: "City, Country"
+// (Munich, Germany), "City, State, Country" (San Francisco, California,
+// United States), US "City, State" with no country (New York, NY), or a
+// bare country (USA). This column is country-based (flag + country), so
+// reduce any of those to a country name COUNTRY_CODES understands.
+//
+// "Georgia" is intentionally NOT treated as a US state — it collides with the
+// country of the same name, so we default the ambiguous case to the country.
+const US_STATES = new Set<string>([
+  "al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id",
+  "il", "in", "ia", "ks", "ky", "la", "me", "md", "ma", "mi", "mn", "ms",
+  "mo", "mt", "ne", "nv", "nh", "nj", "nm", "ny", "nc", "nd", "oh", "ok",
+  "or", "pa", "ri", "sc", "sd", "tn", "tx", "ut", "vt", "va", "wa", "wv",
+  "wi", "wy", "dc",
+  "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+  "connecticut", "delaware", "florida", "hawaii", "idaho", "illinois",
+  "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine", "maryland",
+  "massachusetts", "michigan", "minnesota", "mississippi", "missouri",
+  "montana", "nebraska", "nevada", "new hampshire", "new jersey",
+  "new mexico", "new york", "north carolina", "north dakota", "ohio",
+  "oklahoma", "oregon", "pennsylvania", "rhode island", "south carolina",
+  "south dakota", "tennessee", "texas", "utah", "vermont", "virginia",
+  "washington", "west virginia", "wisconsin", "wyoming",
+])
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  usa: "United States",
+  "u.s.": "United States",
+  "u.s.a.": "United States",
+  "united states of america": "United States",
+  us: "United States",
+  uk: "United Kingdom",
+  "u.k.": "United Kingdom",
+  "great britain": "United Kingdom",
+  uae: "United Arab Emirates",
 }
 
-function getStaticFlagUrl(countryName: string): string | null {
-  const code = COUNTRY_CODES[countryName]
-  if (code) return `https://flagcdn.com/36x27/${code}.png`
-  return getFlagUrlByName(countryName)
+export function countryFromLocation(location?: string | null): string {
+  const parts = (location ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (!parts.length) return ""
+
+  const last = parts[parts.length - 1]
+  const key = last.toLowerCase()
+
+  if (US_STATES.has(key)) return "United States"
+  if (COUNTRY_ALIASES[key]) return COUNTRY_ALIASES[key]
+  return last
 }
 
 // ─── Roles ──────────────────────────────────────────────────────────────
@@ -667,13 +976,18 @@ const PhaseNameDialog = ({
   open,
   defaultName,
   placeholder = "Enter Phase Name",
+  showPhaseType = false,
+  disabledTypes = [],
 }: {
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  onAddPhaseName: (phaseName: string) => void
+  onAddPhaseName: (phaseName: string, phaseType?: PhaseType) => void
   defaultName?: string
   placeholder?: string
+  showPhaseType?: boolean
+  disabledTypes?: PhaseType[]
 }) => {
+  const [phaseType, setPhaseType] = useState<PhaseType | undefined>(undefined)
   const [isOpen, toggleIsOpen] = useControllableState({
     defaultValue: false,
     value: open,
@@ -694,12 +1008,15 @@ const PhaseNameDialog = ({
   useEffect(() => {
     if (isOpen) {
       reset({ name: defaultName ?? "" })
+      setPhaseType(undefined)
     }
   }, [isOpen, defaultName, reset])
 
   const onSubmit: SubmitHandler<PhaseNameFormValues> = (values) => {
     const { name } = values
-    onAddPhaseName(name)
+    // Services require a phase type before the phase can be created.
+    if (showPhaseType && !phaseType) return
+    onAddPhaseName(name, showPhaseType ? phaseType : undefined)
 
     toggleIsOpen(false)
   }
@@ -724,7 +1041,14 @@ const PhaseNameDialog = ({
                 id="phase-name"
                 className="text-gray-900"
                 placeholder={placeholder}
-                {...register("name")}
+                {...register("name", {
+                  onChange: (e) => {
+                    const v = e.target.value
+                    if (v && v[0] !== v[0].toUpperCase()) {
+                      e.target.value = v.charAt(0).toUpperCase() + v.slice(1)
+                    }
+                  },
+                })}
                 isInvalid={hookFormHasError({ errors, name: "name" })}
               />
               <HookFormErrorMessage
@@ -733,6 +1057,41 @@ const PhaseNameDialog = ({
                 render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
               />
             </div>
+
+            {showPhaseType && (
+              <div className="space-y-1.5 mt-4">
+                <Label size="sm" className="text-dark-blue-400">
+                  Phase Type
+                </Label>
+                <Listbox value={phaseType} onChange={setPhaseType}>
+                  <ListboxButton placeholder="Select phase type">
+                    {({ value }) => (
+                      <span className="text-gray-black">
+                        {PHASE_TYPE_TITLE[value as PhaseType]}
+                      </span>
+                    )}
+                  </ListboxButton>
+                  <ListboxOptions>
+                    <ListboxOption
+                      value="setup"
+                      disabled={disabledTypes.includes("setup")}
+                    >
+                      Setup
+                    </ListboxOption>
+                    <ListboxOption value="recurring">Recurring</ListboxOption>
+                    <ListboxOption
+                      value="ongoing"
+                      disabled={disabledTypes.includes("ongoing")}
+                    >
+                      Ongoing
+                    </ListboxOption>
+                  </ListboxOptions>
+                </Listbox>
+                <p className="text-xs font-light text-gray-500">
+                  Helps organize tasks by timing and frequency
+                </p>
+              </div>
+            )}
 
             <DialogFooter className="mt-8 grid gap-x-3">
               <DialogClose asChild>
@@ -809,10 +1168,7 @@ const TaskDialog = ({
   return (
     <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
       <DialogContent className="sm:max-w-[400px]">
-        <form
-          onSubmit={handleSubmit(onSubmit)}
-          className="space-y-5"
-        >
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           <div className="space-y-1.5">
             <Label htmlFor="task-name" className="text-gray-700" size="sm">
               Task Name
@@ -1153,6 +1509,7 @@ const MoreDropdown = (props: {
   onInsertAbove: () => void
   onDuplicatePhase: () => void
   onSwapPhases: (to: number) => void
+  phaseType?: PhaseType
 }) => {
   const {
     openDeletePhaseDialog,
@@ -1162,7 +1519,10 @@ const MoreDropdown = (props: {
     onInsertBelow,
     onDuplicatePhase,
     onSwapPhases: onSwapPhasesProp,
+    phaseType,
   } = props
+  // Setup and Ongoing are position-locked singletons (docs: whole table.png).
+  const locked = phaseType === "setup" || phaseType === "ongoing"
   const arrayNavigator = useArrayNavigationContext()
   const selectedIndex = arrayNavigator?.selectedIndex
 
@@ -1187,19 +1547,19 @@ const MoreDropdown = (props: {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem
-          disabled={!arrayNavigator?.canMoveLeft}
+          disabled={locked || !arrayNavigator?.canMoveLeft}
           onSelect={arrayNavigator?.moveToLeft}
         >
           <ArrowUp className="h-4 w-4" /> Move Up
         </DropdownMenuItem>
         <DropdownMenuItem
-          disabled={!arrayNavigator?.canMoveRight}
+          disabled={locked || !arrayNavigator?.canMoveRight}
           onSelect={arrayNavigator?.moveToRight}
         >
           <ArrowDown className="h-4 w-4" /> Move Down
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onDuplicatePhase}>
+        <DropdownMenuItem disabled={locked} onClick={onDuplicatePhase}>
           <Copy className="h-4 w-4" /> Duplicate Phase
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -1365,9 +1725,14 @@ const RowDragHandleCell = ({ rowId }: { rowId: string }) => {
 // ─── Role Picker (team member or vacant role) ───────────────────────────
 
 const WORK_SCHEDULES = ["Full-time", "Part-time", "Custom"] as const
-const CUSTOM_PERIODS = ["per day", "per week", "per month", "per quarter"] as const
+const CUSTOM_PERIODS = [
+  "per day",
+  "per week",
+  "per month",
+  "per quarter",
+] as const
 
-function AddRoleDialog({
+export function AddRoleDialog({
   open,
   onOpenChange,
   roles,
@@ -1376,7 +1741,12 @@ function AddRoleDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   roles: string[]
-  onDone: (role: string, schedule: string, customHours?: number, customPeriod?: string) => void
+  onDone: (
+    role: string,
+    schedule: string,
+    customHours?: number,
+    customPeriod?: string
+  ) => void
 }) {
   const [roleValue, setRoleValue] = useState("")
   const [roleSearch, setRoleSearch] = useState("")
@@ -1386,16 +1756,23 @@ function AddRoleDialog({
   const [customPeriod, setCustomPeriod] = useState("per week")
 
   const lowerSearch = roleSearch.toLowerCase()
-  const filteredRoles = roles.filter((r) => r.toLowerCase().includes(lowerSearch))
+  const filteredRoles = roles.filter((r) =>
+    r.toLowerCase().includes(lowerSearch)
+  )
 
   const handleDone = () => {
     if (!roleValue || !schedule) return
-    const scheduleKey = schedule === "Full-time" ? "full_time" : schedule === "Part-time" ? "part_time" : "custom"
+    const scheduleKey =
+      schedule === "Full-time"
+        ? "full_time"
+        : schedule === "Part-time"
+          ? "part_time"
+          : "custom"
     onDone(
       roleValue,
       scheduleKey,
       schedule === "Custom" ? customHours : undefined,
-      schedule === "Custom" ? customPeriod : undefined,
+      schedule === "Custom" ? customPeriod : undefined
     )
     // Reset
     setRoleValue("")
@@ -1422,49 +1799,60 @@ function AddRoleDialog({
               }}
               onFocus={() => setRoleDropdownOpen(true)}
             />
-            {roleDropdownOpen && roleSearch.length > 0 && filteredRoles.length > 0 && (
-              <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)] overflow-hidden">
-                <div className="flex items-center border-b border-gray-200 pl-3 px-2.5">
-                  <input
-                    className="flex h-8 w-full bg-transparent focus:ring-0 p-0 border-0 text-sm focus-visible:outline-none outline-none text-gray-900 placeholder:text-gray-500"
-                    placeholder="Search"
-                    value={roleSearch}
-                    onChange={(e) => setRoleSearch(e.target.value)}
-                  />
-                  <SearchMd className="size-3.5 shrink-0 text-gray-400" />
+            {roleDropdownOpen &&
+              roleSearch.length > 0 &&
+              filteredRoles.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)] overflow-hidden">
+                  <div className="flex items-center border-b border-gray-200 pl-3 px-2.5">
+                    <input
+                      className="flex h-8 w-full bg-transparent focus:ring-0 p-0 border-0 text-sm focus-visible:outline-none outline-none text-gray-900 placeholder:text-gray-500"
+                      placeholder="Search"
+                      value={roleSearch}
+                      onChange={(e) => setRoleSearch(e.target.value)}
+                    />
+                    <SearchMd className="size-3.5 shrink-0 text-gray-400" />
+                  </div>
+                  <div className="max-h-[180px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 py-1">
+                    {filteredRoles.map((role) => (
+                      <button
+                        key={role}
+                        type="button"
+                        className={cn(
+                          "w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition duration-150 cursor-pointer",
+                          role === roleValue
+                            ? "font-semibold text-gray-900 bg-gray-50"
+                            : "text-gray-600"
+                        )}
+                        onClick={() => {
+                          setRoleValue(role)
+                          setRoleSearch(role)
+                          setRoleDropdownOpen(false)
+                        }}
+                      >
+                        {role}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="max-h-[180px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 py-1">
-                  {filteredRoles.map((role) => (
-                    <button
-                      key={role}
-                      type="button"
-                      className={cn(
-                        "w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition duration-150 cursor-pointer",
-                        role === roleValue ? "font-semibold text-gray-900 bg-gray-50" : "text-gray-600"
-                      )}
-                      onClick={() => {
-                        setRoleValue(role)
-                        setRoleSearch(role)
-                        setRoleDropdownOpen(false)
-                      }}
-                    >
-                      {role}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+              )}
           </div>
         </div>
 
         <div className="mt-4">
-          <Label className="text-sm font-medium text-gray-700">Work Schedule</Label>
+          <Label className="text-sm font-medium text-gray-700">
+            Work Schedule
+          </Label>
           <div className="mt-1.5">
             <Listbox value={schedule} onChange={setSchedule}>
-              <ListboxButton className="w-full h-[44px]" placeholder="Select one" />
+              <ListboxButton
+                className="w-full h-[44px]"
+                placeholder="Select one"
+              />
               <ListboxOptions className="w-full">
                 {WORK_SCHEDULES.map((ws) => (
-                  <ListboxOption key={ws} value={ws}>{ws}</ListboxOption>
+                  <ListboxOption key={ws} value={ws}>
+                    {ws}
+                  </ListboxOption>
                 ))}
               </ListboxOptions>
             </Listbox>
@@ -1473,7 +1861,9 @@ function AddRoleDialog({
 
         {schedule === "Custom" && (
           <div className="mt-4">
-            <Label className="text-sm font-medium text-gray-700">Estimated hours</Label>
+            <Label className="text-sm font-medium text-gray-700">
+              Estimated hours
+            </Label>
             <div className="mt-1.5 flex items-center gap-x-2">
               <div className="flex items-center gap-x-1.5">
                 <Input
@@ -1486,10 +1876,15 @@ function AddRoleDialog({
                 <span className="text-sm text-gray-500">hours</span>
               </div>
               <Listbox value={customPeriod} onChange={setCustomPeriod}>
-                <ListboxButton className="h-[44px] min-w-[120px]" placeholder="per week" />
+                <ListboxButton
+                  className="h-[44px] min-w-[120px]"
+                  placeholder="per week"
+                />
                 <ListboxOptions>
                   {CUSTOM_PERIODS.map((p) => (
-                    <ListboxOption key={p} value={p}>{p}</ListboxOption>
+                    <ListboxOption key={p} value={p}>
+                      {p}
+                    </ListboxOption>
                   ))}
                 </ListboxOptions>
               </Listbox>
@@ -1519,7 +1914,7 @@ function AddRoleDialog({
   )
 }
 
-function RolePicker({
+export function RolePicker({
   teamMembers,
   roles,
   onSelectMember,
@@ -1574,7 +1969,9 @@ function RolePicker({
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-medium text-gray-900 truncate leading-tight">
                   {m.firstName}
-                  <span className="text-gray-400 font-normal ml-0.5">@{m.username}</span>
+                  <span className="text-gray-400 font-normal ml-0.5">
+                    @{m.username}
+                  </span>
                 </p>
                 <p className="text-[11px] text-gray-500 truncate leading-tight">
                   {m.role}
@@ -1644,25 +2041,36 @@ const columns = [
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
-                <DialogTitle className="text-lg font-semibold text-gray-900">Edit Task Name</DialogTitle>
+                <DialogTitle className="text-lg font-semibold text-gray-900">
+                  Edit Task Name
+                </DialogTitle>
               </DialogHeader>
               <div className="flex flex-col gap-y-1.5 pt-2">
-                <Label size="sm" className="text-gray-700">Task Name</Label>
+                <Label size="sm" className="text-gray-700">
+                  Task Name
+                </Label>
                 <Input
                   ref={inputRef}
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); commit() }
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      commit()
+                    }
                   }}
                   placeholder="Enter task name"
                 />
               </div>
               <DialogFooter className="gap-x-3 pt-4">
                 <DialogClose asChild>
-                  <Button type="button" variant="outlined" visual="gray">Cancel</Button>
+                  <Button type="button" variant="outlined" visual="gray">
+                    Cancel
+                  </Button>
                 </DialogClose>
-                <Button type="button" onClick={commit}>Save</Button>
+                <Button type="button" onClick={commit}>
+                  Save
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -1688,7 +2096,6 @@ const columns = [
           role: tm.role,
           assignedMember: tm,
           location: tm.location ?? "",
-          experience: tm.experience ?? "",
         })
         setPopoverOpen(false)
       }
@@ -1708,7 +2115,12 @@ const columns = [
         setAddRoleOpen(true)
       }
 
-      const handleAddRoleDone = (role: string, schedule: string, customHours?: number, customPeriod?: string) => {
+      const handleAddRoleDone = (
+        role: string,
+        schedule: string,
+        customHours?: number,
+        customPeriod?: string
+      ) => {
         table.options.meta?.batchUpdateData?.(index, {
           role,
           assignedMember: null,
@@ -1721,7 +2133,11 @@ const columns = [
 
       // eslint-disable-next-line
       const taskCostCents = member
-        ? calculateTaskCost(member, original.duration.value, original.duration.type)
+        ? calculateTaskCost(
+            member,
+            original.duration.value,
+            original.duration.type
+          )
         : null
 
       const pickerPopover = (
@@ -1752,7 +2168,10 @@ const columns = [
                 <button className="focus-visible:outline-none inline-flex items-center gap-x-2 max-w-full transition duration-300 hover:bg-gray-50 rounded-md px-1.5 py-1 -mx-1.5 -my-1">
                   <Avatar className="size-6 shrink-0">
                     {member.avatarUrl ? (
-                      <AvatarImage src={member.avatarUrl} alt={member.firstName} />
+                      <AvatarImage
+                        src={member.avatarUrl}
+                        alt={member.firstName}
+                      />
                     ) : null}
                     <AvatarFallback className="text-[10px]">
                       {member.firstName.charAt(0).toUpperCase()}
@@ -1761,7 +2180,9 @@ const columns = [
                   <div className="min-w-0 text-left">
                     <p className="text-xs font-medium text-gray-900 truncate leading-tight">
                       {member.firstName}
-                      <span className="text-gray-400 font-normal ml-0.5">@{member.username}...</span>
+                      <span className="text-gray-400 font-normal ml-0.5">
+                        @{member.username}...
+                      </span>
                     </p>
                     <p className="text-[11px] text-gray-500 truncate leading-tight">
                       {member.role}
@@ -1779,10 +2200,12 @@ const columns = [
         <TableCell className="py-4 px-3">
           <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
             <PopoverTrigger asChild>
-              <button className={cn(
-                "focus-visible:outline-none transition duration-300 border border-transparent hover:border-gray-300 h-7 px-[8px] rounded-[5px] border-dashed hover:bg-gray-100 shrink-0 text-sm leading-[16.94px] truncate whitespace-nowrap max-w-full",
-                value ? "text-gray-600" : "text-gray-400"
-              )}>
+              <button
+                className={cn(
+                  "focus-visible:outline-none transition duration-300 border border-transparent hover:border-gray-300 h-7 px-[8px] rounded-[5px] border-dashed hover:bg-gray-100 shrink-0 text-sm leading-[16.94px] truncate whitespace-nowrap max-w-full",
+                  value ? "text-gray-600" : "text-gray-400"
+                )}
+              >
                 <span className="block truncate">{value || "Add Role"}</span>
               </button>
             </PopoverTrigger>
@@ -1798,16 +2221,21 @@ const columns = [
       const assigned = original.assignedMember
       const currentValue = original.location ?? ""
       if (assigned) {
-        const flagUrl = assigned.location ? getStaticFlagUrl(assigned.location) : null
+        const country = countryFromLocation(original.location)
+        const flagUrl = country ? getStaticFlagUrl(country) : null
         return (
           <TableCell className="px-3 py-4">
             <span className="inline-flex items-center gap-x-1.5 px-2 py-[5px] border border-gray-300 rounded-[5px] bg-white text-xs leading-[18px] font-medium text-gray-700 cursor-default">
               {flagUrl && (
                 <span className="inline-flex items-center justify-center w-[18px] h-[14px] shrink-0 rounded-sm overflow-hidden">
-                  <img className="w-full h-full object-cover" src={flagUrl} alt={assigned.location || ""} />
+                  <img
+                    className="w-full h-full object-cover"
+                    src={flagUrl}
+                    alt={country}
+                  />
                 </span>
               )}
-              {assigned.location || "—"}
+              {country || "—"}
             </span>
           </TableCell>
         )
@@ -1836,7 +2264,7 @@ const columns = [
         return (
           <TableCell className="py-4 px-6">
             <span className="inline-flex items-center px-2 py-[5px] border border-gray-300 rounded-[5px] bg-white text-xs leading-[18px] font-medium text-gray-700 cursor-default">
-              {assigned.experience || "—"}
+              {original.experience || "—"}
             </span>
           </TableCell>
         )
@@ -2028,7 +2456,9 @@ const DurationDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle className="text-lg font-semibold text-gray-900">Edit Duration</DialogTitle>
+          <DialogTitle className="text-lg font-semibold text-gray-900">
+            Edit Duration
+          </DialogTitle>
           <DialogDescription className="text-sm text-gray-500">
             Set the time estimate for this task.
           </DialogDescription>
@@ -2038,7 +2468,9 @@ const DurationDialog = ({
           className="flex flex-col gap-y-5 pt-2"
         >
           <div className="flex flex-col gap-y-1.5">
-            <Label size="sm" className="text-gray-700">Duration</Label>
+            <Label size="sm" className="text-gray-700">
+              Duration
+            </Label>
             <div className="flex items-center gap-x-3">
               <Controller
                 name="duration.value"
@@ -2107,7 +2539,14 @@ export interface ScopeBuilderProps {
   teamMembers?: TeamMember[]
 }
 
-export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, scopeType = "project", onScopeTypeChange, teamMembers = [] }: ScopeBuilderProps) {
+export function ScopeBuilder({
+  phases: initialPhases,
+  onPhasesChange,
+  embedded,
+  scopeType = "project",
+  onScopeTypeChange,
+  teamMembers = [],
+}: ScopeBuilderProps) {
   const { toast } = useToast()
   const lastUndo = useRef<null | (() => void)>(null)
   const [taskDialogState, setTaskDialogState] = useState<TaskDialogState>({
@@ -2126,7 +2565,9 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
   )
   const [scopeTypeDropdownOpen, setScopeTypeDropdownOpen] = useState(false)
   const [scopeTypeConfirmOpen, setScopeTypeConfirmOpen] = useState(false)
-  const [pendingScopeType, setPendingScopeType] = useState<ScopeType | null>(null)
+  const [pendingScopeType, setPendingScopeType] = useState<ScopeType | null>(
+    null
+  )
   const [accordionState, setAccordionState] = useState(["item-0"])
 
   // Local state for phases — replaces useProjectScopeContext
@@ -2195,6 +2636,19 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
     [setPhases]
   )
 
+  const updatePhaseRecurrence = useCallback(
+    (index: number, schedule: RecurrenceSchedule, count: number) => {
+      setPhases((prev) =>
+        prev.map((p, i) =>
+          i === index
+            ? { ...p, recurrenceSchedule: schedule, recurrenceCount: count }
+            : p
+        )
+      )
+    },
+    [setPhases]
+  )
+
   // Helper to show success toast with Undo
   const pushSuccess = useCallback(
     (label: string, onUndo?: () => void) => {
@@ -2216,8 +2670,11 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
   )
 
   const onAddPhaseName = useCallback(
-    (rawPhaseName: string) => {
-      const phaseName = rawPhaseName.trim().toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+    (rawPhaseName: string, phaseType?: PhaseType) => {
+      const trimmedName = rawPhaseName.trim()
+      const phaseName = trimmedName
+        ? trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1)
+        : trimmedName
       const { action, editingPhaseIndex, addTo } = phaseDialogState
 
       if (action === "EDIT" && typeof editingPhaseIndex === "number") {
@@ -2268,14 +2725,42 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
           editingPhaseIndex >= 0 &&
           editingPhaseIndex < next.length
 
-        insertedPhaseIndex =
-          addTo === "start" && hasTargetPhase
-            ? editingPhaseIndex
-            : addTo === "below" && hasTargetPhase
-              ? editingPhaseIndex + 1
-              : next.length
+        if (phaseType) {
+          // Service ordering: Setup first, Ongoing last, Recurring before Ongoing.
+          const ongoingIdx = next.findIndex((p) => p.phaseType === "ongoing")
+          insertedPhaseIndex =
+            phaseType === "setup"
+              ? 0
+              : phaseType === "ongoing"
+                ? next.length
+                : ongoingIdx >= 0
+                  ? ongoingIdx
+                  : next.length
+        } else {
+          insertedPhaseIndex =
+            addTo === "start" && hasTargetPhase
+              ? editingPhaseIndex
+              : addTo === "below" && hasTargetPhase
+                ? editingPhaseIndex + 1
+                : next.length
+        }
 
-        next.splice(insertedPhaseIndex, 0, { phaseName })
+        next.splice(
+          insertedPhaseIndex,
+          0,
+          phaseType === "recurring"
+            ? {
+                phaseName,
+                phaseType,
+                // Sensible defaults so the scope stays valid/saveable until
+                // the seller edits the "Recurs" chip.
+                recurrenceSchedule: "monthly",
+                recurrenceCount: 1,
+              }
+            : phaseType
+              ? { phaseName, phaseType }
+              : { phaseName }
+        )
         return next
       })
 
@@ -2508,494 +2993,538 @@ export function ScopeBuilder({ phases: initialPhases, onPhasesChange, embedded, 
       : ""
 
   const coreContent = (
-          <div className="space-y-6 flex-auto min-w-0">
-            <div className="flex md:flex-row flex-col gap-y-6 md:gap-y-0 md:items-center justify-between">
-              <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
-                {scopeType === "service" ? "Service" : "Project"} Scope
-              </h1>
+    <div className="space-y-6 flex-auto min-w-0">
+      <div className="flex md:flex-row flex-col gap-y-6 md:gap-y-0 md:items-center justify-between">
+        <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
+          {scopeType === "service" ? "Service" : "Project"} Scope
+        </h1>
 
-              <div className="flex items-center md:gap-x-3">
-                <DropdownMenu open={scopeTypeDropdownOpen} onOpenChange={setScopeTypeDropdownOpen}>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outlined" visual="gray">
-                      <RefreshCcw05 className="size-[15px]" />
-                      {scopeType === "service" ? "Service" : "Project"}
-                      <ChevronDown className="size-[15px]" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-[280px]">
-                    <DropdownMenuItem
-                      className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
-                      onClick={() => {
-                        if (scopeType !== "project") {
-                          setPendingScopeType("project")
-                          setScopeTypeConfirmOpen(true)
-                        }
-                        setScopeTypeDropdownOpen(false)
-                      }}
-                    >
-                      <div className="flex items-center gap-x-2 w-full">
-                        {scopeType === "project" && <Check className="size-4 text-primary-500 shrink-0" />}
-                        <span className="font-semibold text-sm text-gray-900">
-                          Project{scopeType === "project" ? " (current)" : ""}
-                        </span>
-                      </div>
-                      <span className="text-xs text-gray-500 ml-6">
-                        One-time job with a defined duration
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
-                      onClick={() => {
-                        if (scopeType !== "service") {
-                          setPendingScopeType("service")
-                          setScopeTypeConfirmOpen(true)
-                        }
-                        setScopeTypeDropdownOpen(false)
-                      }}
-                    >
-                      <div className="flex items-center gap-x-2 w-full">
-                        {scopeType === "service" && <Check className="size-4 text-primary-500 shrink-0" />}
-                        <span className="font-semibold text-sm text-gray-900">
-                          Service{scopeType === "service" ? " (current)" : ""}
-                        </span>
-                      </div>
-                      <span className="text-xs text-gray-500 ml-6">
-                        Recurring work with consistent needs
-                      </span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                <div className="flex items-center">
-                  <TooltipProvider delayDuration={0}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          className="border-r-0 rounded-r-none"
-                          variant="outlined"
-                          visual="gray"
-                          size="md"
-                          onClick={expandAll}
-                        >
-                          <ChevronsDown className="size-[15px]" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Expand All</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <TooltipProvider delayDuration={0}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          className="rounded-l-none md:rounded-r-[5px] rounded-r-none"
-                          variant="outlined"
-                          visual="gray"
-                          size="md"
-                          onClick={collapseAll}
-                        >
-                          <ChevronsUp className="size-[15px]" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Collapse All</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+        <div className="flex items-center md:gap-x-3">
+          <DropdownMenu
+            open={scopeTypeDropdownOpen}
+            onOpenChange={setScopeTypeDropdownOpen}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button variant="outlined" visual="gray">
+                <RefreshCcw05 className="size-[15px]" />
+                {scopeType === "service" ? "Service" : "Project"}
+                <ChevronDown className="size-[15px]" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[280px]">
+              <DropdownMenuItem
+                className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                onClick={() => {
+                  if (scopeType !== "project") {
+                    setPendingScopeType("project")
+                    setScopeTypeConfirmOpen(true)
+                  }
+                  setScopeTypeDropdownOpen(false)
+                }}
+              >
+                <div className="flex items-center gap-x-2 w-full">
+                  {scopeType === "project" && (
+                    <Check className="size-4 text-primary-500 shrink-0" />
+                  )}
+                  <span className="font-semibold text-sm text-gray-900">
+                    Project{scopeType === "project" ? " (current)" : ""}
+                  </span>
                 </div>
+                <span className="text-xs text-gray-500 ml-6">
+                  One-time job with a defined duration
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                onClick={() => {
+                  if (scopeType !== "service") {
+                    setPendingScopeType("service")
+                    setScopeTypeConfirmOpen(true)
+                  }
+                  setScopeTypeDropdownOpen(false)
+                }}
+              >
+                <div className="flex items-center gap-x-2 w-full">
+                  {scopeType === "service" && (
+                    <Check className="size-4 text-primary-500 shrink-0" />
+                  )}
+                  <span className="font-semibold text-sm text-gray-900">
+                    Service{scopeType === "service" ? " (current)" : ""}
+                  </span>
+                </div>
+                <span className="text-xs text-gray-500 ml-6">
+                  Recurring work with consistent needs
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
+          <div className="flex items-center">
+            <TooltipProvider delayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    className="border-r-0 rounded-r-none"
+                    variant="outlined"
+                    visual="gray"
+                    size="md"
+                    onClick={expandAll}
+                  >
+                    <ChevronsDown className="size-[15px]" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Expand All</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider delayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    className="rounded-l-none md:rounded-r-[5px] rounded-r-none"
+                    variant="outlined"
+                    visual="gray"
+                    size="md"
+                    onClick={collapseAll}
+                  >
+                    <ChevronsUp className="size-[15px]" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Collapse All</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+
+          <Button
+            className="border-l-0 rounded-l-none md:border-l md:rounded-l-[5px]"
+            variant="outlined"
+            visual="gray"
+            onClick={() => dispatch({ type: "TOGGLE" })}
+          >
+            <Plus className="size-[15px]" /> Add Phase
+          </Button>
+        </div>
+      </div>
+
+      {/* Scope type change confirmation dialog */}
+      <Dialog
+        open={scopeTypeConfirmOpen}
+        onOpenChange={setScopeTypeConfirmOpen}
+      >
+        <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
+          <div className="max-w-[371px] bg-white p-6 rounded-xl shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03)_0px_20px_24px_-4px_rgba(16,24,40,.08)]">
+            <DialogTitle>
+              Change to {pendingScopeType === "service" ? "Service" : "Project"}
+              ?
+            </DialogTitle>
+            <DialogDescription>
+              This action will modify the entire {scopeType} scope. You&apos;ll
+              need to manually update the{" "}
+              {pendingScopeType === "service" ? "service" : "project"} plan
+              details, including time intervals for each phase and other related
+              settings. You can undo this at anytime.
+            </DialogDescription>
+
+            <DialogFooter className="mt-8 grid gap-x-3">
+              <DialogClose asChild>
                 <Button
-                  className="border-l-0 rounded-l-none md:border-l md:rounded-l-[5px]"
                   variant="outlined"
                   visual="gray"
-                  onClick={() => dispatch({ type: "TOGGLE" })}
+                  onClick={() => setPendingScopeType(null)}
                 >
-                  <Plus className="size-[15px]" /> Add Phase
+                  Cancel
                 </Button>
-              </div>
-            </div>
+              </DialogClose>
 
-            {/* Scope type change confirmation dialog */}
-            <Dialog open={scopeTypeConfirmOpen} onOpenChange={setScopeTypeConfirmOpen}>
-              <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
-                <div className="max-w-[371px] bg-white p-6 rounded-xl shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03)_0px_20px_24px_-4px_rgba(16,24,40,.08)]">
-                  <DialogTitle>
-                    Change to {pendingScopeType === "service" ? "Service" : "Project"}?
-                  </DialogTitle>
-                  <DialogDescription>
-                    This action will modify the entire {scopeType} scope. You&apos;ll need to manually
-                    update the {pendingScopeType === "service" ? "service" : "project"} plan details,
-                    including time intervals for each phase and other related settings. You can undo
-                    this at anytime.
-                  </DialogDescription>
+              <Button
+                onClick={() => {
+                  const previousType = scopeType
+                  if (pendingScopeType) {
+                    onScopeTypeChange?.(pendingScopeType)
+                    toast({
+                      variant: "success",
+                      title: `Your ${previousType} has been changed to a ${pendingScopeType}`,
+                      action: (
+                        <ToastAction
+                          altText="Undo"
+                          className="ml-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
+                          onClick={() => onScopeTypeChange?.(previousType)}
+                        >
+                          Undo
+                        </ToastAction>
+                      ),
+                    })
+                  }
+                  setPendingScopeType(null)
+                  setScopeTypeConfirmOpen(false)
+                }}
+              >
+                Yes, Change
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-                  <DialogFooter className="mt-8 grid gap-x-3">
-                    <DialogClose asChild>
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        onClick={() => setPendingScopeType(null)}
-                      >
-                        Cancel
-                      </Button>
-                    </DialogClose>
+      <InputGroup>
+        <Input type="text" placeholder="Find a phase or task" />
+        <InputLeftElement>
+          <SearchMd className="text-gray-500 h-5 w-5" />
+        </InputLeftElement>
+      </InputGroup>
 
-                    <Button
-                      onClick={() => {
-                        const previousType = scopeType
-                        if (pendingScopeType) {
-                          onScopeTypeChange?.(pendingScopeType)
-                          toast({
-                            variant: "success",
-                            title: `Your ${previousType} has been changed to a ${pendingScopeType}`,
-                            action: (
-                              <ToastAction
-                                altText="Undo"
-                                className="ml-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
-                                onClick={() => onScopeTypeChange?.(previousType)}
-                              >
-                                Undo
-                              </ToastAction>
-                            ),
+      <Accordion
+        value={accordionState}
+        onValueChange={setAccordionState}
+        type="multiple"
+        className="flex-auto space-y-3"
+      >
+        {phases.map(({ phaseName, rows, phaseType }, index) => (
+          <ArrayNavigator key={index} value={phases} index={index}>
+            {rows ? (
+              <AccordionItem value={`item-${index}`} asChild>
+                <div className="rounded-lg border border-gray-200 shadow-sm">
+                  <div
+                    className="mb-3 flex items-center gap-x-4 px-3 pt-3 cursor-pointer"
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement
+                      if (
+                        target.closest(
+                          "button, a, [role='menuitem'], [data-radix-collection-item]"
+                        )
+                      )
+                        return
+                      const key = `item-${index}`
+                      setAccordionState((prev) =>
+                        prev.includes(key)
+                          ? prev.filter((v) => v !== key)
+                          : [...prev, key]
+                      )
+                    }}
+                  >
+                    <div className="flex flex-auto min-w-0 gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
+                      <div className="inline-flex items-center gap-x-3.5 min-w-0">
+                        <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+
+                        <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900 min-w-0 truncate">
+                          {phaseType
+                            ? PHASE_TYPE_TITLE[phaseType]
+                            : `Phase ${numberToWord(index)}`}{" "}
+                          {phaseName ? (
+                            <button
+                              type="button"
+                              className="font-light hover:underline focus-visible:outline-none"
+                              onClick={() =>
+                                dispatch({
+                                  type: "EDIT",
+                                  payload: index,
+                                })
+                              }
+                            >
+                              {phaseName}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="font-light hover:underline focus-visible:outline-none inline-flex items-center gap-x-2"
+                              onClick={() =>
+                                dispatch({
+                                  type: "EDIT",
+                                  payload: index,
+                                })
+                              }
+                            >
+                              <Edit03 className="size-[15px] text-dark-blue-400" />
+                              <span className="text-sm leading-5 font-semibold text-dark-blue-400">
+                                Edit Phase Name
+                              </span>
+                            </button>
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:pl-0 shrink-0">
+                        <PhaseHeaderMeta
+                          phases={phases}
+                          index={index}
+                          onRecurrenceChange={(s, c) =>
+                            updatePhaseRecurrence(index, s, c)
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-x-4 items-center shrink-0">
+                      <MoreDropdown
+                        onSwapPhases={(to) => handleSwapPhases(index, to)}
+                        phaseType={phaseType}
+                        openPhaseDialog={() =>
+                          dispatch({ type: "EDIT", payload: index })
+                        }
+                        onChangeDuration={() =>
+                          handleOpenPhaseDurationDialog(index)
+                        }
+                        openDeletePhaseDialog={() =>
+                          handleOpenDeletePhaseDialog(index)
+                        }
+                        onInsertAbove={() =>
+                          dispatch({
+                            type: "TOGGLE",
+                            payload: {
+                              addTo: "start",
+                              targetPhaseIndex: index,
+                            },
                           })
                         }
-                        setPendingScopeType(null)
-                        setScopeTypeConfirmOpen(false)
-                      }}
-                    >
-                      Yes, Change
-                    </Button>
-                  </DialogFooter>
+                        onInsertBelow={() =>
+                          dispatch({
+                            type: "TOGGLE",
+                            payload: {
+                              addTo: "below",
+                              targetPhaseIndex: index,
+                            },
+                          })
+                        }
+                        onDuplicatePhase={() => onDuplicatePhase(index)}
+                      />
+                      <PlusDropdown
+                        addTask={() => handleOpenTaskDialog(index)}
+                        addPhase={() => dispatch({ type: "TOGGLE" })}
+                      />
+                    </div>
+                  </div>
+
+                  <DisclosureContent className="overflow-auto">
+                    <PhaseTable
+                      rows={rows}
+                      onRowsChange={(rows) => handleRowsChange(index, rows)}
+                      openDurationDialog={(editingPhaseRowIndex) =>
+                        setDurationDialogState({
+                          editingPhaseIndex: index,
+                          editingPhaseRowIndex,
+                          open: true,
+                        })
+                      }
+                      teamMembers={teamMembers}
+                    />
+                  </DisclosureContent>
                 </div>
-              </DialogContent>
-            </Dialog>
+              </AccordionItem>
+            ) : (
+              <AccordionItem value={`item-${index}`} asChild>
+                <div className="rounded-lg border border-gray-200 shadow-sm">
+                  <div
+                    className="mb-3 flex items-center gap-x-4 px-3 pt-3 cursor-pointer"
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement
+                      if (
+                        target.closest(
+                          "button, a, [role='menuitem'], [data-radix-collection-item]"
+                        )
+                      )
+                        return
+                      const key = `item-${index}`
+                      setAccordionState((prev) =>
+                        prev.includes(key)
+                          ? prev.filter((v) => v !== key)
+                          : [...prev, key]
+                      )
+                    }}
+                  >
+                    <div className="flex flex-auto min-w-0 gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
+                      <div className="inline-flex items-center gap-x-3.5 min-w-0">
+                        <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
 
-            <InputGroup>
-              <Input type="text" placeholder="Find a phase or task" />
-              <InputLeftElement>
-                <SearchMd className="text-gray-500 h-5 w-5" />
-              </InputLeftElement>
-            </InputGroup>
-
-            <Accordion
-              value={accordionState}
-              onValueChange={setAccordionState}
-              type="multiple"
-              className="flex-auto space-y-3"
-            >
-              {phases.map(({ phaseName, rows }, index) => (
-                <ArrayNavigator key={index} value={phases} index={index}>
-                  {rows ? (
-                    <AccordionItem value={`item-${index}`} asChild>
-                      <div className="rounded-lg border border-gray-200 shadow-sm">
-                        <div
-                          className="mb-3 flex items-center gap-x-4 px-3 pt-3 cursor-pointer"
-                          onClick={(e) => {
-                            const target = e.target as HTMLElement
-                            if (target.closest("button, a, [role='menuitem'], [data-radix-collection-item]")) return
-                            const key = `item-${index}`
-                            setAccordionState((prev) =>
-                              prev.includes(key) ? prev.filter((v) => v !== key) : [...prev, key]
-                            )
-                          }}
-                        >
-                          <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
-                            <div className="inline-flex items-center gap-x-3.5">
-                              <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-
-                              <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                Phase {numberToWord(index)}{" "}
-                                {phaseName ? (
-                                  <button
-                                    type="button"
-                                    className="font-light hover:underline focus-visible:outline-none"
-                                    onClick={() =>
-                                      dispatch({
-                                        type: "EDIT",
-                                        payload: index,
-                                      })
-                                    }
-                                  >
-                                    {phaseName}
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="font-light hover:underline focus-visible:outline-none inline-flex items-center gap-x-2"
-                                    onClick={() =>
-                                      dispatch({
-                                        type: "EDIT",
-                                        payload: index,
-                                      })
-                                    }
-                                  >
-                                    <Edit03 className="size-[15px] text-dark-blue-400" />
-                                    <span className="text-sm leading-5 font-semibold text-dark-blue-400">
-                                      Edit Phase Name
-                                    </span>
-                                  </button>
-                                )}
-                              </span>
-                            </div>
-
-                            <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:w-[118px] md:pl-0">
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                {getPhaseDayRangeLabel(phases, index)}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex gap-x-4 items-center">
-                            <MoreDropdown
-                              onSwapPhases={(to) => handleSwapPhases(index, to)}
-                              openPhaseDialog={() =>
-                                dispatch({ type: "EDIT", payload: index })
-                              }
-                              onChangeDuration={() =>
-                                handleOpenPhaseDurationDialog(index)
-                              }
-                              openDeletePhaseDialog={() =>
-                                handleOpenDeletePhaseDialog(index)
-                              }
-                              onInsertAbove={() =>
+                        <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900 min-w-0 truncate">
+                          {phaseType
+                            ? PHASE_TYPE_TITLE[phaseType]
+                            : `Phase ${numberToWord(index)}`}{" "}
+                          {phaseName ? (
+                            <button
+                              type="button"
+                              className="font-light hover:underline focus-visible:outline-none"
+                              onClick={() =>
                                 dispatch({
-                                  type: "TOGGLE",
-                                  payload: {
-                                    addTo: "start",
-                                    targetPhaseIndex: index,
-                                  },
+                                  type: "EDIT",
+                                  payload: index,
                                 })
                               }
-                              onInsertBelow={() =>
+                            >
+                              {phaseName}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="font-light hover:underline focus-visible:outline-none inline-flex items-center gap-x-2"
+                              onClick={() =>
                                 dispatch({
-                                  type: "TOGGLE",
-                                  payload: {
-                                    addTo: "below",
-                                    targetPhaseIndex: index,
-                                  },
+                                  type: "EDIT",
+                                  payload: index,
                                 })
                               }
-                              onDuplicatePhase={() => onDuplicatePhase(index)}
-                            />
-                            <PlusDropdown
-                              addTask={() => handleOpenTaskDialog(index)}
-                              addPhase={() => dispatch({ type: "TOGGLE" })}
-                            />
-                          </div>
-                        </div>
-
-                        <DisclosureContent className="overflow-auto">
-                          <PhaseTable
-                            rows={rows}
-                            onRowsChange={(rows) =>
-                              handleRowsChange(index, rows)
-                            }
-                            openDurationDialog={(editingPhaseRowIndex) =>
-                              setDurationDialogState({
-                                editingPhaseIndex: index,
-                                editingPhaseRowIndex,
-                                open: true,
-                              })
-                            }
-                            teamMembers={teamMembers}
-                          />
-                        </DisclosureContent>
+                            >
+                              <Edit03 className="size-[15px] text-dark-blue-400" />
+                              <span className="text-sm leading-5 font-semibold text-dark-blue-400">
+                                Edit Phase Name
+                              </span>
+                            </button>
+                          )}
+                        </span>
                       </div>
-                    </AccordionItem>
-                  ) : (
-                    <AccordionItem value={`item-${index}`} asChild>
-                      <div className="rounded-lg border border-gray-200 shadow-sm">
-                        <div
-                          className="mb-3 flex items-center gap-x-4 px-3 pt-3 cursor-pointer"
-                          onClick={(e) => {
-                            const target = e.target as HTMLElement
-                            if (target.closest("button, a, [role='menuitem'], [data-radix-collection-item]")) return
-                            const key = `item-${index}`
-                            setAccordionState((prev) =>
-                              prev.includes(key) ? prev.filter((v) => v !== key) : [...prev, key]
-                            )
-                          }}
-                        >
-                          <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
-                            <div className="inline-flex items-center gap-x-3.5">
-                              <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
 
-                              <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                Phase {numberToWord(index)}{" "}
-                                {phaseName ? (
-                                  <button
-                                    type="button"
-                                    className="font-light hover:underline focus-visible:outline-none"
-                                    onClick={() =>
-                                      dispatch({
-                                        type: "EDIT",
-                                        payload: index,
-                                      })
-                                    }
-                                  >
-                                    {phaseName}
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="font-light hover:underline focus-visible:outline-none inline-flex items-center gap-x-2"
-                                    onClick={() =>
-                                      dispatch({
-                                        type: "EDIT",
-                                        payload: index,
-                                      })
-                                    }
-                                  >
-                                    <Edit03 className="size-[15px] text-dark-blue-400" />
-                                    <span className="text-sm leading-5 font-semibold text-dark-blue-400">
-                                      Edit Phase Name
-                                    </span>
-                                  </button>
-                                )}
-                              </span>
-                            </div>
-
-                            <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:w-[118px] md:pl-0">
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                {getPhaseDayRangeLabel(phases, index)}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex gap-x-4 items-center">
-                            <MoreDropdown
-                              onSwapPhases={(to) => handleSwapPhases(index, to)}
-                              openPhaseDialog={() =>
-                                dispatch({ type: "EDIT", payload: index })
-                              }
-                              onChangeDuration={() =>
-                                handleOpenPhaseDurationDialog(index)
-                              }
-                              openDeletePhaseDialog={() =>
-                                handleOpenDeletePhaseDialog(index)
-                              }
-                              onInsertAbove={() =>
-                                dispatch({
-                                  type: "TOGGLE",
-                                  payload: {
-                                    addTo: "start",
-                                    targetPhaseIndex: index,
-                                  },
-                                })
-                              }
-                              onInsertBelow={() =>
-                                dispatch({
-                                  type: "TOGGLE",
-                                  payload: {
-                                    addTo: "below",
-                                    targetPhaseIndex: index,
-                                  },
-                                })
-                              }
-                              onDuplicatePhase={() => onDuplicatePhase(index)}
-                            />
-                            <PlusDropdown
-                              addTask={() => handleOpenTaskDialog(index)}
-                              addPhase={() => dispatch({ type: "TOGGLE" })}
-                            />
-                          </div>
-                        </div>
-                        <DisclosureContent className="overflow-auto">
-                          <div className="w-full overflow-auto flex border-t border-gray-200 flex-col justify-center min-h-[208px] md:min-h-[228px]">
-                            <div className="max-w-[352px] mx-auto">
-                              <h1 className="text-base font-semibold text-center leading-6 text-gray-800">
-                                {index === 0
-                                  ? "Create your first task"
-                                  : "Create a task"}
-                              </h1>
-                              <p className="text-sm mt-1 leading-5 text-center text-gray-800">
-                                {index === 0
-                                  ? "Start defining your project scope with a clear, actionable step."
-                                  : "Define your project scope with a clear, actionable step."}
-                              </p>
-                              <div className="mt-6 flex justify-center">
-                                <Button
-                                  className="bg-primary-50 text-primary-500 hover:bg-primary-500 hover:text-white"
-                                  onClick={() => handleOpenTaskDialog(index)}
-                                >
-                                  <Plus className="size-[15px]" />
-                                  Add Task
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        </DisclosureContent>
+                      <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:pl-0 shrink-0">
+                        <PhaseHeaderMeta
+                          phases={phases}
+                          index={index}
+                          onRecurrenceChange={(s, c) =>
+                            updatePhaseRecurrence(index, s, c)
+                          }
+                        />
                       </div>
-                    </AccordionItem>
-                  )}
-                </ArrayNavigator>
-              ))}
-            </Accordion>
+                    </div>
 
-            <Button
-              className="mt-5"
-              variant="ghost"
-              visual="gray"
-              onClick={() => dispatch({ type: "TOGGLE" })}
-            >
-              <Plus className="size-[15px]" /> Add Phase
-            </Button>
+                    <div className="flex gap-x-4 items-center shrink-0">
+                      <MoreDropdown
+                        onSwapPhases={(to) => handleSwapPhases(index, to)}
+                        phaseType={phaseType}
+                        openPhaseDialog={() =>
+                          dispatch({ type: "EDIT", payload: index })
+                        }
+                        onChangeDuration={() =>
+                          handleOpenPhaseDurationDialog(index)
+                        }
+                        openDeletePhaseDialog={() =>
+                          handleOpenDeletePhaseDialog(index)
+                        }
+                        onInsertAbove={() =>
+                          dispatch({
+                            type: "TOGGLE",
+                            payload: {
+                              addTo: "start",
+                              targetPhaseIndex: index,
+                            },
+                          })
+                        }
+                        onInsertBelow={() =>
+                          dispatch({
+                            type: "TOGGLE",
+                            payload: {
+                              addTo: "below",
+                              targetPhaseIndex: index,
+                            },
+                          })
+                        }
+                        onDuplicatePhase={() => onDuplicatePhase(index)}
+                      />
+                      <PlusDropdown
+                        addTask={() => handleOpenTaskDialog(index)}
+                        addPhase={() => dispatch({ type: "TOGGLE" })}
+                      />
+                    </div>
+                  </div>
+                  <DisclosureContent className="overflow-auto">
+                    <div className="w-full overflow-auto flex border-t border-gray-200 flex-col justify-center min-h-[208px] md:min-h-[228px]">
+                      <div className="max-w-[352px] mx-auto">
+                        <h1 className="text-base font-semibold text-center leading-6 text-gray-800">
+                          {index === 0
+                            ? "Create your first task"
+                            : "Create a task"}
+                        </h1>
+                        <p className="text-sm mt-1 leading-5 text-center text-gray-800">
+                          {index === 0
+                            ? "Start defining your project scope with a clear, actionable step."
+                            : "Define your project scope with a clear, actionable step."}
+                        </p>
+                        <div className="mt-6 flex justify-center">
+                          <Button
+                            className="bg-primary-50 text-primary-500 hover:bg-primary-500 hover:text-white"
+                            onClick={() => handleOpenTaskDialog(index)}
+                          >
+                            <Plus className="size-[15px]" />
+                            Add Task
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </DisclosureContent>
+                </div>
+              </AccordionItem>
+            )}
+          </ArrayNavigator>
+        ))}
+      </Accordion>
 
-            <PhaseNameDialog
-              onOpenChange={(open) =>
-                dispatch({ type: "TOGGLE", payload: { open } })
-              }
-              open={phaseDialogState.open}
-              onAddPhaseName={onAddPhaseName}
-              defaultName={currentPhaseName}
-              placeholder={
-                phaseDialogState.action === "EDIT"
-                  ? "Edit Phase name"
-                  : "Enter Phase Name"
-              }
-            />
+      <Button
+        className="mt-5"
+        variant="ghost"
+        visual="gray"
+        onClick={() => dispatch({ type: "TOGGLE" })}
+      >
+        <Plus className="size-[15px]" /> Add Phase
+      </Button>
 
-            <TaskDialog
-              open={taskDialogState.open}
-              onOpenChange={(open) =>
-                setTaskDialogState((prev) => ({
-                  ...prev,
-                  open,
-                  editingPhaseIndex: null,
-                }))
-              }
-              onAddTask={onAddTask}
-            />
-            <DurationDialog
-              durationFormValues={durationFormValues}
-              open={durationDialogState.open}
-              onDurationFormValuesChange={onDurationFormValuesChange}
-              onOpenChange={(open) =>
-                setDurationDialogState({
-                  editingPhaseIndex: null,
-                  editingPhaseRowIndex: null,
-                  open,
-                })
-              }
-            />
-            <DeletePhaseDialog
-              open={deletePhaseDialogState.open}
-              onOpenChange={(open) =>
-                setDeletePhaseDialogState({
-                  phaseIndex: null,
-                  open,
-                })
-              }
-              onDeletePhase={() => {
-                if (deletePhaseDialogState.phaseIndex !== null) {
-                  onDeletePhase(String(deletePhaseDialogState.phaseIndex))
-                }
-              }}
-            />
-            <TaskSearchDialog
-              open={isTaskSearchDialogOpen}
-              onOpenChange={setTaskSearchDialogOpen}
-              phases={phases}
-            />
-          </div>
+      <PhaseNameDialog
+        onOpenChange={(open) => dispatch({ type: "TOGGLE", payload: { open } })}
+        open={phaseDialogState.open}
+        onAddPhaseName={onAddPhaseName}
+        defaultName={currentPhaseName}
+        showPhaseType={
+          scopeType === "service" && phaseDialogState.action !== "EDIT"
+        }
+        disabledTypes={
+          phases
+            .map((p) => p.phaseType)
+            .filter((t): t is PhaseType => !!t)
+        }
+        placeholder={
+          phaseDialogState.action === "EDIT"
+            ? "Edit Phase name"
+            : "Enter Phase Name"
+        }
+      />
+
+      <TaskDialog
+        open={taskDialogState.open}
+        onOpenChange={(open) =>
+          setTaskDialogState((prev) => ({
+            ...prev,
+            open,
+            editingPhaseIndex: null,
+          }))
+        }
+        onAddTask={onAddTask}
+      />
+      <DurationDialog
+        durationFormValues={durationFormValues}
+        open={durationDialogState.open}
+        onDurationFormValuesChange={onDurationFormValuesChange}
+        onOpenChange={(open) =>
+          setDurationDialogState({
+            editingPhaseIndex: null,
+            editingPhaseRowIndex: null,
+            open,
+          })
+        }
+      />
+      <DeletePhaseDialog
+        open={deletePhaseDialogState.open}
+        onOpenChange={(open) =>
+          setDeletePhaseDialogState({
+            phaseIndex: null,
+            open,
+          })
+        }
+        onDeletePhase={() => {
+          if (deletePhaseDialogState.phaseIndex !== null) {
+            onDeletePhase(String(deletePhaseDialogState.phaseIndex))
+          }
+        }}
+      />
+      <TaskSearchDialog
+        open={isTaskSearchDialogOpen}
+        onOpenChange={setTaskSearchDialogOpen}
+        phases={phases}
+      />
+    </div>
   )
 
   if (embedded) {

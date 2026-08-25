@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useAuth } from "@/contexts/auth"
 import { apiFetch } from "@/src/lib/api"
-import { getAccessToken, getCurrentUser } from "@/utils/auth"
 import * as Ably from "ably"
 
 export interface PresenceMember {
@@ -12,13 +12,14 @@ export interface PresenceMember {
 const TYPING_TIMEOUT_MS = 5000
 
 export function useAblyPresence(threadId: string) {
+  const { user } = useAuth()
   const [members, setMembers] = useState<PresenceMember[]>([])
   const channelRef = useRef<Ably.RealtimeChannel | null>(null)
   const sendingTypingRef = useRef(false)
   const typingResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const staleTypingTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
-    new Map()
-  )
+  const staleTypingTimersRef = useRef<
+    Map<string, ReturnType<typeof setTimeout>>
+  >(new Map())
 
   useEffect(() => {
     if (!threadId) {
@@ -26,8 +27,7 @@ export function useAblyPresence(threadId: string) {
       return
     }
 
-    const currentUser = getCurrentUser()
-    if (!currentUser) return
+    if (!user?.id) return
 
     let cancelled = false
     let entered = false
@@ -35,10 +35,9 @@ export function useAblyPresence(threadId: string) {
     const client = new Ably.Realtime({
       authCallback: async (_tokenParams, callback) => {
         try {
-          const token = getAccessToken()
           const tokenDetails = await apiFetch<any>(
             `/v1/threads/ably-token?threadId=${threadId}`,
-            { method: "GET", headers: { Authorization: `Bearer ${token}` } }
+            { method: "GET" }
           )
           if (!tokenDetails) {
             callback("Realtime token unavailable", null)
@@ -50,7 +49,7 @@ export function useAblyPresence(threadId: string) {
           callback(msg, null)
         }
       },
-      clientId: currentUser.id,
+      clientId: user.id,
     })
 
     const channel = client.channels.get(`presence:thread-${threadId}`)
@@ -100,7 +99,7 @@ export function useAblyPresence(threadId: string) {
     channel.presence.subscribe(handlePresence).catch(() => {})
     ;(async () => {
       try {
-        await channel.presence.enter({ userId: currentUser.id, typing: false })
+        await channel.presence.enter({ userId: user.id, typing: false })
         if (cancelled) return
         entered = true
         await syncMembers()
@@ -145,54 +144,50 @@ export function useAblyPresence(threadId: string) {
 
       sendingTypingRef.current = false
     }
-  }, [threadId])
+  }, [threadId, user?.id])
 
   // Publish our own typing state. Call with `true` from the composer's
   // onChange; the hook auto-clears after TYPING_TIMEOUT_MS of silence.
-  const sendTyping = useCallback(
-    (typing: boolean) => {
-      const channel = channelRef.current
-      if (!channel) return
-      const currentUser = getCurrentUser()
-      if (!currentUser) return
+  const sendTyping = useCallback((typing: boolean) => {
+    const channel = channelRef.current
+    if (!channel) return
+    if (!user?.id) return
 
-      if (typing) {
-        if (typingResetTimerRef.current) {
-          clearTimeout(typingResetTimerRef.current)
-        }
-        typingResetTimerRef.current = setTimeout(() => {
-          sendTyping(false)
-        }, TYPING_TIMEOUT_MS)
-
-        if (sendingTypingRef.current) return
-        sendingTypingRef.current = true
-        channel.presence
-          .update({ userId: currentUser.id, typing: true })
-          .catch((err) => {
-            console.warn("[useAblyPresence] typing update failed", err)
-            sendingTypingRef.current = false
-          })
-      } else {
-        if (typingResetTimerRef.current) {
-          clearTimeout(typingResetTimerRef.current)
-          typingResetTimerRef.current = null
-        }
-        if (!sendingTypingRef.current) return
-        sendingTypingRef.current = false
-        channel.presence
-          .update({ userId: currentUser.id, typing: false })
-          .catch((err) => {
-            console.warn("[useAblyPresence] typing clear failed", err)
-          })
+    if (typing) {
+      if (typingResetTimerRef.current) {
+        clearTimeout(typingResetTimerRef.current)
       }
-    },
-    []
-  )
+      typingResetTimerRef.current = setTimeout(() => {
+        sendTyping(false)
+      }, TYPING_TIMEOUT_MS)
+
+      if (sendingTypingRef.current) return
+      sendingTypingRef.current = true
+      channel.presence
+        .update({ userId: user.id, typing: true })
+        .catch((err) => {
+          console.warn("[useAblyPresence] typing update failed", err)
+          sendingTypingRef.current = false
+        })
+    } else {
+      if (typingResetTimerRef.current) {
+        clearTimeout(typingResetTimerRef.current)
+        typingResetTimerRef.current = null
+      }
+      if (!sendingTypingRef.current) return
+      sendingTypingRef.current = false
+      channel.presence
+        .update({ userId: user.id, typing: false })
+        .catch((err) => {
+          console.warn("[useAblyPresence] typing clear failed", err)
+        })
+    }
+  }, [user?.id])
 
   const isOnline = (userId: string | undefined | null) =>
     !!userId && members.some((m) => m.clientId === userId)
 
-  const me = getCurrentUser()?.id
+  const me = user?.id
   const typingUserIds = members
     .filter((m) => m.clientId !== me && !!m.data?.typing)
     .map((m) => m.clientId)

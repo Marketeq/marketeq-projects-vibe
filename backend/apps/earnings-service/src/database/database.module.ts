@@ -44,7 +44,7 @@ class SnakeNamingStrategy extends DefaultNamingStrategy implements NamingStrateg
         logging: config.get('NODE_ENV') !== 'production',
         namingStrategy: new SnakeNamingStrategy(),
         ssl:
-          config.get('NODE_ENV') === 'production'
+          (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true'
             ? { rejectUnauthorized: false }
             : false,
       }),
@@ -62,7 +62,7 @@ export const AppDataSource = new DataSource({
   synchronize: false,
   namingStrategy: new SnakeNamingStrategy(),
   ssl:
-    process.env.NODE_ENV === 'production'
+    (process.env.DATABASE_SSL_ENABLED ?? 'false').toLowerCase() === 'true'
       ? { rejectUnauthorized: false }
       : false,
 });

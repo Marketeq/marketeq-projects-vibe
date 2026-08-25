@@ -1,9 +1,11 @@
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
+  MaxLength,
 } from 'class-validator';
 
 export class CreateManualTimeDto {
@@ -23,7 +25,15 @@ export class CreateManualTimeDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   notes?: string;
+
+  // US-78: overlap is a soft, dismissible warning, not a hard block — create()
+  // throws ERR_MANUAL_TIME_OVERLAP on first submit; the contractor can resubmit
+  // with confirmOverlap: true to proceed anyway.
+  @IsOptional()
+  @IsBoolean()
+  confirmOverlap?: boolean;
 }
 
 export class ReviewManualTimeDto {

@@ -1,3 +1,7 @@
+import type {
+  ChannelKey,
+  ScopedChannelState,
+} from "@/service/http/notifications"
 import {
   BellRinging03,
   Briefcase,
@@ -7,10 +11,6 @@ import {
   MessageTextSquare01,
   Star,
 } from "@blend-metrics/icons"
-import type {
-  ChannelKey,
-  ScopedChannelState,
-} from "@/service/http/notifications"
 
 export const channelOrder: ChannelKey[] = ["inApp", "email", "sms"]
 
@@ -39,7 +39,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
 }
 
 export const resolveIcon = (
-  key: string,
+  key: string
 ): React.ComponentType<{ className?: string }> => iconMap[key] ?? Briefcase
 
 export const EMPTY_CHANNELS: ScopedChannelState = {

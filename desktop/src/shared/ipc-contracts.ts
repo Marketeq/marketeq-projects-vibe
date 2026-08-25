@@ -162,6 +162,7 @@ export interface ScreenshotTakenEvent {
   blurPath: string | null;
   displayId: string;
   sensitive: boolean;
+  activeAppName: string | null;
 }
 
 // ---------- Activity monitor contracts ----------
@@ -497,6 +498,7 @@ export interface BackendContract {
   id: string;
   groupId: string;
   clientId: string;
+  clientName?: string;
   talentId: string;
   title: string;
   rate: number;

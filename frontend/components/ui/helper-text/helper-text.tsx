@@ -22,7 +22,8 @@ const helperTextVariants = cva(
 )
 
 interface HelperTextProps
-  extends React.HTMLAttributes<HTMLSpanElement>,
+  extends
+    React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof helperTextVariants> {}
 
 const HelperText = React.forwardRef<HTMLSpanElement, HelperTextProps>(

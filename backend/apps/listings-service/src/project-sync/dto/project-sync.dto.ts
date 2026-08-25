@@ -38,8 +38,9 @@ class CmsScopeTask {
   roleName: string;
 
   @IsOptional()
-  @IsString()
-  location?: string;
+  @IsArray()
+  @IsString({ each: true })
+  location?: string[];
 
   @IsIn(["Student", "Junior", "Medior", "Senior", "Guru"])
   experienceLevel: string;
@@ -99,6 +100,10 @@ export class ProjectSyncDto {
 
   @IsString()
   shortDescription: string;
+
+  @IsOptional()
+  @IsString()
+  projectType?: string;
 
   // Spec §16 L15 / data-dictionary: project owner. Stored in
   // listings-service as `createdBy` so `projectHistoryRatings`
@@ -265,4 +270,5 @@ export class ProjectSyncDto {
   @IsOptional()
   @IsString()
   videoUrl?: string;
+
 }

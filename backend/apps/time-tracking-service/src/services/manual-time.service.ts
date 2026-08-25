@@ -5,9 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, LessThan, MoreThan, Not, Repository } from 'typeorm';
 import { ManualTime } from '../entities/manual-time.entity';
 import { CreateManualTimeDto, ReviewManualTimeDto } from '../dtos/create-manual-time.dto';
+
+const MAX_DURATION_HOURS = 12;
+const MAX_PAST_DAYS = 90;
 
 @Injectable()
 export class ManualTimeService {
@@ -21,6 +24,45 @@ export class ManualTimeService {
     const end = new Date(dto.endTime);
     if (end <= start) {
       throw new BadRequestException('End time must be after start time');
+    }
+
+    // US-79: a single manual entry can't exceed 12 hours, and can't start
+    // more than 90 days in the past.
+    const durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+    if (durationHours > MAX_DURATION_HOURS) {
+      throw new BadRequestException(`A single entry cannot exceed ${MAX_DURATION_HOURS} hours`);
+    }
+    const earliestAllowed = new Date(Date.now() - MAX_PAST_DAYS * 24 * 60 * 60 * 1000);
+    if (start < earliestAllowed) {
+      throw new BadRequestException(`Entries cannot start more than ${MAX_PAST_DAYS} days in the past`);
+    }
+    // AC-79.02: future-dated entries are rejected server-side too — the
+    // frontend already blocks this client-side, but that's bypassable via a
+    // direct API call, and this is the only real enforcement point.
+    if (start > new Date()) {
+      throw new BadRequestException('Entries cannot be logged for a future date or time');
+    }
+
+    // US-78: overlap is a soft, dismissible warning, not a hard block — the
+    // first submit (confirmOverlap unset/false) throws ERR_MANUAL_TIME_OVERLAP
+    // so the frontend can show "You have an overlapping entry. Continue?"; a
+    // resubmit with confirmOverlap: true skips this check and proceeds.
+    if (!dto.confirmOverlap) {
+      const overlapping = await this.repo.findOne({
+        where: {
+          userId,
+          contractId: dto.contractId ?? IsNull(),
+          status: Not('rejected'),
+          startTime: LessThan(end),
+          endTime: MoreThan(start),
+        },
+      });
+      if (overlapping) {
+        throw new BadRequestException({
+          message: 'You have an overlapping entry. Continue?',
+          errorCode: 'ERR_MANUAL_TIME_OVERLAP',
+        });
+      }
     }
 
     const entry = this.repo.create({

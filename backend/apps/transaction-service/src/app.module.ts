@@ -1,4 +1,4 @@
-import { Global, Module } from '@nestjs/common';
+import { Global, Module, DynamicModule, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PassportModule } from '@nestjs/passport';
@@ -25,31 +25,40 @@ import { ExportModule } from './modules/export.module';
 import { AuditModule } from './modules/audit.module';
 import { ShareModule } from './modules/share.module';
 
-// Shared RabbitMQ module — makes AmqpConnection available globally
+// Shared RabbitMQ module — makes AmqpConnection available globally.
+// Skips RabbitMQ entirely when RABBITMQ_URL is not set (e.g. on Render).
 @Global()
-@Module({
-  imports: [
-    RabbitMQModule.forRootAsync({
-      imports: [ConfigModule],
-      inject:  [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        exchanges: [
-          { name: 'marketeq.billing',      type: 'topic' },
-          { name: 'marketeq.timetracking', type: 'topic' },
-          { name: 'marketeq.payout',       type: 'topic' },
-          { name: 'marketeq.transactions', type: 'topic' },
-        ],
-        uri: config.get<string>('RABBITMQ_URL'),
-        connectionInitOptions: { wait: true },
-        defaultRpcErrorHandler: (channel: any, msg: any, _err: any) => {
-          channel.nack(msg, false, false);
-        },
-      }),
-    }),
-  ],
-  exports: [RabbitMQModule],
-})
-class RabbitMQCoreModule {}
+@Module({})
+class RabbitMQCoreModule {
+  private static readonly logger = new Logger('RabbitMQCoreModule');
+
+  static forRoot(): DynamicModule {
+    const rabbitmqUrl = process.env.RABBITMQ_URL;
+    if (!rabbitmqUrl) {
+      this.logger.warn('RABBITMQ_URL not set — RabbitMQ disabled');
+      return { module: RabbitMQCoreModule, imports: [], exports: [] };
+    }
+    return {
+      module: RabbitMQCoreModule,
+      imports: [
+        (RabbitMQModule as any).forRoot(RabbitMQModule, {
+          exchanges: [
+            { name: 'marketeq.billing',      type: 'topic' },
+            { name: 'marketeq.timetracking', type: 'topic' },
+            { name: 'marketeq.payout',       type: 'topic' },
+            { name: 'marketeq.transactions', type: 'topic' },
+          ],
+          uri: rabbitmqUrl,
+          connectionInitOptions: { wait: true },
+          defaultRpcErrorHandler: (channel: any, msg: any, _err: any) => {
+            channel.nack(msg, false, false);
+          },
+        }),
+      ],
+      exports: [RabbitMQModule],
+    };
+  }
+}
 
 @Module({
   imports: [
@@ -74,7 +83,7 @@ class RabbitMQCoreModule {}
     PassportModule.register({ defaultStrategy: 'jwt' }),
 
     // ── RabbitMQ (global) ──────────────────────────────────────────────
-    RabbitMQCoreModule,
+    RabbitMQCoreModule.forRoot(),
 
     // ── Database ───────────────────────────────────────────────────────
     TypeOrmModule.forRootAsync({
@@ -95,7 +104,7 @@ class RabbitMQCoreModule {}
         synchronize: false,
         logging:     config.get<string>('NODE_ENV') !== 'production',
         ssl:
-          config.get<string>('NODE_ENV') === 'production'
+          (config.get<string>('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true'
             ? { rejectUnauthorized: false }
             : false,
       }),

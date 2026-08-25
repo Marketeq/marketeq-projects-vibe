@@ -4,7 +4,7 @@ import { FindOptionsWhere, ILike, Repository } from 'typeorm';
 import { IPaginationOptions } from '../../../../../utils/types/pagination-options';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { EntityCondition } from '../../../../../utils/types/entity-condition.type';
-import { ProjectRepository } from '../../project.repository';
+import { ProjectRepository, RecentQuestion } from '../../project.repository';
 import { ProjectEntity } from '../entities/project.entity';
 import { Project } from '../../../../interface/project';
 import { ProjectMapper } from '../mappers/project.mapper';
@@ -145,6 +145,111 @@ export class ProjectRelationalRepository implements ProjectRepository {
     );
 
     return ProjectMapper.toDomain(updatedEntity);
+  }
+
+  async updatePublishedSnapshot(
+    id: Project['id'],
+    data: {
+      budget: number;
+      scope: unknown;
+      duration: string | null;
+      estimatedHours: number | null;
+    },
+  ): Promise<void> {
+    await this.projectRepository.manager.query(
+      `UPDATE listings.project
+       SET budget = $1, scope = $2::jsonb, duration = $3, "estimatedHours" = $4
+       WHERE id = $5`,
+      [
+        data.budget,
+        JSON.stringify(data.scope ?? []),
+        data.duration,
+        data.estimatedHours,
+        id?.toString(),
+      ],
+    );
+  }
+
+  async getProjectMembers(id: Project['id']): Promise<
+    Array<{
+      userId: string;
+      projectRole: string;
+      status: string;
+      isLead: boolean;
+      leadLabel: string | null;
+    }>
+  > {
+    return this.projectRepository.manager.query(
+      `SELECT "userId"::text AS "userId", "projectRole", "status", "isLead", "leadLabel"
+       FROM listings.project_members WHERE "projectId" = $1`,
+      [id?.toString()],
+    );
+  }
+
+  async upsertProjectMembers(
+    id: Project['id'],
+    members: Array<{
+      userId: string;
+      projectRole?: string | null;
+      status?: string | null;
+      isLead?: boolean | null;
+      leadLabel?: string | null;
+    }>,
+  ): Promise<void> {
+    const userIds = members
+      .map((m) => (m?.userId ? String(m.userId) : null))
+      .filter((x): x is string => !!x);
+    if (userIds.length > 0) {
+      await this.projectRepository.manager.query(
+        `DELETE FROM listings.project_members WHERE "projectId" = $1 AND "userId" <> ALL($2::uuid[])`,
+        [id?.toString(), userIds],
+      );
+    } else {
+      await this.projectRepository.manager.query(
+        `DELETE FROM listings.project_members WHERE "projectId" = $1`,
+        [id?.toString()],
+      );
+    }
+    for (const m of members) {
+      if (!m?.userId) continue;
+      await this.projectRepository.manager.query(
+        `INSERT INTO listings.project_members
+           ("projectId", "userId", "projectRole", "status", "isLead", "leadLabel", "updatedAt")
+         VALUES ($1, $2, COALESCE($3, 'Contributor'), COALESCE($4, 'Active'), COALESCE($5, false), $6, now())
+         ON CONFLICT ("projectId", "userId") DO UPDATE SET
+           "projectRole" = EXCLUDED."projectRole",
+           "status" = EXCLUDED."status",
+           "isLead" = EXCLUDED."isLead",
+           "leadLabel" = EXCLUDED."leadLabel",
+           "updatedAt" = now()`,
+        [
+          id?.toString(),
+          String(m.userId),
+          m.projectRole ?? null,
+          m.status ?? null,
+          m.isLead ?? null,
+          m.leadLabel ?? null,
+        ],
+      );
+    }
+  }
+
+  async getRecentQuestions(id: Project['id']): Promise<RecentQuestion[]> {
+    const rows = await this.projectRepository.manager.query(
+      `SELECT "recentQuestions" FROM listings.project WHERE id = $1`,
+      [id?.toString()],
+    );
+    return (rows?.[0]?.recentQuestions ?? []) as RecentQuestion[];
+  }
+
+  async updateRecentQuestions(
+    id: Project['id'],
+    questions: RecentQuestion[],
+  ): Promise<void> {
+    await this.projectRepository.manager.query(
+      `UPDATE listings.project SET "recentQuestions" = $1::jsonb WHERE id = $2`,
+      [JSON.stringify(questions ?? []), id?.toString()],
+    );
   }
 
   async softDelete(id: Project['id']): Promise<void> {

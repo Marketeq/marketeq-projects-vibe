@@ -42,6 +42,8 @@ const RENDER_API = "https://api.render.com";
 const VERCEL_TEAM_ID = "team_t2RzlUaGU3p6OALpArhrWXh0";
 const RENDER_SERVICE_ID = "srv-d76r48nafjfc73e1djf0";
 const RENDER_URL = "https://marketeq-backend.onrender.com";
+const RENDER_OWNER_ID = "tea-d0r57undiees73bn5npg";
+const RENDER_ALLOWED_SERVICE_IDS = new Set([RENDER_SERVICE_ID]);
 
 const PROJECTS = {
   "dev-main": {
@@ -1224,6 +1226,17 @@ async function waitForRenderDeploy(sha, deployId) {
   };
 }
 
+async function assertNoRogueRenderServices() {
+  const services = await renderApi("GET", `/v1/services?ownerId=${RENDER_OWNER_ID}&limit=50`);
+  const active = (Array.isArray(services) ? services : [])
+    .map((s) => s.service || s)
+    .filter((s) => s.suspended !== "suspended" && !RENDER_ALLOWED_SERVICE_IDS.has(s.id));
+  if (active.length > 0) {
+    const names = active.map((s) => `${s.name} (${s.id})`).join(", ");
+    throw new Error(`BLOCKED: rogue Render services detected — delete before deploying: ${names}`);
+  }
+}
+
 async function ensureRenderLive(sha) {
   const existing = await listRenderDeploysForSha(sha);
   const live = existing.find((item) => item?.deploy?.status === "live");
@@ -1258,6 +1271,7 @@ async function triggerVercelDeploy(project, sha) {
 
 async function main() {
   assertRequiredSecrets();
+  await assertNoRogueRenderServices();
   const isRollback = EVENT === "rollback";
   const summary = {
     startedAt: nowIso(),

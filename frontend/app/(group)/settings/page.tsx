@@ -1,37 +1,93 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { useAuth, resolveDashboardRole } from "@/contexts/auth"
-import { UserAPI, UserProfilePayload } from "@/service/http/user"
-import SecuritySettingsStepper from "@/components/security-settings"
-import ActiveSessionsModal from "@/components/active-sessions-modal"
-import { TwoFactorSetupModal, DisableTwoFactorModal } from "@/components/two-factor-setup"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
-import SettingsSidebar, { settingsTabItems } from "@/components/settings-sidebar"
+import { UserAPI, UserProfilePayload } from "@/service/http/user"
+import { cn, getIsNotEmpty } from "@/utils/functions"
+import languagesMock from "@/public/mock/languages.json"
+import ActiveSessionsModal from "@/components/active-sessions-modal"
 import NotificationPreferences from "@/components/notification-preferences"
+import SecuritySettingsStepper from "@/components/security-settings"
+import SettingsSidebar, {
+  buildSettingsTabItems,
+} from "@/components/settings-sidebar"
+import {
+  DisableTwoFactorModal,
+  TwoFactorSetupModal,
+} from "@/components/two-factor-setup"
+import { PhoneNumberInput } from "@/components/phone-number-input"
+import dynamic from "next/dynamic"
+import { ChevronDown, Edit01, HelpCircle, Plus, Settings02, Share06, X2 } from "@blend-metrics/icons"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui"
+import { useInviteWindowStore } from "@/components/invite-window"
+import type { BillingTabValue } from "@/components/billing-section-header"
+import {
+  BillingPaymentMethodsContent,
+  BillingPaymentMethodsContentHandle,
+} from "@/app/(group)/payments/page"
+
+const BillingOverviewContent = dynamic(
+  () => import("@/app/(group)/billing/page").then((m) => m.BillingOverviewContent),
+  { ssr: false }
+)
+const BillingTransactionsContent = dynamic(
+  () => import("@/components/billing-transactions-content").then((m) => m.BillingTransactionsContent),
+  { ssr: false }
+)
+const BillingInvoicesContent = dynamic(
+  () => import("@/app/(group)/invoices/page").then((m) => m.BillingInvoicesContent),
+  { ssr: false }
+)
+const BillingMyPlansContent = dynamic(
+  () => import("@/app/(group)/billing/page").then((m) => m.BillingMyPlansContent),
+  { ssr: false }
+)
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
+  Badge,
   Button,
+  IconButton,
   Input,
   Label,
+  Listbox,
+  ListboxButton,
+  ListboxOption,
+  ListboxOptions,
   Switch,
   useToast,
 } from "@/components/ui"
-import { cn } from "@/utils/functions"
 
 export default function SettingsPage() {
   const { user, setUser } = useAuth()
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = useState("profile")
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get("tab")
+  const [activeTab, setActiveTab] = useState(tabParam || "personal-info")
 
+  useEffect(() => {
+    if (tabParam) setActiveTab(tabParam)
+  }, [tabParam])
+
+  const toggleInviteWindow = useInviteWindowStore((s) => s.toggle)
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [profileForm, setProfileForm] = useState({
     firstName: "",
     lastName: "",
     username: "",
+    phone: "",
+    jobTitle: "",
+    team: [] as string[],
+    languages: [] as string[],
   })
 
   const [showPasswordModal, setShowPasswordModal] = useState(false)
@@ -39,12 +95,36 @@ export default function SettingsPage() {
   const [show2FASetup, setShow2FASetup] = useState(false)
   const [show2FADisable, setShow2FADisable] = useState(false)
 
+  const languageOptions = useMemo(
+    () => languagesMock.map((item) => item.label),
+    []
+  )
+
+  const teamOptions = [
+    "Engineering",
+    "Design",
+    "Marketing",
+    "Sales",
+    "Operations",
+    "Product",
+    "Finance",
+    "HR",
+    "Legal",
+    "Other",
+  ]
+
   useEffect(() => {
     if (user) {
+      const rawTeam = (user as any).team ?? ""
+      const rawLang = (user as any).language ?? ""
       setProfileForm({
         firstName: user.firstName ?? "",
         lastName: user.lastName ?? "",
         username: user.username ?? "",
+        phone: (user as any).phone ?? "",
+        jobTitle: (user as any).recentJobTitle ?? "",
+        team: rawTeam ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+        languages: rawLang ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
       })
     }
   }, [user])
@@ -58,7 +138,27 @@ export default function SettingsPage() {
     )
   }, [profileForm, user])
 
+  const paymentMethodsRef = useRef<BillingPaymentMethodsContentHandle | null>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (contentRef.current) contentRef.current.scrollTop = 0
+    window.scrollTo(0, 0)
+  }, [activeTab])
+
   const accountRole = useMemo(() => resolveDashboardRole(user), [user])
+  const settingsTabItems = useMemo(() => buildSettingsTabItems(accountRole), [accountRole])
+
+  const handleBillingTabChange = (value: BillingTabValue) => {
+    const map: Record<BillingTabValue, string> = {
+      "overview": "billing-overview",
+      "transactions": "billing-transactions",
+      "invoices": "billing-invoices",
+      "payment-methods": "billing-payment-methods",
+      "my-plans": "billing-plans",
+    }
+    setActiveTab(map[value])
+  }
 
   const handleProfileChange = (field: string, value: string) => {
     setProfileForm((prev) => ({ ...prev, [field]: value }))
@@ -109,30 +209,49 @@ export default function SettingsPage() {
   }
 
   const handleProfileCancel = () => {
+    const rawTeam = (user as any)?.team ?? ""
+    const rawLang = (user as any)?.language ?? ""
     setProfileForm({
       firstName: user?.firstName ?? "",
       lastName: user?.lastName ?? "",
       username: user?.username ?? "",
+      phone: (user as any)?.phone ?? "",
+      jobTitle: (user as any)?.recentJobTitle ?? "",
+      team: rawTeam ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+      languages: rawLang ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
     })
     setIsEditing(false)
   }
 
   return (
     <AuthenticatedRoute>
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="flex gap-6">
-            <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+      <div className="flex bg-gray-50 h-screen overflow-hidden">
+        <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
-            <div className="flex-1 min-w-0">
-              <div className="min-[1024px]:hidden mb-6">
-                <h1 className="text-2xl font-semibold text-dark-blue-400">Settings</h1>
-                <p className="text-sm text-gray-500 mt-1">Manage your account settings and preferences</p>
-                <div className="flex gap-1 mt-4 border-b border-gray-200 overflow-x-auto">
-                  {settingsTabItems.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => setActiveTab(item.id)}
+        <div
+          ref={contentRef}
+          className={cn(
+          "flex-auto p-3.5 md:p-6 min-[1024px]:p-16 min-[1024px]:pl-[288px]",
+          activeTab === "billing-payment-methods"
+            ? "flex flex-col overflow-hidden"
+            : "overflow-y-auto"
+        )}>
+          <div className={cn(
+            "flex-auto min-w-0",
+            activeTab === "billing-payment-methods" && "flex flex-col min-h-0 overflow-hidden"
+          )}>
+            <div className="min-[1024px]:hidden mb-6">
+              <h1 className="text-2xl font-semibold text-dark-blue-400">
+                Settings
+              </h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Manage your account settings and preferences
+              </p>
+              <div className="flex gap-1 mt-4 border-b border-gray-200 overflow-x-auto">
+                {settingsTabItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
                       className={cn(
                         "flex items-center gap-1.5 px-3 pb-3 text-sm border-b-2 transition-colors whitespace-nowrap",
                         activeTab === item.id
@@ -147,138 +266,293 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {activeTab === "profile" && (
-                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-lg font-semibold text-dark-blue-400">Profile Information</h2>
-                      <p className="text-sm text-gray-500 mt-1">Update your personal details</p>
+              {activeTab === "personal-info" && (
+                <>
+                  <h1 className="text-xl font-bold text-dark-blue-400">
+                    Personal Info
+                  </h1>
+
+                  <div className="mt-6 flex items-center gap-x-6">
+                    <div className="relative">
+                      <Avatar className="size-24 border-4 border-white">
+                        <AvatarImage
+                          src={user?.avatarUrl ?? ""}
+                          alt={user?.firstName ?? "User"}
+                        />
+                        <AvatarFallback className="text-4xl font-medium tracking-tight text-gray-300">
+                          {(user?.firstName?.[0] ?? "").toUpperCase()}
+                          {(user?.lastName?.[0] ?? "").toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <button
+                        type="button"
+                        className="absolute -bottom-1 -right-1 size-[30px] rounded-full bg-white border border-gray-300 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)] flex items-center justify-center hover:bg-gray-50 transition-colors"
+                      >
+                        <Edit01 className="size-4 text-gray-400" />
+                      </button>
                     </div>
-                    {!isEditing && (
-                      <Button variant="outlined" visual="gray" size="sm" onClick={() => setIsEditing(true)}>
-                        Edit Profile
-                      </Button>
-                    )}
+                    <div>
+                      <div className="flex items-center gap-x-3">
+                        <h2 className="text-2xl leading-[38px] font-medium text-gray-600 capitalize">
+                          {user?.firstName} {user?.lastName}
+                        </h2>
+                        <Badge visual="primary" size="sm">
+                          {accountRole === "ADMIN"
+                            ? "Admin"
+                            : accountRole?.charAt(0).toUpperCase() +
+                              (accountRole?.slice(1).toLowerCase() ?? "")}
+                        </Badge>
+                      </div>
+                      <p className="text-sm leading-5 text-gray-500">
+                        {user?.email}
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="mt-6 flex items-center gap-x-4">
-                    <Avatar className="size-16">
-                      <AvatarImage src={user?.avatarUrl ?? ""} alt={user?.firstName ?? "User"} />
-                      <AvatarFallback className="text-lg">{user?.firstName?.[0]?.toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-medium text-dark-blue-400">{user?.firstName} {user?.lastName}</p>
-                      <p className="text-xs text-gray-500">{user?.email}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="mt-6 max-w-[664px] grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div className="space-y-1.5">
                       <Label size="sm">First Name</Label>
                       <Input
                         value={profileForm.firstName}
-                        onChange={(e) => handleProfileChange("firstName", e.target.value)}
-                        readOnly={!isEditing}
-                        className={!isEditing ? "bg-gray-50" : ""}
+                        onChange={(e) =>
+                          handleProfileChange("firstName", e.target.value)
+                        }
                       />
                     </div>
                     <div className="space-y-1.5">
                       <Label size="sm">Last Name</Label>
                       <Input
                         value={profileForm.lastName}
-                        onChange={(e) => handleProfileChange("lastName", e.target.value)}
-                        readOnly={!isEditing}
-                        className={!isEditing ? "bg-gray-50" : ""}
+                        onChange={(e) =>
+                          handleProfileChange("lastName", e.target.value)
+                        }
                       />
                     </div>
                     <div className="space-y-1.5">
                       <Label size="sm">Email</Label>
-                      <Input value={user?.email ?? ""} readOnly className="bg-gray-50" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label size="sm">Username</Label>
                       <Input
-                        value={profileForm.username}
-                        onChange={(e) => handleProfileChange("username", e.target.value)}
-                        readOnly={!isEditing}
-                        className={!isEditing ? "bg-gray-50" : ""}
+                        value={user?.email ?? ""}
+                        readOnly
+                        className="bg-gray-50"
                       />
                     </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Phone Number</Label>
+                      <PhoneNumberInput
+                        defaultCountry="us"
+                        value={profileForm.phone}
+                        onChange={(v) => handleProfileChange("phone", v)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">What team do you work on?</Label>
+                      <Listbox
+                        value={profileForm.team}
+                        onChange={(values) =>
+                          setProfileForm((prev) => ({
+                            ...prev,
+                            team: values as string[],
+                          }))
+                        }
+                        multiple
+                      >
+                        <ListboxButton
+                          placeholder="Select Team"
+                          displayValue={(val) =>
+                            Array.isArray(val) && val.length
+                              ? val.join(", ")
+                              : null
+                          }
+                        />
+                        <ListboxOptions>
+                          {teamOptions.map((item) => (
+                            <ListboxOption key={item} value={item}>
+                              {item}
+                            </ListboxOption>
+                          ))}
+                        </ListboxOptions>
+                      </Listbox>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Job Title</Label>
+                      <Input
+                        value={profileForm.jobTitle}
+                        onChange={(e) =>
+                          handleProfileChange("jobTitle", e.target.value)
+                        }
+                        placeholder="e.g. President"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label size="sm">Language</Label>
+                      <div className="flex flex-col gap-y-1.5">
+                        <Listbox
+                          value={profileForm.languages}
+                          onChange={(values) =>
+                            setProfileForm((prev) => ({
+                              ...prev,
+                              languages: values as string[],
+                            }))
+                          }
+                          multiple
+                        >
+                          <ListboxButton
+                            placeholder="Select Language"
+                            displayValue={(val) =>
+                              Array.isArray(val) && val.length
+                                ? val.join(", ")
+                                : null
+                            }
+                          />
+                          <ListboxOptions>
+                            {languageOptions.map((item) => (
+                              <ListboxOption key={item} value={item}>
+                                {item}
+                              </ListboxOption>
+                            ))}
+                          </ListboxOptions>
+                        </Listbox>
+
+                        {getIsNotEmpty(profileForm.languages) && (
+                          <div className="flex flex-wrap gap-2">
+                            {profileForm.languages.map((lang) => (
+                              <Badge
+                                key={lang}
+                                visual="primary"
+                                size="sm"
+                                variant="rounded"
+                              >
+                                {lang}
+                                <button
+                                  className="focus-visible:outline-none"
+                                  onClick={() =>
+                                    setProfileForm((prev) => ({
+                                      ...prev,
+                                      languages: prev.languages.filter(
+                                        (l) => l !== lang
+                                      ),
+                                    }))
+                                  }
+                                  type="button"
+                                >
+                                  <X2 className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
-                  {isEditing && (
-                    <div className="mt-6 flex justify-end gap-x-3">
-                      <Button variant="outlined" visual="gray" size="sm" onClick={handleProfileCancel}>
-                        Cancel
-                      </Button>
-                      <Button size="sm" onClick={handleProfileSave} disabled={isSaving || !isProfileDirty}>
-                        {isSaving ? "Saving..." : "Save Changes"}
-                      </Button>
-                    </div>
-                  )}
-                </div>
+                  <div className="mt-6 max-w-[664px] flex justify-end gap-x-3">
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      onClick={handleProfileCancel}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleProfileSave}
+                      disabled={isSaving || !isProfileDirty}
+                    >
+                      {isSaving ? "Saving..." : "Save Changes"}
+                    </Button>
+                  </div>
+                </>
               )}
 
-              {activeTab === "account" && (
-                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                  <h2 className="text-lg font-semibold text-dark-blue-400">Account Settings</h2>
-                  <p className="text-sm text-gray-500 mt-1">Manage your account preferences</p>
+              {activeTab === "company-info" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Company Info
+                </h1>
+              )}
 
-                  <div className="mt-6 space-y-4">
-                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                      <div>
-                        <p className="text-sm font-medium text-dark-blue-400">Language</p>
-                        <p className="text-xs text-gray-500">Select your preferred language</p>
-                      </div>
-                      <span className="text-sm text-gray-500">English (US)</span>
-                    </div>
-                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                      <div>
-                        <p className="text-sm font-medium text-dark-blue-400">Timezone</p>
-                        <p className="text-xs text-gray-500">Set your local timezone</p>
-                      </div>
-                      <span className="text-sm text-gray-500">{Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
-                    </div>
-                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                      <div>
-                        <p className="text-sm font-medium text-dark-blue-400">Account Type</p>
-                        <p className="text-xs text-gray-500">Your current account role</p>
-                      </div>
-                      <span className="text-sm text-gray-500 capitalize">{accountRole?.toLowerCase() ?? "—"}</span>
-                    </div>
-                  </div>
-                </div>
+              {activeTab === "privacy" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Privacy
+                </h1>
               )}
 
               {activeTab === "notifications" && (
-                <NotificationPreferences />
+                <>
+                  <h1 className="text-xl font-bold text-dark-blue-400 mb-6">
+                    Notifications
+                  </h1>
+                  <NotificationPreferences />
+                </>
               )}
 
-              {activeTab === "security" && (
-                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                  <h2 className="text-lg font-semibold text-dark-blue-400">Security</h2>
-                  <p className="text-sm text-gray-500 mt-1">Manage your security settings</p>
+              {activeTab === "tax-info" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Tax Info
+                </h1>
+              )}
 
-                  <div className="mt-6 space-y-4">
-                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                      <div>
-                        <p className="text-sm font-medium text-dark-blue-400">Password</p>
-                        <p className="text-xs text-gray-500">
-                          {user?.hasPassword ? "Password is set" : "No password set — secure your account"}
-                        </p>
+              {activeTab === "login-password" && (
+                <>
+                  <h1 className="text-xl font-bold text-dark-blue-400 mb-6">
+                    Login & Password
+                  </h1>
+                  <div className="bg-white rounded-xl border border-gray-200 p-6">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                        <div>
+                          <p className="text-sm font-medium text-dark-blue-400">
+                            Password
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {user?.hasPassword
+                              ? "Password is set"
+                              : "No password set, secure your account"}
+                          </p>
+                        </div>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => setShowPasswordModal(true)}
+                        >
+                          {user?.hasPassword ? "Change Password" : "Set Password"}
+                        </Button>
                       </div>
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        size="sm"
-                        onClick={() => setShowPasswordModal(true)}
-                      >
-                        {user?.hasPassword ? "Change Password" : "Set Password"}
-                      </Button>
+                      <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                        <div>
+                          <p className="text-sm font-medium text-dark-blue-400">
+                            Active Sessions
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Manage your active login sessions
+                          </p>
+                        </div>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => setShowSessionsModal(true)}
+                        >
+                          View Sessions
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                  </div>
+                </>
+              )}
+
+              {activeTab === "two-factor-auth" && (
+                <>
+                  <h1 className="text-xl font-bold text-dark-blue-400 mb-6">
+                    Two-Factor Authentication
+                  </h1>
+                  <div className="bg-white rounded-xl border border-gray-200 p-6">
+                    <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-dark-blue-400">Two-Factor Authentication</p>
+                        <p className="text-sm font-medium text-dark-blue-400">
+                          Two-Factor Authentication
+                        </p>
                         <p className="text-xs text-gray-500">
                           {user?.twoFactorEnabled
                             ? user?.twoFactorMethod === "sms"
@@ -295,23 +569,179 @@ export default function SettingsPage() {
                         }}
                       />
                     </div>
-                    <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                      <div>
-                        <p className="text-sm font-medium text-dark-blue-400">Active Sessions</p>
-                        <p className="text-xs text-gray-500">Manage your active login sessions</p>
+                  </div>
+                </>
+              )}
+
+              {activeTab === "social-login" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Social Login
+                </h1>
+              )}
+
+              {activeTab === "account-recovery" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Account Recovery
+                </h1>
+              )}
+
+              {activeTab === "users" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Users
+                </h1>
+              )}
+
+              {activeTab === "roles" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Roles
+                </h1>
+              )}
+
+              {activeTab === "devices" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Devices
+                </h1>
+              )}
+
+              {activeTab === "ip-restrictions" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  IP Restrictions
+                </h1>
+              )}
+
+              {activeTab === "integrations" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  Integrations
+                </h1>
+              )}
+
+              {activeTab === "my-apps" && (
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  My Apps
+                </h1>
+              )}
+
+              {activeTab === "billing-overview" && (
+                <>
+                  <h1 className="text-xl font-bold text-dark-blue-400 mb-5">
+                    Overview
+                  </h1>
+                  <BillingOverviewContent onNavigateTab={handleBillingTabChange} />
+                </>
+              )}
+
+              {activeTab === "billing-transactions" && (
+                <>
+                  <div className="flex items-start justify-between gap-x-5 mb-5">
+                    <h1 className="text-xl font-bold text-dark-blue-400">
+                      Transactions
+                    </h1>
+                    <div className="flex items-center gap-x-6">
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="sm"
+                        className="text-gray-500 underline decoration-gray-500/30 hover:decoration-gray-500 hover:text-dark-blue-500 transition-colors duration-300"
+                        leftIcon={<HelpCircle className="size-[15px]" />}
+                      >
+                        Get Help
+                      </Button>
+                      <div className="flex items-center gap-x-3">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outlined"
+                              visual="gray"
+                              size="sm"
+                              className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                              rightIcon={<ChevronDown className="size-[15px]" />}
+                            >
+                              Export
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" sideOffset={4}>
+                            <DropdownMenuItem>Export CSV</DropdownMenuItem>
+                            <DropdownMenuItem>Export PDF</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <IconButton
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                          onClick={() => toggleInviteWindow(true, "Share Your Transactions")}
+                        >
+                          <Share06 className="size-[15px]" />
+                        </IconButton>
+                        {/* <IconButton
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                        >
+                          <Settings02 className="size-[15px]" />
+                        </IconButton> */}
                       </div>
-                      <Button variant="outlined" visual="gray" size="sm" onClick={() => setShowSessionsModal(true)}>View Sessions</Button>
                     </div>
                   </div>
-                </div>
+                  <BillingTransactionsContent />
+
+                </>
               )}
-            </div>
+
+              {activeTab === "billing-invoices" && (
+                <>
+                  <h1 className="text-xl font-bold text-dark-blue-400 mb-5">
+                    Invoices
+                  </h1>
+                  <BillingInvoicesContent />
+                </>
+              )}
+
+              {activeTab === "billing-payment-methods" && (
+                <>
+                  <div className="shrink-0 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-5">
+                    <h1 className="text-xl font-bold text-dark-blue-400">
+                      Payment Methods
+                    </h1>
+                    <div className="flex shrink-0 flex-wrap items-center gap-6">
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="sm"
+                        className="text-gray-500 underline decoration-gray-500/30 hover:decoration-gray-500 hover:text-dark-blue-500 transition-colors duration-300"
+                        leftIcon={<HelpCircle className="size-[15px]" />}
+                      >
+                        Get Help
+                      </Button>
+                      <Button
+                        onClick={() => paymentMethodsRef.current?.openAddPaymentMethodDialog()}
+                        leftIcon={<Plus className="size-4" />}
+                      >
+                        Add Payment Method
+                      </Button>
+                    </div>
+                  </div>
+                  <BillingPaymentMethodsContent ref={paymentMethodsRef} embedded />
+                </>
+              )}
+
+              {activeTab === "billing-plans" && (
+                <>
+                  <h1 className="text-xl font-bold text-dark-blue-400 mb-5">
+                    Plans
+                  </h1>
+                  <BillingMyPlansContent />
+                </>
+              )}
           </div>
         </div>
       </div>
 
       {showPasswordModal && (
-        <SecuritySettingsStepper onCloseModal={() => setShowPasswordModal(false)} />
+        <SecuritySettingsStepper
+          onCloseModal={() => setShowPasswordModal(false)}
+        />
       )}
 
       {show2FASetup && (

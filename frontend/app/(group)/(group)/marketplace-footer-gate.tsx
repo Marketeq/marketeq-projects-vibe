@@ -8,4 +8,3 @@ export function MarketplaceFooterGate() {
   const showStaticFooter = pathname !== "/"
   return showStaticFooter ? <MarketplaceFooter /> : null
 }
-
