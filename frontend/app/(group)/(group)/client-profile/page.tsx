@@ -28,6 +28,7 @@ import {
   Briefcase,
   Check,
   CheckCircle,
+  CheckVerified02,
   ChevronDown,
   ChevronUp,
   Clock,
@@ -1466,450 +1467,453 @@ function Default() {
   return (
     <>
       <div className="py-[50px]">
-        <div className="max-w-[1440px] mx-auto px-[100px]">
-          <div className="border border-gray-200 rounded-lg bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
-            {isProfileLoading ? (
-              /* Skeleton loading state */
-              <>
-                <div className="p-10 flex items-start gap-x-10">
-                  <Shimmer className="size-[318px] rounded-full shrink-0" />
-                  <div className="flex-auto space-y-4 pt-2">
-                    <Shimmer className="h-8 w-64" />
-                    <Shimmer className="h-6 w-48" />
-                    <Shimmer className="h-4 w-36" />
-                    <div className="flex items-center gap-x-3 pt-2">
-                      <Shimmer className="h-6 w-16 rounded-[4px]" />
-                      <Shimmer className="h-4 w-20" />
-                    </div>
-                    <div className="space-y-3 pt-2">
-                      <Shimmer className="h-4 w-52" />
-                      <Shimmer className="h-4 w-60" />
-                    </div>
-                    <div className="flex gap-x-2 pt-4">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Shimmer key={i} className="h-7 w-24 rounded-full" />
-                      ))}
+        {/* Talent hero header — hidden on the client profile, kept for reuse */}
+        {!isClientProfile && (
+          <div className="max-w-[1440px] mx-auto px-[100px]">
+            <div className="border border-gray-200 rounded-lg bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
+              {isProfileLoading ? (
+                /* Skeleton loading state */
+                <>
+                  <div className="p-10 flex items-start gap-x-10">
+                    <Shimmer className="size-[318px] rounded-full shrink-0" />
+                    <div className="flex-auto space-y-4 pt-2">
+                      <Shimmer className="h-8 w-64" />
+                      <Shimmer className="h-6 w-48" />
+                      <Shimmer className="h-4 w-36" />
+                      <div className="flex items-center gap-x-3 pt-2">
+                        <Shimmer className="h-6 w-16 rounded-[4px]" />
+                        <Shimmer className="h-4 w-20" />
+                      </div>
+                      <div className="space-y-3 pt-2">
+                        <Shimmer className="h-4 w-52" />
+                        <Shimmer className="h-4 w-60" />
+                      </div>
+                      <div className="flex gap-x-2 pt-4">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Shimmer key={i} className="h-7 w-24 rounded-full" />
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="py-3 px-8 border-t border-gray-200 grid grid-cols-5 divide-x divide-gray-200 bg-[#122A4B]/[.02]">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="flex gap-x-2 justify-center items-center py-1"
-                    >
-                      <Shimmer className="h-4 w-16" />
-                      <Shimmer className="h-5 w-12" />
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="p-10 flex items-start gap-x-10">
-                  {(() => {
-                    const initials =
-                      `${profile?.firstName?.charAt(0) ?? ""}${
-                        profile?.lastName?.charAt(0) ?? ""
-                      }`.toUpperCase() || "?"
-                    const renderAvatar = (
-                      src: string | null,
-                      style?: Record<string, string | number>
-                    ) => (
-                      <Avatar className="size-[318px]">
-                        <AvatarImage
-                          src={src ?? ""}
-                          alt={profile?.firstName ?? "User"}
-                          style={style}
-                        />
-                        <AvatarFallback>
-                          <span className="flex h-full w-full items-center justify-center rounded-full bg-gray-100 text-7xl font-semibold text-gray-300">
-                            {initials}
-                          </span>
-                        </AvatarFallback>
-                      </Avatar>
-                    )
+                  <div className="py-3 px-8 border-t border-gray-200 grid grid-cols-5 divide-x divide-gray-200 bg-[#122A4B]/[.02]">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="flex gap-x-2 justify-center items-center py-1"
+                      >
+                        <Shimmer className="h-4 w-16" />
+                        <Shimmer className="h-5 w-12" />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="p-10 flex items-start gap-x-10">
+                    {(() => {
+                      const initials =
+                        `${profile?.firstName?.charAt(0) ?? ""}${
+                          profile?.lastName?.charAt(0) ?? ""
+                        }`.toUpperCase() || "?"
+                      const renderAvatar = (
+                        src: string | null,
+                        style?: Record<string, string | number>
+                      ) => (
+                        <Avatar className="size-[318px]">
+                          <AvatarImage
+                            src={src ?? ""}
+                            alt={profile?.firstName ?? "User"}
+                            style={style}
+                          />
+                          <AvatarFallback>
+                            <span className="flex h-full w-full items-center justify-center rounded-full bg-gray-100 text-7xl font-semibold text-gray-300">
+                              {initials}
+                            </span>
+                          </AvatarFallback>
+                        </Avatar>
+                      )
 
-                    if (!(isOwnProfile && isEditMode)) {
-                      return renderAvatar(profile?.avatarUrl ?? null)
-                    }
+                      if (!(isOwnProfile && isEditMode)) {
+                        return renderAvatar(profile?.avatarUrl ?? null)
+                      }
 
-                    return (
-                      <ImageEditor
-                        variant="avatar"
-                        editDialogTitle="Edit Profile Image"
-                        defaultDataUrl={profile?.avatarUrl ?? null}
-                        fallbackInitials={initials}
-                        onSaveImage={handleAvatarUpload}
-                        startingPoint={({ open }) => {
-                          const hasImage = Boolean(profile?.avatarUrl)
-                          return (
-                            <div className="group relative size-[318px] shrink-0">
-                              {renderAvatar(profile?.avatarUrl ?? null)}
-                              <div className="absolute inset-0 rounded-full flex items-center justify-center gap-x-3 bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/50 group-hover:opacity-100">
-                                {hasImage ? (
-                                  <>
-                                    <IconButton
-                                      type="button"
-                                      variant="filled"
-                                      visual="gray"
-                                      className="rounded-full bg-white text-error-500 hover:bg-error-50"
-                                      onClick={() => handleRemoveAvatar()}
-                                    >
-                                      <Trash03 className="size-5" />
-                                    </IconButton>
-                                    <IconButton
+                      return (
+                        <ImageEditor
+                          variant="avatar"
+                          editDialogTitle="Edit Profile Image"
+                          defaultDataUrl={profile?.avatarUrl ?? null}
+                          fallbackInitials={initials}
+                          onSaveImage={handleAvatarUpload}
+                          startingPoint={({ open }) => {
+                            const hasImage = Boolean(profile?.avatarUrl)
+                            return (
+                              <div className="group relative size-[318px] shrink-0">
+                                {renderAvatar(profile?.avatarUrl ?? null)}
+                                <div className="absolute inset-0 rounded-full flex items-center justify-center gap-x-3 bg-black/0 opacity-0 transition-all duration-300 group-hover:bg-black/50 group-hover:opacity-100">
+                                  {hasImage ? (
+                                    <>
+                                      <IconButton
+                                        type="button"
+                                        variant="filled"
+                                        visual="gray"
+                                        className="rounded-full bg-white text-error-500 hover:bg-error-50"
+                                        onClick={() => handleRemoveAvatar()}
+                                      >
+                                        <Trash03 className="size-5" />
+                                      </IconButton>
+                                      <IconButton
+                                        type="button"
+                                        variant="filled"
+                                        visual="gray"
+                                        className="rounded-full bg-white text-dark-blue-400 hover:bg-gray-50"
+                                        onClick={open}
+                                      >
+                                        <Edit03 className="size-5" />
+                                      </IconButton>
+                                    </>
+                                  ) : (
+                                    <Button
                                       type="button"
                                       variant="filled"
                                       visual="gray"
                                       className="rounded-full bg-white text-dark-blue-400 hover:bg-gray-50"
                                       onClick={open}
                                     >
-                                      <Edit03 className="size-5" />
-                                    </IconButton>
-                                  </>
-                                ) : (
-                                  <Button
-                                    type="button"
-                                    variant="filled"
-                                    visual="gray"
-                                    className="rounded-full bg-white text-dark-blue-400 hover:bg-gray-50"
-                                    onClick={open}
-                                  >
-                                    <Upload className="size-[15px]" /> Upload
-                                    Image
-                                  </Button>
-                                )}
+                                      <Upload className="size-[15px]" /> Upload
+                                      Image
+                                    </Button>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          )
-                        }}
-                      />
-                    )
-                  })()}
-
-                  <div className="flex-auto">
-                    <div className="flex items-start">
-                      <div className="flex-auto">
-                        <h1 className="text-[28px] leading-[34px] font-bold text-dark-blue-400">
-                          {capitalize(profile?.firstName ?? "") || "Talent"}
-                          {profile?.username && (
-                            <span className="text-[26px] font-extralight">
-                              {" "}
-                              @{profile.username}
-                            </span>
-                          )}
-                        </h1>
-                        <div className="flex items-center gap-x-1 mt-1">
-                          {(() => {
-                            const jobTitle =
-                              (profile as any)?.jobTitles?.find(
-                                (j: any) => j.saveAsDefault
-                              )?.jobTitle ||
-                              (profile as any)?.jobTitles?.[0]?.jobTitle ||
-                              profile?.recentJobTitle
-                            return (
-                              <h2
-                                className={cn(
-                                  "text-[22px] leading-[27px] font-medium",
-                                  jobTitle
-                                    ? "text-dark-blue-400"
-                                    : "text-gray-600"
-                                )}
-                              >
-                                {jobTitle || "Add Job Title"}
-                              </h2>
                             )
-                          })()}
-                          {isEditMode && isOwnProfile && (
-                            <IconButton
-                              className="rounded-full text-gray-500 hover:text-gray-800"
-                              variant="ghost"
-                              visual="gray"
-                              onClick={() => setJobTitleOpen(true)}
-                            >
-                              <Edit03 className="size-4" />
-                            </IconButton>
-                          )}
-                        </div>
+                          }}
+                        />
+                      )
+                    })()}
 
-                        <p className="mt-2 text-sm leading-none text-gray-500">
-                          {(() => {
-                            const dates: Date[] = []
-                            const endDates: Date[] = []
-                            // Gather start/end dates from work experience
-                            profile?.experience?.forEach((e) => {
-                              if (e.startDate) dates.push(new Date(e.startDate))
-                              if (e.endDate) endDates.push(new Date(e.endDate))
-                              else endDates.push(new Date()) // present
-                            })
-                            // TODO: gather start/end dates from project history when available
-                            if (dates.length === 0) return ""
-                            const earliest = dates.reduce((a, b) =>
-                              a < b ? a : b
-                            )
-                            const latest = endDates.reduce((a, b) =>
-                              a > b ? a : b
-                            )
-                            const months =
-                              (latest.getFullYear() - earliest.getFullYear()) *
-                                12 +
-                              (latest.getMonth() - earliest.getMonth())
-                            if (months < 12)
-                              return `${Math.max(1, months)} month${months === 1 ? "" : "s"} of experience`
-                            const years = Math.round(months / 12)
-                            return `${years} year${years === 1 ? "" : "s"} of experience`
-                          })()}
-                        </p>
-
-                        <div className="mt-6">
-                          <div className="flex items-center gap-x-[9px]">
-                            <MapPin className="size-4" />
-                            <p className="text-sm leading-none font-medium text-dark-blue-400">
-                              {profile?.location ?? "Location not set"}
-                            </p>
-                          </div>
-
-                          <div className="flex items-center mt-3 gap-x-2">
-                            <Clock className="size-4" />
-                            <p className="text-sm leading-none font-extralight text-dark-blue-400">
-                              {isEditMode && isOwnProfile
-                                ? "You are"
-                                : `${capitalize(profile?.firstName ?? "") || "Talent"} is`}{" "}
-                              currently{" "}
-                              <span
-                                className={cn(
-                                  "font-medium",
-                                  profile?.availability
-                                    ? "text-success-600"
-                                    : "text-gray-500"
-                                )}
-                              >
-                                {profile?.availability
-                                  ? "available"
-                                  : "not available"}
-                              </span>{" "}
-                              for hire
-                            </p>
+                    <div className="flex-auto">
+                      <div className="flex items-start">
+                        <div className="flex-auto">
+                          <h1 className="text-[28px] leading-[34px] font-bold text-dark-blue-400">
+                            {capitalize(profile?.firstName ?? "") || "Talent"}
+                            {profile?.username && (
+                              <span className="text-[26px] font-extralight">
+                                {" "}
+                                @{profile.username}
+                              </span>
+                            )}
+                          </h1>
+                          <div className="flex items-center gap-x-1 mt-1">
+                            {(() => {
+                              const jobTitle =
+                                (profile as any)?.jobTitles?.find(
+                                  (j: any) => j.saveAsDefault
+                                )?.jobTitle ||
+                                (profile as any)?.jobTitles?.[0]?.jobTitle ||
+                                profile?.recentJobTitle
+                              return (
+                                <h2
+                                  className={cn(
+                                    "text-[22px] leading-[27px] font-medium",
+                                    jobTitle
+                                      ? "text-dark-blue-400"
+                                      : "text-gray-600"
+                                  )}
+                                >
+                                  {jobTitle || "Add Job Title"}
+                                </h2>
+                              )
+                            })()}
                             {isEditMode && isOwnProfile && (
                               <IconButton
                                 className="rounded-full text-gray-500 hover:text-gray-800"
                                 variant="ghost"
                                 visual="gray"
-                                onClick={() => setAvailabilityOpen(true)}
+                                onClick={() => setJobTitleOpen(true)}
                               >
                                 <Edit03 className="size-4" />
                               </IconButton>
                             )}
                           </div>
-                        </div>
-                      </div>
 
-                      <div className="flex items-center gap-x-3">
-                        {isOwnProfile ? (
-                          <>
-                            {isEditMode ? (
-                              <Button
-                                variant="outlined"
-                                visual="gray"
-                                onClick={() => setIsEditMode(false)}
-                              >
-                                <Eye className="size-[15px]" />
-                                View as Client
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="outlined"
-                                visual="gray"
-                                onClick={() => setIsEditMode(true)}
-                              >
-                                <Edit03 className="size-[15px]" />
-                                Edit Profile
-                              </Button>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                            <HireMeButton
-                              profile={profile}
-                              buttonProps={{ onClick: handleHireButtonClick }}
-                            />
+                          <p className="mt-2 text-sm leading-none text-gray-500">
+                            {(() => {
+                              const dates: Date[] = []
+                              const endDates: Date[] = []
+                              // Gather start/end dates from work experience
+                              profile?.experience?.forEach((e) => {
+                                if (e.startDate) dates.push(new Date(e.startDate))
+                                if (e.endDate) endDates.push(new Date(e.endDate))
+                                else endDates.push(new Date()) // present
+                              })
+                              // TODO: gather start/end dates from project history when available
+                              if (dates.length === 0) return ""
+                              const earliest = dates.reduce((a, b) =>
+                                a < b ? a : b
+                              )
+                              const latest = endDates.reduce((a, b) =>
+                                a > b ? a : b
+                              )
+                              const months =
+                                (latest.getFullYear() - earliest.getFullYear()) *
+                                  12 +
+                                (latest.getMonth() - earliest.getMonth())
+                              if (months < 12)
+                                return `${Math.max(1, months)} month${months === 1 ? "" : "s"} of experience`
+                              const years = Math.round(months / 12)
+                              return `${years} year${years === 1 ? "" : "s"} of experience`
+                            })()}
+                          </p>
 
-                            <SaveTalentButton userId={profile?.id} />
-                          </>
-                        )}
+                          <div className="mt-6">
+                            <div className="flex items-center gap-x-[9px]">
+                              <MapPin className="size-4" />
+                              <p className="text-sm leading-none font-medium text-dark-blue-400">
+                                {profile?.location ?? "Location not set"}
+                              </p>
+                            </div>
 
-                        <IconButton
-                          className="text-gray-500"
-                          variant="outlined"
-                          visual="gray"
-                          size="md"
-                          onClick={handleShareProfile}
-                        >
-                          <Share06 className="size-[20px]" />
-                        </IconButton>
-                      </div>
-                    </div>
-
-                    {(dedupedSkills.length > 0 ||
-                      (isEditMode && isOwnProfile)) && (
-                      <div className="mt-[54px]">
-                        {dedupedSkills.length > 0 && (
-                          <h1 className="text-sm font-bold leading-none text-dark-blue-400">
-                            What I do
-                          </h1>
-                        )}
-
-                        <div className="flex items-start mt-3 gap-x-3">
-                          <div className="flex gap-3 flex-wrap">
-                            {dedupedSkills.length > 0 ? (
-                              <ShowMoreLessRoot>
-                                <ShowMoreLess
-                                  trigger={(extraChildrenCount) => (
-                                    <Badge
-                                      className="text-gray-700 cursor-pointer"
-                                      visual="gray"
-                                      size="lg"
-                                      onClick={() => {
-                                        setActiveTab("Skills")
-                                        setAutoExpandSkills(true)
-                                        setTimeout(() => {
-                                          const el =
-                                            document.getElementById("skills")
-                                          if (el)
-                                            el.scrollIntoView({
-                                              behavior: "smooth",
-                                              block: "start",
-                                            })
-                                        }, 100)
-                                      }}
-                                    >
-                                      <Plus2 className="h-3 w-3" />{" "}
-                                      {extraChildrenCount} more...
-                                    </Badge>
+                            <div className="flex items-center mt-3 gap-x-2">
+                              <Clock className="size-4" />
+                              <p className="text-sm leading-none font-extralight text-dark-blue-400">
+                                {isEditMode && isOwnProfile
+                                  ? "You are"
+                                  : `${capitalize(profile?.firstName ?? "") || "Talent"} is`}{" "}
+                                currently{" "}
+                                <span
+                                  className={cn(
+                                    "font-medium",
+                                    profile?.availability
+                                      ? "text-success-600"
+                                      : "text-gray-500"
                                   )}
-                                  max={5}
                                 >
-                                  {dedupedSkills.map((skill) => (
-                                    <Badge
-                                      key={skill.id}
-                                      className="text-gray-700"
-                                      visual="gray"
-                                      size="lg"
-                                    >
-                                      {skill.name}
-                                    </Badge>
-                                  ))}
-                                </ShowMoreLess>
-                              </ShowMoreLessRoot>
-                            ) : (
-                              <Button
-                                variant="link"
-                                visual="gray"
-                                className="font-semibold text-dark-blue-400 hover:text-dark-blue-500"
-                                onClick={() => setSkillsOpen(true)}
-                              >
-                                <Plus className="size-[15px]" /> Add Skills
-                              </Button>
-                            )}
+                                  {profile?.availability
+                                    ? "available"
+                                    : "not available"}
+                                </span>{" "}
+                                for hire
+                              </p>
+                              {isEditMode && isOwnProfile && (
+                                <IconButton
+                                  className="rounded-full text-gray-500 hover:text-gray-800"
+                                  variant="ghost"
+                                  visual="gray"
+                                  onClick={() => setAvailabilityOpen(true)}
+                                >
+                                  <Edit03 className="size-4" />
+                                </IconButton>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
 
-                <div className="py-3 px-8 border-t border-gray-200 flex items-center justify-between gap-x-8 bg-[#122A4B]/[.02]">
-                  <div className="flex items-center gap-x-10">
-                    <div className="flex gap-x-2 items-center">
-                      <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                        Rate
-                      </span>
-                      <span className="text-xl font-bold leading-none text-dark-blue-400">
-                        {profile?.rateMin || profile?.rateMax ? (
-                          <>
-                            {profile.rateMin &&
-                            profile.rateMax &&
-                            Math.round(profile.rateMin) !==
-                              Math.round(profile.rateMax)
-                              ? `$${Math.round(profile.rateMin)} - $${Math.round(profile.rateMax)}`
-                              : `$${Math.round(profile?.rateMax ?? profile?.rateMin ?? 0)}`}
-                            <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                              /hr
-                            </span>
-                          </>
-                        ) : (
-                          "Unknown"
-                        )}
-                      </span>
-                      {isEditMode && isOwnProfile && (
-                        <IconButton
-                          className="rounded-full text-gray-500 hover:text-gray-800"
-                          variant="ghost"
-                          visual="gray"
-                          onClick={() => setJobTitleOpen(true)}
-                        >
-                          <Edit03 className="size-4" />
-                        </IconButton>
+                        <div className="flex items-center gap-x-3">
+                          {isOwnProfile ? (
+                            <>
+                              {isEditMode ? (
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  onClick={() => setIsEditMode(false)}
+                                >
+                                  <Eye className="size-[15px]" />
+                                  View as Client
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  onClick={() => setIsEditMode(true)}
+                                >
+                                  <Edit03 className="size-[15px]" />
+                                  Edit Profile
+                                </Button>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <HireMeButton
+                                profile={profile}
+                                buttonProps={{ onClick: handleHireButtonClick }}
+                              />
+
+                              <SaveTalentButton userId={profile?.id} />
+                            </>
+                          )}
+
+                          <IconButton
+                            className="text-gray-500"
+                            variant="outlined"
+                            visual="gray"
+                            size="md"
+                            onClick={handleShareProfile}
+                          >
+                            <Share06 className="size-[20px]" />
+                          </IconButton>
+                        </div>
+                      </div>
+
+                      {(dedupedSkills.length > 0 ||
+                        (isEditMode && isOwnProfile)) && (
+                        <div className="mt-[54px]">
+                          {dedupedSkills.length > 0 && (
+                            <h1 className="text-sm font-bold leading-none text-dark-blue-400">
+                              What I do
+                            </h1>
+                          )}
+
+                          <div className="flex items-start mt-3 gap-x-3">
+                            <div className="flex gap-3 flex-wrap">
+                              {dedupedSkills.length > 0 ? (
+                                <ShowMoreLessRoot>
+                                  <ShowMoreLess
+                                    trigger={(extraChildrenCount) => (
+                                      <Badge
+                                        className="text-gray-700 cursor-pointer"
+                                        visual="gray"
+                                        size="lg"
+                                        onClick={() => {
+                                          setActiveTab("Skills")
+                                          setAutoExpandSkills(true)
+                                          setTimeout(() => {
+                                            const el =
+                                              document.getElementById("skills")
+                                            if (el)
+                                              el.scrollIntoView({
+                                                behavior: "smooth",
+                                                block: "start",
+                                              })
+                                          }, 100)
+                                        }}
+                                      >
+                                        <Plus2 className="h-3 w-3" />{" "}
+                                        {extraChildrenCount} more...
+                                      </Badge>
+                                    )}
+                                    max={5}
+                                  >
+                                    {dedupedSkills.map((skill) => (
+                                      <Badge
+                                        key={skill.id}
+                                        className="text-gray-700"
+                                        visual="gray"
+                                        size="lg"
+                                      >
+                                        {skill.name}
+                                      </Badge>
+                                    ))}
+                                  </ShowMoreLess>
+                                </ShowMoreLessRoot>
+                              ) : (
+                                <Button
+                                  variant="link"
+                                  visual="gray"
+                                  className="font-semibold text-dark-blue-400 hover:text-dark-blue-500"
+                                  onClick={() => setSkillsOpen(true)}
+                                >
+                                  <Plus className="size-[15px]" /> Add Skills
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
-                    {(profile?.totalProjectsCompleted ?? 0) >= 2 &&
-                      profile?.clientSuccessRating != null && (
+                  </div>
+
+                  <div className="py-3 px-8 border-t border-gray-200 flex items-center justify-between gap-x-8 bg-[#122A4B]/[.02]">
+                    <div className="flex items-center gap-x-10">
+                      <div className="flex gap-x-2 items-center">
+                        <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                          Rate
+                        </span>
+                        <span className="text-xl font-bold leading-none text-dark-blue-400">
+                          {profile?.rateMin || profile?.rateMax ? (
+                            <>
+                              {profile.rateMin &&
+                              profile.rateMax &&
+                              Math.round(profile.rateMin) !==
+                                Math.round(profile.rateMax)
+                                ? `$${Math.round(profile.rateMin)} - $${Math.round(profile.rateMax)}`
+                                : `$${Math.round(profile?.rateMax ?? profile?.rateMin ?? 0)}`}
+                              <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                                /hr
+                              </span>
+                            </>
+                          ) : (
+                            "Unknown"
+                          )}
+                        </span>
+                        {isEditMode && isOwnProfile && (
+                          <IconButton
+                            className="rounded-full text-gray-500 hover:text-gray-800"
+                            variant="ghost"
+                            visual="gray"
+                            onClick={() => setJobTitleOpen(true)}
+                          >
+                            <Edit03 className="size-4" />
+                          </IconButton>
+                        )}
+                      </div>
+                      {(profile?.totalProjectsCompleted ?? 0) >= 2 &&
+                        profile?.clientSuccessRating != null && (
+                          <div className="flex gap-x-2 items-center">
+                            <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                              Client success rating
+                            </span>
+                            <span className="text-sm font-bold leading-none text-dark-blue-400">
+                              {`${Math.round(profile.clientSuccessRating * 100)}%`}
+                            </span>
+                          </div>
+                        )}
+                      {(profile?.totalProjectsCompleted ?? 0) >= 1 && (
                         <div className="flex gap-x-2 items-center">
                           <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                            Client success rating
+                            Total projects completed
                           </span>
                           <span className="text-sm font-bold leading-none text-dark-blue-400">
-                            {`${Math.round(profile.clientSuccessRating * 100)}%`}
+                            {(profile?.totalProjectsCompleted ?? 0).toLocaleString()}
                           </span>
                         </div>
                       )}
-                    {(profile?.totalProjectsCompleted ?? 0) >= 1 && (
-                      <div className="flex gap-x-2 items-center">
-                        <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                          Total projects completed
-                        </span>
-                        <span className="text-sm font-bold leading-none text-dark-blue-400">
-                          {(profile?.totalProjectsCompleted ?? 0).toLocaleString()}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-x-10">
-                    <div className="flex gap-x-2 items-center">
-                      <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                        Member since
-                      </span>
-                      <span className="text-sm font-bold leading-none text-dark-blue-400">
-                        {profile?.createdAt
-                          ? new Date(profile.createdAt).toLocaleDateString(
-                              "en-US",
-                              {
-                                month: "long",
-                                day: "numeric",
-                                year: "numeric",
-                              }
-                            )
-                          : "\u2014"}
-                      </span>
                     </div>
-                    {profile?.repeatHireRate != null && (
+
+                    <div className="flex items-center gap-x-10">
                       <div className="flex gap-x-2 items-center">
                         <span className="text-sm font-extralight leading-none text-dark-blue-400">
-                          Repeat hire rate
+                          Member since
                         </span>
                         <span className="text-sm font-bold leading-none text-dark-blue-400">
-                          {`${profile.repeatHireRate}%`}
+                          {profile?.createdAt
+                            ? new Date(profile.createdAt).toLocaleDateString(
+                                "en-US",
+                                {
+                                  month: "long",
+                                  day: "numeric",
+                                  year: "numeric",
+                                }
+                              )
+                            : "\u2014"}
                         </span>
                       </div>
-                    )}
+                      {profile?.repeatHireRate != null && (
+                        <div className="flex gap-x-2 items-center">
+                          <span className="text-sm font-extralight leading-none text-dark-blue-400">
+                            Repeat hire rate
+                          </span>
+                          <span className="text-sm font-bold leading-none text-dark-blue-400">
+                            {`${profile.repeatHireRate}%`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         <Tabs
           className="mt-6"
@@ -2169,7 +2173,7 @@ function Default() {
                               key={item}
                               className="flex h-6 items-center gap-2 text-xs font-semibold text-primary-500"
                             >
-                              <CheckCircle className="size-[15px] shrink-0" />
+                              <CheckVerified02 className="size-[15px] shrink-0" />
                               {item}
                             </p>
                           ))}
@@ -2217,11 +2221,11 @@ function Default() {
 
                         <dl className="flex w-full flex-col items-start gap-2 pb-1.5">
                           {[
-                            ["Company Size:", "2-9 Employees"],
-                            ["Average Pay Rate:", "$11.28"],
+                            ["Company Size", "2-9 Employees"],
+                            ["Average Pay Rate", "$11.28"],
                             ["Total Hours billed", "237"],
-                            ["Total Projects:", "08"],
-                            ["Average response time:", "5 hours"],
+                            ["Total Projects", "08"],
+                            ["Average response time", "5 hours"],
                           ].map(([label, value]) => (
                             <div key={label} className="flex items-start gap-3">
                               <dt className="text-xs font-bold leading-6 text-dark-blue-400">
