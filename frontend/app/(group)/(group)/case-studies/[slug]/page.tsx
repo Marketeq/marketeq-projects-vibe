@@ -1,5 +1,7 @@
 import type { Metadata } from "next"
+import { notFound } from "next/navigation"
 import { CaseStudyPublicResolver } from "@/components/case-study/case-study-public-resolver"
+import { CASE_STUDY_PUBLISH_ENABLED } from "@/lib/case-study-flags"
 
 export async function generateMetadata(): Promise<Metadata> {
   // The title for a locally-published case study is only known client-side
@@ -28,6 +30,11 @@ export default async function CaseStudyPublicPage({
   params: Promise<{ slug: string }>
 }) {
   const { slug } = await params
+
+  // Case studies live in localStorage with blob-URL images, so this page
+  // renders broken for anyone but the author. Stays 404 until the
+  // portfolio-service wiring lands — see lib/case-study-flags.ts.
+  if (!CASE_STUDY_PUBLISH_ENABLED) notFound()
 
   return <CaseStudyPublicResolver slug={slug} />
 }

@@ -2,6 +2,7 @@
 
 import { Clock, Eye, EyeOff, ReverseLeft, ReverseRight, X } from "@blend-metrics/icons"
 import { cn } from "@/utils/functions"
+import { CASE_STUDY_PUBLISH_ENABLED } from "@/lib/case-study-flags"
 import {
   Button,
   IconButton,
@@ -141,13 +142,15 @@ export function EditorTopBar({
             </Tooltip>
           </TooltipProvider>
 
-          <Button
-            type="button"
-            onClick={onPublish}
-            className="h-auto px-[14px] py-2 text-xs font-semibold"
-          >
-            Publish
-          </Button>
+          {CASE_STUDY_PUBLISH_ENABLED && (
+            <Button
+              type="button"
+              onClick={onPublish}
+              className="h-auto px-[14px] py-2 text-xs font-semibold"
+            >
+              Publish
+            </Button>
+          )}
         </div>
 
         <IconButton
