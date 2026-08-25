@@ -2246,7 +2246,7 @@ function Default() {
                 {/* Page tabs. Separate from the pinned bar's TabsList above,
                     which is left untouched. */}
                 {isClientProfile && (
-                  <TabsList className="w-full justify-start border-b border-gray-200 bg-transparent p-0">
+                  <TabsList className="mb-6 w-full justify-start border-b border-gray-200 bg-transparent p-0">
                     <TabsTrigger value="About" asChild>
                       <NextLink href="#about">About</NextLink>
                     </TabsTrigger>
