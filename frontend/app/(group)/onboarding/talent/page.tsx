@@ -745,6 +745,8 @@ const CreateYourUsername = ({
                   <ErrorMessage size="sm">{message}</ErrorMessage>
                 )}
               />
+              {/* Belongs with the field it describes, not above the footer */}
+              {formError && <ErrorMessage size="sm">{formError}</ErrorMessage>}
             </div>
 
             {isSuggestionsLoading ? (
@@ -846,12 +848,6 @@ const CreateYourUsername = ({
             </div>
           </div>
         </div>
-
-        {formError && (
-          <div className="mx-auto w-full max-w-[488px] 2xl:max-w-[560px]">
-            <ErrorMessage size="sm">{formError}</ErrorMessage>
-          </div>
-        )}
 
         <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
           <div className="flex items-center justify-between">
