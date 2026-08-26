@@ -121,9 +121,9 @@ const skillSuggestions = Array.isArray(rawSkillSuggestions)
   ? rawSkillSuggestions
   : []
 
-const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/
+const USERNAME_PATTERN = /^[a-zA-Z0-9._]+$/
 const USERNAME_RULE_MESSAGE =
-  "Username can only contain letters, numbers, and underscores"
+  "Username can only contain letters, numbers, periods, and underscores"
 
 const optionalTrimmedString = z.preprocess((value) => {
   if (typeof value !== "string") return value

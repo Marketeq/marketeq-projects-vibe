@@ -266,12 +266,12 @@ export const TalentProfiles: CollectionConfig = {
                     const normalized = value.trim().toLowerCase();
                     if (normalized.length < 3) {
                       throw new Error(
-                        "Username must contain at least 3 valid characters (a-z, 0-9, _)",
+                        "Username must contain at least 3 valid characters (a-z, 0-9, ., _)",
                       );
                     }
-                    if (!/^[a-z0-9_]+$/.test(normalized)) {
+                    if (!/^[a-z0-9._]+$/.test(normalized)) {
                       throw new Error(
-                        "Username can only contain letters, numbers, and underscores",
+                        "Username can only contain letters, numbers, periods, and underscores",
                       );
                     }
                     return normalized;

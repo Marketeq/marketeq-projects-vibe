@@ -63,22 +63,23 @@ export function generateUsernameSuggestions(
   const longForms: string[] = []
   const seen = new Set<string>()
 
-  // Unlike clean(), this keeps "_" so separated handles survive. Dots are NOT
-  // allowed: USERNAME_PATTERN is /^[a-z0-9_]+$/ on the backend
-  // (user-mangement/dtos/username-validation.ts and talent/dto/
-  // create-talent.dto.ts) and /^[a-zA-Z0-9_]+$/ on the client, so a suggestion
-  // containing "." would be rejected the moment it was picked.
+  // Keeps "." and "_" so separated handles survive. Both are permitted by
+  // USERNAME_PATTERN on the client and in all three backend validators
+  // (talent/dto/create-talent.dto.ts, user-mangement/dtos/username-validation.ts,
+  // cms-service TalentProfiles). Leading, trailing and repeated separators are
+  // stripped here so a suggestion never reads as "john..smith" or "_john".
   const normalize = (value: string) =>
     (value || "")
       .toLowerCase()
-      .replace(/[^a-z0-9_]+/g, "")
-      .replace(/_+/g, "_")
-      .replace(/^_+|_+$/g, "")
+      .replace(/[^a-z0-9._]+/g, "")
+      .replace(/([._])\1+/g, "$1")
+      .replace(/[._]{2,}/g, (m) => m[0])
+      .replace(/^[._]+|[._]+$/g, "")
 
   const add = (candidate: string, bucket: string[] = shortForms) => {
     const normalized = normalize(candidate)
     if (!normalized || normalized.length < 3 || normalized.length > 24) return
-    if (!/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(normalized)) return
+    if (!/^[a-z][a-z0-9]*(?:[._][a-z0-9]+)*$/.test(normalized)) return
     if (seen.has(normalized)) return
 
     if (f && normalized.indexOf(f) !== normalized.lastIndexOf(f)) return
@@ -99,11 +100,11 @@ export function generateUsernameSuggestions(
 
     for (const token of sourceTextTokens) {
       add(`${f}${token}`, longForms)
-      add(`${f}_${token}${num}`, longForms)
+      add(`${f}.${token}`, longForms)
       add(`${f}_${token}`, longForms)
       add(`${token}${f}`, longForms)
       add(`${f}${token}${num}`, longForms)
-      add(`${token}_${f}`, longForms)
+      add(`${f}.${token}${num2}`, longForms)
       // Short counterparts built off the same token
       add(`${f}${token.slice(0, 3)}`, shortForms)
       add(`${token}${num}`, shortForms)
@@ -113,7 +114,7 @@ export function generateUsernameSuggestions(
     for (let i = 0; i < sourceTextTokens.length; i++) {
       for (let j = i + 1; j < sourceTextTokens.length; j++) {
         add(`${f}${sourceTextTokens[i]}${sourceTextTokens[j]}`, longForms)
-        add(`${f}_${sourceTextTokens[i]}${sourceTextTokens[j]}`, longForms)
+        add(`${f}.${sourceTextTokens[i]}${sourceTextTokens[j]}`, longForms)
       }
     }
   }
@@ -126,7 +127,7 @@ export function generateUsernameSuggestions(
   for (let i = 0; i < sourceTextTokens.length; i++) {
     for (let j = i + 1; j < sourceTextTokens.length; j++) {
       add(`${sourceTextTokens[i]}${sourceTextTokens[j]}`, longForms)
-      add(`${sourceTextTokens[i]}_${sourceTextTokens[j]}`, longForms)
+      add(`${sourceTextTokens[i]}.${sourceTextTokens[j]}`, longForms)
       add(`${sourceTextTokens[i]}${sourceTextTokens[j]}${num}`, longForms)
     }
   }
@@ -163,7 +164,7 @@ export function generateUsernameSuggestions(
     ]
     for (const base of GENERIC_BASES) {
       add(`${base}${String(10 + getRandomInt(90))}`, shortForms)
-      add(`${base}_${String(10 + getRandomInt(990))}`, longForms)
+      add(`${base}.${String(10 + getRandomInt(990))}`, longForms)
     }
   }
 
