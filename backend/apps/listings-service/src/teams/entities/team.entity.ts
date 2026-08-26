@@ -1,7 +1,10 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { ListingStatus } from '../../shared/enums/listing.enum';
 
-@Entity('teams_v2')
+// ConsolidateListingsTables dropped listings.teams_v2 and folded it into
+// listings.teams. The entity kept pointing at the dropped table, so every
+// query through it failed with: relation "listings.teams_v2" does not exist.
+@Entity('teams')
 export class Team {
   @PrimaryGeneratedColumn('uuid')
   id: string;
