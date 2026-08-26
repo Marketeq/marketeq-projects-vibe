@@ -828,12 +828,7 @@ const CreateYourUsername = ({
                       </Button>
                     )}
                   </>
-                ) : (
-                  <span className="block text-sm leading-[16.94px] text-gray-500">
-                    Username suggestions use your name and recent job title once
-                    you add them.
-                  </span>
-                )}
+                ) : null}
               </div>
             )}
 

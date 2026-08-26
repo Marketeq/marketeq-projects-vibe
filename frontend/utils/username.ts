@@ -117,6 +117,29 @@ export function generateUsernameSuggestions(
     }
   }
 
+  // Nothing to build from - no first name, no job title, no email. Without
+  // this the function returns an empty array and step 4 renders no suggestions
+  // at all. Fall back to neutral, professional handles so the user always has
+  // something to pick from or edit.
+  if (suggestions.length === 0) {
+    const GENERIC_BASES = [
+      "creator",
+      "builder",
+      "maker",
+      "specialist",
+      "consultant",
+      "freelancer",
+      "professional",
+      "designer",
+      "developer",
+      "strategist",
+    ]
+    for (const base of GENERIC_BASES) {
+      add(`${base}${String(10 + getRandomInt(990))}`)
+      if (suggestions.length >= 12) break
+    }
+  }
+
   return suggestions
     .sort((a, b) => a.length - b.length)
     .slice(0, 20)
