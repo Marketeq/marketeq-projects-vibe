@@ -121,6 +121,9 @@ const skillSuggestions = Array.isArray(rawSkillSuggestions)
   ? rawSkillSuggestions
   : []
 
+const AVATAR_FILE_TYPE_MESSAGE =
+  "Please use an accepted file type: PNG or JPEG. 300 x 300 pixels or larger is recommended."
+
 const USERNAME_PATTERN = /^[a-zA-Z0-9._]+$/
 const USERNAME_RULE_MESSAGE =
   "Username can only contain letters, numbers, periods, and underscores"
@@ -194,6 +197,7 @@ const IntroduceYourself = ({
     control,
     watch,
     setError,
+    clearErrors,
     setValue,
   } = useForm<IntroduceYourselfFormValues>({
     resolver: zodResolver(introduceYourselfFormSchema),
@@ -324,8 +328,19 @@ const IntroduceYourself = ({
                   name="avatar"
                   render={({ field: { onChange } }) => (
                     <ImageEditor
-                      onValueChange={onChange}
+                      onValueChange={(files) => {
+                        clearErrors("avatar")
+                        onChange(files)
+                      }}
                       defaultDataUrl={avatarPreviewUrl}
+                      // The built-in rejection message only renders inside the
+                      // editor's own dialogs, which skipUploadDialog bypasses.
+                      onFileRejected={() =>
+                        setError("avatar", {
+                          type: "manual",
+                          message: AVATAR_FILE_TYPE_MESSAGE,
+                        })
+                      }
                       // Upload Photo opens the file browser directly rather
                       // than the intermediate "Change Profile Image" dialog.
                       skipUploadDialog

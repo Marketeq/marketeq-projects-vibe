@@ -16,7 +16,12 @@ import {
   ZoomOut,
 } from "@blend-metrics/icons"
 import { motion, useDragControls, useMotionValue } from "framer-motion"
-import { ErrorCode, FileWithPath, useDropzone } from "react-dropzone"
+import {
+  ErrorCode,
+  FileRejection,
+  FileWithPath,
+  useDropzone,
+} from "react-dropzone"
 import { useMeasure } from "react-use"
 import {
   Button,
@@ -630,6 +635,7 @@ export const ImageEditor = ({
   fallbackInitials,
   fallbackIcon,
   skipUploadDialog = false,
+  onFileRejected,
 }: {
   onValueChange?: (files: readonly FileWithPath[] | undefined) => void
   startingPoint: (options: {
@@ -655,6 +661,10 @@ export const ImageEditor = ({
    *  the profile pages keep their existing two-step flow. onDropAccepted still
    *  sends EDIT, so choosing a file lands on the crop step either way. */
   skipUploadDialog?: boolean
+  /** Fired when a dropped file fails validation. The built-in rejection message
+   *  only renders inside this component's dialogs, so callers using
+   *  skipUploadDialog get no feedback without this. */
+  onFileRejected?: (rejections: FileRejection[]) => void
 }) => {
   const [state, send] = useStateMachine("ideal", {
     ideal: {
@@ -700,7 +710,10 @@ export const ImageEditor = ({
         reset()
         send("EDIT")
       },
-      onDropRejected: reset,
+      onDropRejected: (rejections) => {
+        reset()
+        onFileRejected?.(rejections)
+      },
       validator: (file) => {
         const matches = matchesExtensions({
           file,
