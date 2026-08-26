@@ -71,23 +71,32 @@ export function generateUsernameSuggestions(
     suggestions.push(normalized)
   }
 
-  // First name based
-  add(f)
-  add(`${f}${num}`)
+  // The spec is "first name + job title" (docs/md/User Service/User Onboarding/
+  // Suggested Usernames Based on First Name and Job Title.md), so combinations
+  // of the two lead. Bare job-title words like "chief" or "product" are not
+  // anybody's username and must not come first.
+  if (f) {
+    for (const token of sourceTextTokens) {
+      add(`${f}${token}`)
+      add(`${token}${f}`)
+      add(`${f}${token}${num}`)
+      add(`${f}${token}${num2}`)
+    }
+    // Two job-title words, e.g. christopherproductofficer
+    for (let i = 0; i < sourceTextTokens.length; i++) {
+      for (let j = i + 1; j < sourceTextTokens.length; j++) {
+        add(`${f}${sourceTextTokens[i]}${sourceTextTokens[j]}`)
+      }
+    }
+    // Then the name on its own, with and without digits
+    add(f)
+    add(`${f}${num}`)
+    add(`${f}${num2}`)
+  }
 
-  // First name + job title/source combinations
-  add(`${f}${sourceText}`)
-  add(`${sourceText}${f}`)
-  add(`${sourceText}${f}${num}`)
-  add(`${f}${sourceText}${num}`)
-  add(sourceText)
-  add(`${f}${sourceText}${secondarySourceText}`)
-
-  // Source token combinations
+  // Job-title-only forms are a fallback, not the headline
   for (const token of sourceTextTokens) {
     add(token)
-    add(`${f}${token}`)
-    add(`${token}${f}`)
     add(`${token}${num}`)
     add(`${token}${num2}`)
   }
@@ -140,7 +149,7 @@ export function generateUsernameSuggestions(
     }
   }
 
-  return suggestions
-    .sort((a, b) => a.length - b.length)
-    .slice(0, 20)
+  // Insertion order is the ranking. Sorting by length pushed short bare
+  // job-title words to the top and buried the name+title combinations.
+  return suggestions.slice(0, 20)
 }
