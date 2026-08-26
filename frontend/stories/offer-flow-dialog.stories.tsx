@@ -43,6 +43,47 @@ export const OfferDetails: Story = {
   },
 }
 
+export const OfferAccepted: Story = {
+  args: {
+    variant: "offer-accepted",
+    data: {
+      ...meta.args?.data!,
+      statusDateLabel: "on Feb 3, 2025",
+    },
+  },
+}
+
+export const OfferDeclined: Story = {
+  args: {
+    variant: "offer-declined",
+    data: {
+      ...meta.args?.data!,
+      statusDateLabel: "on Feb 3, 2025",
+      statusReason: "The budget does not align.",
+    },
+  },
+}
+
+export const OfferWithdrawn: Story = {
+  args: {
+    variant: "offer-withdrawn",
+    data: {
+      ...meta.args?.data!,
+      statusDateLabel: "on Feb 3, 2025",
+    },
+  },
+}
+
+export const OfferExpired: Story = {
+  args: {
+    variant: "offer-expired",
+    data: {
+      ...meta.args?.data!,
+      statusDateLabel: "on Aug 2, 2025",
+    },
+  },
+}
+
 export const AcceptOfferEmpty: Story = {
   args: {
     variant: "accept-offer-empty",

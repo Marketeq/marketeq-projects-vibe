@@ -78,6 +78,8 @@ export class CheckoutService {
     giftCardCode?: string;
     walletBalanceUsed?: number;
     totalAmount: number;
+    successUrl?: string;
+    cancelUrl?: string;
   }) {
     let amount = dto.totalAmount;
     let giftCardAmountUsed = 0;
@@ -112,8 +114,12 @@ export class CheckoutService {
       paymentMethod: dto.paymentMethod,
       projectId: dto.projectId,
       contractId: dto.contractId,
-      successUrl: `${frontendUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${frontendUrl}/checkout/cancel`,
+      successUrl:
+        this.resolveRedirectUrl(dto.successUrl, frontendUrl) ||
+        `${frontendUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl:
+        this.resolveRedirectUrl(dto.cancelUrl, frontendUrl) ||
+        `${frontendUrl}/checkout/cancel`,
     });
 
     const session = this.sessionRepo.create({
@@ -1351,6 +1357,19 @@ export class CheckoutService {
   }
 
   // ─── Private Helpers ────────────────────────────────────────────────
+
+  // Stripe sends the buyer wherever the redirect URLs point, so a caller-supplied
+  // one is only honoured when it stays on the configured frontend origin.
+  private resolveRedirectUrl(url: string | undefined, frontendUrl: string) {
+    if (!url) return undefined;
+    try {
+      return new URL(url).origin === new URL(frontendUrl).origin
+        ? url
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
 
   private emitEvent(pattern: string, data: Record<string, unknown>) {
     if (this.rabbitClient) {

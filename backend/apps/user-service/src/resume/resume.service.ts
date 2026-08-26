@@ -220,8 +220,16 @@ export class ResumeService {
       // Check if the extracted name shares at least one word with the profile name
       const profileWords = profileName.split(/\s+/).filter((w: string) => w.length > 1);
       const extractedWords = extractedName.split(/\s+/).filter((w: string) => w.length > 1);
-      const hasOverlap = profileWords.some((pw: string) => extractedWords.some((ew: string) => ew === pw));
-      nameMismatch = !hasOverlap;
+      // Only meaningful when the account actually has a name to compare against.
+      // A brand-new EMAIL signup has none yet (it's collected after the resume
+      // step), and `[].some()` is always false — which made `!hasOverlap` true
+      // and flagged every nameless account as someone else's resume. Accounts
+      // created via Google/LinkedIn carry a provider-supplied name, so the
+      // check still runs for them.
+      if (profileWords.length > 0) {
+        const hasOverlap = profileWords.some((pw: string) => extractedWords.some((ew: string) => ew === pw));
+        nameMismatch = !hasOverlap;
+      }
     }
 
     // Detect conflicts

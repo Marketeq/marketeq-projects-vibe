@@ -31,7 +31,20 @@ import { SuggestionsController } from './suggestions.controller';
       useFactory: async (config: ConfigService) => {
         const redisUrl = config.get<string>('REDIS_URL');
         if (redisUrl) {
-          const { default: KeyvRedis } = await import('@keyv/redis');
+          // @keyv/redis@2 is CommonJS and its module.exports IS the
+          // constructor, so destructuring `default` yields undefined and the
+          // service crash loops with "KeyvRedis is not a constructor". This
+          // path only runs when REDIS_URL is set, which is why it stayed
+          // hidden until Redis was provisioned. Accept every module shape.
+          const mod: any = await import('@keyv/redis');
+          const KeyvRedis = mod?.default ?? mod?.KeyvRedis ?? mod;
+
+          if (typeof KeyvRedis !== 'function') {
+            // Falling back to the in-memory store keeps suggestions serving
+            // instead of taking the whole container down over a cache.
+            return {};
+          }
+
           return { stores: [new KeyvRedis(redisUrl)] };
         }
         return {}; // in-memory fallback

@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, HttpException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  HttpException,
+  ConflictException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
@@ -126,15 +132,19 @@ export class JobListingPublishService {
     }
 
     // ── Rich text word counts (overview, benefits, responsibilities) ────────
-    const richTextFields = [
-      { field: 'overview',         value: listing.roleDescriptions?.[0]?.overview },
-      { field: 'benefits',         value: listing.roleDescriptions?.[0]?.benefits },
-      { field: 'responsibilities', value: listing.roleDescriptions?.[0]?.responsibilities },
-    ];
+    for (const roleDescription of listing.roleDescriptions ?? []) {
+      const roleLabel = roleDescription.roleTitle || 'role';
+      const richTextFields = [
+        { field: 'overview',         value: roleDescription.overview },
+        { field: 'benefits',         value: roleDescription.benefits },
+        { field: 'responsibilities', value: roleDescription.responsibilities },
+      ];
 
-    for (const { field, value } of richTextFields) {
-      if (value && wordCount(value) > 100) {
-        errors[field] = `${field} must not exceed 100 words.`;
+      for (const { field, value } of richTextFields) {
+        if (value && wordCount(value) > 100) {
+          errors[`roleDescriptions.${roleLabel}.${field}`] =
+            `${field} for ${roleLabel} must not exceed 100 words.`;
+        }
       }
     }
 
@@ -302,5 +312,34 @@ export class JobListingPublishService {
     ];
   }
 
-  async revertToDraft(_userId: string, _listingId: string): Promise<void> {}
+  async revertToDraft(_userId: string, listingId: string): Promise<void> {
+    const listing = await this.repo.findOne({ where: { id: listingId } });
+
+    if (!listing) {
+      throw new NotFoundException({ code: 'JL_NOT_FOUND', message: 'Listing not found.' });
+    }
+
+    if (
+      listing.status !== JobListingStatus.PUBLISHED &&
+      listing.status !== JobListingStatus.NEEDS_UPDATE
+    ) {
+      throw new ConflictException({
+        code: 'JL_REVERT_NOT_ALLOWED',
+        message: 'Only published or needs_update listings can be reverted to draft.',
+      });
+    }
+
+    await this.repo.update(listingId, {
+      status: JobListingStatus.DRAFT,
+      lastActivityAt: new Date(),
+    });
+
+    this.publisher.emit('job_listing.reverted_to_draft', {
+      listingId,
+      clientUserId: listing.clientUserId,
+      algoliaObjectId: listing.algoliaObjectId,
+    });
+
+    this.logger.log(`Job listing reverted to draft: ${listingId}`);
+  }
 }

@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   hasCompletedClientOnboarding,
   hasCompletedTalentOnboarding,
+  resolveDashboardRole,
   useAuth,
 } from "@/contexts/auth"
 import { useAutocomplete } from "@/libs/autocomplete"
@@ -1508,7 +1509,12 @@ const SearchBar = () => {
   )
 }
 
-const PATHNAMES = ["/talent-dashboard", "/client-dashboard", "/talent-profile"]
+const PATHNAMES = [
+  "/talent-dashboard",
+  "/client-dashboard",
+  "/talent-profile",
+  "/client-profile",
+]
 
 // Pages with sidebar navigation that should use tighter header padding (24px)
 const HAS_SIDEBAR_NAV = [
@@ -1532,6 +1538,7 @@ const HAS_SIDEBAR_NAV = [
 const HAS_SECONDARY_NAV = [
   "/",
   "/talent-profile",
+  "/client-profile",
   "/my-team",
   "/favorite-projects",
   "/favorite-talent",
@@ -1721,7 +1728,13 @@ export const TopMostHeader = ({
               <DropdownMenuItem
                 onSelect={() => {
                   setMenuOpen(false)
-                  router.push("/talent-profile")
+                  // A client account sees the client profile; the talent
+                  // profile is only for talent accounts.
+                  router.push(
+                    resolveDashboardRole(user) === ROLE.CLIENT
+                      ? "/client-profile"
+                      : "/talent-profile"
+                  )
                 }}
               >
                 <User className="size-4" />

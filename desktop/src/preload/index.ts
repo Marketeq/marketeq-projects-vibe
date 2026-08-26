@@ -14,6 +14,7 @@ import type {
   AuthStatus,
   AuthStatusChangedPayload,
   BackendContract,
+  BackendTask,
   BreakExpiredPayload,
   BreakExpiringPayload,
   CaptureHealth,
@@ -277,6 +278,8 @@ const dtt = {
   contracts: {
     getMine: (): Promise<BackendContract[]> =>
       ipcRenderer.invoke(IPC.contractsGetMine),
+    getTasks: (contractId: string): Promise<BackendTask[]> =>
+      ipcRenderer.invoke(IPC.contractsGetTasks, contractId),
   },
 
   sync: {

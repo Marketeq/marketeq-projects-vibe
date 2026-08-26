@@ -1,9 +1,10 @@
 export interface TalentProfileSavedEvent {
-  event: 'talent-profile.saved';
+  event: "talent-profile.saved";
   id: string;
   sourceId: string | null;
   username: string;
   name: string;
+  avatarUrl?: string | null;
   headline: string | null;
   availability: string | null;
   rate: number | null;
@@ -37,11 +38,11 @@ export interface TalentProfileSavedEvent {
     thumbnailId: number | null;
     description: string | null;
   }[];
-  status: 'active' | 'inactive' | 'suspended';
+  status: "active" | "inactive" | "suspended";
 }
 
 export interface TalentProfileDeletedEvent {
-  event: 'talent-profile.deleted';
+  event: "talent-profile.deleted";
   id: string;
   username: string;
 }
