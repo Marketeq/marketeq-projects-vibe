@@ -153,9 +153,18 @@ jobs:
               "frontend/app/(group)/billing/invoices/page.tsx"|\
               "frontend/app/(group)/billing/my-plans/page.tsx"|\
               "frontend/app/(group)/billing/payment-methods/page.tsx"|\
-              "frontend/app/(group)/onboarding/page.tsx"|\
-              "frontend/app/(group)/onboarding/talent/page.tsx"|\
-              "frontend/app/(group)/onboarding/client/page.tsx"|\
+              "frontend/app/(group)/onboarding/"*|\
+              "frontend/app/sign-in/"*|\
+              "frontend/app/sign-up/"*|\
+              "frontend/app/forgot-password/"*|\
+              "frontend/app/reset-password/"*|\
+              frontend/contexts/auth.tsx|\
+              frontend/service/http/auth.ts|\
+              frontend/src/lib/api/auth.ts|\
+              frontend/hoc/AuthenticatedRoute.tsx|\
+              frontend/hoc/UnauthenticatedRoute.tsx|\
+              "frontend/components/auth/"*|\
+              "backend/apps/auth-service/"*|\
               "frontend/app/(group)/my-jobs/page.tsx")
                 FROZEN_UI_HIT=1
                 FROZEN_UI_FILES="$FROZEN_UI_FILES\n- \`$f\`" ;;
@@ -173,7 +182,7 @@ jobs:
             if [ -n "$FROZEN_UNLOCK" ]; then
               add "🔓 **Frozen file unlock in effect** for $(echo -e "$FROZEN_UI_FILES"). @CTorres9800 granted \`frozen-unlock\` on this PR, so the freeze is waived here only. Review these changes with the same care as the original: no refactors, no restyling, no copy changes beyond what was approved."
             elif [ "$PR_AUTHOR" != "CTorres9800" ]; then
-              add "🔒 **Frozen UI file(s) touched:** $(echo -e "$FROZEN_UI_FILES"). These files are locked and can only be modified by @CTorres9800. Backend/API work on the My Jobs screen belongs in \`frontend/app/(group)/my-jobs/my-jobs.data.ts\`, which is intentionally NOT frozen. Remove these changes from the PR or request CTO approval."
+              add "🔒 **Frozen file(s) touched:** $(echo -e "$FROZEN_UI_FILES"). These are locked and can only be modified by @CTorres9800. The entire onboarding tree and the entire login/sign-up/password-reset surface are frozen - this is a directory-wide lock, so new files added under those paths are frozen too. Backend/API work on the My Jobs screen belongs in \`frontend/app/(group)/my-jobs/my-jobs.data.ts\`, which is intentionally NOT frozen. Remove these changes from the PR or request CTO approval."
             fi
           fi
 
