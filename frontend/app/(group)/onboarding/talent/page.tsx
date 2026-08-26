@@ -4051,13 +4051,13 @@ const UploadYourResume = ({
 
       const foundSteps: ReadingStep[] = [
         ...(extractedName
-          ? [{ label: "Personal info", items: [extractedName] }]
+          ? [{ label: "Personal Info", items: [extractedName] }]
           : []),
         ...(skillNames.length
           ? [{ label: "Skills", count: skillNames.length, items: skillNames }]
           : []),
         ...(workTotal
-          ? [{ label: "Work experience", count: workTotal, items: workItems }]
+          ? [{ label: "Work Experience", count: workTotal, items: workItems }]
           : []),
         ...(educationTotal
           ? [{
@@ -4075,14 +4075,14 @@ const UploadYourResume = ({
           : []),
         ...(clientCompanies.length
           ? [{
-              label: "Previous clients",
+              label: "Previous Clients",
               count: clientCompanies.length,
               items: clientCompanies,
             }]
           : []),
         ...(industryNames.length
           ? [{
-              label: "Industry expertise",
+              label: "Industry Expertise",
               count: industryNames.length,
               items: industryNames,
             }]
