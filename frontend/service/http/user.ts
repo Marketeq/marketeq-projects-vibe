@@ -204,6 +204,7 @@ export const UserAPI = {
       issuer?: string
       issueDate?: string
     }[]
+    industries?: { name: string }[]
     replaceConflicts?: boolean
     conflictResolutions?: {
       entityType: "education" | "work" | "certification"

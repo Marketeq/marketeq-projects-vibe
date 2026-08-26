@@ -80,12 +80,14 @@ import {
   CircularProgress,
   Combobox,
   ComboboxInput,
+  Dropzone,
+  type DropzoneState,
+  ONE_MB,
   ComboboxLabel,
   ComboboxOption,
   ComboboxOptions,
   ComboboxTrigger,
   ErrorMessage,
-  GoogleMap,
   IconButton,
   ImageEditor,
   Input,
@@ -253,7 +255,7 @@ const IntroduceYourself = ({
               value={progress}
             />
             <span className="text-[11px] leading-[15.43px] text-gray-700">
-              STEP 1 / 5
+              STEP 2 / 5
             </span>
           </div>
 
@@ -1180,662 +1182,6 @@ const geocodeLocation = async (
   } catch {
     return null
   }
-}
-const LOCATION_FALLBACK_OPTIONS = [
-  "Birmingham, Alabama, United States",
-  "Huntsville, Alabama, United States",
-  "Mobile, Alabama, United States",
-  "Anchorage, Alaska, United States",
-  "Fairbanks, Alaska, United States",
-  "Juneau, Alaska, United States",
-  "Phoenix, Arizona, United States",
-  "Tucson, Arizona, United States",
-  "Scottsdale, Arizona, United States",
-  "Little Rock, Arkansas, United States",
-  "Fayetteville, Arkansas, United States",
-  "Fort Smith, Arkansas, United States",
-  "Los Angeles, California, United States",
-  "San Francisco, California, United States",
-  "San Diego, California, United States",
-  "Denver, Colorado, United States",
-  "Colorado Springs, Colorado, United States",
-  "Boulder, Colorado, United States",
-  "Stamford, Connecticut, United States",
-  "Hartford, Connecticut, United States",
-  "New Haven, Connecticut, United States",
-  "Wilmington, Delaware, United States",
-  "Dover, Delaware, United States",
-  "Newark, Delaware, United States",
-  "Miami, Florida, United States",
-  "Orlando, Florida, United States",
-  "Tampa, Florida, United States",
-  "Atlanta, Georgia, United States",
-  "Savannah, Georgia, United States",
-  "Augusta, Georgia, United States",
-  "Honolulu, Hawaii, United States",
-  "Hilo, Hawaii, United States",
-  "Kailua, Hawaii, United States",
-  "Boise, Idaho, United States",
-  "Idaho Falls, Idaho, United States",
-  "Coeur d'Alene, Idaho, United States",
-  "Chicago, Illinois, United States",
-  "Aurora, Illinois, United States",
-  "Naperville, Illinois, United States",
-  "Indianapolis, Indiana, United States",
-  "Fort Wayne, Indiana, United States",
-  "Bloomington, Indiana, United States",
-  "Des Moines, Iowa, United States",
-  "Cedar Rapids, Iowa, United States",
-  "Iowa City, Iowa, United States",
-  "Wichita, Kansas, United States",
-  "Overland Park, Kansas, United States",
-  "Kansas City, Kansas, United States",
-  "Louisville, Kentucky, United States",
-  "Lexington, Kentucky, United States",
-  "Bowling Green, Kentucky, United States",
-  "New Orleans, Louisiana, United States",
-  "Baton Rouge, Louisiana, United States",
-  "Shreveport, Louisiana, United States",
-  "Portland, Maine, United States",
-  "Bangor, Maine, United States",
-  "Augusta, Maine, United States",
-  "Baltimore, Maryland, United States",
-  "Bethesda, Maryland, United States",
-  "Annapolis, Maryland, United States",
-  "Boston, Massachusetts, United States",
-  "Cambridge, Massachusetts, United States",
-  "Worcester, Massachusetts, United States",
-  "Detroit, Michigan, United States",
-  "Grand Rapids, Michigan, United States",
-  "Ann Arbor, Michigan, United States",
-  "Minneapolis, Minnesota, United States",
-  "St. Paul, Minnesota, United States",
-  "Rochester, Minnesota, United States",
-  "Jackson, Mississippi, United States",
-  "Gulfport, Mississippi, United States",
-  "Hattiesburg, Mississippi, United States",
-  "St. Louis, Missouri, United States",
-  "Kansas City, Missouri, United States",
-  "Springfield, Missouri, United States",
-  "Billings, Montana, United States",
-  "Missoula, Montana, United States",
-  "Bozeman, Montana, United States",
-  "Omaha, Nebraska, United States",
-  "Lincoln, Nebraska, United States",
-  "Bellevue, Nebraska, United States",
-  "Las Vegas, Nevada, United States",
-  "Reno, Nevada, United States",
-  "Henderson, Nevada, United States",
-  "Manchester, New Hampshire, United States",
-  "Nashua, New Hampshire, United States",
-  "Concord, New Hampshire, United States",
-  "Newark, New Jersey, United States",
-  "Jersey City, New Jersey, United States",
-  "Princeton, New Jersey, United States",
-  "Albuquerque, New Mexico, United States",
-  "Santa Fe, New Mexico, United States",
-  "Las Cruces, New Mexico, United States",
-  "New York City, New York, United States",
-  "Buffalo, New York, United States",
-  "Rochester, New York, United States",
-  "Charlotte, North Carolina, United States",
-  "Raleigh, North Carolina, United States",
-  "Durham, North Carolina, United States",
-  "Fargo, North Dakota, United States",
-  "Bismarck, North Dakota, United States",
-  "Grand Forks, North Dakota, United States",
-  "Columbus, Ohio, United States",
-  "Cleveland, Ohio, United States",
-  "Cincinnati, Ohio, United States",
-  "Oklahoma City, Oklahoma, United States",
-  "Tulsa, Oklahoma, United States",
-  "Norman, Oklahoma, United States",
-  "Portland, Oregon, United States",
-  "Eugene, Oregon, United States",
-  "Salem, Oregon, United States",
-  "Philadelphia, Pennsylvania, United States",
-  "Pittsburgh, Pennsylvania, United States",
-  "Allentown, Pennsylvania, United States",
-  "Providence, Rhode Island, United States",
-  "Warwick, Rhode Island, United States",
-  "Newport, Rhode Island, United States",
-  "Charleston, South Carolina, United States",
-  "Columbia, South Carolina, United States",
-  "Greenville, South Carolina, United States",
-  "Sioux Falls, South Dakota, United States",
-  "Rapid City, South Dakota, United States",
-  "Pierre, South Dakota, United States",
-  "Nashville, Tennessee, United States",
-  "Memphis, Tennessee, United States",
-  "Knoxville, Tennessee, United States",
-  "Houston, Texas, United States",
-  "Dallas, Texas, United States",
-  "Austin, Texas, United States",
-  "Salt Lake City, Utah, United States",
-  "Provo, Utah, United States",
-  "Ogden, Utah, United States",
-  "Burlington, Vermont, United States",
-  "Montpelier, Vermont, United States",
-  "Rutland, Vermont, United States",
-  "Virginia Beach, Virginia, United States",
-  "Richmond, Virginia, United States",
-  "Arlington, Virginia, United States",
-  "Seattle, Washington, United States",
-  "Bellevue, Washington, United States",
-  "Spokane, Washington, United States",
-  "Charleston, West Virginia, United States",
-  "Morgantown, West Virginia, United States",
-  "Huntington, West Virginia, United States",
-  "Milwaukee, Wisconsin, United States",
-  "Madison, Wisconsin, United States",
-  "Green Bay, Wisconsin, United States",
-  "Cheyenne, Wyoming, United States",
-  "Casper, Wyoming, United States",
-  "Jackson, Wyoming, United States",
-]
-
-const ShareYourLocation = ({
-  sidebar,
-  stepData,
-  setStepData,
-}: {
-  sidebar: React.ReactNode
-  stepData: CreateTalentType | null
-  setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
-}) => {
-  const [formError, setFormError] = useState<string | null>(null)
-  const initialDetectedLocation =
-    stepData?.location?.trim() || LOCATION_FALLBACK_OPTIONS[0]
-  const [detectedLocation, setDetectedLocation] = useState(
-    initialDetectedLocation
-  )
-  const [detectedCoordinates, setDetectedCoordinates] = useState<{
-    latitude: number
-    longitude: number
-  } | null>(null)
-  const [isDetectingLocation, setIsDetectingLocation] = useState(false)
-  const [locationDetectError, setLocationDetectError] = useState<string | null>(
-    null
-  )
-
-  const {
-    control,
-    formState: { errors, isValid },
-    handleSubmit,
-    getValues,
-    setValue,
-    clearErrors,
-    setError,
-  } = useForm<ShareYourGoalsFormValues>({
-    resolver: zodResolver(shareYourGoalsFormSchema),
-    defaultValues: {
-      location: [initialDetectedLocation],
-      languages: parseMultiSelectString(stepData?.language),
-    },
-  })
-  const [languagesQuery, setLanguagesQuery] = useState("")
-  const [isLanguagesOpen, setIsLanguagesOpen] = useState(false)
-  const [isHomeCountry, setIsHomeCountry] = useState(true)
-  const [suppressLanguageFocusOpen, setSuppressLanguageFocusOpen] =
-    useState(false)
-  const languageOptions = useMemo(
-    () => getUniqueOptions(languagesMock.map((item) => item.label)),
-    []
-  )
-  const watchedLanguages = useWatch({
-    control,
-    name: "languages",
-  })
-  const selectedLanguageValues = Array.isArray(watchedLanguages)
-    ? watchedLanguages
-    : []
-  const filteredLanguages = useMemo(() => {
-    const query = languagesQuery.trim().toLowerCase()
-    const searchableLanguages = languageOptions.filter(
-      (item) => !selectedLanguageValues.includes(item)
-    )
-    if (!query) return searchableLanguages
-    return searchableLanguages.filter((item) =>
-      item.toLowerCase().startsWith(query)
-    )
-  }, [languageOptions, languagesQuery, selectedLanguageValues])
-
-  const addLanguageValue = async (
-    nextValue: string,
-    onChange: (values: string[]) => void,
-    currentValues: string[]
-  ) => {
-    const value = nextValue.trim()
-    if (!value) return
-
-    const normalizedCurrentValues = getUniqueOptions(currentValues)
-    const matchedValue = languageOptions.find(
-      (option) => option.trim().toLowerCase() === value.toLowerCase()
-    )
-
-    if (!matchedValue) {
-      setLanguagesQuery("")
-      setIsLanguagesOpen(false)
-      setSuppressLanguageFocusOpen(true)
-      return
-    }
-
-    if (normalizedCurrentValues.includes(matchedValue)) {
-      setLanguagesQuery("")
-      setIsLanguagesOpen(false)
-      setSuppressLanguageFocusOpen(true)
-      return
-    }
-
-    clearErrors("languages")
-    const next = getUniqueOptions([...normalizedCurrentValues, matchedValue])
-    onChange(next)
-    setLanguagesQuery("")
-    setIsLanguagesOpen(false)
-    setSuppressLanguageFocusOpen(true)
-  }
-
-  const removeLanguageValue = (
-    target: string,
-    onChange: (values: string[]) => void,
-    currentValues: string[]
-  ) => {
-    const next = currentValues.filter((item) => item !== target)
-    onChange(next)
-  }
-  const { toggleValidation } = useStepContext()
-  const { nextStep, prevStep, setStep } = useStepperContext()
-
-  useEffect(() => {
-    setValue("location", [detectedLocation], { shouldValidate: true })
-  }, [detectedLocation, setValue])
-
-  useEffect(() => {
-    if (detectedCoordinates) return
-
-    let isCancelled = false
-
-    ;(async () => {
-      const resolvedCoordinates = await geocodeLocation(detectedLocation)
-      if (isCancelled || !resolvedCoordinates) return
-      setDetectedCoordinates(resolvedCoordinates)
-    })()
-
-    return () => {
-      isCancelled = true
-    }
-  }, [detectedCoordinates, detectedLocation])
-
-  useEffect(() => {
-    if (stepData?.location?.trim()) return
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setLocationDetectError(
-        "Location detection is unavailable in this browser."
-      )
-      return
-    }
-
-    let isCancelled = false
-    setIsDetectingLocation(true)
-    setLocationDetectError(null)
-
-    navigator.geolocation.getCurrentPosition(
-      async ({ coords }) => {
-        setDetectedCoordinates({
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-        })
-
-        const resolvedLocation = await reverseGeocodeLocation(
-          coords.latitude,
-          coords.longitude
-        )
-        if (isCancelled) return
-
-        if (resolvedLocation) {
-          setDetectedLocation(resolvedLocation)
-        } else {
-          setLocationDetectError(
-            "Could not detect exact location. Using default location."
-          )
-        }
-
-        setIsDetectingLocation(false)
-      },
-      () => {
-        if (isCancelled) return
-        setLocationDetectError(
-          "Location permission denied. Using default location."
-        )
-        setIsDetectingLocation(false)
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 300000,
-      }
-    )
-
-    return () => {
-      isCancelled = true
-    }
-  }, [stepData?.location])
-  useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
-
-  const onSubmit: SubmitHandler<ShareYourGoalsFormValues> = ({
-    languages,
-    location,
-  }) => {
-    const hasLocation =
-      location && location.length > 0 && location.some((l) => l.trim())
-    const hasLanguages = languages && languages.length > 0
-    if (!hasLocation && !hasLanguages) {
-      setFormError("Please enter at least one field")
-      return
-    }
-    setFormError(null)
-    setStepData({
-      ...stepData,
-      location: location?.join(", "),
-      language: languages?.join(", "),
-    })
-    toggleValidation(true)
-    nextStep()
-  }
-
-  const { totalSteps, currentStep } = useStepRootContext()
-
-  const progress = ((currentStep + 1) / totalSteps) * 100
-
-  const skip = () => {
-    toggleValidation(true)
-    const nextStepIndex = currentStep + 1
-    setStep(nextStepIndex)
-  }
-
-  const back = () => {
-    setStepData({
-      ...stepData,
-      location: getValues("location")?.join(", "),
-      language: getValues("languages")?.join(", "),
-    })
-    prevStep()
-  }
-
-  return (
-    <div className="min-h-screen flex 2xl:pl-[480px] bg-white">
-      {sidebar}
-
-      <form
-        className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
-        onSubmit={handleSubmit(onSubmit)}
-      >
-        <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
-          <div className="flex gap-x-2 items-center">
-            <CircularProgress
-              show={false}
-              size={15.43}
-              strokeWidth={2.5}
-              value={progress}
-            />
-            <span className="text-[11px] leading-[15.43px] text-gray-700">
-              STEP 2 / 5
-            </span>
-          </div>
-
-          <h1 className="text-2xl leading-[36px] mt-2 text-dark-blue-400 font-semibold">
-            Confirm your location
-          </h1>
-
-          <p className="text-base leading-[19.36px] text-dark-blue-400 mt-2 font-light">
-            Share your information to tailor your experience and project
-            matches..
-          </p>
-
-          <div className="mt-10 2xl:mt-[50px]">
-            <div className="space-y-6">
-              <Controller
-                control={control}
-                name="location"
-                render={({ field }) => (
-                  <input
-                    type="hidden"
-                    value={field.value?.[0] ?? ""}
-                    readOnly
-                  />
-                )}
-              />
-              <Card className="block border-gray-200 p-4 md:p-5 shadow-none hover:border-gray-200 hover:ring-0">
-                <p className="text-xs md:text-sm text-dark-blue-400">
-                  We detected your current location as{" "}
-                  <span className="font-semibold">{detectedLocation}</span>
-                </p>
-                {isDetectingLocation && (
-                  <p className="mt-1 text-xs text-gray-600">
-                    Detecting your precise location...
-                  </p>
-                )}
-                {locationDetectError && (
-                  <p className="mt-1 text-xs text-gray-600">
-                    {locationDetectError}
-                  </p>
-                )}
-                <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
-                  <GoogleMap
-                    title="Detected location map"
-                    location={detectedLocation}
-                    latitude={detectedCoordinates?.latitude}
-                    longitude={detectedCoordinates?.longitude}
-                  />
-                </div>
-                <p className="mt-4 text-center text-sm font-semibold text-dark-blue-400">
-                  Is this your home country?
-                </p>
-                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={isHomeCountry ? "filled" : "outlined"}
-                    visual={isHomeCountry ? "primary" : "gray"}
-                    onClick={() => setIsHomeCountry(true)}
-                  >
-                    Yes, this is my home country
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={!isHomeCountry ? "filled" : "outlined"}
-                    visual={!isHomeCountry ? "primary" : "gray"}
-                    onClick={() => setIsHomeCountry(false)}
-                  >
-                    No, I&apos;m currently traveling
-                  </Button>
-                </div>
-              </Card>
-              <div className="flex flex-col gap-y-1.5">
-                <Label
-                  className="text-dark-blue-400"
-                  htmlFor="speaking-language"
-                  size="sm"
-                >
-                  What languages do you speak?
-                </Label>
-                <Controller
-                  control={control}
-                  name="languages"
-                  render={({ field: { onChange, value } }) => {
-                    const selectedLanguages = Array.isArray(value) ? value : []
-
-                    return (
-                      <div className="flex flex-col gap-y-1.5">
-                        <Combobox
-                          className="w-full"
-                          value={selectedLanguages}
-                          onChange={(values) => {
-                            const next = getUniqueOptions(
-                              (values as string[]).filter(Boolean)
-                            )
-                            onChange(next)
-                            setLanguagesQuery("")
-                            setIsLanguagesOpen(false)
-                            setSuppressLanguageFocusOpen(true)
-                          }}
-                          multiple
-                        >
-                          <ComboboxTrigger>
-                            <ComboboxInput
-                              id="speaking-language"
-                              size="lg"
-                              className="pl-3.5"
-                              placeholder="Enter your languages"
-                              value={languagesQuery}
-                              onFocus={() => {
-                                if (suppressLanguageFocusOpen) {
-                                  setSuppressLanguageFocusOpen(false)
-                                  return
-                                }
-                                setIsLanguagesOpen(true)
-                              }}
-                              onBlur={() =>
-                                setTimeout(() => setIsLanguagesOpen(false), 150)
-                              }
-                              onChange={(event) => {
-                                setLanguagesQuery(event.target.value)
-                                setIsLanguagesOpen(true)
-                              }}
-                              onKeyDown={async (event) => {
-                                if (event.key === HOT_KEYS.ENTER) {
-                                  const hasSuggestions =
-                                    isLanguagesOpen &&
-                                    languagesQuery.trim().length > 0 &&
-                                    filteredLanguages.length > 0
-
-                                  if (hasSuggestions) {
-                                    event.preventDefault()
-                                    const activeOption = document.querySelector(
-                                      '[role="option"][data-headlessui-state~="active"]'
-                                    ) as HTMLElement | null
-                                    const activeLabel =
-                                      activeOption?.textContent?.trim() ?? ""
-
-                                    const selectedLabel =
-                                      activeLabel || filteredLanguages[0]
-
-                                    if (selectedLabel) {
-                                      void addLanguageValue(
-                                        selectedLabel,
-                                        onChange,
-                                        selectedLanguages
-                                      )
-                                      return
-                                    }
-                                  }
-
-                                  event.preventDefault()
-                                  void addLanguageValue(
-                                    languagesQuery,
-                                    onChange,
-                                    selectedLanguages
-                                  )
-                                }
-                              }}
-                              invalid={hookFormHasError({
-                                errors,
-                                name: "languages",
-                              })}
-                            />
-                          </ComboboxTrigger>
-                          <ScaleOutIn show={isLanguagesOpen}>
-                            <ComboboxOptions>
-                              <ScrollArea viewportClassName="max-h-[304px]">
-                                {filteredLanguages.map((item) => (
-                                  <ComboboxOption
-                                    key={item}
-                                    value={item}
-                                    className="font-normal ui-active:font-normal"
-                                    onClick={() =>
-                                      void addLanguageValue(
-                                        item,
-                                        onChange,
-                                        selectedLanguages
-                                      )
-                                    }
-                                  >
-                                    {({ active }) => (
-                                      <HighlightedSuggestion
-                                        label={item}
-                                        query={languagesQuery}
-                                        active={active}
-                                      />
-                                    )}
-                                  </ComboboxOption>
-                                ))}
-                              </ScrollArea>
-                            </ComboboxOptions>
-                          </ScaleOutIn>
-                        </Combobox>
-
-                        {getIsNotEmpty(selectedLanguages) && (
-                          <div className="flex flex-wrap gap-3">
-                            {selectedLanguages.map((item) => (
-                              <SelectionBadge
-                                key={item}
-                                onRemove={() =>
-                                  removeLanguageValue(
-                                    item,
-                                    onChange,
-                                    selectedLanguages
-                                  )
-                                }
-                              >
-                                {item}
-                              </SelectionBadge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  }}
-                />
-              </div>
-
-              {formError && <ErrorMessage size="sm">{formError}</ErrorMessage>}
-            </div>
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
-          <div className="flex items-center justify-between">
-            <Button
-              size="md"
-              variant="outlined"
-              visual="gray"
-              type="button"
-              onClick={back}
-            >
-              Back
-            </Button>
-
-            <div className="flex items-center gap-x-6">
-              <Button
-                className="opacity-50 hover:opacity-100"
-                variant="ghost"
-                visual="gray"
-                type="button"
-                size="md"
-                onClick={skip}
-              >
-                Skip
-              </Button>
-              <Button size="md" visual="primary">
-                Continue
-              </Button>
-            </div>
-          </div>
-        </div>
-      </form>
-    </div>
-  )
 }
 
 const FALLBACK_TOP_SKILLS = Array.from(
@@ -4080,9 +3426,236 @@ const DoNextSidebar = () => {
   )
 }
 
+const RESUME_ACCEPTED_EXTENSIONS = [".pdf", ".doc", ".docx"]
+
+const UploadYourResume = ({
+  sidebar,
+  stepData,
+  setStepData,
+}: {
+  sidebar: React.ReactNode
+  stepData: CreateTalentType | null
+  setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
+}) => {
+  const [dropzoneValue, setDropzoneValue] = useState<DropzoneState | undefined>()
+  const [formError, setFormError] = useState<string | null>(null)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+
+  const { toggleValidation } = useStepContext()
+  const { nextStep, setStep } = useStepperContext()
+  const { totalSteps, currentStep } = useStepRootContext()
+
+  const progress = ((currentStep + 1) / totalSteps) * 100
+
+  // Upload -> parse -> autofill the remaining onboarding steps -> apply to the
+  // profile in the background. New account, so there is nothing to conflict
+  // with; the conflict/summary UI the talent profile shows is not needed here.
+  const processResume = async (file: File) => {
+    setIsProcessing(true)
+    setFormError(null)
+    setStatusMessage("Reading your resume...")
+
+    try {
+      const { data } = await UserAPI.uploadResume(file)
+
+      if (data?.status === "not_a_resume") {
+        setFormError(
+          "That file doesn't look like a resume. Upload a resume or skip this step."
+        )
+        return
+      }
+      if (data?.status === "nothing_found") {
+        setFormError(
+          "We couldn't read anything from that file. You can fill in your details on the next steps."
+        )
+        return
+      }
+      // The account already carries the registered name, so this still guards
+      // against someone uploading a resume that isn't theirs.
+      if (data?.nameMismatch) {
+        setFormError(
+          "The name on this resume doesn't match your account. Please upload your own resume."
+        )
+        return
+      }
+
+      const additions = data?.additions ?? {}
+      const skills = (additions.skills?.items ?? []).map((item: any) => ({
+        name: item.name,
+      }))
+      const industries = (additions.industries?.items ?? []).map((item: any) => ({
+        name: item.name ?? "",
+      }))
+      const education = (additions.education?.items ?? []).map((item: any) => ({
+        school: item.institution ?? "",
+        degree: item.degree ?? "",
+        fieldOfStudy: item.fieldOfStudy ?? "",
+      }))
+      const workExperience = (additions.workExperience?.items ?? []).map(
+        (item: any) => ({
+          title: item.title ?? "",
+          company: item.company ?? "",
+          startDate: item.startDate,
+          endDate: item.endDate,
+          description: item.description ?? "",
+        })
+      )
+      const certifications = (additions.certifications?.items ?? []).map(
+        (item: any) => ({
+          name: item.name ?? "",
+          issuer: item.issuingBody ?? "",
+        })
+      )
+
+      const extractedName = (data?.extractedName ?? "").trim()
+      const [firstName, ...remainingNameParts] = extractedName
+        .split(/\s+/)
+        .filter(Boolean)
+      const lastName = remainingNameParts.join(" ")
+      const recentJobTitle = data?.jobTitles?.[0]
+      const skillNames = skills
+        .map((skill: { name: string }) => skill.name)
+        .filter(Boolean)
+      const industryNames = industries
+        .map((industry: { name: string }) => industry.name)
+        .filter(Boolean)
+
+      // Only fill what the resume actually yielded; never overwrite a field
+      // the talent already filled in with an empty value.
+      setStepData((previous) => ({
+        ...previous,
+        ...(firstName ? { firstName } : {}),
+        ...(lastName ? { lastName } : {}),
+        ...(recentJobTitle ? { recentJobTitle } : {}),
+        ...(industryNames.length
+          ? { industriesWorkedIn: industryNames.join(", ") }
+          : {}),
+        // Step 3 reads its skills field back out of lookingToWorkWith.
+        ...(skillNames.length ? { lookingToWorkWith: skillNames } : {}),
+      }))
+
+      setStatusMessage("Updating your profile...")
+      try {
+        await UserAPI.applyResume({
+          parseResultId: data?.parseResultId,
+          skills,
+          education,
+          workExperience,
+          certifications,
+          industries,
+        })
+      } catch (applyError) {
+        // Autofill already landed in stepData, so onboarding can continue even
+        // if the background profile write fails.
+        console.error("Failed to auto-apply resume data:", applyError)
+      }
+
+      setStatusMessage(null)
+      toggleValidation(true)
+    } catch {
+      setFormError("We couldn't upload your resume. Please try again.")
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const onDropzoneChange = (value?: DropzoneState) => {
+    setDropzoneValue(value)
+    const file = value?.[0]?.meta
+    if (file) void processResume(file)
+  }
+
+  const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    toggleValidation(true)
+    nextStep()
+  }
+
+  const skip = () => {
+    toggleValidation(true)
+    setStep(currentStep + 1)
+  }
+
+  return (
+    <div className="min-h-screen flex 2xl:pl-[480px] bg-white">
+      {sidebar}
+
+      <form
+        className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
+        onSubmit={onSubmit}
+      >
+        <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
+          <div className="flex gap-x-2 items-center">
+            <CircularProgress
+              show={false}
+              size={15.43}
+              strokeWidth={2.5}
+              value={progress}
+            />
+            <span className="text-[11px] leading-[15.43px] text-gray-700">
+              STEP 1 / 5
+            </span>
+          </div>
+
+          <h1 className="text-2xl leading-[36px] mt-2 text-dark-blue-400 font-semibold">
+            Upload your resume
+          </h1>
+
+          <p className="text-base leading-[19.36px] text-dark-blue-400 mt-2 font-light">
+            We&apos;ll use it to fill in the rest of your profile, so you don&apos;t
+            have to type it all out.
+          </p>
+
+          <div className="mt-10 2xl:mt-[50px]">
+            <div className="space-y-6">
+              <Dropzone
+                maxFiles={1}
+                maxSize={ONE_MB * 5}
+                acceptedExtensions={RESUME_ACCEPTED_EXTENSIONS}
+                value={dropzoneValue}
+                onValueChange={onDropzoneChange}
+                onError={(error) => setFormError(error ?? null)}
+              />
+
+              {statusMessage && (
+                <p className="text-xs md:text-sm text-dark-blue-400">
+                  {statusMessage}
+                </p>
+              )}
+
+              {formError && <ErrorMessage size="sm">{formError}</ErrorMessage>}
+            </div>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
+          <div className="flex items-center justify-end">
+            <div className="flex items-center gap-x-6">
+              <Button
+                className="opacity-50 hover:opacity-100"
+                variant="ghost"
+                visual="gray"
+                type="button"
+                size="md"
+                onClick={skip}
+              >
+                Skip
+              </Button>
+              <Button size="md" visual="primary" disabled={isProcessing}>
+                Continue
+              </Button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 const steps: Steps[] = [
-  { label: "introduce-yourself", isValid: false, disabled: false },
-  { label: "confirm-your-location", isValid: false, disabled: true },
+  { label: "upload-your-resume", isValid: false, disabled: false },
+  { label: "introduce-yourself", isValid: false, disabled: true },
   { label: "showcase-your-talent", isValid: false, disabled: true },
   { label: "create-your-username", isValid: false, disabled: true },
   { label: "set-your-preferences", isValid: false, disabled: true },
@@ -4090,16 +3663,16 @@ const steps: Steps[] = [
 ]
 
 const TalentOnboarding = ({
+  uploadYourResume,
   introduceYourself,
   createYourUsername,
-  shareYourLocation,
   showcaseYourTalent,
   setYourPreferences,
   doNext,
 }: {
+  uploadYourResume: React.ReactNode
   introduceYourself: React.ReactNode
   createYourUsername: React.ReactNode
-  shareYourLocation: React.ReactNode
   showcaseYourTalent: React.ReactNode
   setYourPreferences: React.ReactNode
   doNext: React.ReactNode
@@ -4134,8 +3707,8 @@ const TalentOnboarding = ({
     <StepperProvider value={stepperValue}>
       <StepRootProvider value={stepperRootValue}>
         <StepControl>
+          <Step>{uploadYourResume}</Step>
           <Step>{introduceYourself}</Step>
-          <Step>{shareYourLocation}</Step>
           <Step>{showcaseYourTalent}</Step>
           <Step>{createYourUsername}</Step>
           <Step>{setYourPreferences}</Step>
@@ -4152,6 +3725,13 @@ export default function TalentOnboardingRoot() {
 
   return (
     <TalentOnboarding
+      uploadYourResume={
+        <UploadYourResume
+          sidebar={<Sidebar />}
+          stepData={stepData}
+          setStepData={setStepData}
+        />
+      }
       introduceYourself={
         <IntroduceYourself
           sidebar={<Sidebar />}
@@ -4161,13 +3741,6 @@ export default function TalentOnboardingRoot() {
       }
       createYourUsername={
         <CreateYourUsername
-          sidebar={<Sidebar />}
-          stepData={stepData}
-          setStepData={setStepData}
-        />
-      }
-      shareYourLocation={
-        <ShareYourLocation
           sidebar={<Sidebar />}
           stepData={stepData}
           setStepData={setStepData}
