@@ -55,20 +55,33 @@ export function generateUsernameSuggestions(
   const num = sourceNumberTokens[0] || String(10 + getRandomInt(90))
   const num2 = String(10 + getRandomInt(90))
 
-  const suggestions: string[] = []
+  // Two buckets, interleaved at the end, so the row alternates a longer
+  // name+title handle with a short one instead of running all of one shape.
+  // Separators (. and _) ride on the longer forms, where they read as a break
+  // between the name and the job title.
+  const shortForms: string[] = []
+  const longForms: string[] = []
   const seen = new Set<string>()
 
-  const add = (candidate: string) => {
-    const normalized = clean(candidate)
+  // Unlike clean(), this keeps "." and "_" so separated handles survive.
+  const normalize = (value: string) =>
+    (value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9._]+/g, "")
+      .replace(/([._])\1+/g, "$1")
+      .replace(/^[._]+|[._]+$/g, "")
+
+  const add = (candidate: string, bucket: string[] = shortForms) => {
+    const normalized = normalize(candidate)
     if (!normalized || normalized.length < 3 || normalized.length > 24) return
-    if (!/^[a-z][a-z0-9_]*$/.test(normalized)) return
+    if (!/^[a-z][a-z0-9]*(?:[._][a-z0-9]+)*$/.test(normalized)) return
     if (seen.has(normalized)) return
 
     if (f && normalized.indexOf(f) !== normalized.lastIndexOf(f)) return
     if (/(\d{2,})\1/.test(normalized) || /(\d)\1{2,}/.test(normalized)) return
 
     seen.add(normalized)
-    suggestions.push(normalized)
+    bucket.push(normalized)
   }
 
   // The spec is "first name + job title" (docs/md/User Service/User Onboarding/
@@ -76,53 +89,54 @@ export function generateUsernameSuggestions(
   // of the two lead. Bare job-title words like "chief" or "product" are not
   // anybody's username and must not come first.
   if (f) {
+    add(f, shortForms)
+    add(`${f}${num}`, shortForms)
+    add(`${f}${num2}`, shortForms)
+
     for (const token of sourceTextTokens) {
-      add(`${f}${token}`)
-      add(`${token}${f}`)
-      add(`${f}${token}${num}`)
-      add(`${f}${token}${num2}`)
+      add(`${f}${token}`, longForms)
+      add(`${f}.${token}`, longForms)
+      add(`${f}_${token}`, longForms)
+      add(`${token}${f}`, longForms)
+      add(`${f}${token}${num}`, longForms)
+      add(`${f}.${token}${num2}`, longForms)
+      // Short counterparts built off the same token
+      add(`${f}${token.slice(0, 3)}`, shortForms)
+      add(`${token}${num}`, shortForms)
     }
-    // Two job-title words, e.g. christopherproductofficer
+
+    // Two job-title words, e.g. christopher.productofficer
     for (let i = 0; i < sourceTextTokens.length; i++) {
       for (let j = i + 1; j < sourceTextTokens.length; j++) {
-        add(`${f}${sourceTextTokens[i]}${sourceTextTokens[j]}`)
+        add(`${f}${sourceTextTokens[i]}${sourceTextTokens[j]}`, longForms)
+        add(`${f}.${sourceTextTokens[i]}${sourceTextTokens[j]}`, longForms)
       }
     }
-    // Then the name on its own, with and without digits
-    add(f)
-    add(`${f}${num}`)
-    add(`${f}${num2}`)
   }
 
   // Job-title-only forms are a fallback, not the headline
   for (const token of sourceTextTokens) {
-    add(token)
-    add(`${token}${num}`)
-    add(`${token}${num2}`)
+    add(token, shortForms)
+    add(`${token}${num2}`, shortForms)
   }
-  // Combine pairs of source tokens
   for (let i = 0; i < sourceTextTokens.length; i++) {
     for (let j = i + 1; j < sourceTextTokens.length; j++) {
-      add(`${sourceTextTokens[i]}${sourceTextTokens[j]}`)
-      add(`${sourceTextTokens[j]}${sourceTextTokens[i]}`)
-      add(`${sourceTextTokens[i]}${sourceTextTokens[j]}${num}`)
+      add(`${sourceTextTokens[i]}${sourceTextTokens[j]}`, longForms)
+      add(`${sourceTextTokens[i]}.${sourceTextTokens[j]}`, longForms)
+      add(`${sourceTextTokens[i]}${sourceTextTokens[j]}${num}`, longForms)
     }
   }
 
   // Email local part as-is (stripped of special chars)
   const emailClean = clean(sourceLocal)
-  add(emailClean)
-  add(`${emailClean}${num}`)
+  add(emailClean, shortForms)
+  add(`${emailClean}${num}`, shortForms)
 
-  // If still not enough, add random suffix variations
-  if (suggestions.length < 6) {
-    const bases = [f, sourceText, emailClean].filter(
-      (b) => b && b.length >= 2
-    )
-    for (const base of bases) {
-      for (let i = 0; i < 3 && suggestions.length < 10; i++) {
-        add(`${base}${String(10 + getRandomInt(990))}`)
-      }
+  // Top up so the row has enough to fill even on a wide screen
+  const bases = [f, sourceText, emailClean].filter((b) => b && b.length >= 2)
+  for (const base of bases) {
+    for (let i = 0; i < 4; i++) {
+      add(`${base}${String(10 + getRandomInt(990))}`, shortForms)
     }
   }
 
@@ -130,7 +144,7 @@ export function generateUsernameSuggestions(
   // this the function returns an empty array and step 4 renders no suggestions
   // at all. Fall back to neutral, professional handles so the user always has
   // something to pick from or edit.
-  if (suggestions.length === 0) {
+  if (shortForms.length === 0 && longForms.length === 0) {
     const GENERIC_BASES = [
       "creator",
       "builder",
@@ -144,12 +158,20 @@ export function generateUsernameSuggestions(
       "strategist",
     ]
     for (const base of GENERIC_BASES) {
-      add(`${base}${String(10 + getRandomInt(990))}`)
-      if (suggestions.length >= 12) break
+      add(`${base}${String(10 + getRandomInt(90))}`, shortForms)
+      add(`${base}.${String(10 + getRandomInt(990))}`, longForms)
     }
   }
 
-  // Insertion order is the ranking. Sorting by length pushed short bare
-  // job-title words to the top and buried the name+title combinations.
-  return suggestions.slice(0, 20)
+  // Interleave long/short so any prefix of the list is a mix. The row renders
+  // a dynamic number of these based on its measured width, so ordering has to
+  // hold up at every cut-off point, not just at the end.
+  const mixed: string[] = []
+  const longest = Math.max(shortForms.length, longForms.length)
+  for (let i = 0; i < longest; i++) {
+    if (longForms[i]) mixed.push(longForms[i])
+    if (shortForms[i]) mixed.push(shortForms[i])
+  }
+
+  return mixed.slice(0, 30)
 }

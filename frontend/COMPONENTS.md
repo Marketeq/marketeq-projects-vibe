@@ -203,9 +203,27 @@ All base components live in `frontend/components/ui/` and are re-exported from t
 - **Storybook**: `components/ui/avatar-group/avatar-group.stories.tsx` (Xs)
 
 ### Badge
-- **Import**: `import { Badge, badgeVariants } from "@/components/ui"`
+- **Import**: `import { Badge, BadgeCloseButton, badgeVariants } from "@/components/ui"`
 - **Key Props**: `asChild?: boolean`; uses `cva` variants
 - **Variants**: Default, DotIcon, ArrowRightIcon, ArrowUpIcon
+- **Visuals**: `gray`, `purple`, `error`, `warning`, `success`, `sky`, `primary`, `indigo`, `pink`, `rose`, `orange`
+- **Fill**: the blue badge is `bg-primary-50` (`#E8EEFF`) with `text-primary-700`.
+  It was `primary-100`, which was the wrong blue. The remaining visuals are
+  still `-100` fills with `-700` text and were deliberately left alone.
+- **Dismissible badges**: a badge with a close button MUST use `BadgeCloseButton`
+  rather than a bare `<button>`. It renders the X in `text-primary-500` at
+  `opacity-50`, going to `opacity-100` on hover or keyboard focus **of the X
+  itself** (not of the surrounding badge). Keeping it in the design system is
+  what makes every dismissible badge behave the same.
+
+  ```tsx
+  <Badge visual="primary" size="sm" variant="rounded">
+    {label}
+    <BadgeCloseButton onClick={onRemove}>
+      <X2 className="h-3 w-3" />
+    </BadgeCloseButton>
+  </Badge>
+  ```
 - **Storybook**: `components/ui/badge/badge.stories.tsx` (Default, DotIconVariant, ArrowRightIconVariant, ArrowUpIconVariant)
 
 ### BadgeGroup

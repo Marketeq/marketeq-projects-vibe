@@ -46,6 +46,7 @@ import {
   Plus,
   RefreshCw01,
   SearchLg,
+  SwitchHorizontal01,
   Trash03,
   Upload,
   User01,
@@ -55,6 +56,7 @@ import {
 } from "@blend-metrics/icons"
 import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { AnimatePresence, motion } from "framer-motion"
 import { Steps } from "headless-stepper"
 import {
   Controller,
@@ -68,6 +70,7 @@ import { z } from "zod"
 import { DAYS } from "@/types/day"
 import { AVAILABILITY, type CreateTalentType } from "@/types/talent"
 import { ROLE, type User } from "@/types/user"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import { Logo } from "@/components/icons"
 import { Pointer } from "@/components/icons/pointer"
 import NextLink from "@/components/next-link"
@@ -78,18 +81,19 @@ import {
   AlertDescription,
   AlertIcon,
   Badge,
+  BadgeCloseButton,
   Button,
   Card,
   Checkbox,
   CircularProgress,
   Combobox,
   ComboboxInput,
-  Dialog,
-  DialogContent,
   ComboboxLabel,
   ComboboxOption,
   ComboboxOptions,
   ComboboxTrigger,
+  Dialog,
+  DialogContent,
   ErrorMessage,
   IconButton,
   ImageEditor,
@@ -112,7 +116,6 @@ import {
   useStepperContext,
   useToast,
 } from "@/components/ui"
-import { Spinner } from "@/components/ui/spinner/spinner"
 
 const skillSuggestions = Array.isArray(rawSkillSuggestions)
   ? rawSkillSuggestions
@@ -271,17 +274,17 @@ const IntroduceYourself = ({
         className="relative grid items-start flex-auto py-10 px-5 md:px-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={handleSubmit(onSubmit)}
       >
-            <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
-              <Button
-                size="sm"
-                variant="ghost"
-                visual="gray"
-                type="button"
-                onClick={logoutHandler}
-              >
-                Log out
-              </Button>
-            </div>
+        <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+          <Button
+            size="sm"
+            variant="ghost"
+            visual="gray"
+            type="button"
+            onClick={logoutHandler}
+          >
+            Log out
+          </Button>
+        </div>
 
         <div className="max-w-[488px] lg:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
@@ -309,11 +312,11 @@ const IntroduceYourself = ({
             <div className="space-y-6">
               <div className="flex flex-col gap-y-1.5">
                 <Label
-                  className="text-dark-blue-400"
-                  htmlFor="profile-photo"
+                  className="text-dark-blue-400 cursor-default capitalize"
+                  size="sm"
                   asChild
                 >
-                  <span>Profile Photo</span>
+                  <span>Profile Image</span>
                 </Label>
                 <Controller
                   control={control}
@@ -326,9 +329,19 @@ const IntroduceYourself = ({
                       // "CH" placeholder. Pass the talent's real initials when
                       // a name is known.
                       fallbackInitials={initials || undefined}
-                      fallbackIcon={<User01 className="size-20 text-gray-300" />}
-                      startingPoint={({ dataUrl, open, style }: any) => (
-                        <div className="flex flex-col gap-y-3 sm:flex-row sm:items-center sm:gap-x-4">
+                      fallbackIcon={
+                        <User01 className="size-20 text-gray-300" />
+                      }
+                      startingPoint={({
+                        dataUrl,
+                        open,
+                        style,
+                        onRemove,
+                      }: any) => (
+                        // Three states per Figma 16101-48096: no photo/no name
+                        // (icon), no photo/name (acronym), photo (image). Only
+                        // the photo state gets the Remove button.
+                        <div className="flex items-center gap-x-6">
                           <div className="relative overflow-hidden size-[96px] bg-gray-100 rounded-full inline-flex items-center justify-center shrink-0">
                             {dataUrl ? (
                               <img
@@ -341,33 +354,51 @@ const IntroduceYourself = ({
                               // Acronym once a name is known, icon before that.
                               // `initials` comes from watch(), so it tracks the
                               // fields as they are typed.
-                              <span className="text-[32px] font-medium leading-none text-gray-400">
-                                {initials.toUpperCase()}
+                              <span className="text-[36px] font-medium leading-8 uppercase text-gray-300">
+                                {initials}
                               </span>
                             ) : (
-                              <User01 className="size-11 text-gray-300" />
+                              <User01 className="size-12 text-gray-300" />
                             )}
                           </div>
 
                           {dataUrl ? (
-                            <Button
-                              className="rounded-full"
-                              size="md"
-                              onClick={open}
-                              type="button"
-                            >
-                              Change Photo
-                            </Button>
+                            <div className="flex flex-col items-start justify-center gap-y-3">
+                              <Button
+                                className="rounded-full"
+                                size="md"
+                                variant="light"
+                                visual="primary"
+                                type="button"
+                                onClick={open}
+                                leftIcon={
+                                  <SwitchHorizontal01 className="size-[15px]" />
+                                }
+                              >
+                                Change Photo
+                              </Button>
+                              <Button
+                                className="w-full rounded-full shadow-xs"
+                                size="md"
+                                variant="outlined"
+                                visual="gray"
+                                type="button"
+                                onClick={onRemove}
+                              >
+                                Remove Photo
+                              </Button>
+                            </div>
                           ) : (
                             <Button
                               className="rounded-full"
                               size="md"
                               type="button"
-                              variant="outlined"
-                              visual="gray"
+                              variant="light"
+                              visual="primary"
                               onClick={open}
+                              leftIcon={<Upload className="size-[15px]" />}
                             >
-                              <Upload className="size-[15px]" /> Upload Picture
+                              Upload Photo
                             </Button>
                           )}
                         </div>
@@ -437,7 +468,6 @@ const IntroduceYourself = ({
                   />
                 </div>
               </div>
-
             </div>
           </div>
         </div>
@@ -525,7 +555,10 @@ const CreateYourUsername = ({
     // First name + job title only. Passing the email pulled tokens out of its
     // local-part, so suggestions were built from the address rather than from
     // who the person is and what they do.
-    const contextParts = [stepData?.recentJobTitle].filter(Boolean).join(" ").trim()
+    const contextParts = [stepData?.recentJobTitle]
+      .filter(Boolean)
+      .join(" ")
+      .trim()
     return generateUsernameSuggestions(
       stepData?.firstName || "",
       "",
@@ -679,17 +712,17 @@ const CreateYourUsername = ({
         className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={handleSubmit(onSubmit)}
       >
-            <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
-              <Button
-                size="sm"
-                variant="ghost"
-                visual="gray"
-                type="button"
-                onClick={logoutHandler}
-              >
-                Log out
-              </Button>
-            </div>
+        <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+          <Button
+            size="sm"
+            variant="ghost"
+            visual="gray"
+            type="button"
+            onClick={logoutHandler}
+          >
+            Log out
+          </Button>
+        </div>
 
         <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
@@ -715,7 +748,11 @@ const CreateYourUsername = ({
 
           <div className="mt-[50px]">
             <div className="flex flex-col gap-y-1.5">
-              <Label className="text-dark-blue-400" id="username" size="sm">
+              <Label
+                className="text-dark-blue-400"
+                htmlFor="username"
+                size="sm"
+              >
                 Enter Your Username
               </Label>
               <div className="relative">
@@ -1140,13 +1177,9 @@ const SelectionBadge = ({
 }) => (
   <Badge visual="primary" size="sm" variant="rounded">
     {children}
-    <button
-      className="focus-visible:outline-none"
-      onClick={onRemove}
-      type="button"
-    >
+    <BadgeCloseButton onClick={onRemove}>
       <X2 className="h-3 w-3" />
-    </button>
+    </BadgeCloseButton>
   </Badge>
 )
 
@@ -1787,17 +1820,17 @@ const ShowcaseYourTalent = ({
         className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={handleSubmit(onSubmit)}
       >
-            <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
-              <Button
-                size="sm"
-                variant="ghost"
-                visual="gray"
-                type="button"
-                onClick={logoutHandler}
-              >
-                Log out
-              </Button>
-            </div>
+        <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+          <Button
+            size="sm"
+            variant="ghost"
+            visual="gray"
+            type="button"
+            onClick={logoutHandler}
+          >
+            Log out
+          </Button>
+        </div>
 
         <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
@@ -2610,11 +2643,32 @@ const CustomAvailabilityTimeSelector = ({
 
   const isOn = disabled != null ? !disabled : true
 
+  // The rows animate in and out, so they need keys that stay with a row for
+  // its lifetime. Keying by index made a removal collapse whichever row ended
+  // up last rather than the one that was deleted.
+  const rowUid = React.useRef(0)
+  const [rowIds, setRowIds] = React.useState<number[]>(() =>
+    (state ?? []).map(() => rowUid.current++)
+  )
+
+  // Availability type changes reset the slots without going through add or
+  // remove; realign before paint so a row never renders without a key.
+  useIsomorphicLayoutEffect(() => {
+    setRowIds((prev) => {
+      if (prev.length === state.length) return prev
+      const next = prev.slice(0, state.length)
+      while (next.length < state.length) next.push(rowUid.current++)
+      return next
+    })
+  }, [state.length])
+
   const add = () => {
+    setRowIds((prev) => [...prev, rowUid.current++])
     setState((prev) => [...prev, defaultSlot])
   }
 
   const remove = (index: number) => {
+    setRowIds((prev) => prev.filter((_, i) => i !== index))
     setState((prev) => prev.filter((_, i) => i !== index))
   }
 
@@ -2637,169 +2691,191 @@ const CustomAvailabilityTimeSelector = ({
         </div>
 
         <div className="flex items-star gap-x-3">
-          <div className="flex flex-col gap-y-3">
-            {state.map((t, index) => (
-              <div className="inline-flex items-center gap-x-3" key={index}>
-                <div className="flex items-center">
-                  <Select
-                    disabled={!isOn}
-                    value={t.startTime}
-                    onValueChange={(value) =>
-                      setState((prev) => {
-                        const nextState = prev
-                          .slice()
-                          .map((item, i) =>
-                            i === index ? { ...item, startTime: value } : item
-                          )
+          {/* -mt-3 cancels the first row's pt-3. Carrying the 12px gap inside
+              each row means the spacing collapses with it, instead of the
+              flex gap leaving a 12px hole mid-animation. */}
+          <div className="flex flex-col -mt-3">
+            <AnimatePresence initial={false}>
+              {state.map((t, index) => (
+                <motion.div
+                  key={rowIds[index] ?? index}
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                  className="overflow-hidden"
+                >
+                  <div className="inline-flex items-center gap-x-3 pt-3">
+                    <div className="flex items-center">
+                      <Select
+                        disabled={!isOn}
+                        value={t.startTime}
+                        onValueChange={(value) =>
+                          setState((prev) => {
+                            const nextState = prev
+                              .slice()
+                              .map((item, i) =>
+                                i === index
+                                  ? { ...item, startTime: value }
+                                  : item
+                              )
 
-                        return nextState
-                      })
-                    }
-                  >
-                    <SelectTrigger indicator={false} className="rounded-r-none">
-                      <SelectValue />
-                    </SelectTrigger>
+                            return nextState
+                          })
+                        }
+                      >
+                        <SelectTrigger
+                          indicator={false}
+                          className="rounded-r-none"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
 
-                    <SelectContent>
-                      <ScrollArea viewportClassName="max-h-[304px]">
-                        {TIMES.map((time, index) => (
-                          <SelectItem value={time} key={index}>
-                            {time}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    disabled={!isOn}
-                    value={t.startTimeDayPeriod}
-                    onValueChange={(value) =>
-                      setState((prev) => {
-                        const nextState = prev
-                          .slice()
-                          .map((item, i) =>
-                            i === index
-                              ? { ...item, startTimeDayPeriod: value }
-                              : item
-                          )
+                        <SelectContent>
+                          <ScrollArea viewportClassName="max-h-[304px]">
+                            {TIMES.map((time, index) => (
+                              <SelectItem value={time} key={index}>
+                                {time}
+                              </SelectItem>
+                            ))}
+                          </ScrollArea>
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        disabled={!isOn}
+                        value={t.startTimeDayPeriod}
+                        onValueChange={(value) =>
+                          setState((prev) => {
+                            const nextState = prev
+                              .slice()
+                              .map((item, i) =>
+                                i === index
+                                  ? { ...item, startTimeDayPeriod: value }
+                                  : item
+                              )
 
-                        return nextState
-                      })
-                    }
-                  >
-                    <SelectTrigger
-                      indicator={false}
-                      className="rounded-l-none rounded-r-[5px] border-l-0"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
+                            return nextState
+                          })
+                        }
+                      >
+                        <SelectTrigger
+                          indicator={false}
+                          className="rounded-l-none rounded-r-[5px] border-l-0"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
 
-                    <SelectContent>
-                      <ScrollArea viewportClassName="max-h-[304px]">
-                        {DAY_PERIODS.map((dayPeriod, index) => (
-                          <SelectItem value={dayPeriod} key={index}>
-                            {dayPeriod}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <span className="text-base leading-8 font-semibold text-gray-400">
-                  to
-                </span>
-                <div className="flex items-center">
-                  <Select
-                    disabled={!isOn}
-                    value={t.endTime}
-                    onValueChange={(value) =>
-                      setState((prev) => {
-                        const nextState = prev
-                          .slice()
-                          .map((item, i) =>
-                            i === index ? { ...item, endTime: value } : item
-                          )
+                        <SelectContent>
+                          <ScrollArea viewportClassName="max-h-[304px]">
+                            {DAY_PERIODS.map((dayPeriod, index) => (
+                              <SelectItem value={dayPeriod} key={index}>
+                                {dayPeriod}
+                              </SelectItem>
+                            ))}
+                          </ScrollArea>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <span className="text-base leading-8 font-semibold text-gray-400">
+                      to
+                    </span>
+                    <div className="flex items-center">
+                      <Select
+                        disabled={!isOn}
+                        value={t.endTime}
+                        onValueChange={(value) =>
+                          setState((prev) => {
+                            const nextState = prev
+                              .slice()
+                              .map((item, i) =>
+                                i === index ? { ...item, endTime: value } : item
+                              )
 
-                        return nextState
-                      })
-                    }
-                  >
-                    <SelectTrigger indicator={false} className="rounded-r-none">
-                      <SelectValue />
-                    </SelectTrigger>
+                            return nextState
+                          })
+                        }
+                      >
+                        <SelectTrigger
+                          indicator={false}
+                          className="rounded-r-none"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
 
-                    <SelectContent>
-                      <ScrollArea viewportClassName="max-h-[304px]">
-                        {TIMES.map((time, index) => (
-                          <SelectItem value={time} key={index}>
-                            {time}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    disabled={!isOn}
-                    value={t.endTimeDayPeriod}
-                    onValueChange={(value) =>
-                      setState((prev) => {
-                        const nextState = prev
-                          .slice()
-                          .map((item, i) =>
-                            i === index
-                              ? { ...item, endTimeDayPeriod: value }
-                              : item
-                          )
+                        <SelectContent>
+                          <ScrollArea viewportClassName="max-h-[304px]">
+                            {TIMES.map((time, index) => (
+                              <SelectItem value={time} key={index}>
+                                {time}
+                              </SelectItem>
+                            ))}
+                          </ScrollArea>
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        disabled={!isOn}
+                        value={t.endTimeDayPeriod}
+                        onValueChange={(value) =>
+                          setState((prev) => {
+                            const nextState = prev
+                              .slice()
+                              .map((item, i) =>
+                                i === index
+                                  ? { ...item, endTimeDayPeriod: value }
+                                  : item
+                              )
 
-                        return nextState
-                      })
-                    }
-                  >
-                    <SelectTrigger
-                      indicator={false}
-                      className="rounded-l-none rounded-r-[5px] border-l-0"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
+                            return nextState
+                          })
+                        }
+                      >
+                        <SelectTrigger
+                          indicator={false}
+                          className="rounded-l-none rounded-r-[5px] border-l-0"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
 
-                    <SelectContent>
-                      <ScrollArea viewportClassName="max-h-[304px]">
-                        {DAY_PERIODS.map((dayPeriod, index) => (
-                          <SelectItem value={dayPeriod} key={index}>
-                            {dayPeriod}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
-                    </SelectContent>
-                  </Select>
-                </div>
+                        <SelectContent>
+                          <ScrollArea viewportClassName="max-h-[304px]">
+                            {DAY_PERIODS.map((dayPeriod, index) => (
+                              <SelectItem value={dayPeriod} key={index}>
+                                {dayPeriod}
+                              </SelectItem>
+                            ))}
+                          </ScrollArea>
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                {index > 0 ? (
-                  <IconButton
-                    className="rounded-full opacity-0 hover:opacity-100"
-                    visual="error"
-                    variant="ghost"
-                    size="md"
-                    type="button"
-                    onClick={() => remove(index)}
-                  >
-                    <Trash03 className="size-[15px]" />
-                  </IconButton>
-                ) : (
-                  <IconButton
-                    className="rounded-[5px] bg-white"
-                    variant="outlined"
-                    visual="gray"
-                    size="md"
-                    type="button"
-                    onClick={isOn ? add : noop}
-                    disabled={!isOn}
-                  >
-                    <Plus className="size-[15px]" />
-                  </IconButton>
-                )}
-              </div>
-            ))}
+                    {index > 0 ? (
+                      <IconButton
+                        className="rounded-full opacity-0 hover:opacity-100"
+                        visual="error"
+                        variant="ghost"
+                        size="md"
+                        type="button"
+                        onClick={() => remove(index)}
+                      >
+                        <Trash03 className="size-[15px]" />
+                      </IconButton>
+                    ) : (
+                      <IconButton
+                        className="rounded-[5px] bg-white"
+                        variant="outlined"
+                        visual="gray"
+                        size="md"
+                        type="button"
+                        onClick={isOn ? add : noop}
+                        disabled={!isOn}
+                      >
+                        <Plus className="size-[15px]" />
+                      </IconButton>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         </div>
       </div>
@@ -3113,17 +3189,17 @@ const SetYourPreferences = ({
         className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={handleSubmit(onSubmit)}
       >
-            <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
-              <Button
-                size="sm"
-                variant="ghost"
-                visual="gray"
-                type="button"
-                onClick={logoutHandler}
-              >
-                Log out
-              </Button>
-            </div>
+        <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+          <Button
+            size="sm"
+            variant="ghost"
+            visual="gray"
+            type="button"
+            onClick={logoutHandler}
+          >
+            Log out
+          </Button>
+        </div>
 
         <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
@@ -3618,7 +3694,10 @@ const recordTotalDurationMs = (ms: number) => {
   try {
     const raw = window.localStorage.getItem(TOTAL_ESTIMATE_KEY)
     const samples = raw ? (JSON.parse(raw) as number[]) : []
-    const next = [...samples.filter((n) => Number.isFinite(n) && n > 0), ms].slice(-5)
+    const next = [
+      ...samples.filter((n) => Number.isFinite(n) && n > 0),
+      ms,
+    ].slice(-5)
     window.localStorage.setItem(TOTAL_ESTIMATE_KEY, JSON.stringify(next))
   } catch {
     // best-effort calibration only
@@ -3695,8 +3774,9 @@ const RESUME_ERROR_MESSAGES: Partial<
 const toProperCase = (value: string): string =>
   value
     .toLowerCase()
-    .replace(/(^|[\s\-'\u2019])([a-z\u00e0-\u00ff])/g, (_match, prefix, letter) =>
-      `${prefix}${letter.toUpperCase()}`
+    .replace(
+      /(^|[\s\-'\u2019])([a-z\u00e0-\u00ff])/g,
+      (_match, prefix, letter) => `${prefix}${letter.toUpperCase()}`
     )
 
 const READING_LABEL_DEFAULT = "Reading your resume..."
@@ -3868,7 +3948,11 @@ const ReadingResumeModal = ({
                 {fileLabel ?? "Checking the file..."}
               </p>
               {Array.from({ length: SCAN_ROWS }).map((_, row) => (
-                <div key={`sk-${row}`} className="flex items-center gap-3" aria-hidden>
+                <div
+                  key={`sk-${row}`}
+                  className="flex items-center gap-3"
+                  aria-hidden
+                >
                   <span className="relative size-5 shrink-0 overflow-hidden rounded-full bg-gray-100">
                     <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
                   </span>
@@ -4033,7 +4117,10 @@ const UploadYourResume = ({
     const spread = Math.round(readTotalEstimateMs() / pageCount)
     const per = Math.min(1800, Math.max(700, spread))
     const id = setInterval(
-      () => setPageCursor((current) => (current < pageCount ? current + 1 : current)),
+      () =>
+        setPageCursor((current) =>
+          current < pageCount ? current + 1 : current
+        ),
       per
     )
     return () => clearInterval(id)
@@ -4150,7 +4237,10 @@ const UploadYourResume = ({
           degree: item?.degree ?? "",
           fieldOfStudy: item?.fieldOfStudy ?? item?.field_of_study ?? "",
         }))
-        .filter((item: { school: string; degree: string }) => item.school || item.degree)
+        .filter(
+          (item: { school: string; degree: string }) =>
+            item.school || item.degree
+        )
       const workExperience = (additions.workExperience?.items ?? []).map(
         (item: any) => ({
           title: item.title ?? "",
@@ -4196,7 +4286,7 @@ const UploadYourResume = ({
         ...(skillNames.length ? { lookingToWorkWith: skillNames } : {}),
       }))
 
-        // Only surface categories the parse actually returned. A resume with no
+      // Only surface categories the parse actually returned. A resume with no
       // certifications never claims to be extracting them. Figma's wording.
       const clientCompanies = Array.from(
         new Set(
@@ -4208,7 +4298,9 @@ const UploadYourResume = ({
       // `additions` only carries NON-conflicting items, so anything already on
       // the profile is excluded. The checklist is meant to report what is in
       // the resume, not the delta, so fold the conflicts back in by type.
-      const conflicts: any[] = Array.isArray(data?.conflicts) ? data.conflicts : []
+      const conflicts: any[] = Array.isArray(data?.conflicts)
+        ? data.conflicts
+        : []
       const conflictsOfType = (type: string) =>
         conflicts.filter((item) => item?.type === type).length
       const educationTotal = education.length + conflictsOfType("education")
@@ -4252,32 +4344,40 @@ const UploadYourResume = ({
           ? [{ label: "Work Experience", count: workTotal, items: workItems }]
           : []),
         ...(educationTotal
-          ? [{
-              label: "Education",
-              count: educationTotal,
-              items: educationItems,
-            }]
+          ? [
+              {
+                label: "Education",
+                count: educationTotal,
+                items: educationItems,
+              },
+            ]
           : []),
         ...(certificationTotal
-          ? [{
-              label: "Certifications",
-              count: certificationTotal,
-              items: certificationItems,
-            }]
+          ? [
+              {
+                label: "Certifications",
+                count: certificationTotal,
+                items: certificationItems,
+              },
+            ]
           : []),
         ...(clientCompanies.length
-          ? [{
-              label: "Previous Clients",
-              count: clientCompanies.length,
-              items: clientCompanies,
-            }]
+          ? [
+              {
+                label: "Previous Clients",
+                count: clientCompanies.length,
+                items: clientCompanies,
+              },
+            ]
           : []),
         ...(industryNames.length
-          ? [{
-              label: "Industry Expertise",
-              count: industryNames.length,
-              items: industryNames,
-            }]
+          ? [
+              {
+                label: "Industry Expertise",
+                count: industryNames.length,
+                items: industryNames,
+              },
+            ]
           : []),
       ]
       // Deliberately NOT stopping the feed here. applyResume still has to run,
@@ -4285,8 +4385,7 @@ const UploadYourResume = ({
       // remainder of the wait. The feed runs until everything is genuinely done.
 
       try {
-
-      setLoadingMessage("Updating your profile...")
+        setLoadingMessage("Updating your profile...")
         await UserAPI.applyResume({
           parseResultId: data?.parseResultId,
           skills,
@@ -4320,7 +4419,8 @@ const UploadYourResume = ({
         setReadingCompleted(index + 1)
         setUploadPercent(
           Math.round(
-            REVEAL_FROM + ((100 - REVEAL_FROM) * (index + 1)) / foundSteps.length
+            REVEAL_FROM +
+              ((100 - REVEAL_FROM) * (index + 1)) / foundSteps.length
           )
         )
         await new Promise((resolve) => setTimeout(resolve, READING_STEP_MS))
@@ -4358,7 +4458,6 @@ const UploadYourResume = ({
       )
     }
   }
-
 
   const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -4404,17 +4503,17 @@ const UploadYourResume = ({
         className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={onSubmit}
       >
-            <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
-              <Button
-                size="sm"
-                variant="ghost"
-                visual="gray"
-                type="button"
-                onClick={logoutHandler}
-              >
-                Log out
-              </Button>
-            </div>
+        <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+          <Button
+            size="sm"
+            variant="ghost"
+            visual="gray"
+            type="button"
+            onClick={logoutHandler}
+          >
+            Log out
+          </Button>
+        </div>
 
         <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
@@ -4508,7 +4607,11 @@ const UploadYourResume = ({
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center justify-center">
-                      <CircularProgress size={32} strokeWidth={4} value={uploadPercent} />
+                      <CircularProgress
+                        size={32}
+                        strokeWidth={4}
+                        value={uploadPercent}
+                      />
                     </div>
                   </div>
                 </div>
@@ -4525,11 +4628,14 @@ const UploadYourResume = ({
                         </p>
                         <p className="text-[11px] leading-[18px] text-gray-500">
                           {uploadedAt
-                            ? `Added on ${uploadedAt.toLocaleDateString("en-US", {
-                                month: "long",
-                                day: "numeric",
-                                year: "numeric",
-                              })}`
+                            ? `Added on ${uploadedAt.toLocaleDateString(
+                                "en-US",
+                                {
+                                  month: "long",
+                                  day: "numeric",
+                                  year: "numeric",
+                                }
+                              )}`
                             : "Added"}
                         </p>
                       </div>
@@ -4597,7 +4703,6 @@ const UploadYourResume = ({
                   <p className="text-[11px] font-medium leading-[18px] text-gray-600 text-center">
                     PDF, DOC, DOCX (max 5MB)
                   </p>
-
                 </div>
               )}
 
