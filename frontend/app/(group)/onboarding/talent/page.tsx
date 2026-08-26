@@ -42,6 +42,7 @@ import {
   File02,
   FileText,
   Home03,
+  Loading01,
   Plus,
   RefreshCw01,
   SearchLg,
@@ -3607,6 +3608,16 @@ const toProperCase = (value: string): string =>
     )
 
 const READING_LABEL_DEFAULT = "Reading your resume..."
+const READING_SCAN_LABELS = [
+  "Extracting your personal info...",
+  "Extracting your skills...",
+  "Extracting your work experience...",
+  "Extracting your education...",
+  "Extracting your certifications...",
+  "Extracting your previous clients...",
+  "Extracting your industry expertise...",
+]
+const SCAN_ROWS = 3
 const READING_STEP_MS = 260
 
 type ReadingStep = { label: string; count?: number; items?: string[] }
@@ -3620,6 +3631,7 @@ const ReadingResumeModal = ({
   onDone,
   percent,
   tick,
+  scanLines,
 }: {
   open: boolean
   label: string
@@ -3629,6 +3641,7 @@ const ReadingResumeModal = ({
   onDone: () => void
   percent: number
   tick: number
+  scanLines: string[]
 }) => (
   <Dialog open={open}>
     <DialogContent
@@ -3673,17 +3686,19 @@ const ReadingResumeModal = ({
         {/* Reserved height so rows appearing never shift the layout */}
         <div className="mt-6 flex min-h-[132px] w-full flex-col justify-center gap-3">
           {steps.length === 0 ? (
-            <div className="flex flex-col gap-3" aria-hidden>
-              {[0, 1, 2].map((row) => (
-                <div key={row} className="flex items-center gap-3">
-                  {/* Same shimmer treatment the checkout/listings skeletons use:
-                      a gradient swept across the placeholder by animate-shimmer */}
+            // Lines arrive at the bottom and push earlier ones up, each one
+            // consuming a shimmering placeholder slot above it.
+            <div className="flex flex-col justify-end gap-3">
+              {Array.from({
+                length: Math.max(0, SCAN_ROWS - scanLines.length),
+              }).map((_, row) => (
+                <div key={`sk-${row}`} className="flex items-center gap-3" aria-hidden>
                   <span className="relative size-5 shrink-0 overflow-hidden rounded-full bg-gray-100">
                     <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
                   </span>
                   <span
                     className="relative h-2.5 overflow-hidden rounded-full bg-gray-100"
-                    style={{ width: `${[62, 78, 46][row]}%` }}
+                    style={{ width: `${[62, 78, 46][row % 3]}%` }}
                   >
                     <span
                       className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100"
@@ -3692,6 +3707,26 @@ const ReadingResumeModal = ({
                   </span>
                 </div>
               ))}
+              {scanLines.map((line, row, shown) => {
+                const isNewest = row === shown.length - 1
+                return (
+                  <div key={`${line}-${row}`} className="flex items-center gap-3">
+                    {isNewest ? (
+                      <Loading01 className="size-5 shrink-0 animate-spin text-primary-400" />
+                    ) : (
+                      <CheckCircle className="size-5 shrink-0 text-primary-500" />
+                    )}
+                    <span
+                      className={cn(
+                        "truncate text-sm leading-5",
+                        isNewest ? "text-primary-500" : "text-gray-500"
+                      )}
+                    >
+                      {line}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           ) : (
             steps.map((step, index) => {
@@ -3703,9 +3738,9 @@ const ReadingResumeModal = ({
                   {isRowDone ? (
                     <CheckCircle className="size-5 shrink-0 text-primary-500" />
                   ) : (
-                    <span className="inline-flex size-5 shrink-0 items-center justify-center">
-                      <span className="size-2 rounded-full bg-primary-200 animate-pulse" />
-                    </span>
+                    // spinning arc while this section is being extracted;
+                    // pairs with CheckCircle since both are circular
+                    <Loading01 className="size-5 shrink-0 animate-spin text-primary-400" />
                   )}
                   <span
                     className={cn(
@@ -3788,12 +3823,14 @@ const UploadYourResume = ({
   const [loadingMessage, setLoadingMessage] = useState("Reading your resume...")
   const reviewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reviewStartedAtRef = useRef<number | null>(null)
+  const scanLabelRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [isDropzoneHovered, setIsDropzoneHovered] = useState(false)
   const [readingLabel, setReadingLabel] = useState(READING_LABEL_DEFAULT)
   const [readingSteps, setReadingSteps] = useState<ReadingStep[]>([])
   const [readingCompleted, setReadingCompleted] = useState(0)
   const [isReadingDone, setIsReadingDone] = useState(false)
   const [readingTick, setReadingTick] = useState(0)
+  const [scanLines, setScanLines] = useState<string[]>([])
 
   const { toggleValidation } = useStepContext()
   const { nextStep, setStep } = useStepperContext()
@@ -3816,6 +3853,28 @@ const UploadYourResume = ({
   // last five uploads, so it calibrates to their real conditions instead of a
   // hardcoded guess. Past the estimate it keeps creeping toward 99 rather than
   // parking, and only genuine completion shows 100.
+  const startScanLabels = () => {
+    stopScanLabels()
+    let index = -1
+    setScanLines([])
+    scanLabelRef.current = setInterval(() => {
+      index += 1
+      // one pass only; the list stops once every section has been named
+      if (index >= READING_SCAN_LABELS.length) {
+        stopScanLabels()
+        return
+      }
+      setScanLines((current) => [...current, READING_SCAN_LABELS[index]])
+    }, 900)
+  }
+
+  const stopScanLabels = () => {
+    if (scanLabelRef.current) {
+      clearInterval(scanLabelRef.current)
+      scanLabelRef.current = null
+    }
+  }
+
   const startProgressTicker = () => {
     stopProgressTicker()
     const startedAt = Date.now()
@@ -3837,8 +3896,10 @@ const UploadYourResume = ({
 
   const resetResume = () => {
     stopProgressTicker()
+    stopScanLabels()
     setReadingTick(0)
     setReadingLabel(READING_LABEL_DEFAULT)
+    setScanLines([])
     setReadingSteps([])
     setReadingCompleted(0)
     setIsReadingDone(false)
@@ -3872,11 +3933,13 @@ const UploadYourResume = ({
 
     setResumeStatus("uploading")
     setReadingLabel(READING_LABEL_DEFAULT)
+    setScanLines([])
     setReadingSteps([])
     setReadingCompleted(0)
     setIsReadingDone(false)
     setUploadPercent(0)
     startProgressTicker()
+    startScanLabels()
 
     try {
       const { data } = await UserAPI.uploadResume(file, (percent) => {
@@ -3889,12 +3952,14 @@ const UploadYourResume = ({
 
       if (data?.status === "not_a_resume") {
         stopProgressTicker()
+        stopScanLabels()
         setIsReviewing(false)
         setResumeStatus("not_a_resume")
         return
       }
       if (data?.status === "nothing_found") {
         stopProgressTicker()
+        stopScanLabels()
         setIsReviewing(false)
         setResumeStatus("nothing_found")
         return
@@ -3903,6 +3968,7 @@ const UploadYourResume = ({
       // against someone uploading a resume that is not theirs.
       if (data?.nameMismatch) {
         stopProgressTicker()
+        stopScanLabels()
         setIsReviewing(false)
         setResumeStatus("name_mismatch")
         return
@@ -4053,6 +4119,7 @@ const UploadYourResume = ({
             }]
           : []),
       ]
+      stopScanLabels()
       setReadingSteps(foundSteps)
 
       try {
@@ -4077,7 +4144,6 @@ const UploadYourResume = ({
       // Let the step list finish playing before the modal closes, so the user
       // actually sees what was found rather than a flash.
       for (let index = 0; index < foundSteps.length; index++) {
-        setReadingLabel(`Extracting your ${foundSteps[index].label.toLowerCase()}...`)
         setReadingCompleted(index + 1)
         await new Promise((resolve) =>
           setTimeout(
@@ -4152,6 +4218,7 @@ const UploadYourResume = ({
         onDone={() => setIsReadingDone(false)}
         percent={uploadPercent}
         tick={readingTick}
+        scanLines={scanLines}
       />
 
       <form
