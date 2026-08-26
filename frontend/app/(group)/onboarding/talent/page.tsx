@@ -37,6 +37,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Check,
+  CheckCircle,
   ChevronRight,
   File02,
   FileText,
@@ -169,6 +170,7 @@ const IntroduceYourself = ({
   stepData: CreateTalentType | null
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
 }) => {
+  const { logoutHandler } = useAuth()
   const router = useRouter()
   const [formError, setFormError] = useState<string | null>(null)
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null)
@@ -248,6 +250,18 @@ const IntroduceYourself = ({
         className="relative grid items-start flex-auto py-10 px-5 md:px-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={handleSubmit(onSubmit)}
       >
+            <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+              <Button
+                size="sm"
+                variant="ghost"
+                visual="gray"
+                type="button"
+                onClick={logoutHandler}
+              >
+                Log out
+              </Button>
+            </div>
+
         <div className="max-w-[488px] lg:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
             <CircularProgress
@@ -441,6 +455,7 @@ const CreateYourUsername = ({
   stepData: CreateTalentType | null
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
 }) => {
+  const { logoutHandler } = useAuth()
   const [show, toggleShow] = useToggle(false)
   const [isAvailable, setIsAvailable] = React.useState<boolean | null>(null)
   const [isUsernameLoading, setIsUsernameLoading] = useToggle(false)
@@ -622,6 +637,18 @@ const CreateYourUsername = ({
         className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={handleSubmit(onSubmit)}
       >
+            <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+              <Button
+                size="sm"
+                variant="ghost"
+                visual="gray"
+                type="button"
+                onClick={logoutHandler}
+              >
+                Log out
+              </Button>
+            </div>
+
         <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
             <CircularProgress
@@ -1497,6 +1524,7 @@ const ShowcaseYourTalent = ({
   stepData: CreateTalentType | null
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
 }) => {
+  const { logoutHandler } = useAuth()
   const [formError, setFormError] = useState<string | null>(null)
   const {
     formState: { errors, isValid },
@@ -1715,6 +1743,18 @@ const ShowcaseYourTalent = ({
         className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={handleSubmit(onSubmit)}
       >
+            <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+              <Button
+                size="sm"
+                variant="ghost"
+                visual="gray"
+                type="button"
+                onClick={logoutHandler}
+              >
+                Log out
+              </Button>
+            </div>
+
         <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
             <CircularProgress
@@ -2749,6 +2789,7 @@ const SetYourPreferences = ({
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
   setTalentUser: React.Dispatch<React.SetStateAction<User | null>>
 }) => {
+  const { logoutHandler } = useAuth()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(false)
 
@@ -2834,9 +2875,11 @@ const SetYourPreferences = ({
       formData.append("lookingToWorkWith", item)
     })
 
-    if (stepData?.isStudent != null) {
-      formData.append("isStudent", stepData.isStudent.toString())
-    }
+    // Always send this, even when every step was skipped: a zero-entry
+    // FormData serialises to an empty body and the gateway rejects it with
+    // 400 "Multipart: Unexpected end of form", which made Continue on the
+    // final step look dead.
+    formData.append("isStudent", String(stepData?.isStudent ?? false))
 
     return formData
   }
@@ -2989,6 +3032,18 @@ const SetYourPreferences = ({
         className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={handleSubmit(onSubmit)}
       >
+            <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+              <Button
+                size="sm"
+                variant="ghost"
+                visual="gray"
+                type="button"
+                onClick={logoutHandler}
+              >
+                Log out
+              </Button>
+            </div>
+
         <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
             <CircularProgress
@@ -3540,8 +3595,19 @@ const RESUME_ERROR_MESSAGES: Partial<
 // bouncing dots, 18px dark-blue label. The step list is an addition: the modal
 // now reports what it actually found rather than cycling one line, which is
 // both more informative and gives the wait a sense of progress.
+// Resumes are frequently typeset in all-caps ("JANE ALVAREZ") or sloppy case,
+// so force proper casing rather than trusting what was on the page. Handles
+// hyphenated and apostrophe names (mary-jane -> Mary-Jane, o'brien -> O'Brien).
+const toProperCase = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/(^|[\s\-'\u2019])([a-z\u00e0-\u00ff])/g, (_match, prefix, letter) =>
+      `${prefix}${letter.toUpperCase()}`
+    )
+
 const READING_LABEL_DEFAULT = "Reading your resume..."
-const READING_STEP_MS = 700
+const READING_STEP_MS = 260
 
 type ReadingStep = { label: string; count?: number }
 
@@ -3550,84 +3616,135 @@ const ReadingResumeModal = ({
   label,
   steps,
   completed,
+  isDone,
+  onDone,
+  percent,
 }: {
   open: boolean
   label: string
   steps: ReadingStep[]
   completed: number
+  isDone: boolean
+  onDone: () => void
+  percent: number
 }) => (
   <Dialog open={open}>
     <DialogContent
-      className="w-[490px] max-w-none overflow-hidden border-0 bg-white p-[50px] rounded-xl shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+      className="w-[440px] max-w-none overflow-hidden border-0 bg-white p-8 rounded-xl shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
       accessibilityTitle="Reading your resume"
       // not dismissible: it mirrors work in flight, so closing it would lie
       onEscapeKeyDown={(event) => event.preventDefault()}
       onPointerDownOutside={(event) => event.preventDefault()}
       onInteractOutside={(event) => event.preventDefault()}
     >
-      <div className="flex flex-col items-center justify-center gap-6">
-        <div className="size-[76px] shrink-0 rounded-full border-[14px] border-primary-25 bg-primary-50 inline-flex items-center justify-center">
-          <FileText className="size-8 text-primary-500" />
+      <div className="flex flex-col items-center">
+        {/* Figma's featured icon; the ring pulses only while work is in flight */}
+        <div className="relative inline-flex size-[76px] shrink-0 items-center justify-center">
+          {!isDone && (
+            <span className="absolute inset-0 rounded-full bg-primary-50 animate-ping opacity-40" />
+          )}
+          <span
+            className={cn(
+              "relative inline-flex size-[76px] items-center justify-center rounded-full border-[14px] transition-colors",
+              isDone
+                ? "border-primary-50 bg-primary-100"
+                : "border-primary-25 bg-primary-50"
+            )}
+          >
+            {isDone ? (
+              <Check className="size-8 text-primary-600" />
+            ) : (
+              <FileText className="size-8 text-primary-500" />
+            )}
+          </span>
         </div>
 
-        <p className="text-center text-lg leading-5 text-dark-blue-400">
+        <p className="mt-6 text-center text-lg font-semibold leading-6 text-dark-blue-400">
           {label}
         </p>
+        <p className="mt-1 text-center text-sm leading-5 text-gray-500">
+          {isDone
+            ? "You can edit any of this later."
+            : "This usually takes a few seconds."}
+        </p>
 
-        {steps.length > 0 && (
-          <div className="flex w-full flex-col gap-2">
-            {steps.map((step, index) => {
-              const isDone = index < completed
-              const isActive = index === completed
-              if (!isDone && !isActive) return null
+        {/* Reserved height so rows appearing never shift the layout */}
+        <div className="mt-6 flex min-h-[132px] w-full flex-col justify-center gap-3">
+          {steps.length === 0 ? (
+            <div className="flex flex-col gap-3" aria-hidden>
+              {[0, 1, 2].map((row) => (
+                <div key={row} className="flex items-center gap-3">
+                  {/* Same shimmer treatment the checkout/listings skeletons use:
+                      a gradient swept across the placeholder by animate-shimmer */}
+                  <span className="relative size-5 shrink-0 overflow-hidden rounded-full bg-gray-100">
+                    <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                  </span>
+                  <span
+                    className="relative h-2.5 overflow-hidden rounded-full bg-gray-100"
+                    style={{ width: `${[62, 78, 46][row]}%` }}
+                  >
+                    <span
+                      className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100"
+                      style={{ animationDelay: `${row * 200}ms` }}
+                    />
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            steps.map((step, index) => {
+              const isRowDone = index < completed
+              const isRowActive = index === completed
+              if (!isRowDone && !isRowActive) return null
               return (
-                <div
-                  key={step.label}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors",
-                    isDone ? "bg-primary-25" : "bg-gray-50"
+                <div key={step.label} className="flex items-center gap-3">
+                  {isRowDone ? (
+                    <CheckCircle className="size-5 shrink-0 text-primary-500" />
+                  ) : (
+                    <span className="inline-flex size-5 shrink-0 items-center justify-center">
+                      <span className="size-2 rounded-full bg-primary-200 animate-pulse" />
+                    </span>
                   )}
-                >
                   <span
                     className={cn(
-                      "inline-flex size-5 shrink-0 items-center justify-center rounded-full",
-                      isDone ? "bg-primary-500" : "bg-gray-200"
+                      "flex-auto text-sm leading-5 transition-colors",
+                      isRowDone ? "text-dark-blue-400" : "text-gray-500"
                     )}
                   >
-                    {isDone ? (
-                      <Check className="size-3 text-white" />
-                    ) : (
-                      <span className="size-1.5 rounded-full bg-gray-500" />
-                    )}
-                  </span>
-                  <span className="flex-auto text-sm leading-5 text-dark-blue-400">
                     {step.label}
                   </span>
-                  {isDone && typeof step.count === "number" && (
-                    <span className="text-xs font-semibold leading-5 text-primary-500">
+                  {isRowDone && typeof step.count === "number" && (
+                    <span className="text-xs font-semibold leading-5 text-gray-500">
                       {step.count}
                     </span>
                   )}
                 </div>
               )
-            })}
+            })
+          )}
+        </div>
+
+        {isDone ? (
+          <Button
+            className="mt-8 w-full"
+            size="md"
+            visual="primary"
+            type="button"
+            onClick={onDone}
+          >
+            Done
+          </Button>
+        ) : (
+          <div className="mt-8 h-1 w-full overflow-hidden rounded-full bg-gray-100">
+            {/* Determinate: grows from zero on the same clock that drives the
+                rest of the step. A swept gradient read as a static partial
+                fill, which looked stuck rather than working. */}
+            <span
+              className="block h-full rounded-full bg-primary-500 transition-[width] duration-100 ease-linear"
+              style={{ width: `${Math.max(2, percent)}%` }}
+            />
           </div>
         )}
-
-        <div className="flex h-[39px] items-center justify-center gap-2">
-          {[
-            "bg-primary-700",
-            "bg-primary-600",
-            "bg-primary-400",
-            "bg-primary-100",
-          ].map((color, index) => (
-            <span
-              key={color}
-              className={cn("size-2.5 rounded-full animate-bounce", color)}
-              style={{ animationDelay: `${index * 120}ms` }}
-            />
-          ))}
-        </div>
       </div>
     </DialogContent>
   </Dialog>
@@ -3642,6 +3759,7 @@ const UploadYourResume = ({
   stepData: CreateTalentType | null
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
 }) => {
+  const { logoutHandler } = useAuth()
   const router = useRouter()
   const resumeInputRef = useRef<HTMLInputElement>(null)
   const [resumeStatus, setResumeStatus] = useState<ResumeUploadStatus>("idle")
@@ -3656,6 +3774,7 @@ const UploadYourResume = ({
   const [readingLabel, setReadingLabel] = useState(READING_LABEL_DEFAULT)
   const [readingSteps, setReadingSteps] = useState<ReadingStep[]>([])
   const [readingCompleted, setReadingCompleted] = useState(0)
+  const [isReadingDone, setIsReadingDone] = useState(false)
 
   const { toggleValidation } = useStepContext()
   const { nextStep, setStep } = useStepperContext()
@@ -3694,7 +3813,7 @@ const UploadYourResume = ({
           ? (elapsed / total) * 95
           : 95 + (elapsed - total) / 3000
       setUploadPercent(Math.min(99, Math.max(1, Math.round(pct))))
-    }, 200)
+    }, 80)
   }
 
   const resetResume = () => {
@@ -3702,6 +3821,7 @@ const UploadYourResume = ({
     setReadingLabel(READING_LABEL_DEFAULT)
     setReadingSteps([])
     setReadingCompleted(0)
+    setIsReadingDone(false)
     setIsReviewing(false)
     setResumeFile(null)
     setUploadedAt(null)
@@ -3734,6 +3854,7 @@ const UploadYourResume = ({
     setReadingLabel(READING_LABEL_DEFAULT)
     setReadingSteps([])
     setReadingCompleted(0)
+    setIsReadingDone(false)
     setUploadPercent(0)
     startProgressTicker()
 
@@ -3804,6 +3925,8 @@ const UploadYourResume = ({
         .split(/\s+/)
         .filter(Boolean)
       const lastName = remainingNameParts.join(" ")
+      const properFirstName = firstName ? toProperCase(firstName) : ""
+      const properLastName = lastName ? toProperCase(lastName) : ""
       const recentJobTitle = data?.jobTitles?.[0]
       const skillNames = skills
         .map((skill: { name: string }) => skill.name)
@@ -3816,8 +3939,8 @@ const UploadYourResume = ({
       // talent already filled in with an empty value.
       setStepData((previous) => ({
         ...previous,
-        ...(firstName ? { firstName } : {}),
-        ...(lastName ? { lastName } : {}),
+        ...(properFirstName ? { firstName: properFirstName } : {}),
+        ...(properLastName ? { lastName: properLastName } : {}),
         ...(recentJobTitle ? { recentJobTitle } : {}),
         ...(industryNames.length
           ? { industriesWorkedIn: industryNames.join(", ") }
@@ -3882,6 +4005,13 @@ const UploadYourResume = ({
         await new Promise((resolve) => setTimeout(resolve, READING_STEP_MS))
       }
 
+      setReadingLabel(
+        foundSteps.length
+          ? "We've added this to your profile"
+          : "Your resume has been added"
+      )
+      setIsReadingDone(true)
+
       // Everything is genuinely done; complete and enable Continue together.
       stopProgressTicker()
       if (reviewStartedAtRef.current) {
@@ -3926,16 +4056,31 @@ const UploadYourResume = ({
       {sidebar}
 
       <ReadingResumeModal
-        open={resumeStatus === "uploading"}
+        open={resumeStatus === "uploading" || isReadingDone}
         label={readingLabel}
         steps={readingSteps}
         completed={readingCompleted}
+        isDone={isReadingDone}
+        onDone={() => setIsReadingDone(false)}
+        percent={uploadPercent}
       />
 
       <form
         className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={onSubmit}
       >
+            <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+              <Button
+                size="sm"
+                variant="ghost"
+                visual="gray"
+                type="button"
+                onClick={logoutHandler}
+              >
+                Log out
+              </Button>
+            </div>
+
         <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
             <CircularProgress
