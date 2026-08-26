@@ -147,6 +147,9 @@ jobs:
               frontend/components/settings-sidebar.tsx|\
               frontend/app/top-most-header.tsx|\
               "frontend/app/(group)/active-project/[id]/page.tsx"|\
+              "frontend/app/(group)/onboarding/page.tsx"|\
+              "frontend/app/(group)/onboarding/talent/page.tsx"|\
+              "frontend/app/(group)/onboarding/client/page.tsx"|\
               "frontend/app/(group)/my-jobs/page.tsx")
                 FROZEN_UI_HIT=1
                 FROZEN_UI_FILES="$FROZEN_UI_FILES\n- \`$f\`" ;;
