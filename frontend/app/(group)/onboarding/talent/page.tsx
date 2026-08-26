@@ -454,6 +454,9 @@ const IntroduceYourself = ({
                   <Input
                     placeholder="John"
                     id="first-name"
+                    // Without an explicit token Chrome falls back to guessing
+                    // from name/id, and declines more often than not.
+                    autoComplete="given-name"
                     {...register("firstName", {
                       onChange: (event) =>
                         setValue("firstName", toProperCase(event.target.value)),
@@ -479,6 +482,7 @@ const IntroduceYourself = ({
                   <Input
                     placeholder="Doe"
                     id="last-name"
+                    autoComplete="family-name"
                     {...register("lastName", {
                       onChange: (event) =>
                         setValue("lastName", toProperCase(event.target.value)),
