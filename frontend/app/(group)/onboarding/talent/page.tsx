@@ -3709,6 +3709,8 @@ const dashedBorderImage = (hex: string) =>
 
 const DASH_BORDER_IDLE = dashedBorderImage("D0D5DD")
 const DASH_BORDER_ACTIVE = dashedBorderImage("306CFE")
+// error-500, the same red ErrorMessage uses
+const DASH_BORDER_ERROR = dashedBorderImage("F04438")
 
 const formatFileSize = (bytes: number) => {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
@@ -4653,13 +4655,16 @@ const UploadYourResume = ({
                 <div
                   className={cn(
                     "group flex min-h-[148px] w-full cursor-pointer flex-col gap-3 items-center justify-center rounded-lg px-6 py-4 transition-colors",
-                    resumeStatus === "dragging"
-                      ? "bg-primary-25"
-                      : "bg-white hover:bg-primary-25"
+                    resumeError
+                      ? "bg-white hover:bg-error-25"
+                      : resumeStatus === "dragging"
+                        ? "bg-primary-25"
+                        : "bg-white hover:bg-primary-25"
                   )}
                   style={{
-                    backgroundImage:
-                      resumeStatus === "dragging"
+                    backgroundImage: resumeError
+                      ? DASH_BORDER_ERROR
+                      : resumeStatus === "dragging"
                         ? DASH_BORDER_ACTIVE
                         : isDropzoneHovered
                           ? DASH_BORDER_ACTIVE
@@ -4680,15 +4685,37 @@ const UploadYourResume = ({
                     if (file) void processResume(file)
                   }}
                 >
-                  <div className="size-14 shrink-0 rounded-full border-8 border-primary-25 bg-primary-50 inline-flex items-center justify-center">
-                    <FileText className="size-7 text-primary-500" />
+                  <div
+                    className={cn(
+                      "size-14 shrink-0 rounded-full border-8 inline-flex items-center justify-center",
+                      resumeError
+                        ? "border-error-25 bg-error-50"
+                        : "border-primary-25 bg-primary-50"
+                    )}
+                  >
+                    <FileText
+                      className={cn(
+                        "size-7",
+                        resumeError ? "text-error-500" : "text-primary-500"
+                      )}
+                    />
                   </div>
 
-                  <p className="text-xs leading-5 text-gray-600 text-center">
+                  <p
+                    className={cn(
+                      "text-xs leading-5 text-center",
+                      resumeError ? "text-error-500" : "text-gray-600"
+                    )}
+                  >
                     Drag &amp; drop or{" "}
                     <button
                       type="button"
-                      className="font-medium capitalize leading-5 text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500"
+                      className={cn(
+                        "font-medium capitalize leading-5 underline",
+                        resumeError
+                          ? "text-error-500 decoration-error-500/30 hover:decoration-error-500"
+                          : "text-primary-500 decoration-primary-500/30 hover:decoration-primary-500"
+                      )}
                       onClick={(event) => {
                         // stop the parent handler so the picker opens once, and
                         // open it here since this button owns the interaction
@@ -4700,7 +4727,12 @@ const UploadYourResume = ({
                     </button>{" "}
                     to upload
                   </p>
-                  <p className="text-[11px] font-medium leading-[18px] text-gray-600 text-center">
+                  <p
+                    className={cn(
+                      "text-[11px] font-medium leading-[18px] text-center",
+                      resumeError ? "text-error-500" : "text-gray-600"
+                    )}
+                  >
                     PDF, DOC, DOCX (max 5MB)
                   </p>
                 </div>
@@ -4711,12 +4743,22 @@ const UploadYourResume = ({
                 <ErrorMessage size="sm">{resumeError}</ErrorMessage>
               )}
 
-              <p className="text-xs font-light leading-normal text-dark-blue-400">
+              <p
+                className={cn(
+                  "text-xs font-light leading-normal",
+                  resumeError ? "text-error-500" : "text-dark-blue-400"
+                )}
+              >
                 Your resume will remain private and will not be shared with any
                 third parties. See our{" "}
                 <Link
                   href="/privacy-policy"
-                  className="font-medium capitalize text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500"
+                  className={cn(
+                    "font-medium capitalize underline",
+                    resumeError
+                      ? "text-error-500 decoration-error-500/30 hover:decoration-error-500"
+                      : "text-primary-500 decoration-primary-500/30 hover:decoration-primary-500"
+                  )}
                 >
                   Privacy Policy
                 </Link>
