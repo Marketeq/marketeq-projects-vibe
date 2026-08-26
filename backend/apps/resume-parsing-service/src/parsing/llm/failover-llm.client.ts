@@ -26,29 +26,47 @@ export class FailoverLlmClient implements LlmClient {
 
 
   async call(input: LlmCallInput): Promise<LlmCallOutput> {
-    // Groq is main (fast, free); the OpenAI-compatible client walks its own
-    // ordered chain groq -> xai(grok) -> huggingface -> ollama. Gemini is kept
-    // as the final fallback rather than removed - it works when it isn't
-    // overloaded, which is what pushed it out of the primary slot.
-    if (!this.primary.isConfigured()) return this.fallback.call(input);
-    try {
-      return await this.primary.call(input);
-    } catch (primaryError) {
+    // Route by document size. Groq is much faster but its free tier is a hard
+    // 8000 tokens/MINUTE, so a long CV cannot fit in a single request there at
+    // all. Gemini's free allowance is far larger, so anything long goes to it
+    // first and Groq becomes the fallback; short documents keep the fast path.
+    const longDocChars = parseInt(
+      process.env.LLM_LONG_DOC_CHARS || '14000',
+      10,
+    );
+    const isLongDocument = (input.text?.length ?? 0) > longDocChars;
 
+    const [first, second] = isLongDocument
+      ? ([this.fallback, this.primary] as const)
+      : ([this.primary, this.fallback] as const);
+
+    if (isLongDocument) {
+      this.logger.log(
+        `Document is ${input.text.length} chars; routing to the larger-context model first`,
+      );
+    }
+
+    if (first === this.primary && !this.primary.isConfigured()) {
+      return this.fallback.call(input);
+    }
+
+    try {
+      return await first.call(input);
+    } catch (firstError) {
       const reason =
-        primaryError instanceof Error ? primaryError.message : String(primaryError);
+        firstError instanceof Error ? firstError.message : String(firstError);
       this.logger.warn(`Primary model unavailable (${reason}); trying fallback`);
       try {
-        const result = await this.fallback.call(input);
+        const result = await second.call(input);
         this.logger.log('Fallback model succeeded');
         return result;
-      } catch (fallbackError) {
+      } catch (secondError) {
         const fbReason =
-          fallbackError instanceof Error
-            ? fallbackError.message
-            : String(fallbackError);
+          secondError instanceof Error
+            ? secondError.message
+            : String(secondError);
         this.logger.error(`Fallback model also failed: ${fbReason}`);
-        throw primaryError;
+        throw firstError;
       }
     }
   }

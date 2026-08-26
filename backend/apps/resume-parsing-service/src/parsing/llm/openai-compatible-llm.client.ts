@@ -146,10 +146,12 @@ export class OpenAiCompatibleLlmClient implements LlmClient {
     provider: FallbackProvider,
     input: LlmCallInput,
   ): Promise<LlmCallOutput> {
-    // Free-tier limits are tokens-per-minute, so an unbounded resume can push a
-    // single request over the cap on its own. Everything that matters sits in
-    // the first few pages; the tail is references and formatting noise.
-    const maxChars = parseInt(process.env.LLM_MAX_INPUT_CHARS || '12000', 10);
+    // Distinct from the 5MB upload limit and MAX_EXTRACTED_CHARS (150k):
+    // neither bounds TOKENS. Groq allows 8000/min and charges max_tokens up
+    // front, leaving ~6000 for input, which is roughly 24000 characters. Sized
+    // to that budget so a long CV still fits whole rather than being trimmed to
+    // an arbitrary number.
+    const maxChars = parseInt(process.env.LLM_MAX_INPUT_CHARS || '24000', 10);
     const text =
       input.text.length > maxChars ? input.text.slice(0, maxChars) : input.text;
     const userPrompt = input.isNearEmpty
