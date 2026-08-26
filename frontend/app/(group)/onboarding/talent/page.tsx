@@ -3958,16 +3958,30 @@ const UploadYourResume = ({
             .filter(Boolean)
         )
       )
+      // `additions` only carries NON-conflicting items, so anything already on
+      // the profile is excluded. The checklist is meant to report what is in
+      // the resume, not the delta, so fold the conflicts back in by type.
+      const conflicts: any[] = Array.isArray(data?.conflicts) ? data.conflicts : []
+      const conflictsOfType = (type: string) =>
+        conflicts.filter((item) => item?.type === type).length
+      const educationTotal = education.length + conflictsOfType("education")
+      const workTotal = workExperience.length + conflictsOfType("work")
+      const certificationTotal =
+        certifications.length + conflictsOfType("certification")
+
+      // Order follows the resume's own hierarchy: who you are, what you can do,
+      // then where you did it.
       const foundSteps: ReadingStep[] = [
         ...(extractedName ? [{ label: "Personal info" }] : []),
-        ...(workExperience.length
-          ? [{ label: "Work experience", count: workExperience.length }]
+        ...(skillNames.length
+          ? [{ label: "Skills", count: skillNames.length }]
           : []),
-        ...(education.length
-          ? [{ label: "Education", count: education.length }]
+        ...(workTotal ? [{ label: "Work experience", count: workTotal }] : []),
+        ...(educationTotal
+          ? [{ label: "Education", count: educationTotal }]
           : []),
-        ...(certifications.length
-          ? [{ label: "Certifications", count: certifications.length }]
+        ...(certificationTotal
+          ? [{ label: "Certifications", count: certificationTotal }]
           : []),
         ...(clientCompanies.length
           ? [{ label: "Previous clients", count: clientCompanies.length }]
@@ -4201,7 +4215,7 @@ const UploadYourResume = ({
                     </div>
                     <button
                       type="button"
-                      className="shrink-0 text-xs font-semibold leading-5 text-primary-500 hover:underline"
+                      className="shrink-0 text-xs font-semibold leading-5 text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500"
                       onClick={() => resumeInputRef.current?.click()}
                     >
                       Replace
