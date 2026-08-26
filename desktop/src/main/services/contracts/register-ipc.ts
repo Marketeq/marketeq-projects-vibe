@@ -10,7 +10,7 @@
 import { ipcMain } from 'electron';
 import type { Logger } from 'pino';
 import { IPC } from '../../../shared/ipc-contracts';
-import type { BackendContract } from '../../../shared/ipc-contracts';
+import type { BackendContract, BackendTask } from '../../../shared/ipc-contracts';
 import type { ContractRepo } from '../../db/repos/contract.repo';
 import type { TaskRepo } from '../../db/repos/task.repo';
 
@@ -25,6 +25,34 @@ export interface ContractsIpcDeps {
 
 export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
   const log = deps.logger?.child({ svc: 'contracts-ipc' });
+
+  // Authenticated fetch of a contract's tasks — the token is required,
+  // the backend route is not public (doc 15: the token only lives here,
+  // in the main process; doc 21: renderer reaches this data through the
+  // bridge, same as contracts). Shared by the SQLite mirror below and the
+  // contracts:get-tasks handler so there's one authenticated call site,
+  // not two.
+  const fetchTasksForContract = async (
+    contractId: string,
+    token: string,
+  ): Promise<BackendTask[]> => {
+    const res = await fetch(
+      `${deps.apiBaseUrl}/tasks/contract/${encodeURIComponent(contractId)}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+    if (!res.ok) {
+      log?.warn({ contractId, status: res.status }, 'failed to fetch tasks for contract');
+      return [];
+    }
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  };
 
   const handle = async (): Promise<BackendContract[]> => {
     const token = deps.getAccessToken();
@@ -88,20 +116,15 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
           });
           // Also fetch and mirror real tasks from TTS
           try {
-            const ttsRes = await fetch(`${process.env.DTT_API_BASE_URL ?? 'http://localhost:4000'}/api/tasks/contract/${encodeURIComponent(c.id)}`);
-            if (ttsRes.ok) {
-              const tasks = await ttsRes.json();
-              if (Array.isArray(tasks)) {
-                for (const t of tasks) {
-                  deps.taskRepo.upsert({
-                    id: t.id,
-                    contract_id: c.id,
-                    name: t.name || 'Untitled task',
-                    archived: t.archived ? 1 : 0,
-                    mirrored_at: now,
-                  });
-                }
-              }
+            const tasks = await fetchTasksForContract(c.id, token);
+            for (const t of tasks) {
+              deps.taskRepo.upsert({
+                id: t.id,
+                contract_id: c.id,
+                name: t.name || 'Untitled task',
+                archived: t.archived ? 1 : 0,
+                mirrored_at: now,
+              });
             }
           } catch { /* TTS unavailable — default task is enough */ }
         } catch (err) {
@@ -114,9 +137,23 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
     return contracts;
   };
 
+  const handleGetTasks = async (
+    _evt: unknown,
+    contractId: string,
+  ): Promise<BackendTask[]> => {
+    const token = deps.getAccessToken();
+    if (!token) {
+      log?.warn('contracts:get-tasks called without auth');
+      return [];
+    }
+    return fetchTasksForContract(contractId, token);
+  };
+
   ipcMain.handle(IPC.contractsGetMine, handle);
+  ipcMain.handle(IPC.contractsGetTasks, handleGetTasks);
 
   return () => {
     ipcMain.removeHandler(IPC.contractsGetMine);
+    ipcMain.removeHandler(IPC.contractsGetTasks);
   };
 }
