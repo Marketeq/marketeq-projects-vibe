@@ -3623,7 +3623,7 @@ const READING_SCAN_LABELS = [
   "Looking for your industry expertise...",
 ]
 const SCAN_ROWS = 3
-const READING_STEP_MS = 260
+const READING_STEP_MS = 850
 
 type ReadingStep = { label: string; count?: number; items?: string[] }
 
@@ -3636,6 +3636,7 @@ const ReadingResumeModal = ({
   onDone,
   percent,
   tick,
+  fileLabel,
 }: {
   open: boolean
   label: string
@@ -3645,6 +3646,7 @@ const ReadingResumeModal = ({
   onDone: () => void
   percent: number
   tick: number
+  fileLabel?: string
 }) => (
   <Dialog open={open}>
     <DialogContent
@@ -3695,8 +3697,8 @@ const ReadingResumeModal = ({
             // Read phase. Nothing is known about the document yet - it may
             // not even be a resume - so no section can be named here.
             <div className="flex flex-col justify-end gap-3 transition-all duration-300 ease-out">
-              <p className="text-center text-sm leading-5 text-gray-500">
-                Checking the file...
+              <p className="truncate text-center text-sm leading-5 text-gray-500">
+                {fileLabel ?? "Checking the file..."}
               </p>
               {Array.from({ length: SCAN_ROWS }).map((_, row) => (
                 <div key={`sk-${row}`} className="flex items-center gap-3" aria-hidden>
@@ -4174,6 +4176,11 @@ const UploadYourResume = ({
         onDone={() => setIsReadingDone(false)}
         percent={uploadPercent}
         tick={readingTick}
+        fileLabel={
+          resumeFile
+            ? `Reading ${resumeFile.name} · ${formatFileSize(resumeFile.size)}`
+            : undefined
+        }
       />
 
       <form
