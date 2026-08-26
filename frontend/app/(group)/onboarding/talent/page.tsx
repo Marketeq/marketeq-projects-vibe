@@ -3623,7 +3623,7 @@ const READING_SCAN_LABELS = [
   "Looking for your industry expertise...",
 ]
 const SCAN_ROWS = 3
-const READING_STEP_MS = 850
+const READING_STEP_MS = 1150
 
 type ReadingStep = { label: string; count?: number; items?: string[] }
 
@@ -4115,12 +4115,23 @@ const UploadYourResume = ({
       // the first point at which naming a section is truthful. A cover letter
       // reaches here with foundSteps empty and claims nothing.
       setReadingSteps(foundSteps)
+      // The ticker has run the bar to ~99% by now, so the reveal would play
+      // against a loader that already looks finished. Hand the last stretch of
+      // the bar to the reveal itself: park it, then advance one slice per
+      // section so it fills as the sections land.
+      stopProgressTicker()
+      const revealFrom = 55
+      setUploadPercent(revealFrom)
       for (let index = 0; index < foundSteps.length; index++) {
         setReadingCompleted(index + 1)
+        setUploadPercent(
+          Math.round(
+            revealFrom + ((100 - revealFrom) * (index + 1)) / foundSteps.length
+          )
+        )
         await new Promise((resolve) => setTimeout(resolve, READING_STEP_MS))
       }
       setReadingCompleted(foundSteps.length)
-      stopProgressTicker()
       if (reviewStartedAtRef.current) {
         recordTotalDurationMs(Date.now() - reviewStartedAtRef.current)
         reviewStartedAtRef.current = null
