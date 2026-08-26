@@ -66,7 +66,6 @@ import { z } from "zod"
 import { DAYS } from "@/types/day"
 import { AVAILABILITY, type CreateTalentType } from "@/types/talent"
 import { ROLE, type User } from "@/types/user"
-import { Spinner } from "@/components/ui/spinner/spinner"
 import { Logo } from "@/components/icons"
 import { Pointer } from "@/components/icons/pointer"
 import NextLink from "@/components/next-link"
@@ -109,6 +108,7 @@ import {
   useStepperContext,
   useToast,
 } from "@/components/ui"
+import { Spinner } from "@/components/ui/spinner/spinner"
 
 const skillSuggestions = Array.isArray(rawSkillSuggestions)
   ? rawSkillSuggestions
@@ -3437,8 +3437,48 @@ const RESUME_ACCEPTED_TYPES = [
 ]
 const RESUME_MAX_SIZE = 5 * 1024 * 1024 // 5MB, matches resume.controller.ts
 
+// Byte transfer is ~1s of a ~16s operation and the review time can't be known
+// up front (varies with resume length; the model client also retries once). So
+// both phases share ONE scale: bytes fill 0-15%, review eases 15-99% on a
+// decelerating curve — it never stalls on a round number and never claims
+// completion early. Rather than hardcode the review duration, each successful
+// upload records its own elapsed time and the running median calibrates the
+// next one, so the estimate converges on this user's real conditions.
+// The transfer is the first slice of the single timeline; past this the label
+// moves on to reading. Keyed to progress, not the network event, so the
+// uploading label is always visible even when bytes land instantly.
+const UPLOAD_LABEL_UNTIL = 15
+
+const TOTAL_ESTIMATE_KEY = "marketeq:resume-total-ms"
+const TOTAL_ESTIMATE_DEFAULT_MS = 20000
+
+const readTotalEstimateMs = (): number => {
+  try {
+    const raw = window.localStorage.getItem(TOTAL_ESTIMATE_KEY)
+    const samples = raw ? (JSON.parse(raw) as number[]) : []
+    const usable = samples.filter((n) => Number.isFinite(n) && n > 0)
+    if (!usable.length) return TOTAL_ESTIMATE_DEFAULT_MS
+    const sorted = [...usable].sort((a, b) => a - b)
+    return sorted[Math.floor(sorted.length / 2)]
+  } catch {
+    return TOTAL_ESTIMATE_DEFAULT_MS
+  }
+}
+
+const recordTotalDurationMs = (ms: number) => {
+  if (!Number.isFinite(ms) || ms <= 0) return
+  try {
+    const raw = window.localStorage.getItem(TOTAL_ESTIMATE_KEY)
+    const samples = raw ? (JSON.parse(raw) as number[]) : []
+    const next = [...samples.filter((n) => Number.isFinite(n) && n > 0), ms].slice(-5)
+    window.localStorage.setItem(TOTAL_ESTIMATE_KEY, JSON.stringify(next))
+  } catch {
+    // best-effort calibration only
+  }
+}
+
 const dashedBorderImage = (hex: string) =>
-  `url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='8' ry='8' stroke='%23${hex}' stroke-width='2' stroke-dasharray='7%2c 6'/%3e%3c/svg%3e")`
+  `url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='8' ry='8' stroke='%23${hex}' stroke-width='4' stroke-dasharray='7%2c 6'/%3e%3c/svg%3e")`
 
 const DASH_BORDER_IDLE = dashedBorderImage("D0D5DD")
 const DASH_BORDER_ACTIVE = dashedBorderImage("306CFE")
@@ -3454,23 +3494,41 @@ type ResumeUploadStatus =
   | "uploading"
   | "uploaded"
   | "failed"
+  | "service-busy"
   | "size-limit"
   | "unsupported"
   | "not_a_resume"
   | "nothing_found"
   | "name_mismatch"
 
-const RESUME_ERROR_MESSAGES: Partial<Record<ResumeUploadStatus, string>> = {
-  "size-limit":
-    "Uploaded file exceeds the size limit of 5MB. Please select a different file.",
-  unsupported:
-    "Unsupported file type. Only PDF, DOC, and DOCX files are accepted.",
-  not_a_resume:
-    "This doesn't look like a resume. Please upload a resume file in PDF, DOC, or DOCX format.",
-  nothing_found:
-    "We couldn't pull any details out of this file. Please try uploading a different resume.",
-  name_mismatch:
-    "This resume appears to belong to someone else. Please upload your own resume.",
+// Two sentences each; Figma puts the second on its own line.
+const RESUME_ERROR_MESSAGES: Partial<
+  Record<ResumeUploadStatus, readonly [string, string]>
+> = {
+  "service-busy": [
+    "We couldn't read your resume just now.",
+    "Nothing was changed on your profile. Please try again in a moment.",
+  ],
+  "size-limit": [
+    "Uploaded file exceeds the size limit of 5MB.",
+    "Please select a different file.",
+  ],
+  unsupported: [
+    "Unsupported file type.",
+    "Only PDF, DOC, and DOCX files are accepted.",
+  ],
+  not_a_resume: [
+    "This doesn't look like a resume.",
+    "Please upload a resume file in PDF, DOC, or DOCX format.",
+  ],
+  nothing_found: [
+    "We couldn't pull any details out of this file.",
+    "Please try uploading a different resume.",
+  ],
+  name_mismatch: [
+    "This resume appears to belong to someone else.",
+    "Please upload your own resume.",
+  ],
 }
 
 const UploadYourResume = ({
@@ -3488,8 +3546,11 @@ const UploadYourResume = ({
   const [resumeFile, setResumeFile] = useState<File | null>(null)
   const [uploadedAt, setUploadedAt] = useState<Date | null>(null)
   const [uploadPercent, setUploadPercent] = useState(0)
-  const [isDropzoneHovered, setIsDropzoneHovered] = useState(false)
+  const [isReviewing, setIsReviewing] = useState(false)
   const [loadingMessage, setLoadingMessage] = useState("Reading your resume...")
+  const reviewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const reviewStartedAtRef = useRef<number | null>(null)
+  const [isDropzoneHovered, setIsDropzoneHovered] = useState(false)
 
   const { toggleValidation } = useStepContext()
   const { nextStep, setStep } = useStepperContext()
@@ -3499,12 +3560,43 @@ const UploadYourResume = ({
   const errorMessage = RESUME_ERROR_MESSAGES[resumeStatus]
   const hasError = resumeStatus === "failed" || Boolean(errorMessage)
 
+  const stopProgressTicker = () => {
+    if (reviewTimerRef.current) {
+      clearInterval(reviewTimerRef.current)
+      reviewTimerRef.current = null
+    }
+  }
+
+  // The LLM review time is folded INTO the upload time: one clock, one
+  // percentage, started when the file is handed over and running until the
+  // profile write finishes. The expected total is the median of this user's
+  // last five uploads, so it calibrates to their real conditions instead of a
+  // hardcoded guess. Past the estimate it keeps creeping toward 99 rather than
+  // parking, and only genuine completion shows 100.
+  const startProgressTicker = () => {
+    stopProgressTicker()
+    const startedAt = Date.now()
+    reviewStartedAtRef.current = startedAt
+    const total = Math.max(4000, readTotalEstimateMs())
+    reviewTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startedAt
+      const linear = (elapsed / total) * 100
+      // under estimate: proportional. over: asymptotic creep so it never stalls.
+      const pct =
+        linear <= 92
+          ? linear
+          : 92 + 7 * (1 - Math.exp(-(elapsed - total * 0.92) / (total * 0.6)))
+      setUploadPercent(Math.min(99, Math.max(1, Math.round(pct))))
+    }, 200)
+  }
+
   const resetResume = () => {
+    stopProgressTicker()
+    setIsReviewing(false)
     setResumeFile(null)
     setUploadedAt(null)
     setUploadPercent(0)
     setResumeStatus("idle")
-    setLoadingMessage("Reading your resume...")
   }
 
   // Upload -> parse -> autofill the remaining onboarding steps -> apply to the
@@ -3530,22 +3622,34 @@ const UploadYourResume = ({
 
     setResumeStatus("uploading")
     setUploadPercent(0)
-    setLoadingMessage("Reading your resume...")
+    startProgressTicker()
 
     try {
-      const { data } = await UserAPI.uploadResume(file, setUploadPercent)
+      const { data } = await UserAPI.uploadResume(file, (percent) => {
+        if (percent >= 100) setIsReviewing(true)
+      })
+      // Deliberately NOT completing here. The response has landed but
+      // applyResume still has to run, and Continue stays disabled until it
+      // does — showing 100% now is a completion signal the user can't act on.
+      setLoadingMessage("Reading your resume...")
 
       if (data?.status === "not_a_resume") {
+        stopProgressTicker()
+        setIsReviewing(false)
         setResumeStatus("not_a_resume")
         return
       }
       if (data?.status === "nothing_found") {
+        stopProgressTicker()
+        setIsReviewing(false)
         setResumeStatus("nothing_found")
         return
       }
       // The account already carries the registered name, so this still guards
       // against someone uploading a resume that is not theirs.
       if (data?.nameMismatch) {
+        stopProgressTicker()
+        setIsReviewing(false)
         setResumeStatus("name_mismatch")
         return
       }
@@ -3605,14 +3709,11 @@ const UploadYourResume = ({
         ...(skillNames.length ? { lookingToWorkWith: skillNames } : {}),
       }))
 
-      setLoadingMessage("Updating your profile...")
       if (skillNames.length > 0) {
-        setLoadingMessage(
-          `Adding ${skillNames.length} skill${skillNames.length !== 1 ? "s" : ""} to your profile...`
-        )
       }
 
       try {
+        setLoadingMessage("Updating your profile...")
         await UserAPI.applyResume({
           parseResultId: data?.parseResultId,
           skills,
@@ -3622,22 +3723,37 @@ const UploadYourResume = ({
           industries,
         })
         if (workExperience.length > 0) {
-          setLoadingMessage(
-            `Added ${workExperience.length} work experience${workExperience.length !== 1 ? "s" : ""}...`
-          )
         }
-        setLoadingMessage("Finishing up...")
       } catch (applyError) {
         // Autofill already landed in stepData, so onboarding can continue even
         // if the background profile write fails.
         console.error("Failed to auto-apply resume data:", applyError)
       }
 
+      // Everything is genuinely done; complete and enable Continue together.
+      stopProgressTicker()
+      if (reviewStartedAtRef.current) {
+        recordTotalDurationMs(Date.now() - reviewStartedAtRef.current)
+        reviewStartedAtRef.current = null
+      }
+      setUploadPercent(100)
+      setIsReviewing(false)
       setUploadedAt(data?.uploadedAt ? new Date(data.uploadedAt) : new Date())
       setResumeStatus("uploaded")
       toggleValidation(true)
-    } catch {
-      setResumeStatus("failed")
+    } catch (error) {
+      stopProgressTicker()
+      setIsReviewing(false)
+      // 502/503 means the upload itself succeeded and the extraction service
+      // couldn't answer — telling the user "upload failed" is wrong, and hides
+      // that retrying usually works.
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status
+      setResumeStatus(
+        status === 502 || status === 503 || status === 504
+          ? "service-busy"
+          : "failed"
+      )
     }
   }
 
@@ -3685,7 +3801,7 @@ const UploadYourResume = ({
           <div className="mt-10 2xl:mt-[50px]">
             <div className="space-y-6">
               {hasError ? (
-                <div className="flex h-[148px] w-full flex-col gap-3 items-center rounded-lg border border-error-300 bg-error-25 px-6 py-4">
+                <div className="flex min-h-[148px] w-full flex-col gap-3 items-center justify-center rounded-lg border border-error-300 bg-error-25 px-6 py-4">
                   <div className="size-14 shrink-0 rounded-full border-8 border-error-50 bg-error-100 inline-flex items-center justify-center">
                     <AlertTriangle className="size-7 text-error-500" />
                   </div>
@@ -3697,9 +3813,13 @@ const UploadYourResume = ({
                         <br />
                         <span className="font-normal">{resumeFile?.name}</span>
                       </>
-                    ) : (
-                      errorMessage
-                    )}
+                    ) : errorMessage ? (
+                      <>
+                        {errorMessage[0]}
+                        <br />
+                        {errorMessage[1]}
+                      </>
+                    ) : null}
                   </p>
 
                   <button
@@ -3710,37 +3830,70 @@ const UploadYourResume = ({
                     Try again
                   </button>
                 </div>
+              ) : resumeStatus === "uploading" ? (
+                <div className="relative flex h-16 w-full flex-col items-start gap-2 overflow-hidden rounded-lg border border-gray-200 bg-white p-3.5">
+                  {/* Figma "Progress fill" (21020:10515): behind the row, offset
+                      -1px so it covers the border, width tracks the upload. */}
+                  <div
+                    className="absolute left-[-1px] top-[-1px] h-16 bg-gray-50 transition-[width]"
+                    style={{ width: `${uploadPercent}%` }}
+                  />
+                  <div className="relative flex w-full items-center justify-between">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch">
+                      <div className="size-9 shrink-0 rounded-full bg-primary-50 inline-flex items-center justify-center">
+                        <File02 className="size-4 text-primary-500" />
+                      </div>
+                      <div className="flex min-w-0 flex-1 flex-col justify-center">
+                        <p className="truncate text-xs font-medium leading-5 text-dark-blue-400">
+                          {resumeFile?.name}
+                        </p>
+                        <p className="truncate text-[11px] leading-[18px] text-gray-500">
+                          {uploadPercent < UPLOAD_LABEL_UNTIL
+                            ? `${formatFileSize(resumeFile?.size ?? 0)} \u2013 ${uploadPercent}% uploaded`
+                            : `${loadingMessage} ${uploadPercent}%`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center justify-center">
+                      <CircularProgress size={32} strokeWidth={4} value={uploadPercent} />
+                    </div>
+                  </div>
+                </div>
               ) : resumeStatus === "uploaded" ? (
-                <div className="rounded-lg border-2 border-primary-500 bg-primary-25 p-3.5 flex items-center gap-x-2">
-                  <div className="size-9 shrink-0 rounded-full bg-primary-50 inline-flex items-center justify-center">
-                    <File02 className="size-4 text-primary-500" />
+                <div className="flex w-full flex-col items-start overflow-hidden rounded-lg border-2 border-primary-500 bg-primary-25 p-3.5">
+                  <div className="flex w-full items-center gap-2 pr-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch">
+                      <div className="size-9 shrink-0 rounded-full bg-primary-50 inline-flex items-center justify-center">
+                        <File02 className="size-4 text-primary-500" />
+                      </div>
+                      <div className="flex min-w-0 flex-1 flex-col justify-center">
+                        <p className="truncate text-xs font-medium leading-5 text-dark-blue-400">
+                          {resumeFile?.name}
+                        </p>
+                        <p className="text-[11px] leading-[18px] text-gray-500">
+                          {uploadedAt
+                            ? `Added on ${uploadedAt.toLocaleDateString("en-US", {
+                                month: "long",
+                                day: "numeric",
+                                year: "numeric",
+                              })}`
+                            : "Added"}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs font-semibold leading-5 text-primary-500 hover:underline"
+                      onClick={resetResume}
+                    >
+                      Replace
+                    </button>
                   </div>
-                  <div className="flex-auto min-w-0">
-                    <p className="text-xs font-medium text-dark-blue-400 truncate">
-                      {resumeFile?.name}
-                    </p>
-                    <p className="text-[11px] text-gray-500">
-                      {uploadedAt
-                        ? `Added on ${uploadedAt.toLocaleDateString("en-US", {
-                            month: "long",
-                            day: "numeric",
-                            year: "numeric",
-                          })}`
-                        : "Added"}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="shrink-0 text-xs font-semibold leading-5 text-primary-500 hover:underline"
-                    onClick={resetResume}
-                  >
-                    Replace
-                  </button>
                 </div>
               ) : (
                 <div
                   className={cn(
-                    "group flex h-[148px] w-full cursor-pointer flex-col gap-3 items-center rounded-lg px-6 py-4 transition-colors",
+                    "group flex min-h-[148px] w-full cursor-pointer flex-col gap-3 items-center justify-center rounded-lg px-6 py-4 transition-colors",
                     resumeStatus === "dragging"
                       ? "bg-primary-25"
                       : "bg-white hover:bg-primary-25"
@@ -3777,7 +3930,12 @@ const UploadYourResume = ({
                     <button
                       type="button"
                       className="font-medium capitalize leading-5 text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500"
-                      onClick={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        // stop the parent handler so the picker opens once, and
+                        // open it here since this button owns the interaction
+                        event.stopPropagation()
+                        resumeInputRef.current?.click()
+                      }}
                     >
                       Choose file
                     </button>{" "}
@@ -3799,33 +3957,6 @@ const UploadYourResume = ({
                     }}
                   />
                 </div>
-              )}
-
-              {resumeStatus === "uploading" && (
-                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-3.5">
-                  <div className="size-9 shrink-0 rounded-full bg-primary-50 inline-flex items-center justify-center">
-                    <File02 className="size-4 text-primary-500" />
-                  </div>
-                  <div className="flex-auto min-w-0">
-                    <p className="truncate text-xs font-medium leading-5 text-dark-blue-400">
-                      {resumeFile?.name}
-                    </p>
-                    <p className="text-[11px] text-gray-500">
-                      {formatFileSize(resumeFile?.size ?? 0)} &ndash;{" "}
-                      {uploadPercent}% uploaded
-                    </p>
-                  </div>
-                  <CircularProgress
-                    className="shrink-0"
-                    size={32}
-                    strokeWidth={4}
-                    value={uploadPercent}
-                  />
-                </div>
-              )}
-
-              {resumeStatus === "uploading" && (
-                <p className="text-xs text-gray-500">{loadingMessage}</p>
               )}
 
               <p className="text-xs font-light leading-normal text-dark-blue-400">

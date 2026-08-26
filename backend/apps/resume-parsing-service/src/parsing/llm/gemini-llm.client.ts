@@ -50,7 +50,15 @@ export class GeminiLlmClient implements LlmClient {
           `Model call attempt ${attempt}/${this.maxAttempts} failed: ${lastError.message}`,
         );
         if (attempt < this.maxAttempts) {
-          await new Promise((r) => setTimeout(r, 500 * attempt));
+          // "Service is currently overloaded" is the common transient failure
+          // and 500ms is far too short to ride it out, so back off
+          // exponentially with jitter. Other errors keep the quick retry.
+          const overloaded = /overload|rate limit|quota|503|unavailable/i.test(
+            lastError.message,
+          );
+          const base = overloaded ? 2000 * Math.pow(2, attempt - 1) : 500 * attempt;
+          const jitter = overloaded ? Math.floor(Math.random() * 500) : 0;
+          await new Promise((r) => setTimeout(r, base + jitter));
         }
       }
     }
