@@ -217,6 +217,9 @@ export class ProxyController {
       'wallet-service': process.env.WALLET_SERVICE_URL || 'http://localhost:3030',
       'wire-review-service': process.env.WIRE_REVIEW_SERVICE_URL || 'http://localhost:3031',
       'legal-service': process.env.LEGAL_SERVICE_URL || 'http://localhost:3032',
+      // boot-all.js runs this on 3033 and sets RESUME_PARSING_SERVICE_URL to match;
+      // the 3028 default is the ecosystem.config.js port used by local PM2.
+      'resume-parsing-service': process.env.RESUME_PARSING_SERVICE_URL || 'http://localhost:3028',
     }
 
     const results: Record<string, { status: string; code: number }> = {}
