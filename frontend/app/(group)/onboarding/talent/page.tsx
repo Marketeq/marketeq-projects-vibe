@@ -215,9 +215,12 @@ const IntroduceYourself = ({
     firstName,
     lastName,
   }) => {
-    const hasAnyField = (avatar && avatar.length > 0) || firstName || lastName
-    if (!hasAnyField) {
-      setFormError("Please enter at least one field")
+    if (!avatar || avatar.length === 0) {
+      setFormError("Please add a profile photo")
+      return
+    }
+    if (!firstName?.trim() || !lastName?.trim()) {
+      setFormError("Please enter your first and last name")
       return
     }
     setFormError(null)
@@ -317,6 +320,13 @@ const IntroduceYourself = ({
                                 className="rounded-full absolute inset-0 size-full object-cover transform"
                                 style={style}
                               />
+                            ) : initials ? (
+                              // Acronym once a name is known, icon before that.
+                              // `initials` comes from watch(), so it tracks the
+                              // fields as they are typed.
+                              <span className="text-[32px] font-medium leading-none text-gray-400">
+                                {initials.toUpperCase()}
+                              </span>
                             ) : (
                               <User01 className="size-11 text-gray-300" />
                             )}
