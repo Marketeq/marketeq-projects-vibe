@@ -191,6 +191,7 @@ const IntroduceYourself = ({
     control,
     watch,
     setError,
+    setValue,
   } = useForm<IntroduceYourselfFormValues>({
     resolver: zodResolver(introduceYourselfFormSchema),
     defaultValues: {
@@ -354,10 +355,8 @@ const IntroduceYourself = ({
                               size="md"
                               onClick={open}
                               type="button"
-                              variant="filled"
-                              visual="gray"
                             >
-                              <Upload className="size-[15px]" /> Change Photo
+                              Change Photo
                             </Button>
                           ) : (
                             <Button
@@ -398,7 +397,10 @@ const IntroduceYourself = ({
                   <Input
                     placeholder="John"
                     id="first-name"
-                    {...register("firstName")}
+                    {...register("firstName", {
+                      onChange: (event) =>
+                        setValue("firstName", toProperCase(event.target.value)),
+                    })}
                     isInvalid={hookFormHasError({ errors, name: "firstName" })}
                   />
                   <HookFormErrorMessage
@@ -420,7 +422,10 @@ const IntroduceYourself = ({
                   <Input
                     placeholder="Doe"
                     id="last-name"
-                    {...register("lastName")}
+                    {...register("lastName", {
+                      onChange: (event) =>
+                        setValue("lastName", toProperCase(event.target.value)),
+                    })}
                     isInvalid={hookFormHasError({ errors, name: "lastName" })}
                   />
                   <HookFormErrorMessage
@@ -1971,13 +1976,6 @@ const ShowcaseYourTalent = ({
                 />
               </div>
               <div className="flex flex-col gap-y-1.5">
-                <Label
-                  size="sm"
-                  className="text-dark-blue-400"
-                  htmlFor="industries"
-                >
-                  Which industries have you worked in?
-                </Label>
                 <Controller
                   control={control}
                   name="industriesWorkedWith"
@@ -1997,7 +1995,10 @@ const ShowcaseYourTalent = ({
                         setSuppressIndustryFocusOpen(true)
                       }}
                     >
-                      <ComboboxTrigger>
+                      <ComboboxTrigger className="flex flex-col gap-y-1.5">
+                        <ComboboxLabel size="sm" className="text-dark-blue-400">
+                          Which industries have you worked in?
+                        </ComboboxLabel>
                         <ComboboxInput
                           id="industries"
                           size="lg"
@@ -3688,9 +3689,11 @@ const RESUME_ERROR_MESSAGES: Partial<
 // Resumes are frequently typeset in all-caps ("JANE ALVAREZ") or sloppy case,
 // so force proper casing rather than trusting what was on the page. Handles
 // hyphenated and apostrophe names (mary-jane -> Mary-Jane, o'brien -> O'Brien).
+// NOTE: deliberately does not trim. This runs on every keystroke in the name
+// fields, and trimming would eat the space the moment you typed it, making a
+// second word impossible. Callers that need trimming do it themselves.
 const toProperCase = (value: string): string =>
   value
-    .trim()
     .toLowerCase()
     .replace(/(^|[\s\-'\u2019])([a-z\u00e0-\u00ff])/g, (_match, prefix, letter) =>
       `${prefix}${letter.toUpperCase()}`
@@ -4169,8 +4172,8 @@ const UploadYourResume = ({
         .split(/\s+/)
         .filter(Boolean)
       const lastName = remainingNameParts.join(" ")
-      const properFirstName = firstName ? toProperCase(firstName) : ""
-      const properLastName = lastName ? toProperCase(lastName) : ""
+      const properFirstName = firstName ? toProperCase(firstName).trim() : ""
+      const properLastName = lastName ? toProperCase(lastName).trim() : ""
       const recentJobTitle = data?.jobTitles?.[0]
       const skillNames = skills
         .map((skill: { name: string }) => skill.name)
