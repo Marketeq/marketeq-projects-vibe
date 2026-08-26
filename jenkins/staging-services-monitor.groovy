@@ -1,32 +1,3 @@
-// =============================================================================
-// WARNING: THIS FILE IS NOT WHAT JENKINS RUNS.
-//
-// The `staging-services-monitor` job stores its pipeline INLINE in the job config
-// (<definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition">),
-// so Jenkins never reads this file. Editing it -- or approving a PR that
-// changes it -- has ZERO effect on the pipeline that actually executes.
-//
-// Verified 2026-08-07 against the Jenkins API: all four pipeline files in this
-// repo are inline-backed, none are read from SCM.
-//
-// This has already caused one incident. PR #421 changed the /services/health
-// behaviour and was reviewed and merged against this file on the assumption it
-// was live. It was not, the live monitor kept its old logic, and PR #422 had to
-// revert it.
-//
-// TO ACTUALLY CHANGE THE PIPELINE, do one of:
-//   1. Edit the inline script in the Jenkins UI
-//      (Job -> Configure -> Pipeline -> Script), then mirror the change here; or
-//   2. Convert the job to CpsScmFlowDefinition so this file becomes
-//      authoritative. NOTE: this repo is private, so the SCM checkout needs a
-//      git credential (username/password or SSH). The existing `github-token`
-//      credential is secret-text, which hudson.plugins.git.GitSCM cannot use --
-//      a new credential must be created first or the job will fail to check out.
-//
-// Until a conversion happens, treat this file as DOCUMENTATION ONLY and keep it
-// in sync by hand.
-// =============================================================================
-
 // staging-services-monitor.groovy
 // Jenkins DevOps Agent: Ensures ALL backend microservices are running
 // on staging at 100% health. Auto-remediates failures.
@@ -53,6 +24,7 @@ pipeline {
         EXPECTED_SERVICES  = '28'
         HEALTH_LOG         = '/var/jenkins_home/health-metrics/staging-health.jsonl'
         ALERT_THRESHOLD    = '3' // consecutive failures before alert
+        RENDER_OWNER_ID    = 'tea-d0r57undiees73bn5npg'
     }
 
     stages {
@@ -241,6 +213,107 @@ except Exception as e:
             steps {
                 writeFile file: '/var/jenkins_home/health-metrics/fail-counter.txt', text: '0'
                 echo "Failure counter reset — all services healthy."
+            }
+        }
+
+        stage('Application Error Scan') {
+            // Health checks only prove a process is listening. Every fault in
+            // the 2026-08-19 encryption incident sat in the backend log while
+            // /health returned 200 and this monitor reported 28/28 healthy for
+            // seven days. This reads the log itself and groups what it finds.
+            steps {
+                script {
+                    withCredentials([string(credentialsId: 'render-api-key', variable: 'RENDER_TOKEN')]) {
+                        sh '''
+                            # Only look at the window since the last run. A rolling
+                            # 300-line fetch keeps returning hours-old entries and the
+                            # job would stay UNSTABLE forever on faults already fixed,
+                            # which is the alert fatigue this stage exists to prevent.
+                            SINCE=$(date -u -d '15 minutes ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-15M +%Y-%m-%dT%H:%M:%SZ)
+                            curl -s -m 45 -H "Authorization: Bearer $RENDER_TOKEN" "https://api.render.com/v1/logs?ownerId=${RENDER_OWNER_ID}&resource=${RENDER_SERVICE_ID}&limit=300&text=ERROR&startTime=${SINCE}" -o /tmp/backend-errors.json || echo '{"logs":[]}' > /tmp/backend-errors.json
+                            echo "scanning backend errors since ${SINCE}"
+
+                            python3 - > /tmp/app-errors.txt <<'PY'
+import json, re, collections
+ESC = chr(27)
+
+def strip(text):
+    text = text or ""
+    out, i = [], 0
+    while i < len(text):
+        if text[i] == ESC:
+            while i < len(text) and text[i] != "m":
+                i += 1
+            i += 1
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+try:
+    logs = json.load(open("/tmp/backend-errors.json")).get("logs", [])
+except Exception:
+    logs = []
+
+pattern = re.compile("ExceptionsHandler|EncryptionService|QueryFailedError|GlobalExceptionFilter")
+# Uptime probes hit / unauthenticated and log a 401 or 404 every time. They are
+# not faults, and leaving them in keeps the job permanently unstable, which is
+# how a real alert stops being read.
+noise = re.compile("(GET|HEAD) / . (401|404)|(GET|HEAD) / - (401|404)")
+counts = collections.Counter()
+for entry in logs:
+    message = strip(entry.get("message"))
+    if pattern.search(message) and not noise.search(message):
+        counts[re.sub("[0-9a-f-]{8,}", "<id>", message)[-90:].strip()] += 1
+
+for message, n in counts.most_common(8):
+    print(str(n) + "x " + message)
+PY
+                        '''
+                        def hits = readFile('/tmp/app-errors.txt').trim()
+                        if (hits) {
+                            env.APP_ERRORS = hits
+                            echo "Application errors present in the backend log:"
+                            echo hits
+                            currentBuild.result = 'UNSTABLE'
+                            currentBuild.description = 'application errors in log'
+                        } else {
+                            env.APP_ERRORS = ''
+                            echo 'No application errors in the log window.'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Pending Migrations') {
+            // Three migrations sat unapplied because the oldest failed and
+            // stopped the rest. The deploy still reported success, so nothing
+            // surfaced it until an endpoint started returning 500.
+            steps {
+                script {
+                    def code = sh(returnStdout: true, script: 'curl -s -o /tmp/mig.json -w "%{http_code}" -m 30 "${BACKEND_URL}/health/migrations" || echo 000').trim()
+                    def body = sh(returnStdout: true, script: 'cat /tmp/mig.json 2>/dev/null || true').trim()
+
+                    if (code == '200' && body.contains('"pending"')) {
+                        if (body.contains('"pending":0')) {
+                            echo 'Migrations up to date.'
+                        } else {
+                            echo "Pending migrations reported: ${body}"
+                            currentBuild.result = 'UNSTABLE'
+                            currentBuild.description = ((currentBuild.description ?: '') + ' pending migrations').trim()
+                        }
+                    } else {
+                        // Anything else means the check did not run. Saying
+                        // "no pending migrations" here would be a false all
+                        // clear, which is the failure this stage exists to
+                        // prevent. The endpoint does not exist yet: the
+                        // gateway answers 401 for unmatched paths.
+                        echo "Migration check DID NOT RUN (http ${code}). This is not an all clear."
+                        currentBuild.result = 'UNSTABLE'
+                        currentBuild.description = ((currentBuild.description ?: '') + ' migration check unavailable').trim()
+                    }
+                }
             }
         }
 

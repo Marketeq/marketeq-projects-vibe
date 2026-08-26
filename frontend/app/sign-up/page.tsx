@@ -256,7 +256,7 @@ export default function SignUp() {
                   className="text-[#939DA7] font-normal"
                   htmlFor="agrees-to-terms-privacy-policy"
                 >
-                  I agree to Markerteq's{" "}
+                  I agree to Marketeq's{" "}
                   <Button
                     className="whitespace-normal font-normal"
                     size="sm"

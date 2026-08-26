@@ -34,7 +34,26 @@ services:
         value: production
       - key: FRONTEND_URL
         value: https://live-marketeq-projects.vercel.app,https://staging-marketeq-projects.vercel.app,https://dev-marketeq-projects.vercel.app,https://marketeq-mvp-live.vercel.app,https://marketeq-mvp-dev.vercel.app,https://marketeq-mvp-staging.vercel.app,http://localhost:3000
+      # Eleven services read REDIS_URL. It was absent from this blueprint and
+      # from the deployed environment, so every one of them fell back to
+      # localhost and logged a connection refusal roughly 958 times per log
+      # window, which buried real faults. Wired to the instance below.
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: marketeq-keyvalue
+          property: connectionString
       - fromGroup: marketeq-secrets
+
+  # ── Shared key value store ──
+  # Backs BullMQ queues in scheduling-service and payout-service, and the
+  # cache layers in earnings, pricing, favorites and suggestions.
+  - type: keyvalue
+    name: marketeq-keyvalue
+    plan: free
+    region: oregon
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
 
 envVarGroups:
   - name: marketeq-secrets
