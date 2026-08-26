@@ -82,6 +82,8 @@ import {
   CircularProgress,
   Combobox,
   ComboboxInput,
+  Dialog,
+  DialogContent,
   ComboboxLabel,
   ComboboxOption,
   ComboboxOptions,
@@ -3449,8 +3451,8 @@ const RESUME_MAX_SIZE = 5 * 1024 * 1024 // 5MB, matches resume.controller.ts
 // uploading label is always visible even when bytes land instantly.
 const UPLOAD_LABEL_UNTIL = 15
 
-const TOTAL_ESTIMATE_KEY = "marketeq:resume-total-ms"
-const TOTAL_ESTIMATE_DEFAULT_MS = 20000
+const TOTAL_ESTIMATE_KEY = "marketeq:resume-total-ms-v2"
+const TOTAL_ESTIMATE_DEFAULT_MS = 6000
 
 const readTotalEstimateMs = (): number => {
   try {
@@ -3531,6 +3533,106 @@ const RESUME_ERROR_MESSAGES: Partial<
   ],
 }
 
+// Figma 21023:11125 — shown while the resume is being read. Replaces the
+// in-card percentage: the read duration can't be predicted, so an indeterminate
+// popup is honest where a progress number was not.
+// Figma 21023:11290 provides the shell — white card, 76px featured icon,
+// bouncing dots, 18px dark-blue label. The step list is an addition: the modal
+// now reports what it actually found rather than cycling one line, which is
+// both more informative and gives the wait a sense of progress.
+const READING_LABEL_DEFAULT = "Reading your resume..."
+const READING_STEP_MS = 700
+
+type ReadingStep = { label: string; count?: number }
+
+const ReadingResumeModal = ({
+  open,
+  label,
+  steps,
+  completed,
+}: {
+  open: boolean
+  label: string
+  steps: ReadingStep[]
+  completed: number
+}) => (
+  <Dialog open={open}>
+    <DialogContent
+      className="w-[490px] max-w-none overflow-hidden border-0 bg-white p-[50px] rounded-xl shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+      accessibilityTitle="Reading your resume"
+      // not dismissible: it mirrors work in flight, so closing it would lie
+      onEscapeKeyDown={(event) => event.preventDefault()}
+      onPointerDownOutside={(event) => event.preventDefault()}
+      onInteractOutside={(event) => event.preventDefault()}
+    >
+      <div className="flex flex-col items-center justify-center gap-6">
+        <div className="size-[76px] shrink-0 rounded-full border-[14px] border-primary-25 bg-primary-50 inline-flex items-center justify-center">
+          <FileText className="size-8 text-primary-500" />
+        </div>
+
+        <p className="text-center text-lg leading-5 text-dark-blue-400">
+          {label}
+        </p>
+
+        {steps.length > 0 && (
+          <div className="flex w-full flex-col gap-2">
+            {steps.map((step, index) => {
+              const isDone = index < completed
+              const isActive = index === completed
+              if (!isDone && !isActive) return null
+              return (
+                <div
+                  key={step.label}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors",
+                    isDone ? "bg-primary-25" : "bg-gray-50"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-flex size-5 shrink-0 items-center justify-center rounded-full",
+                      isDone ? "bg-primary-500" : "bg-gray-200"
+                    )}
+                  >
+                    {isDone ? (
+                      <Check className="size-3 text-white" />
+                    ) : (
+                      <span className="size-1.5 rounded-full bg-gray-500" />
+                    )}
+                  </span>
+                  <span className="flex-auto text-sm leading-5 text-dark-blue-400">
+                    {step.label}
+                  </span>
+                  {isDone && typeof step.count === "number" && (
+                    <span className="text-xs font-semibold leading-5 text-primary-500">
+                      {step.count}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        <div className="flex h-[39px] items-center justify-center gap-2">
+          {[
+            "bg-primary-700",
+            "bg-primary-600",
+            "bg-primary-400",
+            "bg-primary-100",
+          ].map((color, index) => (
+            <span
+              key={color}
+              className={cn("size-2.5 rounded-full animate-bounce", color)}
+              style={{ animationDelay: `${index * 120}ms` }}
+            />
+          ))}
+        </div>
+      </div>
+    </DialogContent>
+  </Dialog>
+)
+
 const UploadYourResume = ({
   sidebar,
   stepData,
@@ -3551,6 +3653,9 @@ const UploadYourResume = ({
   const reviewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reviewStartedAtRef = useRef<number | null>(null)
   const [isDropzoneHovered, setIsDropzoneHovered] = useState(false)
+  const [readingLabel, setReadingLabel] = useState(READING_LABEL_DEFAULT)
+  const [readingSteps, setReadingSteps] = useState<ReadingStep[]>([])
+  const [readingCompleted, setReadingCompleted] = useState(0)
 
   const { toggleValidation } = useStepContext()
   const { nextStep, setStep } = useStepperContext()
@@ -3577,21 +3682,26 @@ const UploadYourResume = ({
     stopProgressTicker()
     const startedAt = Date.now()
     reviewStartedAtRef.current = startedAt
-    const total = Math.max(4000, readTotalEstimateMs())
+    const total = Math.max(3000, readTotalEstimateMs())
     reviewTimerRef.current = setInterval(() => {
       const elapsed = Date.now() - startedAt
-      const linear = (elapsed / total) * 100
-      // under estimate: proportional. over: asymptotic creep so it never stalls.
+      // Linear to 95% across the expected total, then a constant slow crawl.
+      // Deliberately NOT asymptotic: an easing curve decays toward zero rate,
+      // which is exactly what reads as "frozen at 98%". A constant rate always
+      // visibly moves, so an overrun looks slow rather than stuck.
       const pct =
-        linear <= 92
-          ? linear
-          : 92 + 7 * (1 - Math.exp(-(elapsed - total * 0.92) / (total * 0.6)))
+        elapsed <= total
+          ? (elapsed / total) * 95
+          : 95 + (elapsed - total) / 3000
       setUploadPercent(Math.min(99, Math.max(1, Math.round(pct))))
     }, 200)
   }
 
   const resetResume = () => {
     stopProgressTicker()
+    setReadingLabel(READING_LABEL_DEFAULT)
+    setReadingSteps([])
+    setReadingCompleted(0)
     setIsReviewing(false)
     setResumeFile(null)
     setUploadedAt(null)
@@ -3621,6 +3731,9 @@ const UploadYourResume = ({
     }
 
     setResumeStatus("uploading")
+    setReadingLabel(READING_LABEL_DEFAULT)
+    setReadingSteps([])
+    setReadingCompleted(0)
     setUploadPercent(0)
     startProgressTicker()
 
@@ -3655,17 +3768,21 @@ const UploadYourResume = ({
       }
 
       const additions = data?.additions ?? {}
-      const skills = (additions.skills?.items ?? []).map((item: any) => ({
-        name: item.name,
-      }))
-      const industries = (additions.industries?.items ?? []).map(
-        (item: any) => ({ name: item.name ?? "" })
-      )
-      const education = (additions.education?.items ?? []).map((item: any) => ({
-        school: item.institution ?? "",
-        degree: item.degree ?? "",
-        fieldOfStudy: item.fieldOfStudy ?? "",
-      }))
+      const nameOf = (item: any): string =>
+        typeof item === "string" ? item : (item?.name ?? "")
+      const skills = (additions.skills?.items ?? [])
+        .map((item: any) => ({ name: nameOf(item) }))
+        .filter((item: { name: string }) => item.name)
+      const industries = (additions.industries?.items ?? [])
+        .map((item: any) => ({ name: nameOf(item) }))
+        .filter((item: { name: string }) => item.name)
+      const education = (additions.education?.items ?? [])
+        .map((item: any) => ({
+          school: item?.institution ?? item?.school ?? "",
+          degree: item?.degree ?? "",
+          fieldOfStudy: item?.fieldOfStudy ?? item?.field_of_study ?? "",
+        }))
+        .filter((item: { school: string; degree: string }) => item.school || item.degree)
       const workExperience = (additions.workExperience?.items ?? []).map(
         (item: any) => ({
           title: item.title ?? "",
@@ -3675,12 +3792,12 @@ const UploadYourResume = ({
           description: item.description ?? "",
         })
       )
-      const certifications = (additions.certifications?.items ?? []).map(
-        (item: any) => ({
-          name: item.name ?? "",
-          issuer: item.issuingBody ?? "",
-        })
-      )
+      const certifications = (additions.certifications?.items ?? [])
+        .map((item: any) => ({
+          name: nameOf(item),
+          issuer: item?.issuingBody ?? item?.issuer ?? "",
+        }))
+        .filter((item: { name: string }) => item.name)
 
       const extractedName = (data?.extractedName ?? "").trim()
       const [firstName, ...remainingNameParts] = extractedName
@@ -3709,11 +3826,38 @@ const UploadYourResume = ({
         ...(skillNames.length ? { lookingToWorkWith: skillNames } : {}),
       }))
 
-      if (skillNames.length > 0) {
-      }
+        // Only surface categories the parse actually returned. A resume with no
+      // certifications never claims to be extracting them. Figma's wording.
+      const clientCompanies = Array.from(
+        new Set(
+          workExperience
+            .map((item: { company: string }) => item.company)
+            .filter(Boolean)
+        )
+      )
+      const foundSteps: ReadingStep[] = [
+        ...(extractedName ? [{ label: "Personal info" }] : []),
+        ...(workExperience.length
+          ? [{ label: "Work experience", count: workExperience.length }]
+          : []),
+        ...(education.length
+          ? [{ label: "Education", count: education.length }]
+          : []),
+        ...(certifications.length
+          ? [{ label: "Certifications", count: certifications.length }]
+          : []),
+        ...(clientCompanies.length
+          ? [{ label: "Previous clients", count: clientCompanies.length }]
+          : []),
+        ...(industryNames.length
+          ? [{ label: "Industry expertise", count: industryNames.length }]
+          : []),
+      ]
+      setReadingSteps(foundSteps)
 
       try {
-        setLoadingMessage("Updating your profile...")
+
+      setLoadingMessage("Updating your profile...")
         await UserAPI.applyResume({
           parseResultId: data?.parseResultId,
           skills,
@@ -3728,6 +3872,14 @@ const UploadYourResume = ({
         // Autofill already landed in stepData, so onboarding can continue even
         // if the background profile write fails.
         console.error("Failed to auto-apply resume data:", applyError)
+      }
+
+      // Let the step list finish playing before the modal closes, so the user
+      // actually sees what was found rather than a flash.
+      for (let index = 0; index < foundSteps.length; index++) {
+        setReadingLabel(`Extracting your ${foundSteps[index].label.toLowerCase()}...`)
+        setReadingCompleted(index + 1)
+        await new Promise((resolve) => setTimeout(resolve, READING_STEP_MS))
       }
 
       // Everything is genuinely done; complete and enable Continue together.
@@ -3773,6 +3925,13 @@ const UploadYourResume = ({
     <div className="min-h-screen flex 2xl:pl-[480px] bg-white">
       {sidebar}
 
+      <ReadingResumeModal
+        open={resumeStatus === "uploading"}
+        label={readingLabel}
+        steps={readingSteps}
+        completed={readingCompleted}
+      />
+
       <form
         className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={onSubmit}
@@ -3799,6 +3958,20 @@ const UploadYourResume = ({
           </p>
 
           <div className="mt-10 2xl:mt-[50px]">
+            {/* Always mounted, so Replace can open the picker straight from the
+                uploaded state. Cancelling the picker fires no change event, so
+                the existing file simply stays. */}
+            <input
+              ref={resumeInputRef}
+              type="file"
+              accept=".pdf,.doc,.docx"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) void processResume(file)
+                event.target.value = ""
+              }}
+            />
             <div className="space-y-6">
               {hasError ? (
                 <div className="flex min-h-[148px] w-full flex-col gap-3 items-center justify-center rounded-lg border border-error-300 bg-error-25 px-6 py-4">
@@ -3884,7 +4057,7 @@ const UploadYourResume = ({
                     <button
                       type="button"
                       className="shrink-0 text-xs font-semibold leading-5 text-primary-500 hover:underline"
-                      onClick={resetResume}
+                      onClick={() => resumeInputRef.current?.click()}
                     >
                       Replace
                     </button>
@@ -3945,17 +4118,6 @@ const UploadYourResume = ({
                     PDF, DOC, DOCX (max 5MB)
                   </p>
 
-                  <input
-                    ref={resumeInputRef}
-                    type="file"
-                    accept=".pdf,.doc,.docx"
-                    className="hidden"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0]
-                      if (file) void processResume(file)
-                      event.target.value = ""
-                    }}
-                  />
                 </div>
               )}
 
