@@ -3684,7 +3684,10 @@ const ReadingResumeModal = ({
         </p>
 
         {/* Reserved height so rows appearing never shift the layout */}
-        <div className="mt-6 flex min-h-[132px] w-full flex-col justify-center gap-3">
+        {/* Bottom-anchored: new lines enter at the bottom and push earlier
+            ones up. Centring made the block grow in both directions, which
+            read as lines drifting up and then settling back down. */}
+        <div className="mt-6 flex min-h-[132px] w-full flex-col justify-end gap-3">
           {steps.length === 0 ? (
             // Lines arrive at the bottom and push earlier ones up, each one
             // consuming a shimmering placeholder slot above it.
