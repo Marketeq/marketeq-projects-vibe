@@ -3565,7 +3565,7 @@ const RESUME_ERROR_MESSAGES: Partial<
 > = {
   "service-busy": [
     "We couldn't read your resume just now.",
-    "Nothing was changed on your profile. Please try again in a moment.",
+    "Please try again in a moment.",
   ],
   "size-limit": [
     "Uploaded file exceeds the size limit of 5MB.",
