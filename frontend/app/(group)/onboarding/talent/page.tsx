@@ -3940,6 +3940,21 @@ const UploadYourResume = ({
   // hardcoded guess. Past the estimate it keeps creeping toward 99 rather than
   // parking, and only genuine completion shows 100.
 
+  // Walk the page cursor while the document is being read, so the wait reports
+  // something real and changing. Paced across the expected duration but capped:
+  // dividing a large stored estimate by the page count gave ~5s a page, which
+  // meant page 1 sat there for the whole read.
+  useEffect(() => {
+    if (resumeStatus !== "uploading" || !pageCount || pageCount < 2) return
+    const spread = Math.round(readTotalEstimateMs() / pageCount)
+    const per = Math.min(1800, Math.max(700, spread))
+    const id = setInterval(
+      () => setPageCursor((current) => (current < pageCount ? current + 1 : current)),
+      per
+    )
+    return () => clearInterval(id)
+  }, [resumeStatus, pageCount])
+
   const startProgressTicker = () => {
     stopProgressTicker()
     const startedAt = Date.now()
