@@ -73,6 +73,13 @@ Login is working. Every single login regression in this repo's history happened 
 - `backend/apps/api-gateway/src/proxy/proxy.service.ts`
 - `backend/libs/shared/src/guards/**`, `backend/libs/shared/src/decorators/**`
 - Any of the six frozen env templates: `frontend/.env.{local,staging,production}.example`, `backend/.env.{local,staging,production}.example`
+**Granting a temporary unlock.** Frozen files are locked for everyone except @CTorres9800. When someone genuinely needs to touch one, @CTorres9800 adds the `frozen-unlock` label to that specific PR. Labelling requires write access, so a contributor cannot grant it to themselves, and it applies to that PR only — it is not a standing exemption and does not carry to the next one. The SOP check then reports the unlock instead of blocking, and reviewers are expected to scrutinise those diffs as closely as the original work: no refactors, no restyling, no copy changes beyond what was approved.
+
+- `frontend/app/(group)/billing/**` — the entire billing tree. Locked 2026-08-26. Covers `page.tsx`, `transactions/`, `invoices/`, `my-plans/`, and `payment-methods/`.
+  - **Frozen specifically:** layout, table columns and their order, status badges, currency and date formatting, empty states, filters, pagination, and every user-facing string. These screens show people money; a cosmetic change that misstates an amount, a currency, or a status is a financial defect, not a styling one.
+  - **The only permitted change:** backend wiring that alters no class name, element, timing, or string.
+  - Anything else requires explicit @CTorres9800 approval.
+
 - `frontend/app/(group)/onboarding/**` — the entire onboarding flow. Locked 2026-08-26. Covers the role picker (`page.tsx`), `talent/page.tsx`, and `client/page.tsx`. Rebuilt end to end in one session after a long period of accumulated defects; every value in it was set deliberately.
   - **Frozen specifically:** the five talent steps and their order, the step registry and numbering, the resume upload step and its reading modal (skeleton shimmer, extraction feed, summary rows and counts, Done button, all six error states and their exact copy), the autofill mapping from parse result into `stepData`, the avatar empty state (initials when a name is known, icon otherwise), every validation guard and error message, and all animation timings.
   - **The only permitted change:** backend wiring that alters no class name, element, timing, or string.

@@ -147,6 +147,11 @@ jobs:
               frontend/components/settings-sidebar.tsx|\
               frontend/app/top-most-header.tsx|\
               "frontend/app/(group)/active-project/[id]/page.tsx"|\
+              "frontend/app/(group)/billing/page.tsx"|\
+              "frontend/app/(group)/billing/transactions/page.tsx"|\
+              "frontend/app/(group)/billing/invoices/page.tsx"|\
+              "frontend/app/(group)/billing/my-plans/page.tsx"|\
+              "frontend/app/(group)/billing/payment-methods/page.tsx"|\
               "frontend/app/(group)/onboarding/page.tsx"|\
               "frontend/app/(group)/onboarding/talent/page.tsx"|\
               "frontend/app/(group)/onboarding/client/page.tsx"|\
@@ -159,7 +164,14 @@ jobs:
           if [ "$FROZEN_UI_HIT" = "1" ]; then
             # Only CTO can touch these files
             PR_AUTHOR=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json author --jq '.author.login' 2>/dev/null || echo "")
-            if [ "$PR_AUTHOR" != "CTorres9800" ]; then
+            # Per-PR unlock: @CTorres9800 adds the `frozen-unlock` label to let a
+            # specific person touch a frozen file for a specific PR. Labelling
+            # needs write access, so contributors cannot grant it to themselves,
+            # and it expires with the PR - it is not a standing exemption.
+            FROZEN_UNLOCK=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json labels --jq '[.labels[].name] | index("frozen-unlock") // empty' 2>/dev/null || echo "")
+            if [ -n "$FROZEN_UNLOCK" ]; then
+              add "🔓 **Frozen file unlock in effect** for $(echo -e "$FROZEN_UI_FILES"). @CTorres9800 granted \`frozen-unlock\` on this PR, so the freeze is waived here only. Review these changes with the same care as the original: no refactors, no restyling, no copy changes beyond what was approved."
+            elif [ "$PR_AUTHOR" != "CTorres9800" ]; then
               add "🔒 **Frozen UI file(s) touched:** $(echo -e "$FROZEN_UI_FILES"). These files are locked and can only be modified by @CTorres9800. Backend/API work on the My Jobs screen belongs in \`frontend/app/(group)/my-jobs/my-jobs.data.ts\`, which is intentionally NOT frozen. Remove these changes from the PR or request CTO approval."
             fi
           fi
