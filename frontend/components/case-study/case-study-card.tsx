@@ -12,7 +12,20 @@ import {
   DialogTitle,
   IconButton,
 } from "@/components/ui"
-import type { CaseStudy } from "@/lib/hooks/use-case-study-store"
+import type { CaseStudyStatus } from "@/service/http/case-study"
+import { imageTransformStyle } from "./sections/_shared"
+
+/** Slim view of a case study for grid display — CaseStudyGrid maps the full API response down to this. */
+export interface CaseStudySummary {
+  id: string
+  title: string
+  status: CaseStudyStatus
+  thumbnail: string | null
+  thumbnailZoom?: number
+  thumbnailRotation?: number
+  thumbnailOffsetX?: number
+  thumbnailOffsetY?: number
+}
 
 /**
  * Single case study tile for the profile Portfolio grid. The card itself
@@ -29,7 +42,7 @@ export function CaseStudyCard({
   onDelete,
   onToggleVisibility,
 }: {
-  caseStudy: CaseStudy
+  caseStudy: CaseStudySummary
   onClick: () => void
   onDelete: (id: string) => void
   onToggleVisibility: (id: string) => void
@@ -51,6 +64,12 @@ export function CaseStudyCard({
             src={caseStudy.thumbnail}
             alt={caseStudy.title}
             className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+            style={imageTransformStyle(
+              caseStudy.thumbnailZoom,
+              caseStudy.thumbnailRotation,
+              caseStudy.thumbnailOffsetX,
+              caseStudy.thumbnailOffsetY
+            )}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-50">

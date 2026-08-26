@@ -2,8 +2,9 @@ import type { Metadata } from "next"
 import { CaseStudyPublicResolver } from "@/components/case-study/case-study-public-resolver"
 
 export async function generateMetadata(): Promise<Metadata> {
-  // The title for a locally-published case study is only known client-side
-  // (localStorage) — resolved by CaseStudyPublicResolver, not here.
+  // The real title is only known after CaseStudyPublicResolver fetches the
+  // case study client-side (portfolio-service has no server-side-fetchable
+  // route usable from a Next.js server component here), not in this function.
   return { title: "Case Study — Marketeq" }
 }
 
@@ -14,13 +15,9 @@ export async function generateMetadata(): Promise<Metadata> {
  * (portfolio-service) isn't linked to a marketplace project (listings
  * -service) anywhere in the data model today. Rather than fabricate that
  * link, that surrounding chrome renders from a shared demo data set; only
- * the actual case-study title/blocks are real (see
+ * the actual case-study title/blocks are real (fetched from
+ * portfolio-service's public endpoint — see
  * components/case-study/case-study-public-resolver.tsx).
- *
- * Real case studies are stored client-side only (localStorage, see
- * lib/hooks/use-case-study-store.ts) — there is no reliable backend to fetch
- * them from server-side, so slug resolution happens in the browser via
- * CaseStudyPublicResolver.
  */
 export default async function CaseStudyPublicPage({
   params,

@@ -36,6 +36,7 @@ Keep THIS file as an index only (under 150 lines). Write details to the topic fi
 - [services/notification-service.md](.claude/memory/services/notification-service.md)
 - [services/autocomplete-service.md](.claude/memory/services/autocomplete-service.md)
 - [services/content-moderation-service.md](.claude/memory/services/content-moderation-service.md)
+- [services/portfolio-service.md](.claude/memory/services/portfolio-service.md) — case-study builder, now fully wired to the frontend (was localStorage-only)
 - [services/_TEMPLATE.md](.claude/memory/services/_TEMPLATE.md) — copy this for new services
 
 ### Frontend
@@ -48,6 +49,6 @@ Keep THIS file as an index only (under 150 lines). Write details to the topic fi
 - Local Claude memory: /Users/christorres/.claude/projects/-Users-christorres-vibecoding/memory/
 
 ## Service Status Summary (see progress.md for full detail)
-**Implemented:** auth, user, listings (with teams/services/scoring), checkout, messaging, notification, contracts, time-tracking
+**Implemented:** auth, user, listings (with teams/services/scoring), checkout, messaging, notification, contracts, time-tracking, portfolio (media + case-study builder, frontend wired end-to-end)
 **In Progress:** homepage (api-gateway module + frontend SSR, ~85%)
-**Scaffolded:** admin, affiliate-referral, algolia, autocomplete, billing, content-moderation, earnings, favorites, invitations, payout, portfolio, search, suggestions, transaction
+**Scaffolded:** admin, affiliate-referral, algolia, autocomplete, billing, content-moderation, earnings, favorites, invitations, payout, search, suggestions, transaction
