@@ -656,10 +656,11 @@ export const ImageEditor = ({
    *  previous "CH" placeholder when omitted, so existing callers are
    *  unaffected. */
   fallbackIcon?: React.ReactNode
-  /** Take the empty-state button straight to the file browser instead of
-   *  opening the intermediate "Change Profile Image" dialog. Off by default so
-   *  the profile pages keep their existing two-step flow. onDropAccepted still
-   *  sends EDIT, so choosing a file lands on the crop step either way. */
+  /** Take the startingPoint button straight to the file browser instead of
+   *  opening the intermediate "Change Profile Image" dialog. Applies to both
+   *  Upload Photo and Change Photo. Off by default so the profile pages keep
+   *  their existing two-step flow. onDropAccepted still sends EDIT, so choosing
+   *  a file lands on the crop step either way. */
   skipUploadDialog?: boolean
   /** Fired when a dropped file fails validation. The built-in rejection message
    *  only renders inside this component's dialogs, so callers using
@@ -985,8 +986,11 @@ export const ImageEditor = ({
       <input hidden {...getInputProps()} />
 
       {startingPoint({
+        // skipUploadDialog callers want the button to behave like a plain file
+        // input in both states - Upload Photo and Change Photo alike - rather
+        // than routing through this component's own dialogs.
         open: () =>
-          dataUrl ? send("REMOVE") : skipUploadDialog ? open() : send("UPLOAD"),
+          skipUploadDialog ? open() : dataUrl ? send("REMOVE") : send("UPLOAD"),
         dataUrl,
         style,
         onRemove,

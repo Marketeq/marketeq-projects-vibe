@@ -2164,7 +2164,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private normalizeUsername(value: string): string {
     const trimmed = value.trim().toLowerCase();
-    const normalized = trimmed.replace(/[^a-z0-9_]/g, '');
+    const normalized = trimmed.replace(/[^a-z0-9._]/g, '');
     return normalized.length ? normalized : 'user';
   }
 
