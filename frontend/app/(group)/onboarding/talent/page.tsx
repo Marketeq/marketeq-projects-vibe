@@ -434,7 +434,7 @@ const IntroduceYourself = ({
               Back
             </Button>
 
-            <div className="flex items-center gap-x-6">
+            <div className="flex items-center gap-x-3">
               <Button
                 className="opacity-50 hover:opacity-100"
                 variant="ghost"
@@ -502,16 +502,16 @@ const CreateYourUsername = ({
   const { user } = useAuth()
   const { username } = watch()
   const generatedUsernameSuggestions = useMemo(() => {
-    const contextParts = [stepData?.recentJobTitle, user?.email]
-      .filter(Boolean)
-      .join(" ")
-      .trim()
+    // First name + job title only. Passing the email pulled tokens out of its
+    // local-part, so suggestions were built from the address rather than from
+    // who the person is and what they do.
+    const contextParts = [stepData?.recentJobTitle].filter(Boolean).join(" ").trim()
     return generateUsernameSuggestions(
       stepData?.firstName || "",
       "",
       contextParts
     )
-  }, [stepData?.firstName, stepData?.recentJobTitle, user?.email])
+  }, [stepData?.firstName, stepData?.recentJobTitle])
 
   const { toggleValidation } = useStepContext()
   const { nextStep, prevStep, setStep } = useStepperContext()
@@ -749,13 +749,7 @@ const CreateYourUsername = ({
               {formError && <ErrorMessage size="sm">{formError}</ErrorMessage>}
             </div>
 
-            {isSuggestionsLoading ? (
-              <div className="mt-6">
-                <span className="block text-sm leading-[16.94px] text-gray-500">
-                  Checking username suggestions...
-                </span>
-              </div>
-            ) : show ? (
+            {isSuggestionsLoading ? null : show ? (
               <div className="mt-6">
                 {expandedSuggestions.map((username, index) => (
                   <React.Fragment key={username}>
@@ -775,12 +769,6 @@ const CreateYourUsername = ({
                     )}
                   </React.Fragment>
                 ))}
-                {availableSuggestions.length === 0 && (
-                  <span className="block text-sm leading-[16.94px] text-gray-500">
-                    No available suggestions right now. Try entering your own
-                    username.
-                  </span>
-                )}
               </div>
             ) : (
               <div className="mt-6">
@@ -861,7 +849,7 @@ const CreateYourUsername = ({
               Back
             </Button>
 
-            <div className="flex items-center gap-x-6">
+            <div className="flex items-center gap-x-3">
               <Button
                 className="opacity-50 hover:opacity-100"
                 variant="ghost"
@@ -1718,14 +1706,31 @@ const ShowcaseYourTalent = ({
     industriesWorkedWith,
     yourTopSkills,
   }) => {
-    const hasAnyField =
-      recentJobTitle ||
-      (industriesWorkedWith && industriesWorkedWith.length > 0) ||
-      (yourTopSkills && yourTopSkills.length > 0)
-    if (!hasAnyField) {
-      setFormError("Please enter at least one field")
-      return
+    // One generic line could not say WHICH field was missing. Each field now
+    // reports itself, under the input it belongs to.
+    let missing = false
+    if (!recentJobTitle?.trim()) {
+      setError("recentJobTitle", {
+        type: "manual",
+        message: "Please enter your most recent job title",
+      })
+      missing = true
     }
+    if (!industriesWorkedWith?.length) {
+      setError("industriesWorkedWith", {
+        type: "manual",
+        message: "Please select at least one industry",
+      })
+      missing = true
+    }
+    if (!yourTopSkills?.length) {
+      setError("yourTopSkills", {
+        type: "manual",
+        message: "Please add at least one skill",
+      })
+      missing = true
+    }
+    if (missing) return
     setFormError(null)
     setStepData({
       ...stepData,
@@ -1947,6 +1952,13 @@ const ShowcaseYourTalent = ({
                     </div>
                   )}
                 />
+                <HookFormErrorMessage
+                  errors={errors}
+                  name="recentJobTitle"
+                  render={({ message }) => (
+                    <ErrorMessage size="sm">{message}</ErrorMessage>
+                  )}
+                />
               </div>
               <div className="flex flex-col gap-y-1.5">
                 <Label
@@ -2061,6 +2073,13 @@ const ShowcaseYourTalent = ({
                     </Combobox>
                   )}
                 />
+                <HookFormErrorMessage
+                  errors={errors}
+                  name="industriesWorkedWith"
+                  render={({ message }) => (
+                    <ErrorMessage size="sm">{message}</ErrorMessage>
+                  )}
+                />
                 {selectedIndustries.length > 0 && (
                   <div className="flex flex-wrap gap-3">
                     {selectedIndustries.map((item) => (
@@ -2089,6 +2108,13 @@ const ShowcaseYourTalent = ({
                         name: "yourTopSkills",
                       })}
                     />
+                  )}
+                />
+                <HookFormErrorMessage
+                  errors={errors}
+                  name="yourTopSkills"
+                  render={({ message }) => (
+                    <ErrorMessage size="sm">{message}</ErrorMessage>
                   )}
                 />
               </div>
@@ -2128,7 +2154,7 @@ const ShowcaseYourTalent = ({
               Back
             </Button>
 
-            <div className="flex items-center gap-x-6">
+            <div className="flex items-center gap-x-3">
               <Button
                 className="opacity-50 hover:opacity-100"
                 variant="ghost"
@@ -3197,7 +3223,7 @@ const SetYourPreferences = ({
               Back
             </Button>
 
-            <div className="flex items-center gap-x-6">
+            <div className="flex items-center gap-x-3">
               <Button
                 className="opacity-50 hover:opacity-100"
                 variant="ghost"
@@ -4555,7 +4581,7 @@ const UploadYourResume = ({
               back and the button provably cannot work. Steps 2-5 keep theirs,
               which move between steps rather than leaving the flow. */}
           <div className="flex items-start justify-end">
-            <div className="flex items-center gap-x-6">
+            <div className="flex items-center gap-x-3">
               <Button
                 className="opacity-50 hover:opacity-100"
                 variant="ghost"
