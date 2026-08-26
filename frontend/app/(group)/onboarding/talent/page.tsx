@@ -3437,6 +3437,12 @@ const RESUME_ACCEPTED_TYPES = [
 ]
 const RESUME_MAX_SIZE = 5 * 1024 * 1024 // 5MB, matches resume.controller.ts
 
+const dashedBorderImage = (hex: string) =>
+  `url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='8' ry='8' stroke='%23${hex}' stroke-width='2' stroke-dasharray='7%2c 6'/%3e%3c/svg%3e")`
+
+const DASH_BORDER_IDLE = dashedBorderImage("D0D5DD")
+const DASH_BORDER_ACTIVE = dashedBorderImage("306CFE")
+
 const formatFileSize = (bytes: number) => {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -3482,6 +3488,7 @@ const UploadYourResume = ({
   const [resumeFile, setResumeFile] = useState<File | null>(null)
   const [uploadedAt, setUploadedAt] = useState<Date | null>(null)
   const [uploadPercent, setUploadPercent] = useState(0)
+  const [isDropzoneHovered, setIsDropzoneHovered] = useState(false)
   const [loadingMessage, setLoadingMessage] = useState("Reading your resume...")
 
   const { toggleValidation } = useStepContext()
@@ -3733,11 +3740,21 @@ const UploadYourResume = ({
               ) : (
                 <div
                   className={cn(
-                    "flex h-[148px] w-full cursor-pointer flex-col gap-3 items-center rounded-lg border-2 border-dashed px-6 py-4 transition-colors",
+                    "group flex h-[148px] w-full cursor-pointer flex-col gap-3 items-center rounded-lg px-6 py-4 transition-colors",
                     resumeStatus === "dragging"
-                      ? "border-primary-500 bg-primary-25"
-                      : "border-gray-300 bg-white hover:border-primary-500 hover:bg-primary-25"
+                      ? "bg-primary-25"
+                      : "bg-white hover:bg-primary-25"
                   )}
+                  style={{
+                    backgroundImage:
+                      resumeStatus === "dragging"
+                        ? DASH_BORDER_ACTIVE
+                        : isDropzoneHovered
+                          ? DASH_BORDER_ACTIVE
+                          : DASH_BORDER_IDLE,
+                  }}
+                  onMouseEnter={() => setIsDropzoneHovered(true)}
+                  onMouseLeave={() => setIsDropzoneHovered(false)}
                   onDragOver={(event) => {
                     event.preventDefault()
                     setResumeStatus("dragging")

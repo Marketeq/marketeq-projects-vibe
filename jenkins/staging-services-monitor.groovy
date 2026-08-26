@@ -292,15 +292,26 @@ PY
             // surfaced it until an endpoint started returning 500.
             steps {
                 script {
-                    def body = sh(returnStdout: true, script: 'curl -s -m 30 "${BACKEND_URL}/health/migrations" || true').trim()
-                    if (body && body.contains('"pending"') && !body.contains('"pending":0')) {
-                        echo "Pending migrations reported: ${body}"
-                        currentBuild.result = 'UNSTABLE'
-                        currentBuild.description = ((currentBuild.description ?: '') + ' pending migrations').trim()
-                    } else if (!body) {
-                        echo 'Migration endpoint not available yet; skipping.'
+                    def code = sh(returnStdout: true, script: 'curl -s -o /tmp/mig.json -w "%{http_code}" -m 30 "${BACKEND_URL}/health/migrations" || echo 000').trim()
+                    def body = sh(returnStdout: true, script: 'cat /tmp/mig.json 2>/dev/null || true').trim()
+
+                    if (code == '200' && body.contains('"pending"')) {
+                        if (body.contains('"pending":0')) {
+                            echo 'Migrations up to date.'
+                        } else {
+                            echo "Pending migrations reported: ${body}"
+                            currentBuild.result = 'UNSTABLE'
+                            currentBuild.description = ((currentBuild.description ?: '') + ' pending migrations').trim()
+                        }
                     } else {
-                        echo 'No pending migrations.'
+                        // Anything else means the check did not run. Saying
+                        // "no pending migrations" here would be a false all
+                        // clear, which is the failure this stage exists to
+                        // prevent. The endpoint does not exist yet: the
+                        // gateway answers 401 for unmatched paths.
+                        echo "Migration check DID NOT RUN (http ${code}). This is not an all clear."
+                        currentBuild.result = 'UNSTABLE'
+                        currentBuild.description = ((currentBuild.description ?: '') + ' migration check unavailable').trim()
                     }
                 }
             }
