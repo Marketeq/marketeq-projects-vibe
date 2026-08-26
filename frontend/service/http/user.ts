@@ -171,12 +171,23 @@ export const UserAPI = {
     AxiosRequest.del(`${USER_BASE}/v1/industries/${industryId}`),
 
   // Resume
-  uploadResume: (file: File) => {
+  uploadResume: (file: File, onUploadProgress?: (percent: number) => void) => {
     const formData = new FormData()
     formData.append("file", file)
     return AxiosRequest.post(`${USER_BASE}/resume/upload`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
       timeout: 120000,
+      ...(onUploadProgress
+        ? {
+            onUploadProgress: (event: {
+              loaded: number
+              total?: number
+            }) => {
+              if (!event.total) return
+              onUploadProgress(Math.round((event.loaded * 100) / event.total))
+            },
+          }
+        : {}),
     })
   },
   applyResume: (data: {

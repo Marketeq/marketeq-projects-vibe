@@ -94,6 +94,76 @@ export class ProxyController {
     return { status: 'ready' }
   }
 
+  // Reports migrations that exist in the image but were never applied. Three
+  // sat unapplied for an unknown period because the oldest failed and stopped
+  // the rest, while the deploy still reported success. Nothing surfaced that
+  // until an endpoint started returning 500, so the watchdog now asks here.
+  @Get('health/migrations')
+  async migrationsHealth() {
+    const { Client } = await import('pg')
+    const fs = await import('fs')
+    const path = await import('path')
+
+    const schemaFor: Record<string, string> = {
+      'listings-service': 'listings',
+      'user-service': 'user_service',
+      'messaging-service': 'messaging',
+      'time-tracking-service': 'time_tracking',
+    }
+
+    const client = new Client({
+      connectionString: process.env.DATABASE_URL,
+      ssl:
+        (process.env.DATABASE_SSL ?? 'false').toLowerCase() === 'true'
+          ? { rejectUnauthorized: false }
+          : false,
+    })
+
+    const services: Array<{ service: string; pending: string[] }> = []
+
+    try {
+      await client.connect()
+
+      for (const [service, schema] of Object.entries(schemaFor)) {
+        const dir = path.join(__dirname, '..', '..', service, 'migrations')
+        if (!fs.existsSync(dir)) continue
+
+        const files = fs
+          .readdirSync(dir)
+          .filter((f) => f.endsWith('.js') && /^\d+-/.test(f))
+
+        let applied = new Set<string>()
+        try {
+          const rows = await client.query(
+            `select name from "${schema}".migrations`,
+          )
+          applied = new Set(rows.rows.map((r: any) => r.name))
+        } catch {
+          continue // no migrations table for this schema yet
+        }
+
+        const pending = files
+          .map((f) => {
+            const m = f.match(/^(\d+)-(.+)\.js$/)
+            return m ? `${m[2]}${m[1]}` : ''
+          })
+          .filter((name) => name && !applied.has(name))
+
+        if (pending.length) services.push({ service, pending })
+      }
+    } catch (err: any) {
+      return {
+        status: 'error',
+        message: err?.message ?? 'migration check failed',
+      }
+    } finally {
+      await client.end().catch(() => undefined)
+    }
+
+    const pending = services.reduce((n, s) => n + s.pending.length, 0)
+    return { status: pending ? 'pending' : 'ok', pending, services }
+  }
+
   @Get('services/debug')
   async servicesDebug() {
     try {

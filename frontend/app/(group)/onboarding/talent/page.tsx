@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useRef, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import industriesMock from "@/public/mock/industries.json"
@@ -34,9 +35,11 @@ import {
 import { generateUsernameSuggestions } from "@/utils/username"
 import {
   AlertCircle,
+  AlertTriangle,
   Check,
   ChevronRight,
   File02,
+  FileText,
   Home03,
   Plus,
   RefreshCw01,
@@ -80,9 +83,6 @@ import {
   CircularProgress,
   Combobox,
   ComboboxInput,
-  Dropzone,
-  type DropzoneState,
-  ONE_MB,
   ComboboxLabel,
   ComboboxOption,
   ComboboxOptions,
@@ -196,7 +196,7 @@ const IntroduceYourself = ({
   const { firstName, lastName } = watch()
 
   const { toggleValidation } = useStepContext()
-  const { nextStep, setStep } = useStepperContext()
+  const { nextStep, prevStep, setStep } = useStepperContext()
 
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
 
@@ -397,7 +397,7 @@ const IntroduceYourself = ({
               variant="outlined"
               visual="gray"
               type="button"
-              onClick={() => router.push("/onboarding")}
+              onClick={prevStep}
             >
               Back
             </Button>
@@ -3426,7 +3426,46 @@ const DoNextSidebar = () => {
   )
 }
 
+// Mirrors the resume upload gates and copy used on the talent profile
+// (talent-profile/page.tsx:488-518, 4716-4750) so both entry points reject the
+// same files with the same wording.
 const RESUME_ACCEPTED_EXTENSIONS = [".pdf", ".doc", ".docx"]
+const RESUME_ACCEPTED_TYPES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]
+const RESUME_MAX_SIZE = 5 * 1024 * 1024 // 5MB, matches resume.controller.ts
+
+const formatFileSize = (bytes: number) => {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
+
+type ResumeUploadStatus =
+  | "idle"
+  | "dragging"
+  | "uploading"
+  | "uploaded"
+  | "failed"
+  | "size-limit"
+  | "unsupported"
+  | "not_a_resume"
+  | "nothing_found"
+  | "name_mismatch"
+
+const RESUME_ERROR_MESSAGES: Partial<Record<ResumeUploadStatus, string>> = {
+  "size-limit":
+    "Uploaded file exceeds the size limit of 5MB. Please select a different file.",
+  unsupported:
+    "Unsupported file type. Only PDF, DOC, and DOCX files are accepted.",
+  not_a_resume:
+    "This doesn't look like a resume. Please upload a resume file in PDF, DOC, or DOCX format.",
+  nothing_found:
+    "We couldn't pull any details out of this file. Please try uploading a different resume.",
+  name_mismatch:
+    "This resume appears to belong to someone else. Please upload your own resume.",
+}
 
 const UploadYourResume = ({
   sidebar,
@@ -3437,46 +3476,70 @@ const UploadYourResume = ({
   stepData: CreateTalentType | null
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
 }) => {
-  const [dropzoneValue, setDropzoneValue] = useState<DropzoneState | undefined>()
-  const [formError, setFormError] = useState<string | null>(null)
-  const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
+  const router = useRouter()
+  const resumeInputRef = useRef<HTMLInputElement>(null)
+  const [resumeStatus, setResumeStatus] = useState<ResumeUploadStatus>("idle")
+  const [resumeFile, setResumeFile] = useState<File | null>(null)
+  const [uploadedAt, setUploadedAt] = useState<Date | null>(null)
+  const [uploadPercent, setUploadPercent] = useState(0)
+  const [loadingMessage, setLoadingMessage] = useState("Reading your resume...")
 
   const { toggleValidation } = useStepContext()
   const { nextStep, setStep } = useStepperContext()
   const { totalSteps, currentStep } = useStepRootContext()
 
   const progress = ((currentStep + 1) / totalSteps) * 100
+  const errorMessage = RESUME_ERROR_MESSAGES[resumeStatus]
+  const hasError = resumeStatus === "failed" || Boolean(errorMessage)
+
+  const resetResume = () => {
+    setResumeFile(null)
+    setUploadedAt(null)
+    setUploadPercent(0)
+    setResumeStatus("idle")
+    setLoadingMessage("Reading your resume...")
+  }
 
   // Upload -> parse -> autofill the remaining onboarding steps -> apply to the
   // profile in the background. New account, so there is nothing to conflict
-  // with; the conflict/summary UI the talent profile shows is not needed here.
+  // with; the conflict and summary UI the talent profile shows is not needed.
   const processResume = async (file: File) => {
-    setIsProcessing(true)
-    setFormError(null)
-    setStatusMessage("Reading your resume...")
+    setResumeFile(file)
+
+    const extension = file.name
+      .substring(file.name.lastIndexOf("."))
+      .toLowerCase()
+    if (
+      !RESUME_ACCEPTED_TYPES.includes(file.type) &&
+      !RESUME_ACCEPTED_EXTENSIONS.includes(extension)
+    ) {
+      setResumeStatus("unsupported")
+      return
+    }
+    if (file.size > RESUME_MAX_SIZE) {
+      setResumeStatus("size-limit")
+      return
+    }
+
+    setResumeStatus("uploading")
+    setUploadPercent(0)
+    setLoadingMessage("Reading your resume...")
 
     try {
-      const { data } = await UserAPI.uploadResume(file)
+      const { data } = await UserAPI.uploadResume(file, setUploadPercent)
 
       if (data?.status === "not_a_resume") {
-        setFormError(
-          "That file doesn't look like a resume. Upload a resume or skip this step."
-        )
+        setResumeStatus("not_a_resume")
         return
       }
       if (data?.status === "nothing_found") {
-        setFormError(
-          "We couldn't read anything from that file. You can fill in your details on the next steps."
-        )
+        setResumeStatus("nothing_found")
         return
       }
       // The account already carries the registered name, so this still guards
-      // against someone uploading a resume that isn't theirs.
+      // against someone uploading a resume that is not theirs.
       if (data?.nameMismatch) {
-        setFormError(
-          "The name on this resume doesn't match your account. Please upload your own resume."
-        )
+        setResumeStatus("name_mismatch")
         return
       }
 
@@ -3484,9 +3547,9 @@ const UploadYourResume = ({
       const skills = (additions.skills?.items ?? []).map((item: any) => ({
         name: item.name,
       }))
-      const industries = (additions.industries?.items ?? []).map((item: any) => ({
-        name: item.name ?? "",
-      }))
+      const industries = (additions.industries?.items ?? []).map(
+        (item: any) => ({ name: item.name ?? "" })
+      )
       const education = (additions.education?.items ?? []).map((item: any) => ({
         school: item.institution ?? "",
         degree: item.degree ?? "",
@@ -3521,8 +3584,8 @@ const UploadYourResume = ({
         .map((industry: { name: string }) => industry.name)
         .filter(Boolean)
 
-      // Only fill what the resume actually yielded; never overwrite a field
-      // the talent already filled in with an empty value.
+      // Only fill what the resume actually yielded; never overwrite a field the
+      // talent already filled in with an empty value.
       setStepData((previous) => ({
         ...previous,
         ...(firstName ? { firstName } : {}),
@@ -3535,7 +3598,13 @@ const UploadYourResume = ({
         ...(skillNames.length ? { lookingToWorkWith: skillNames } : {}),
       }))
 
-      setStatusMessage("Updating your profile...")
+      setLoadingMessage("Updating your profile...")
+      if (skillNames.length > 0) {
+        setLoadingMessage(
+          `Adding ${skillNames.length} skill${skillNames.length !== 1 ? "s" : ""} to your profile...`
+        )
+      }
+
       try {
         await UserAPI.applyResume({
           parseResultId: data?.parseResultId,
@@ -3545,26 +3614,26 @@ const UploadYourResume = ({
           certifications,
           industries,
         })
+        if (workExperience.length > 0) {
+          setLoadingMessage(
+            `Added ${workExperience.length} work experience${workExperience.length !== 1 ? "s" : ""}...`
+          )
+        }
+        setLoadingMessage("Finishing up...")
       } catch (applyError) {
         // Autofill already landed in stepData, so onboarding can continue even
         // if the background profile write fails.
         console.error("Failed to auto-apply resume data:", applyError)
       }
 
-      setStatusMessage(null)
+      setUploadedAt(data?.uploadedAt ? new Date(data.uploadedAt) : new Date())
+      setResumeStatus("uploaded")
       toggleValidation(true)
     } catch {
-      setFormError("We couldn't upload your resume. Please try again.")
-    } finally {
-      setIsProcessing(false)
+      setResumeStatus("failed")
     }
   }
 
-  const onDropzoneChange = (value?: DropzoneState) => {
-    setDropzoneValue(value)
-    const file = value?.[0]?.meta
-    if (file) void processResume(file)
-  }
 
   const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -3603,34 +3672,170 @@ const UploadYourResume = ({
           </h1>
 
           <p className="text-base leading-[19.36px] text-dark-blue-400 mt-2 font-light">
-            We&apos;ll use it to fill in the rest of your profile, so you don&apos;t
-            have to type it all out.
+            Add your resume to complete your profile faster!
           </p>
 
           <div className="mt-10 2xl:mt-[50px]">
             <div className="space-y-6">
-              <Dropzone
-                maxFiles={1}
-                maxSize={ONE_MB * 5}
-                acceptedExtensions={RESUME_ACCEPTED_EXTENSIONS}
-                value={dropzoneValue}
-                onValueChange={onDropzoneChange}
-                onError={(error) => setFormError(error ?? null)}
-              />
+              {hasError ? (
+                <div className="flex flex-col gap-3 items-center rounded-lg border border-error-300 bg-error-25 px-6 py-4">
+                  <div className="size-14 shrink-0 rounded-full border-8 border-error-50 bg-error-100 inline-flex items-center justify-center">
+                    <AlertTriangle className="size-7 text-error-500" />
+                  </div>
 
-              {statusMessage && (
-                <p className="text-xs md:text-sm text-dark-blue-400">
-                  {statusMessage}
-                </p>
+                  <p className="text-sm font-medium text-error-500 text-center">
+                    {resumeStatus === "failed" ? (
+                      <>
+                        Upload failed, please try again.
+                        <br />
+                        <span className="font-normal">{resumeFile?.name}</span>
+                      </>
+                    ) : (
+                      errorMessage
+                    )}
+                  </p>
+
+                  <button
+                    type="button"
+                    className="text-sm font-semibold leading-5 text-error-500 underline decoration-error-500/30"
+                    onClick={resetResume}
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : resumeStatus === "uploaded" ? (
+                <div className="rounded-lg border-2 border-primary-500 bg-primary-25 p-3.5 flex items-center gap-x-2">
+                  <div className="size-9 shrink-0 rounded-full bg-primary-50 inline-flex items-center justify-center">
+                    <File02 className="size-4 text-primary-500" />
+                  </div>
+                  <div className="flex-auto min-w-0">
+                    <p className="text-xs font-medium text-dark-blue-400 truncate">
+                      {resumeFile?.name}
+                    </p>
+                    <p className="text-[11px] text-gray-500">
+                      {uploadedAt
+                        ? `Added on ${uploadedAt.toLocaleDateString("en-US", {
+                            month: "long",
+                            day: "numeric",
+                            year: "numeric",
+                          })}`
+                        : "Added"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="shrink-0 text-xs font-semibold text-primary-500"
+                    onClick={resetResume}
+                  >
+                    Replace
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className={cn(
+                    "flex flex-col gap-3 items-center rounded-lg border-2 border-dashed px-6 py-4 transition-colors",
+                    resumeStatus === "dragging"
+                      ? "border-primary-500 bg-primary-25"
+                      : "border-gray-300 bg-white"
+                  )}
+                  onDragOver={(event) => {
+                    event.preventDefault()
+                    setResumeStatus("dragging")
+                  }}
+                  onDragLeave={() => setResumeStatus("idle")}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    setResumeStatus("idle")
+                    const file = event.dataTransfer.files?.[0]
+                    if (file) void processResume(file)
+                  }}
+                >
+                  <div className="size-14 shrink-0 rounded-full border-8 border-primary-25 bg-primary-50 inline-flex items-center justify-center">
+                    <FileText className="size-7 text-primary-500" />
+                  </div>
+
+                  <p className="text-xs leading-5 text-gray-600 text-center">
+                    Drag &amp; drop or{" "}
+                    <button
+                      type="button"
+                      className="font-medium capitalize leading-5 text-primary-500 underline decoration-primary-500/30"
+                      onClick={() => resumeInputRef.current?.click()}
+                    >
+                      Choose file
+                    </button>{" "}
+                    to upload
+                  </p>
+                  <p className="text-[11px] font-medium leading-[18px] text-gray-600 text-center">
+                    PDF, DOC, DOCX (max 5MB)
+                  </p>
+
+                  <input
+                    ref={resumeInputRef}
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      if (file) void processResume(file)
+                      event.target.value = ""
+                    }}
+                  />
+                </div>
               )}
 
-              {formError && <ErrorMessage size="sm">{formError}</ErrorMessage>}
+              {resumeStatus === "uploading" && (
+                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-3.5">
+                  <div className="size-9 shrink-0 rounded-full bg-primary-50 inline-flex items-center justify-center">
+                    <File02 className="size-4 text-primary-500" />
+                  </div>
+                  <div className="flex-auto min-w-0">
+                    <p className="truncate text-xs font-medium leading-5 text-dark-blue-400">
+                      {resumeFile?.name}
+                    </p>
+                    <p className="text-[11px] text-gray-500">
+                      {formatFileSize(resumeFile?.size ?? 0)} &ndash;{" "}
+                      {uploadPercent}% uploaded
+                    </p>
+                  </div>
+                  <CircularProgress
+                    className="shrink-0"
+                    size={32}
+                    strokeWidth={4}
+                    value={uploadPercent}
+                  />
+                </div>
+              )}
+
+              {resumeStatus === "uploading" && (
+                <p className="text-xs text-gray-500">{loadingMessage}</p>
+              )}
+
+              <p className="text-xs text-gray-500">
+                Your resume will remain private and will not be shared with any
+                third parties. See our{" "}
+                <Link
+                  href="/privacy-policy"
+                  className="text-primary-500 underline"
+                >
+                  Privacy Policy
+                </Link>
+              </p>
             </div>
           </div>
         </div>
 
         <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-between">
+            <Button
+              size="md"
+              variant="outlined"
+              visual="gray"
+              type="button"
+              onClick={() => router.push("/onboarding")}
+            >
+              Back
+            </Button>
+
             <div className="flex items-center gap-x-6">
               <Button
                 className="opacity-50 hover:opacity-100"
@@ -3642,7 +3847,11 @@ const UploadYourResume = ({
               >
                 Skip
               </Button>
-              <Button size="md" visual="primary" disabled={isProcessing}>
+              <Button
+                size="md"
+                visual="primary"
+                disabled={resumeStatus === "uploading"}
+              >
                 Continue
               </Button>
             </div>
