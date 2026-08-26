@@ -306,6 +306,7 @@ const IntroduceYourself = ({
                       // "CH" placeholder. Pass the talent's real initials when
                       // a name is known.
                       fallbackInitials={initials || undefined}
+                      fallbackIcon={<User01 className="size-20 text-gray-300" />}
                       startingPoint={({ dataUrl, open, style }: any) => (
                         <div className="flex flex-col gap-y-3 sm:flex-row sm:items-center sm:gap-x-4">
                           <div className="relative overflow-hidden size-[96px] bg-gray-100 rounded-full inline-flex items-center justify-center shrink-0">
@@ -2809,6 +2810,7 @@ const SetYourPreferences = ({
   const { logoutHandler } = useAuth()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
 
   const {
     getValues,
@@ -2953,6 +2955,11 @@ const SetYourPreferences = ({
     yourAvailability,
     customAvailability,
   }) => {
+    if (!projects?.length && !yourAvailability?.trim()) {
+      setFormError("Please select a project type or your availability")
+      return
+    }
+    setFormError(null)
     const availability: AVAILABILITY = yourAvailability
       ?.replaceAll("-", "_")
       ?.toUpperCase() as AVAILABILITY
@@ -3165,6 +3172,12 @@ const SetYourPreferences = ({
             </div>
           </div>
         </div>
+
+        {formError && (
+          <div className="mx-auto w-full max-w-[488px] 2xl:max-w-[560px]">
+            <ErrorMessage size="sm">{formError}</ErrorMessage>
+          </div>
+        )}
 
         <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
           <div className="flex items-center justify-between">
@@ -4526,17 +4539,11 @@ const UploadYourResume = ({
         </div>
 
         <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
-          <div className="flex items-start justify-between">
-            <Button
-              size="md"
-              variant="outlined"
-              visual="gray"
-              type="button"
-              onClick={() => router.push("/onboarding")}
-            >
-              Back
-            </Button>
-
+          {/* No Back on step 1. AuthenticatedRoute resolves a committed talent
+              to /onboarding/talent, so pushing /onboarding is bounced straight
+              back and the button provably cannot work. Steps 2-5 keep theirs,
+              which move between steps rather than leaving the flow. */}
+          <div className="flex items-start justify-end">
             <div className="flex items-center gap-x-6">
               <Button
                 className="opacity-50 hover:opacity-100"

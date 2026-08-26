@@ -75,6 +75,11 @@ Login is working. Every single login regression in this repo's history happened 
 - Any of the six frozen env templates: `frontend/.env.{local,staging,production}.example`, `backend/.env.{local,staging,production}.example`
 **Granting a temporary unlock.** Frozen files are locked for everyone except @CTorres9800. When someone genuinely needs to touch one, @CTorres9800 adds the `frozen-unlock` label to that specific PR. Labelling requires write access, so a contributor cannot grant it to themselves, and it applies to that PR only — it is not a standing exemption and does not carry to the next one. The SOP check then reports the unlock instead of blocking, and reviewers are expected to scrutinise those diffs as closely as the original work: no refactors, no restyling, no copy changes beyond what was approved.
 
+- `frontend/app/(group)/job-screening/page.tsx` — the view applicants screen. Locked 2026-08-26.
+  - **Frozen specifically:** the applicant list and cards, filters and sorting, status handling, empty states, layout and spacing, and every user-facing string.
+  - **The only permitted change:** backend wiring that alters no class name, element, timing, or string.
+  - Anything else requires explicit @CTorres9800 approval.
+
 - `frontend/app/(group)/billing/**` — the entire billing tree. Locked 2026-08-26. Covers `page.tsx`, `transactions/`, `invoices/`, `my-plans/`, and `payment-methods/`.
   - **Frozen specifically:** layout, table columns and their order, status badges, currency and date formatting, empty states, filters, pagination, and every user-facing string. These screens show people money; a cosmetic change that misstates an amount, a currency, or a status is a financial defect, not a styling one.
   - **The only permitted change:** backend wiring that alters no class name, element, timing, or string.

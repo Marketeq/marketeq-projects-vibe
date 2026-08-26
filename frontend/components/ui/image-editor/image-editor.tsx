@@ -628,6 +628,7 @@ export const ImageEditor = ({
   onSaveImage,
   onEditDialogOpenChange,
   fallbackInitials,
+  fallbackIcon,
 }: {
   onValueChange?: (files: readonly FileWithPath[] | undefined) => void
   startingPoint: (options: {
@@ -644,6 +645,10 @@ export const ImageEditor = ({
   onSaveImage?: (file: File) => void | Promise<void>
   onEditDialogOpenChange?: (open: boolean) => void
   fallbackInitials?: string
+  /** Shown instead of initials when no name is known. Falls back to the
+   *  previous "CH" placeholder when omitted, so existing callers are
+   *  unaffected. */
+  fallbackIcon?: React.ReactNode
 }) => {
   const [state, send] = useStateMachine("ideal", {
     ideal: {
@@ -989,9 +994,17 @@ export const ImageEditor = ({
               className="size-[160px] shrink-0 rounded-full bg-gray-100 flex items-center justify-center text-center"
               {...getRootProps()}
             >
-              <span className="text-[60px] leading-none text-gray-300 font-medium">
-                {fallbackInitials ?? "CH"}
-              </span>
+              {fallbackInitials ? (
+                <span className="text-[60px] leading-none text-gray-300 font-medium">
+                  {fallbackInitials}
+                </span>
+              ) : (
+                (fallbackIcon ?? (
+                  <span className="text-[60px] leading-none text-gray-300 font-medium">
+                    CH
+                  </span>
+                ))
+              )}
             </div>
           </div>
 
