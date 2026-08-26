@@ -35,6 +35,31 @@ type FallbackProvider = {
 @Injectable()
 export class OpenAiCompatibleLlmClient implements LlmClient {
   private readonly logger = new Logger(OpenAiCompatibleLlmClient.name);
+
+  /**
+   * Providers that recently refused for a capacity reason, and when to retry.
+   * A 429 is per-minute so it clears quickly; a 402/403 is a billing state that
+   * will not fix itself, so it is parked far longer. Without this every request
+   * pays the full latency of walking known-dead providers.
+   */
+  private readonly coolOff = new Map<string, number>();
+
+  private isCoolingOff(name: string): boolean {
+    const until = this.coolOff.get(name);
+    if (!until) return false;
+    if (Date.now() >= until) {
+      this.coolOff.delete(name);
+      return false;
+    }
+    return true;
+  }
+
+  private markFailure(name: string, message: string) {
+    const status = /responded (\d{3})/.exec(message)?.[1];
+    if (status === '429') this.coolOff.set(name, Date.now() + 60_000);
+    else if (status === '402' || status === '403')
+      this.coolOff.set(name, Date.now() + 30 * 60_000);
+  }
   private readonly timeoutMs = parseInt(
     process.env.LLM_FALLBACK_TIMEOUT_MS || '45000',
     10,
@@ -43,11 +68,11 @@ export class OpenAiCompatibleLlmClient implements LlmClient {
   private get providers(): FallbackProvider[] {
     const groqKey = process.env.GROQ_API_KEY || '';
     const groqUrl = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
-    const groqMax = parseInt(process.env.GROQ_MAX_TOKENS || '4096', 10);
+    const groqMax = parseInt(process.env.GROQ_MAX_TOKENS || '1400', 10);
     const hfKey = process.env.HUGGINGFACE_API_KEY || '';
     const hfUrl =
       process.env.HUGGINGFACE_BASE_URL || 'https://router.huggingface.co/v1';
-    const hfMax = parseInt(process.env.HUGGINGFACE_MAX_TOKENS || '16384', 10);
+    const hfMax = parseInt(process.env.HUGGINGFACE_MAX_TOKENS || '2048', 10);
 
     // Order is measured, not assumed: all of these scored 14/14 on extraction
     // quality against the same resume, so they are ranked by latency.
@@ -72,7 +97,7 @@ export class OpenAiCompatibleLlmClient implements LlmClient {
       { name: 'xai:grok', apiKey: process.env.XAI_API_KEY || '',
         baseUrl: process.env.XAI_BASE_URL || 'https://api.x.ai/v1',
         model: process.env.XAI_MODEL || 'grok-4-fast-non-reasoning',
-        maxTokens: parseInt(process.env.XAI_MAX_TOKENS || '16384', 10) },
+        maxTokens: parseInt(process.env.XAI_MAX_TOKENS || '2048', 10) },
       // local, keyless, opt-in (loads a large model into RAM)
       { name: 'ollama', apiKey: process.env.OLLAMA_FALLBACK_ENABLED === 'true' ? 'local' : '',
         baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
@@ -85,22 +110,34 @@ export class OpenAiCompatibleLlmClient implements LlmClient {
     return this.providers.length > 0;
   }
 
-  async call(input: LlmCallInput): Promise<LlmCallOutput> {
+  async call(input: LlmCallInput, retrying = false): Promise<LlmCallOutput> {
     const chain = this.providers;
     if (!chain.length) throw ParseException.modelUnavailable();
 
     let lastError: Error | null = null;
-    for (const provider of chain) {
+    const usable = chain.filter((p) => !this.isCoolingOff(p.name));
+    for (const provider of (usable.length ? usable : chain)) {
       try {
         const result = await this.callProvider(provider, input);
         this.logger.log(`Fallback provider ${provider.name} succeeded`);
         return result;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
+        this.markFailure(provider.name, lastError.message);
         this.logger.warn(
           `Fallback provider ${provider.name} failed: ${lastError.message}`,
         );
       }
+    }
+    // Everything refused. If it was purely rate limiting, the budget resets on
+    // a short window, so wait it out once before giving up on the upload.
+    const rateLimited = /responded 429/.test(lastError?.message ?? '');
+    if (rateLimited && !retrying) {
+      const waitMs = parseInt(process.env.LLM_RATE_LIMIT_WAIT_MS || '17000', 10);
+      this.logger.warn(`All providers rate limited; retrying in ${waitMs}ms`);
+      await new Promise((r) => setTimeout(r, waitMs));
+      this.coolOff.clear();
+      return this.call(input, true);
     }
     throw lastError ?? ParseException.modelUnavailable();
   }
@@ -109,9 +146,15 @@ export class OpenAiCompatibleLlmClient implements LlmClient {
     provider: FallbackProvider,
     input: LlmCallInput,
   ): Promise<LlmCallOutput> {
+    // Free-tier limits are tokens-per-minute, so an unbounded resume can push a
+    // single request over the cap on its own. Everything that matters sits in
+    // the first few pages; the tail is references and formatting noise.
+    const maxChars = parseInt(process.env.LLM_MAX_INPUT_CHARS || '12000', 10);
+    const text =
+      input.text.length > maxChars ? input.text.slice(0, maxChars) : input.text;
     const userPrompt = input.isNearEmpty
       ? buildScannedDocumentPrompt()
-      : buildUserPrompt(input.text);
+      : buildUserPrompt(text);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
