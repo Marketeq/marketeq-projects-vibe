@@ -226,7 +226,9 @@ const ComboboxOptions = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ComboboxPrimitive.Options
     className={cn(
-      "absolute mt-1 w-full z-50 space-y-1 rounded-[5px] bg-white px-1 shadow-2xl",
+      // py-1 matches SelectContent's viewport; without it the first and last
+      // option sat flush against the dropdown edge.
+      "absolute mt-1 w-full z-50 space-y-1 rounded-[5px] bg-white px-1 py-1 shadow-2xl",
       className
     )}
     {...props}
