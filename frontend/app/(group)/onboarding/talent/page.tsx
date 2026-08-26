@@ -467,6 +467,7 @@ const CreateYourUsername = ({
   const collapsedSuggestions = availableSuggestions.slice(0, 3)
   const expandedSuggestions = availableSuggestions.slice(0, 6)
 
+  const [formError, setFormError] = useState<string | null>(null)
   const {
     watch,
     formState: { errors, isValid },
@@ -505,6 +506,11 @@ const CreateYourUsername = ({
   const onSubmit: SubmitHandler<CreateYourUsernameFormValues> = ({
     username,
   }) => {
+    if (!username?.trim()) {
+      setFormError("Please choose a username")
+      return
+    }
+    setFormError(null)
     setStepData({
       ...stepData,
       username,
@@ -825,6 +831,12 @@ const CreateYourUsername = ({
             </div>
           </div>
         </div>
+
+        {formError && (
+          <div className="mx-auto w-full max-w-[488px] 2xl:max-w-[560px]">
+            <ErrorMessage size="sm">{formError}</ErrorMessage>
+          </div>
+        )}
 
         <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
           <div className="flex items-center justify-between">
@@ -3627,6 +3639,75 @@ const READING_STEP_MS = 1150
 
 type ReadingStep = { label: string; count?: number; items?: string[] }
 
+// Page count without a PDF/DOCX library and without a round trip.
+//
+// PDF: /Type /Page markers and the page tree's /Count both give it from the
+// raw bytes. The text itself is NOT recoverable this way - subsetted fonts
+// store glyph ids behind a CMap - but the page count is enough to report real
+// progress while the model works.
+//
+// DOCX: a zip whose docProps/app.xml carries <Pages>. The entry is deflated,
+// and DecompressionStream is native, so it can be inflated in the browser.
+//
+// Costs nothing: no request, no dependency, no tokens. Returns null when the
+// format yields nothing, and the caller falls back to name and size.
+const inflateRaw = async (bytes: Uint8Array): Promise<string> => {
+  const stream = new Blob([bytes as BlobPart])
+    .stream()
+    .pipeThrough(new DecompressionStream("deflate-raw"))
+  return new Response(stream).text()
+}
+
+const readDocxPageCount = async (file: File): Promise<number | null> => {
+  const raw = new Uint8Array(await file.arrayBuffer())
+  const text = new TextDecoder("latin1").decode(raw)
+  const at = text.indexOf("docProps/app.xml")
+  if (at < 0) return null
+  // local file header: 30 bytes + name + extra, sizes at offsets 18 and 26/28
+  const header = at - 30
+  if (header < 0) return null
+  const view = new DataView(raw.buffer, raw.byteOffset)
+  const compressed = view.getUint32(header + 18, true)
+  const nameLen = view.getUint16(header + 26, true)
+  const extraLen = view.getUint16(header + 28, true)
+  const start = header + 30 + nameLen + extraLen
+  try {
+    const xml = await inflateRaw(raw.subarray(start, start + compressed))
+    const m = /<Pages>(\d+)<\/Pages>/.exec(xml)
+    return m ? parseInt(m[1], 10) : null
+  } catch {
+    return null
+  }
+}
+
+const readPdfPageCount = async (file: File): Promise<number | null> => {
+  const head = await file.slice(0, 2_000_000).arrayBuffer()
+  const raw = new TextDecoder("latin1").decode(head)
+  const byType = (raw.match(/\/Type\s*\/Page[^s]/g) || []).length
+  const counts = (raw.match(/\/Count\s+(\d+)/g) || []).map((m) =>
+    parseInt(m.split(/\s+/)[1], 10)
+  )
+  const best = Math.max(byType, counts.length ? Math.max(...counts) : 0)
+  return best > 0 ? best : null
+}
+
+const readPageCount = async (file: File): Promise<number | null> => {
+  try {
+    const name = file.name.toLowerCase()
+    // .doc is the legacy binary format - its page count lives in the FIB /
+    // SummaryInformation stream, which is not worth parsing here. It returns
+    // null and the caller falls back to file name and size, which still works.
+    const count = name.endsWith(".pdf")
+      ? await readPdfPageCount(file)
+      : name.endsWith(".docx")
+        ? await readDocxPageCount(file)
+        : null
+    return count && count > 0 && count < 500 ? count : null
+  } catch {
+    return null
+  }
+}
+
 const ReadingResumeModal = ({
   open,
   label,
@@ -3752,16 +3833,22 @@ const ReadingResumeModal = ({
                     {step.items?.length ? (
                       <span
                         className={cn(
-                          "truncate text-xs leading-5",
+                          "flex min-w-0 items-baseline gap-1 text-xs leading-5",
                           isRowActive ? "text-primary-500" : "text-gray-500"
                         )}
                       >
-                        {isRowActive
-                          ? step.items[tick % step.items.length]
-                          : step.items.slice(0, 3).join(" · ") +
-                            (step.items.length > 3
-                              ? ` +${step.items.length - 3} more`
-                              : "")}
+                        <span className="truncate">
+                          {isRowActive
+                            ? step.items[tick % step.items.length]
+                            : step.items.slice(0, 3).join(" · ")}
+                        </span>
+                        {/* kept outside the truncating span so the ellipsis
+                            cannot swallow the count */}
+                        {!isRowActive && step.items.length > 3 && (
+                          <span className="shrink-0 whitespace-nowrap">
+                            +{step.items.length - 3} more
+                          </span>
+                        )}
                       </span>
                     ) : null}
                   </span>
@@ -3828,6 +3915,8 @@ const UploadYourResume = ({
   const [readingCompleted, setReadingCompleted] = useState(0)
   const [isReadingDone, setIsReadingDone] = useState(false)
   const [readingTick, setReadingTick] = useState(0)
+  const [pageCount, setPageCount] = useState<number | null>(null)
+  const [pageCursor, setPageCursor] = useState(1)
 
   const { toggleValidation } = useStepContext()
   const { nextStep, setStep } = useStepperContext()
@@ -3906,6 +3995,9 @@ const UploadYourResume = ({
     }
 
     setResumeStatus("uploading")
+    setPageCount(null)
+    setPageCursor(1)
+    void readPageCount(file).then(setPageCount)
     setReadingLabel(READING_LABEL_DEFAULT)
     setReadingSteps([])
     setReadingCompleted(0)
@@ -4192,7 +4284,9 @@ const UploadYourResume = ({
         tick={readingTick}
         fileLabel={
           resumeFile
-            ? `Reading ${resumeFile.name} · ${formatFileSize(resumeFile.size)}`
+            ? pageCount && pageCount > 1
+              ? `Reading page ${pageCursor} of ${pageCount} · ${resumeFile.name}`
+              : `Reading ${resumeFile.name} · ${formatFileSize(resumeFile.size)}`
             : undefined
         }
       />
