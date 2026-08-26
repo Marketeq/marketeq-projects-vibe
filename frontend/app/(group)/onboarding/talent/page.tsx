@@ -587,10 +587,13 @@ const CreateYourUsername = ({
       let best = 1
       for (let count = 1; count <= chips.length; count++) {
         used += chips[count - 1]
-        // n names read as "a, b and c": one " and ", plus a comma for each
-        // name beyond the first two.
-        const separators = count >= 2 ? and + Math.max(0, count - 2) * comma : 0
-        if (used + separators + suffix > available) break
+        // Mirrors the rendered layout: every name but the last carries a comma
+        // 2px off it, the last carries "and" 4px before it, and the groups plus
+        // the "are available" tail sit in a wrapping row with 8px gaps.
+        const commas = (count - 1) * (comma + 2)
+        const conjunction = count >= 2 ? and + 4 : 0
+        const gaps = count * 8
+        if (used + commas + conjunction + gaps + suffix > available) break
         best = count
       }
 
@@ -910,66 +913,107 @@ const CreateYourUsername = ({
                     <span
                       ref={suggestionsMeasureRef}
                       aria-hidden
-                      className="pointer-events-none invisible absolute left-0 top-0 block whitespace-nowrap text-sm leading-[16.94px] text-gray-500"
+                      className="pointer-events-none invisible absolute left-0 top-0 block whitespace-nowrap"
                     >
                       {availableSuggestions.map((username) => (
-                        <Button
+                        <span
                           key={username}
                           data-measure-chip
-                          className="text-primary-500/50"
-                          size="lg"
-                          visual="gray"
-                          variant="link"
-                          type="button"
-                          tabIndex={-1}
+                          className="text-base font-semibold leading-6"
                         >
                           {username}
-                        </Button>
+                        </span>
                       ))}
-                      <span data-measure-comma>, </span>
-                      <span data-measure-and> and </span>
-                      <span data-measure-suffix> are available</span>
-                    </span>
-
-                    <span className="block text-sm leading-[16.94px] text-gray-500">
-                      {collapsedSuggestions.map((username, index) => (
-                        <React.Fragment key={username}>
-                          <Button
-                            className="text-primary-500/50 hover:text-primary-500"
-                            size="lg"
-                            visual="gray"
-                            variant="link"
-                            type="button"
-                            onClick={() => setFormValue("username", username)}
-                          >
-                            {username}
-                          </Button>
-
-                          {index < collapsedSuggestions.length - 2 && (
-                            <span>, </span>
-                          )}
-                          {index === collapsedSuggestions.length - 2 && (
-                            <span> and </span>
-                          )}
-                        </React.Fragment>
-                      ))}{" "}
-                      are available
-                    </span>
-
-                    {availableSuggestions.length >
-                      collapsedSuggestions.length && (
-                      <Button
-                        className="mt-3"
-                        size="md"
-                        variant="link"
-                        type="button"
-                        visual="gray"
-                        onClick={toggleShow}
+                      <span
+                        data-measure-comma
+                        className="text-sm font-semibold leading-[17px]"
                       >
-                        <Plus className="size-[15px]" />
-                        More suggestions
-                      </Button>
-                    )}
+                        ,
+                      </span>
+                      <span
+                        data-measure-and
+                        className="text-sm font-semibold leading-[17px]"
+                      >
+                        and
+                      </span>
+                      <span
+                        data-measure-suffix
+                        className="text-sm font-semibold leading-[17px]"
+                      >
+                        are available
+                      </span>
+                    </span>
+
+                    {/* Figma "Username rec": a wrapping 8px-gap row, not a
+                        sentence. Each name is its own flex group so the comma
+                        hugs it at 2px and "and" sits 4px off the last one. */}
+                    <div className="flex flex-col items-start gap-y-3">
+                      <div className="flex w-full flex-row flex-wrap content-start items-start gap-2">
+                        {collapsedSuggestions.map((username, index) => {
+                          const isLast =
+                            index === collapsedSuggestions.length - 1
+                          const showAnd =
+                            isLast && collapsedSuggestions.length > 1
+
+                          return (
+                            <div
+                              key={username}
+                              className={cn(
+                                "flex flex-row items-center",
+                                showAnd ? "gap-x-1" : "gap-x-0.5"
+                              )}
+                            >
+                              {showAnd && (
+                                <span className="text-sm font-semibold leading-[17px] text-gray-500">
+                                  and
+                                </span>
+                              )}
+
+                              <Button
+                                className="h-auto p-0 text-base font-semibold leading-6 text-primary-500 opacity-50 transition-opacity hover:opacity-100"
+                                variant="link"
+                                visual="gray"
+                                type="button"
+                                onClick={() =>
+                                  setFormValue("username", username)
+                                }
+                              >
+                                {username}
+                              </Button>
+
+                              {/* Oxford comma: every name but the last is
+                                  followed by one, including the one before
+                                  "and". */}
+                              {!isLast && (
+                                <span className="text-sm font-semibold leading-[17px] text-dark-blue-400">
+                                  ,
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })}
+
+                        <div className="flex flex-row items-center justify-center pt-1">
+                          <span className="text-sm font-semibold leading-[17px] text-gray-500">
+                            are available
+                          </span>
+                        </div>
+                      </div>
+
+                      {availableSuggestions.length >
+                        collapsedSuggestions.length && (
+                        <Button
+                          className="h-auto p-0 text-sm font-semibold capitalize leading-5 text-gray-500"
+                          variant="link"
+                          type="button"
+                          visual="gray"
+                          onClick={toggleShow}
+                        >
+                          <Plus className="size-[15px] stroke-[1.25]" />
+                          More suggestions
+                        </Button>
+                      )}
+                    </div>
                   </>
                 ) : null}
               </div>
