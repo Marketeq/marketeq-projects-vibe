@@ -898,7 +898,7 @@ const CreateYourUsername = ({
                     className="flex flex-row items-center gap-x-0.5"
                   >
                     <Button
-                      className="h-auto p-0 text-base font-semibold leading-6 text-primary-500 opacity-50 transition-opacity hover:opacity-100"
+                      className="h-auto p-0 text-base font-semibold leading-6 text-primary-500 opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
                       variant="link"
                       visual="gray"
                       type="button"
@@ -981,7 +981,7 @@ const CreateYourUsername = ({
                               )}
 
                               <Button
-                                className="h-auto p-0 text-base font-semibold leading-6 text-primary-500 opacity-50 transition-opacity hover:opacity-100"
+                                className="h-auto p-0 text-base font-semibold leading-6 text-primary-500 opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
                                 variant="link"
                                 visual="gray"
                                 type="button"
