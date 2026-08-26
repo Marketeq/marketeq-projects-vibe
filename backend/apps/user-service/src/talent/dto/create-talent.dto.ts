@@ -33,9 +33,9 @@ export enum DAYS {
 
 const TIME_REGEX = /^\d{2}:\d{2}$/;
 const TIME_PERIOD_REGEX = /^(AM|PM)$/;
-const USERNAME_PATTERN = /^[a-z0-9_]+$/;
+const USERNAME_PATTERN = /^[a-z0-9._]+$/;
 const USERNAME_RULE_MESSAGE =
-  'Username can only contain letters, numbers, and underscores';
+  'Username can only contain letters, numbers, periods, and underscores';
 
 @ValidatorConstraint({ name: 'IsValidTimeRange', async: false })
 class IsValidTimeRangeConstraint implements ValidatorConstraintInterface {

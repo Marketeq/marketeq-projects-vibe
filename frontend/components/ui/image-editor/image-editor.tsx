@@ -16,7 +16,12 @@ import {
   ZoomOut,
 } from "@blend-metrics/icons"
 import { motion, useDragControls, useMotionValue } from "framer-motion"
-import { ErrorCode, FileWithPath, useDropzone } from "react-dropzone"
+import {
+  ErrorCode,
+  FileRejection,
+  FileWithPath,
+  useDropzone,
+} from "react-dropzone"
 import { useMeasure } from "react-use"
 import {
   Button,
@@ -628,6 +633,9 @@ export const ImageEditor = ({
   onSaveImage,
   onEditDialogOpenChange,
   fallbackInitials,
+  fallbackIcon,
+  skipUploadDialog = false,
+  onFileRejected,
 }: {
   onValueChange?: (files: readonly FileWithPath[] | undefined) => void
   startingPoint: (options: {
@@ -644,6 +652,20 @@ export const ImageEditor = ({
   onSaveImage?: (file: File) => void | Promise<void>
   onEditDialogOpenChange?: (open: boolean) => void
   fallbackInitials?: string
+  /** Shown instead of initials when no name is known. Falls back to the
+   *  previous "CH" placeholder when omitted, so existing callers are
+   *  unaffected. */
+  fallbackIcon?: React.ReactNode
+  /** Take the startingPoint button straight to the file browser instead of
+   *  opening the intermediate "Change Profile Image" dialog. Applies to both
+   *  Upload Photo and Change Photo. Off by default so the profile pages keep
+   *  their existing two-step flow. onDropAccepted still sends EDIT, so choosing
+   *  a file lands on the crop step either way. */
+  skipUploadDialog?: boolean
+  /** Fired when a dropped file fails validation. The built-in rejection message
+   *  only renders inside this component's dialogs, so callers using
+   *  skipUploadDialog get no feedback without this. */
+  onFileRejected?: (rejections: FileRejection[]) => void
 }) => {
   const [state, send] = useStateMachine("ideal", {
     ideal: {
@@ -689,7 +711,10 @@ export const ImageEditor = ({
         reset()
         send("EDIT")
       },
-      onDropRejected: reset,
+      onDropRejected: (rejections) => {
+        reset()
+        onFileRejected?.(rejections)
+      },
       validator: (file) => {
         const matches = matchesExtensions({
           file,
@@ -961,7 +986,11 @@ export const ImageEditor = ({
       <input hidden {...getInputProps()} />
 
       {startingPoint({
-        open: () => (dataUrl ? send("REMOVE") : send("UPLOAD")),
+        // skipUploadDialog callers want the button to behave like a plain file
+        // input in both states - Upload Photo and Change Photo alike - rather
+        // than routing through this component's own dialogs.
+        open: () =>
+          skipUploadDialog ? open() : dataUrl ? send("REMOVE") : send("UPLOAD"),
         dataUrl,
         style,
         onRemove,
@@ -989,9 +1018,17 @@ export const ImageEditor = ({
               className="size-[160px] shrink-0 rounded-full bg-gray-100 flex items-center justify-center text-center"
               {...getRootProps()}
             >
-              <span className="text-[60px] leading-none text-gray-300 font-medium">
-                {fallbackInitials ?? "CH"}
-              </span>
+              {fallbackInitials ? (
+                <span className="text-[60px] leading-none text-gray-300 font-medium">
+                  {fallbackInitials}
+                </span>
+              ) : (
+                (fallbackIcon ?? (
+                  <span className="text-[60px] leading-none text-gray-300 font-medium">
+                    CH
+                  </span>
+                ))
+              )}
             </div>
           </div>
 
