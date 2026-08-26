@@ -190,6 +190,7 @@ const IntroduceYourself = ({
     handleSubmit,
     control,
     watch,
+    setError,
   } = useForm<IntroduceYourselfFormValues>({
     resolver: zodResolver(introduceYourselfFormSchema),
     defaultValues: {
@@ -215,14 +216,29 @@ const IntroduceYourself = ({
     firstName,
     lastName,
   }) => {
+    let missing = false
     if (!avatar || avatar.length === 0) {
-      setFormError("Please add a profile photo")
-      return
+      setError("avatar", {
+        type: "manual",
+        message: "Please add a profile photo",
+      })
+      missing = true
     }
-    if (!firstName?.trim() || !lastName?.trim()) {
-      setFormError("Please enter your first and last name")
-      return
+    if (!firstName?.trim()) {
+      setError("firstName", {
+        type: "manual",
+        message: "Please enter your first name",
+      })
+      missing = true
     }
+    if (!lastName?.trim()) {
+      setError("lastName", {
+        type: "manual",
+        message: "Please enter your last name",
+      })
+      missing = true
+    }
+    if (missing) return
     setFormError(null)
     setStepData({
       ...stepData,
@@ -417,7 +433,6 @@ const IntroduceYourself = ({
                 </div>
               </div>
 
-              {formError && <ErrorMessage size="sm">{formError}</ErrorMessage>}
             </div>
           </div>
         </div>
@@ -3984,6 +3999,7 @@ const UploadYourResume = ({
   const [readingSteps, setReadingSteps] = useState<ReadingStep[]>([])
   const [readingCompleted, setReadingCompleted] = useState(0)
   const [isReadingDone, setIsReadingDone] = useState(false)
+  const [resumeError, setResumeError] = useState<string | null>(null)
   const [readingTick, setReadingTick] = useState(0)
   const [pageCount, setPageCount] = useState<number | null>(null)
   const [pageCursor, setPageCursor] = useState(1)
@@ -4062,6 +4078,7 @@ const UploadYourResume = ({
   // profile in the background. New account, so there is nothing to conflict
   // with; the conflict and summary UI the talent profile shows is not needed.
   const processResume = async (file: File) => {
+    setResumeError(null)
     setResumeFile(file)
 
     const extension = file.name
@@ -4347,6 +4364,13 @@ const UploadYourResume = ({
 
   const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    // Continuing with no resume is the same outcome as skipping, so it must not
+    // be reachable from Continue. Skip remains the way past this step.
+    if (resumeStatus !== "uploaded") {
+      setResumeError("Please upload your resume")
+      return
+    }
+    setResumeError(null)
     toggleValidation(true)
     nextStep()
   }
@@ -4594,11 +4618,17 @@ const UploadYourResume = ({
         </div>
 
         <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
-          {/* No Back on step 1. AuthenticatedRoute resolves a committed talent
-              to /onboarding/talent, so pushing /onboarding is bounced straight
-              back and the button provably cannot work. Steps 2-5 keep theirs,
-              which move between steps rather than leaving the flow. */}
-          <div className="flex items-start justify-end">
+          <div className="flex items-start justify-between">
+            <Button
+              size="md"
+              variant="outlined"
+              visual="gray"
+              type="button"
+              onClick={() => router.push("/onboarding")}
+            >
+              Back
+            </Button>
+
             <div className="flex items-center gap-x-3">
               <Button
                 className="opacity-50 hover:opacity-100"
