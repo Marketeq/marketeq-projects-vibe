@@ -280,6 +280,13 @@ export class ProxyController {
       prefix = 'budget'
     } else if (prefix === 'v1' && ['nda', 'acceptance', 'legal-documents'].includes(segments[1])) {
       prefix = 'legal'
+    } else if (prefix === 'v1' && segments[1] === 'job-listings') {
+      // /v1/job-listings and /v1/job-listings/:id/phases live in
+      // listings-service. Without this branch they fell through to the 'v1'
+      // default (transaction-service) and 404'd, so every job listing read and
+      // write through the gateway failed — job creation, the listing context
+      // the invite talent screen loads, and sending invites.
+      prefix = 'publish'
     }
 
     const serviceName = SERVICE_PREFIX_MAP[prefix]
