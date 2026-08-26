@@ -3652,6 +3652,9 @@ const READING_SCAN_LABELS = [
   "Looking for your industry expertise...",
 ]
 const SCAN_ROWS = 3
+// The read phase fills to here; the section reveal carries it from here to
+// 100. One monotonic scale, so the bar can never travel backwards.
+const REVEAL_FROM = 55
 const READING_STEP_MS = 1150
 
 type ReadingStep = { label: string; count?: number; items?: string[] }
@@ -3987,7 +3990,7 @@ const UploadYourResume = ({
         elapsed <= total
           ? (elapsed / total) * 95
           : 95 + (elapsed - total) / 3000
-      setUploadPercent(Math.min(99, Math.max(1, Math.round(pct))))
+      setUploadPercent(Math.min(REVEAL_FROM, Math.max(1, Math.round(pct))))
     }, 80)
   }
 
@@ -4244,13 +4247,15 @@ const UploadYourResume = ({
       // the bar to the reveal itself: park it, then advance one slice per
       // section so it fills as the sections land.
       stopProgressTicker()
-      const revealFrom = 55
-      setUploadPercent(revealFrom)
+      // Deliberately NOT setting a value here. The read phase is capped at
+      // REVEAL_FROM, so the bar carries straight on from where it is. Parking
+      // it at a fixed number made the bar run to 100 during the read and then
+      // jump backwards the moment the sections started.
       for (let index = 0; index < foundSteps.length; index++) {
         setReadingCompleted(index + 1)
         setUploadPercent(
           Math.round(
-            revealFrom + ((100 - revealFrom) * (index + 1)) / foundSteps.length
+            REVEAL_FROM + ((100 - REVEAL_FROM) * (index + 1)) / foundSteps.length
           )
         )
         await new Promise((resolve) => setTimeout(resolve, READING_STEP_MS))
