@@ -142,10 +142,20 @@ export class ProxyController {
           continue // no migrations table for this schema yet
         }
 
+        // The recorded name is the migration's class name, which does not
+        // always match the filename: 1776457086364-add-slug-column.js holds
+        // class AddSlugColumn1776457086364. Deriving it from the filename
+        // reports migrations as pending when they have already run.
         const pending = files
           .map((f) => {
-            const m = f.match(/^(\d+)-(.+)\.js$/)
-            return m ? `${m[2]}${m[1]}` : ''
+            try {
+              const body = fs.readFileSync(path.join(dir, f), 'utf8')
+              const m =
+                body.match(/exports\.(\w+)\s*=/) ?? body.match(/class\s+(\w+)/)
+              return m ? m[1] : ''
+            } catch {
+              return ''
+            }
           })
           .filter((name) => name && !applied.has(name))
 

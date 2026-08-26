@@ -3678,7 +3678,7 @@ const UploadYourResume = ({
           <div className="mt-10 2xl:mt-[50px]">
             <div className="space-y-6">
               {hasError ? (
-                <div className="flex flex-col gap-3 items-center rounded-lg border border-error-300 bg-error-25 px-6 py-4">
+                <div className="flex h-[148px] w-full flex-col gap-3 items-center rounded-lg border border-error-300 bg-error-25 px-6 py-4">
                   <div className="size-14 shrink-0 rounded-full border-8 border-error-50 bg-error-100 inline-flex items-center justify-center">
                     <AlertTriangle className="size-7 text-error-500" />
                   </div>
@@ -3697,7 +3697,7 @@ const UploadYourResume = ({
 
                   <button
                     type="button"
-                    className="text-sm font-semibold leading-5 text-error-500 underline decoration-error-500/30"
+                    className="text-sm font-semibold leading-5 text-error-500 underline decoration-error-500/30 hover:decoration-error-500"
                     onClick={resetResume}
                   >
                     Try again
@@ -3724,7 +3724,7 @@ const UploadYourResume = ({
                   </div>
                   <button
                     type="button"
-                    className="shrink-0 text-xs font-semibold text-primary-500"
+                    className="shrink-0 text-xs font-semibold leading-5 text-primary-500 hover:underline"
                     onClick={resetResume}
                   >
                     Replace
@@ -3733,16 +3733,17 @@ const UploadYourResume = ({
               ) : (
                 <div
                   className={cn(
-                    "flex flex-col gap-3 items-center rounded-lg border-2 border-dashed px-6 py-4 transition-colors",
+                    "flex h-[148px] w-full cursor-pointer flex-col gap-3 items-center rounded-lg border-2 border-dashed px-6 py-4 transition-colors",
                     resumeStatus === "dragging"
                       ? "border-primary-500 bg-primary-25"
-                      : "border-gray-300 bg-white"
+                      : "border-gray-300 bg-white hover:border-primary-500 hover:bg-primary-25"
                   )}
                   onDragOver={(event) => {
                     event.preventDefault()
                     setResumeStatus("dragging")
                   }}
                   onDragLeave={() => setResumeStatus("idle")}
+                  onClick={() => resumeInputRef.current?.click()}
                   onDrop={(event) => {
                     event.preventDefault()
                     setResumeStatus("idle")
@@ -3758,8 +3759,8 @@ const UploadYourResume = ({
                     Drag &amp; drop or{" "}
                     <button
                       type="button"
-                      className="font-medium capitalize leading-5 text-primary-500 underline decoration-primary-500/30"
-                      onClick={() => resumeInputRef.current?.click()}
+                      className="font-medium capitalize leading-5 text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500"
+                      onClick={(event) => event.stopPropagation()}
                     >
                       Choose file
                     </button>{" "}
@@ -3810,12 +3811,12 @@ const UploadYourResume = ({
                 <p className="text-xs text-gray-500">{loadingMessage}</p>
               )}
 
-              <p className="text-xs text-gray-500">
+              <p className="text-xs font-light leading-normal text-dark-blue-400">
                 Your resume will remain private and will not be shared with any
                 third parties. See our{" "}
                 <Link
                   href="/privacy-policy"
-                  className="text-primary-500 underline"
+                  className="font-medium capitalize text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500"
                 >
                   Privacy Policy
                 </Link>
@@ -3825,7 +3826,7 @@ const UploadYourResume = ({
         </div>
 
         <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between">
             <Button
               size="md"
               variant="outlined"
