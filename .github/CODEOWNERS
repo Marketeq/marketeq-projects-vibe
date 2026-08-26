@@ -54,6 +54,15 @@
 /frontend/middleware.ts                             @CTorres9800 @Marketeq/code-review
 /frontend/components/settings-sidebar.tsx           @CTorres9800 @Marketeq/code-review
 
+# ----- CRITICAL: frozen presentation files -----
+# Per SOP 1.5 "Frozen UI". The front end of these screens is locked: no
+# engineer may change markup, styling, layout, or transitions. Backend and
+# API work IS allowed, but only through the sibling data module listed
+# beneath each entry, which is deliberately left unowned so backend
+# engineers can wire it without CTO review.
+/frontend/app/(group)/my-jobs/page.tsx              @CTorres9800 @Marketeq/code-review
+# ^ backend seam (NOT frozen, edit freely): frontend/app/(group)/my-jobs/my-jobs.data.ts
+
 # ----- Shared UI components -----
 /frontend/components/listing-card.tsx               @Marketeq/code-review
 /frontend/components/ui/                            @Marketeq/code-review

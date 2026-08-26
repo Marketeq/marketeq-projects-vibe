@@ -31,6 +31,7 @@ import {
 } from "@blend-metrics/icons"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
+  Card,
   Avatar,
   AvatarFallback,
   AvatarGroup,
@@ -893,9 +894,16 @@ function ContractsView({
 
   if (viewMode === "grouped") {
     return (
-      <div className="space-y-3">
-        {contracts.map((contract) => (
-          <ContractCard key={contract.id} contract={contract} />
+      <div
+        className="space-y-3"
+        key={contracts.map((contract) => contract.id).join(",")}
+      >
+        {contracts.map((contract, index) => (
+          <ContractCard
+            key={contract.id}
+            contract={contract}
+            index={index}
+          />
         ))}
       </div>
     )
@@ -940,7 +948,25 @@ function ContractsView({
   )
 }
 
-function ContractCard({ contract }: { contract: Contract }) {
+const CASCADE_DELAYS = [
+  "delay-0",
+  "delay-100",
+  "delay-200",
+  "delay-300",
+  "delay-500",
+  "delay-700",
+]
+
+const cascadeDelay = (index: number) =>
+  CASCADE_DELAYS[Math.min(index, CASCADE_DELAYS.length - 1)]
+
+function ContractCard({
+  contract,
+  index,
+}: {
+  contract: Contract
+  index: number
+}) {
   const TypeIcon = typeIcons[contract.type]
   const isProject = contract.type === "project"
   const isService = contract.type === "service"
@@ -948,7 +974,11 @@ function ContractCard({ contract }: { contract: Contract }) {
   const isIndividual = contract.type === "individual"
 
   return (
-    <div className="flex flex-col items-start bg-white border border-gray-200 shadow-sm rounded-lg py-4 px-5 gap-6">
+    <Card
+      className={`flex-col items-start justify-start py-4 px-5 gap-6 animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(
+        index
+      )}`}
+    >
       {/* Row 1: Title + Type badge + Billing info + Status + Actions */}
       <div className="flex items-start justify-between gap-10 self-stretch">
         <div className="flex flex-col justify-center items-start gap-1.5 flex-1 min-w-0">
@@ -1105,7 +1135,7 @@ function ContractCard({ contract }: { contract: Contract }) {
           </span>
         </div>
       </div>
-    </div>
+    </Card>
   )
 }
 

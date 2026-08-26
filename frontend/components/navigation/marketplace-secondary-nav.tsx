@@ -61,7 +61,27 @@ export function MarketplaceSecondaryNavShell({
   const pathname = usePathname()
   const { user } = useAuth()
   const [showSecondaryNav, setShowSecondaryNav] = useState(true)
+  const [pinnedBarActive, setPinnedBarActive] = useState(false)
   const lastScrollY = useRef(0)
+
+  // Profile pages raise a pinned bar that owns the top of the viewport. While
+  // it is up, the secondary nav stays hidden regardless of scroll direction,
+  // and comes back only once the bar unpins.
+  useEffect(() => {
+    const read = () =>
+      setPinnedBarActive(document.documentElement.dataset.pinnedBar === "active")
+
+    read()
+
+    const observer = new MutationObserver(read)
+    observer.observe(document.documentElement, {
+      attributeFilter: ["data-pinned-bar"],
+    })
+
+    return () => observer.disconnect()
+  }, [])
+
+  const secondaryNavVisible = showSecondaryNav && !pinnedBarActive
 
   // Keep the homepage-style secondary nav behavior consistent everywhere this
   // shell is used: every route change starts at the top with the nav visible.
@@ -96,21 +116,23 @@ export function MarketplaceSecondaryNavShell({
   // The primary header reads this attribute to decide when it should carry the
   // shadow itself versus letting the secondary nav own that visual treatment.
   useEffect(() => {
-    document.documentElement.dataset.secondaryNav = showSecondaryNav
+    document.documentElement.dataset.secondaryNav = secondaryNavVisible
       ? "visible"
       : "hidden"
 
     return () => {
       delete document.documentElement.dataset.secondaryNav
     }
-  }, [showSecondaryNav])
+  }, [secondaryNavVisible])
 
   return (
     <>
       <div
         className="fixed inset-x-0 top-[61px] lg:top-[64px] -mt-px px-3.5 md:px-6 lg:px-[50px] bg-white shadow-[0px_1px_3px_0px_rgba(16,24,40,.1)] xs:max-md:hidden z-40 transition-transform duration-300"
         style={{
-          transform: showSecondaryNav ? "translateY(0)" : "translateY(-100%)",
+          transform: secondaryNavVisible
+            ? "translateY(0)"
+            : "translateY(-100%)",
         }}
       >
         <div className="pt-0.5 pb-3.5 lg:py-3 flex items-end gap-x-6 lg:justify-between lg:gap-x-[30px] min-w-0">

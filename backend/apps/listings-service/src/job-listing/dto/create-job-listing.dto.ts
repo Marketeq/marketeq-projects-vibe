@@ -1,6 +1,7 @@
 import { IsEnum, IsOptional, IsUUID } from 'class-validator';
 import { ContractType } from '../enums/contract-type.enum';
 import { HiringType } from '../enums/hiring-type.enum';
+import { JobListingType } from '../enums/job-listing-type.enum';
 import { ScopeKnowledge } from '../enums/scope-knowledge.enum';
 import { WorkType } from '../enums/work-type.enum';
 
@@ -21,6 +22,10 @@ export class CreateJobListingDto {
   @IsEnum(HiringType)
   @IsOptional()
   hiringType?: HiringType;
+
+  @IsEnum(JobListingType)
+  @IsOptional()
+  listingType?: JobListingType;
 
   // Required when contractType is EXISTING.
   @IsUUID()

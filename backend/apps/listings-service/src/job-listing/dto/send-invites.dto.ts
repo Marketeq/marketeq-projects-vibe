@@ -1,9 +1,17 @@
-import { IsArray, IsOptional, IsUUID, ArrayMaxSize } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from "class-validator";
 
 export class SendInvitesDto {
   // Array of talent user IDs to invite. Max 30 per send action
   // (10 free invites per role, max 3 roles per batch = 30 max).
   @IsArray()
+  @ArrayNotEmpty()
   @ArrayMaxSize(30)
   @IsUUID(undefined, { each: true })
   talentUserIds: string[];
@@ -14,4 +22,8 @@ export class SendInvitesDto {
   @IsOptional()
   @IsUUID()
   roleRowId?: string;
+
+  @IsOptional()
+  @IsString()
+  roleTitle?: string;
 }

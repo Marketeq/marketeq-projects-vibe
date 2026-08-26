@@ -9743,7 +9743,13 @@ function PublishProject({
                 />
                 <div className="flex-auto bg-white min-w-0 overflow-x-hidden">
                   <Header
-                    onClose={() => router.back()}
+                    onClose={() => {
+                      if (window.history.length > 1) {
+                        router.back()
+                      } else {
+                        router.push("/my-listings")
+                      }
+                    }}
                     slug={slug}
                     lastSavedAt={lastSavedAt}
                     onPublish={handlePublish}

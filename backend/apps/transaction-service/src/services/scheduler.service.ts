@@ -50,6 +50,9 @@ export class SchedulerService {
     }
   }
 
+  /** Latches so the disabled-poller notice is logged once, not every minute. */
+  private dlqPollDisabledLogged = false;
+
   // ── 7.2 DLQ Depth Poller  (every 60 seconds) ──────────────────────
   @Cron('*/1 * * * *', { name: 'dlq-depth-poller' })
   async pollDlqDepths(): Promise<void> {
@@ -59,10 +62,24 @@ export class SchedulerService {
       'txn-svc.payout.events.dlq',
     ];
 
+    // Without a management URL the poller built "undefined/api/queues/..."
+    // and threw once per queue per minute, which is 4320 errors a day that
+    // bury real faults in the log. Skip the poll and say so once instead.
+    const managementUrl = this.config.get<string>('RABBITMQ_MANAGEMENT_URL');
+    if (!managementUrl) {
+      if (!this.dlqPollDisabledLogged) {
+        this.dlqPollDisabledLogged = true;
+        this.logger.warn(
+          'RABBITMQ_MANAGEMENT_URL is not configured; dead letter queue depth ' +
+            'polling is disabled. Set it to enable DLQ metrics.',
+        );
+      }
+      return;
+    }
+
     for (const queue of queues) {
       try {
-        const url = this.config.get<string>('RABBITMQ_MANAGEMENT_URL')
-          + '/api/queues/%2F/' + queue;
+        const url = managementUrl + '/api/queues/%2F/' + queue;
 
         const res = await fetch(url, {
           headers: {
