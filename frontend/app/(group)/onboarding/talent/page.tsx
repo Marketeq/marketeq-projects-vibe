@@ -302,6 +302,10 @@ const IntroduceYourself = ({
                     <ImageEditor
                       onValueChange={onChange}
                       defaultDataUrl={avatarPreviewUrl}
+                      // Without this the editor falls back to its hardcoded
+                      // "CH" placeholder. Pass the talent's real initials when
+                      // a name is known.
+                      fallbackInitials={initials || undefined}
                       startingPoint={({ dataUrl, open, style }: any) => (
                         <div className="flex flex-col gap-y-3 sm:flex-row sm:items-center sm:gap-x-4">
                           <div className="relative overflow-hidden size-[96px] bg-gray-100 rounded-full inline-flex items-center justify-center shrink-0">
