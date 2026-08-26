@@ -3679,7 +3679,10 @@ const ReadingResumeModal = ({
           </span>
         </div>
 
-        <p className="mt-6 text-center text-lg font-semibold leading-6 text-dark-blue-400">
+        <p
+          key={label}
+          className="mt-6 animate-in fade-in text-center text-lg font-semibold leading-6 text-dark-blue-400 duration-500 ease-out fill-mode-both"
+        >
           {label}
         </p>
         <p className="mt-1 text-center text-sm leading-5 text-gray-500">
@@ -3725,7 +3728,7 @@ const ReadingResumeModal = ({
               return (
                 <div
                   key={step.label}
-                  className="flex animate-in fade-in slide-in-from-bottom-2 items-center gap-3 duration-300 ease-out"
+                  className="flex animate-in fade-in slide-in-from-bottom-3 items-center gap-3 duration-500 ease-out fill-mode-both"
                 >
                   {isRowDone ? (
                     <CheckCircle className="size-5 shrink-0 text-primary-500" />
@@ -3775,7 +3778,7 @@ const ReadingResumeModal = ({
 
         {isDone ? (
           <Button
-            className="mt-8 w-full"
+            className="mt-8 w-full animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both delay-150"
             size="md"
             visual="primary"
             type="button"
