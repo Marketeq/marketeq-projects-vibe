@@ -598,10 +598,16 @@ export function createAuthService(deps: AuthServiceDeps) {
       while (attempt < REFRESH_RETRY_COUNT) {
         attempt += 1;
         try {
+          // Backend's RefreshDto only declares refresh_token, with
+          // forbidNonWhitelisted validation — deviceId in the body 400s,
+          // and the controller never reads the Authorization header for
+          // this route at all (cookie or body only). Sending the token
+          // via the header (per docs 13/15) silently never reached the
+          // backend's actual check; this matches what it really reads.
           const res = await deps.http.post<unknown>(
             '/auth/refresh',
-            { deviceId: currentUser?.id ?? null },
-            { bearer: refreshToken, skipAuth: true },
+            { refresh_token: refreshToken },
+            { skipAuth: true },
           );
           if (!res.ok) {
             if (res.status === 401) {
@@ -614,7 +620,11 @@ export function createAuthService(deps: AuthServiceDeps) {
               { status: res.status, headers: res.headers, body: res.body },
             ) as AuthHttpError;
           }
-          const parsed = RefreshResponseSchema.safeParse(res.body);
+          // Same snake_case/camelCase mismatch as login (normalizeLoginBody
+          // already exists for exactly this) — the backend returns
+          // access_token/refresh_token/expires_in, never previously
+          // normalized here, so accessToken always parsed as undefined.
+          const parsed = RefreshResponseSchema.safeParse(normalizeLoginBody(res.body));
           if (!parsed.success) {
             logger.error(
               { issues: parsed.error.issues },
