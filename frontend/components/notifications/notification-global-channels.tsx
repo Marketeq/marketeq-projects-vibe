@@ -151,8 +151,8 @@ export default function NotificationGlobalChannels({
 
   return (
     <>
-      <div className="bg-white rounded-xl border border-gray-200">
-        <div className="p-5">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-[0px_2px_5px_rgba(0,0,0,0.04)]">
+        <div className="p-6 pb-3">
           <h3 className="text-base font-semibold text-dark-blue-400">
             Notifications by type
           </h3>
@@ -160,11 +160,11 @@ export default function NotificationGlobalChannels({
             Control all notifications at once
           </p>
         </div>
-        <div className="px-5 pb-5 space-y-2">
+        <div className="px-6 pb-6 space-y-2.5">
           {/* In App */}
           <div
             className={cn(
-              "group flex items-center gap-3 bg-gray-50 rounded-lg px-4 h-[52px]"
+              "group flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-5 h-[60px] shadow-[0px_1px_4px_rgba(0,0,0,0.03)]"
             )}
           >
             <InAppIcon />
@@ -174,7 +174,7 @@ export default function NotificationGlobalChannels({
             <span className="flex-1" />
             <span
               className={cn(
-                "text-xs text-gray-400 group-hover:hidden",
+                "text-xs leading-[15px] text-gray-500 group-hover:hidden",
                 !channels.inApp.enabled && "opacity-50"
               )}
             >
@@ -196,7 +196,7 @@ export default function NotificationGlobalChannels({
           </div>
 
           {/* Email */}
-          <div className="group flex items-center gap-3 bg-gray-50 rounded-lg px-4 h-[52px]">
+          <div className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-5 h-[60px] shadow-[0px_1px_4px_rgba(0,0,0,0.03)]">
             <EmailIcon />
             <span className="text-sm font-semibold text-dark-blue-400">
               {channelLabels.email}
@@ -204,7 +204,7 @@ export default function NotificationGlobalChannels({
             <span className="flex-1" />
             <span
               className={cn(
-                "text-xs text-gray-400 group-hover:hidden",
+                "text-xs leading-[15px] text-gray-500 group-hover:hidden",
                 !channels.email.enabled && "opacity-50"
               )}
             >
@@ -231,7 +231,7 @@ export default function NotificationGlobalChannels({
           </div>
 
           {/* SMS / Text */}
-          <div className="group flex items-center gap-3 bg-gray-50 rounded-lg px-4 h-[52px] opacity-60">
+          <div className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-5 h-[60px] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] opacity-60">
             <SmsIcon />
             <span className="text-sm font-semibold text-dark-blue-400">
               {channelLabels.sms}

@@ -19,7 +19,7 @@ import {
   DisableTwoFactorModal,
   TwoFactorSetupModal,
 } from "@/components/two-factor-setup"
-import { PhoneNumberInput } from "@/components/phone-number-input"
+import { PhoneNumberInput, isPhoneValid } from "@/components/phone-number-input"
 import dynamic from "next/dynamic"
 import {
   AlertTriangle,
@@ -34,7 +34,9 @@ import {
   Lock01,
   HelpCircle,
   Image as ImageIcon,
+  Phone,
   Plus,
+  Send01,
   Settings02,
   Share06,
   Trash03,
@@ -282,6 +284,9 @@ export default function SettingsPage() {
 
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [showSessionsModal, setShowSessionsModal] = useState(false)
+  const [twoFactorPhone, setTwoFactorPhone] = useState("")
+  const [isMagicLinkSent, setIsMagicLinkSent] = useState(false)
+  const twoFactorPhoneLast4 = twoFactorPhone.replace(/\D/g, "").slice(-4)
   const [show2FASetup, setShow2FASetup] = useState(false)
   const [show2FADisable, setShow2FADisable] = useState(false)
 
@@ -1609,32 +1614,99 @@ export default function SettingsPage() {
 
               {activeTab === "two-factor-auth" && (
                 <>
-                  <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400 mb-6">
-                    Two-Factor Authentication
-                  </h1>
-                  <div className="bg-white rounded-xl border border-gray-200 p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-dark-blue-400">
-                          Two-Factor Authentication
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {user?.twoFactorEnabled
-                            ? user?.twoFactorMethod === "sms"
-                              ? "SMS verification enabled"
-                              : "Authenticator app enabled"
-                            : "Add an extra layer of security to your account"}
-                        </p>
-                      </div>
-                      <Switch
-                        checked={user?.twoFactorEnabled ?? false}
-                        onCheckedChange={(checked) => {
-                          if (checked) setShow2FASetup(true)
-                          else setShow2FADisable(true)
-                        }}
+                  <div className="flex items-start justify-between gap-6">
+                    <div className="flex w-[658px] flex-col items-start gap-3">
+                      <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                        Two-Factor Authentication
+                      </h1>
+                      <p className="w-full text-sm text-gray-500">
+                        Enter your phone number and we&apos;ll send a magic link
+                        to the number entered. This helps keep your account
+                        secure.
+                      </p>
+                    </div>
+
+                    {twoFactorPhone.trim() !== "" && (
+                      <Button
+                        size="sm"
+                        disabled={!isPhoneValid(twoFactorPhone)}
+                        onClick={() => setIsMagicLinkSent(true)}
+                        leftIcon={<Send01 className="size-[15px]" />}
+                      >
+                        Send Link
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="mt-6 flex w-[550px] flex-col items-start gap-2.5">
+                    <div className="flex w-[320px] flex-col items-start gap-1.5">
+                      <Label size="sm">Phone Number</Label>
+                      <PhoneNumberInput
+                        defaultCountry="us"
+                        placeholder="+1 (555) 000-0000"
+                        disableDialCodePrefill
+                        value={twoFactorPhone}
+                        onChange={setTwoFactorPhone}
                       />
                     </div>
                   </div>
+
+                  <Dialog
+                    open={isMagicLinkSent}
+                    onOpenChange={setIsMagicLinkSent}
+                  >
+                    <DialogContent
+                      className="flex max-w-[508px] flex-col items-center gap-8 px-[55px] pb-6 pt-[55px] shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <div className="flex w-full flex-col items-center gap-5">
+                        <span className="flex size-12 items-center justify-center rounded-full border-8 border-primary-25 bg-primary-50">
+                          <Phone className="size-6 text-primary-500" />
+                        </span>
+
+                        <div className="flex w-full flex-col items-center gap-2">
+                          <DialogTitle className="w-full text-center text-lg leading-7 font-semibold text-gray-900">
+                            Please check your phone
+                          </DialogTitle>
+                          <DialogDescription className="text-center text-sm text-gray-500">
+                            We sent a magic link sent to phone number ending with{" "}
+                            <span className="font-semibold text-gray-900">
+                              {twoFactorPhoneLast4}
+                            </span>
+                            .
+                          </DialogDescription>
+                          <p className="w-full text-center text-sm text-gray-500">
+                            The link will expire in{" "}
+                            <span className="font-semibold text-gray-900">
+                              24 hours
+                            </span>
+                            .
+                          </p>
+                        </div>
+                      </div>
+
+                      <Button size="sm">Resend Link</Button>
+
+                      <p className="w-full text-center text-sm text-gray-500">
+                        No longer have access to this email?{" "}
+                        <a href="#" className="underline">
+                          Start account recovery
+                        </a>
+                      </p>
+
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="absolute right-2.5 top-2.5 size-[38px] rounded-[5px]"
+                        onClick={() => setIsMagicLinkSent(false)}
+                      >
+                        <X className="size-6 text-gray-500 opacity-50" />
+                      </IconButton>
+                    </DialogContent>
+                  </Dialog>
                 </>
               )}
 
