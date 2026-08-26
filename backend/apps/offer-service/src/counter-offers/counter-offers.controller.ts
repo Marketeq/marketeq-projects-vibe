@@ -3,6 +3,7 @@
 import {
   Controller, Get, Post, Patch, Param, Body,
   UseGuards, UseInterceptors, HttpCode, HttpStatus, ParseUUIDPipe,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtAuthGuard, CurrentUser } from '@libs/auth';
 import { CounterOffersService } from './counter-offers.service';
@@ -11,6 +12,8 @@ import { EditCounterOfferDto } from './dto/edit-counter-offer.dto';
 import { WithdrawCounterOfferDto } from './dto/withdraw-counter-offer.dto';
 import { OfferPartyGuard } from '../guards/offer-party.guard';
 import { IdempotencyInterceptor } from '../interceptors/idempotency.interceptor';
+import { CurrentPartyRole } from '../common/decorators/current-party-role.decorator';
+import { UserRole } from '../common/types/user-role.enum';
 
 @Controller('offers/:offerId/counter-offers')
 @UseGuards(JwtAuthGuard, OfferPartyGuard)
@@ -18,15 +21,26 @@ export class CounterOffersController {
   constructor(private readonly counterOffersService: CounterOffersService) {}
 
   // POST /v1/offers/:offerId/counter-offers
+  // submittedBy (CLIENT/TALENT — used for rate-warning direction and the
+  // stored submitted_by column) comes from partyRole, derived by
+  // OfferPartyGuard (class-level, already run) from actual offer party
+  // membership — not from user.role, which libs/auth's JwtStrategy never
+  // sets (see offer-party.guard.ts's comment). partyRole is guaranteed
+  // set here: OfferPartyGuard already 403'd anyone who isn't clientId or
+  // talentId on this offer before this handler runs.
   @Post()
   @UseInterceptors(IdempotencyInterceptor)
   @HttpCode(HttpStatus.CREATED)
   async createCounterOffer(
     @Param('offerId', ParseUUIDPipe) offerId: string,
     @CurrentUser() user: any,
+    @CurrentPartyRole() partyRole: UserRole | undefined,
     @Body() dto: CreateCounterOfferDto,
   ) {
-    return this.counterOffersService.create(offerId, user.id, user.role, dto);
+    if (!partyRole) {
+      throw new ForbiddenException("You don't have permission to do that.");
+    }
+    return this.counterOffersService.create(offerId, user.id, partyRole, dto);
   }
 
   // GET /v1/offers/:offerId/counter-offers/:id

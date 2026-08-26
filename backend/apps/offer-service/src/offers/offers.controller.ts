@@ -16,12 +16,14 @@ import { DeclineOfferDto } from './dto/decline-offer.dto';
 import { WithdrawOfferDto } from './dto/withdraw-offer.dto';
 import { ResendOfferDto } from './dto/resend-offer.dto';
 import { OfferHistoryQueryDto } from './dto/offer-history-query.dto';
+import { ListOffersQueryDto } from './dto/list-offers-query.dto';
 import { RolesGuard } from '../guards/roles.guard';
 import { OfferPartyGuard } from '../guards/offer-party.guard';
+import { ListingOwnerGuard } from '../guards/listing-owner.guard';
 import { IdempotencyInterceptor } from '../interceptors/idempotency.interceptor';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/types/user-role.enum';
- 
+
 @Controller('offers')
 @UseGuards(JwtAuthGuard)
 export class OffersController {
@@ -29,11 +31,14 @@ export class OffersController {
     private readonly offersService: OffersService,
     private readonly ablyService: AblyService,
   ) {}
- 
-  // POST /v1/offers — CLIENT only
+
+  // POST /v1/offers — no @Roles(CLIENT)/RolesGuard here: role is never set
+  // on the JWT (see roles.guard.ts's comment), and there's no offer yet to
+  // derive a party from either. ListingOwnerGuard is the authorization
+  // boundary instead — only the client who owns dto.jobListingId may
+  // create an offer against it. See listing-owner.guard.ts.
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.CLIENT)
+  @UseGuards(ListingOwnerGuard)
   @UseInterceptors(IdempotencyInterceptor)
   @HttpCode(HttpStatus.CREATED)
   async createOffer(@CurrentUser() user: any, @Body() dto: CreateOfferDto, @Req() req: Request) {
@@ -42,6 +47,27 @@ export class OffersController {
     return this.offersService.create(user.id, dto, clientJwt);
   }
  
+  // GET /v1/offers — offers inbox, scoped to the authenticated user by role.
+  // Declared ahead of GET :id (literal path, no collision either way since
+  // ':id' requires a path segment — same convention as the other literal
+  // routes in this file).
+  //
+  // Guarded exactly as GET :id: OfferPartyGuard only, no RolesGuard/@Roles —
+  // both clients and talents call this for their own inbox. OfferPartyGuard
+  // itself no-ops here (it only checks a :id/:offerId param, and there is
+  // none on this route — see its own "skip (creation endpoints)" comment).
+  // The actual authorization boundary is inside offersService.list(): the
+  // party (client_id or talent_id) is derived from the JWT-carried
+  // role+userId only, never from a query param.
+  @Get()
+  @UseGuards(OfferPartyGuard)
+  async listOffers(
+    @CurrentUser() user: any,
+    @Query() query: ListOffersQueryDto,
+  ) {
+    return this.offersService.list(user.id, query);
+  }
+
   // GET /v1/offers/:id
   @Get(':id')
   @UseGuards(OfferPartyGuard)
@@ -49,9 +75,12 @@ export class OffersController {
     return this.offersService.findById(id);
   }
  
-  // PATCH /v1/offers/:id — CLIENT only
+  // PATCH /v1/offers/:id — CLIENT (derived from offer party). Guard order
+  // matters — OfferPartyGuard must run first to populate request.partyRole
+  // before RolesGuard reads it. Same bug as accept/decline/withdraw/resend
+  // had, same fix.
   @Patch(':id')
-  @UseGuards(RolesGuard, OfferPartyGuard)
+  @UseGuards(OfferPartyGuard, RolesGuard)
   @Roles(UserRole.CLIENT)
   @UseInterceptors(IdempotencyInterceptor)
   async editOffer(
@@ -62,10 +91,13 @@ export class OffersController {
     return this.offersService.edit(id, user.id, dto);
   }
  
-  // POST /v1/offers/:id/accept — TALENT only
+  // POST /v1/offers/:id/accept — TALENT (derived from offer party — see
+  // OfferPartyGuard/RolesGuard). OfferPartyGuard MUST run before
+  // RolesGuard: it's what populates request.partyRole that RolesGuard
+  // reads. Order here is significant, not stylistic.
   @Post(':id/accept')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard, OfferPartyGuard)
+  @UseGuards(OfferPartyGuard, RolesGuard)
   @Roles(UserRole.TALENT)
   @UseInterceptors(IdempotencyInterceptor)
   async acceptOffer(
@@ -76,10 +108,11 @@ export class OffersController {
     return this.offersService.accept(id, user.id, dto);
   }
  
-  // POST /v1/offers/:id/decline — TALENT only
+  // POST /v1/offers/:id/decline — TALENT (derived from offer party).
+  // Guard order matters — see acceptOffer's comment above.
   @Post(':id/decline')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard, OfferPartyGuard)
+  @UseGuards(OfferPartyGuard, RolesGuard)
   @Roles(UserRole.TALENT)
   @UseInterceptors(IdempotencyInterceptor)
   async declineOffer(
@@ -90,10 +123,11 @@ export class OffersController {
     return this.offersService.decline(id, user.id, dto);
   }
  
-  // POST /v1/offers/:id/withdraw — CLIENT only
+  // POST /v1/offers/:id/withdraw — CLIENT (derived from offer party).
+  // Guard order matters — see acceptOffer's comment above.
   @Post(':id/withdraw')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard, OfferPartyGuard)
+  @UseGuards(OfferPartyGuard, RolesGuard)
   @Roles(UserRole.CLIENT)
   @UseInterceptors(IdempotencyInterceptor)
   async withdrawOffer(
@@ -104,10 +138,11 @@ export class OffersController {
     return this.offersService.withdraw(id, user.id, dto);
   }
  
-  // POST /v1/offers/:id/resend — CLIENT only
+  // POST /v1/offers/:id/resend — CLIENT (derived from offer party).
+  // Guard order matters — see acceptOffer's comment above.
   @Post(':id/resend')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard, OfferPartyGuard)
+  @UseGuards(OfferPartyGuard, RolesGuard)
   @Roles(UserRole.CLIENT)
   @UseInterceptors(IdempotencyInterceptor)
   async resendOffer(

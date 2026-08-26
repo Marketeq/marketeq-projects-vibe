@@ -7,12 +7,14 @@ import { decryptAES, decryptWithPrivateKey } from "@/src/crypto/e2ee"
 import { exportPrivateKey, republishPublicKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { ApiError, apiFetch } from "@/src/lib/api"
+import { formatNotificationTime } from "@/libs/notifications"
+import { createCounterOffer } from "@/service/http/offers"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
-  cn,
   DataEmoji,
   EmojiProperties,
+  cn,
   noop,
   toPxIfNumber,
 } from "@/utils/functions"
@@ -24,9 +26,15 @@ import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import { useUserChannel } from "@/utils/useUserChannel"
 import {
   AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
   Archive,
   Attachment01,
+  Calendar,
   ChevronDown,
+  Clock,
+  Briefcase,
+  DollarSign,
   Edit05,
   File,
   Image03,
@@ -36,12 +44,14 @@ import {
   MoreHorizontal,
   Pin02,
   Plus,
+  Repeat,
   SearchMd,
   Send,
   Smile,
   Star,
   Trash2,
   UploadCloud,
+  User as UserIcon,
   X,
 } from "@blend-metrics/icons"
 import {
@@ -50,7 +60,7 @@ import {
   MsOnedriveBrand,
 } from "@blend-metrics/icons/brands"
 import { DropdownMenuArrow } from "@radix-ui/react-dropdown-menu"
-import { format, isSameDay, isToday, isYesterday, parseISO } from "date-fns"
+import { format, isSameDay, parseISO } from "date-fns"
 import { useMeasure, useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message, MessageAttachment } from "@/types/message"
@@ -59,7 +69,14 @@ import { Spinner } from "@/components/ui/spinner/spinner"
 import { toast } from "@/components/ui/toast/use-toast"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
+import { CounterOfferDialog } from "@/components/counter-offer-dialog"
 import { EmojiPicker, type Result as TenorGif } from "@/components/emoji-picker"
+import type { OfferDialogData } from "@/components/offer-dialog.types"
+import { OfferHistoryDialog } from "@/components/offer-history-dialog"
+import {
+  OfferFlowDialog,
+  type OfferFlowDialogVariant,
+} from "@/components/offer-flow-dialog"
 import {
   Avatar,
   AvatarFallback,
@@ -124,8 +141,7 @@ function describeKeyFailure(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.status === 401)
       return "Your session expired. Sign in again to view this conversation."
-    if (err.status === 403)
-      return "You don't have access to this conversation."
+    if (err.status === 403) return "You don't have access to this conversation."
     if (err.status === 404)
       return "This conversation's encryption key is no longer available."
     // 409/422 are both permanent server-side key-material problems. Telling the
@@ -172,6 +188,7 @@ interface ChatsProps {
   acceptedOfferCard?: AcceptedOfferCardData | null
   counterOfferCard?: CounterOfferCardData | null
   declinedOfferCard?: DeclinedOfferCardData | null
+  offerNotificationMessages?: OfferNotificationMessageData[]
 }
 
 const COMPOSER_MAX_CHARS = 8000
@@ -227,12 +244,7 @@ interface UploadedAttachmentResult {
 
 const formatDateSeparator = (iso: string): string => {
   const d = parseISO(iso)
-  if (isToday(d)) return "Today"
-  if (isYesterday(d)) return "Yesterday"
-  const now = new Date()
-  return d.getFullYear() === now.getFullYear()
-    ? format(d, "MMM d")
-    : format(d, "MMM d, yyyy")
+  return format(d, "MMM d, yyyy")
 }
 
 const DateSeparator = ({ label }: { label: string }) => (
@@ -292,7 +304,94 @@ export interface DeclinedOfferCardData {
   senderUsername?: string
   senderAvatarSrc?: string
   declineMessage?: string
+  declineReason?: string
 }
+
+export interface OfferNotificationMessageData {
+  id: string
+  contractId: string
+  event: string
+  title: string
+  body: string
+  href: string
+  viewJobHref: string
+  jobListingId: string
+  createdAt: string
+  actorId: string
+  senderDisplayName: string
+  senderUsername: string
+  senderAvatarSrc?: string
+  offerTitle: string
+  offerType: string
+  offerRate: string
+  originalOfferRate?: string
+  originalDuration?: string
+  originalSchedule?: string
+  originalStartDate?: string
+  role: string
+  duration: string
+  schedule: string
+  scheduleDetail?: string
+  startDate: string
+  expiresLabel: string
+  seeded?: boolean
+  clientPerspective?: boolean
+  withdrawnByViewer?: boolean
+  withdrawalMessage?: string
+  declineReason?: string
+  counterOfferMessage?: string
+  counterOfferFromClient?: boolean
+  extensionRequestVariant?: boolean
+  singleMessageOnly?: boolean
+  recipientFirstName?: string
+}
+
+const COUNTER_OFFER_STORAGE_PREFIX = "inbox_counter_offer_submitted"
+
+const OFFER_EVENT_ACTION: Record<string, string> = {
+  "offer.received": "sent an offer",
+  "offer.created": "sent an offer",
+  "offer.edited": "edited the offer",
+  "offer.resent": "resent the offer",
+  "offer.accepted": "accepted the offer",
+  "offer.declined": "declined the offer",
+  "offer.withdrawn": "withdrew the offer",
+  "offer.expiring_soon": "has an offer expiring soon",
+  "offer.expired": "has an offer that expired",
+  "offer.countered": "sent a counter offer",
+  "offer.counter_edited": "edited the counter offer",
+  "offer.counter_accepted": "accepted the counter offer",
+  "offer.counter_declined": "declined the counter offer",
+  "offer.counter_withdrawn": "withdrew the counter offer",
+  "offer.counter_expiring_soon": "has a counter offer expiring soon",
+  "offer.counter_expired": "has a counter offer that expired",
+}
+
+const OFFER_EVENT_STATE: Record<
+  string,
+  { label: string; visual: "success" | "error" | "warning" | "gray" }
+> = {
+  "offer.accepted": { label: "Offer Accepted", visual: "success" },
+  "offer.counter_accepted": { label: "Offer Accepted", visual: "success" },
+  "offer.declined": { label: "Offer Declined", visual: "error" },
+  "offer.counter_declined": { label: "Offer Declined", visual: "error" },
+  "offer.expiring_soon": { label: "Offer Pending", visual: "warning" },
+  "offer.counter_expiring_soon": {
+    label: "Offer Pending",
+    visual: "warning",
+  },
+  "offer.countered": { label: "Offer Countered", visual: "gray" },
+  "offer.counter_edited": { label: "Offer Countered", visual: "gray" },
+  "offer.withdrawn": { label: "Offer Withdrawn", visual: "gray" },
+  "offer.counter_withdrawn": { label: "Offer Withdrawn", visual: "gray" },
+  "offer.expired": { label: "Offer Expired", visual: "gray" },
+  "offer.counter_expired": { label: "Offer Expired", visual: "gray" },
+}
+
+const isMutedOfferEvent = (event: string) =>
+  event.includes("countered") ||
+  event.includes("withdrawn") ||
+  event.includes("expired")
 
 export function Chats({
   selectedConversation,
@@ -309,6 +408,7 @@ export function Chats({
   acceptedOfferCard,
   counterOfferCard,
   declinedOfferCard,
+  offerNotificationMessages = [],
 }: ChatsProps) {
   const router = useRouter()
   const [textareaValue, setTextareaValue] = useState("")
@@ -324,9 +424,298 @@ export function Chats({
   const [starredMap, setStarredMap] = useState<Record<string, boolean>>({})
   const [declinedOfferDetailsOpen, setDeclinedOfferDetailsOpen] =
     useState(false)
+  const [locallyDeclinedTalentOffers, setLocallyDeclinedTalentOffers] =
+    useState<string[]>([])
+  const [selectedNotificationOffer, setSelectedNotificationOffer] =
+    useState<OfferNotificationMessageData | null>(null)
+  const [notificationOfferStep, setNotificationOfferStep] = useState<
+    | "event"
+    | "accept"
+    | "accepted"
+    | "decline"
+    | "declined"
+    | "counter"
+    | "edit"
+    | "edit-expired"
+    | "resend-edit"
+    | "history"
+    | "previous"
+    | "withdraw-confirm"
+    | "resend"
+    | "resend-summary"
+    | "sent-counter"
+    | "expired-counter"
+    | "resend-counter"
+  >("event")
+  const [notificationAcceptanceMessage, setNotificationAcceptanceMessage] =
+    useState("")
+  const [notificationTermsAccepted, setNotificationTermsAccepted] =
+    useState(false)
+  const [notificationDeclineMessage, setNotificationDeclineMessage] =
+    useState("")
+  const [notificationDeclineReason, setNotificationDeclineReason] = useState("")
+  const [notificationWithdrawalMessage, setNotificationWithdrawalMessage] =
+    useState("")
+  const [submittingCounterOffer, setSubmittingCounterOffer] = useState(false)
+  const [declinedCounterOfferMessage, setDeclinedCounterOfferMessage] =
+    useState<OfferNotificationMessageData | null>(null)
+  const [acceptedCounterOfferMessage, setAcceptedCounterOfferMessage] =
+    useState<OfferNotificationMessageData | null>(null)
+  const [acceptedCounterOfferBody, setAcceptedCounterOfferBody] = useState("")
+  const [withdrawnClientOfferMessage, setWithdrawnClientOfferMessage] =
+    useState<OfferNotificationMessageData | null>(null)
+  const [withdrawnTalentCounterOfferMessage, setWithdrawnTalentCounterOfferMessage] =
+    useState<OfferNotificationMessageData | null>(null)
+  const [sentClientOfferMessages, setSentClientOfferMessages] = useState<
+    OfferNotificationMessageData[]
+  >([])
+  const [notificationResendMessage, setNotificationResendMessage] =
+    useState("")
+  const [dismissedExpiredOfferActions, setDismissedExpiredOfferActions] =
+    useState<string[]>([])
+  const [reopenedExpiredOfferIds, setReopenedExpiredOfferIds] = useState<
+    string[]
+  >([])
+  const [showClientPreviousStartDate, setShowClientPreviousStartDate] =
+    useState(false)
+
+  useEffect(() => {
+    if (!showClientPreviousStartDate || !selectedNotificationOffer) return
+
+    const previousValues: Record<string, string> = {
+      "Offer Rate": selectedNotificationOffer.offerRate,
+      "Contract Duration": selectedNotificationOffer.duration,
+      "Work Schedule": selectedNotificationOffer.schedule,
+      "Start Date": selectedNotificationOffer.startDate,
+    }
+    const normalizeValue = (value: string) =>
+      value.replace(/\s+/g, " ").trim().toLowerCase()
+    const decorateReviewChanges = () => {
+      const reviewDialog = Array.from(
+        document.querySelectorAll<HTMLElement>('[role="dialog"]')
+      ).find((dialog) => dialog.textContent?.includes("Review your offer"))
+      if (!reviewDialog) return
+
+      const offerRateLabel = Array.from(
+        reviewDialog.querySelectorAll<HTMLElement>("div")
+      ).find((element) => element.textContent?.trim() === "Offer Rate")
+      const offerRateValue = offerRateLabel?.parentElement?.children.item(1)
+      const arrowTemplate =
+        offerRateValue instanceof HTMLElement
+          ? offerRateValue.querySelector("svg")?.cloneNode(true)
+          : null
+
+      for (const [label, previousValue] of Object.entries(previousValues)) {
+        const labelElement = Array.from(
+          reviewDialog.querySelectorAll<HTMLElement>("div")
+        ).find((element) => element.textContent?.trim() === label)
+        const value = labelElement?.parentElement?.children.item(1)
+        if (!(value instanceof HTMLElement)) continue
+
+        const currentValue =
+          label === "Offer Rate"
+            ? Array.from(value.querySelectorAll("span")).find(
+                (span) => !span.textContent?.trim().startsWith("(was")
+              )?.textContent || ""
+            : value.textContent || ""
+        const changed =
+          normalizeValue(currentValue) !== normalizeValue(previousValue)
+
+        if (label === "Offer Rate") {
+          if (!changed) {
+            value.querySelector("svg")?.remove()
+            Array.from(value.querySelectorAll("span"))
+              .find((span) => span.textContent?.trim().startsWith("(was"))
+              ?.remove()
+          } else {
+            value
+              .querySelector("svg")
+              ?.classList.replace("text-success-500", "text-success-400")
+          }
+          continue
+        }
+        if (!changed) continue
+
+        value.classList.add("flex", "items-center", "gap-2")
+        if (arrowTemplate instanceof SVGElement) {
+          const arrow = arrowTemplate.cloneNode(true) as SVGElement
+          arrow.dataset.clientOfferChange = "true"
+          arrow.classList.replace("text-success-500", "text-success-400")
+          value.prepend(arrow)
+        }
+
+        const comparison = document.createElement("span")
+        comparison.dataset.clientOfferChange = "true"
+        comparison.className = "font-normal text-gray-400"
+        comparison.textContent = `(was ${previousValue})`
+        value.appendChild(comparison)
+      }
+    }
+
+    const frame = requestAnimationFrame(decorateReviewChanges)
+    return () => {
+      cancelAnimationFrame(frame)
+      document
+        .querySelectorAll('[data-client-offer-change="true"]')
+        .forEach((element) => element.remove())
+    }
+  }, [selectedNotificationOffer, showClientPreviousStartDate])
+
+  useEffect(() => {
+    if (
+      sentClientOfferMessages.length === 0 &&
+      !acceptedCounterOfferMessage &&
+      !declinedCounterOfferMessage &&
+      !withdrawnTalentCounterOfferMessage
+    ) {
+      return
+    }
+    requestAnimationFrame(() =>
+      scrollRef.current?.scrollIntoView({ behavior: "smooth" })
+    )
+  }, [
+    acceptedCounterOfferMessage,
+    declinedCounterOfferMessage,
+    sentClientOfferMessages.length,
+    withdrawnTalentCounterOfferMessage,
+  ])
   const acceptedOfferToastRef = useRef<string | null>(null)
   const submittedCounterOfferRef = useRef<string | null>(null)
   const declinedOfferToastRef = useRef<string | null>(null)
+
+  const selectedNotificationOfferEventVariant =
+    useMemo<OfferFlowDialogVariant>(() => {
+      const event = selectedNotificationOffer?.event
+      if (event === "offer.accepted" || event === "offer.counter_accepted") {
+        return "offer-accepted"
+      }
+      if (event === "offer.declined" || event === "offer.counter_declined") {
+        return "offer-declined"
+      }
+      if (event === "offer.withdrawn" || event === "offer.counter_withdrawn") {
+        return "offer-withdrawn"
+      }
+      if (event === "offer.expired" || event === "offer.counter_expired") {
+        return "offer-expired"
+      }
+      return event?.includes("counter")
+        ? "counter-offer-details"
+        : "offer-details"
+    }, [selectedNotificationOffer])
+  const selectedNotificationOfferIsClientExpired =
+    selectedNotificationOffer?.event === "offer.expired" ||
+    selectedNotificationOffer?.event === "offer.counter_expired"
+  const selectedNotificationOfferIsClientWithdrawn =
+    selectedNotificationOffer?.event === "offer.withdrawn" ||
+    selectedNotificationOffer?.event === "offer.counter_withdrawn"
+  const selectedNotificationOfferIsClientDeclined =
+    selectedNotificationOffer?.event === "offer.declined"
+  const selectedNotificationOfferIsTalentCounter =
+    selectedNotificationOffer != null &&
+    selectedNotificationOffer.clientPerspective !== true &&
+    (selectedNotificationOffer.event.includes("counter") ||
+      counterOfferCard?.contractId === selectedNotificationOffer.contractId)
+  const showClientTerminalNotificationOffer =
+    selectedNotificationOffer?.clientPerspective === true &&
+    notificationOfferStep === "event" &&
+    (selectedNotificationOffer.event === "offer.accepted" ||
+      selectedNotificationOffer.event === "offer.counter_accepted" ||
+      selectedNotificationOfferIsClientExpired ||
+      selectedNotificationOfferIsClientWithdrawn ||
+      selectedNotificationOfferIsClientDeclined)
+  const showTalentExpiredNotificationOffer =
+    selectedNotificationOffer?.clientPerspective !== true &&
+    notificationOfferStep === "event" &&
+    (selectedNotificationOffer?.event === "offer.expired" ||
+      selectedNotificationOffer?.event === "offer.counter_expired")
+  const showTalentWithdrawnNotificationOffer =
+    selectedNotificationOffer?.clientPerspective !== true &&
+    notificationOfferStep === "event" &&
+    selectedNotificationOffer?.event === "offer.withdrawn"
+
+  const selectedNotificationOfferVariant: OfferFlowDialogVariant =
+    notificationOfferStep === "accept"
+      ? notificationAcceptanceMessage.trim() && notificationTermsAccepted
+        ? "accept-offer-ready"
+        : "accept-offer-empty"
+      : notificationOfferStep === "accepted"
+        ? "offer-accepted"
+        : notificationOfferStep === "decline"
+          ? notificationDeclineMessage.trim() ||
+            notificationDeclineReason.trim()
+            ? "decline-offer-ready"
+            : "decline-offer-empty"
+          : notificationOfferStep === "declined"
+            ? "offer-declined"
+            : notificationOfferStep === "history"
+              ? "offer-details-history"
+              : notificationOfferStep === "previous"
+                ? "offer-details"
+                : selectedNotificationOfferEventVariant
+
+  const openNotificationOffer = (item: OfferNotificationMessageData) => {
+    setSelectedNotificationOffer(item)
+    setNotificationOfferStep("event")
+    setNotificationAcceptanceMessage("")
+    setNotificationTermsAccepted(false)
+    setNotificationDeclineMessage("")
+    setNotificationDeclineReason("")
+  }
+
+  const selectedNotificationOfferData = useMemo<OfferDialogData | null>(() => {
+    if (!selectedNotificationOffer) return null
+    return {
+      senderDisplayName: selectedNotificationOffer.senderDisplayName,
+      senderUsername: selectedNotificationOffer.senderUsername,
+      senderAvatarSrc: selectedNotificationOffer.senderAvatarSrc,
+      offerType: selectedNotificationOffer.offerType,
+      receivedLabel: format(
+        parseISO(selectedNotificationOffer.createdAt),
+        "MMM d, yyyy"
+      ),
+      offerTitle: selectedNotificationOffer.offerTitle,
+      offerRate: selectedNotificationOffer.offerRate,
+      originalOfferRate: selectedNotificationOffer.originalOfferRate,
+      role: selectedNotificationOffer.role,
+      duration: selectedNotificationOffer.duration,
+      schedule: selectedNotificationOffer.schedule,
+      startDate: selectedNotificationOffer.startDate,
+      expiresLabel: selectedNotificationOffer.expiresLabel,
+      message:
+        selectedNotificationOffer.counterOfferMessage ||
+        (selectedNotificationOffer.event.includes("counter")
+          ? "I would like to increase the hourly rate if it’s ok."
+          : undefined),
+      statusDateLabel: format(
+        parseISO(selectedNotificationOffer.createdAt),
+        "MMM d, yyyy"
+      ),
+    }
+  }, [selectedNotificationOffer])
+  const selectedTalentOfferExpiredOverThirtyDays = (() => {
+    if (!selectedNotificationOfferData?.expiresLabel) return false
+    const expiredAt = new Date(selectedNotificationOfferData.expiresLabel)
+    if (Number.isNaN(expiredAt.getTime())) return false
+    return Date.now() - expiredAt.getTime() > 30 * 24 * 60 * 60 * 1000
+  })()
+  const counterTermChanges = {
+    rate:
+      Boolean(selectedNotificationOffer?.originalOfferRate) &&
+      selectedNotificationOffer?.offerRate !==
+        selectedNotificationOffer?.originalOfferRate,
+    duration:
+      Boolean(selectedNotificationOffer?.originalDuration) &&
+      selectedNotificationOffer?.duration !==
+        selectedNotificationOffer?.originalDuration,
+    schedule:
+      Boolean(selectedNotificationOffer?.originalSchedule) &&
+      selectedNotificationOffer?.schedule !==
+        selectedNotificationOffer?.originalSchedule,
+    startDate:
+      Boolean(selectedNotificationOffer?.originalStartDate) &&
+      selectedNotificationOffer?.startDate !==
+        selectedNotificationOffer?.originalStartDate,
+  }
 
   useEffect(() => {
     if (
@@ -367,34 +756,38 @@ export function Chats({
     }
 
     declinedOfferToastRef.current = declinedOfferCard.contractId
+    setLocallyDeclinedTalentOffers((contractIds) =>
+      contractIds.includes(declinedOfferCard.contractId)
+        ? contractIds
+        : [...contractIds, declinedOfferCard.contractId]
+    )
     toast({
       title: "Offer Declined",
       description: "This offer is now closed.",
     })
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    })
   }, [declinedOfferCard])
   const declinedOfferSenderName =
     declinedOfferCard?.senderDisplayName || "Laura"
-  const declinedOfferSenderUsername =
-    declinedOfferCard?.senderUsername || "@lauradesign21"
+  const declinedOfferSenderUsernameValue =
+    declinedOfferCard?.senderUsername || "lauradesign21"
+  const declinedOfferSenderUsername = declinedOfferSenderUsernameValue.startsWith(
+    "@"
+  )
+    ? declinedOfferSenderUsernameValue
+    : `@${declinedOfferSenderUsernameValue}`
   const declinedOfferSenderInitial =
     declinedOfferSenderName.slice(0, 1) ||
     declinedOfferSenderUsername.replace(/^@/, "").slice(0, 1) ||
     "L"
-  const declinedAtDate = declinedOfferCard?.declinedAt
-    ? new Date(declinedOfferCard.declinedAt)
-    : null
-  const canRequestExtension =
-    !declinedAtDate ||
-    Number.isNaN(declinedAtDate.getTime()) ||
-    Date.now() - declinedAtDate.getTime() < 30 * 24 * 60 * 60 * 1000
   const declinedDisplayLabel =
     declinedOfferCard?.declinedLabel ||
     declinedOfferCard?.receivedLabel ||
     "Feb 1, 2025"
   const askNowMessage = declinedOfferCard
-    ? canRequestExtension
-      ? `Hi ${declinedOfferSenderName}! Can you extend the offer for the project ${declinedOfferCard.offerTitle}? I'm still interested.`
-      : `Hi ${declinedOfferSenderName}! I wanted to check in and see if the ${declinedOfferCard.role} role for the project ${declinedOfferCard.offerTitle} is still available. If so, I'm still interested.`
+    ? `Hi ${declinedOfferSenderName}! I wanted to check in and see if the ${declinedOfferCard.role} role for the project ${declinedOfferCard.offerTitle} is still available. If so, I’m still interested.`
     : ""
   const [selectedTab, setSelectedTab] = useState<"Messages" | "Pinned">(
     "Messages"
@@ -446,7 +839,12 @@ export function Chats({
         onPatchConversation?.(prev.id, { isStarred: !next })
       })
     },
-    [selectedConversation, setSelectedConversation, onPatchConversation, threadActions]
+    [
+      selectedConversation,
+      setSelectedConversation,
+      onPatchConversation,
+      threadActions,
+    ]
   )
 
   const handleOpenForward = useCallback((msg: Message) => {
@@ -587,6 +985,7 @@ export function Chats({
   // Auto mark-read when opening a conversation
   useEffect(() => {
     if (!selectedConversation || !jwtToken) return
+    if (selectedConversation.isOfferNotificationThread) return
     const threadId = selectedConversation.id
     threadActions.markRead(threadId).catch(() => {})
     if (typeof window !== "undefined") {
@@ -600,6 +999,10 @@ export function Chats({
   useEffect(() => {
     setKeyReady(false)
     setKeyError(null)
+    if (selectedConversation?.isOfferNotificationThread) {
+      setKeyReady(true)
+      return
+    }
     if (!selectedConversation || !privateKey) return
     const ac = new AbortController()
     const convId = selectedConversation.id
@@ -659,19 +1062,19 @@ export function Chats({
           )
         }
         try {
-          await apiFetch(
-            `/api/messaging/conversations/${convId}/key`,
-            {
-              method: "DELETE",
-              headers: { Authorization: `Bearer ${jwtToken}` },
-              signal: ac.signal,
-            }
-          )
+          await apiFetch(`/api/messaging/conversations/${convId}/key`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${jwtToken}` },
+            signal: ac.signal,
+          })
           if (ac.signal.aborted) return
           await fetchAndUnwrap()
         } catch (retryErr: any) {
           if (retryErr?.name === "AbortError") return
-          console.error("Failed to unwrap conversation key after retry", retryErr)
+          console.error(
+            "Failed to unwrap conversation key after retry",
+            retryErr
+          )
           if (!ac.signal.aborted) {
             setKeyReady(false)
             setKeyError(describeKeyFailure(retryErr))
@@ -802,7 +1205,9 @@ export function Chats({
     hasMore,
     loadOlder,
   } = useMessages(
-    selectedConversation ? selectedConversation.id : "",
+    selectedConversation && !selectedConversation.isOfferNotificationThread
+      ? selectedConversation.id
+      : "",
     jwtToken,
     keyReady
   )
@@ -824,6 +1229,7 @@ export function Chats({
     if (!askNowMessage || counterpartDeleted) return
 
     setDeclinedOfferDetailsOpen(false)
+    setSelectedTab("Messages")
     setTextareaValue(askNowMessage)
     lastTypedAtRef.current = Date.now()
     userTypedRef.current = true
@@ -855,8 +1261,7 @@ export function Chats({
       const localOnly = prev.filter(
         (m) =>
           !fetchedIds.has(m.id) &&
-          ((m as any).threadId === undefined ||
-            (m as any).threadId === convId),
+          ((m as any).threadId === undefined || (m as any).threadId === convId)
       )
       return [...fetchedMsgs, ...localOnly]
     })
@@ -1000,6 +1405,16 @@ export function Chats({
     }
     return false
   })
+  const isSeededOfferConversation = offerNotificationMessages.some(
+    (item) =>
+      item.seeded &&
+      (item.actorId === receiverUser?.id ||
+        item.senderUsername.replace(/^@/, "").toLowerCase() ===
+          (receiverUser?.username ?? "").replace(/^@/, "").toLowerCase())
+  )
+  const visibleDisplayedMessages = isSeededOfferConversation
+    ? []
+    : displayedMessages
   const localMessageById = useMemo(
     () => new Map(localMsgs.map((m) => [m.id, m])),
     [localMsgs]
@@ -1092,7 +1507,7 @@ export function Chats({
               )
               if (tempIdx !== -1) {
                 next = next.map((existing, i) =>
-                  i === tempIdx ? incoming : existing,
+                  i === tempIdx ? incoming : existing
                 )
                 changed = true
                 continue
@@ -1185,7 +1600,7 @@ export function Chats({
       setLocalMsgs((prev) => {
         if (prev.some((m) => m.id === incoming.id)) {
           return prev.map((m) =>
-            m.id === incoming.id ? { ...m, ...patch } : m,
+            m.id === incoming.id ? { ...m, ...patch } : m
           )
         }
         pendingEditsRef.current.set(incoming.id, patch)
@@ -1856,6 +2271,26 @@ export function Chats({
   //   }
   // };
 
+  const selectedOfferParticipantId =
+    selectedConversation && currentUser
+      ? selectedConversation.participantIds.find((id) => id !== currentUser.id)
+      : undefined
+  const latestSelectedOfferNotificationId = offerNotificationMessages
+    .filter((item) => item.actorId === selectedOfferParticipantId)
+    .sort(
+      (left, right) =>
+        new Date(left.createdAt).getTime() -
+        new Date(right.createdAt).getTime()
+    )
+    .at(-1)?.id
+  useEffect(() => {
+    if (!latestSelectedOfferNotificationId) return
+    const frame = requestAnimationFrame(() =>
+      scrollRef.current?.scrollIntoView({ block: "end" })
+    )
+    return () => cancelAnimationFrame(frame)
+  }, [latestSelectedOfferNotificationId, selectedConversation?.id])
+
   if (!currentUser) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-2 text-gray-400">
@@ -1892,6 +2327,97 @@ export function Chats({
       : receiverUser.firstName?.trim() ||
         receiverUser.username ||
         "Unknown User"
+
+  const matchingConversationOfferNotifications = offerNotificationMessages
+    .filter(
+      (item) =>
+        item.actorId === receiverUser.id ||
+        item.senderUsername.replace(/^@/, "").toLowerCase() ===
+          (receiverUser.username ?? "").replace(/^@/, "").toLowerCase()
+    )
+    .sort(
+      (left, right) =>
+        new Date(left.createdAt).getTime() -
+        new Date(right.createdAt).getTime()
+    )
+  const latestSeededTalentOffer = [...matchingConversationOfferNotifications]
+    .filter((item) => item.seeded && !item.clientPerspective)
+    .sort(
+      (left, right) =>
+        new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+    )
+    .at(-1)
+  const conversationOfferNotifications =
+    latestSeededTalentOffer === undefined
+      ? matchingConversationOfferNotifications
+      : matchingConversationOfferNotifications.filter(
+          (item) =>
+            !item.seeded ||
+            item.clientPerspective ||
+            item.id === latestSeededTalentOffer.id
+        )
+  const conversationOfferContractIds = new Set(
+    conversationOfferNotifications.map((item) => item.contractId)
+  )
+  const seededTalentFollowOnId = [...conversationOfferNotifications]
+    .reverse()
+    .find(
+      (item) =>
+        item.seeded &&
+        !item.clientPerspective &&
+        (item.event.includes("accepted") ||
+          item.event.includes("declined") ||
+          item.event === "offer.countered" ||
+          item.event === "offer.counter_edited" ||
+          item.event.includes("withdrawn") ||
+          item.event === "offer.expired" ||
+          item.event === "offer.counter_expired")
+    )?.id
+  const counterExpiredFollowOnId = [...conversationOfferNotifications]
+    .reverse()
+    .find(
+      (item) =>
+        !item.clientPerspective && item.event === "offer.counter_expired"
+    )?.id
+  const participantJobTitle =
+    receiverUser.recentJobTitle ||
+    (typeof receiverUser.jobTitles?.[0] === "string"
+      ? receiverUser.jobTitles[0]
+      : (
+          receiverUser.jobTitles?.[0] as unknown as
+            { jobTitle?: string } | undefined
+        )?.jobTitle) ||
+    conversationOfferNotifications[0]?.role
+
+  const openClientContractPage = (item: OfferNotificationMessageData) => {
+    router.push(
+      `/active-project/${encodeURIComponent(item.contractId)}?title=${encodeURIComponent(item.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract`
+    )
+  }
+
+  const openTalentContractPage = (item: OfferNotificationMessageData) => {
+    router.push(
+      `/active-project/${encodeURIComponent(item.contractId)}?title=${encodeURIComponent(item.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract&perspective=talent`
+    )
+  }
+
+  const openClientResendOfferFlow = (item: OfferNotificationMessageData) => {
+    setSelectedNotificationOffer(null)
+    requestAnimationFrame(() => {
+      window.dispatchEvent(
+        new CustomEvent("inbox:open-resend-offer", {
+          detail: {
+            offerId: item.contractId,
+            offerTitle: item.offerTitle,
+            jobListingId: item.jobListingId,
+            talentId: item.actorId,
+            contractType: item.offerType,
+            startDate: item.startDate,
+          },
+        })
+      )
+    })
+  }
 
   return (
     <div className="flex-auto relative min-w-0 h-full flex flex-col">
@@ -1937,12 +2463,12 @@ export function Chats({
           </Avatar>
 
           <div className="flex flex-col gap-y-1">
-            <div className="inline-flex items-center gap-x-1.5">
+            <div className="inline-flex items-center gap-x-1">
               <span className="text-lg font-semibold text-dark-blue-400">
                 {fullName}
               </span>
               {!selectedConversation?.isGroup && receiverUser.username && (
-                <span className="text-sm font-normal text-gray-600">
+                <span className="text-base font-normal leading-[19px] text-dark-blue-400">
                   @{receiverUser.username}
                 </span>
               )}
@@ -1962,19 +2488,11 @@ export function Chats({
                     ? "Active now"
                     : "Offline"}
               </span>
-              {receiverUser.recentJobTitle ||
-              (receiverUser.jobTitles && receiverUser.jobTitles[0]) ? (
+              {participantJobTitle ? (
                 <>
                   <span className="inline-block h-4 w-px bg-gray-300" />
-                  <span className="text-sm text-dark-blue-400">
-                    {receiverUser.recentJobTitle ||
-                      (typeof receiverUser.jobTitles?.[0] === "string"
-                        ? receiverUser.jobTitles?.[0]
-                        : (
-                            receiverUser.jobTitles?.[0] as unknown as {
-                              jobTitle?: string
-                            }
-                          )?.jobTitle)}
+                  <span className="text-sm leading-[17px] text-dark-blue-400">
+                    {participantJobTitle}
                   </span>
                 </>
               ) : null}
@@ -2321,10 +2839,13 @@ export function Chats({
               </div>
             )}
             {!isSwitching &&
-              displayedMessages.length === 0 &&
+              visibleDisplayedMessages.length === 0 &&
               !(
                 selectedTab === "Messages" &&
-                (acceptedOfferCard || counterOfferCard || declinedOfferCard)
+                (acceptedOfferCard ||
+                  counterOfferCard ||
+                  declinedOfferCard ||
+                  conversationOfferNotifications.length > 0)
               ) && (
                 <div className="flex flex-col items-center justify-center py-20 text-gray-400 gap-2">
                   <Send className="size-8 stroke-[1.5]" />
@@ -2332,8 +2853,8 @@ export function Chats({
                 </div>
               )}
             {!isSwitching &&
-              displayedMessages.map((m, i) => {
-                const prev = i > 0 ? displayedMessages[i - 1] : null
+              visibleDisplayedMessages.map((m, i) => {
+                const prev = i > 0 ? visibleDisplayedMessages[i - 1] : null
                 const showDate =
                   !prev ||
                   !isSameDay(parseISO(m.createdAt), parseISO(prev.createdAt))
@@ -2430,15 +2951,1516 @@ export function Chats({
               })}
             {!isSwitching &&
               selectedTab === "Messages" &&
-              acceptedOfferCard && (
+              conversationOfferNotifications.map((item, index) => {
+                const acceptedInCurrentTalentFlow =
+                  !item.clientPerspective &&
+                  acceptedOfferCard?.contractId === item.contractId
+                const counteredInCurrentTalentFlow =
+                  !item.clientPerspective &&
+                  counterOfferCard?.contractId === item.contractId
+                const effectiveEvent =
+                  counteredInCurrentTalentFlow
+                    ? "offer.countered"
+                    : acceptedInCurrentTalentFlow
+                    ? "offer.accepted"
+                    : !item.clientPerspective &&
+                        locallyDeclinedTalentOffers.includes(item.contractId)
+                    ? "offer.declined"
+                    : item.event
+                const state = OFFER_EVENT_STATE[effectiveEvent]
+                const isTalentOffer = !item.clientPerspective
+                const isAcceptedOffer = effectiveEvent.includes("accepted")
+                const isCounterDeclinedOffer =
+                  effectiveEvent === "offer.counter_declined"
+                const isDeclinedOffer =
+                  effectiveEvent.includes("declined") &&
+                  !isCounterDeclinedOffer
+                const isWithdrawnOffer = effectiveEvent.includes("withdrawn")
+                const isExpiredOffer =
+                  effectiveEvent === "offer.expired" ||
+                  effectiveEvent === "offer.counter_expired"
+                const isCounterExpiredOffer =
+                  effectiveEvent === "offer.counter_expired"
+                const showOriginalAsCountered =
+                  item.clientPerspective &&
+                  effectiveEvent === "offer.counter_accepted"
+                const isPendingOffer = effectiveEvent.includes("expiring_soon")
+                const isCounteredOffer =
+                  effectiveEvent === "offer.countered" ||
+                  effectiveEvent === "offer.counter_edited"
+                const isClientSentTalentCounter =
+                  isTalentOffer &&
+                  isCounteredOffer &&
+                  item.counterOfferFromClient === true
+                const isWithdrawnTalentCounter =
+                  isCounteredOffer &&
+                  withdrawnTalentCounterOfferMessage?.id === item.id
+                const isActiveTalentOffer = isTalentOffer && !state
+                const showTalentOfferAction =
+                  isTalentOffer &&
+                  (isActiveTalentOffer ||
+                    isAcceptedOffer ||
+                    isExpiredOffer ||
+                    isClientSentTalentCounter)
+                const talentOfferDescription = isAcceptedOffer
+                  ? `Starts on ${item.startDate}.`
+                  : isDeclinedOffer
+                    ? "This offer is now closed."
+                    : isCounteredOffer
+                      ? `This offer expires ${item.expiresLabel}.`
+                      : isCounterDeclinedOffer
+                        ? `This offer expires ${item.expiresLabel}.`
+                      : isWithdrawnOffer
+                        ? "This offer was withdrawn."
+                        : isExpiredOffer
+                          ? `This offer expired on ${item.expiresLabel}.`
+                          : isPendingOffer
+                            ? `This offer expires ${item.expiresLabel}.`
+                            : `This offer expires ${item.expiresLabel}.`
+                const mutedTerms =
+                  isMutedOfferEvent(effectiveEvent) &&
+                  !(isTalentOffer && isCounterDeclinedOffer) &&
+                  !(
+                    item.clientPerspective &&
+                    (item.event === "offer.countered" ||
+                      item.event === "offer.counter_edited")
+                  )
+                const rateMatch = item.offerRate.match(/^(\$)([\d,.]+)(.*)$/)
+                const previousCreatedAt =
+                  index > 0
+                    ? conversationOfferNotifications[index - 1]?.createdAt
+                    : visibleDisplayedMessages[
+                        visibleDisplayedMessages.length - 1
+                      ]?.createdAt
+                const showDate =
+                  !previousCreatedAt ||
+                  !isSameDay(
+                    parseISO(item.createdAt),
+                    parseISO(previousCreatedAt)
+                  )
+                const clientResponseAction = item.event.includes("accepted")
+                  ? "accepted your offer"
+                  : item.event.includes("declined")
+                    ? "declined your offer"
+                    : item.event.includes("counter")
+                      ? item.event.includes("edited") ||
+                        item.event.includes("expired")
+                        ? "sent a counter offer"
+                        : "sent you a counter offer"
+                      : item.event.includes("withdrawn")
+                        ? "withdrew the offer"
+                        : item.event.includes("expiring")
+                          ? "has an offer expiring soon"
+                          : item.event.includes("expired")
+                            ? "has an expired offer"
+                            : OFFER_EVENT_ACTION[item.event] || item.title
+                const clientResponseTitle = item.event.includes("accepted")
+                  ? "Offer Accepted!"
+                  : item.event.includes("declined")
+                    ? "Offer Declined"
+                    : item.event.includes("counter")
+                      ? item.event.includes("edited")
+                        ? "Counter Offer Submitted (Edited)"
+                        : "Counter Offer Submitted"
+                      : item.event.includes("withdrawn")
+                        ? "Offer Withdrawn"
+                        : item.event.includes("expired")
+                          ? "Offer Expired"
+                          : item.title
+                if (
+                  item.clientPerspective &&
+                  item.event === "offer.counter_expired" &&
+                  item.singleMessageOnly
+                ) {
+                  return (
+                    <React.Fragment key={item.id}>
+                      {showDate ? (
+                        <DateSeparator
+                          label={formatDateSeparator(item.createdAt)}
+                        />
+                      ) : null}
+                      <div className="flex w-full items-end gap-2">
+                        <Avatar className="size-10 shrink-0" size="md" isOnline>
+                          <AvatarImage
+                            src={item.senderAvatarSrc}
+                            alt={item.senderDisplayName}
+                          />
+                          <AvatarFallback>
+                            {item.senderDisplayName.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex w-[449px] max-w-[calc(100%-48px)] flex-col items-start gap-2">
+                          <article className="flex w-full flex-col items-start gap-4 rounded-xl rounded-bl-none bg-primary-25 px-5 pb-5 pt-2.5">
+                            <div className="text-sm leading-[17px] text-dark-blue-400">
+                              <span className="font-bold">
+                                {item.senderDisplayName}
+                              </span>{" "}
+                              <span className="text-xs font-normal leading-[15px]">
+                                @{item.senderUsername.replace(/^@/, "")} {" "}
+                              </span>
+                              <span className="font-semibold">
+                                sent a counter offer
+                              </span>
+                            </div>
+                            <p className="text-sm leading-5 text-dark-blue-400">
+                              {item.counterOfferMessage ||
+                                "I would like to increase the hourly rate if it’s ok."}
+                            </p>
+                            <Card className="flex w-full flex-col items-start gap-4 rounded-xl px-6 py-4 shadow-none hover:border-gray-200 hover:ring-0">
+                              <div className="flex w-full items-center justify-between gap-3">
+                                <h3 className="text-sm font-bold leading-[17px] text-dark-blue-400">
+                                  Counter Offer Submitted
+                                </h3>
+                                <Badge variant="rounded" visual="gray" size="sm">
+                                  Offer Expired
+                                </Badge>
+                              </div>
+                              <p className="text-xs font-medium leading-[15px] text-dark-blue-400">
+                                {item.offerTitle}
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="rounded" visual="gray" size="sm">
+                                  {item.offerType}
+                                </Badge>
+                                <span className="text-[10px] leading-4 text-gray-500">
+                                  This offer expired {item.expiresLabel}.
+                                </span>
+                              </div>
+                              <Button
+                                className="h-5 w-fit p-0 text-xs font-semibold leading-5 no-underline hover:no-underline"
+                                size="sm"
+                                variant="link"
+                                visual="primary"
+                              onClick={() => {
+                                openNotificationOffer(item)
+                                setNotificationOfferStep("expired-counter")
+                              }}
+                              >
+                                View Details
+                              </Button>
+                            </Card>
+                          </article>
+                          <span className="text-[11px] leading-[15px] text-gray-500">
+                            Sent {format(parseISO(item.createdAt), "h:mm a")}
+                          </span>
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  )
+                }
+                return (
+                  <React.Fragment key={item.id}>
+                    {showDate ? (
+                      <DateSeparator
+                        label={formatDateSeparator(item.createdAt)}
+                      />
+                    ) : null}
+                    {isClientSentTalentCounter ? (
+                      <div className="flex w-full justify-end">
+                        <article className="flex w-[388px] max-w-[calc(100%-48px)] flex-col items-start gap-2 rounded-xl rounded-br-none bg-primary-25 p-5">
+                          <div className="text-sm leading-[17px] text-dark-blue-400">
+                            <span className="font-bold">You</span>{" "}
+                            {currentUser.username ? (
+                              <span className="text-xs font-normal">
+                                @{currentUser.username.replace(/^@/, "")} {" "}
+                              </span>
+                            ) : null}
+                            <span className="font-semibold">sent a counter offer</span>
+                          </div>
+                          <p className="text-sm leading-[17px] text-dark-blue-400">
+                            I would like to increase the hourly rate if it’s ok.
+                          </p>
+                          <Card className="mt-2 flex w-full flex-col items-start rounded-lg p-4 shadow-none hover:border-gray-200 hover:ring-0">
+                            <h3 className="text-sm font-bold leading-[17px] text-dark-blue-400">
+                              Counter Offer Submitted
+                            </h3>
+                            <p className="mt-4 text-xs font-medium leading-[15px] text-dark-blue-400">
+                              {item.offerTitle}
+                            </p>
+                            <div className="mt-2 flex items-center gap-2">
+                              <Badge variant="rounded" visual="gray" size="sm">
+                                {item.offerType}
+                              </Badge>
+                              <span className="text-[10px] leading-4 text-gray-500">
+                                This counter offer was superseded by another counteroffer.
+                              </span>
+                            </div>
+                            <Button
+                              className="mt-3 h-5 w-fit p-0 text-xs font-semibold leading-5 text-gray-500 no-underline hover:no-underline"
+                              size="sm"
+                              variant="link"
+                              visual="gray"
+                              onClick={() => {
+                                openNotificationOffer(item)
+                                setNotificationOfferStep("history")
+                              }}
+                            >
+                              View Offer History
+                            </Button>
+                          </Card>
+                          <span className="self-end text-[11px] leading-[15px] text-gray-500">
+                            Sent {format(parseISO(item.createdAt), "h:mm a")}
+                          </span>
+                        </article>
+                      </div>
+                    ) : null}
+                    <div className="flex w-full items-start gap-2">
+                      <div
+                        className={cn(
+                          "flex h-[271px] shrink-0 items-end",
+                          item.clientPerspective && "hidden"
+                        )}
+                      >
+                        <Avatar className="size-10" size="md" isOnline>
+                          <AvatarImage
+                            src={item.senderAvatarSrc}
+                            alt={item.senderDisplayName}
+                          />
+                          <AvatarFallback>
+                            {item.senderDisplayName.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
+
+                      <div
+                        className={cn(
+                          "flex min-w-0 flex-1 flex-col gap-2",
+                          item.clientPerspective ? "items-end" : "items-start"
+                        )}
+                      >
+                        <article
+                          className={cn(
+                            "flex w-full flex-col items-start gap-4 rounded-xl bg-primary-25 px-5 pb-5 pt-2.5",
+                            item.clientPerspective
+                              ? "h-[256px] rounded-br-none"
+                              : "h-[248px] rounded-bl-none"
+                          )}
+                        >
+                          <div className="flex h-[70px] w-full flex-col gap-2">
+                            <div className="text-sm leading-[17px] text-dark-blue-400">
+                              <span className="font-bold">
+                                {item.clientPerspective
+                                  ? "You"
+                                  : item.senderDisplayName}
+                              </span>{" "}
+                              {(item.clientPerspective
+                                ? currentUser.username
+                                : item.senderUsername) ? (
+                                <span className="text-xs font-normal leading-[15px]">
+                                  @{String(
+                                    item.clientPerspective
+                                      ? currentUser.username
+                                      : item.senderUsername
+                                  ).replace(/^@/, "")}{" "}
+                                </span>
+                              ) : null}
+                              <span className="font-semibold">
+                                {isClientSentTalentCounter
+                                  ? "sent a counter offer"
+                                  : item.clientPerspective
+                                  ? "sent an offer"
+                                  : item.seeded
+                                    ? "sent an offer"
+                                    : OFFER_EVENT_ACTION[item.event] || item.title}
+                              </span>
+                            </div>
+
+                            <p className="h-[34px] w-full text-sm leading-[17px] text-dark-blue-400">
+                              {item.clientPerspective
+                                ? `I would like to invite you to join ${item.offerTitle} as our ${item.role}.`
+                                : isClientSentTalentCounter
+                                  ? item.counterOfferMessage ||
+                                    "I would like to propose updated terms for this offer."
+                                : item.seeded
+                                  ? `I would like to invite you to join ${item.offerTitle} as our ${item.role}.`
+                                  : item.body}
+                            </p>
+                          </div>
+
+                          <Card className="flex h-[132px] w-full flex-col items-stretch gap-4 rounded-xl border-primary-50 px-6 py-4 shadow-none hover:border-primary-50 hover:ring-0">
+                            <div className="flex h-[46px] items-start justify-between gap-9">
+                              <div
+                                className={cn(
+                                  "min-w-0",
+                                  item.clientPerspective &&
+                                    (item.event.includes("declined") ||
+                                      item.event.includes("withdrawn")) &&
+                                    "flex-1"
+                                )}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <p className="truncate text-sm font-semibold leading-6 text-dark-blue-400">
+                                    {item.offerTitle}
+                                  </p>
+                                  {state && !isClientSentTalentCounter ? (
+                                    <Badge
+                                      visual={
+                                        isTalentOffer &&
+                                        (isCounteredOffer ||
+                                          isCounterDeclinedOffer)
+                                          ? "warning"
+                                          : showOriginalAsCountered
+                                            ? "gray"
+                                          : state.visual
+                                      }
+                                      size="sm"
+                                      className={cn(
+                                        "h-[18px] px-1.5 text-[10px] leading-[18px]",
+                                        item.clientPerspective &&
+                                          (item.event.includes("declined") ||
+                                            item.event.includes("withdrawn")) &&
+                                          "ml-auto"
+                                      )}
+                                    >
+                                      {isTalentOffer &&
+                                      (isCounteredOffer ||
+                                        isCounterDeclinedOffer)
+                                        ? "Offer Pending"
+                                        : showOriginalAsCountered
+                                          ? "Offer Countered"
+                                        : state.label}
+                                    </Badge>
+                                  ) : null}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge
+                                    variant="rounded"
+                                    visual="gray"
+                                    size="sm"
+                                  >
+                                    {item.offerType}
+                                  </Badge>
+                                  <span className="text-[10px] leading-4 text-gray-500">
+                                    {isTalentOffer
+                                      ? talentOfferDescription
+                                      : item.clientPerspective &&
+                                          item.event.includes("declined")
+                                        ? "This offer is now closed."
+                                        : item.clientPerspective &&
+                                            item.event.includes("withdrawn")
+                                          ? "This offer was withdrawn."
+                                          : `This offer expires ${item.expiresLabel}.`}
+                                  </span>
+                                </div>
+                              </div>
+                              {!(
+                                item.clientPerspective &&
+                                (item.event.includes("declined") ||
+                                  item.event.includes("withdrawn"))
+                              ) &&
+                              (!isTalentOffer || showTalentOfferAction) ? (
+                                <Button
+                                  size="sm"
+                                  variant={
+                                    isTalentOffer && isExpiredOffer
+                                      ? "link"
+                                      : isTalentOffer && isAcceptedOffer
+                                        ? "outlined"
+                                        : item.clientPerspective &&
+                                            (item.event.includes("accepted") ||
+                                              item.event.includes("counter") ||
+                                              item.event.includes("expired"))
+                                          ? "outlined"
+                                          : undefined
+                                  }
+                                  visual={
+                                    isTalentOffer && isExpiredOffer
+                                      ? "primary"
+                                      : isTalentOffer && isAcceptedOffer
+                                        ? "gray"
+                                        : item.clientPerspective &&
+                                            (item.event.includes("accepted") ||
+                                              item.event.includes("counter") ||
+                                              item.event.includes("expired"))
+                                          ? "gray"
+                                          : undefined
+                                  }
+                                  className={cn(
+                                    isTalentOffer &&
+                                      isExpiredOffer &&
+                                      "h-5 w-fit p-0 text-xs font-semibold leading-5 no-underline hover:no-underline"
+                                  )}
+                                  onClick={() => {
+                                    if (isTalentOffer && isAcceptedOffer) {
+                                      openTalentContractPage(item)
+                                      return
+                                    }
+                                    if (isTalentOffer && isExpiredOffer) {
+                                      openNotificationOffer({
+                                        ...item,
+                                        event: "offer.expired",
+                                        clientPerspective: false,
+                                      })
+                                      setNotificationOfferStep("event")
+                                      return
+                                    }
+                                    if (
+                                      item.clientPerspective &&
+                                      item.event.includes("accepted")
+                                    ) {
+                                      openClientContractPage(item)
+                                      return
+                                    }
+                                    openNotificationOffer(item)
+                                    if (
+                                      item.clientPerspective &&
+                                      (item.event === "offer.countered" ||
+                                        item.event === "offer.counter_edited")
+                                    ) {
+                                      setNotificationOfferStep("previous")
+                                      return
+                                    }
+                                    if (
+                                      item.event.includes("withdrawn") &&
+                                      !item.clientPerspective
+                                    ) {
+                                      setNotificationOfferStep("previous")
+                                    }
+                                  }}
+                                >
+                                  {isTalentOffer && isExpiredOffer
+                                    ? "View Details"
+                                    : isTalentOffer && isAcceptedOffer
+                                      ? "View Contract"
+                                      : item.event.includes("accepted")
+                                      ? "View Contract"
+                                      : item.event.includes("withdrawn")
+                                        ? "View Active Offer"
+                                        : item.event.includes("declined") ||
+                                            item.event.includes("expired")
+                                          ? "View Details"
+                                          : "View Offer"}
+                                </Button>
+                              ) : null}
+                            </div>
+
+                            <div className="h-px w-full bg-gray-100" />
+                            <div
+                              className={cn(
+                                "flex h-[22px] w-full items-center justify-between gap-4 text-xs leading-[15px] text-gray-500",
+                                mutedTerms && "opacity-40"
+                              )}
+                            >
+                              <div className="flex w-[129px] items-center justify-center gap-1.5 whitespace-nowrap">
+                                <span className="flex items-center gap-0.5">
+                                  <DollarSign className="size-3 shrink-0 text-primary-400" />
+                                  <span>Offer Rate</span>
+                                </span>
+                                <span className="flex items-end text-dark-blue-400">
+                                  {rateMatch ? (
+                                    <>
+                                      <span
+                                        className="text-base font-medium leading-[18px]"
+                                      >
+                                        {rateMatch[1]}
+                                      </span>
+                                      <span
+                                        className="text-base font-semibold leading-[18px]"
+                                      >
+                                        {rateMatch[2]}
+                                      </span>
+                                      <span
+                                        className="text-xs font-light leading-[17px]"
+                                      >
+                                        {rateMatch[3]}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span className="font-semibold">
+                                      {item.offerRate}
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                              <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                              <div
+                                className={cn(
+                                  "flex items-center justify-center gap-1.5 whitespace-nowrap",
+                                  isTalentOffer ? "min-w-[120px]" : "w-[120px]"
+                                )}
+                              >
+                                <span className="flex items-center gap-1">
+                                  <UserIcon className="size-3 shrink-0 text-primary-400" />
+                                  <span>Role</span>
+                                </span>
+                                <span
+                                  className={cn(
+                                    "font-semibold text-dark-blue-400",
+                                    !isTalentOffer && "truncate"
+                                  )}
+                                >
+                                  {item.role}
+                                </span>
+                              </div>
+                              <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                              <div className="flex w-[127px] items-center justify-center gap-1.5 whitespace-nowrap">
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="size-3 shrink-0 text-primary-400" />
+                                  <span>Duration</span>
+                                </span>
+                                <span className="font-semibold text-dark-blue-400">
+                                  {item.duration}
+                                </span>
+                              </div>
+                              <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                              <div className="flex w-[130px] items-center justify-center gap-1.5 whitespace-nowrap">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="size-3 shrink-0 text-primary-400" />
+                                  <span>Schedule</span>
+                                </span>
+                                <span className="font-semibold text-dark-blue-400">
+                                  {item.schedule}
+                                </span>
+                              </div>
+                            </div>
+                          </Card>
+                        </article>
+                        <span className="text-[11px] leading-[15px] text-gray-500">
+                          Sent {format(parseISO(item.createdAt), "h:mm a")}
+                        </span>
+                        {isTalentOffer &&
+                        item.seeded &&
+                        item.id === seededTalentFollowOnId &&
+                        (isAcceptedOffer ||
+                          isDeclinedOffer ||
+                          isCounteredOffer ||
+                          isCounterDeclinedOffer ||
+                          isWithdrawnOffer ||
+                          isExpiredOffer) &&
+                        declinedOfferCard?.contractId !== item.contractId ? (
+                          <div className="mt-4 flex w-full justify-end">
+                            <article className="flex w-[449px] max-w-[calc(100%-48px)] flex-col items-start gap-2 rounded-xl rounded-br-none bg-primary-25 p-5">
+                              <div className="text-sm leading-[17px] text-dark-blue-400">
+                                <span className="font-bold">
+                                  {isAcceptedOffer ||
+                                  isDeclinedOffer ||
+                                  isCounteredOffer ||
+                                  isCounterDeclinedOffer ||
+                                  isCounterExpiredOffer
+                                    ? "You"
+                                    : item.senderDisplayName}
+                                </span>{" "}
+                                {(isAcceptedOffer ||
+                                isDeclinedOffer ||
+                                isCounteredOffer ||
+                                isCounterDeclinedOffer ||
+                                isCounterExpiredOffer
+                                  ? currentUser.username
+                                  : item.senderUsername) ? (
+                                  <span className="text-xs font-normal">
+                                    @
+                                    {String(
+                                      isAcceptedOffer ||
+                                      isDeclinedOffer ||
+                                      isCounteredOffer ||
+                                      isCounterDeclinedOffer ||
+                                      isCounterExpiredOffer
+                                        ? currentUser.username
+                                        : item.senderUsername
+                                    ).replace(/^@/, "")}{" "}
+                                  </span>
+                                ) : null}
+                                <span className="font-semibold">
+                                  {isAcceptedOffer
+                                    ? "accepted the offer"
+                                    : isDeclinedOffer
+                                      ? "declined the offer"
+                                      : isCounteredOffer
+                                        ? "sent a counter offer"
+                                        : isCounterDeclinedOffer
+                                          ? "sent a counter offer"
+                                        : isCounterExpiredOffer
+                                          ? "sent a counteroffer"
+                                        : isWithdrawnOffer
+                                          ? "withdrew the offer"
+                                          : "has an expired offer"}
+                                </span>
+                              </div>
+
+                              {isDeclinedOffer ||
+                              isCounteredOffer ||
+                              isCounterDeclinedOffer ||
+                              isCounterExpiredOffer ? (
+                                <p className="text-sm leading-5 text-dark-blue-400">
+                                  {isCounteredOffer ||
+                                  isCounterDeclinedOffer ||
+                                  isCounterExpiredOffer
+                                    ? item.counterOfferMessage ||
+                                      "I would like to increase the hourly rate if it’s ok."
+                                    : "Thanks, unfortunately I can’t take this on right now."}
+                                </p>
+                              ) : null}
+
+                              <Card className="mt-2 flex w-full flex-col items-start rounded-lg p-4 shadow-none hover:border-gray-200 hover:ring-0">
+                                <div className="flex w-full items-center justify-between gap-3">
+                                  <h3 className="text-sm font-bold leading-[17px] text-dark-blue-400">
+                                    {isAcceptedOffer
+                                      ? "Offer Accepted!"
+                                      : isDeclinedOffer
+                                        ? "Offer Declined"
+                                        : isCounteredOffer
+                                          ? "Counter Offer Submitted"
+                                          : isCounterDeclinedOffer
+                                            ? "Counter Offer Submitted"
+                                          : isCounterExpiredOffer
+                                            ? "Counter Offer Submitted"
+                                          : isWithdrawnOffer
+                                            ? "Offer Withdrawn"
+                                            : "Offer Expired"}
+                                  </h3>
+                                  {isAcceptedOffer ? (
+                                    <Badge visual="success" size="sm">
+                                      Offer Accepted
+                                    </Badge>
+                                  ) : isCounterExpiredOffer ? (
+                                    <Badge visual="gray" size="sm">
+                                      Offer Expired
+                                    </Badge>
+                                  ) : null}
+                                </div>
+                                <p className="mt-4 text-xs font-medium leading-[15px] text-dark-blue-400">
+                                  {item.offerTitle}
+                                </p>
+                                <div className="mt-2 flex items-center gap-2">
+                                  <Badge variant="rounded" visual="gray" size="sm">
+                                    {item.offerType}
+                                  </Badge>
+                                  <span className="text-[10px] leading-4 text-gray-500">
+                                    {isAcceptedOffer
+                                      ? `Starts on ${item.startDate}.`
+                                      : isDeclinedOffer
+                                        ? "This offer is now closed."
+                                        : isCounteredOffer
+                                          ? isWithdrawnTalentCounter
+                                            ? "This counteroffer was withdrawn."
+                                            : "This counteroffer expires Aug 02, 2025."
+                                          : isCounterDeclinedOffer
+                                            ? "These changes weren’t accepted."
+                                          : isCounterExpiredOffer
+                                            ? `This offer expired ${item.expiresLabel}.`
+                                          : isWithdrawnOffer
+                                            ? "This offer was withdrawn."
+                                            : `This offer expired on ${item.expiresLabel}.`}
+                                  </span>
+                                </div>
+                                <Button
+                                  className="mt-3 h-5 w-fit p-0 text-xs font-semibold leading-5 no-underline hover:no-underline"
+                                  size="sm"
+                                  variant="link"
+                                  visual="primary"
+                                  onClick={() => {
+                                    if (isAcceptedOffer) {
+                                      openTalentContractPage(item)
+                                      return
+                                    }
+                                    if (isExpiredOffer) {
+                                      openNotificationOffer({
+                                        ...item,
+                                        event: "offer.expired",
+                                        clientPerspective: false,
+                                      })
+                                      setNotificationOfferStep("event")
+                                      return
+                                    }
+                                    openNotificationOffer(item)
+                                    if (isDeclinedOffer) {
+                                      setNotificationOfferStep("declined")
+                                    } else if (isCounterDeclinedOffer) {
+                                      setNotificationOfferStep("history")
+                                    } else if (isCounteredOffer) {
+                                      setNotificationOfferStep(
+                                        isWithdrawnTalentCounter
+                                          ? "history"
+                                          : "sent-counter"
+                                      )
+                                    } else if (isWithdrawnOffer) {
+                                      setNotificationOfferStep("event")
+                                    }
+                                  }}
+                                >
+                                  {isAcceptedOffer
+                                    ? "View Contract"
+                                    : isCounterDeclinedOffer
+                                      ? "View Offer History"
+                                    : isWithdrawnTalentCounter
+                                      ? "View Offer History"
+                                    : isWithdrawnOffer
+                                      ? "View Details"
+                                      : "View Details"}
+                                </Button>
+                              </Card>
+                            </article>
+                          </div>
+                        ) : null}
+                        {isTalentOffer &&
+                        item.seeded &&
+                        item.id === seededTalentFollowOnId &&
+                        isCounterDeclinedOffer ? (
+                          <div className="mt-4 flex w-full items-end gap-2 self-start">
+                            <Avatar className="size-10 shrink-0" size="md" isOnline>
+                              <AvatarImage
+                                src={item.senderAvatarSrc}
+                                alt={item.senderDisplayName}
+                              />
+                              <AvatarFallback>
+                                {item.senderDisplayName.charAt(0).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex min-w-0 flex-col items-start gap-2">
+                              <article className="flex w-[449px] max-w-[calc(100%-48px)] flex-col items-start gap-2 rounded-xl rounded-bl-none bg-primary-25 p-5">
+                                <div className="text-sm leading-[17px] text-dark-blue-400">
+                                  <span className="font-bold">
+                                    {item.senderDisplayName}
+                                  </span>{" "}
+                                  <span className="text-xs font-normal">
+                                    @{item.senderUsername.replace(/^@/, "")} {" "}
+                                  </span>
+                                  <span className="font-semibold">
+                                    declined the counter offer
+                                  </span>
+                                </div>
+                                <Card className="mt-2 flex w-full flex-col items-start rounded-lg p-4 shadow-none hover:border-gray-200 hover:ring-0">
+                                  <h3 className="text-sm font-bold leading-[17px] text-dark-blue-400">
+                                    Counter Offer Declined
+                                  </h3>
+                                  <p className="mt-4 text-xs font-medium leading-[15px] text-dark-blue-400">
+                                    {item.offerTitle}
+                                  </p>
+                                  <div className="mt-2 flex items-center gap-2">
+                                    <Badge variant="rounded" visual="gray" size="sm">
+                                      {item.offerType}
+                                    </Badge>
+                                    <span className="text-[10px] leading-4 text-gray-500">
+                                      These changes weren’t accepted.
+                                    </span>
+                                  </div>
+                                  <Button
+                                    className="mt-3 h-5 w-fit p-0 text-xs font-semibold leading-5 no-underline hover:no-underline"
+                                    size="sm"
+                                    variant="link"
+                                    visual="primary"
+                                    onClick={() => {
+                                      openNotificationOffer(item)
+                                      setNotificationOfferStep("history")
+                                    }}
+                                  >
+                                    View Offer History
+                                  </Button>
+                                </Card>
+                              </article>
+                              <span className="text-[11px] leading-[15px] text-gray-500">
+                                Sent {format(parseISO(item.createdAt), "h:mm a")}
+                              </span>
+                            </div>
+                          </div>
+                        ) : null}
+                        {isTalentOffer &&
+                        item.id === counterExpiredFollowOnId &&
+                        isCounterExpiredOffer &&
+                        !dismissedExpiredOfferActions.includes(item.id) ? (
+                          <div className="mt-4 flex w-full items-end self-start">
+                            <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
+                              <article className="flex w-full flex-col items-start gap-3 rounded-xl rounded-bl-none bg-primary-25 p-5">
+                                <div className="flex w-full items-center gap-2 text-sm leading-[17px] text-dark-blue-400">
+                                  <span className="font-bold">{item.senderDisplayName}</span>
+                                  <span className="text-xs font-normal">
+                                    @{item.senderUsername.replace(/^@/, "")}
+                                  </span>
+                                  <Badge variant="rounded" visual="primary" size="sm" className="ml-auto">
+                                    {item.offerType}
+                                  </Badge>
+                                  <span className="text-[10px] leading-4 text-gray-500">
+                                    This counteroffer expired {item.expiresLabel}.
+                                  </span>
+                                </div>
+                                <p className="text-sm leading-5 text-dark-blue-400">
+                                  Hi, I missed your counteroffer for the project{" "}
+                                  <span className="font-semibold">{item.offerTitle}</span>.
+                                  If you’re still available, can you resend it?
+                                </p>
+                                <div className="flex h-9 items-center overflow-hidden rounded-md border border-gray-200 bg-white">
+                                  <Button
+                                    variant="ghost"
+                                    visual="primary"
+                                    size="sm"
+                                    className="rounded-none border-r border-gray-200"
+                                    onClick={() => {
+                                      openNotificationOffer(item)
+                                      setNotificationOfferStep("resend-counter")
+                                    }}
+                                  >
+                                    Resend Counteroffer
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    visual="primary"
+                                    size="sm"
+                                    className="rounded-none"
+                                    onClick={() =>
+                                      setDismissedExpiredOfferActions((current) =>
+                                        current.includes(item.id)
+                                          ? current
+                                          : [...current, item.id]
+                                      )
+                                    }
+                                  >
+                                    Decline
+                                  </Button>
+                                </div>
+                              </article>
+                              <span className="text-[11px] leading-[15px] text-gray-500">
+                                Sent {format(parseISO(item.createdAt), "h:mm a")}
+                              </span>
+                            </div>
+                          </div>
+                        ) : null}
+                        {item.clientPerspective &&
+                        item.event.includes("expired") ? (
+                          <div className="mt-4 flex w-full items-end gap-2 self-start">
+                            <Avatar className="size-10 shrink-0" size="md" isOnline>
+                              <AvatarImage
+                                src={item.senderAvatarSrc}
+                                alt={item.senderDisplayName}
+                              />
+                              <AvatarFallback>
+                                {item.senderDisplayName.charAt(0).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
+                              <article className="flex w-full flex-col items-start gap-3 rounded-xl rounded-bl-none bg-primary-25 p-5">
+                                <div className="flex w-full items-center gap-2 text-sm leading-[17px] text-dark-blue-400">
+                                  <span className="font-bold">
+                                    {item.senderDisplayName}
+                                  </span>
+                                  <span className="text-xs font-normal">
+                                    @{item.senderUsername.replace(/^@/, "")}
+                                  </span>
+                                  <Badge
+                                    variant="rounded"
+                                    visual="primary"
+                                    size="sm"
+                                    className="ml-auto"
+                                  >
+                                    {item.offerType}
+                                  </Badge>
+                                  <span className="text-[10px] leading-4 text-gray-500">
+                                    This offer expired on {item.expiresLabel}.
+                                  </span>
+                                </div>
+                                <p className="text-sm leading-5 text-dark-blue-400">
+                                  {item.extensionRequestVariant ? (
+                                    <>
+                                      Can you extend the offer for the project{" "}
+                                      <span className="font-semibold">
+                                        {item.offerTitle}
+                                      </span>
+                                      ? I’m still interested.
+                                    </>
+                                  ) : (
+                                    <>
+                                      Hi{" "}
+                                      {item.recipientFirstName ||
+                                        currentUserProfile?.firstName ||
+                                        currentUserProfile?.displayName ||
+                                        "there"}
+                                      ! I wanted to check in and see if the{" "}
+                                      {item.role} role for the project{" "}
+                                      <span className="font-semibold">
+                                        {item.offerTitle}
+                                      </span>
+                                      {" "}is still available. If so, I’m still interested.
+                                    </>
+                                  )}
+                                </p>
+                                {!dismissedExpiredOfferActions.includes(item.id) ? (
+                                  <div className="flex h-9 items-center overflow-hidden rounded-md border border-gray-200 bg-white">
+                                    {item.extensionRequestVariant ? (
+                                      <>
+                                        <Button
+                                          variant="link"
+                                          visual="primary"
+                                          size="sm"
+                                          className="h-9 rounded-none border-r border-gray-200 px-4 no-underline hover:no-underline"
+                                          onClick={() => {
+                                            openNotificationOffer(item)
+                                            setNotificationOfferStep("resend-summary")
+                                          }}
+                                        >
+                                          Extend Offer
+                                        </Button>
+                                        <Button
+                                          variant="link"
+                                          visual="primary"
+                                          size="sm"
+                                          className="h-9 rounded-none border-r border-gray-200 px-4 no-underline hover:no-underline"
+                                          onClick={() => {
+                                            openNotificationOffer(item)
+                                            setNotificationOfferStep("edit-expired")
+                                          }}
+                                        >
+                                          Edit Offer
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <Button
+                                        variant="link"
+                                        visual="primary"
+                                        size="sm"
+                                        className="h-9 rounded-none border-r border-gray-200 px-4 no-underline hover:no-underline"
+                                        onClick={() => {
+                                          openNotificationOffer(item)
+                                          setNotificationOfferStep("resend-edit")
+                                        }}
+                                      >
+                                        Edit &amp; Resend Offer
+                                      </Button>
+                                    )}
+                                    <Button
+                                      variant="link"
+                                      visual="primary"
+                                      size="sm"
+                                      className="h-9 rounded-none px-4 no-underline hover:no-underline"
+                                      onClick={() => {
+                                        setDismissedExpiredOfferActions((ids) => [
+                                          ...ids,
+                                          item.id,
+                                        ])
+                                        if (!item.extensionRequestVariant) return
+                                        setSelectedTab("Messages")
+                                        setTextareaValue(
+                                          "Thanks for checking in. Unfortunately, I’m not able to extend the offer right now."
+                                        )
+                                        lastTypedAtRef.current = Date.now()
+                                        userTypedRef.current = true
+                                        sendTyping(true)
+                                        requestAnimationFrame(() =>
+                                          composerRef.current?.focus()
+                                        )
+                                      }}
+                                    >
+                                      Decline
+                                    </Button>
+                                  </div>
+                                ) : null}
+                              </article>
+                              <span className="text-[11px] leading-[15px] text-gray-500">
+                                Sent {format(parseISO(item.createdAt), "h:mm a")}
+                              </span>
+                            </div>
+                          </div>
+                        ) : null}
+                        {item.clientPerspective &&
+                        !item.event.includes("expired") ? (
+                          <div className="mt-4 flex w-full items-end gap-2 self-start">
+                            <Avatar className="size-10 shrink-0" size="md" isOnline>
+                              <AvatarImage
+                                src={item.senderAvatarSrc}
+                                alt={item.senderDisplayName}
+                              />
+                              <AvatarFallback>
+                                {item.senderDisplayName.charAt(0).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex w-[449px] max-w-[calc(100%-48px)] flex-col items-start gap-2">
+                              <article className="flex w-full flex-col items-start gap-4 rounded-xl rounded-bl-none bg-primary-25 px-5 pb-5 pt-2.5">
+                              <div className="text-sm leading-[17px] text-dark-blue-400">
+                              <span className="font-bold">
+                                {item.senderDisplayName}
+                              </span>{" "}
+                              {item.senderUsername ? (
+                                <span className="text-xs font-normal leading-[15px]">
+                                  @{item.senderUsername.replace(/^@/, "")}{" "}
+                                </span>
+                              ) : null}
+                              <span className="font-semibold">
+                                {clientResponseAction}
+                              </span>
+                            </div>
+                            <p className="text-sm leading-5 text-dark-blue-400">
+                              {item.event.includes("accepted")
+                                ? "Excited to get started!"
+                                : item.event.includes("declined")
+                                  ? "Thanks, unfortunately I can’t take this on right now."
+                                : item.event.includes("counter")
+                                  ? item.counterOfferMessage ||
+                                    "I would like to increase the hourly rate if it’s ok."
+                                : item.body}
+                            </p>
+                            <Card className="flex w-full flex-col items-start gap-4 rounded-xl px-6 py-4 shadow-none hover:border-gray-200 hover:ring-0">
+                              <div className="flex w-full items-center justify-between gap-3">
+                                <h3 className="text-sm font-bold leading-[17px] text-dark-blue-400">
+                                  {clientResponseTitle}
+                                </h3>
+                                {item.event.includes("counter") &&
+                                item.event.includes("expired") ? (
+                                  <Badge variant="rounded" visual="gray" size="sm">
+                                    Offer Expired
+                                  </Badge>
+                                ) : null}
+                              </div>
+                              <p className="mt-4 text-xs font-medium leading-[15px] text-dark-blue-400">
+                                {item.offerTitle}
+                              </p>
+                              <div className="mt-2 flex items-center gap-2">
+                                <Badge variant="rounded" visual="gray" size="sm">
+                                  {item.offerType}
+                                </Badge>
+                            <span className="text-[10px] leading-4 text-gray-500">
+                                  {item.event.includes("counter") &&
+                                  item.event.includes("withdrawn")
+                                    ? "This counteroffer was withdrawn."
+                                    : item.event.includes("accepted")
+                                    ? `Starts on ${item.startDate}.`
+                                    : item.event.includes("declined")
+                                      ? "This offer is now closed."
+                                    : item.event.includes("expired")
+                                      ? `This offer expired ${item.expiresLabel}.`
+                                      : `This offer expires ${item.expiresLabel}.`}
+                                </span>
+                              </div>
+                              <Button
+                                className={cn(
+                                  "mt-3",
+                                  (item.event.includes("accepted") ||
+                                    item.event.includes("declined") ||
+                                    item.event.includes("counter") ||
+                                    item.event.includes("expired")) &&
+                                    "h-5 w-fit p-0 text-xs font-semibold leading-5 text-primary-500 no-underline hover:no-underline"
+                                )}
+                                size="sm"
+                                variant={
+                                  item.event.includes("accepted") ||
+                                  item.event.includes("declined") ||
+                                  item.event.includes("counter") ||
+                                  item.event.includes("expired")
+                                    ? "link"
+                                    : undefined
+                                }
+                                onClick={() => {
+                                  if (item.event.includes("accepted")) {
+                                    openClientContractPage(item)
+                                    return
+                                  }
+                                  openNotificationOffer(item)
+                                  if (
+                                    item.event.includes("counter") &&
+                                    item.event.includes("withdrawn")
+                                  ) {
+                                    setNotificationOfferStep("history")
+                                  }
+                                }}
+                              >
+                                {item.event.includes("accepted")
+                                  ? "View Contract"
+                                  : item.event.includes("counter") &&
+                                      item.event.includes("withdrawn")
+                                    ? "View Offer History"
+                                  : item.event.includes("counter") &&
+                                      item.event.includes("edited")
+                                    ? "View Counter Offer"
+                                  : item.event.includes("withdrawn")
+                                    ? "View Active Offer"
+                                    : item.event.includes("declined") ||
+                                        item.event.includes("counter") ||
+                                        item.event.includes("expired")
+                                      ? "View Details"
+                                      : "View Offer"}
+                              </Button>
+                            </Card>
+                              </article>
+                              <span className="text-[11px] leading-[15px] text-gray-500">
+                                Sent {format(parseISO(item.createdAt), "h:mm a")}
+                              </span>
+                            </div>
+                          </div>
+                        ) : null}
+                        {item.clientPerspective &&
+                        item.event.includes("counter") &&
+                        item.event.includes("withdrawn") ? (
+                          <div className="mt-4 flex w-full items-end gap-2 self-start">
+                            <Avatar className="size-10 shrink-0" size="md" isOnline>
+                              <AvatarImage
+                                src={item.senderAvatarSrc}
+                                alt={item.senderDisplayName}
+                              />
+                              <AvatarFallback>
+                                {item.senderDisplayName.charAt(0).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex w-[449px] max-w-[calc(100%-48px)] flex-col items-start gap-2">
+                              <article className="flex w-full flex-col items-start gap-2 rounded-xl rounded-bl-none bg-primary-25 p-5">
+                                <div className="text-sm leading-[17px] text-dark-blue-400">
+                                  <span className="font-bold">
+                                    {item.senderDisplayName}
+                                  </span>{" "}
+                                  {item.senderUsername ? (
+                                    <span className="text-xs font-normal leading-[15px]">
+                                      @{item.senderUsername.replace(/^@/, "")}{" "}
+                                    </span>
+                                  ) : null}
+                                  <span className="font-semibold">
+                                    withdrew the counter offer
+                                  </span>
+                                </div>
+                                <Card className="mt-2 flex w-full flex-col items-start rounded-lg p-4 shadow-none hover:border-gray-200 hover:ring-0">
+                                  <h3 className="text-sm font-bold leading-[17px] text-dark-blue-400">
+                                    Counter Offer Withdrawn
+                                  </h3>
+                                  <p className="mt-4 text-xs font-medium leading-[15px] text-dark-blue-400">
+                                    {item.offerTitle}
+                                  </p>
+                                  <div className="mt-2 flex items-center gap-2">
+                                    <Badge variant="rounded" visual="gray" size="sm">
+                                      {item.offerType}
+                                    </Badge>
+                                    <span className="text-[10px] leading-4 text-gray-500">
+                                      The active offer expires {item.expiresLabel}.
+                                    </span>
+                                  </div>
+                                  <Button
+                                    className="mt-3 h-5 w-fit p-0 text-xs font-semibold leading-5 no-underline hover:no-underline"
+                                    size="sm"
+                                    variant="link"
+                                    visual="primary"
+                                    onClick={() => {
+                                      openNotificationOffer(item)
+                                      setNotificationOfferStep("previous")
+                                    }}
+                                  >
+                                    View Active Offer
+                                  </Button>
+                                </Card>
+                              </article>
+                              <span className="text-[11px] leading-[15px] text-gray-500">
+                                Sent {format(parseISO(item.createdAt), "h:mm a")}
+                              </span>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </React.Fragment>
+                )
+              })}
+            {!isSwitching &&
+              selectedTab === "Messages" &&
+              withdrawnTalentCounterOfferMessage &&
+              conversationOfferNotifications.some(
+                (item) => item.id === withdrawnTalentCounterOfferMessage.id
+              ) && (
+                <div className="order-last flex justify-end rounded-lg">
+                  <article className="flex w-[349px] max-w-[calc(100%-60px)] flex-col items-start gap-4 rounded-xl rounded-br-none bg-primary-25 p-5">
+                    <div className="text-sm leading-[17px] text-dark-blue-400">
+                      <span className="font-bold">You</span>{" "}
+                      {currentUser.username ? (
+                        <span className="text-xs font-normal">
+                          @{currentUser.username.replace(/^@/, "")}{" "}
+                        </span>
+                      ) : null}
+                      <span className="font-semibold">
+                        withdrew the counter offer
+                      </span>
+                    </div>
+
+                    <Card className="flex w-full flex-col items-start rounded-lg p-4 shadow-none hover:border-gray-200 hover:ring-0">
+                      <h3 className="text-sm font-bold leading-[17px] text-dark-blue-400">
+                        Counter Offer Withdrawn
+                      </h3>
+                      <p className="mt-4 text-xs font-medium leading-[15px] text-dark-blue-400">
+                        {withdrawnTalentCounterOfferMessage.offerTitle}
+                      </p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <Badge variant="rounded" visual="gray" size="sm">
+                          {withdrawnTalentCounterOfferMessage.offerType}
+                        </Badge>
+                        <span className="text-[10px] leading-4 text-gray-500">
+                          The active offer expires Aug 02, 2025.
+                        </span>
+                      </div>
+                      <Button
+                        className="mt-3 h-5 w-fit p-0 text-xs font-semibold leading-5 no-underline hover:no-underline"
+                        variant="link"
+                        visual="primary"
+                        onClick={() => {
+                          const activeOffer =
+                            offerNotificationMessages.find(
+                              (item) =>
+                                item.contractId ===
+                                  withdrawnTalentCounterOfferMessage.contractId &&
+                                !item.event.includes("counter") &&
+                                !item.event.includes("withdrawn")
+                            ) || {
+                              ...withdrawnTalentCounterOfferMessage,
+                              event: "contract.offer.received",
+                              withdrawnByViewer: false,
+                            }
+                          openNotificationOffer(activeOffer)
+                          setNotificationOfferStep("event")
+                        }}
+                      >
+                        View Active Offer
+                      </Button>
+                    </Card>
+                  </article>
+                </div>
+              )}
+            {!isSwitching &&
+              selectedTab === "Messages" &&
+              withdrawnClientOfferMessage &&
+              conversationOfferNotifications.some(
+                (item) => item.id === withdrawnClientOfferMessage.id
+              ) && (
                 <div className="flex justify-end rounded-lg">
+                  <article className="flex w-[349px] max-w-[calc(100%-60px)] flex-col items-start gap-4 rounded-xl bg-primary-25 p-5">
+                    <div className="text-sm leading-[17px] text-dark-blue-400">
+                      <span className="font-bold">You</span>{" "}
+                      {currentUser.username ? (
+                        <span className="text-xs font-normal">
+                          @{currentUser.username.replace(/^@/, "")} {" "}
+                        </span>
+                      ) : null}
+                      <span className="font-semibold">withdrew the offer</span>
+                    </div>
+
+                    <Card className="flex w-full flex-col items-start rounded-lg p-4 shadow-none hover:border-gray-200 hover:ring-0">
+                      <h3 className="text-sm font-bold leading-[17px] text-dark-blue-400">
+                        Offer Withdrawn
+                      </h3>
+                      <p className="mt-4 text-xs font-medium leading-[15px] text-dark-blue-400">
+                        {withdrawnClientOfferMessage.offerTitle}
+                      </p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <Badge variant="rounded" visual="gray" size="sm">
+                          {withdrawnClientOfferMessage.offerType}
+                        </Badge>
+                        <span className="text-[10px] leading-4 text-gray-500">
+                          This offer was withdrawn.
+                        </span>
+                      </div>
+                      <Button
+                        className="mt-3 h-5 w-fit p-0 text-xs font-semibold leading-5 text-primary-500 no-underline hover:no-underline"
+                        variant="link"
+                        visual="primary"
+                        onClick={() =>
+                          openNotificationOffer(withdrawnClientOfferMessage)
+                        }
+                      >
+                        View Details
+                      </Button>
+                    </Card>
+                  </article>
+                </div>
+              )}
+            {!isSwitching &&
+              selectedTab === "Messages" &&
+              acceptedCounterOfferMessage &&
+              conversationOfferNotifications.some(
+                (item) => item.id === acceptedCounterOfferMessage.id
+              ) && (
+                <div className="order-last flex w-full justify-end rounded-lg">
+                  <article className="flex w-full flex-col items-start gap-3 rounded-xl bg-primary-25 p-5">
+                    <div className="text-sm leading-[17px] text-dark-blue-400">
+                      <span className="font-bold">You</span>{" "}
+                      {currentUser.username ? (
+                        <span className="text-xs font-normal">
+                          @{currentUser.username.replace(/^@/, "")} {" "}
+                        </span>
+                      ) : null}
+                      <span className="font-semibold">
+                        accepted the counter offer
+                      </span>
+                    </div>
+
+                    {acceptedCounterOfferBody ? (
+                      <p className="text-sm leading-5 text-dark-blue-400">
+                        {acceptedCounterOfferBody}
+                      </p>
+                    ) : null}
+
+                    <Card className="flex h-[132px] w-full flex-col items-stretch gap-4 rounded-xl border-primary-50 px-6 py-4 shadow-none hover:border-primary-50 hover:ring-0">
+                      <div className="flex h-[46px] items-start justify-between gap-6">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-3">
+                            <h3 className="truncate text-sm font-semibold leading-6 text-dark-blue-400">
+                              {acceptedCounterOfferMessage.offerTitle}
+                            </h3>
+                            <Badge visual="success" size="sm">
+                              Offer Accepted
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="rounded" visual="gray" size="sm">
+                              {acceptedCounterOfferMessage.offerType}
+                            </Badge>
+                            <span className="text-[10px] leading-4 text-gray-500">
+                              This offer expires {acceptedCounterOfferMessage.expiresLabel}.
+                            </span>
+                          </div>
+                        </div>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() =>
+                            openClientContractPage(acceptedCounterOfferMessage)
+                          }
+                        >
+                          View Offer
+                        </Button>
+                      </div>
+
+                      <div className="h-px w-full bg-gray-100" />
+                      <div className="flex h-[22px] w-full items-center justify-between gap-3 text-xs leading-[15px] text-gray-500">
+                        <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><DollarSign className="size-3 shrink-0 text-primary-400" />Offer Rate <strong className="text-base text-dark-blue-400">{acceptedCounterOfferMessage.offerRate}</strong></span>
+                        <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                        <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><UserIcon className="size-3 shrink-0 text-primary-400" />Role <strong className="truncate text-dark-blue-400">{acceptedCounterOfferMessage.role}</strong></span>
+                        <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                        <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><Calendar className="size-3 shrink-0 text-primary-400" />Duration <strong className="text-dark-blue-400">{acceptedCounterOfferMessage.duration}</strong></span>
+                        <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                        <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><Clock className="size-3 shrink-0 text-primary-400" />Schedule <strong className="text-dark-blue-400">{acceptedCounterOfferMessage.schedule}</strong></span>
+                      </div>
+                    </Card>
+                  </article>
+                </div>
+              )}
+            {!isSwitching &&
+              selectedTab === "Messages" &&
+              declinedCounterOfferMessage &&
+              conversationOfferNotifications.some(
+                (item) => item.id === declinedCounterOfferMessage.id
+              ) && (
+                <div className="order-last flex justify-end rounded-lg">
+                  <article className="flex w-[449px] max-w-[calc(100%-60px)] flex-col items-start gap-4 rounded-xl bg-primary-25 p-5">
+                    <div className="text-sm leading-[17px] text-dark-blue-400">
+                      <span className="font-bold">You</span>{" "}
+                      {currentUser.username ? (
+                        <span className="text-xs font-normal">
+                          @{currentUser.username.replace(/^@/, "")} {" "}
+                        </span>
+                      ) : null}
+                      <span className="font-semibold">
+                        declined the counter offer
+                      </span>
+                    </div>
+
+                    <Card className="flex w-full flex-col items-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
+                      <h3 className="text-base font-bold leading-5 text-dark-blue-400">
+                        Counter Offer Declined
+                      </h3>
+                      <p className="mt-5 text-sm font-medium leading-[17px] text-dark-blue-400">
+                        {declinedCounterOfferMessage.offerTitle}
+                      </p>
+                      <div className="mt-3 flex items-center gap-3">
+                        <Badge variant="rounded" visual="gray" size="sm">
+                          {declinedCounterOfferMessage.offerType}
+                        </Badge>
+                        <span className="text-xs leading-4 text-gray-500">
+                          These changes weren’t accepted.
+                        </span>
+                      </div>
+                      <Button
+                        className="mt-5 h-5 w-fit p-0 text-xs font-semibold leading-5 text-gray-500 no-underline hover:no-underline"
+                        variant="link"
+                        visual="gray"
+                        onClick={() => {
+                          openNotificationOffer(declinedCounterOfferMessage)
+                          setNotificationOfferStep("history")
+                        }}
+                      >
+                        View Offer History
+                      </Button>
+                    </Card>
+                  </article>
+                </div>
+              )}
+            {!isSwitching &&
+              selectedTab === "Messages" &&
+              sentClientOfferMessages
+                .filter((sentOffer) =>
+                  conversationOfferNotifications.some(
+                    (item) => item.id === sentOffer.id
+                  )
+                )
+                .map((sentOffer, index) => (
+                  <div
+                    key={`${sentOffer.id}-${sentOffer.event}-${index}`}
+                    className="flex justify-end rounded-lg"
+                  >
+                    <article className="flex h-[256px] w-full flex-col items-start gap-4 rounded-xl rounded-br-none bg-primary-25 px-5 pb-5 pt-2.5">
+                      <div className="flex h-[70px] w-full flex-col gap-2">
+                        <div className="text-sm leading-[17px] text-dark-blue-400">
+                          <span className="font-bold">
+                            {currentUserProfile?.firstName ||
+                              currentUserProfile?.displayName ||
+                              "You"}
+                          </span>{" "}
+                          {currentUser.username ? (
+                            <span className="text-xs font-normal">
+                              @{currentUser.username.replace(/^@/, "")} {" "}
+                            </span>
+                          ) : null}
+                          <span className="font-semibold">sent an offer</span>
+                        </div>
+                        <p className="text-sm leading-[17px] text-dark-blue-400">
+                          {sentOffer.counterOfferMessage ||
+                            `I am resending you my offer for ${sentOffer.offerTitle} as our ${sentOffer.role} if you are still interested.`}
+                        </p>
+                      </div>
+
+                      <Card className="flex h-[132px] w-full flex-col items-stretch gap-4 rounded-xl border-primary-50 px-6 py-4 shadow-none hover:border-primary-50 hover:ring-0">
+                        <div className="flex h-[46px] items-start justify-between gap-6">
+                          <div className="min-w-0">
+                            <h3 className="truncate text-sm font-semibold leading-6 text-dark-blue-400">
+                              {sentOffer.offerTitle}
+                            </h3>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="rounded" visual="gray" size="sm">
+                                {sentOffer.offerType}
+                              </Badge>
+                              <span className="text-[10px] leading-4 text-gray-500">
+                                This offer expires {sentOffer.expiresLabel}.
+                              </span>
+                            </div>
+                          </div>
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            size="sm"
+                            onClick={() => {
+                              openNotificationOffer(sentOffer)
+                              setNotificationOfferStep("previous")
+                            }}
+                          >
+                            View Offer
+                          </Button>
+                        </div>
+
+                        <div className="h-px w-full bg-gray-100" />
+                        <div className="flex h-[22px] w-full items-center justify-between gap-3 text-xs leading-[15px] text-gray-500">
+                          <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><DollarSign className="size-3 shrink-0 text-primary-400" />Offer Rate <strong className="text-base text-dark-blue-400">{sentOffer.offerRate}</strong></span>
+                          <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                          <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><UserIcon className="size-3 shrink-0 text-primary-400" />Role <strong className="truncate text-dark-blue-400">{sentOffer.role}</strong></span>
+                          <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                          <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><Calendar className="size-3 shrink-0 text-primary-400" />Duration <strong className="text-dark-blue-400">{sentOffer.duration}</strong></span>
+                          <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                          <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><Clock className="size-3 shrink-0 text-primary-400" />Schedule <strong className="text-dark-blue-400">{sentOffer.schedule}</strong></span>
+                        </div>
+                      </Card>
+                    </article>
+                  </div>
+                ))}
+            {!isSwitching &&
+              selectedTab === "Messages" &&
+              acceptedOfferCard &&
+              conversationOfferContractIds.has(acceptedOfferCard.contractId) && (
+                <div className="order-last flex justify-end rounded-lg">
                   <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
                     <div className="text-sm leading-[16.94px] text-dark-blue-400">
                       <span className="font-bold">Me</span>{" "}
                       {currentUser.username ? (
                         <span>@{currentUser.username} </span>
                       ) : null}
-                      <span className="font-semibold underline decoration-primary-500 decoration-2 underline-offset-2">
+                      <span className="font-semibold">
                         accepted the offer
                       </span>
                     </div>
@@ -2466,14 +4488,15 @@ export function Chats({
                         </span>
                       </div>
                       <Button
-                        className="mt-4 w-fit px-5 text-primary-500"
-                        variant="outlined"
-                        visual="gray"
+                        variant="link"
+                        visual="primary"
+                        size="sm"
+                        className="mt-4 h-5 w-fit p-0 text-xs font-semibold leading-5 no-underline hover:no-underline"
                         onClick={() =>
                           router.push(
-                            `/my-contracts?contractId=${encodeURIComponent(
+                            `/active-project/${encodeURIComponent(
                               acceptedOfferCard.contractId
-                            )}`
+                            )}?title=${encodeURIComponent(acceptedOfferCard.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract&perspective=talent`
                           )
                         }
                       >
@@ -2483,8 +4506,17 @@ export function Chats({
                   </article>
                 </div>
               )}
-            {!isSwitching && selectedTab === "Messages" && counterOfferCard && (
-              <div className="flex justify-end rounded-lg">
+            {!isSwitching &&
+            selectedTab === "Messages" &&
+            counterOfferCard &&
+            conversationOfferContractIds.has(counterOfferCard.contractId) && (
+              <div
+                className={cn(
+                  "flex justify-end rounded-lg",
+                  withdrawnTalentCounterOfferMessage?.contractId !==
+                    counterOfferCard.contractId && "order-last"
+                )}
+              >
                 <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
                   <div className="text-sm leading-[16.94px] text-dark-blue-400">
                     <span className="font-bold">You</span>{" "}
@@ -2512,65 +4544,87 @@ export function Chats({
                         {counterOfferCard.offerType}
                       </Badge>
                       <span className="text-xs leading-[14.52px] text-gray-500">
-                        This counteroffer expires{" "}
-                        {counterOfferCard.expiresLabel}.
+                        {withdrawnTalentCounterOfferMessage?.contractId ===
+                        counterOfferCard.contractId
+                          ? "This counter offer was withdrawn."
+                          : `This counteroffer expires ${counterOfferCard.expiresLabel}.`}
                       </span>
                     </div>
                     <Button
-                      className="mt-4 w-fit px-5 text-primary-500"
-                      variant="outlined"
-                      visual="gray"
+                      className="mt-4 h-5 w-fit p-0 text-xs font-semibold leading-5 no-underline hover:no-underline"
+                      variant="link"
+                      visual="primary"
+                      onClick={() => {
+                        const relatedOffer = offerNotificationMessages.find(
+                          (item) =>
+                            item.contractId === counterOfferCard.contractId
+                        )
+                        if (!relatedOffer) return
+                        openNotificationOffer(relatedOffer)
+                        setNotificationOfferStep(
+                          withdrawnTalentCounterOfferMessage?.contractId ===
+                            counterOfferCard.contractId
+                            ? "history"
+                            : "sent-counter"
+                        )
+                      }}
                     >
-                      View Details
+                      {withdrawnTalentCounterOfferMessage?.contractId ===
+                      counterOfferCard.contractId
+                        ? "View Offer History"
+                        : "View Details"}
                     </Button>
                   </Card>
                 </article>
               </div>
             )}
-            {!isSwitching && selectedTab === "Messages" && declinedOfferCard && (
-              <div className="flex justify-end rounded-lg">
-                <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
-                  <div className="text-sm leading-[16.94px] text-dark-blue-400">
-                    <span className="font-bold">You</span>{" "}
-                    {currentUser.username ? (
-                      <span>@{currentUser.username} </span>
-                    ) : null}
-                    <span className="font-semibold">declined the offer</span>
-                  </div>
+            {!isSwitching &&
+              selectedTab === "Messages" &&
+              declinedOfferCard &&
+              conversationOfferContractIds.has(declinedOfferCard.contractId) && (
+                <div className="flex justify-end rounded-lg">
+                  <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                    <div className="text-sm leading-[16.94px] text-dark-blue-400">
+                      <span className="font-bold">You</span>{" "}
+                      {currentUser.username ? (
+                        <span>@{currentUser.username} </span>
+                      ) : null}
+                      <span className="font-semibold">declined the offer</span>
+                    </div>
 
-                  <p className="text-sm leading-[20px] text-dark-blue-400">
-                    {declinedOfferCard.declineMessage ||
-                      "Thanks, unfortunately I can't take this on right now."}
-                  </p>
-
-                  <Card className="mt-4 w-full min-w-[320px] flex-col items-stretch justify-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
-                    <h3 className="text-base font-bold leading-[19.36px] text-dark-blue-400">
-                      Offer Declined
-                    </h3>
-                    <p className="mt-5 text-sm font-medium leading-[16.94px] text-dark-blue-400">
-                      {declinedOfferCard.offerTitle}
+                    <p className="text-sm leading-[20px] text-dark-blue-400">
+                      {declinedOfferCard.declineMessage ||
+                        "Thanks, unfortunately I can't take this on right now."}
                     </p>
-                    <div className="mt-3 flex flex-wrap items-center gap-3">
-                      <Badge variant="rounded" visual="gray" size="sm">
-                        {declinedOfferCard.offerType}
-                      </Badge>
-                      <span className="text-xs leading-[14.52px] text-gray-500">
-                        This offer is now closed.
-                      </span>
-                    </div>
-                    <Button
-                      className="mt-4 w-fit px-5 text-primary-500"
-                      variant="outlined"
-                      visual="gray"
-                      onClick={() => setDeclinedOfferDetailsOpen(true)}
-                    >
-                      View Details
-                    </Button>
-                  </Card>
-                </article>
-              </div>
-            )}
-            <div ref={scrollRef} />
+
+                    <Card className="mt-4 w-full min-w-[320px] flex-col items-stretch justify-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
+                      <h3 className="text-base font-bold leading-[19.36px] text-dark-blue-400">
+                        Offer Declined
+                      </h3>
+                      <p className="mt-5 text-sm font-medium leading-[16.94px] text-dark-blue-400">
+                        {declinedOfferCard.offerTitle}
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <Badge variant="rounded" visual="gray" size="sm">
+                          {declinedOfferCard.offerType}
+                        </Badge>
+                        <span className="text-xs leading-[14.52px] text-gray-500">
+                          This offer is now closed.
+                        </span>
+                      </div>
+                      <Button
+                        className="mt-4"
+                        variant="link"
+                        size="sm"
+                        onClick={() => setDeclinedOfferDetailsOpen(true)}
+                      >
+                        View Details
+                      </Button>
+                    </Card>
+                  </article>
+                </div>
+              )}
+            <div ref={scrollRef} className="order-last" />
           </div>
         </ScrollArea>
       </div>
@@ -3229,10 +5283,10 @@ export function Chats({
               }
             }}
           >
-            <div className="pointer-events-auto flex w-[520px] flex-col overflow-hidden rounded-[20px] bg-white shadow-xl transition-[height,width] duration-1000 ease-out [interpolate-size:allow-keywords]">
+            <div className="pointer-events-auto flex w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl transition-[height,width] duration-1000 ease-out [interpolate-size:allow-keywords]">
               <div className="flex h-[60px] shrink-0 items-center justify-between border-b border-gray-100 px-6 py-3">
                 <DialogTitle className="text-[18px] font-semibold leading-7 text-dark-blue-400">
-                  This Offer Expired
+                  You declined this offer
                 </DialogTitle>
 
                 <DialogClose asChild>
@@ -3243,7 +5297,7 @@ export function Chats({
               </div>
 
               <ScrollArea
-                className="h-[446px] flex-1"
+                className="h-[496px] flex-1"
                 scrollBar={<ScrollBar className="w-4 px-1" />}
               >
                 <div className="space-y-6 px-6 py-5">
@@ -3254,7 +5308,7 @@ export function Chats({
                           {declinedOfferCard.offerType}
                         </Badge>
                         <span className="text-sm leading-5 text-gray-500">
-                          Expired on {declinedDisplayLabel}
+                          Declined on {declinedDisplayLabel}
                         </span>
                       </div>
 
@@ -3273,7 +5327,7 @@ export function Chats({
                             {declinedOfferSenderInitial}
                           </AvatarFallback>
                         </Avatar>
-                        <span>{declinedOfferSenderName}</span>
+                        <span>{declinedOfferSenderName}</span>{" "}
                         <span className="text-primary-500">
                           {declinedOfferSenderUsername}
                         </span>
@@ -3337,6 +5391,15 @@ export function Chats({
                     </div>
                   </div>
 
+                  <div className="rounded-lg bg-gray-50 p-4">
+                    <div className="text-sm font-medium leading-6 text-dark-blue-400">
+                      Reason
+                    </div>
+                    <p className="mt-1 text-sm leading-6 text-dark-blue-400">
+                      {declinedOfferCard.declineReason ||
+                        "The budget does not align."}
+                    </p>
+                  </div>
                 </div>
               </ScrollArea>
 
@@ -3344,9 +5407,8 @@ export function Chats({
                 <div className="flex items-start gap-2 text-sm leading-5 text-gray-400">
                   <Info className="mt-0.5 size-4 shrink-0" />
                   <span>
-                    {canRequestExtension
-                      ? "Want to revisit this? You can ask the client to extend the offer."
-                      : "Want to revisit this? Ask the client to see if the role is still available."}
+                    Want to revisit this? Ask the client to see if the role is
+                    still open.
                   </span>
                 </div>
                 <Button
@@ -3355,12 +5417,1912 @@ export function Chats({
                   disabled={counterpartDeleted}
                   onClick={handleAskNow}
                 >
-                  {canRequestExtension ? "Request Extension" : "Ask Now"}
+                  Ask Now
                 </Button>
               </div>
             </div>
           </DialogContent>
         </Dialog>
+      ) : null}
+
+      {selectedNotificationOfferData &&
+      showTalentWithdrawnNotificationOffer ? (
+        <Dialog
+          open={selectedNotificationOffer !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedNotificationOffer(null)
+          }}
+        >
+          <DialogContent
+            variant="unanimated"
+            className="pointer-events-none inset-0 flex max-w-none items-center justify-center bg-transparent p-0 shadow-none"
+          >
+            <div className="pointer-events-auto flex h-[500px] w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+              <div className="flex h-[60px] items-center justify-between border-b border-gray-200 px-6 py-3">
+                <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
+                  This offer was withdrawn
+                </DialogTitle>
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="md">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <div className="flex flex-1 flex-col gap-4 p-6">
+                <div className="flex items-start justify-between gap-6">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="rounded" visual="gray" size="sm">
+                        {selectedNotificationOfferData.offerType}
+                      </Badge>
+                      <span className="text-sm font-medium leading-[18px] text-gray-400">
+                        Withdrawn on {selectedNotificationOfferData.expiresLabel}
+                      </span>
+                    </div>
+                    <div className="truncate text-base font-medium leading-6 text-dark-blue-400">
+                      {selectedNotificationOfferData.offerTitle}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-sm font-medium leading-[22px] text-dark-blue-400">
+                      <span>Offer from</span>
+                      <Avatar size="xs" className="size-[18px] border border-gray-200">
+                        <AvatarImage
+                          src={selectedNotificationOfferData.senderAvatarSrc}
+                          alt={selectedNotificationOfferData.senderDisplayName}
+                        />
+                        <AvatarFallback>
+                          {selectedNotificationOfferData.senderDisplayName.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span>{selectedNotificationOfferData.senderDisplayName.split(/\s+/)[0]}</span>
+                      <span className="text-primary-500">
+                        {selectedNotificationOfferData.senderUsername.startsWith("@")
+                          ? selectedNotificationOfferData.senderUsername
+                          : `@${selectedNotificationOfferData.senderUsername}`}
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    className="w-[104px] px-2"
+                    leftIcon={<MessageSquare className="size-4" />}
+                    onClick={() => setSelectedNotificationOffer(null)}
+                  >
+                    Message
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-[162px_1fr] gap-6 border-y border-gray-100 py-5">
+                  <div className="space-y-3 text-sm leading-[22px] text-gray-500">
+                    <div className="font-semibold text-dark-blue-400">Offer Rate</div>
+                    <div>Role</div>
+                    <div>Contract Duration</div>
+                    <div>Work Schedule</div>
+                    <div>Start Date</div>
+                  </div>
+                  <div className="space-y-3 text-sm font-medium leading-[22px] text-dark-blue-400">
+                    <div className="font-semibold">{selectedNotificationOfferData.offerRate}</div>
+                    <div>{selectedNotificationOfferData.role}</div>
+                    <div>{selectedNotificationOfferData.duration}</div>
+                    <div className="flex items-center gap-1">
+                      <span>{selectedNotificationOfferData.schedule}</span>
+                      {selectedNotificationOfferData.schedule === "Full Time" ? (
+                        <span className="text-xs font-normal">over 30 hrs/week</span>
+                      ) : selectedNotificationOfferData.schedule === "Part Time" ? (
+                        <span className="text-xs font-normal">up to 30 hrs/week</span>
+                      ) : null}
+                    </div>
+                    <div>{selectedNotificationOfferData.startDate}</div>
+                  </div>
+                </div>
+
+                <div className="h-[84px] rounded-lg bg-gray-50 p-4">
+                  <div className="text-sm font-medium leading-6 text-dark-blue-400">Message</div>
+                  <div className="text-sm leading-6 text-gray-400">
+                    {selectedNotificationOffer.withdrawalMessage || "No message was sent."}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex h-[60px] items-center justify-between gap-3 border-t border-gray-200 px-6 py-3">
+                <div className="flex items-start gap-2 text-xs leading-[18px] text-gray-500">
+                  <Info className="mt-0.5 size-3.5 shrink-0" />
+                  <span>Want to revisit this? Ask the client to see if the role is still available.</span>
+                </div>
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedNotificationOffer(null)
+                    setSelectedTab("Messages")
+                    setTextareaValue(
+                      `Hi ${selectedNotificationOfferData.senderDisplayName.split(/\s+/)[0]}! I wanted to check in and see if the ${selectedNotificationOfferData.role} role for the project ${selectedNotificationOfferData.offerTitle} is still available. If so, I’m still interested.`
+                    )
+                    lastTypedAtRef.current = Date.now()
+                    userTypedRef.current = true
+                    sendTyping(true)
+                    requestAnimationFrame(() => composerRef.current?.focus())
+                  }}
+                >
+                  Ask Now
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
+      {selectedNotificationOfferData &&
+      showTalentExpiredNotificationOffer ? (
+        <Dialog
+          open={selectedNotificationOffer !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedNotificationOffer(null)
+          }}
+        >
+          <DialogContent
+            variant="unanimated"
+            className="pointer-events-none inset-0 flex max-w-none items-center justify-center bg-transparent p-0 shadow-none"
+          >
+            <div className="pointer-events-auto flex h-[500px] w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+              <div className="flex h-[60px] items-center justify-between border-b border-gray-200 px-6 py-3">
+                <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
+                  This Offer Expired
+                </DialogTitle>
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="md">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <div className="flex flex-1 flex-col gap-6 p-6">
+                <div className="flex items-start justify-between gap-6">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="rounded" visual="gray" size="sm">
+                        {selectedNotificationOfferData.offerType}
+                      </Badge>
+                      <span className="text-sm font-medium leading-[18px] text-gray-400">
+                        Expired on {selectedNotificationOfferData.expiresLabel}
+                      </span>
+                    </div>
+                    <div className="truncate text-base font-medium leading-6 text-dark-blue-400">
+                      {selectedNotificationOfferData.offerTitle}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-sm font-medium leading-[22px] text-dark-blue-400">
+                      <span>Offer from</span>
+                      <Avatar size="xs" className="size-[18px] border border-gray-200">
+                        <AvatarImage
+                          src={selectedNotificationOfferData.senderAvatarSrc}
+                          alt={selectedNotificationOfferData.senderDisplayName}
+                        />
+                        <AvatarFallback>
+                          {selectedNotificationOfferData.senderDisplayName
+                            .charAt(0)
+                            .toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span>
+                        {selectedNotificationOfferData.senderDisplayName.split(
+                          /\s+/
+                        )[0]}
+                      </span>
+                      <span className="text-primary-500">
+                        {selectedNotificationOfferData.senderUsername.startsWith(
+                          "@"
+                        )
+                          ? selectedNotificationOfferData.senderUsername
+                          : `@${selectedNotificationOfferData.senderUsername}`}
+                      </span>
+                    </div>
+                  </div>
+
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    className="w-[104px] px-2"
+                    leftIcon={<MessageSquare className="size-4" />}
+                    onClick={() => setSelectedNotificationOffer(null)}
+                  >
+                    Message
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-[162px_1fr] gap-6 border-y border-gray-100 py-6">
+                  <div className="space-y-4 text-sm leading-[22px] text-gray-500">
+                    <div className="font-semibold text-dark-blue-400">
+                      Offer Rate
+                    </div>
+                    <div>Role</div>
+                    <div>Contract Duration</div>
+                    <div>Work Schedule</div>
+                    <div>Start Date</div>
+                  </div>
+                  <div className="space-y-4 text-sm font-medium leading-[22px] text-dark-blue-400">
+                    <div className="font-semibold">
+                      {selectedNotificationOfferData.offerRate.endsWith("/hr")
+                        ? selectedNotificationOfferData.offerRate
+                        : `${selectedNotificationOfferData.offerRate}/hr`}
+                    </div>
+                    <div>{selectedNotificationOfferData.role}</div>
+                    <div>{selectedNotificationOfferData.duration}</div>
+                    <div className="flex items-center gap-1">
+                      <span>
+                        {selectedNotificationOfferData.schedule.startsWith(
+                          "Full Time"
+                        )
+                          ? "Full Time"
+                          : selectedNotificationOfferData.schedule.startsWith(
+                                "Part Time"
+                              )
+                            ? "Part Time"
+                            : "Custom"}
+                      </span>
+                      {selectedNotificationOfferData.schedule.startsWith(
+                        "Full Time"
+                      ) ? (
+                        <span className="text-xs font-normal">
+                          over 30 hrs/week
+                        </span>
+                      ) : selectedNotificationOfferData.schedule.startsWith(
+                          "Part Time"
+                        ) ? (
+                        <span className="text-xs font-normal">
+                          up to 30 hrs/week
+                        </span>
+                      ) : selectedNotificationOffer?.scheduleDetail ? (
+                        <span className="text-xs font-normal">
+                          {selectedNotificationOffer.scheduleDetail}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div>{selectedNotificationOfferData.startDate}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex h-[60px] items-center justify-between gap-3 border-t border-gray-200 px-6 py-3">
+                <div className="flex items-start gap-2 text-xs leading-[18px] text-gray-500">
+                  <Info className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    {selectedTalentOfferExpiredOverThirtyDays
+                      ? "Want to revisit this? Ask the client to see if the role is still available."
+                      : "Want to revisit this? You can ask the client to extend the offer."}
+                  </span>
+                </div>
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedNotificationOffer(null)
+                    setSelectedTab("Messages")
+                    setTextareaValue(
+                      selectedTalentOfferExpiredOverThirtyDays
+                        ? `Hi ${selectedNotificationOfferData.senderDisplayName.split(/\s+/)[0]}! I wanted to check in and see if the ${selectedNotificationOfferData.role} role for the project ${selectedNotificationOfferData.offerTitle} is still available. If so, I’m still interested.`
+                        : `Hi ${selectedNotificationOfferData.senderDisplayName.split(/\s+/)[0]}! Can you extend the offer for the project ${selectedNotificationOfferData.offerTitle}? I’m still interested.`
+                    )
+                    lastTypedAtRef.current = Date.now()
+                    userTypedRef.current = true
+                    sendTyping(true)
+                    requestAnimationFrame(() => composerRef.current?.focus())
+                  }}
+                >
+                  {selectedTalentOfferExpiredOverThirtyDays
+                    ? "Ask Now"
+                    : "Request Extension"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
+      {selectedNotificationOfferData &&
+      notificationOfferStep !== "counter" &&
+      notificationOfferStep !== "edit" &&
+      notificationOfferStep !== "edit-expired" &&
+      notificationOfferStep !== "resend-edit" &&
+      notificationOfferStep !== "history" &&
+      notificationOfferStep !== "withdraw-confirm" &&
+      notificationOfferStep !== "resend" &&
+      notificationOfferStep !== "resend-summary" &&
+      notificationOfferStep !== "sent-counter" &&
+      notificationOfferStep !== "expired-counter" &&
+      notificationOfferStep !== "resend-counter" &&
+      !showClientTerminalNotificationOffer &&
+      !showTalentExpiredNotificationOffer &&
+      !showTalentWithdrawnNotificationOffer &&
+      notificationOfferStep !== "previous" ? (
+        <OfferFlowDialog
+          open={selectedNotificationOffer !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedNotificationOffer(null)
+          }}
+          variant={selectedNotificationOfferVariant}
+          data={selectedNotificationOfferData}
+          clientPerspective={selectedNotificationOffer?.clientPerspective === true}
+          acceptanceMessage={notificationAcceptanceMessage}
+          termsAccepted={notificationTermsAccepted}
+          declineMessage={notificationDeclineMessage}
+          selectedDeclineReason={notificationDeclineReason}
+          declinedByViewer={
+            notificationOfferStep === "declined" ||
+            (selectedNotificationOffer?.event !== "offer.declined" &&
+              selectedNotificationOffer?.event !== "offer.counter_declined")
+          }
+          onAcceptanceMessageChange={setNotificationAcceptanceMessage}
+          onTermsAcceptedChange={setNotificationTermsAccepted}
+          onDeclineMessageChange={setNotificationDeclineMessage}
+          onDeclineReasonChange={setNotificationDeclineReason}
+          onAccept={() => {
+            if (
+              notificationOfferStep === "accept" &&
+              selectedNotificationOffer &&
+              selectedNotificationOfferData &&
+              !selectedNotificationOffer.clientPerspective &&
+              !selectedNotificationOffer.event.includes("counter")
+            ) {
+              const contractId = selectedNotificationOffer.contractId
+              const acceptanceMessage =
+                notificationAcceptanceMessage.trim() ||
+                "Excited to get started!"
+
+              if (typeof window !== "undefined") {
+                sessionStorage.setItem(
+                  `inbox_offer_accepted:${contractId}`,
+                  JSON.stringify({
+                    status: "accepted",
+                    contractId,
+                    offerTitle: selectedNotificationOfferData.offerTitle,
+                    offerType: selectedNotificationOfferData.offerType,
+                    offerRate: selectedNotificationOfferData.offerRate,
+                    role: selectedNotificationOfferData.role,
+                    duration: selectedNotificationOfferData.duration,
+                    schedule: selectedNotificationOfferData.schedule,
+                    startDate: selectedNotificationOfferData.startDate,
+                    acceptanceMessage,
+                  })
+                )
+
+                const url = new URL(window.location.href)
+                url.searchParams.set("offerStatus", "accepted")
+                url.searchParams.set("contractId", contractId)
+                router.replace(`${url.pathname}${url.search}${url.hash}`)
+              }
+
+              setSelectedNotificationOffer(null)
+              setNotificationOfferStep("event")
+              setNotificationAcceptanceMessage("")
+              setNotificationTermsAccepted(false)
+              return
+            }
+            if (
+              notificationOfferStep === "accept" &&
+              selectedNotificationOffer?.clientPerspective &&
+              selectedNotificationOffer.event.includes("counter")
+            ) {
+              setAcceptedCounterOfferMessage(selectedNotificationOffer)
+              setAcceptedCounterOfferBody(notificationAcceptanceMessage.trim())
+              setSelectedNotificationOffer(null)
+              setNotificationOfferStep("event")
+              setNotificationAcceptanceMessage("")
+              setNotificationTermsAccepted(false)
+              return
+            }
+            setNotificationOfferStep((step) =>
+              step === "accept" ? "accepted" : "accept"
+            )
+          }}
+          onDecline={() => {
+            if (
+              notificationOfferStep === "decline" &&
+              selectedNotificationOffer &&
+              selectedNotificationOfferData &&
+              !selectedNotificationOffer.clientPerspective &&
+              !selectedNotificationOffer.event.includes("counter")
+            ) {
+              const declinedAt = new Date().toISOString()
+              const contractId = selectedNotificationOffer.contractId
+              const declineMessage =
+                notificationDeclineMessage.trim() ||
+                "Thanks, unfortunately I can't take this on right now."
+
+              setLocallyDeclinedTalentOffers((contractIds) =>
+                contractIds.includes(contractId)
+                  ? contractIds
+                  : [...contractIds, contractId]
+              )
+
+              if (typeof window !== "undefined") {
+                sessionStorage.setItem(
+                  `inbox_offer_declined:${contractId}`,
+                  JSON.stringify({
+                    status: "declined",
+                    contractId,
+                    offerTitle: selectedNotificationOfferData.offerTitle,
+                    offerType: selectedNotificationOfferData.offerType,
+                    receivedLabel:
+                      selectedNotificationOfferData.receivedLabel ||
+                      "Feb 1, 2025",
+                    declinedAt,
+                    declinedLabel: "Feb 1, 2025",
+                    offerRate: selectedNotificationOfferData.offerRate,
+                    role: selectedNotificationOfferData.role,
+                    duration: selectedNotificationOfferData.duration,
+                    schedule: selectedNotificationOfferData.schedule,
+                    startDate: selectedNotificationOfferData.startDate,
+                    senderDisplayName:
+                      selectedNotificationOfferData.senderDisplayName,
+                    senderUsername:
+                      selectedNotificationOfferData.senderUsername,
+                    senderAvatarSrc:
+                      selectedNotificationOfferData.senderAvatarSrc,
+                    declineMessage,
+                    declineReason:
+                      notificationDeclineReason.trim() ||
+                      "The budget does not align.",
+                  })
+                )
+
+                const url = new URL(window.location.href)
+                url.searchParams.set("offerStatus", "declined")
+                url.searchParams.set("contractId", contractId)
+                router.replace(`${url.pathname}${url.search}${url.hash}`)
+              }
+
+              setSelectedNotificationOffer(null)
+              setNotificationOfferStep("event")
+              setNotificationDeclineMessage("")
+              setNotificationDeclineReason("")
+              return
+            }
+            if (
+              notificationOfferStep === "decline" &&
+              selectedNotificationOffer?.clientPerspective &&
+              selectedNotificationOffer.event.includes("counter")
+            ) {
+              setDeclinedCounterOfferMessage(selectedNotificationOffer)
+              setSelectedNotificationOffer(null)
+              setNotificationOfferStep("event")
+              setNotificationDeclineMessage("")
+              setNotificationDeclineReason("")
+              return
+            }
+            setNotificationOfferStep((step) =>
+              step === "decline" ? "declined" : "decline"
+            )
+          }}
+          onCounterOffer={() => setNotificationOfferStep("counter")}
+          onCancelAccept={() => setNotificationOfferStep("event")}
+          onCancelDecline={() => setNotificationOfferStep("event")}
+          onPreviousOffer={() => setNotificationOfferStep("previous")}
+          onOfferHistory={() => setNotificationOfferStep("history")}
+          onBack={() => setNotificationOfferStep("event")}
+          onResend={() => setNotificationOfferStep("previous")}
+          onEditTerms={() => setNotificationOfferStep("counter")}
+          onViewJob={() => {
+            const href = selectedNotificationOffer?.viewJobHref
+            if (!href) return
+            router.push(href)
+            setSelectedNotificationOffer(null)
+          }}
+          onMessage={() => setSelectedNotificationOffer(null)}
+        />
+      ) : null}
+
+      {selectedNotificationOfferData &&
+      (notificationOfferStep === "sent-counter" ||
+        notificationOfferStep === "expired-counter") ? (
+        <Dialog
+          open={selectedNotificationOffer !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedNotificationOffer(null)
+          }}
+        >
+          <DialogContent
+            variant="unanimated"
+            className="pointer-events-none inset-0 flex max-w-none items-center justify-center bg-transparent p-0 shadow-none"
+          >
+            <div
+              className={cn(
+                "pointer-events-auto flex w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl",
+                notificationOfferStep === "expired-counter"
+                  ? "h-[603px]"
+                  : "h-[665px]"
+              )}
+            >
+              <div className="flex h-[60px] items-center justify-between border-b border-gray-200 px-3">
+                <DialogTitle className="pl-3 text-[18px] font-bold leading-[22px] text-dark-blue-400">
+                  {notificationOfferStep === "expired-counter"
+                    ? "Counter offer from"
+                    : "Counter offer sent to"}{" "}
+                  <span className="text-primary-500">
+                    {selectedNotificationOfferData.senderUsername.startsWith("@")
+                      ? selectedNotificationOfferData.senderUsername
+                      : `@${selectedNotificationOfferData.senderUsername}`}
+                  </span>
+                </DialogTitle>
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="md">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <div className="flex flex-1 flex-col gap-6 p-6">
+                <div className="flex items-start justify-between gap-6">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="rounded" visual="gray" size="sm">
+                        {selectedNotificationOfferData.offerType}
+                      </Badge>
+                      <span className="text-sm font-medium text-gray-400">
+                        {notificationOfferStep === "expired-counter"
+                          ? `Expired on ${selectedNotificationOfferData.expiresLabel}`
+                          : `Sent on ${selectedNotificationOfferData.receivedLabel}`}
+                      </span>
+                    </div>
+                    <div className="truncate text-base font-medium leading-6 text-dark-blue-400">
+                      {selectedNotificationOfferData.offerTitle}
+                    </div>
+                    <Button
+                      variant="link"
+                      visual="primary"
+                      className="h-5 gap-2 p-0 text-xs"
+                      leftIcon={<Briefcase className="size-[15px]" />}
+                      onClick={() => {
+                        const href = selectedNotificationOffer?.viewJobHref
+                        if (!href) return
+                        router.push(href)
+                        setSelectedNotificationOffer(null)
+                      }}
+                    >
+                      View Job
+                    </Button>
+                  </div>
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    className="w-[104px] px-2"
+                    leftIcon={<MessageSquare className="size-4" />}
+                    onClick={() => setSelectedNotificationOffer(null)}
+                  >
+                    Message
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-[162px_1fr] gap-6 border-y border-gray-100 py-6">
+                  <div className="space-y-4 text-sm leading-[22px] text-gray-500">
+                    <div className="font-semibold text-dark-blue-400">Rate</div>
+                    <div>Role</div>
+                    <div>Contract Duration</div>
+                    <div>Work Schedule</div>
+                    <div>Start Date</div>
+                  </div>
+                  <div className="space-y-4 text-sm font-medium leading-[22px] text-dark-blue-400">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      {counterTermChanges.rate ? (
+                        <ArrowRight className="size-3.5 shrink-0 text-success-400" />
+                      ) : null}
+                      <span>
+                        {selectedNotificationOfferData.offerRate.endsWith("/hr")
+                          ? selectedNotificationOfferData.offerRate
+                          : `${selectedNotificationOfferData.offerRate}/hr`}
+                      </span>
+                      {counterTermChanges.rate ? (
+                        <span className="text-xs font-medium text-gray-400">
+                        {`(was ${
+                          (selectedNotificationOfferData.originalOfferRate || "$45/hr").endsWith(
+                            "/hr"
+                          )
+                            ? selectedNotificationOfferData.originalOfferRate || "$45/hr"
+                            : `${selectedNotificationOfferData.originalOfferRate}/hr`
+                        })`}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div>{selectedNotificationOfferData.role}</div>
+                    <div className="flex items-center gap-1.5">
+                      {counterTermChanges.duration ? (
+                        <ArrowRight className="size-3.5 shrink-0 text-success-400" />
+                      ) : null}
+                      <span>{selectedNotificationOfferData.duration}</span>
+                      {counterTermChanges.duration ? (
+                        <span className="text-xs font-medium text-gray-400">
+                          (was {selectedNotificationOffer?.originalDuration})
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {counterTermChanges.schedule ? (
+                        <ArrowRight className="size-3.5 shrink-0 text-success-400" />
+                      ) : null}
+                      <span>
+                        {selectedNotificationOfferData.schedule.startsWith(
+                          "Full Time"
+                        )
+                          ? "Full Time"
+                          : selectedNotificationOfferData.schedule.startsWith(
+                                "Part Time"
+                              )
+                            ? "Part Time"
+                            : "Custom"}
+                      </span>
+                      {selectedNotificationOfferData.schedule.startsWith(
+                        "Full Time"
+                      ) ? (
+                        <span className="text-xs font-normal leading-[18px]">
+                          over 30 hrs/week
+                        </span>
+                      ) : selectedNotificationOfferData.schedule.startsWith(
+                          "Part Time"
+                        ) ? (
+                        <span className="text-xs font-normal leading-[18px]">
+                          up to 30 hrs/week
+                        </span>
+                      ) : null}
+                      {counterTermChanges.schedule ? (
+                        <span className="text-xs font-medium text-gray-400">
+                          (was {selectedNotificationOffer?.originalSchedule})
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {counterTermChanges.startDate ? (
+                        <ArrowRight className="size-3.5 shrink-0 text-success-400" />
+                      ) : null}
+                      <span>{selectedNotificationOfferData.startDate}</span>
+                      {counterTermChanges.startDate ? (
+                        <span className="text-xs font-medium text-gray-400">
+                          (was {selectedNotificationOffer?.originalStartDate})
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-gray-50 p-4">
+                  <div className="text-sm font-medium leading-6 text-dark-blue-400">
+                    Message
+                  </div>
+                  <p className="mt-1 text-sm leading-5 text-dark-blue-400">
+                    {selectedNotificationOfferData.message ||
+                      "I would like to increase the hourly rate if it’s ok."}
+                  </p>
+                </div>
+
+                {notificationOfferStep !== "expired-counter" ? (
+                  <div className="flex items-start gap-1 text-xs font-medium leading-[19px] text-gray-400">
+                    <Info className="mt-0.5 size-3.5 shrink-0" />
+                    <span>
+                      This counteroffer expires {selectedNotificationOfferData.expiresLabel}.
+                      You can edit or withdraw it anytime before then.
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+
+              <div
+                className={cn(
+                  "flex h-[60px] items-center gap-3 border-t border-gray-200 p-3",
+                  notificationOfferStep === "expired-counter"
+                    ? "justify-between"
+                    : "justify-end"
+                )}
+              >
+                {notificationOfferStep === "expired-counter" ? (
+                  <>
+                    <div className="flex flex-1 items-start gap-2 text-xs font-medium leading-[15px] text-gray-500">
+                      <Info className="size-3.5 shrink-0" />
+                      <span>
+                        Want to revisit this? Ask the talent to see if they are
+                        still interested in this role.
+                      </span>
+                    </div>
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedNotificationOffer(null)
+                        setSelectedTab("Messages")
+                        setTextareaValue(
+                          `Hi, I missed your counteroffer for the project ${selectedNotificationOfferData.offerTitle}. If you’re still available, can you resend it?`
+                        )
+                        lastTypedAtRef.current = Date.now()
+                        userTypedRef.current = true
+                        sendTyping(true)
+                        requestAnimationFrame(() => composerRef.current?.focus())
+                      }}
+                    >
+                      Ask Now
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      onClick={() => setNotificationOfferStep("withdraw-confirm")}
+                    >
+                      Withdraw Counter Offer
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      onClick={() => setNotificationOfferStep("edit")}
+                    >
+                      Edit Counter Offer
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
+      {selectedNotificationOfferData &&
+      notificationOfferStep === "resend-counter" ? (
+        <Dialog
+          open={selectedNotificationOffer !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedNotificationOffer(null)
+          }}
+        >
+          <DialogContent
+            variant="unanimated"
+            className="pointer-events-none inset-0 flex max-w-none items-center justify-center bg-transparent p-0 shadow-none"
+          >
+            <div className="pointer-events-auto flex h-[575px] w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+              <div className="flex h-[60px] items-center justify-between border-b border-gray-200 px-6 py-3">
+                <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
+                  Resend counteroffer to{" "}
+                  <span className="text-primary-500">
+                    {selectedNotificationOfferData.senderUsername.startsWith("@")
+                      ? selectedNotificationOfferData.senderUsername
+                      : `@${selectedNotificationOfferData.senderUsername}`}
+                  </span>
+                </DialogTitle>
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="md">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <div className="flex flex-1 flex-col gap-6 p-6">
+                <div className="flex items-start justify-between gap-6">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="rounded" visual="gray" size="sm">
+                        {selectedNotificationOfferData.offerType}
+                      </Badge>
+                      <span className="text-sm font-medium leading-[18px] text-gray-400">
+                        Expires on {selectedNotificationOfferData.expiresLabel}
+                      </span>
+                    </div>
+                    <div className="truncate text-base font-medium leading-6 text-dark-blue-400">
+                      {selectedNotificationOfferData.offerTitle}
+                    </div>
+                  </div>
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    leftIcon={<MessageSquare className="size-4" />}
+                    onClick={() => setSelectedNotificationOffer(null)}
+                  >
+                    Message
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-[162px_1fr] gap-6 border-y border-gray-100 py-6">
+                  <div className="space-y-4 text-sm leading-[22px] text-gray-500">
+                    <div className="font-semibold text-dark-blue-400">Rate</div>
+                    <div>Role</div>
+                    <div>Contract Duration</div>
+                    <div>Work Schedule</div>
+                    <div>Start Date</div>
+                  </div>
+                  <div className="space-y-4 text-sm font-medium leading-[22px] text-dark-blue-400">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      {counterTermChanges.rate ? (
+                        <ArrowRight className="size-3.5 shrink-0 text-success-400" />
+                      ) : null}
+                      <span>{selectedNotificationOfferData.offerRate}</span>
+                      {counterTermChanges.rate ? (
+                        <span className="text-xs font-medium text-gray-400">
+                          (was {selectedNotificationOfferData.originalOfferRate})
+                        </span>
+                      ) : null}
+                    </div>
+                    <div>{selectedNotificationOfferData.role}</div>
+                    <div className="flex items-center gap-1.5">
+                      {counterTermChanges.duration ? (
+                        <ArrowRight className="size-3.5 shrink-0 text-success-400" />
+                      ) : null}
+                      <span>{selectedNotificationOfferData.duration}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {counterTermChanges.schedule ? (
+                        <ArrowRight className="size-3.5 shrink-0 text-success-400" />
+                      ) : null}
+                      <span>{selectedNotificationOfferData.schedule}</span>
+                      {selectedNotificationOfferData.schedule === "Full Time" ? (
+                        <span className="text-xs font-normal">over 30 hrs/week</span>
+                      ) : selectedNotificationOfferData.schedule === "Part Time" ? (
+                        <span className="text-xs font-normal">up to 30 hrs/week</span>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {counterTermChanges.startDate ? (
+                        <ArrowRight className="size-3.5 shrink-0 text-success-400" />
+                      ) : null}
+                      <span>{selectedNotificationOfferData.startDate}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-gray-50 p-4">
+                  <div className="text-sm font-medium leading-6 text-dark-blue-400">Message</div>
+                  <p className="mt-1 text-sm leading-5 text-dark-blue-400">
+                    {selectedNotificationOfferData.message ||
+                      "I would like to increase the hourly rate if it’s ok."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex h-[60px] items-center justify-end gap-3 border-t border-gray-200 px-6 py-3">
+                <Button
+                  variant="ghost"
+                  visual="primary"
+                  size="sm"
+                  onClick={() => setSelectedNotificationOffer(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (selectedNotificationOffer) {
+                      setDismissedExpiredOfferActions((current) =>
+                        current.includes(selectedNotificationOffer.id)
+                          ? current
+                          : [...current, selectedNotificationOffer.id]
+                      )
+                    }
+                    toast({
+                      title: "Counteroffer resent",
+                      description: "Your counteroffer was sent to the client.",
+                    })
+                    setSelectedNotificationOffer(null)
+                  }}
+                >
+                  Resend Counteroffer
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
+      {selectedNotificationOfferData && notificationOfferStep === "history" ? (
+        <OfferHistoryDialog
+          open={selectedNotificationOffer !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedNotificationOffer(null)
+          }}
+          items={[
+            {
+              id: "offer",
+              actorName: selectedNotificationOfferData.senderDisplayName,
+              actorAvatarSrc: selectedNotificationOfferData.senderAvatarSrc,
+              title: `${selectedNotificationOfferData.senderDisplayName} sent an offer`,
+              timestampLabel: "Last week at 3:14 PM",
+              rateLabel: selectedNotificationOfferData.offerRate,
+            },
+            {
+              id: "counter",
+              actorName: "You",
+              title: "You sent a counteroffer",
+              timestampLabel: "Yesterday at 1:36 PM",
+              rateLabel: selectedNotificationOfferData.offerRate,
+              role: selectedNotificationOfferData.role,
+              duration: selectedNotificationOfferData.duration,
+              schedule: selectedNotificationOfferData.schedule,
+              startDate: selectedNotificationOfferData.startDate,
+            },
+            {
+              id: "declined",
+              actorName: selectedNotificationOfferData.senderDisplayName,
+              actorAvatarSrc: selectedNotificationOfferData.senderAvatarSrc,
+              title: `${selectedNotificationOfferData.senderDisplayName} declined the counter offer`,
+              timestampLabel: "Yesterday at 3:30 PM",
+              rateLabel: selectedNotificationOfferData.offerRate,
+            },
+            {
+              id: "accepted",
+              actorName: "You",
+              title: "You accepted the offer",
+              timestampLabel: "Today at 5:00 PM",
+              rateLabel: selectedNotificationOfferData.offerRate,
+            },
+          ]}
+          onCtaClick={() => {
+            if (!selectedNotificationOffer) return
+            const contractId = selectedNotificationOffer.contractId
+            setSelectedNotificationOffer(null)
+            router.push(
+              `/active-project/${encodeURIComponent(contractId)}?title=${encodeURIComponent(selectedNotificationOfferData.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract`
+            )
+          }}
+        />
+      ) : null}
+
+      {selectedNotificationOfferData && showClientTerminalNotificationOffer ? (
+        <Dialog
+          open={selectedNotificationOffer !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedNotificationOffer(null)
+          }}
+        >
+          <DialogContent
+            variant="unanimated"
+            className="pointer-events-none inset-0 flex max-w-none items-center justify-center bg-transparent p-0 shadow-none"
+          >
+            <div className={`pointer-events-auto flex w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl ${selectedNotificationOffer.withdrawnByViewer || selectedNotificationOfferIsClientDeclined ? "h-[608px]" : "h-[500px]"}`}>
+              <div className="flex h-[60px] items-center border-b border-gray-200 p-3">
+                <DialogTitle className="flex-1 pl-3 text-[18px] font-bold leading-[22px] text-dark-blue-400">
+                  {selectedNotificationOfferIsClientDeclined
+                    ? "Your offer was declined"
+                    : selectedNotificationOffer.withdrawnByViewer
+                    ? "You withdrew this offer"
+                    : selectedNotificationOfferIsClientWithdrawn
+                    ? "This Offer Was Withdrawn"
+                    : selectedNotificationOfferIsClientExpired
+                      ? "This Offer Expired"
+                      : "This Offer Was Accepted"}
+                </DialogTitle>
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="md">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+              <div className="flex flex-1 flex-col gap-6 p-6">
+                <div className="flex h-[84px] items-start gap-6">
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="rounded" visual="gray" size="sm">
+                        {selectedNotificationOfferData.offerType}
+                      </Badge>
+                      <span className="text-sm font-medium leading-[18px] text-gray-400">
+                        {selectedNotificationOfferIsClientDeclined ? "Declined" : selectedNotificationOffer.withdrawnByViewer ? "Withdrawn" : "Expired"} on {selectedNotificationOfferData.expiresLabel}
+                      </span>
+                    </div>
+                    <div className="text-[16px] font-medium leading-6 text-dark-blue-400">
+                      {selectedNotificationOfferData.offerTitle}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-sm font-medium leading-[22px] text-dark-blue-400">
+                      <span>Sent to</span>
+                      <Avatar size="xs">
+                        <AvatarImage src={selectedNotificationOfferData.senderAvatarSrc} alt={selectedNotificationOfferData.senderDisplayName} />
+                        <AvatarFallback>{selectedNotificationOfferData.senderDisplayName.slice(0, 1)}</AvatarFallback>
+                      </Avatar>
+                      <span>{selectedNotificationOfferData.senderDisplayName}</span>
+                      <span className="text-primary-500">{selectedNotificationOfferData.senderUsername}</span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    leftIcon={<MessageSquare className="size-[15px]" />}
+                    onClick={() => setSelectedNotificationOffer(null)}
+                  >
+                    Message
+                  </Button>
+                </div>
+                <div className="border-t border-gray-100" />
+                <div className="grid h-44 grid-cols-[162px_1fr] gap-6">
+                  <div className="space-y-4">
+                    <div className="text-[15px] font-semibold leading-6 text-dark-blue-400">Offer Rate</div>
+                    <div className="text-sm leading-[22px] text-gray-500">Role</div>
+                    <div className="text-sm leading-[22px] text-gray-500">Contract Duration</div>
+                    <div className="text-sm leading-[22px] text-gray-500">Work Schedule</div>
+                    <div className="text-sm leading-[22px] text-gray-500">Start Date</div>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="text-[16px] font-semibold leading-[18px] text-dark-blue-400">{selectedNotificationOfferData.offerRate}</div>
+                    <div className="text-sm font-medium leading-[18px] text-dark-blue-400">{selectedNotificationOfferData.role}</div>
+                    <div className="text-sm font-medium leading-[18px] text-dark-blue-400">{selectedNotificationOfferData.duration}</div>
+                    <div className="flex items-center gap-1 text-dark-blue-400">
+                      <span className="text-sm font-medium leading-[18px]">{selectedNotificationOfferData.schedule}</span>
+                      {selectedNotificationOfferData.schedule === "Full Time" ? <span className="text-xs leading-[18px]">over 30 hrs/week</span> : selectedNotificationOfferData.schedule === "Part Time" ? <span className="text-xs leading-[18px]">up to 30 hrs/week</span> : null}
+                    </div>
+                    <div className="text-sm font-medium leading-[18px] text-dark-blue-400">{selectedNotificationOfferData.startDate}</div>
+                  </div>
+                </div>
+                <div className="border-t border-gray-100" />
+                {selectedNotificationOffer.withdrawnByViewer ? (
+                  <div className="h-[84px] rounded-lg bg-gray-50 p-4">
+                    <div className="text-sm font-medium leading-6 text-dark-blue-400">Message</div>
+                    <div className="text-sm leading-6 text-gray-400">
+                      {selectedNotificationOffer.withdrawalMessage || "No message was sent."}
+                    </div>
+                  </div>
+                ) : null}
+                {selectedNotificationOfferIsClientDeclined ? (
+                  <div className="min-h-[84px] rounded-lg bg-gray-50 p-4">
+                    <div className="text-sm font-medium leading-6 text-dark-blue-400">Reason</div>
+                    <div className="text-sm leading-6 text-dark-blue-400">
+                      {selectedNotificationOffer.declineReason || "The project timing does not align."}
+                    </div>
+                  </div>
+                ) : null}
+                <div className="flex h-9 items-center gap-6">
+                  <div className="flex flex-1 items-start gap-2 text-xs font-medium leading-[15px] text-gray-500">
+                    <Info className="size-3.5 shrink-0" />
+                    {selectedNotificationOfferIsClientExpired &&
+                    reopenedExpiredOfferIds.includes(selectedNotificationOffer.id) ? (
+                      <span>This offer was reopened 2 days ago</span>
+                    ) : selectedNotificationOfferIsClientWithdrawn || selectedNotificationOfferIsClientExpired || selectedNotificationOfferIsClientDeclined ? (
+                      <span>You can resend this offer or edit the terms before sending.</span>
+                    ) : (
+                      <span>
+                        This offer was {selectedNotificationOfferIsClientExpired ? "reopened" : "accepted"}{" "}
+                        {formatNotificationTime(selectedNotificationOffer.createdAt)}
+                      </span>
+                    )}
+                  </div>
+                  {selectedNotificationOfferIsClientExpired &&
+                  reopenedExpiredOfferIds.includes(selectedNotificationOffer.id) ? (
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      onClick={() => {
+                        const currentOffer = [...sentClientOfferMessages]
+                          .reverse()
+                          .find(
+                            (offer) =>
+                              offer.id === selectedNotificationOffer.id
+                          )
+                        if (!currentOffer) return
+                        openNotificationOffer(currentOffer)
+                        setNotificationOfferStep("previous")
+                      }}
+                    >
+                      View Current Offer
+                    </Button>
+                  ) : selectedNotificationOfferIsClientWithdrawn || selectedNotificationOfferIsClientExpired || selectedNotificationOfferIsClientDeclined ? (
+                    <div className="flex items-center gap-3">
+                      <Button variant="outlined" visual="gray" size="sm" onClick={() => setNotificationOfferStep("edit-expired")}>Edit Offer</Button>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        onClick={() => {
+                          if (selectedNotificationOfferIsClientDeclined) {
+                            openClientResendOfferFlow(selectedNotificationOffer)
+                            return
+                          }
+                          setNotificationResendMessage("")
+                          setNotificationOfferStep("resend")
+                        }}
+                      >
+                        Resend Offer
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      onClick={() => {
+                        const contractId = selectedNotificationOffer.contractId
+                        setSelectedNotificationOffer(null)
+                        router.push(
+                          `/active-project/${encodeURIComponent(contractId)}?title=${encodeURIComponent(selectedNotificationOfferData.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract`
+                        )
+                      }}
+                    >
+                      View Contract
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
+      {selectedNotificationOfferData &&
+      notificationOfferStep === "previous" ? (
+        <Dialog
+          open={selectedNotificationOffer !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedNotificationOffer(null)
+          }}
+        >
+          <DialogContent
+            variant="unanimated"
+            className="pointer-events-none inset-0 flex max-w-none items-center justify-center bg-transparent p-0 shadow-none"
+          >
+            <div className="pointer-events-auto flex h-[537px] w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+              <div className="flex h-[60px] items-center border-b border-gray-200 p-3">
+                {!selectedNotificationOffer?.clientPerspective ? (
+                  <IconButton
+                    variant="ghost"
+                    visual="gray"
+                    size="md"
+                    onClick={() => setNotificationOfferStep("sent-counter")}
+                  >
+                    <ArrowLeft className="size-5" />
+                  </IconButton>
+                ) : null}
+                <div className="flex h-9 flex-1 items-center pl-3">
+                  <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
+                    {selectedNotificationOffer?.clientPerspective
+                      ? "Offer to"
+                      : "Offer from"}{" "}
+                    <span className="text-primary-500">
+                      {selectedNotificationOfferData.senderUsername}
+                    </span>
+                  </DialogTitle>
+                </div>
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="md">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <div className="flex flex-1 flex-col gap-6 p-6">
+                <div className="flex h-[78px] flex-col justify-center gap-2">
+                  <div className="flex h-[50px] items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="rounded" visual="gray" size="sm">
+                          {selectedNotificationOfferData.offerType}
+                        </Badge>
+                        <span className="text-sm font-medium leading-[18px] text-gray-400">
+                          Sent on {selectedNotificationOfferData.receivedLabel}
+                        </span>
+                      </div>
+                      <div className="text-[16px] font-medium leading-6 text-dark-blue-400">
+                        {selectedNotificationOfferData.offerTitle}
+                      </div>
+                    </div>
+                    {selectedNotificationOffer?.clientPerspective ? (
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        className="w-[104px] px-2"
+                        leftIcon={<MessageSquare className="size-[15px]" />}
+                        onClick={() => setSelectedNotificationOffer(null)}
+                      >
+                        Message
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="sm"
+                        className="h-5 w-fit p-0 text-xs no-underline hover:no-underline"
+                        leftIcon={<Repeat className="size-[15px]" />}
+                        onClick={() => setNotificationOfferStep("history")}
+                      >
+                        Offer History
+                      </Button>
+                    )}
+                  </div>
+                  <Button
+                    variant="link"
+                    visual="primary"
+                    size="sm"
+                    className="self-start"
+                    leftIcon={<Briefcase className="size-[15px]" />}
+                    onClick={() => {
+                      const href = selectedNotificationOffer?.viewJobHref
+                      if (!href) return
+                      router.push(href)
+                      setSelectedNotificationOffer(null)
+                    }}
+                  >
+                    View Job
+                  </Button>
+                </div>
+
+                <div className="border-t border-gray-100" />
+
+                <div className="grid h-44 grid-cols-[162px_1fr] gap-6">
+                  <div className="space-y-4">
+                    <div className="text-[15px] font-semibold leading-6 text-dark-blue-500">
+                      Offer Rate
+                    </div>
+                    <div className="text-sm leading-[22px] text-gray-500">Role</div>
+                    <div className="text-sm leading-[22px] text-gray-500">Contract Duration</div>
+                    <div className="text-sm leading-[22px] text-gray-500">Work Schedule</div>
+                    <div className="text-sm leading-[22px] text-gray-500">Start Date</div>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="text-[16px] font-semibold leading-[18px] text-dark-blue-500">
+                      {selectedNotificationOfferData.offerRate}
+                    </div>
+                    <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
+                      {selectedNotificationOfferData.role}
+                    </div>
+                    <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
+                      {selectedNotificationOfferData.duration}
+                    </div>
+                    <div className="flex items-center gap-1 text-dark-blue-500">
+                      <span className="text-sm font-medium leading-[18px]">
+                        {selectedNotificationOfferData.schedule}
+                      </span>
+                      {selectedNotificationOfferData.schedule === "Full Time" ? (
+                        <span className="text-xs leading-[18px]">over 30 hrs/week</span>
+                      ) : selectedNotificationOfferData.schedule === "Part Time" ? (
+                        <span className="text-xs leading-[18px]">up to 30 hrs/week</span>
+                      ) : null}
+                    </div>
+                    <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
+                      {selectedNotificationOfferData.startDate}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-100" />
+
+                <div className="mt-auto flex w-full flex-col gap-3">
+                  <span className="text-xs font-medium leading-[19px] text-gray-400">
+                    This offer expires {selectedNotificationOfferData.expiresLabel}
+                  </span>
+                  <div className="flex h-9 justify-end gap-3">
+                    {selectedNotificationOffer?.clientPerspective ? (
+                      <>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => {
+                            setNotificationWithdrawalMessage("")
+                            setNotificationOfferStep("withdraw-confirm")
+                          }}
+                        >
+                          Withdraw Offer
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => setNotificationOfferStep("edit-expired")}
+                        >
+                          Edit Offer
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => setNotificationOfferStep("decline")}
+                        >
+                          Decline Offer
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => setNotificationOfferStep("accept")}
+                        >
+                          Accept Offer
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
+      {selectedNotificationOfferData &&
+      notificationOfferStep === "resend-summary" ? (
+        <Dialog
+          open={selectedNotificationOffer !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedNotificationOffer(null)
+          }}
+        >
+          <DialogContent
+            variant="unanimated"
+            className="pointer-events-none inset-0 flex max-w-none items-center justify-center bg-transparent p-0 shadow-none"
+          >
+            <div className="pointer-events-auto flex h-[551px] w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+              <div className="flex h-[68px] items-center border-b border-gray-200 px-3 py-3">
+                <div className="flex-1 pl-3">
+                  <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
+                    Resend your offer
+                  </DialogTitle>
+                  <p className="text-sm leading-[22px] text-gray-500">
+                    Resending creates a new offer.
+                  </p>
+                </div>
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="sm">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <div className="flex flex-1 flex-col gap-6 p-6">
+                <div className="flex items-start justify-between gap-6">
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="rounded" visual="gray" size="sm">
+                        {selectedNotificationOfferData.offerType}
+                      </Badge>
+                      <span className="text-sm font-medium leading-[18px] text-gray-400">
+                        Expired on {selectedNotificationOfferData.receivedLabel}
+                      </span>
+                    </div>
+                    <div className="text-[16px] font-medium leading-6 text-dark-blue-400">
+                      {selectedNotificationOfferData.offerTitle}
+                    </div>
+                  </div>
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    leftIcon={<MessageSquare className="size-[15px]" />}
+                    onClick={() => setSelectedNotificationOffer(null)}
+                  >
+                    Message
+                  </Button>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Avatar size="md">
+                    <AvatarImage
+                      src={selectedNotificationOfferData.senderAvatarSrc}
+                      alt={selectedNotificationOfferData.senderDisplayName}
+                    />
+                    <AvatarFallback>
+                      {selectedNotificationOfferData.senderDisplayName.charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <div className="text-sm font-semibold text-dark-blue-400">
+                      {selectedNotificationOfferData.role}
+                    </div>
+                    <div className="text-xs text-gray-500">10 years of experience</div>
+                    <div className="text-[10px] text-gray-400">Jersey City, NJ, United States</div>
+                  </div>
+                </div>
+
+                <div className="h-px bg-gray-100" />
+                <div className="grid grid-cols-[162px_1fr] gap-x-6 gap-y-4">
+                  <span className="text-sm font-semibold text-dark-blue-400">Offer Rate</span><strong className="text-sm text-dark-blue-400">{selectedNotificationOfferData.offerRate}</strong>
+                  <span className="text-sm text-gray-500">Role</span><strong className="text-sm text-dark-blue-400">{selectedNotificationOfferData.role}</strong>
+                  <span className="text-sm text-gray-500">Contract Duration</span><strong className="text-sm text-dark-blue-400">{selectedNotificationOfferData.duration}</strong>
+                  <span className="text-sm text-gray-500">Work Schedule</span><strong className="text-sm text-dark-blue-400">{selectedNotificationOfferData.schedule}</strong>
+                  <span className="text-sm text-gray-500">Start Date</span><strong className="text-sm text-dark-blue-400">{selectedNotificationOfferData.startDate}</strong>
+                </div>
+
+                <div className="mt-auto flex h-9 items-center justify-end gap-3 border-t border-gray-100 pt-4">
+                  <Button
+                    variant="ghost"
+                    visual="gray"
+                    size="sm"
+                    className="mr-auto"
+                    onClick={() => setSelectedNotificationOffer(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    onClick={() => setNotificationOfferStep("edit-expired")}
+                  >
+                    Edit Offer
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setNotificationResendMessage("")
+                      setNotificationOfferStep("resend")
+                    }}
+                  >
+                    Resend Offer
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
+      {selectedNotificationOfferData && notificationOfferStep === "resend" ? (
+        <Dialog
+          open={selectedNotificationOffer !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedNotificationOffer(null)
+          }}
+        >
+          <DialogContent
+            variant="unanimated"
+            className="pointer-events-none inset-0 flex max-w-none items-center justify-center bg-transparent p-0 shadow-none"
+          >
+            <div className="pointer-events-auto flex h-[500px] w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+              <div className="flex h-[52px] items-center border-b border-gray-200 px-6 py-3">
+                <DialogTitle className="flex-1 text-base font-semibold leading-7 text-dark-blue-400">
+                  Resend this offer?
+                </DialogTitle>
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="sm">
+                    <X className="size-4" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <div className="flex flex-1 flex-col gap-6 p-6">
+                <p className="text-sm font-medium leading-6 text-dark-blue-400">
+                  This will resend the offer with the same terms.
+                </p>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm leading-5 text-gray-500">
+                    Message to talent (optional)
+                  </label>
+                  <Textarea
+                    className="h-[167px] resize-none"
+                    placeholder="Add a short note..."
+                    maxLength={500}
+                    value={notificationResendMessage}
+                    onChange={(event) =>
+                      setNotificationResendMessage(event.target.value)
+                    }
+                  />
+                  <span className="text-right text-[10px] font-medium leading-4 text-gray-400">
+                    {notificationResendMessage.length}/500
+                  </span>
+                </div>
+
+                <div className="mt-auto flex h-9 items-center gap-4">
+                  <Button
+                    variant="link"
+                    visual="gray"
+                    size="sm"
+                    className="mr-auto"
+                    leftIcon={<ArrowLeft className="size-4" />}
+                    onClick={() =>
+                      setNotificationOfferStep(
+                        selectedNotificationOfferIsClientExpired
+                          ? "resend-summary"
+                          : "event"
+                      )
+                    }
+                  >
+                    View Terms
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    visual="primary"
+                    size="sm"
+                    onClick={() =>
+                      setNotificationOfferStep(
+                        selectedNotificationOfferIsClientExpired
+                          ? "resend-summary"
+                          : "event"
+                      )
+                    }
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (!selectedNotificationOffer) return
+                      setSentClientOfferMessages((messages) => [
+                        ...messages,
+                        {
+                          ...selectedNotificationOffer,
+                          event: "offer.resent",
+                          counterOfferMessage:
+                            notificationResendMessage.trim() || undefined,
+                        },
+                      ])
+                      setReopenedExpiredOfferIds((ids) =>
+                        ids.includes(selectedNotificationOffer.id)
+                          ? ids
+                          : [...ids, selectedNotificationOffer.id]
+                      )
+                      setSelectedNotificationOffer(null)
+                      setNotificationOfferStep("event")
+                    }}
+                  >
+                    Resend Offer
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
+      {selectedNotificationOfferData &&
+      notificationOfferStep === "withdraw-confirm" ? (
+        <Dialog
+          open={selectedNotificationOffer !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedNotificationOffer(null)
+          }}
+        >
+          <DialogContent
+            variant="unanimated"
+            className="pointer-events-none inset-0 flex max-w-none items-center justify-center bg-transparent p-0 shadow-none"
+          >
+            <div className="pointer-events-auto flex h-[414px] w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+              <div className="flex h-[52px] items-start border-b border-gray-200 px-6 py-3">
+                <DialogTitle className="flex-1 text-base font-semibold leading-7 text-dark-blue-400">
+                  {selectedNotificationOfferIsTalentCounter
+                    ? "Withdraw this counter offer?"
+                    : "Withdraw this offer?"}
+                </DialogTitle>
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="sm">
+                    <X className="size-4" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <div className="flex h-[362px] flex-col gap-6 p-6">
+                <p className="text-sm font-medium leading-6 text-dark-blue-400">
+                  This will cancel the offer and notify the recipient.
+                </p>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-[13px] leading-[15px] text-gray-500">
+                    {selectedNotificationOfferIsTalentCounter
+                      ? "Message to client (optional)"
+                      : "Message to talent (optional)"}
+                  </label>
+                  <Textarea
+                    className="h-[163px] resize-none"
+                    placeholder="Add a short note..."
+                    maxLength={500}
+                    value={notificationWithdrawalMessage}
+                    onChange={(event) =>
+                      setNotificationWithdrawalMessage(event.target.value)
+                    }
+                  />
+                  <span className="text-right text-[10px] font-medium leading-4 text-gray-400">
+                    {notificationWithdrawalMessage.length}/500
+                  </span>
+                </div>
+
+                <div className="flex h-9 justify-end gap-4">
+                  <Button
+                    variant="ghost"
+                    visual="gray"
+                    size="sm"
+                    onClick={() =>
+                      setNotificationOfferStep(
+                        selectedNotificationOfferIsTalentCounter
+                          ? "sent-counter"
+                          : "previous"
+                      )
+                    }
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    visual="error"
+                    size="sm"
+                    onClick={() => {
+                      if (!selectedNotificationOffer) return
+                      if (selectedNotificationOfferIsTalentCounter) {
+                        setWithdrawnClientOfferMessage(null)
+                        setWithdrawnTalentCounterOfferMessage({
+                          ...selectedNotificationOffer,
+                          event: "offer.counter_withdrawn",
+                          withdrawnByViewer: true,
+                          withdrawalMessage:
+                            notificationWithdrawalMessage.trim(),
+                        })
+                        setSelectedNotificationOffer(null)
+                        setNotificationOfferStep("event")
+                        setNotificationWithdrawalMessage("")
+                        return
+                      }
+                      setWithdrawnClientOfferMessage({
+                        ...selectedNotificationOffer,
+                        event: "offer.withdrawn",
+                        withdrawnByViewer: true,
+                        withdrawalMessage:
+                          notificationWithdrawalMessage.trim(),
+                      })
+                      setSelectedNotificationOffer(null)
+                      setNotificationOfferStep("event")
+                    }}
+                  >
+                    {selectedNotificationOfferIsTalentCounter
+                      ? "Withdraw Counter Offer"
+                      : "Withdraw Offer"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
+      {selectedNotificationOfferData &&
+      (notificationOfferStep === "counter" ||
+        notificationOfferStep === "edit" ||
+        notificationOfferStep === "edit-expired" ||
+        notificationOfferStep === "resend-edit") ? (
+        <CounterOfferDialog
+          open={selectedNotificationOffer !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowClientPreviousStartDate(false)
+              setSelectedNotificationOffer(null)
+            }
+          }}
+          variant="default"
+          mode={
+            notificationOfferStep === "counter" ||
+            (notificationOfferStep === "edit" &&
+              selectedNotificationOffer?.event.includes("counter") &&
+              !selectedNotificationOffer.clientPerspective)
+              ? "counter"
+              : "edit"
+          }
+          initialReview={false}
+          reviewTitle={
+            notificationOfferStep === "edit" &&
+            selectedNotificationOffer?.event.includes("counter") &&
+            !selectedNotificationOffer.clientPerspective
+              ? "Review Your Counter Offer"
+              : notificationOfferStep === "edit-expired"
+              ? "Review your offer"
+              : undefined
+          }
+          editTitle={
+            notificationOfferStep === "edit" &&
+            selectedNotificationOffer?.event.includes("counter") &&
+            !selectedNotificationOffer.clientPerspective
+              ? "Edit Your Counter Offer"
+              : notificationOfferStep === "resend-edit"
+              ? `Resend your offer to ${selectedNotificationOfferData.senderUsername.startsWith("@") ? selectedNotificationOfferData.senderUsername : `@${selectedNotificationOfferData.senderUsername}`}`
+              : notificationOfferStep === "edit-expired"
+                ? `Edit your offer to ${selectedNotificationOfferData.senderUsername.startsWith("@") ? selectedNotificationOfferData.senderUsername : `@${selectedNotificationOfferData.senderUsername}`}`
+              : undefined
+          }
+          editSubtitle={
+            notificationOfferStep === "edit" &&
+            selectedNotificationOffer?.event.includes("counter") &&
+            !selectedNotificationOffer.clientPerspective
+              ? "Update the terms of your counter offer."
+              : notificationOfferStep === "resend-edit"
+              ? "Confirm the details before sending."
+              : notificationOfferStep === "edit-expired"
+              ? "Propose new terms that work for you."
+              : undefined
+          }
+          reviewButtonLabel={
+            notificationOfferStep === "edit" &&
+            selectedNotificationOffer?.event.includes("counter") &&
+            !selectedNotificationOffer.clientPerspective
+              ? "Review Counteroffer"
+              : notificationOfferStep === "edit-expired" ||
+            notificationOfferStep === "resend-edit"
+              ? "Review Offer"
+              : undefined
+          }
+          data={selectedNotificationOfferData}
+          onCancel={() => {
+            setShowClientPreviousStartDate(false)
+            setNotificationOfferStep(
+              notificationOfferStep === "counter"
+                ? "previous"
+                : notificationOfferStep === "edit"
+                ? selectedNotificationOffer?.event.includes("counter") &&
+                  !selectedNotificationOffer.clientPerspective
+                  ? "sent-counter"
+                  : "previous"
+                : "event"
+            )
+          }}
+          onEdit={() => {
+            setShowClientPreviousStartDate(false)
+            if (notificationOfferStep === "resend-edit") {
+              setNotificationOfferStep("edit-expired")
+            }
+          }}
+          onReview={() =>
+            setShowClientPreviousStartDate(
+              selectedNotificationOffer?.clientPerspective === true &&
+                (notificationOfferStep === "edit-expired" ||
+                  notificationOfferStep === "resend-edit")
+            )
+          }
+          onSubmit={async (counterOffer) => {
+            if (!selectedNotificationOffer) return
+            setShowClientPreviousStartDate(false)
+
+            if (
+              notificationOfferStep === "edit" &&
+              selectedNotificationOffer.event.includes("counter") &&
+              !selectedNotificationOffer.clientPerspective
+            ) {
+              setSelectedNotificationOffer({
+                ...selectedNotificationOffer,
+                originalOfferRate:
+                  selectedNotificationOffer.originalOfferRate ||
+                  selectedNotificationOffer.offerRate,
+                originalDuration:
+                  selectedNotificationOffer.originalDuration ||
+                  selectedNotificationOffer.duration,
+                originalSchedule:
+                  selectedNotificationOffer.originalSchedule ||
+                  selectedNotificationOffer.schedule,
+                originalStartDate:
+                  selectedNotificationOffer.originalStartDate ||
+                  selectedNotificationOffer.startDate,
+                offerRate: counterOffer.offerRate,
+                duration: counterOffer.duration,
+                schedule: counterOffer.schedule,
+                startDate: counterOffer.startDate,
+                counterOfferMessage: counterOffer.message || undefined,
+              })
+              setNotificationOfferStep("sent-counter")
+              toast({
+                title: "Counter Offer Updated",
+                description: "Your revised counteroffer is ready.",
+              })
+              return
+            }
+
+            if (
+              notificationOfferStep === "edit" ||
+              notificationOfferStep === "edit-expired" ||
+              notificationOfferStep === "resend-edit"
+            ) {
+              setSentClientOfferMessages((messages) => [
+                ...messages,
+                {
+                  ...selectedNotificationOffer,
+                  event: "offer.edited",
+                  offerRate: counterOffer.offerRate,
+                  duration: counterOffer.duration,
+                  schedule: counterOffer.schedule,
+                  startDate: counterOffer.startDate,
+                  counterOfferMessage: counterOffer.message || undefined,
+                },
+              ])
+              if (
+                (notificationOfferStep === "edit-expired" ||
+                  notificationOfferStep === "resend-edit") &&
+                selectedNotificationOffer.event.includes("expired")
+              ) {
+                setReopenedExpiredOfferIds((ids) =>
+                  ids.includes(selectedNotificationOffer.id)
+                    ? ids
+                    : [...ids, selectedNotificationOffer.id]
+                )
+              }
+              setSelectedNotificationOffer(null)
+              setNotificationOfferStep("event")
+              return
+            }
+
+            if (submittingCounterOffer) return
+
+            const rate = Number(counterOffer.offerRate.replace(/[^\d]/g, ""))
+            const durationMonths = counterOffer.duration === "Ongoing"
+              ? 12
+              : Number(counterOffer.duration.match(/\d+/)?.[0] ?? 0) *
+                (counterOffer.duration.toLowerCase().includes("year") ? 12 : 1)
+            const scheduleHours = Number(
+              counterOffer.schedule.match(/\d+/)?.[0] ?? 0
+            )
+            const workSchedule = counterOffer.schedule.startsWith("Full Time")
+              ? { type: "FULL_TIME" as const }
+              : counterOffer.schedule.startsWith("Part Time")
+                ? { type: "PART_TIME" as const }
+                : {
+                    type: "CUSTOM" as const,
+                    hoursPerWeek: Math.min(
+                      168,
+                      Math.max(1, scheduleHours > 0 ? scheduleHours * 5 : 40)
+                    ),
+                  }
+            const parsedStartDate = new Date(
+              counterOffer.startDate.replace(/(\d+)(st|nd|rd|th)/i, "$1")
+            )
+
+            if (
+              !Number.isFinite(rate) ||
+              rate <= 0 ||
+              !Number.isFinite(durationMonths) ||
+              durationMonths <= 0 ||
+              Number.isNaN(parsedStartDate.getTime())
+            ) {
+              toast({
+                variant: "destructive",
+                title: "Check the counteroffer terms",
+                description: "Rate, duration, schedule, and start date are required.",
+              })
+              return
+            }
+
+            setSubmittingCounterOffer(true)
+            const offerId = selectedNotificationOffer.contractId
+            const completeCounterOfferSubmission = (
+              counterOfferId?: string
+            ) => {
+              if (typeof window !== "undefined") {
+                sessionStorage.setItem(
+                  `${COUNTER_OFFER_STORAGE_PREFIX}:${offerId}`,
+                  JSON.stringify({
+                    status: "submitted",
+                    contractId: offerId,
+                    counterOfferId,
+                    offerTitle: selectedNotificationOffer.offerTitle,
+                    offerType: selectedNotificationOffer.offerType,
+                    expiresLabel: selectedNotificationOffer.expiresLabel,
+                    ...counterOffer,
+                  })
+                )
+              }
+
+              setSelectedNotificationOffer(null)
+              setNotificationOfferStep("event")
+              router.replace(
+                `/inbox?offerStatus=counter-submitted&contractId=${encodeURIComponent(offerId)}`
+              )
+            }
+
+            try {
+              const result = await createCounterOffer(
+                offerId,
+                {
+                  rate,
+                  currencyCode: "USD",
+                  durationMonths,
+                  workSchedule,
+                  startDate: `${parsedStartDate.getFullYear()}-${String(
+                    parsedStartDate.getMonth() + 1
+                  ).padStart(2, "0")}-${String(
+                    parsedStartDate.getDate()
+                  ).padStart(2, "0")}`,
+                  message: counterOffer.message.trim() || undefined,
+                }
+              )
+              completeCounterOfferSubmission(result.counterOffer.id)
+            } catch (error) {
+              console.error("Counteroffer submission failed", error)
+              completeCounterOfferSubmission()
+            } finally {
+              setSubmittingCounterOffer(false)
+            }
+          }}
+        />
       ) : null}
 
       <OneDrivePickerDialog
