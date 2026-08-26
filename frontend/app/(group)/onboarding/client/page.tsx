@@ -218,9 +218,9 @@ const getClientPayloadValidationErrors = (data: CreateClientType) => {
     const u = rawUsername.trim()
     if (u.length < 3 || u.length > 24) {
       errors.push("Username must be between 3 and 24 characters.")
-    } else if (!/^[a-z][a-z0-9_]*$/.test(u)) {
+    } else if (!/^[a-z][a-z0-9._]*$/.test(u)) {
       errors.push(
-        "Username must start with a letter and contain only lowercase letters, numbers, and underscores."
+        "Username must start with a letter and contain only lowercase letters, numbers, periods, and underscores."
       )
     }
   }
@@ -1342,8 +1342,8 @@ const usernameRules = z
   .min(3, "Please enter at least 3 characters.")
   .max(24, "Please keep your username under 24 characters.")
   .regex(
-    /^[a-z][a-z0-9_]*$/,
-    "Username must start with a letter and contain only lowercase letters, numbers, and underscores."
+    /^[a-z][a-z0-9._]*$/,
+    "Username must start with a letter and contain only lowercase letters, numbers, periods, and underscores."
   )
 
 const createYourUsernameFormSchema = z.object({

@@ -8,7 +8,7 @@ import {
   IsUUID,
 } from 'class-validator';
 import { UserRole } from '../enums/user-role.enum';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class SyncUserDto {
   @ApiProperty()
@@ -45,4 +45,9 @@ export class SyncUserDto {
   @IsOptional()
   @IsString()
   lastName?: string;
+
+  @ApiPropertyOptional({ description: "Profile photo from the OAuth provider" })
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
 }

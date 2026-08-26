@@ -18,7 +18,8 @@ export class AnthropicLlmClient implements LlmClient {
 
   constructor() {
     this.apiKey = process.env.ANTHROPIC_API_KEY || '';
-    this.modelId = process.env.MODEL_ID || 'claude-haiku-4-5-20251001';
+    this.modelId =
+      process.env.ANTHROPIC_MODEL_ID || 'claude-haiku-4-5-20251001';
     this.maxOutputTokens = parseInt(process.env.MODEL_MAX_OUTPUT_TOKENS || '16384', 10);
     this.temperature = parseFloat(process.env.MODEL_TEMPERATURE || '0');
     this.timeoutMs = parseInt(process.env.MODEL_TIMEOUT_MS || '45000', 10);

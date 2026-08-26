@@ -6,7 +6,7 @@ import { Slot } from "@radix-ui/react-slot"
 import { type VariantProps, cva } from "class-variance-authority"
 
 export const badgeVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-x-1.5 whitespace-nowrap font-medium rounded-full",
+  "inline-flex shrink-0 items-center justify-center gap-x-1 whitespace-nowrap font-medium rounded-full mix-blend-multiply",
   {
     variants: {
       visual: {
@@ -16,7 +16,7 @@ export const badgeVariants = cva(
         warning: "bg-warning-100 text-warning-700",
         success: "bg-success-100 text-success-700",
         sky: "bg-sky-100 text-sky-700",
-        primary: "bg-primary-100 text-primary-700",
+        primary: "bg-primary-50 text-primary-500",
         indigo: "bg-indigo-100 text-indigo-700",
         pink: "bg-pink-100 text-pink-700",
         rose: "bg-rose-100 text-rose-700",
@@ -86,4 +86,26 @@ function Badge({
   )
 }
 
-export { Badge }
+/**
+ * Dismiss control for a badge. Half-opacity at rest, full on hover, per the
+ * Figma badge spec. Lives here rather than in each page so every badge with a
+ * close button gets the same treatment.
+ */
+const BadgeCloseButton = React.forwardRef<
+  HTMLButtonElement,
+  React.ButtonHTMLAttributes<HTMLButtonElement>
+>(({ className, ...props }, ref) => (
+  <button
+    ref={ref}
+    type="button"
+    className={cn(
+      "inline-flex size-3 shrink-0 items-center justify-center text-primary-500 opacity-50 transition-opacity duration-200 [&_svg]:stroke-[1.5] hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none",
+      className
+    )}
+    {...props}
+  />
+))
+
+BadgeCloseButton.displayName = "BadgeCloseButton"
+
+export { Badge, BadgeCloseButton }
