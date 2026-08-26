@@ -1506,7 +1506,7 @@ const TopSkills = ({
       </Combobox>
 
       {getIsNotEmpty(values) && (
-        <div className="flex flex-wrap gap-3">
+        <div className="mt-1.5 flex flex-wrap gap-3">
           {values.map((item, index) => (
             <SelectionBadge key={index} onRemove={() => removeValue(index)}>
               {item}
@@ -1937,7 +1937,7 @@ const ShowcaseYourTalent = ({
                       </Combobox>
 
                       {value && (
-                        <div className="flex flex-wrap gap-3">
+                        <div className="mt-1.5 flex flex-wrap gap-3">
                           <SelectionBadge
                             onRemove={() => {
                               onChange("")
@@ -2081,7 +2081,7 @@ const ShowcaseYourTalent = ({
                   )}
                 />
                 {selectedIndustries.length > 0 && (
-                  <div className="flex flex-wrap gap-3">
+                  <div className="mt-1.5 flex flex-wrap gap-3">
                     {selectedIndustries.map((item) => (
                       <SelectionBadge
                         key={item}
@@ -2382,7 +2382,7 @@ const ProjectPreferences = ({
       </Combobox>
 
       {getIsNotEmpty(values) && (
-        <div className="flex flex-wrap gap-3">
+        <div className="mt-1.5 flex flex-wrap gap-3">
           {values.map((item, index) => (
             <SelectionBadge key={index} onRemove={() => removeValue(index)}>
               {item}
@@ -2987,10 +2987,24 @@ const SetYourPreferences = ({
     yourAvailability,
     customAvailability,
   }) => {
-    if (!projects?.length && !yourAvailability?.trim()) {
-      setFormError("Please select a project type or your availability")
-      return
+    // Specific per-field messages under each input, worded from that field's
+    // own label. A generic line cannot say which one is missing.
+    let missing = false
+    if (!projects?.length) {
+      setError("projects", {
+        type: "manual",
+        message: "Please enter your project preferences",
+      })
+      missing = true
     }
+    if (!yourAvailability?.trim()) {
+      setError("yourAvailability", {
+        type: "manual",
+        message: "Please select your availability",
+      })
+      missing = true
+    }
+    if (missing) return
     setFormError(null)
     const availability: AVAILABILITY = yourAvailability
       ?.replaceAll("-", "_")
@@ -3137,6 +3151,13 @@ const SetYourPreferences = ({
                     />
                   )}
                 />
+                <HookFormErrorMessage
+                  name="projects"
+                  errors={errors}
+                  render={({ message }) => (
+                    <ErrorMessage size="sm">{message}</ErrorMessage>
+                  )}
+                />
               </div>
 
               <div className="flex flex-col gap-y-1.5">
@@ -3147,7 +3168,10 @@ const SetYourPreferences = ({
                     <YourAvailability
                       value={value}
                       onValueChange={onChange}
-                      invalid={hookFormHasError({ errors, name: "projects" })}
+                      invalid={hookFormHasError({
+                        errors,
+                        name: "yourAvailability",
+                      })}
                     />
                   )}
                 />
@@ -3204,12 +3228,6 @@ const SetYourPreferences = ({
             </div>
           </div>
         </div>
-
-        {formError && (
-          <div className="mx-auto w-full max-w-[488px] 2xl:max-w-[560px]">
-            <ErrorMessage size="sm">{formError}</ErrorMessage>
-          </div>
-        )}
 
         <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
           <div className="flex items-center justify-between">
