@@ -326,6 +326,9 @@ const IntroduceYourself = ({
                     <ImageEditor
                       onValueChange={onChange}
                       defaultDataUrl={avatarPreviewUrl}
+                      // Upload Photo opens the file browser directly rather
+                      // than the intermediate "Change Profile Image" dialog.
+                      skipUploadDialog
                       // Without this the editor falls back to its hardcoded
                       // "CH" placeholder. Pass the talent's real initials when
                       // a name is known.
@@ -566,7 +569,9 @@ const CreateYourUsername = ({
   const suggestionsRowRef = React.useRef<HTMLDivElement>(null)
   const suggestionsMeasureRef = React.useRef<HTMLSpanElement>(null)
   const [fitCount, setFitCount] = React.useState(3)
-  const [expandedCount, setExpandedCount] = React.useState(9)
+  // Deliberately small: if measurement has not run yet, render one short row
+  // rather than guessing high and flashing a fourth line.
+  const [expandedCount, setExpandedCount] = React.useState(3)
 
   useIsomorphicLayoutEffect(() => {
     const row = suggestionsRowRef.current
@@ -635,7 +640,7 @@ const CreateYourUsername = ({
     const observer = new ResizeObserver(compute)
     observer.observe(row)
     return () => observer.disconnect()
-  }, [availableSuggestions, fitCount])
+  }, [availableSuggestions, fitCount, isSuggestionsLoading, show])
 
   const collapsedSuggestions = availableSuggestions.slice(0, fitCount)
   const expandedSuggestions = availableSuggestions.slice(0, expandedCount)
@@ -914,155 +919,162 @@ const CreateYourUsername = ({
               {formError && <ErrorMessage size="sm">{formError}</ErrorMessage>}
             </div>
 
-            {isSuggestionsLoading ? null : show ? (
-              <div className="mt-6 flex w-full flex-row flex-wrap content-start items-start gap-2">
-                {expandedSuggestions.map((username, index) => (
-                  <div
-                    key={username}
-                    className="flex flex-row items-center gap-x-0.5"
-                  >
-                    <Button
-                      // Colour link variant: size lg is 16px/24px, the link compound
-                      // zeroes the padding, and visual primary is Blue 500. The only
-                      // overrides are 50% opacity and going opaque on hover; focus:
-                      // pins the colour so a click cannot darken it to primary-700.
-                      className="opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
-                      size="lg"
-                      variant="link"
-                      visual="primary"
-                      type="button"
-                      onClick={() => setFormValue("username", username)}
+            {/* The row ref and the measurement layer sit outside the
+                loading/expanded branches. They used to live inside the
+                collapsed branch, so while isSuggestionsLoading was true the
+                refs were null, the effect bailed out, and it never re-ran once
+                the row mounted - leaving expandedCount at its initial value. */}
+            <div className="relative" ref={suggestionsRowRef}>
+              {availableSuggestions.length > 0 && (
+                <span
+                  ref={suggestionsMeasureRef}
+                  aria-hidden
+                  className="pointer-events-none invisible absolute left-0 top-0 block whitespace-nowrap"
+                >
+                  {availableSuggestions.map((username) => (
+                    <span
+                      key={username}
+                      data-measure-chip
+                      className="text-base font-semibold leading-6"
                     >
                       {username}
-                    </Button>
-
-                    {index !== expandedSuggestions.length - 1 && (
-                      <span className="text-sm font-semibold leading-[17px] text-dark-blue-400">
-                        ,
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="relative mt-6" ref={suggestionsRowRef}>
-                {availableSuggestions.length > 0 ? (
-                  <>
-                    {/* Hidden copy of the whole pool. Widths are read off this
-                        so the visible row below never measures itself. */}
-                    <span
-                      ref={suggestionsMeasureRef}
-                      aria-hidden
-                      className="pointer-events-none invisible absolute left-0 top-0 block whitespace-nowrap"
-                    >
-                      {availableSuggestions.map((username) => (
-                        <span
-                          key={username}
-                          data-measure-chip
-                          className="text-base font-semibold leading-6"
-                        >
-                          {username}
-                        </span>
-                      ))}
-                      <span
-                        data-measure-comma
-                        className="text-sm font-semibold leading-[17px]"
-                      >
-                        ,
-                      </span>
-                      <span
-                        data-measure-and
-                        className="text-sm font-semibold leading-[17px]"
-                      >
-                        and
-                      </span>
-                      <span
-                        data-measure-suffix
-                        className="text-sm font-semibold leading-[17px]"
-                      >
-                        are available
-                      </span>
                     </span>
+                  ))}
+                  <span
+                    data-measure-comma
+                    className="text-sm font-semibold leading-[17px]"
+                  >
+                    ,
+                  </span>
+                  <span
+                    data-measure-and
+                    className="text-sm font-semibold leading-[17px]"
+                  >
+                    and
+                  </span>
+                  <span
+                    data-measure-suffix
+                    className="text-sm font-semibold leading-[17px]"
+                  >
+                    are available
+                  </span>
+                </span>
+              )}
 
-                    {/* Figma "Username rec": a wrapping 8px-gap row, not a
-                        sentence. Each name is its own flex group so the comma
-                        hugs it at 2px and "and" sits 4px off the last one. */}
-                    <div className="flex flex-col items-start gap-y-3">
-                      <div className="flex w-full flex-row flex-wrap content-start items-start gap-2">
-                        {collapsedSuggestions.map((username, index) => {
-                          const isLast =
-                            index === collapsedSuggestions.length - 1
-                          const showAnd =
-                            isLast && collapsedSuggestions.length > 1
+              {isSuggestionsLoading ? null : show ? (
+                <div className="mt-6 flex w-full flex-row flex-wrap content-start items-start gap-2">
+                  {expandedSuggestions.map((username, index) => (
+                    <div
+                      key={username}
+                      className="flex flex-row items-center gap-x-0.5"
+                    >
+                      <Button
+                        // Colour link variant: size lg is 16px/24px, the link compound
+                        // zeroes the padding, and visual primary is Blue 500. The only
+                        // overrides are 50% opacity and going opaque on hover; focus:
+                        // pins the colour so a click cannot darken it to primary-700.
+                        className="opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
+                        size="lg"
+                        variant="link"
+                        visual="primary"
+                        type="button"
+                        onClick={() => setFormValue("username", username)}
+                      >
+                        {username}
+                      </Button>
 
-                          return (
-                            <div
-                              key={username}
-                              className={cn(
-                                "flex flex-row items-center",
-                                showAnd ? "gap-x-1" : "gap-x-0.5"
-                              )}
-                            >
-                              {showAnd && (
-                                <span className="text-sm font-semibold leading-[17px] text-gray-500">
-                                  and
-                                </span>
-                              )}
-
-                              <Button
-                                // Colour link variant: size lg is 16px/24px, the link compound
-                                // zeroes the padding, and visual primary is Blue 500. The only
-                                // overrides are 50% opacity and going opaque on hover; focus:
-                                // pins the colour so a click cannot darken it to primary-700.
-                                className="opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
-                                size="lg"
-                                variant="link"
-                                visual="primary"
-                                type="button"
-                                onClick={() =>
-                                  setFormValue("username", username)
-                                }
-                              >
-                                {username}
-                              </Button>
-
-                              {/* Oxford comma: every name but the last is
-                                  followed by one, including the one before
-                                  "and". */}
-                              {!isLast && (
-                                <span className="text-sm font-semibold leading-[17px] text-dark-blue-400">
-                                  ,
-                                </span>
-                              )}
-                            </div>
-                          )
-                        })}
-
-                        <div className="flex flex-row items-center justify-center pt-1">
-                          <span className="text-sm font-semibold leading-[17px] text-gray-500">
-                            are available
-                          </span>
-                        </div>
-                      </div>
-
-                      {availableSuggestions.length >
-                        collapsedSuggestions.length && (
-                        <Button
-                          className="h-auto p-0 text-sm font-semibold capitalize leading-5 text-gray-500"
-                          variant="link"
-                          type="button"
-                          visual="gray"
-                          onClick={toggleShow}
-                        >
-                          <Plus className="size-[15px] stroke-[1.25]" />
-                          More suggestions
-                        </Button>
+                      {index !== expandedSuggestions.length - 1 && (
+                        <span className="text-sm font-semibold leading-[17px] text-dark-blue-400">
+                          ,
+                        </span>
                       )}
                     </div>
-                  </>
-                ) : null}
-              </div>
-            )}
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-6">
+                  {availableSuggestions.length > 0 ? (
+                    <>
+                      {/* Figma "Username rec": a wrapping 8px-gap row, not a
+                        sentence. Each name is its own flex group so the comma
+                        hugs it at 2px and "and" sits 4px off the last one. */}
+                      <div className="flex flex-col items-start gap-y-3">
+                        <div className="flex w-full flex-row flex-wrap content-start items-start gap-2">
+                          {collapsedSuggestions.map((username, index) => {
+                            const isLast =
+                              index === collapsedSuggestions.length - 1
+                            const showAnd =
+                              isLast && collapsedSuggestions.length > 1
+
+                            return (
+                              <div
+                                key={username}
+                                className={cn(
+                                  "flex flex-row items-center",
+                                  showAnd ? "gap-x-1" : "gap-x-0.5"
+                                )}
+                              >
+                                {showAnd && (
+                                  <span className="text-sm font-semibold leading-[17px] text-gray-500">
+                                    and
+                                  </span>
+                                )}
+
+                                <Button
+                                  // Colour link variant: size lg is 16px/24px, the link compound
+                                  // zeroes the padding, and visual primary is Blue 500. The only
+                                  // overrides are 50% opacity and going opaque on hover; focus:
+                                  // pins the colour so a click cannot darken it to primary-700.
+                                  className="opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
+                                  size="lg"
+                                  variant="link"
+                                  visual="primary"
+                                  type="button"
+                                  onClick={() =>
+                                    setFormValue("username", username)
+                                  }
+                                >
+                                  {username}
+                                </Button>
+
+                                {/* Oxford comma: every name but the last is
+                                  followed by one, including the one before
+                                  "and". */}
+                                {!isLast && (
+                                  <span className="text-sm font-semibold leading-[17px] text-dark-blue-400">
+                                    ,
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          })}
+
+                          <div className="flex flex-row items-center justify-center pt-1">
+                            <span className="text-sm font-semibold leading-[17px] text-gray-500">
+                              are available
+                            </span>
+                          </div>
+                        </div>
+
+                        {availableSuggestions.length >
+                          collapsedSuggestions.length && (
+                          <Button
+                            className="h-auto p-0 text-sm font-semibold capitalize leading-5 text-gray-500"
+                            variant="link"
+                            type="button"
+                            visual="gray"
+                            onClick={toggleShow}
+                          >
+                            <Plus className="size-[15px] stroke-[1.25]" />
+                            More suggestions
+                          </Button>
+                        )}
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              )}
+            </div>
 
             <div className="mt-[50px]">
               <Alert>

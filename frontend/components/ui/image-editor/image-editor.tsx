@@ -629,6 +629,7 @@ export const ImageEditor = ({
   onEditDialogOpenChange,
   fallbackInitials,
   fallbackIcon,
+  skipUploadDialog = false,
 }: {
   onValueChange?: (files: readonly FileWithPath[] | undefined) => void
   startingPoint: (options: {
@@ -649,6 +650,11 @@ export const ImageEditor = ({
    *  previous "CH" placeholder when omitted, so existing callers are
    *  unaffected. */
   fallbackIcon?: React.ReactNode
+  /** Take the empty-state button straight to the file browser instead of
+   *  opening the intermediate "Change Profile Image" dialog. Off by default so
+   *  the profile pages keep their existing two-step flow. onDropAccepted still
+   *  sends EDIT, so choosing a file lands on the crop step either way. */
+  skipUploadDialog?: boolean
 }) => {
   const [state, send] = useStateMachine("ideal", {
     ideal: {
@@ -966,7 +972,8 @@ export const ImageEditor = ({
       <input hidden {...getInputProps()} />
 
       {startingPoint({
-        open: () => (dataUrl ? send("REMOVE") : send("UPLOAD")),
+        open: () =>
+          dataUrl ? send("REMOVE") : skipUploadDialog ? open() : send("UPLOAD"),
         dataUrl,
         style,
         onRemove,
