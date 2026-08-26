@@ -3648,7 +3648,7 @@ const ReadingResumeModal = ({
 }) => (
   <Dialog open={open}>
     <DialogContent
-      className="w-[440px] max-w-none overflow-hidden border-0 bg-white p-8 rounded-xl shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+      className="w-[440px] max-w-none overflow-hidden border-0 bg-white p-8 rounded-xl transition-[height] duration-300 ease-out shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
       accessibilityTitle="Reading your resume"
       // not dismissible: it mirrors work in flight, so closing it would lie
       onEscapeKeyDown={(event) => event.preventDefault()}
@@ -3694,7 +3694,7 @@ const ReadingResumeModal = ({
           {steps.length === 0 ? (
             // Read phase. Nothing is known about the document yet - it may
             // not even be a resume - so no section can be named here.
-            <div className="flex flex-col justify-end gap-3">
+            <div className="flex flex-col justify-end gap-3 transition-all duration-300 ease-out">
               <p className="text-center text-sm leading-5 text-gray-500">
                 Checking the file...
               </p>
@@ -3721,7 +3721,10 @@ const ReadingResumeModal = ({
               const isRowActive = index === completed
               if (!isRowDone && !isRowActive) return null
               return (
-                <div key={step.label} className="flex items-center gap-3">
+                <div
+                  key={step.label}
+                  className="flex animate-in fade-in slide-in-from-bottom-2 items-center gap-3 duration-300 ease-out"
+                >
                   {isRowDone ? (
                     <CheckCircle className="size-5 shrink-0 text-primary-500" />
                   ) : (

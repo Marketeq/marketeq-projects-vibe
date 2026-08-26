@@ -68,7 +68,7 @@ export class OpenAiCompatibleLlmClient implements LlmClient {
   private get providers(): FallbackProvider[] {
     const groqKey = process.env.GROQ_API_KEY || '';
     const groqUrl = process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1';
-    const groqMax = parseInt(process.env.GROQ_MAX_TOKENS || '1400', 10);
+    const groqMax = parseInt(process.env.GROQ_MAX_TOKENS || '1200', 10);
     const hfKey = process.env.HUGGINGFACE_API_KEY || '';
     const hfUrl =
       process.env.HUGGINGFACE_BASE_URL || 'https://router.huggingface.co/v1';
@@ -149,9 +149,10 @@ export class OpenAiCompatibleLlmClient implements LlmClient {
     // Distinct from the 5MB upload limit and MAX_EXTRACTED_CHARS (150k):
     // neither bounds TOKENS. Groq allows 8000/min and charges max_tokens up
     // front, leaving ~6000 for input, which is roughly 24000 characters. Sized
-    // to that budget so a long CV still fits whole rather than being trimmed to
-    // an arbitrary number.
-    const maxChars = parseInt(process.env.LLM_MAX_INPUT_CHARS || '24000', 10);
+    // Budget: 8000/min total, minus ~1200 reserved for output and ~900 for the
+    // system prompt, leaves ~5900 for input. 13000 chars is ~3300 tokens, which
+    // fits with headroom. Anything longer routes to Gemini first anyway.
+    const maxChars = parseInt(process.env.LLM_MAX_INPUT_CHARS || '13000', 10);
     const text =
       input.text.length > maxChars ? input.text.slice(0, maxChars) : input.text;
     const userPrompt = input.isNearEmpty
