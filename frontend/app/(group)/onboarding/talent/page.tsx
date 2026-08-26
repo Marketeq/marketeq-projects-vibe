@@ -3609,7 +3609,7 @@ const toProperCase = (value: string): string =>
 const READING_LABEL_DEFAULT = "Reading your resume..."
 const READING_STEP_MS = 260
 
-type ReadingStep = { label: string; count?: number }
+type ReadingStep = { label: string; count?: number; items?: string[] }
 
 const ReadingResumeModal = ({
   open,
@@ -3619,6 +3619,7 @@ const ReadingResumeModal = ({
   isDone,
   onDone,
   percent,
+  tick,
 }: {
   open: boolean
   label: string
@@ -3627,6 +3628,7 @@ const ReadingResumeModal = ({
   isDone: boolean
   onDone: () => void
   percent: number
+  tick: number
 }) => (
   <Dialog open={open}>
     <DialogContent
@@ -3707,14 +3709,30 @@ const ReadingResumeModal = ({
                   )}
                   <span
                     className={cn(
-                      "flex-auto text-sm leading-5 transition-colors",
+                      "flex min-w-0 flex-auto flex-col transition-colors",
                       isRowDone ? "text-dark-blue-400" : "text-gray-500"
                     )}
                   >
-                    {step.label}
+                    <span className="text-sm leading-5">{step.label}</span>
+                    {/* The actual value being pulled out, not just a count */}
+                    {step.items?.length ? (
+                      <span
+                        className={cn(
+                          "truncate text-xs leading-5",
+                          isRowActive ? "text-primary-500" : "text-gray-500"
+                        )}
+                      >
+                        {isRowActive
+                          ? step.items[tick % step.items.length]
+                          : step.items.slice(0, 3).join(" · ") +
+                            (step.items.length > 3
+                              ? ` +${step.items.length - 3}`
+                              : "")}
+                      </span>
+                    ) : null}
                   </span>
                   {isRowDone && typeof step.count === "number" && (
-                    <span className="text-xs font-semibold leading-5 text-gray-500">
+                    <span className="shrink-0 text-xs font-semibold leading-5 text-gray-500">
                       {step.count}
                     </span>
                   )}
@@ -3775,6 +3793,7 @@ const UploadYourResume = ({
   const [readingSteps, setReadingSteps] = useState<ReadingStep[]>([])
   const [readingCompleted, setReadingCompleted] = useState(0)
   const [isReadingDone, setIsReadingDone] = useState(false)
+  const [readingTick, setReadingTick] = useState(0)
 
   const { toggleValidation } = useStepContext()
   const { nextStep, setStep } = useStepperContext()
@@ -3818,6 +3837,7 @@ const UploadYourResume = ({
 
   const resetResume = () => {
     stopProgressTicker()
+    setReadingTick(0)
     setReadingLabel(READING_LABEL_DEFAULT)
     setReadingSteps([])
     setReadingCompleted(0)
@@ -3971,23 +3991,66 @@ const UploadYourResume = ({
 
       // Order follows the resume's own hierarchy: who you are, what you can do,
       // then where you did it.
+      const conflictLabels = (type: string) =>
+        conflicts
+          .filter((item) => item?.type === type)
+          .map((item) => item?.incoming?.label || item?.existing?.label)
+          .filter(Boolean)
+
+      const workItems = [
+        ...workExperience.map((item: { title: string; company: string }) =>
+          [item.title, item.company].filter(Boolean).join(" at ")
+        ),
+        ...conflictLabels("work"),
+      ]
+      const educationItems = [
+        ...education.map((item: { degree: string; school: string }) =>
+          [item.degree, item.school].filter(Boolean).join(", ")
+        ),
+        ...conflictLabels("education"),
+      ]
+      const certificationItems = [
+        ...certifications.map((item: { name: string }) => item.name),
+        ...conflictLabels("certification"),
+      ]
+
       const foundSteps: ReadingStep[] = [
-        ...(extractedName ? [{ label: "Personal info" }] : []),
-        ...(skillNames.length
-          ? [{ label: "Skills", count: skillNames.length }]
+        ...(extractedName
+          ? [{ label: "Personal info", items: [extractedName] }]
           : []),
-        ...(workTotal ? [{ label: "Work experience", count: workTotal }] : []),
+        ...(skillNames.length
+          ? [{ label: "Skills", count: skillNames.length, items: skillNames }]
+          : []),
+        ...(workTotal
+          ? [{ label: "Work experience", count: workTotal, items: workItems }]
+          : []),
         ...(educationTotal
-          ? [{ label: "Education", count: educationTotal }]
+          ? [{
+              label: "Education",
+              count: educationTotal,
+              items: educationItems,
+            }]
           : []),
         ...(certificationTotal
-          ? [{ label: "Certifications", count: certificationTotal }]
+          ? [{
+              label: "Certifications",
+              count: certificationTotal,
+              items: certificationItems,
+            }]
           : []),
         ...(clientCompanies.length
-          ? [{ label: "Previous clients", count: clientCompanies.length }]
+          ? [{
+              label: "Previous clients",
+              count: clientCompanies.length,
+              items: clientCompanies,
+            }]
           : []),
         ...(industryNames.length
-          ? [{ label: "Industry expertise", count: industryNames.length }]
+          ? [{
+              label: "Industry expertise",
+              count: industryNames.length,
+              items: industryNames,
+            }]
           : []),
       ]
       setReadingSteps(foundSteps)
@@ -4016,7 +4079,18 @@ const UploadYourResume = ({
       for (let index = 0; index < foundSteps.length; index++) {
         setReadingLabel(`Extracting your ${foundSteps[index].label.toLowerCase()}...`)
         setReadingCompleted(index + 1)
-        await new Promise((resolve) => setTimeout(resolve, READING_STEP_MS))
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            Math.min(
+              900,
+              Math.max(
+                READING_STEP_MS,
+                (foundSteps[index].items?.length ?? 1) * 130
+              )
+            )
+          )
+        )
       }
 
       setReadingLabel(
@@ -4077,6 +4151,7 @@ const UploadYourResume = ({
         isDone={isReadingDone}
         onDone={() => setIsReadingDone(false)}
         percent={uploadPercent}
+        tick={readingTick}
       />
 
       <form
