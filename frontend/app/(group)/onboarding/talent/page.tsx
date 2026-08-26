@@ -214,6 +214,7 @@ const IntroduceYourself = ({
 
   const progress = ((currentStep + 1) / totalSteps) * 100
   const initials = `${firstName?.[0] || ""}${lastName?.[0] || ""}`.trim()
+  const hasAvatarError = hookFormHasError({ errors, name: "avatar" })
 
   const onSubmit: SubmitHandler<IntroduceYourselfFormValues> = ({
     avatar,
@@ -342,7 +343,15 @@ const IntroduceYourself = ({
                         // (icon), no photo/name (acronym), photo (image). Only
                         // the photo state gets the Remove button.
                         <div className="flex items-center gap-x-6">
-                          <div className="relative overflow-hidden size-[96px] bg-gray-100 rounded-full inline-flex items-center justify-center shrink-0">
+                          {/* The design system Avatar has no invalid variant,
+                              so the error state is the same token steps in the
+                              error hue: gray-100/300 -> error-100/300. */}
+                          <div
+                            className={cn(
+                              "relative overflow-hidden size-[96px] rounded-full inline-flex items-center justify-center shrink-0",
+                              hasAvatarError ? "bg-error-100" : "bg-gray-100"
+                            )}
+                          >
                             {dataUrl ? (
                               <img
                                 alt="Avatar"
@@ -354,11 +363,25 @@ const IntroduceYourself = ({
                               // Acronym once a name is known, icon before that.
                               // `initials` comes from watch(), so it tracks the
                               // fields as they are typed.
-                              <span className="text-[36px] font-medium leading-8 uppercase text-gray-300">
+                              <span
+                                className={cn(
+                                  "text-[36px] font-medium leading-8 uppercase",
+                                  hasAvatarError
+                                    ? "text-error-300"
+                                    : "text-gray-300"
+                                )}
+                              >
                                 {initials}
                               </span>
                             ) : (
-                              <User01 className="size-12 text-gray-300" />
+                              <User01
+                                className={cn(
+                                  "size-12",
+                                  hasAvatarError
+                                    ? "text-error-300"
+                                    : "text-gray-300"
+                                )}
+                              />
                             )}
                           </div>
 
@@ -529,8 +552,56 @@ const CreateYourUsername = ({
     string[]
   >([])
   const [isSuggestionsLoading, setIsSuggestionsLoading] = React.useState(false)
-  const collapsedSuggestions = availableSuggestions.slice(0, 3)
-  const expandedSuggestions = availableSuggestions.slice(0, 6)
+  // How many suggestions fit on one line is a function of the rendered width,
+  // not a fixed number: a wide screen should fill the row, a narrow one should
+  // show fewer. Measured off a hidden copy of the full pool so the visible row
+  // can never drive its own resize.
+  const suggestionsRowRef = React.useRef<HTMLDivElement>(null)
+  const suggestionsMeasureRef = React.useRef<HTMLSpanElement>(null)
+  const [fitCount, setFitCount] = React.useState(3)
+
+  useIsomorphicLayoutEffect(() => {
+    const row = suggestionsRowRef.current
+    const measure = suggestionsMeasureRef.current
+    if (!row || !measure || availableSuggestions.length === 0) return
+
+    const widthOf = (selector: string) =>
+      measure.querySelector<HTMLElement>(selector)?.getBoundingClientRect()
+        .width ?? 0
+
+    const compute = () => {
+      const available = row.clientWidth
+      if (!available) return
+
+      const chips = Array.from(
+        measure.querySelectorAll<HTMLElement>("[data-measure-chip]")
+      ).map((element) => element.getBoundingClientRect().width)
+      const comma = widthOf("[data-measure-comma]")
+      const and = widthOf("[data-measure-and]")
+      const suffix = widthOf("[data-measure-suffix]")
+
+      let used = 0
+      let best = 1
+      for (let count = 1; count <= chips.length; count++) {
+        used += chips[count - 1]
+        // n names read as "a, b and c": one " and ", plus a comma for each
+        // name beyond the first two.
+        const separators = count >= 2 ? and + Math.max(0, count - 2) * comma : 0
+        if (used + separators + suffix > available) break
+        best = count
+      }
+
+      setFitCount(best)
+    }
+
+    compute()
+    const observer = new ResizeObserver(compute)
+    observer.observe(row)
+    return () => observer.disconnect()
+  }, [availableSuggestions])
+
+  const collapsedSuggestions = availableSuggestions.slice(0, fitCount)
+  const expandedSuggestions = availableSuggestions.slice(0, fitCount * 2)
 
   const [formError, setFormError] = useState<string | null>(null)
   const {
@@ -828,9 +899,35 @@ const CreateYourUsername = ({
                 ))}
               </div>
             ) : (
-              <div className="mt-6">
+              <div className="relative mt-6" ref={suggestionsRowRef}>
                 {availableSuggestions.length > 0 ? (
                   <>
+                    {/* Hidden copy of the whole pool. Widths are read off this
+                        so the visible row below never measures itself. */}
+                    <span
+                      ref={suggestionsMeasureRef}
+                      aria-hidden
+                      className="pointer-events-none invisible absolute left-0 top-0 block whitespace-nowrap text-sm leading-[16.94px] text-gray-500"
+                    >
+                      {availableSuggestions.map((username) => (
+                        <Button
+                          key={username}
+                          data-measure-chip
+                          className="text-primary-500/50"
+                          size="lg"
+                          visual="gray"
+                          variant="link"
+                          type="button"
+                          tabIndex={-1}
+                        >
+                          {username}
+                        </Button>
+                      ))}
+                      <span data-measure-comma>, </span>
+                      <span data-measure-and> and </span>
+                      <span data-measure-suffix> are available</span>
+                    </span>
+
                     <span className="block text-sm leading-[16.94px] text-gray-500">
                       {collapsedSuggestions.map((username, index) => (
                         <React.Fragment key={username}>
@@ -845,10 +942,10 @@ const CreateYourUsername = ({
                             {username}
                           </Button>
 
-                          {index === 0 && collapsedSuggestions.length > 1 && (
+                          {index < collapsedSuggestions.length - 2 && (
                             <span>, </span>
                           )}
-                          {index === 1 && collapsedSuggestions.length > 2 && (
+                          {index === collapsedSuggestions.length - 2 && (
                             <span> and </span>
                           )}
                         </React.Fragment>
@@ -856,7 +953,8 @@ const CreateYourUsername = ({
                       are available
                     </span>
 
-                    {availableSuggestions.length > 3 && (
+                    {availableSuggestions.length >
+                      collapsedSuggestions.length && (
                       <Button
                         className="mt-3"
                         size="md"
@@ -4743,22 +4841,14 @@ const UploadYourResume = ({
                 <ErrorMessage size="sm">{resumeError}</ErrorMessage>
               )}
 
-              <p
-                className={cn(
-                  "text-xs font-light leading-normal",
-                  resumeError ? "text-error-500" : "text-dark-blue-400"
-                )}
-              >
+              {/* Standing helper text, not part of the error state - it keeps
+                  its normal styling when the resume field errors. */}
+              <p className="text-xs font-light leading-normal text-dark-blue-400">
                 Your resume will remain private and will not be shared with any
                 third parties. See our{" "}
                 <Link
                   href="/privacy-policy"
-                  className={cn(
-                    "font-medium capitalize underline",
-                    resumeError
-                      ? "text-error-500 decoration-error-500/30 hover:decoration-error-500"
-                      : "text-primary-500 decoration-primary-500/30 hover:decoration-primary-500"
-                  )}
+                  className="font-medium capitalize text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500"
                 >
                   Privacy Policy
                 </Link>
