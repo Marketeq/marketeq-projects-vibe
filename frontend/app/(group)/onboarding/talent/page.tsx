@@ -566,6 +566,7 @@ const CreateYourUsername = ({
   const suggestionsRowRef = React.useRef<HTMLDivElement>(null)
   const suggestionsMeasureRef = React.useRef<HTMLSpanElement>(null)
   const [fitCount, setFitCount] = React.useState(3)
+  const [expandedCount, setExpandedCount] = React.useState(9)
 
   useIsomorphicLayoutEffect(() => {
     const row = suggestionsRowRef.current
@@ -602,19 +603,42 @@ const CreateYourUsername = ({
       }
 
       setFitCount(best)
+
+      // The expanded list cannot be fitCount * 3. The pool interleaves long and
+      // short handles, so the items past the first line are wider than the ones
+      // fitCount was measured on, and multiplying overflows into a fourth line.
+      // Simulate the wrap over the real widths instead and stop at three lines.
+      const MAX_LINES = 3
+      let line = 1
+      let lineUsed = 0
+      let fits = 0
+      for (const chip of chips) {
+        // Every expanded item but the last carries a comma at 2px
+        const item = chip + comma + 2
+        const needed = lineUsed === 0 ? item : lineUsed + 8 + item
+        if (needed > available) {
+          line += 1
+          if (line > MAX_LINES) break
+          lineUsed = item
+          // A single item wider than the row would loop forever otherwise
+          if (item > available) break
+        } else {
+          lineUsed = needed
+        }
+        fits += 1
+      }
+
+      setExpandedCount(Math.max(fitCount, fits))
     }
 
     compute()
     const observer = new ResizeObserver(compute)
     observer.observe(row)
     return () => observer.disconnect()
-  }, [availableSuggestions])
+  }, [availableSuggestions, fitCount])
 
   const collapsedSuggestions = availableSuggestions.slice(0, fitCount)
-  // Three lines when expanded. fitCount is measured against a row that also
-  // carries "and" and "are available", which the expanded list does not, so
-  // three times it lands at or just under three lines - never over.
-  const expandedSuggestions = availableSuggestions.slice(0, fitCount * 3)
+  const expandedSuggestions = availableSuggestions.slice(0, expandedCount)
 
   const [formError, setFormError] = useState<string | null>(null)
   const {
@@ -898,9 +922,14 @@ const CreateYourUsername = ({
                     className="flex flex-row items-center gap-x-0.5"
                   >
                     <Button
-                      className="h-auto p-0 text-base font-semibold leading-6 text-primary-500 opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
+                      // Colour link variant: size lg is 16px/24px, the link compound
+                      // zeroes the padding, and visual primary is Blue 500. The only
+                      // overrides are 50% opacity and going opaque on hover; focus:
+                      // pins the colour so a click cannot darken it to primary-700.
+                      className="opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
+                      size="lg"
                       variant="link"
-                      visual="gray"
+                      visual="primary"
                       type="button"
                       onClick={() => setFormValue("username", username)}
                     >
@@ -981,9 +1010,14 @@ const CreateYourUsername = ({
                               )}
 
                               <Button
-                                className="h-auto p-0 text-base font-semibold leading-6 text-primary-500 opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
+                                // Colour link variant: size lg is 16px/24px, the link compound
+                                // zeroes the padding, and visual primary is Blue 500. The only
+                                // overrides are 50% opacity and going opaque on hover; focus:
+                                // pins the colour so a click cannot darken it to primary-700.
+                                className="opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
+                                size="lg"
                                 variant="link"
-                                visual="gray"
+                                visual="primary"
                                 type="button"
                                 onClick={() =>
                                   setFormValue("username", username)
