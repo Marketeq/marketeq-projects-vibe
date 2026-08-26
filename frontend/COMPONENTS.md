@@ -207,17 +207,23 @@ All base components live in `frontend/components/ui/` and are re-exported from t
 - **Key Props**: `asChild?: boolean`; uses `cva` variants
 - **Variants**: Default, DotIcon, ArrowRightIcon, ArrowUpIcon
 - **Visuals**: `gray`, `purple`, `error`, `warning`, `success`, `sky`, `primary`, `indigo`, `pink`, `rose`, `orange`
-- **Fill**: the blue badge is `bg-primary-50` (`#E8EEFF`) with `text-primary-700`.
-  It was `primary-100`, which was the wrong blue. The remaining visuals are
-  still `-100` fills with `-700` text and were deliberately left alone.
+- **Blue badge (Figma spec)**: fill `bg-primary-50` `#E8EEFF`, text
+  `text-primary-500` `#306CFE`, `text-xs`/`leading-[18px]`/`font-medium`,
+  22px tall, 4px gap, `mix-blend-multiply`. It was `primary-100` with
+  `primary-700` text, which was the wrong blue on both counts. The remaining
+  visuals are still `-100` fills with `-700` text and were deliberately left
+  alone.
+- **Padding**: `2px 8px` symmetric. A badge **with a close button** is
+  `2px 6px 2px 8px` per the spec, i.e. add `className="pr-1.5"`.
 - **Dismissible badges**: a badge with a close button MUST use `BadgeCloseButton`
   rather than a bare `<button>`. It renders the X in `text-primary-500` at
   `opacity-50`, going to `opacity-100` on hover or keyboard focus **of the X
-  itself** (not of the surrounding badge). Keeping it in the design system is
-  what makes every dismissible badge behave the same.
+  itself** (not of the surrounding badge). The box is 12x12 and the icon inside
+  is stroked at 1.5px. Keeping it in the design system is what makes every
+  dismissible badge behave the same.
 
   ```tsx
-  <Badge visual="primary" size="sm" variant="rounded">
+  <Badge visual="primary" size="sm" variant="rounded" className="pr-1.5">
     {label}
     <BadgeCloseButton onClick={onRemove}>
       <X2 className="h-3 w-3" />

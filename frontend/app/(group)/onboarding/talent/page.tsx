@@ -1276,7 +1276,9 @@ const SelectionBadge = ({
   children: React.ReactNode
   onRemove: () => void
 }) => (
-  <Badge visual="primary" size="sm" variant="rounded">
+  // pr-1.5 per the Figma badge spec: padding is 2px 6px 2px 8px when there is
+  // a close button, so the X sits tighter to the edge than the text does.
+  <Badge visual="primary" size="sm" variant="rounded" className="pr-1.5">
     {children}
     <BadgeCloseButton onClick={onRemove}>
       <X2 className="h-3 w-3" />
