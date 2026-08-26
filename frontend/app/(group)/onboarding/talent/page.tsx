@@ -4598,6 +4598,11 @@ const UploadYourResume = ({
                 </div>
               )}
 
+              {/* Sits with the field it describes, under the dropzone */}
+              {resumeError && (
+                <ErrorMessage size="sm">{resumeError}</ErrorMessage>
+              )}
+
               <p className="text-xs font-light leading-normal text-dark-blue-400">
                 Your resume will remain private and will not be shared with any
                 third parties. See our{" "}
