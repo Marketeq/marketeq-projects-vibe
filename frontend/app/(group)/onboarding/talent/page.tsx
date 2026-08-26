@@ -1732,10 +1732,15 @@ const TopSkills = ({
         multiple
       >
         <ComboboxTrigger className="flex flex-col gap-y-1.5">
-          <ComboboxLabel size="sm" className="text-dark-blue-400">
+          <ComboboxLabel
+            size="sm"
+            className="text-dark-blue-400"
+            htmlFor="top-skills"
+          >
             What are your top skills?
           </ComboboxLabel>
           <ComboboxInput
+            id="top-skills"
             size="lg"
             className="pl-3.5"
             placeholder="e.g., react.js, css"
@@ -2234,7 +2239,11 @@ const ShowcaseYourTalent = ({
                       }}
                     >
                       <ComboboxTrigger className="flex flex-col gap-y-1.5">
-                        <ComboboxLabel size="sm" className="text-dark-blue-400">
+                        <ComboboxLabel
+                          size="sm"
+                          className="text-dark-blue-400"
+                          htmlFor="industries"
+                        >
                           Which industries have you worked in?
                         </ComboboxLabel>
                         <ComboboxInput
@@ -2571,10 +2580,15 @@ const ProjectPreferences = ({
         multiple
       >
         <ComboboxTrigger className="flex flex-col gap-y-1.5">
-          <ComboboxLabel size="sm" className="text-dark-blue-400">
+          <ComboboxLabel
+            size="sm"
+            className="text-dark-blue-400"
+            htmlFor="project-preferences"
+          >
             What types of projects would you like to work on?
           </ComboboxLabel>
           <ComboboxInput
+            id="project-preferences"
             size="lg"
             className="pl-3.5"
             placeholder="Enter your project preferences (e.g., Data Analysis)"
