@@ -4122,6 +4122,14 @@ const UploadYourResume = ({
       }
       setUploadPercent(100)
       setIsReviewing(false)
+      // Hold the modal open on the summary until it is dismissed. Without this
+      // the status flip below closes it immediately and skips the Done button.
+      setReadingLabel(
+        foundSteps.length
+          ? "We've added this to your profile"
+          : "Your resume has been added"
+      )
+      setIsReadingDone(true)
       setUploadedAt(data?.uploadedAt ? new Date(data.uploadedAt) : new Date())
       setResumeStatus("uploaded")
       toggleValidation(true)
