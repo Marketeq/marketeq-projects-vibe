@@ -1330,37 +1330,37 @@ const SelectionBadge = ({
   </Badge>
 )
 
+/**
+ * Renders a dropdown option, bolding the part that matches what was typed.
+ *
+ * The matched run is the ONLY thing this overrides. Weight, colour, size,
+ * padding, hover background and shadow all stay with ComboboxOption in the
+ * design system - this used to force font-normal on the whole label, which
+ * beat the design system's font-medium and pinned the weight even while the
+ * option was active.
+ */
 const HighlightedSuggestion = ({
   label,
   query,
-  active = false,
 }: {
   label: string
   query: string
-  active?: boolean
 }) => {
   const trimmedQuery = query.trim()
-  if (!trimmedQuery) {
-    return (
-      <span className={active ? "font-semibold" : "font-normal"}>{label}</span>
-    )
+  if (!trimmedQuery) return <>{label}</>
+
+  if (!label.toLowerCase().startsWith(trimmedQuery.toLowerCase())) {
+    return <>{label}</>
   }
 
-  const normalizedLabel = label.toLowerCase()
-  const normalizedQuery = trimmedQuery.toLowerCase()
-
-  if (!normalizedLabel.startsWith(normalizedQuery)) {
-    return <span className="font-normal">{label}</span>
-  }
-
-  const highlightedPart = label.slice(0, trimmedQuery.length)
-  const remainingPart = label.slice(trimmedQuery.length)
-
+  // 700/13px in Gray/Black per the autocomplete spec
   return (
-    <span className="font-normal">
-      <span className="font-semibold text-gray-900">{highlightedPart}</span>
-      {remainingPart}
-    </span>
+    <>
+      <span className="font-bold text-gray-black">
+        {label.slice(0, trimmedQuery.length)}
+      </span>
+      {label.slice(trimmedQuery.length)}
+    </>
   )
 }
 
@@ -1681,18 +1681,8 @@ const TopSkills = ({
           <ComboboxOptions>
             <ScrollArea viewportClassName="max-h-[304px]">
               {filteredRoles.map((role, index) => (
-                <ComboboxOption
-                  key={index}
-                  value={role}
-                  className="font-normal ui-active:font-normal"
-                >
-                  {({ active }) => (
-                    <HighlightedSuggestion
-                      label={role}
-                      query={inputValue}
-                      active={active}
-                    />
-                  )}
+                <ComboboxOption key={index} value={role}>
+                  <HighlightedSuggestion label={role} query={inputValue} />
                 </ComboboxOption>
               ))}
             </ScrollArea>
@@ -2109,7 +2099,6 @@ const ShowcaseYourTalent = ({
                                 <ComboboxOption
                                   key={item}
                                   value={item}
-                                  className="font-normal ui-active:font-normal"
                                   onClick={() => {
                                     onChange(item)
                                     clearErrors("recentJobTitle")
@@ -2117,13 +2106,10 @@ const ShowcaseYourTalent = ({
                                     setIsJobTitleOpen(false)
                                   }}
                                 >
-                                  {({ active }) => (
-                                    <HighlightedSuggestion
-                                      label={item}
-                                      query={jobTitleQuery}
-                                      active={active}
-                                    />
-                                  )}
+                                  <HighlightedSuggestion
+                                    label={item}
+                                    query={jobTitleQuery}
+                                  />
                                 </ComboboxOption>
                               ))}
                             </ScrollArea>
@@ -2246,16 +2232,12 @@ const ShowcaseYourTalent = ({
                               <ComboboxOption
                                 key={item}
                                 value={item}
-                                className="font-normal ui-active:font-normal"
                                 onClick={() => void addIndustryValue(item)}
                               >
-                                {({ active }) => (
-                                  <HighlightedSuggestion
-                                    label={item}
-                                    query={industriesQuery}
-                                    active={active}
-                                  />
-                                )}
+                                <HighlightedSuggestion
+                                  label={item}
+                                  query={industriesQuery}
+                                />
                               </ComboboxOption>
                             ))}
                           </ScrollArea>
@@ -2555,16 +2537,9 @@ const ProjectPreferences = ({
                 <ComboboxOption
                   key={index}
                   value={role}
-                  className="font-normal ui-active:font-normal"
                   onClick={() => selectSuggestedValue(role)}
                 >
-                  {({ active }) => (
-                    <HighlightedSuggestion
-                      label={role}
-                      query={inputValue}
-                      active={active}
-                    />
-                  )}
+                  <HighlightedSuggestion label={role} query={inputValue} />
                 </ComboboxOption>
               ))}
             </ScrollArea>
