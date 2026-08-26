@@ -18,7 +18,7 @@ export class AddSlugColumn1776457086364 implements MigrationInterface {
     );
 
     await queryRunner.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_listings_projects_slug" ON "listings"."projects_v2" ("slug")`,
+      `DO $$ BEGIN CREATE INDEX IF NOT EXISTS "IDX_listings_projects_slug" ON "listings"."projects_v2" ("slug"); EXCEPTION WHEN undefined_table THEN NULL; END $$`,
     );
     await queryRunner.query(
       `DO $$ BEGIN CREATE INDEX IF NOT EXISTS "IDX_public_projects_slug" ON "public"."projects" ("slug"); EXCEPTION WHEN undefined_table THEN NULL; END $$`,
