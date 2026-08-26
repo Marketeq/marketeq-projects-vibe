@@ -417,7 +417,10 @@ const IntroduceYourself = ({
                               size="md"
                               type="button"
                               variant="light"
-                              visual="primary"
+                              // error/light is the exact error-hue mirror of
+                              // primary/light, so the button keeps its shape
+                              // and only changes colour.
+                              visual={hasAvatarError ? "error" : "primary"}
                               onClick={open}
                               leftIcon={<Upload className="size-[15px]" />}
                             >
