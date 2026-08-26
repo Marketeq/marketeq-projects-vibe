@@ -3868,7 +3868,7 @@ const UploadYourResume = ({
         return
       }
       setScanLines((current) => [...current, READING_SCAN_LABELS[index]])
-    }, 900)
+    }, 420)
   }
 
   const stopScanLabels = () => {
