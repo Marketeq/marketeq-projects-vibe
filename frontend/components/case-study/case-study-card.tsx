@@ -41,11 +41,14 @@ export function CaseStudyCard({
   onClick,
   onDelete,
   onToggleVisibility,
+  readOnly = false,
 }: {
   caseStudy: CaseStudySummary
   onClick: () => void
-  onDelete: (id: string) => void
-  onToggleVisibility: (id: string) => void
+  onDelete?: (id: string) => void
+  onToggleVisibility?: (id: string) => void
+  /** Client-facing view — hides the Edit/Hide/Delete hover overlay entirely. */
+  readOnly?: boolean
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const isHidden = caseStudy.status === "hidden"
@@ -55,7 +58,7 @@ export function CaseStudyCard({
       <button
         type="button"
         onClick={onClick}
-        aria-label={`Edit ${caseStudy.title}`}
+        aria-label={readOnly ? `Preview ${caseStudy.title}` : `Edit ${caseStudy.title}`}
         className="block h-full w-full text-left focus-visible:outline-none"
       >
         {caseStudy.thumbnail ? (
@@ -92,41 +95,43 @@ export function CaseStudyCard({
         )}
       </button>
 
-      <div className="absolute inset-0 flex items-center justify-center gap-x-3 bg-black/50 opacity-0 pointer-events-none transition duration-300 group-hover:opacity-100 group-hover:pointer-events-auto">
-        <IconButton
-          className="size-9 rounded-full bg-white/10 text-white hover:bg-white/20"
-          variant="ghost"
-          visual="gray"
-          aria-label="Edit case study"
-          onClick={onClick}
-        >
-          <Edit03 className="size-4" />
-        </IconButton>
-        {caseStudy.status !== "draft" && (
+      {!readOnly && (
+        <div className="absolute inset-0 flex items-center justify-center gap-x-3 bg-black/50 opacity-0 pointer-events-none transition duration-300 group-hover:opacity-100 group-hover:pointer-events-auto">
           <IconButton
-            className="size-[35px] rounded-full bg-white/10 text-white hover:bg-white/20 focus:bg-white/20"
+            className="size-9 rounded-full bg-white/10 text-white hover:bg-white/20"
             variant="ghost"
             visual="gray"
-            aria-label={isHidden ? "Unhide case study" : "Hide case study"}
-            onClick={() => onToggleVisibility(caseStudy.id)}
+            aria-label="Edit case study"
+            onClick={onClick}
           >
-            {isHidden ? (
-              <EyeOff className="size-4" />
-            ) : (
-              <Eye className="size-4" />
-            )}
+            <Edit03 className="size-4" />
           </IconButton>
-        )}
-        <IconButton
-          className="size-9 rounded-full bg-white/10 text-error-400 hover:bg-error-500 hover:text-white"
-          variant="ghost"
-          visual="gray"
-          aria-label="Delete case study"
-          onClick={() => setDeleteOpen(true)}
-        >
-          <Trash01 className="size-4" />
-        </IconButton>
-      </div>
+          {caseStudy.status !== "draft" && (
+            <IconButton
+              className="size-[35px] rounded-full bg-white/10 text-white hover:bg-white/20 focus:bg-white/20"
+              variant="ghost"
+              visual="gray"
+              aria-label={isHidden ? "Unhide case study" : "Hide case study"}
+              onClick={() => onToggleVisibility?.(caseStudy.id)}
+            >
+              {isHidden ? (
+                <EyeOff className="size-4" />
+              ) : (
+                <Eye className="size-4" />
+              )}
+            </IconButton>
+          )}
+          <IconButton
+            className="size-9 rounded-full bg-white/10 text-error-400 hover:bg-error-500 hover:text-white"
+            variant="ghost"
+            visual="gray"
+            aria-label="Delete case study"
+            onClick={() => setDeleteOpen(true)}
+          >
+            <Trash01 className="size-4" />
+          </IconButton>
+        </div>
+      )}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent
@@ -151,7 +156,7 @@ export function CaseStudyCard({
               className="border-error-300 text-error-500 hover:bg-error-500 hover:text-white"
               onClick={() => {
                 setDeleteOpen(false)
-                onDelete(caseStudy.id)
+                onDelete?.(caseStudy.id)
               }}
             >
               Delete

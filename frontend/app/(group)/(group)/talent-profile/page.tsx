@@ -88,6 +88,13 @@ const CaseStudyEditor = dynamic(
   () => import("@/components/case-study/case-study-editor"),
   { ssr: false }
 )
+const CaseStudyClientPreview = dynamic(
+  () =>
+    import("@/components/case-study/case-study-client-preview").then(
+      (m) => m.CaseStudyClientPreview
+    ),
+  { ssr: false }
+)
 
 const getInitials = (name?: string | null): string => {
   const parts = (name ?? "").trim().split(/\s+/).filter(Boolean)
@@ -898,6 +905,10 @@ function Default() {
   // useCaseStudyStore instance has no way to know about writes the editor
   // made through its own separate instance of the same hook.
   const [caseStudyGridKey, setCaseStudyGridKey] = useState(0)
+  const [caseStudyPreviewOpen, setCaseStudyPreviewOpen] = useState(false)
+  const [previewCaseStudyId, setPreviewCaseStudyId] = useState<
+    string | undefined
+  >(undefined)
 
   const [featuredTab, setFeaturedTab] = useState("Featured Clients")
   const WORK_EXPERIENCE_LIMIT = 30
@@ -1943,9 +1954,14 @@ function Default() {
                 <CaseStudyGrid
                   key={caseStudyGridKey}
                   canCreate={!isClientView}
+                  isClientView={isClientView}
                   onOpenEditor={(caseStudyId) => {
                     setEditingCaseStudyId(caseStudyId)
                     setCaseStudyOpen(true)
+                  }}
+                  onOpenPreview={(caseStudyId) => {
+                    setPreviewCaseStudyId(caseStudyId)
+                    setCaseStudyPreviewOpen(true)
                   }}
                 />
 
@@ -5295,6 +5311,18 @@ function Default() {
               />
             </DialogContent>
           </Dialog>
+
+          {caseStudyPreviewOpen && previewCaseStudyId && profile && (
+            <CaseStudyClientPreview
+              caseStudyId={previewCaseStudyId}
+              talentProfile={profile}
+              isSelfPreview={isOwnProfile}
+              onClose={() => {
+                setCaseStudyPreviewOpen(false)
+                setPreviewCaseStudyId(undefined)
+              }}
+            />
+          )}
 
           <Dialog
             open={!!deleteConfirm}

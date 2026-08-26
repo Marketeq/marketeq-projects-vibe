@@ -54,10 +54,15 @@ const BlankCaseStudyCard = ({ onClick }: { onClick: () => void }) => (
  */
 export function CaseStudyGrid({
   canCreate = true,
+  isClientView = false,
   onOpenEditor,
+  onOpenPreview,
 }: {
   canCreate?: boolean
+  /** Client-facing view — cards open the read-only preview instead of the editor, and lose their hover actions. */
+  isClientView?: boolean
   onOpenEditor: (caseStudyId: string) => void
+  onOpenPreview?: (caseStudyId: string) => void
 }) {
   const [caseStudies, setCaseStudies] = useState<CaseStudySummary[]>([])
   const [modalOpen, setModalOpen] = useState(false)
@@ -157,9 +162,16 @@ export function CaseStudyGrid({
             <CaseStudyCard
               key={tile.cs.id}
               caseStudy={tile.cs}
-              onClick={() => onOpenEditor(tile.cs.id)}
-              onDelete={deleteCaseStudy}
-              onToggleVisibility={toggleCaseStudyVisibility}
+              onClick={() =>
+                isClientView
+                  ? onOpenPreview?.(tile.cs.id)
+                  : onOpenEditor(tile.cs.id)
+              }
+              onDelete={isClientView ? undefined : deleteCaseStudy}
+              onToggleVisibility={
+                isClientView ? undefined : toggleCaseStudyVisibility
+              }
+              readOnly={isClientView}
             />
           ) : (
             <BlankCaseStudyCard
