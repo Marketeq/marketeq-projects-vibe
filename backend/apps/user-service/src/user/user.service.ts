@@ -342,6 +342,12 @@ export class UserService {
         role: dto.role ?? existingById.role,
         ...(dto.firstName && { firstName: dto.firstName }),
         ...(dto.lastName && { lastName: dto.lastName }),
+        // Only fill an EMPTY avatar from the provider. A user who has uploaded
+        // their own photo keeps it - a later Google/LinkedIn login must never
+        // overwrite it.
+        ...(dto.avatarUrl && !existingById.avatarUrl && {
+          avatarUrl: dto.avatarUrl,
+        }),
         provider: dto.provider ?? existingById.provider ?? resolvedProvider,
         hasPassword:
           dto.hasPassword ?? existingById.hasPassword ?? resolvedHasPassword,
@@ -365,6 +371,10 @@ export class UserService {
         provider: dto.provider ?? existingByEmail.provider ?? resolvedProvider,
         hasPassword:
           dto.hasPassword ?? existingByEmail.hasPassword ?? resolvedHasPassword,
+        // Empty avatars only; never replace a photo the user set themselves.
+        ...(dto.avatarUrl && !existingByEmail.avatarUrl && {
+          avatarUrl: dto.avatarUrl,
+        }),
       });
       if (normalizedIncomingUsername) {
         existingByEmail.username = normalizedIncomingUsername;
@@ -379,6 +389,8 @@ export class UserService {
       role: dto.role ?? UserRole.CLIENT,
       ...(dto.firstName && { firstName: dto.firstName }),
       ...(dto.lastName && { lastName: dto.lastName }),
+      // New account, so there is nothing to preserve.
+      ...(dto.avatarUrl && { avatarUrl: dto.avatarUrl }),
       provider: resolvedProvider,
       hasPassword: resolvedHasPassword,
     });

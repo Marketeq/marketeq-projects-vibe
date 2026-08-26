@@ -52,6 +52,7 @@ type SyncUserProfilePayload = {
   hasPassword?: boolean;
   firstName?: string;
   lastName?: string;
+  avatarUrl?: string;
 };
 
 type AuthUserPayload = {
@@ -895,6 +896,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     let aud: string | undefined;
     let firstName: string | undefined;
     let lastName: string | undefined;
+    let avatarUrl: string | undefined;
 
     if (idToken) {
       let tokenInfo: {
@@ -974,6 +976,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         emailVerified = emailVerified ?? response.data?.email_verified;
         firstName = response.data?.given_name;
         lastName = response.data?.family_name;
+        avatarUrl = response.data?.picture;
       } catch (error) {
         if (!email) {
           this.throwProviderError(error, 'Google', 'Invalid Google access token');
@@ -1029,7 +1032,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      await this.syncUserProfile(user, { firstName, lastName });
+      await this.syncUserProfile(user, { firstName, lastName, avatarUrl });
     } catch (error) {
       // Profile sync failure should never block OAuth login.
       // For new users the profile will be created during onboarding.
@@ -1115,7 +1118,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('access_token or code is required');
     }
 
-    const { email, emailVerified, firstName, lastName } =
+    const { email, emailVerified, firstName, lastName, avatarUrl } =
       await this.fetchLinkedInProfile(accessToken);
 
     if (!email) {
@@ -1162,7 +1165,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      await this.syncUserProfile(user, { firstName, lastName });
+      await this.syncUserProfile(user, { firstName, lastName, avatarUrl });
     } catch (error) {
       // Profile sync failure should never block OAuth login.
       // For new users the profile will be created during onboarding.
@@ -1955,7 +1958,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return secret;
   }
 
-  private async syncUserProfile(user: User, extra?: { firstName?: string; lastName?: string }) {
+  private async syncUserProfile(
+    user: User,
+    extra?: { firstName?: string; lastName?: string; avatarUrl?: string },
+  ) {
     const payload: SyncUserProfilePayload = {
       id: user.id,
       email: user.email,
@@ -1964,6 +1970,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       hasPassword: user.hasPassword ?? false,
       ...(extra?.firstName && { firstName: extra.firstName }),
       ...(extra?.lastName && { lastName: extra.lastName }),
+      // Google and LinkedIn both return a profile photo on userinfo. It was
+      // being fetched and discarded, so OAuth users arrived at onboarding with
+      // no avatar even though we already had one.
+      ...(extra?.avatarUrl && { avatarUrl: extra.avatarUrl }),
     };
 
     try {
@@ -2077,7 +2087,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private async fetchLinkedInProfile(
     accessToken: string,
-  ): Promise<{ email?: string; emailVerified?: boolean; firstName?: string; lastName?: string }> {
+  ): Promise<{
+    email?: string;
+    emailVerified?: boolean;
+    firstName?: string;
+    lastName?: string;
+    avatarUrl?: string;
+  }> {
     let firstStepUnreachable = false;
 
     try {
@@ -2089,6 +2105,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       const email = response.data?.email;
       const firstName = response.data?.given_name;
       const lastName = response.data?.family_name;
+      // LinkedIn returns the profile photo on userinfo as `picture`, same as
+      // Google. It was being dropped, leaving OAuth users with no avatar.
+      const avatarUrl = response.data?.picture;
       const emailVerifiedRaw = response.data?.email_verified;
       const emailVerified =
         emailVerifiedRaw === true || emailVerifiedRaw === 'true'
@@ -2098,7 +2117,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
             : undefined;
 
       if (email) {
-        return { email, emailVerified, firstName, lastName };
+        return { email, emailVerified, firstName, lastName, avatarUrl };
       }
     } catch (error) {
       firstStepUnreachable = this.isProviderUnreachable(error);
