@@ -611,7 +611,10 @@ const CreateYourUsername = ({
   }, [availableSuggestions])
 
   const collapsedSuggestions = availableSuggestions.slice(0, fitCount)
-  const expandedSuggestions = availableSuggestions.slice(0, fitCount * 2)
+  // Three lines when expanded. fitCount is measured against a row that also
+  // carries "and" and "are available", which the expanded list does not, so
+  // three times it lands at or just under three lines - never over.
+  const expandedSuggestions = availableSuggestions.slice(0, fitCount * 3)
 
   const [formError, setFormError] = useState<string | null>(null)
   const {
@@ -888,14 +891,16 @@ const CreateYourUsername = ({
             </div>
 
             {isSuggestionsLoading ? null : show ? (
-              <div className="mt-6">
+              <div className="mt-6 flex w-full flex-row flex-wrap content-start items-start gap-2">
                 {expandedSuggestions.map((username, index) => (
-                  <React.Fragment key={username}>
+                  <div
+                    key={username}
+                    className="flex flex-row items-center gap-x-0.5"
+                  >
                     <Button
-                      className="text-primary-500/50 hover:text-primary-500"
-                      size="lg"
-                      visual="gray"
+                      className="h-auto p-0 text-base font-semibold leading-6 text-primary-500 opacity-50 transition-opacity hover:opacity-100"
                       variant="link"
+                      visual="gray"
                       type="button"
                       onClick={() => setFormValue("username", username)}
                     >
@@ -903,9 +908,11 @@ const CreateYourUsername = ({
                     </Button>
 
                     {index !== expandedSuggestions.length - 1 && (
-                      <span>, </span>
+                      <span className="text-sm font-semibold leading-[17px] text-dark-blue-400">
+                        ,
+                      </span>
                     )}
-                  </React.Fragment>
+                  </div>
                 ))}
               </div>
             ) : (
