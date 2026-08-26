@@ -976,119 +976,142 @@ const CreateYourUsername = ({
                 </span>
               )}
 
-              {isSuggestionsLoading ? null : show ? (
-                <div className="mt-6 flex w-full flex-row flex-wrap content-start items-start gap-2">
-                  {expandedSuggestions.map((username, index) => (
-                    <div
-                      key={username}
-                      className="flex flex-row items-center gap-x-0.5"
-                    >
-                      <Button
-                        // Colour link variant: size lg is 16px/24px, the link compound
-                        // zeroes the padding, and visual primary is Blue 500. The only
-                        // overrides are 50% opacity and going opaque on hover; focus:
-                        // pins the colour so a click cannot darken it to primary-700.
-                        className="opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
-                        size="lg"
-                        variant="link"
-                        visual="primary"
-                        type="button"
-                        onClick={() => setFormValue("username", username)}
-                      >
-                        {username}
-                      </Button>
+              {/* Expanding slides the extra rows down, collapsing slides them
+                  back up. mode="wait" lets one list finish leaving before the
+                  other enters, so the height travels one direction at a time. */}
+              <AnimatePresence initial={false} mode="wait">
+                {isSuggestionsLoading ? null : show ? (
+                  <motion.div
+                    key="expanded"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.24, ease: [0.4, 0, 0.2, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-6 flex w-full flex-row flex-wrap content-start items-start gap-2">
+                      {expandedSuggestions.map((username, index) => (
+                        <div
+                          key={username}
+                          className="flex flex-row items-center gap-x-0.5"
+                        >
+                          <Button
+                            // Colour link variant: size lg is 16px/24px, the link compound
+                            // zeroes the padding, and visual primary is Blue 500. The only
+                            // overrides are 50% opacity and going opaque on hover; focus:
+                            // pins the colour so a click cannot darken it to primary-700.
+                            className="opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
+                            size="lg"
+                            variant="link"
+                            visual="primary"
+                            type="button"
+                            onClick={() => setFormValue("username", username)}
+                          >
+                            {username}
+                          </Button>
 
-                      {index !== expandedSuggestions.length - 1 && (
-                        <span className="text-sm font-semibold leading-[17px] text-dark-blue-400">
-                          ,
-                        </span>
-                      )}
+                          {index !== expandedSuggestions.length - 1 && (
+                            <span className="text-sm font-semibold leading-[17px] text-dark-blue-400">
+                              ,
+                            </span>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-6">
-                  {availableSuggestions.length > 0 ? (
-                    <>
-                      {/* Figma "Username rec": a wrapping 8px-gap row, not a
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="collapsed"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.24, ease: [0.4, 0, 0.2, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-6">
+                      {availableSuggestions.length > 0 ? (
+                        <>
+                          {/* Figma "Username rec": a wrapping 8px-gap row, not a
                         sentence. Each name is its own flex group so the comma
                         hugs it at 2px and "and" sits 4px off the last one. */}
-                      <div className="flex flex-col items-start gap-y-3">
-                        <div className="flex w-full flex-row flex-wrap content-start items-start gap-2">
-                          {collapsedSuggestions.map((username, index) => {
-                            const isLast =
-                              index === collapsedSuggestions.length - 1
-                            const showAnd =
-                              isLast && collapsedSuggestions.length > 1
+                          <div className="flex flex-col items-start gap-y-3">
+                            <div className="flex w-full flex-row flex-wrap content-start items-start gap-2">
+                              {collapsedSuggestions.map((username, index) => {
+                                const isLast =
+                                  index === collapsedSuggestions.length - 1
+                                const showAnd =
+                                  isLast && collapsedSuggestions.length > 1
 
-                            return (
-                              <div
-                                key={username}
-                                className={cn(
-                                  "flex flex-row items-center",
-                                  showAnd ? "gap-x-1" : "gap-x-0.5"
-                                )}
-                              >
-                                {showAnd && (
-                                  <span className="text-sm font-semibold leading-[17px] text-gray-500">
-                                    and
-                                  </span>
-                                )}
+                                return (
+                                  <div
+                                    key={username}
+                                    className={cn(
+                                      "flex flex-row items-center",
+                                      showAnd ? "gap-x-1" : "gap-x-0.5"
+                                    )}
+                                  >
+                                    {showAnd && (
+                                      <span className="text-sm font-semibold leading-[17px] text-gray-500">
+                                        and
+                                      </span>
+                                    )}
 
-                                <Button
-                                  // Colour link variant: size lg is 16px/24px, the link compound
-                                  // zeroes the padding, and visual primary is Blue 500. The only
-                                  // overrides are 50% opacity and going opaque on hover; focus:
-                                  // pins the colour so a click cannot darken it to primary-700.
-                                  className="opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
-                                  size="lg"
-                                  variant="link"
-                                  visual="primary"
-                                  type="button"
-                                  onClick={() =>
-                                    setFormValue("username", username)
-                                  }
-                                >
-                                  {username}
-                                </Button>
+                                    <Button
+                                      // Colour link variant: size lg is 16px/24px, the link compound
+                                      // zeroes the padding, and visual primary is Blue 500. The only
+                                      // overrides are 50% opacity and going opaque on hover; focus:
+                                      // pins the colour so a click cannot darken it to primary-700.
+                                      className="opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
+                                      size="lg"
+                                      variant="link"
+                                      visual="primary"
+                                      type="button"
+                                      onClick={() =>
+                                        setFormValue("username", username)
+                                      }
+                                    >
+                                      {username}
+                                    </Button>
 
-                                {/* Oxford comma: every name but the last is
+                                    {/* Oxford comma: every name but the last is
                                   followed by one, including the one before
                                   "and". */}
-                                {!isLast && (
-                                  <span className="text-sm font-semibold leading-[17px] text-dark-blue-400">
-                                    ,
-                                  </span>
-                                )}
+                                    {!isLast && (
+                                      <span className="text-sm font-semibold leading-[17px] text-dark-blue-400">
+                                        ,
+                                      </span>
+                                    )}
+                                  </div>
+                                )
+                              })}
+
+                              <div className="flex flex-row items-center justify-center pt-1">
+                                <span className="text-sm font-semibold leading-[17px] text-gray-500">
+                                  are available
+                                </span>
                               </div>
-                            )
-                          })}
+                            </div>
 
-                          <div className="flex flex-row items-center justify-center pt-1">
-                            <span className="text-sm font-semibold leading-[17px] text-gray-500">
-                              are available
-                            </span>
+                            {availableSuggestions.length >
+                              collapsedSuggestions.length && (
+                              <Button
+                                className="h-auto p-0 text-sm font-semibold capitalize leading-5 text-gray-500"
+                                variant="link"
+                                type="button"
+                                visual="gray"
+                                onClick={toggleShow}
+                              >
+                                <Plus className="size-[15px] stroke-[1.25]" />
+                                More suggestions
+                              </Button>
+                            )}
                           </div>
-                        </div>
-
-                        {availableSuggestions.length >
-                          collapsedSuggestions.length && (
-                          <Button
-                            className="h-auto p-0 text-sm font-semibold capitalize leading-5 text-gray-500"
-                            variant="link"
-                            type="button"
-                            visual="gray"
-                            onClick={toggleShow}
-                          >
-                            <Plus className="size-[15px] stroke-[1.25]" />
-                            More suggestions
-                          </Button>
-                        )}
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-              )}
+                        </>
+                      ) : null}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             <div className="mt-[50px]">
