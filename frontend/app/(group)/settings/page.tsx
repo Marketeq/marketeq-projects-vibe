@@ -1656,7 +1656,7 @@ export default function SettingsPage() {
                     onOpenChange={setIsMagicLinkSent}
                   >
                     <DialogContent
-                      className="flex max-w-[508px] flex-col items-center gap-8 px-[55px] pb-6 pt-[55px] shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      className="flex w-[508px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 px-[55px] pb-6 pt-[55px] shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
                       dialogOverlay={
                         <DialogOverlay className="backdrop-blur-[8px]" />
                       }
