@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ForbiddenException,
   HttpException,
@@ -1010,6 +1011,10 @@ export class PublishService {
   ): Promise<Project> {
     const project = await this.ensureProjectOwnership(projectId, userId);
 
+    if (project.status === 'published') {
+      return project;
+    }
+
     try {
       const media = await this.mediaRepository.find({ projectId: project.id });
       const hasCover =
@@ -1053,6 +1058,18 @@ export class PublishService {
         }
       }
 
+      const videoUrl = media?.featuredVideo ?? project.videoUrl ?? undefined;
+      if (videoUrl && videoUrl.trim().length > 0) {
+        const videoResult =
+          await this.projectModerationService.moderateVideoUrl(
+            project.id!,
+            videoUrl,
+          );
+        if (videoResult.status !== 'approved') {
+          return await this.applyModerationDecision(project.id!, videoResult);
+        }
+      }
+
       const moderationResult =
         await this.projectModerationService.moderateProject(
           project.id!,
@@ -1072,14 +1089,21 @@ export class PublishService {
 
       return await this.applyModerationDecision(project.id!, moderationResult);
     } catch (error) {
-      if (
-        error instanceof ModerationUnavailableError ||
-        error instanceof ModerationInvalidResponseError
-      ) {
+      if (error instanceof ModerationUnavailableError) {
         await this.markPublishBlocked(project.id);
         throw new ServiceUnavailableException({
           message:
             'Content moderation is currently unavailable. Project was saved but not published.',
+          projectId: project.id,
+          status: 'publish_blocked',
+        });
+      }
+
+      if (error instanceof ModerationInvalidResponseError) {
+        await this.markPublishBlocked(project.id);
+        throw new BadGatewayException({
+          message:
+            'Content moderation returned an invalid response. Please retry.',
           projectId: project.id,
           status: 'publish_blocked',
         });

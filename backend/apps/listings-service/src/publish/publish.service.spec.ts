@@ -20,6 +20,7 @@ describe('PublishService moderation flow', () => {
 
   const mediaRepository = {
     create: jest.fn(),
+    update: jest.fn(),
     find: jest.fn(),
   };
 
@@ -39,6 +40,8 @@ describe('PublishService moderation flow', () => {
 
   const moderationService = {
     moderateProject: jest.fn(),
+    moderateImageUrl: jest.fn(),
+    moderateVideoUrl: jest.fn(),
   } as unknown as ProjectModerationService;
 
   const cloudflareStorageService = {
@@ -46,6 +49,10 @@ describe('PublishService moderation flow', () => {
   };
 
   const httpService = {};
+  const configService = { get: jest.fn() };
+  const deliverablesAdapter = {};
+  const faqAdapter = {};
+  const userProfileClient = { hydrateTeam: jest.fn().mockResolvedValue([]) };
 
   let service: PublishService;
 
@@ -58,6 +65,15 @@ describe('PublishService moderation flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
+    // Images and video default to approved so text moderation is reached
+    // unless a test overrides them.
+    (moderationService.moderateImageUrl as jest.Mock).mockResolvedValue({
+      status: 'approved',
+    });
+    (moderationService.moderateVideoUrl as jest.Mock).mockResolvedValue({
+      status: 'approved',
+    });
+
     service = new PublishService(
       projectRepository as any,
       mediaRepository as any,
@@ -66,6 +82,10 @@ describe('PublishService moderation flow', () => {
       moderationService,
       cloudflareStorageService as any,
       httpService as any,
+      configService as any,
+      deliverablesAdapter as any,
+      faqAdapter as any,
+      userProfileClient as any,
     );
   });
 
@@ -178,10 +198,13 @@ describe('PublishService moderation flow', () => {
       id: 'project-3',
       status: 'published',
     });
-    expect(projectRepository.update).toHaveBeenCalledWith('project-3', {
-      status: 'published',
-      projectDatePublished: expect.any(Date),
-    });
+    expect(projectRepository.update).toHaveBeenCalledWith(
+      'project-3',
+      expect.objectContaining({
+        status: 'published',
+        projectDatePublished: expect.any(Date),
+      }),
+    );
   });
 
   it('keeps rejected moderation behavior unchanged for retry publish', async () => {
@@ -208,19 +231,76 @@ describe('PublishService moderation flow', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('does not attempt video moderation when videoUrl is a placeholder string', async () => {
+  it('rejects publish when a gallery image fails moderation', async () => {
+    projectRepository.findOne.mockResolvedValue({
+      id: 'project-8',
+      userId: 'user-8',
+      title: 'Image reject',
+      status: 'draft',
+    });
+    mediaRepository.find.mockResolvedValue({
+      featuredImage: 'https://cdn.example.com/featured.jpg',
+      additionalImages: ['https://cdn.example.com/bad.jpg'],
+    });
+    (moderationService.moderateImageUrl as jest.Mock)
+      .mockResolvedValueOnce({ status: 'approved' })
+      .mockResolvedValueOnce({
+        status: 'rejected',
+        reason: 'Image violates policy',
+      });
+    projectRepository.update.mockResolvedValue({
+      id: 'project-8',
+      status: 'rejected',
+    });
+
+    await expect(
+      service.publishExistingProject('user-8', 'project-8'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    // Text moderation must not run once an image is rejected.
+    expect(moderationService.moderateProject).not.toHaveBeenCalled();
+  });
+
+  it('moderates the featured video at publish and blocks on rejection', async () => {
+    projectRepository.findOne.mockResolvedValue({
+      id: 'project-9',
+      userId: 'user-9',
+      title: 'Video reject',
+      status: 'draft',
+    });
+    mediaRepository.find.mockResolvedValue({
+      featuredImage: 'https://cdn.example.com/featured.jpg',
+      featuredVideo: 'https://cdn.example.com/clip.mp4',
+    });
+    (moderationService.moderateVideoUrl as jest.Mock).mockResolvedValue({
+      status: 'rejected',
+      reason: 'Video violates policy',
+    });
+    projectRepository.update.mockResolvedValue({
+      id: 'project-9',
+      status: 'rejected',
+    });
+
+    await expect(
+      service.publishExistingProject('user-9', 'project-9'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(moderationService.moderateVideoUrl).toHaveBeenCalledWith(
+      'project-9',
+      'https://cdn.example.com/clip.mp4',
+    );
+    // Video is checked after images and before text moderation.
+    expect(moderationService.moderateProject).not.toHaveBeenCalled();
+  });
+
+  it('does not moderate media at upload time', async () => {
     projectRepository.findOne.mockResolvedValue({
       id: 'project-6',
       userId: 'user-6',
+      status: 'draft',
     });
-    (moderationService as any).moderateUploadedImage = jest
-      .fn()
-      .mockResolvedValue({ status: 'approved' });
-    (moderationService as any).moderateVideoUrl = jest.fn();
-    (moderationService as any).moderateUploadedVideo = jest.fn();
-    cloudflareStorageService.uploadProjectMedia
-      .mockResolvedValueOnce({ url: 'https://cdn.example.com/featured-image.jpg' })
-      .mockResolvedValueOnce({ url: 'https://cdn.example.com/additional-image.jpg' });
+    mediaRepository.find.mockResolvedValue(undefined);
+    cloudflareStorageService.uploadProjectMedia.mockResolvedValueOnce({
+      url: 'https://cdn.example.com/featured-image.jpg',
+    });
     mediaRepository.create.mockResolvedValue({
       id: 'media-1',
       projectId: 'project-6',
@@ -229,7 +309,7 @@ describe('PublishService moderation flow', () => {
       featuredVideo: null,
     });
 
-    const result = await service.createProjectOfMedia(
+    await service.createProjectOfMedia(
       'user-6',
       {
         featuredImage: { originalname: 'cover.jpg' } as Express.Multer.File,
@@ -241,38 +321,9 @@ describe('PublishService moderation flow', () => {
       } as any,
     );
 
-    expect((moderationService as any).moderateVideoUrl).not.toHaveBeenCalled();
-    expect((moderationService as any).moderateUploadedVideo).not.toHaveBeenCalled();
-    expect(result.featuredVideo).toBeNull();
-  });
-
-  it('returns image moderation unavailable when image moderation fails before any video moderation', async () => {
-    projectRepository.findOne.mockResolvedValue({
-      id: 'project-7',
-      userId: 'user-7',
-    });
-    (moderationService as any).moderateUploadedImage = jest
-      .fn()
-      .mockRejectedValue(new ModerationUnavailableError());
-
-    await expect(
-      service.createProjectOfMedia(
-        'user-7',
-        {
-          featuredImage: { originalname: 'cover.jpg' } as Express.Multer.File,
-          additionalImages: [],
-        },
-        {
-          projectId: 'project-7',
-        } as any,
-      ),
-    ).rejects.toMatchObject({
-      response: {
-        message:
-          'Image moderation is currently unavailable. Please retry media upload.',
-        projectId: 'project-7',
-        status: 'publish_blocked',
-      },
-    });
+    // Moderation is deferred to publish — upload only stages media.
+    expect(moderationService.moderateImageUrl).not.toHaveBeenCalled();
+    expect(moderationService.moderateVideoUrl).not.toHaveBeenCalled();
+    expect(moderationService.moderateProject).not.toHaveBeenCalled();
   });
 });
