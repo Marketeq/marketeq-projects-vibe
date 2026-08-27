@@ -1,24 +1,42 @@
-import { BrevoService } from '../../../notification-service/src/brevo/brevo.service';
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Inject, Logger } from '@nestjs/common';
-import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource, LessThan } from 'typeorm';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { ClientProxy } from '@nestjs/microservices';
-import { randomBytes } from 'crypto';
-import { Invitation, InvitationStatus, InvitationRole } from '../entities/invitation.entity';
+import { Invitation, InvitationStatus } from '../entities/invitation.entity';
 import { CreateInvitationsDto, CreateInviteLinkDto, ListInvitationsDto, AcceptInvitationDto } from '../dto/invitation.dto';
 import { generateInviteLinkToken, verifyInviteLinkToken } from '../auth/token.util';
+import {
+  generateInviteSecret,
+  hashInviteSecret,
+  verifyInviteSecret,
+  buildAcceptToken,
+  parseAcceptToken,
+} from '../auth/invite-secret.util';
 import { InternalUserSummary, UserServiceClient } from './user-service.client';
+import { InvitationEventsService } from './invitation-events.service';
+import {
+  AlreadyAcceptedException,
+  AlreadyMemberException,
+  EmailMismatchException,
+  InvalidTokenException,
+  InvitationCanceledException,
+  InvitationNotFoundException,
+  InvitationNotPendingException,
+  TokenExpiredException,
+} from '../common/invitation-exceptions';
 
 type AcceptInvitationResult = {
   id: string | null;
   teamId: string;
   teamName?: string;
+  companyId?: string;
   invitedEmail: string;
   role: string;
   note?: string | null;
+  permissions?: string[];
   status: string;
-  token: string;
+  token?: string;
   expiresAt: Date;
   createdByUserId: string;
   acceptedAt: Date;
@@ -30,37 +48,56 @@ type AcceptInvitationResult = {
     role: string;
     onboardingDismissed: boolean;
     hasCompletedOnboarding: boolean;
-    accountState: 'existing_account';
+    accountState: 'existing_account' | 'new_account';
   };
   postAccept: {
     nextStep: 'go_to_team' | 'continue_onboarding';
     reason:
       | 'existing_user_completed_onboarding'
       | 'existing_user_needs_onboarding';
-    suggestedPath: '/teams' | '/onboarding';
+    suggestedPath?: string;
     teamId: string;
   };
+};
+
+export type InvitationPreview = {
+  companyId: string | null;
+  companyName: string | null;
+  companyLogoUrl: string | null;
+  inviterName: string | null;
+  inviterUsername: string | null;
+  role: string;
+  /** Granular permission-role ids (select-permissions-panel.tsx) the inviter
+   * assigned. This is the actual access-control grant. `role` is the legacy
+   * admin/editor/viewer field kept for back-compat and is no longer what the
+   * invite UI lets the inviter choose. */
+  permissions: string[];
+  expiresAt: Date;
+  status: string;
 };
 
 @Injectable()
 export class InvitationsService {
   private readonly logger = new Logger(InvitationsService.name);
-  private readonly expDays: number;
+  private readonly expHours: number;
   private readonly appBaseUrl: string;
 
   constructor(
     @InjectRepository(Invitation)
     private readonly repo: Repository<Invitation>,
-    @InjectDataSource()
-    private readonly dataSource: DataSource,
     private readonly config: ConfigService,
     private readonly userService: UserServiceClient,
+    private readonly events: InvitationEventsService,
     @Inject('RABBITMQ_CLIENT')
     private readonly rabbitmq: ClientProxy,
-    // Add BrevoService for direct email sending
-    private readonly brevoService: BrevoService,
   ) {
-    this.expDays = parseInt(config.get('INVITE_EXP_DAYS') ?? '7', 10);
+    // INVITE_EXP_HOURS is the doc's unit (72h default). INVITE_EXP_DAYS is
+    // honored for deployments that already set it, so expiry doesn't shift
+    // silently on upgrade.
+    const days = config.get('INVITE_EXP_DAYS');
+    this.expHours = days
+      ? parseInt(days, 10) * 24
+      : parseInt(config.get('INVITE_EXP_HOURS') ?? '72', 10);
     this.appBaseUrl = config.get('APP_BASE_URL') ?? 'http://localhost:3000';
   }
 
@@ -69,11 +106,13 @@ export class InvitationsService {
       id: string | null;
       teamId: string;
       teamName?: string;
+      companyId?: string;
       invitedEmail: string;
       role: string;
       note?: string | null;
+      permissions?: string[];
       status: string;
-      token: string;
+      token?: string;
       expiresAt: Date;
       createdByUserId: string;
       acceptedAt: Date;
@@ -81,8 +120,9 @@ export class InvitationsService {
       resentCount: number;
     },
     userSummary: InternalUserSummary,
+    wasOnboarded: boolean = false,
   ): AcceptInvitationResult {
-    const hasCompleted = userSummary.onboardingDismissed;
+    const hasCompleted = wasOnboarded;
 
     return {
       ...invitation,
@@ -93,14 +133,14 @@ export class InvitationsService {
         role: userSummary.role,
         onboardingDismissed: userSummary.onboardingDismissed,
         hasCompletedOnboarding: hasCompleted,
-        accountState: 'existing_account',
+        accountState: wasOnboarded ? 'existing_account' : 'new_account',
       },
       postAccept: {
         nextStep: hasCompleted ? 'go_to_team' : 'continue_onboarding',
         reason: hasCompleted
           ? 'existing_user_completed_onboarding'
           : 'existing_user_needs_onboarding',
-        suggestedPath: hasCompleted ? '/teams' : '/onboarding',
+        suggestedPath: hasCompleted ? '/my-team' : undefined,
         teamId: invitation.teamId,
       },
     };
@@ -118,18 +158,21 @@ export class InvitationsService {
     team: { id: string; name: string },
   ) {
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + this.expDays);
+    expiresAt.setTime(expiresAt.getTime() + this.expHours * 60 * 60 * 1000);
 
     const token = generateInviteLinkToken({
       teamId: dto.teamId,
+      companyId: dto.companyId,
       role: dto.role,
       teamName: team.name,
       invitedBy: creator.id,
+      invitedByEmail: creator.email,
       exp: expiresAt.getTime(),
     });
 
     return {
       teamId: dto.teamId,
+      companyId: dto.companyId,
       teamName: team.name,
       role: dto.role,
       status: 'pending' as const,
@@ -152,9 +195,19 @@ export class InvitationsService {
         );
 
         try {
+          // This only runs for a request that already cleared
+          // GatewayAuthGuard with a valid JWT, so the invitee has live
+          // credentials, so a lazily-created row here must not default to
+          // hasPassword: false, or every EMAIL-provider user whose
+          // user-service profile hadn't been synced yet gets wrongly
+          // prompted to "create a password" they already have (bugfix:
+          // this was pinning hasPassword false on every such row, and
+          // syncFromAuth's upsert then preserves that false forever since
+          // future syncs only set it when explicitly true).
           await this.userService.syncUserProfile({
             id: invitee.id,
             email: invitee.email,
+            hasPassword: true,
           });
 
           return await this.userService.dismissOnboarding(invitee.id);
@@ -192,7 +245,58 @@ export class InvitationsService {
   async createInvites(dto: CreateInvitationsDto, inviter: { id: string; email: string }) {
     const results = [];
     const normalizedNote = this.normalizeInvitationNote(dto.note);
+    const permissions = dto.permissions ?? [];
+
+    // Resolve the company name once so the notification email shows a real
+    // name instead of the raw team/company UUID.
+    let companyName: string | undefined;
+    if (dto.companyId) {
+      try {
+        const company = await this.userService.getCompany(dto.companyId);
+        companyName = company.name;
+      } catch {
+        this.logger.warn(`Could not resolve company name for ${dto.companyId}; falling back to teamId in email copy`);
+      }
+    }
+
+    // Inviter display name + avatar for the branded invitation email. Best
+    // effort: a user-service hiccup must not block the invite, the template
+    // falls back to the inviter's email and an initials avatar.
+    let inviterName: string | undefined;
+    let inviterAvatarUrl: string | undefined;
+    let inviterUsername: string | undefined;
+    try {
+      const profile = await this.userService.getUserSummary(inviter.id);
+      inviterName =
+        [profile.firstName, profile.lastName].filter(Boolean).join(' ') || undefined;
+      inviterAvatarUrl = profile.avatarUrl;
+      inviterUsername = profile.username;
+    } catch {
+      this.logger.warn(`Could not resolve inviter profile for ${inviter.id}; email will fall back to their email address`);
+    }
+
     for (const email of dto.emails) {
+      // Doc workflow step 4: duplicate prevention against active company
+      // membership. Only runs when a company is attached, because legacy
+      // team-only invites have nothing to check this against.
+      if (dto.companyId) {
+        const existingMember = await this.userService
+          .getCompanyMemberByEmail(dto.companyId, email)
+          .catch(() => null);
+        if (existingMember) {
+          // Per-item rejection, not a thrown exception. A batch invite of
+          // several emails must not abort for the whole request just
+          // because one recipient already belongs to the company.
+          results.push({
+            email,
+            error: 'ALREADY_MEMBER',
+            message: `${email} is already a member of this company`,
+          });
+          continue;
+        }
+      }
+
+      // Doc workflow step 5: duplicate prevention against a pending invite.
       const existing = await this.repo.findOne({
         where: { teamId: dto.teamId, invitedEmail: email, status: InvitationStatus.PENDING },
       });
@@ -202,72 +306,270 @@ export class InvitationsService {
         continue;
       }
 
-      const token = randomBytes(32).toString('hex');
+      const secret = generateInviteSecret();
+      const tokenHash = await hashInviteSecret(secret);
       const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + this.expDays);
+      expiresAt.setTime(expiresAt.getTime() + this.expHours * 60 * 60 * 1000);
 
       const inv = await this.repo.save(
         this.repo.create({
           teamId: dto.teamId,
+          companyId: dto.companyId,
           invitedEmail: email,
           role: dto.role,
           note: normalizedNote ?? undefined,
-          token,
+          permissions,
+          tokenHash,
           expiresAt,
           createdByUserId: inviter.id,
+          createdByEmail: inviter.email,
         }),
       );
 
+      const acceptToken = buildAcceptToken(inv.id, secret);
+      const acceptUrl = `${this.appBaseUrl}/invite/accept?token=${acceptToken}`;
 
-      // --- Send invitation via RabbitMQ (existing logic) ---
-      this.rabbitmq.emit('notification.email.team_invitation', {
+      this.rabbitmqEmailDispatch({
         to: email,
-        teamName: dto.teamId,
+        teamName: companyName ?? dto.teamId,
         role: dto.role,
-        acceptUrl: `${this.appBaseUrl}/invite/accept?token=${token}`,
+        acceptUrl,
         inviterEmail: inviter.email,
+        inviterName,
+        inviterAvatarUrl,
         note: normalizedNote ?? undefined,
       });
 
-      // --- Direct Brevo email for testing (comment out when switching back to SendGrid) ---
-      this.logger.log(
-        `[DirectBrevo] Sending invitation email: to=${email} teamId=${dto.teamId} role=${dto.role} inviter=${inviter.email} token=${token.substring(0, 8)}...`,
-      );
-      try {
-        await this.brevoService.sendNotificationEmail(
-          email,
-          `You're invited to join team ${dto.teamId}`,
-          `You have been invited as ${dto.role}.`,
-          `${this.appBaseUrl}/invite/accept?token=${token}`
-        );
-        this.logger.log(`[DirectBrevo] Invitation email sent successfully: to=${email}`);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        this.logger.error(`[DirectBrevo] Failed to send invitation email: to=${email} error=${message}`);
-      }
+      this.events.created(inv.id, dto.teamId, dto.companyId, email, dto.role);
 
-      // Publish notification event to RabbitMQ
-      this.rabbitmq.emit('notification.send', {
-        recipientId: inviter.id,
-        recipientEmail: inviter.email,
-        category: 'teams',
-        event: 'invitation.sent',
-        title: `Invitation sent to ${email}`,
-        body: `You've invited ${email} to join your team as ${dto.role}`,
-        link: `${this.appBaseUrl}/my-team`,
-        metadata: { invitedEmail: email, teamId: dto.teamId, role: dto.role },
-        delivery: { inApp: true, email: false },
-      });
+      this.notifyInviter(inviter, email, dto.teamId, dto.role);
+
+      // In-app notification to invitee if they are an existing registered user
+      try {
+        const inviteeUser = await this.userService
+          .getUserSummaryByEmail(email)
+          .catch(() => null);
+
+        if (inviteeUser?.id) {
+          this.notifyInviteeOnInvite(inviteeUser, inviter, {
+            invitationId: inv.id,
+            acceptUrl,
+            teamName: companyName ?? 'external team',
+            role: dto.role,
+            inviterUsername,
+            inviterName,
+            inviterAvatarUrl,
+          });
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `Could not dispatch in-app notification to invitee ${email}: ${err?.message ?? err}`,
+        );
+      }
 
       results.push({ ...inv, alreadyInvited: false });
     }
     return results;
   }
 
+  /** notification.email.team_invitation, consumed by notification-service's
+   * email worker (notification.service.ts sendTeamInvitationEmail). This is
+   * the single email path now; the old duplicate direct-Brevo send in this
+   * method has been removed. */
+  private rabbitmqEmailDispatch(payload: {
+    to: string;
+    teamName: string;
+    role: string;
+    acceptUrl: string;
+    inviterEmail: string;
+    inviterName?: string;
+    inviterAvatarUrl?: string;
+    note?: string;
+  }): void {
+    this.rabbitmq.emit('notification.email.team_invitation', payload);
+  }
+
+  /** notification.email.invitation_accepted, consumed by notification-service's
+   * email worker (notification.service.ts sendInvitationAcceptedEmail). Typed
+   * here so the payload the consumer destructures can't drift silently:
+   * ClientProxy.emit itself accepts anything. */
+  private rabbitmqAcceptedEmailDispatch(payload: {
+    to: string;
+    companyName: string;
+    companyLogoUrl?: string;
+    memberCount?: number;
+    inviteeName?: string;
+    inviteeEmail: string;
+    inviteMoreUrl: string;
+    launchUrl: string;
+  }): void {
+    this.rabbitmq.emit('notification.email.invitation_accepted', payload);
+  }
+
+  /** In-app notification to the inviter confirming the invite was sent. */
+  private notifyInviter(
+    inviter: { id: string; email: string },
+    invitedEmail: string,
+    teamId: string,
+    role: string,
+  ): void {
+    this.rabbitmq.emit('notification.send', {
+      recipientId: inviter.id,
+      recipientEmail: inviter.email,
+      category: 'teams',
+      event: 'invitation.sent',
+      title: `Invitation sent to ${invitedEmail}`,
+      body: `You've invited ${invitedEmail} to join your team as ${role}`,
+      link: `${this.appBaseUrl}/my-team`,
+      metadata: { invitedEmail, teamId, role },
+      delivery: { inApp: true, email: false },
+    });
+  }
+
+  /** In-app notification to the invitee when an invite is created for an existing user. */
+  private notifyInviteeOnInvite(
+    invitee: { id: string; email: string },
+    inviter: { id: string; email: string },
+    details: {
+      invitationId: string;
+      acceptUrl: string;
+      teamName: string;
+      role: string;
+      inviterUsername?: string;
+      inviterName?: string;
+      inviterAvatarUrl?: string;
+    },
+  ): void {
+    const inviterHandle = details.inviterUsername
+      ? `@${details.inviterUsername}`
+      : details.inviterName
+        ? details.inviterName
+        : inviter.email;
+
+    const teamDescription =
+      details.teamName && details.teamName !== 'external team'
+        ? `join their team at ${details.teamName}`
+        : `join their external team`;
+
+    this.rabbitmq.emit('notification.send', {
+      recipientId: invitee.id,
+      recipientEmail: invitee.email,
+      category: 'team',
+      event: 'team.invitation.received',
+      title: 'New Offer',
+      body: `${inviterHandle} invited you to ${teamDescription}`,
+      link: details.acceptUrl,
+      metadata: {
+        invitationId: details.invitationId,
+        acceptUrl: details.acceptUrl,
+        inviterId: inviter.id,
+        inviterUsername: details.inviterUsername,
+        inviterName: details.inviterName,
+        avatarUrl: details.inviterAvatarUrl,
+        teamName: details.teamName,
+        role: details.role,
+        ctaLabel: 'View Invite',
+        badgeIcon: 'briefcase',
+      },
+      delivery: { inApp: true, email: false },
+    });
+  }
+
+  /** notification.email.invitation_accepted, the inviter's copy of the good
+   * news, sent once an invitee joins. Mirrors rabbitmqEmailDispatch (the
+   * invitee's copy); notification-service owns the rendering.
+   *
+   * Best effort by design: this runs after the invitation is already accepted
+   * and the roster written, so a failed lookup here must never surface as a
+   * failed accept. Every error is logged and swallowed. */
+  private async emailInviterOnAccept(params: {
+    inviterUserId: string;
+    inviterEmail?: string;
+    invitee: { id: string; email: string };
+    companyId?: string;
+    fallbackCompanyName: string;
+  }): Promise<void> {
+    try {
+      const inviterPromise = (async () => {
+        try {
+          return await this.userService.getUserSummary(params.inviterUserId);
+        } catch {
+          if (params.inviterEmail) {
+            return await this.userService.getUserSummaryByEmail(params.inviterEmail).catch(() => null);
+          }
+          return null;
+        }
+      })();
+
+      const [inviter, invitee, company, memberCount] = await Promise.all([
+        inviterPromise,
+        this.userService.getUserSummary(params.invitee.id).catch(() => null),
+        params.companyId
+          ? this.userService.getCompany(params.companyId).catch(() => null)
+          : Promise.resolve(null),
+        params.companyId
+          ? this.userService.getCompanyMemberCount(params.companyId).catch(() => undefined)
+          : Promise.resolve(undefined),
+      ]);
+
+      const destinationEmail = inviter?.email || params.inviterEmail;
+      if (!destinationEmail) {
+        this.logger.warn(
+          `Skipping invite-accepted email: no email on inviter ${params.inviterUserId}`,
+        );
+        return;
+      }
+
+      const inviteeName = invitee
+        ? [invitee.firstName, invitee.lastName].filter(Boolean).join(' ') || undefined
+        : undefined;
+
+      this.rabbitmqAcceptedEmailDispatch({
+        to: destinationEmail,
+        companyName: company?.name ?? params.fallbackCompanyName,
+        companyLogoUrl: company?.logoUrl,
+        memberCount,
+        inviteeName,
+        inviteeEmail: params.invitee.email,
+        // Team management is where both actions land: it holds the roster and
+        // the invite window. No company-scoped launch route exists yet.
+        inviteMoreUrl: `${this.appBaseUrl}/my-team`,
+        launchUrl: `${this.appBaseUrl}/my-team`,
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `Failed to dispatch invite-accepted email to inviter ${params.inviterUserId}: ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  /** In-app notification to the inviter once an invite is accepted.
+   *
+   * The invitee deliberately gets nothing here. The only invite notification
+   * they should see is the "New Offer" card from notifyInviteeOnInvite; a
+   * follow-up "You've joined ..." is redundant to the person who just clicked
+   * accept. Note this has to be an emit that never happens rather than
+   * `delivery.inApp: false`. The notification service persists every payload it
+   * dispatches and only gates the realtime push, so a suppressed-delivery
+   * notification would still list in the panel and still count as unread. */
+  private notifyAccepted(invitee: { id: string; email: string }, updated: Invitation): void {
+    this.rabbitmq.emit('notification.send', {
+      recipientId: updated.createdByUserId,
+      category: 'teams',
+      event: 'invitation.accepted_by_invitee',
+      title: `${invitee.email} accepted your invitation`,
+      body: `${invitee.email} has joined your team as ${updated.role}`,
+      link: `/my-team`,
+      metadata: { teamId: updated.teamId, acceptedByEmail: invitee.email, invitationId: updated.id },
+      delivery: { inApp: true, email: false },
+    });
+  }
+
   async list(dto: ListInvitationsDto) {
     const qb = this.repo.createQueryBuilder('i').orderBy('i.createdAt', 'DESC');
 
     if (dto.teamId) qb.andWhere('i.teamId = :teamId', { teamId: dto.teamId });
+    if (dto.companyId) qb.andWhere('i.companyId = :companyId', { companyId: dto.companyId });
     if (dto.status) qb.andWhere('i.status = :status', { status: dto.status });
     if (dto.invitedEmail) {
       qb.andWhere('LOWER(i.invitedEmail) = LOWER(:invitedEmail)', {
@@ -312,26 +614,80 @@ export class InvitationsService {
 
   async getOne(id: string): Promise<Invitation> {
     const inv = await this.repo.findOne({ where: { id } });
-    if (!inv) throw new NotFoundException('Invitation not found');
+    if (!inv) throw new InvitationNotFoundException();
     return inv;
   }
 
   async resend(id: string): Promise<Invitation> {
     const inv = await this.getOne(id);
     if (inv.status !== InvitationStatus.PENDING) {
-      throw new BadRequestException('Can only resend pending invitations');
+      throw new InvitationNotPendingException('Can only resend pending invitations');
     }
+
+    // Mint a new secret + hash so the old link stops working, and reset
+    // expiry. This is the doc's "invalidates old token" step.
+    const secret = generateInviteSecret();
+    inv.tokenHash = await hashInviteSecret(secret);
+    inv.token = undefined;
+    inv.expiresAt = new Date();
+    inv.expiresAt.setTime(inv.expiresAt.getTime() + this.expHours * 60 * 60 * 1000);
     inv.resentCount += 1;
     await this.repo.save(inv);
 
-    this.rabbitmq.emit('notification.email.team_invitation', {
+    const acceptToken = buildAcceptToken(inv.id, secret);
+
+    // Resends must carry the same branding as the original send: resolve the
+    // company name and the original inviter, best effort.
+    const [company, inviter] = await Promise.all([
+      inv.companyId ? this.userService.getCompany(inv.companyId).catch(() => null) : null,
+      inv.createdByUserId
+        ? this.userService.getUserSummary(inv.createdByUserId).catch(() => null)
+        : null,
+    ]);
+
+    this.rabbitmqEmailDispatch({
       to: inv.invitedEmail,
-      teamName: inv.teamName ?? inv.teamId,
+      teamName: company?.name ?? inv.teamName ?? inv.teamId,
       role: inv.role,
-      acceptUrl: `${this.appBaseUrl}/invite/accept?token=${inv.token}`,
-      inviterEmail: '',
+      acceptUrl: `${this.appBaseUrl}/invite/accept?token=${acceptToken}`,
+      inviterEmail: inviter?.email ?? '',
+      inviterName: inviter
+        ? [inviter.firstName, inviter.lastName].filter(Boolean).join(' ') || undefined
+        : undefined,
+      inviterAvatarUrl: inviter?.avatarUrl,
       note: inv.note,
     });
+
+    this.events.resent(inv.id, inv.teamId, inv.companyId, inv.invitedEmail);
+
+    // In-app notification to invitee if they are an existing registered user
+    try {
+      const inviteeUser = await this.userService
+        .getUserSummaryByEmail(inv.invitedEmail)
+        .catch(() => null);
+
+      if (inviteeUser?.id) {
+        this.notifyInviteeOnInvite(
+          inviteeUser,
+          { id: inv.createdByUserId, email: inv.createdByEmail || inviter?.email || '' },
+          {
+            invitationId: inv.id,
+            acceptUrl: `${this.appBaseUrl}/invite/accept?token=${acceptToken}`,
+            teamName: company?.name ?? inv.teamName ?? 'external team',
+            role: inv.role,
+            inviterUsername: inviter?.username,
+            inviterName: inviter
+              ? [inviter.firstName, inviter.lastName].filter(Boolean).join(' ') || undefined
+              : undefined,
+            inviterAvatarUrl: inviter?.avatarUrl,
+          },
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `Could not dispatch in-app notification on resend to invitee ${inv.invitedEmail}: ${err?.message ?? err}`,
+      );
+    }
 
     return inv;
   }
@@ -339,23 +695,95 @@ export class InvitationsService {
   async cancel(id: string): Promise<Invitation> {
     const inv = await this.getOne(id);
     if (inv.status !== InvitationStatus.PENDING) {
-      throw new BadRequestException('Can only cancel pending invitations');
+      throw new InvitationNotPendingException('Can only cancel pending invitations');
     }
     inv.status = InvitationStatus.CANCELED;
     inv.canceledAt = new Date();
-    return this.repo.save(inv);
+    const saved = await this.repo.save(inv);
+    this.events.revoked(inv.id, inv.teamId, inv.companyId, inv.invitedEmail);
+    return saved;
+  }
+
+  async preview(token: string): Promise<InvitationPreview> {
+    const inv = await this.resolveInvitationForRead(token);
+
+    if (!inv) {
+      const linkPayload = verifyInviteLinkToken(token);
+      if (!linkPayload) throw new InvalidTokenException();
+
+      const [company, inviter] = await Promise.all([
+        linkPayload.companyId
+          ? this.userService.getCompany(linkPayload.companyId).catch(() => null)
+          : Promise.resolve(null),
+        this.userService.getUserSummary(linkPayload.invitedBy).catch(() => null),
+      ]);
+
+      return {
+        companyId: linkPayload.companyId ?? null,
+        companyName: company?.name ?? linkPayload.teamName ?? null,
+        companyLogoUrl: company?.logoUrl ?? null,
+        inviterName: inviter
+          ? [inviter.firstName, inviter.lastName].filter(Boolean).join(' ') || inviter.email
+          : linkPayload.invitedByEmail ?? null,
+        inviterUsername: inviter?.username ?? null,
+        role: linkPayload.role,
+        // Invite links don't currently carry granular permissions through
+        // the signed token payload. Only the legacy role does.
+        permissions: [],
+        expiresAt: new Date(linkPayload.exp),
+        status: Date.now() > linkPayload.exp ? 'expired' : 'pending',
+      };
+    }
+
+    const [company, inviter] = await Promise.all([
+      inv.companyId ? this.userService.getCompany(inv.companyId).catch(() => null) : Promise.resolve(null),
+      this.userService.getUserSummary(inv.createdByUserId).catch(() => null),
+    ]);
+
+    const isExpired = inv.status === InvitationStatus.PENDING && inv.expiresAt < new Date();
+
+    return {
+      companyId: inv.companyId ?? null,
+      companyName: company?.name ?? inv.teamName ?? null,
+      companyLogoUrl: company?.logoUrl ?? null,
+      inviterName: inviter
+        ? [inviter.firstName, inviter.lastName].filter(Boolean).join(' ') || inviter.email
+        : inv.createdByEmail ?? null,
+      inviterUsername: inviter?.username ?? null,
+      role: inv.role,
+      permissions: inv.permissions ?? [],
+      expiresAt: inv.expiresAt,
+      status: isExpired ? 'expired' : inv.status,
+    };
+  }
+
+  /** Resolves a DB-backed invitation (hashed token first, legacy plaintext
+   * fallback), or null if the token doesn't match a DB row at all. The
+   * caller then tries the HMAC link-token path. Never mutates. */
+  private async resolveInvitationForRead(token: string): Promise<Invitation | null> {
+    const parsed = parseAcceptToken(token);
+    if (parsed) {
+      const candidate = await this.repo.findOne({ where: { id: parsed.invitationId } });
+      if (candidate?.tokenHash && (await verifyInviteSecret(parsed.secret, candidate.tokenHash))) {
+        return candidate;
+      }
+      return null;
+    }
+    return this.repo.findOne({ where: { token } });
   }
 
   async accept(dto: AcceptInvitationDto, invitee: { id: string; email: string }): Promise<Invitation | Record<string, any>> {
-    const inv = await this.repo.findOne({ where: { token: dto.token } });
+    const inv = await this.resolveInvitationForRead(dto.token);
+
     if (!inv) {
       // Fallback: try to verify as a generic invite link token (HMAC-signed)
       const linkPayload = verifyInviteLinkToken(dto.token);
       if (!linkPayload) {
-        throw new NotFoundException('Invalid invitation token');
+        throw new InvalidTokenException();
       }
 
-      // Link-based accept — add to the team roster via user-service.
+      // Link-based accept. Add to the team roster via user-service, and
+      // to the company roster too when the link carries a company.
       await this.userService
         .addTeamMember({
           teamId: linkPayload.teamId,
@@ -364,12 +792,38 @@ export class InvitationsService {
         })
         .catch(() => null);
 
+      if (linkPayload.companyId) {
+        // Not swallowed: a company-scoped link that fails to write the
+        // roster must not report success.
+        await this.userService.addCompanyMember({
+          companyId: linkPayload.companyId,
+          userId: invitee.id,
+          role: linkPayload.role,
+        });
+      }
+
+      const priorSummary = await this.userService
+        .getUserSummary(invitee.id)
+        .catch(() => null);
+      const wasOnboarded = priorSummary?.onboardingDismissed === true;
+
       const updatedUserSummary = await this.getSafeDismissedUserSummary(invitee);
+
+      this.events.accepted(null, linkPayload.teamId, linkPayload.companyId, invitee.email, invitee.id);
+
+      await this.emailInviterOnAccept({
+        inviterUserId: linkPayload.invitedBy,
+        inviterEmail: linkPayload.invitedByEmail,
+        invitee,
+        companyId: linkPayload.companyId,
+        fallbackCompanyName: linkPayload.teamName ?? linkPayload.teamId,
+      });
 
       return this.buildAcceptResponse({
         id: null,
         teamId: linkPayload.teamId,
         teamName: linkPayload.teamName,
+        companyId: linkPayload.companyId,
         invitedEmail: invitee.email,
         role: linkPayload.role,
         note: null,
@@ -380,20 +834,36 @@ export class InvitationsService {
         acceptedAt: new Date(),
         canceledAt: null,
         resentCount: 0,
-      }, updatedUserSummary);
+      }, updatedUserSummary, wasOnboarded);
     }
-    if (inv.status !== InvitationStatus.PENDING) throw new BadRequestException('Invitation is no longer pending');
+
+    if (inv.status === InvitationStatus.CANCELED) throw new InvitationCanceledException();
+    if (inv.status === InvitationStatus.ACCEPTED) throw new AlreadyAcceptedException();
+    if (inv.status !== InvitationStatus.PENDING) throw new InvalidTokenException();
     if (inv.expiresAt < new Date()) {
       inv.status = InvitationStatus.EXPIRED;
       await this.repo.save(inv);
-      throw new BadRequestException('Invitation has expired');
+      throw new TokenExpiredException();
     }
     if (inv.invitedEmail.toLowerCase() !== invitee.email.toLowerCase()) {
-      throw new ForbiddenException('Email does not match invitation');
+      throw new EmailMismatchException();
     }
 
-    // Add to the team roster via user-service (idempotent; user-service
-    // owns the user_service.team_members table the roster is read from).
+    // Company roster write happens BEFORE the status flip is persisted, and
+    // is not swallowed: if it throws, nothing about this invitation has
+    // been mutated yet, so there's nothing to roll back. (The legacy team
+    // roster write below stays best-effort, as it did before, because every
+    // invitation has a teamId, so making it hard-fail would break existing
+    // team-only invites that predate the company model.)
+    if (inv.companyId) {
+      await this.userService.addCompanyMember({
+        companyId: inv.companyId,
+        userId: invitee.id,
+        role: inv.role,
+        permissions: inv.permissions,
+      });
+    }
+
     await this.userService
       .addTeamMember({
         teamId: inv.teamId,
@@ -408,36 +878,29 @@ export class InvitationsService {
     const updated = await this.repo.save(inv);
 
     if (!updated) {
-      throw new NotFoundException('Invitation not found');
+      throw new InvitationNotFoundException();
     }
 
-     const updatedUserSummary = await this.getSafeDismissedUserSummary(invitee);
+    const priorSummary = await this.userService
+      .getUserSummary(invitee.id)
+      .catch(() => null);
+    const wasOnboarded = priorSummary?.onboardingDismissed === true;
+
+    const updatedUserSummary = await this.getSafeDismissedUserSummary(invitee);
+
+    this.events.accepted(updated.id, updated.teamId, updated.companyId, invitee.email, invitee.id);
 
     // Publish notification to invitee: they've accepted and joined the team
-    this.rabbitmq.emit('notification.send', {
-      recipientId: invitee.id,
-      recipientEmail: invitee.email,
-      category: 'teams',
-      event: 'invitation.accepted',
-      title: `You've joined ${updated.teamId}`,
-      body: `You successfully accepted the invitation to join the team`,
-      link: `/my-team`,
-      metadata: { teamId: updated.teamId, invitationId: updated.id },
-      delivery: { inApp: true, email: false },
-    });
+    this.notifyAccepted(invitee, updated);
 
-    // Publish notification to inviter: invitee has accepted
-    this.rabbitmq.emit('notification.send', {
-      recipientId: updated.createdByUserId,
-      category: 'teams',
-      event: 'invitation.accepted_by_invitee',
-      title: `${invitee.email} accepted your invitation`,
-      body: `${invitee.email} has joined your team as ${updated.role}`,
-      link: `/my-team`,
-      metadata: { teamId: updated.teamId, acceptedByEmail: invitee.email, invitationId: updated.id },
-      delivery: { inApp: true, email: false },
+    // ...and the inviter gets an email confirming their invite was accepted.
+    await this.emailInviterOnAccept({
+      inviterUserId: updated.createdByUserId,
+      inviterEmail: updated.createdByEmail,
+      invitee,
+      companyId: updated.companyId,
+      fallbackCompanyName: updated.teamName ?? updated.teamId,
     });
-
 
     return this.buildAcceptResponse(
       {
@@ -445,6 +908,7 @@ export class InvitationsService {
         acceptedAt: updated.acceptedAt ?? new Date(),
       },
       updatedUserSummary,
+      wasOnboarded,
     );
   }
 }
