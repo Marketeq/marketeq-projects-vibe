@@ -96,6 +96,7 @@ const buildTalentSections = (inboxBadge?: string): SidebarSection[] => [
       { href: "/my-listings", label: "My Listings", icon: Search },
       { href: "/my-contracts", label: "My Contracts", icon: FileCheck02 },
       { href: "/my-jobs", label: "My Jobs", icon: Briefcase },
+      { href: "/my-team", label: "My Teams", icon: Users },
       { href: "/earnings", label: "Transactions", icon: CurrencyDollar },
       { href: "/reports", label: "Reports", icon: BarChartSquare02 },
     ],
@@ -130,7 +131,7 @@ const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
   {
     label: "Account",
     items: [
-      { href: "/talent-profile", label: "Profile", icon: UserCircle },
+      { href: "/client-profile", label: "Profile", icon: UserCircle },
       { href: "/inbox", label: "Inbox", icon: Mail01, badge: inboxBadge },
       {
         href: "/notifications",

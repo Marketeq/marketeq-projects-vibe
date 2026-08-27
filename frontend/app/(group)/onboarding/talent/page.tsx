@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useMemo, useRef, useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import industriesMock from "@/public/mock/industries.json"
@@ -34,13 +35,18 @@ import {
 import { generateUsernameSuggestions } from "@/utils/username"
 import {
   AlertCircle,
+  AlertTriangle,
   Check,
+  CheckCircle,
   ChevronRight,
   File02,
+  FileText,
   Home03,
+  Loading01,
   Plus,
   RefreshCw01,
   SearchLg,
+  SwitchHorizontal01,
   Trash03,
   Upload,
   User01,
@@ -50,6 +56,7 @@ import {
 } from "@blend-metrics/icons"
 import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { AnimatePresence, motion } from "framer-motion"
 import { Steps } from "headless-stepper"
 import {
   Controller,
@@ -74,6 +81,7 @@ import {
   AlertDescription,
   AlertIcon,
   Badge,
+  BadgeCloseButton,
   Button,
   Card,
   Checkbox,
@@ -84,8 +92,9 @@ import {
   ComboboxOption,
   ComboboxOptions,
   ComboboxTrigger,
+  Dialog,
+  DialogContent,
   ErrorMessage,
-  GoogleMap,
   IconButton,
   ImageEditor,
   Input,
@@ -112,9 +121,12 @@ const skillSuggestions = Array.isArray(rawSkillSuggestions)
   ? rawSkillSuggestions
   : []
 
-const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/
+const AVATAR_FILE_TYPE_MESSAGE =
+  "Please use an accepted file type: PNG or JPEG. 300 x 300 pixels or larger is recommended."
+
+const USERNAME_PATTERN = /^[a-zA-Z0-9._]+$/
 const USERNAME_RULE_MESSAGE =
-  "Username can only contain letters, numbers, and underscores"
+  "Username can only contain letters, numbers, periods, and underscores"
 
 const optionalTrimmedString = z.preprocess((value) => {
   if (typeof value !== "string") return value
@@ -165,6 +177,7 @@ const IntroduceYourself = ({
   stepData: CreateTalentType | null
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
 }) => {
+  const { logoutHandler } = useAuth()
   const router = useRouter()
   const [formError, setFormError] = useState<string | null>(null)
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null)
@@ -183,6 +196,9 @@ const IntroduceYourself = ({
     handleSubmit,
     control,
     watch,
+    setError,
+    clearErrors,
+    setValue,
   } = useForm<IntroduceYourselfFormValues>({
     resolver: zodResolver(introduceYourselfFormSchema),
     defaultValues: {
@@ -194,7 +210,7 @@ const IntroduceYourself = ({
   const { firstName, lastName } = watch()
 
   const { toggleValidation } = useStepContext()
-  const { nextStep, setStep } = useStepperContext()
+  const { nextStep, prevStep, setStep } = useStepperContext()
 
   useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
 
@@ -202,17 +218,36 @@ const IntroduceYourself = ({
 
   const progress = ((currentStep + 1) / totalSteps) * 100
   const initials = `${firstName?.[0] || ""}${lastName?.[0] || ""}`.trim()
+  const hasAvatarError = hookFormHasError({ errors, name: "avatar" })
 
   const onSubmit: SubmitHandler<IntroduceYourselfFormValues> = ({
     avatar,
     firstName,
     lastName,
   }) => {
-    const hasAnyField = (avatar && avatar.length > 0) || firstName || lastName
-    if (!hasAnyField) {
-      setFormError("Please enter at least one field")
-      return
+    let missing = false
+    if (!avatar || avatar.length === 0) {
+      setError("avatar", {
+        type: "manual",
+        message: "Please add a profile photo",
+      })
+      missing = true
     }
+    if (!firstName?.trim()) {
+      setError("firstName", {
+        type: "manual",
+        message: "Please enter your first name",
+      })
+      missing = true
+    }
+    if (!lastName?.trim()) {
+      setError("lastName", {
+        type: "manual",
+        message: "Please enter your last name",
+      })
+      missing = true
+    }
+    if (missing) return
     setFormError(null)
     setStepData({
       ...stepData,
@@ -244,6 +279,18 @@ const IntroduceYourself = ({
         className="relative grid items-start flex-auto py-10 px-5 md:px-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={handleSubmit(onSubmit)}
       >
+        <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+          <Button
+            size="sm"
+            variant="ghost"
+            visual="gray"
+            type="button"
+            onClick={logoutHandler}
+          >
+            Log out
+          </Button>
+        </div>
+
         <div className="max-w-[488px] lg:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
             <CircularProgress
@@ -253,7 +300,7 @@ const IntroduceYourself = ({
               value={progress}
             />
             <span className="text-[11px] leading-[15.43px] text-gray-700">
-              STEP 1 / 5
+              STEP 2 / 5
             </span>
           </div>
 
@@ -270,22 +317,59 @@ const IntroduceYourself = ({
             <div className="space-y-6">
               <div className="flex flex-col gap-y-1.5">
                 <Label
-                  className="text-dark-blue-400"
-                  htmlFor="profile-photo"
+                  className="text-dark-blue-400 cursor-default capitalize"
+                  size="sm"
                   asChild
                 >
-                  <span>Profile Photo</span>
+                  <span>Profile Image</span>
                 </Label>
                 <Controller
                   control={control}
                   name="avatar"
                   render={({ field: { onChange } }) => (
                     <ImageEditor
-                      onValueChange={onChange}
+                      onValueChange={(files) => {
+                        clearErrors("avatar")
+                        onChange(files)
+                      }}
                       defaultDataUrl={avatarPreviewUrl}
-                      startingPoint={({ dataUrl, open, style }: any) => (
-                        <div className="flex flex-col gap-y-3 sm:flex-row sm:items-center sm:gap-x-4">
-                          <div className="relative overflow-hidden size-[96px] bg-gray-100 rounded-full inline-flex items-center justify-center shrink-0">
+                      // The built-in rejection message only renders inside the
+                      // editor's own dialogs, which skipUploadDialog bypasses.
+                      onFileRejected={() =>
+                        setError("avatar", {
+                          type: "manual",
+                          message: AVATAR_FILE_TYPE_MESSAGE,
+                        })
+                      }
+                      // Upload Photo opens the file browser directly rather
+                      // than the intermediate "Change Profile Image" dialog.
+                      skipUploadDialog
+                      // Without this the editor falls back to its hardcoded
+                      // "CH" placeholder. Pass the talent's real initials when
+                      // a name is known.
+                      fallbackInitials={initials || undefined}
+                      fallbackIcon={
+                        <User01 className="size-20 text-gray-300" />
+                      }
+                      startingPoint={({
+                        dataUrl,
+                        open,
+                        style,
+                        onRemove,
+                      }: any) => (
+                        // Three states per Figma 16101-48096: no photo/no name
+                        // (icon), no photo/name (acronym), photo (image). Only
+                        // the photo state gets the Remove button.
+                        <div className="flex items-center gap-x-6">
+                          {/* The design system Avatar has no invalid variant,
+                              so the error state is the same token steps in the
+                              error hue: gray-100/300 -> error-100/300. */}
+                          <div
+                            className={cn(
+                              "relative overflow-hidden size-[96px] rounded-full inline-flex items-center justify-center shrink-0",
+                              hasAvatarError ? "bg-error-100" : "bg-gray-100"
+                            )}
+                          >
                             {dataUrl ? (
                               <img
                                 alt="Avatar"
@@ -293,32 +377,72 @@ const IntroduceYourself = ({
                                 className="rounded-full absolute inset-0 size-full object-cover transform"
                                 style={style}
                               />
+                            ) : initials ? (
+                              // Acronym once a name is known, icon before that.
+                              // `initials` comes from watch(), so it tracks the
+                              // fields as they are typed.
+                              <span
+                                className={cn(
+                                  "text-[36px] font-medium leading-8 uppercase",
+                                  hasAvatarError
+                                    ? "text-error-300"
+                                    : "text-gray-300"
+                                )}
+                              >
+                                {initials}
+                              </span>
                             ) : (
-                              <User01 className="size-11 text-gray-300" />
+                              <User01
+                                className={cn(
+                                  "size-12",
+                                  hasAvatarError
+                                    ? "text-error-300"
+                                    : "text-gray-300"
+                                )}
+                              />
                             )}
                           </div>
 
                           {dataUrl ? (
-                            <Button
-                              className="rounded-full"
-                              size="md"
-                              onClick={open}
-                              type="button"
-                              variant="filled"
-                              visual="gray"
-                            >
-                              <Upload className="size-[15px]" /> Change Photo
-                            </Button>
+                            <div className="flex flex-col items-start justify-center gap-y-3">
+                              <Button
+                                className="rounded-full"
+                                size="md"
+                                variant="light"
+                                visual="primary"
+                                type="button"
+                                onClick={open}
+                                leftIcon={
+                                  <SwitchHorizontal01 className="size-[15px]" />
+                                }
+                              >
+                                Change Photo
+                              </Button>
+                              <Button
+                                className="w-full rounded-full shadow-xs"
+                                size="md"
+                                variant="outlined"
+                                visual="gray"
+                                type="button"
+                                onClick={onRemove}
+                              >
+                                Remove Photo
+                              </Button>
+                            </div>
                           ) : (
                             <Button
                               className="rounded-full"
                               size="md"
                               type="button"
-                              variant="outlined"
-                              visual="gray"
+                              variant="light"
+                              // error/light is the exact error-hue mirror of
+                              // primary/light, so the button keeps its shape
+                              // and only changes colour.
+                              visual={hasAvatarError ? "error" : "primary"}
                               onClick={open}
+                              leftIcon={<Upload className="size-[15px]" />}
                             >
-                              <Upload className="size-[15px]" /> Upload Picture
+                              Upload Photo
                             </Button>
                           )}
                         </div>
@@ -348,7 +472,13 @@ const IntroduceYourself = ({
                   <Input
                     placeholder="John"
                     id="first-name"
-                    {...register("firstName")}
+                    // Without an explicit token Chrome falls back to guessing
+                    // from name/id, and declines more often than not.
+                    autoComplete="given-name"
+                    {...register("firstName", {
+                      onChange: (event) =>
+                        setValue("firstName", toProperCase(event.target.value)),
+                    })}
                     isInvalid={hookFormHasError({ errors, name: "firstName" })}
                   />
                   <HookFormErrorMessage
@@ -370,7 +500,11 @@ const IntroduceYourself = ({
                   <Input
                     placeholder="Doe"
                     id="last-name"
-                    {...register("lastName")}
+                    autoComplete="family-name"
+                    {...register("lastName", {
+                      onChange: (event) =>
+                        setValue("lastName", toProperCase(event.target.value)),
+                    })}
                     isInvalid={hookFormHasError({ errors, name: "lastName" })}
                   />
                   <HookFormErrorMessage
@@ -382,8 +516,6 @@ const IntroduceYourself = ({
                   />
                 </div>
               </div>
-
-              {formError && <ErrorMessage size="sm">{formError}</ErrorMessage>}
             </div>
           </div>
         </div>
@@ -395,12 +527,12 @@ const IntroduceYourself = ({
               variant="outlined"
               visual="gray"
               type="button"
-              onClick={() => router.push("/onboarding")}
+              onClick={prevStep}
             >
               Back
             </Button>
 
-            <div className="flex items-center gap-x-6">
+            <div className="flex items-center gap-x-3">
               <Button
                 className="opacity-50 hover:opacity-100"
                 variant="ghost"
@@ -437,6 +569,7 @@ const CreateYourUsername = ({
   stepData: CreateTalentType | null
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
 }) => {
+  const { logoutHandler } = useAuth()
   const [show, toggleShow] = useToggle(false)
   const [isAvailable, setIsAvailable] = React.useState<boolean | null>(null)
   const [isUsernameLoading, setIsUsernameLoading] = useToggle(false)
@@ -444,9 +577,90 @@ const CreateYourUsername = ({
     string[]
   >([])
   const [isSuggestionsLoading, setIsSuggestionsLoading] = React.useState(false)
-  const collapsedSuggestions = availableSuggestions.slice(0, 3)
-  const expandedSuggestions = availableSuggestions.slice(0, 6)
+  // How many suggestions fit on one line is a function of the rendered width,
+  // not a fixed number: a wide screen should fill the row, a narrow one should
+  // show fewer. Measured off a hidden copy of the full pool so the visible row
+  // can never drive its own resize.
+  const suggestionsRowRef = React.useRef<HTMLDivElement>(null)
+  const suggestionsMeasureRef = React.useRef<HTMLSpanElement>(null)
+  const [fitCount, setFitCount] = React.useState(3)
+  // Deliberately small: if measurement has not run yet, render one short row
+  // rather than guessing high and flashing a fourth line.
+  const [expandedCount, setExpandedCount] = React.useState(3)
 
+  useIsomorphicLayoutEffect(() => {
+    const row = suggestionsRowRef.current
+    const measure = suggestionsMeasureRef.current
+    if (!row || !measure || availableSuggestions.length === 0) return
+
+    const widthOf = (selector: string) =>
+      measure.querySelector<HTMLElement>(selector)?.getBoundingClientRect()
+        .width ?? 0
+
+    const compute = () => {
+      const available = row.clientWidth
+      if (!available) return
+
+      const chips = Array.from(
+        measure.querySelectorAll<HTMLElement>("[data-measure-chip]")
+      ).map((element) => element.getBoundingClientRect().width)
+      const comma = widthOf("[data-measure-comma]")
+      const and = widthOf("[data-measure-and]")
+      const suffix = widthOf("[data-measure-suffix]")
+
+      let used = 0
+      let best = 1
+      for (let count = 1; count <= chips.length; count++) {
+        used += chips[count - 1]
+        // Mirrors the rendered layout: every name but the last carries a comma
+        // 2px off it, the last carries "and" 4px before it, and the groups plus
+        // the "are available" tail sit in a wrapping row with 8px gaps.
+        const commas = (count - 1) * (comma + 2)
+        const conjunction = count >= 2 ? and + 4 : 0
+        const gaps = count * 8
+        if (used + commas + conjunction + gaps + suffix > available) break
+        best = count
+      }
+
+      setFitCount(best)
+
+      // The expanded list cannot be fitCount * 3. The pool interleaves long and
+      // short handles, so the items past the first line are wider than the ones
+      // fitCount was measured on, and multiplying overflows into a fourth line.
+      // Simulate the wrap over the real widths instead and stop at three lines.
+      const MAX_LINES = 3
+      let line = 1
+      let lineUsed = 0
+      let fits = 0
+      for (const chip of chips) {
+        // Every expanded item but the last carries a comma at 2px
+        const item = chip + comma + 2
+        const needed = lineUsed === 0 ? item : lineUsed + 8 + item
+        if (needed > available) {
+          line += 1
+          if (line > MAX_LINES) break
+          lineUsed = item
+          // A single item wider than the row would loop forever otherwise
+          if (item > available) break
+        } else {
+          lineUsed = needed
+        }
+        fits += 1
+      }
+
+      setExpandedCount(Math.max(fitCount, fits))
+    }
+
+    compute()
+    const observer = new ResizeObserver(compute)
+    observer.observe(row)
+    return () => observer.disconnect()
+  }, [availableSuggestions, fitCount, isSuggestionsLoading, show])
+
+  const collapsedSuggestions = availableSuggestions.slice(0, fitCount)
+  const expandedSuggestions = availableSuggestions.slice(0, expandedCount)
+
+  const [formError, setFormError] = useState<string | null>(null)
   const {
     watch,
     formState: { errors, isValid },
@@ -466,7 +680,10 @@ const CreateYourUsername = ({
   const { user } = useAuth()
   const { username } = watch()
   const generatedUsernameSuggestions = useMemo(() => {
-    const contextParts = [stepData?.recentJobTitle, user?.email]
+    // First name + job title only. Passing the email pulled tokens out of its
+    // local-part, so suggestions were built from the address rather than from
+    // who the person is and what they do.
+    const contextParts = [stepData?.recentJobTitle]
       .filter(Boolean)
       .join(" ")
       .trim()
@@ -475,7 +692,7 @@ const CreateYourUsername = ({
       "",
       contextParts
     )
-  }, [stepData?.firstName, stepData?.recentJobTitle, user?.email])
+  }, [stepData?.firstName, stepData?.recentJobTitle])
 
   const { toggleValidation } = useStepContext()
   const { nextStep, prevStep, setStep } = useStepperContext()
@@ -485,6 +702,11 @@ const CreateYourUsername = ({
   const onSubmit: SubmitHandler<CreateYourUsernameFormValues> = ({
     username,
   }) => {
+    if (!username?.trim()) {
+      setFormError("Please choose a username")
+      return
+    }
+    setFormError(null)
     setStepData({
       ...stepData,
       username,
@@ -618,6 +840,18 @@ const CreateYourUsername = ({
         className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={handleSubmit(onSubmit)}
       >
+        <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+          <Button
+            size="sm"
+            variant="ghost"
+            visual="gray"
+            type="button"
+            onClick={logoutHandler}
+          >
+            Log out
+          </Button>
+        </div>
+
         <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
             <CircularProgress
@@ -642,7 +876,11 @@ const CreateYourUsername = ({
 
           <div className="mt-[50px]">
             <div className="flex flex-col gap-y-1.5">
-              <Label className="text-dark-blue-400" id="username" size="sm">
+              <Label
+                className="text-dark-blue-400"
+                htmlFor="username"
+                size="sm"
+              >
                 Enter Your Username
               </Label>
               <div className="relative">
@@ -692,92 +930,189 @@ const CreateYourUsername = ({
                   <ErrorMessage size="sm">{message}</ErrorMessage>
                 )}
               />
+              {/* Belongs with the field it describes, not above the footer */}
+              {formError && <ErrorMessage size="sm">{formError}</ErrorMessage>}
             </div>
 
-            {isSuggestionsLoading ? (
-              <div className="mt-6">
-                <span className="block text-sm leading-[16.94px] text-gray-500">
-                  Checking username suggestions...
-                </span>
-              </div>
-            ) : show ? (
-              <div className="mt-6">
-                {expandedSuggestions.map((username, index) => (
-                  <React.Fragment key={username}>
-                    <Button
-                      className="text-primary-500/50 hover:text-primary-500"
-                      size="lg"
-                      visual="gray"
-                      variant="link"
-                      type="button"
-                      onClick={() => setFormValue("username", username)}
+            {/* The row ref and the measurement layer sit outside the
+                loading/expanded branches. They used to live inside the
+                collapsed branch, so while isSuggestionsLoading was true the
+                refs were null, the effect bailed out, and it never re-ran once
+                the row mounted - leaving expandedCount at its initial value. */}
+            <div className="relative" ref={suggestionsRowRef}>
+              {availableSuggestions.length > 0 && (
+                <span
+                  ref={suggestionsMeasureRef}
+                  aria-hidden
+                  className="pointer-events-none invisible absolute left-0 top-0 block whitespace-nowrap"
+                >
+                  {availableSuggestions.map((username) => (
+                    <span
+                      key={username}
+                      data-measure-chip
+                      className="text-base font-semibold leading-6"
                     >
                       {username}
-                    </Button>
-
-                    {index !== expandedSuggestions.length - 1 && (
-                      <span>, </span>
-                    )}
-                  </React.Fragment>
-                ))}
-                {availableSuggestions.length === 0 && (
-                  <span className="block text-sm leading-[16.94px] text-gray-500">
-                    No available suggestions right now. Try entering your own
-                    username.
+                    </span>
+                  ))}
+                  <span
+                    data-measure-comma
+                    className="text-sm font-semibold leading-[17px]"
+                  >
+                    ,
                   </span>
-                )}
-              </div>
-            ) : (
-              <div className="mt-6">
-                {availableSuggestions.length > 0 ? (
-                  <>
-                    <span className="block text-sm leading-[16.94px] text-gray-500">
-                      {collapsedSuggestions.map((username, index) => (
-                        <React.Fragment key={username}>
+                  <span
+                    data-measure-and
+                    className="text-sm font-semibold leading-[17px]"
+                  >
+                    and
+                  </span>
+                  <span
+                    data-measure-suffix
+                    className="text-sm font-semibold leading-[17px]"
+                  >
+                    are available
+                  </span>
+                </span>
+              )}
+
+              {/* Expanding slides the extra rows down, collapsing slides them
+                  back up. mode="wait" lets one list finish leaving before the
+                  other enters, so the height travels one direction at a time. */}
+              <AnimatePresence initial={false} mode="wait">
+                {isSuggestionsLoading ? null : show ? (
+                  <motion.div
+                    key="expanded"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.24, ease: [0.4, 0, 0.2, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-6 flex w-full flex-row flex-wrap content-start items-start gap-2">
+                      {expandedSuggestions.map((username, index) => (
+                        <div
+                          key={username}
+                          className="flex flex-row items-center gap-x-0.5"
+                        >
                           <Button
-                            className="text-primary-500/50 hover:text-primary-500"
+                            // Colour link variant: size lg is 16px/24px, the link compound
+                            // zeroes the padding, and visual primary is Blue 500. The only
+                            // overrides are 50% opacity and going opaque on hover; focus:
+                            // pins the colour so a click cannot darken it to primary-700.
+                            className="opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
                             size="lg"
-                            visual="gray"
                             variant="link"
+                            visual="primary"
                             type="button"
                             onClick={() => setFormValue("username", username)}
                           >
                             {username}
                           </Button>
 
-                          {index === 0 && collapsedSuggestions.length > 1 && (
-                            <span>, </span>
+                          {index !== expandedSuggestions.length - 1 && (
+                            <span className="text-sm font-semibold leading-[17px] text-dark-blue-400">
+                              ,
+                            </span>
                           )}
-                          {index === 1 && collapsedSuggestions.length > 2 && (
-                            <span> and </span>
-                          )}
-                        </React.Fragment>
-                      ))}{" "}
-                      are available
-                    </span>
-
-                    {availableSuggestions.length > 3 && (
-                      <Button
-                        className="mt-3"
-                        size="md"
-                        variant="link"
-                        type="button"
-                        visual="gray"
-                        onClick={toggleShow}
-                      >
-                        <Plus className="size-[15px]" />
-                        More suggestions
-                      </Button>
-                    )}
-                  </>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
                 ) : (
-                  <span className="block text-sm leading-[16.94px] text-gray-500">
-                    Username suggestions use your name and recent job title once
-                    you add them.
-                  </span>
+                  <motion.div
+                    key="collapsed"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.24, ease: [0.4, 0, 0.2, 1] }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-6">
+                      {availableSuggestions.length > 0 ? (
+                        <>
+                          {/* Figma "Username rec": a wrapping 8px-gap row, not a
+                        sentence. Each name is its own flex group so the comma
+                        hugs it at 2px and "and" sits 4px off the last one. */}
+                          <div className="flex flex-col items-start gap-y-3">
+                            <div className="flex w-full flex-row flex-wrap content-start items-start gap-2">
+                              {collapsedSuggestions.map((username, index) => {
+                                const isLast =
+                                  index === collapsedSuggestions.length - 1
+                                const showAnd =
+                                  isLast && collapsedSuggestions.length > 1
+
+                                return (
+                                  <div
+                                    key={username}
+                                    className={cn(
+                                      "flex flex-row items-center",
+                                      showAnd ? "gap-x-1" : "gap-x-0.5"
+                                    )}
+                                  >
+                                    {showAnd && (
+                                      <span className="text-sm font-semibold leading-[17px] text-gray-500">
+                                        and
+                                      </span>
+                                    )}
+
+                                    <Button
+                                      // Colour link variant: size lg is 16px/24px, the link compound
+                                      // zeroes the padding, and visual primary is Blue 500. The only
+                                      // overrides are 50% opacity and going opaque on hover; focus:
+                                      // pins the colour so a click cannot darken it to primary-700.
+                                      className="opacity-50 transition-opacity focus:text-primary-500 hover:opacity-100 focus-visible:opacity-100"
+                                      size="lg"
+                                      variant="link"
+                                      visual="primary"
+                                      type="button"
+                                      onClick={() =>
+                                        setFormValue("username", username)
+                                      }
+                                    >
+                                      {username}
+                                    </Button>
+
+                                    {/* Oxford comma: every name but the last is
+                                  followed by one, including the one before
+                                  "and". */}
+                                    {!isLast && (
+                                      <span className="text-sm font-semibold leading-[17px] text-dark-blue-400">
+                                        ,
+                                      </span>
+                                    )}
+                                  </div>
+                                )
+                              })}
+
+                              <div className="flex flex-row items-center justify-center pt-1">
+                                <span className="text-sm font-semibold leading-[17px] text-gray-500">
+                                  are available
+                                </span>
+                              </div>
+                            </div>
+
+                            {availableSuggestions.length >
+                              collapsedSuggestions.length && (
+                              <Button
+                                className="h-auto p-0 text-sm font-semibold capitalize leading-5 text-gray-500"
+                                variant="link"
+                                type="button"
+                                visual="gray"
+                                onClick={toggleShow}
+                              >
+                                <Plus className="size-[15px] stroke-[1.25]" />
+                                More suggestions
+                              </Button>
+                            )}
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  </motion.div>
                 )}
-              </div>
-            )}
+              </AnimatePresence>
+            </div>
 
             <div className="mt-[50px]">
               <Alert>
@@ -806,7 +1141,7 @@ const CreateYourUsername = ({
               Back
             </Button>
 
-            <div className="flex items-center gap-x-6">
+            <div className="flex items-center gap-x-3">
               <Button
                 className="opacity-50 hover:opacity-100"
                 variant="ghost"
@@ -1080,49 +1415,47 @@ const SelectionBadge = ({
   children: React.ReactNode
   onRemove: () => void
 }) => (
-  <Badge visual="primary" size="sm" variant="rounded">
+  // pr-1.5 per the Figma badge spec: padding is 2px 6px 2px 8px when there is
+  // a close button, so the X sits tighter to the edge than the text does.
+  <Badge visual="primary" size="sm" variant="rounded" className="pr-1.5">
     {children}
-    <button
-      className="focus-visible:outline-none"
-      onClick={onRemove}
-      type="button"
-    >
+    <BadgeCloseButton onClick={onRemove}>
       <X2 className="h-3 w-3" />
-    </button>
+    </BadgeCloseButton>
   </Badge>
 )
 
+/**
+ * Renders a dropdown option, bolding the part that matches what was typed.
+ *
+ * The matched run is the ONLY thing this overrides. Weight, colour, size,
+ * padding, hover background and shadow all stay with ComboboxOption in the
+ * design system - this used to force font-normal on the whole label, which
+ * beat the design system's font-medium and pinned the weight even while the
+ * option was active.
+ */
 const HighlightedSuggestion = ({
   label,
   query,
-  active = false,
 }: {
   label: string
   query: string
-  active?: boolean
 }) => {
   const trimmedQuery = query.trim()
-  if (!trimmedQuery) {
-    return (
-      <span className={active ? "font-semibold" : "font-normal"}>{label}</span>
-    )
+  if (!trimmedQuery) return <>{label}</>
+
+  if (!label.toLowerCase().startsWith(trimmedQuery.toLowerCase())) {
+    return <>{label}</>
   }
 
-  const normalizedLabel = label.toLowerCase()
-  const normalizedQuery = trimmedQuery.toLowerCase()
-
-  if (!normalizedLabel.startsWith(normalizedQuery)) {
-    return <span className="font-normal">{label}</span>
-  }
-
-  const highlightedPart = label.slice(0, trimmedQuery.length)
-  const remainingPart = label.slice(trimmedQuery.length)
-
+  // 700/13px in Gray/Black per the autocomplete spec
   return (
-    <span className="font-normal">
-      <span className="font-semibold text-gray-900">{highlightedPart}</span>
-      {remainingPart}
-    </span>
+    <>
+      <span className="font-bold text-gray-black">
+        {label.slice(0, trimmedQuery.length)}
+      </span>
+      {label.slice(trimmedQuery.length)}
+    </>
   )
 }
 
@@ -1180,662 +1513,6 @@ const geocodeLocation = async (
   } catch {
     return null
   }
-}
-const LOCATION_FALLBACK_OPTIONS = [
-  "Birmingham, Alabama, United States",
-  "Huntsville, Alabama, United States",
-  "Mobile, Alabama, United States",
-  "Anchorage, Alaska, United States",
-  "Fairbanks, Alaska, United States",
-  "Juneau, Alaska, United States",
-  "Phoenix, Arizona, United States",
-  "Tucson, Arizona, United States",
-  "Scottsdale, Arizona, United States",
-  "Little Rock, Arkansas, United States",
-  "Fayetteville, Arkansas, United States",
-  "Fort Smith, Arkansas, United States",
-  "Los Angeles, California, United States",
-  "San Francisco, California, United States",
-  "San Diego, California, United States",
-  "Denver, Colorado, United States",
-  "Colorado Springs, Colorado, United States",
-  "Boulder, Colorado, United States",
-  "Stamford, Connecticut, United States",
-  "Hartford, Connecticut, United States",
-  "New Haven, Connecticut, United States",
-  "Wilmington, Delaware, United States",
-  "Dover, Delaware, United States",
-  "Newark, Delaware, United States",
-  "Miami, Florida, United States",
-  "Orlando, Florida, United States",
-  "Tampa, Florida, United States",
-  "Atlanta, Georgia, United States",
-  "Savannah, Georgia, United States",
-  "Augusta, Georgia, United States",
-  "Honolulu, Hawaii, United States",
-  "Hilo, Hawaii, United States",
-  "Kailua, Hawaii, United States",
-  "Boise, Idaho, United States",
-  "Idaho Falls, Idaho, United States",
-  "Coeur d'Alene, Idaho, United States",
-  "Chicago, Illinois, United States",
-  "Aurora, Illinois, United States",
-  "Naperville, Illinois, United States",
-  "Indianapolis, Indiana, United States",
-  "Fort Wayne, Indiana, United States",
-  "Bloomington, Indiana, United States",
-  "Des Moines, Iowa, United States",
-  "Cedar Rapids, Iowa, United States",
-  "Iowa City, Iowa, United States",
-  "Wichita, Kansas, United States",
-  "Overland Park, Kansas, United States",
-  "Kansas City, Kansas, United States",
-  "Louisville, Kentucky, United States",
-  "Lexington, Kentucky, United States",
-  "Bowling Green, Kentucky, United States",
-  "New Orleans, Louisiana, United States",
-  "Baton Rouge, Louisiana, United States",
-  "Shreveport, Louisiana, United States",
-  "Portland, Maine, United States",
-  "Bangor, Maine, United States",
-  "Augusta, Maine, United States",
-  "Baltimore, Maryland, United States",
-  "Bethesda, Maryland, United States",
-  "Annapolis, Maryland, United States",
-  "Boston, Massachusetts, United States",
-  "Cambridge, Massachusetts, United States",
-  "Worcester, Massachusetts, United States",
-  "Detroit, Michigan, United States",
-  "Grand Rapids, Michigan, United States",
-  "Ann Arbor, Michigan, United States",
-  "Minneapolis, Minnesota, United States",
-  "St. Paul, Minnesota, United States",
-  "Rochester, Minnesota, United States",
-  "Jackson, Mississippi, United States",
-  "Gulfport, Mississippi, United States",
-  "Hattiesburg, Mississippi, United States",
-  "St. Louis, Missouri, United States",
-  "Kansas City, Missouri, United States",
-  "Springfield, Missouri, United States",
-  "Billings, Montana, United States",
-  "Missoula, Montana, United States",
-  "Bozeman, Montana, United States",
-  "Omaha, Nebraska, United States",
-  "Lincoln, Nebraska, United States",
-  "Bellevue, Nebraska, United States",
-  "Las Vegas, Nevada, United States",
-  "Reno, Nevada, United States",
-  "Henderson, Nevada, United States",
-  "Manchester, New Hampshire, United States",
-  "Nashua, New Hampshire, United States",
-  "Concord, New Hampshire, United States",
-  "Newark, New Jersey, United States",
-  "Jersey City, New Jersey, United States",
-  "Princeton, New Jersey, United States",
-  "Albuquerque, New Mexico, United States",
-  "Santa Fe, New Mexico, United States",
-  "Las Cruces, New Mexico, United States",
-  "New York City, New York, United States",
-  "Buffalo, New York, United States",
-  "Rochester, New York, United States",
-  "Charlotte, North Carolina, United States",
-  "Raleigh, North Carolina, United States",
-  "Durham, North Carolina, United States",
-  "Fargo, North Dakota, United States",
-  "Bismarck, North Dakota, United States",
-  "Grand Forks, North Dakota, United States",
-  "Columbus, Ohio, United States",
-  "Cleveland, Ohio, United States",
-  "Cincinnati, Ohio, United States",
-  "Oklahoma City, Oklahoma, United States",
-  "Tulsa, Oklahoma, United States",
-  "Norman, Oklahoma, United States",
-  "Portland, Oregon, United States",
-  "Eugene, Oregon, United States",
-  "Salem, Oregon, United States",
-  "Philadelphia, Pennsylvania, United States",
-  "Pittsburgh, Pennsylvania, United States",
-  "Allentown, Pennsylvania, United States",
-  "Providence, Rhode Island, United States",
-  "Warwick, Rhode Island, United States",
-  "Newport, Rhode Island, United States",
-  "Charleston, South Carolina, United States",
-  "Columbia, South Carolina, United States",
-  "Greenville, South Carolina, United States",
-  "Sioux Falls, South Dakota, United States",
-  "Rapid City, South Dakota, United States",
-  "Pierre, South Dakota, United States",
-  "Nashville, Tennessee, United States",
-  "Memphis, Tennessee, United States",
-  "Knoxville, Tennessee, United States",
-  "Houston, Texas, United States",
-  "Dallas, Texas, United States",
-  "Austin, Texas, United States",
-  "Salt Lake City, Utah, United States",
-  "Provo, Utah, United States",
-  "Ogden, Utah, United States",
-  "Burlington, Vermont, United States",
-  "Montpelier, Vermont, United States",
-  "Rutland, Vermont, United States",
-  "Virginia Beach, Virginia, United States",
-  "Richmond, Virginia, United States",
-  "Arlington, Virginia, United States",
-  "Seattle, Washington, United States",
-  "Bellevue, Washington, United States",
-  "Spokane, Washington, United States",
-  "Charleston, West Virginia, United States",
-  "Morgantown, West Virginia, United States",
-  "Huntington, West Virginia, United States",
-  "Milwaukee, Wisconsin, United States",
-  "Madison, Wisconsin, United States",
-  "Green Bay, Wisconsin, United States",
-  "Cheyenne, Wyoming, United States",
-  "Casper, Wyoming, United States",
-  "Jackson, Wyoming, United States",
-]
-
-const ShareYourLocation = ({
-  sidebar,
-  stepData,
-  setStepData,
-}: {
-  sidebar: React.ReactNode
-  stepData: CreateTalentType | null
-  setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
-}) => {
-  const [formError, setFormError] = useState<string | null>(null)
-  const initialDetectedLocation =
-    stepData?.location?.trim() || LOCATION_FALLBACK_OPTIONS[0]
-  const [detectedLocation, setDetectedLocation] = useState(
-    initialDetectedLocation
-  )
-  const [detectedCoordinates, setDetectedCoordinates] = useState<{
-    latitude: number
-    longitude: number
-  } | null>(null)
-  const [isDetectingLocation, setIsDetectingLocation] = useState(false)
-  const [locationDetectError, setLocationDetectError] = useState<string | null>(
-    null
-  )
-
-  const {
-    control,
-    formState: { errors, isValid },
-    handleSubmit,
-    getValues,
-    setValue,
-    clearErrors,
-    setError,
-  } = useForm<ShareYourGoalsFormValues>({
-    resolver: zodResolver(shareYourGoalsFormSchema),
-    defaultValues: {
-      location: [initialDetectedLocation],
-      languages: parseMultiSelectString(stepData?.language),
-    },
-  })
-  const [languagesQuery, setLanguagesQuery] = useState("")
-  const [isLanguagesOpen, setIsLanguagesOpen] = useState(false)
-  const [isHomeCountry, setIsHomeCountry] = useState(true)
-  const [suppressLanguageFocusOpen, setSuppressLanguageFocusOpen] =
-    useState(false)
-  const languageOptions = useMemo(
-    () => getUniqueOptions(languagesMock.map((item) => item.label)),
-    []
-  )
-  const watchedLanguages = useWatch({
-    control,
-    name: "languages",
-  })
-  const selectedLanguageValues = Array.isArray(watchedLanguages)
-    ? watchedLanguages
-    : []
-  const filteredLanguages = useMemo(() => {
-    const query = languagesQuery.trim().toLowerCase()
-    const searchableLanguages = languageOptions.filter(
-      (item) => !selectedLanguageValues.includes(item)
-    )
-    if (!query) return searchableLanguages
-    return searchableLanguages.filter((item) =>
-      item.toLowerCase().startsWith(query)
-    )
-  }, [languageOptions, languagesQuery, selectedLanguageValues])
-
-  const addLanguageValue = async (
-    nextValue: string,
-    onChange: (values: string[]) => void,
-    currentValues: string[]
-  ) => {
-    const value = nextValue.trim()
-    if (!value) return
-
-    const normalizedCurrentValues = getUniqueOptions(currentValues)
-    const matchedValue = languageOptions.find(
-      (option) => option.trim().toLowerCase() === value.toLowerCase()
-    )
-
-    if (!matchedValue) {
-      setLanguagesQuery("")
-      setIsLanguagesOpen(false)
-      setSuppressLanguageFocusOpen(true)
-      return
-    }
-
-    if (normalizedCurrentValues.includes(matchedValue)) {
-      setLanguagesQuery("")
-      setIsLanguagesOpen(false)
-      setSuppressLanguageFocusOpen(true)
-      return
-    }
-
-    clearErrors("languages")
-    const next = getUniqueOptions([...normalizedCurrentValues, matchedValue])
-    onChange(next)
-    setLanguagesQuery("")
-    setIsLanguagesOpen(false)
-    setSuppressLanguageFocusOpen(true)
-  }
-
-  const removeLanguageValue = (
-    target: string,
-    onChange: (values: string[]) => void,
-    currentValues: string[]
-  ) => {
-    const next = currentValues.filter((item) => item !== target)
-    onChange(next)
-  }
-  const { toggleValidation } = useStepContext()
-  const { nextStep, prevStep, setStep } = useStepperContext()
-
-  useEffect(() => {
-    setValue("location", [detectedLocation], { shouldValidate: true })
-  }, [detectedLocation, setValue])
-
-  useEffect(() => {
-    if (detectedCoordinates) return
-
-    let isCancelled = false
-
-    ;(async () => {
-      const resolvedCoordinates = await geocodeLocation(detectedLocation)
-      if (isCancelled || !resolvedCoordinates) return
-      setDetectedCoordinates(resolvedCoordinates)
-    })()
-
-    return () => {
-      isCancelled = true
-    }
-  }, [detectedCoordinates, detectedLocation])
-
-  useEffect(() => {
-    if (stepData?.location?.trim()) return
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setLocationDetectError(
-        "Location detection is unavailable in this browser."
-      )
-      return
-    }
-
-    let isCancelled = false
-    setIsDetectingLocation(true)
-    setLocationDetectError(null)
-
-    navigator.geolocation.getCurrentPosition(
-      async ({ coords }) => {
-        setDetectedCoordinates({
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-        })
-
-        const resolvedLocation = await reverseGeocodeLocation(
-          coords.latitude,
-          coords.longitude
-        )
-        if (isCancelled) return
-
-        if (resolvedLocation) {
-          setDetectedLocation(resolvedLocation)
-        } else {
-          setLocationDetectError(
-            "Could not detect exact location. Using default location."
-          )
-        }
-
-        setIsDetectingLocation(false)
-      },
-      () => {
-        if (isCancelled) return
-        setLocationDetectError(
-          "Location permission denied. Using default location."
-        )
-        setIsDetectingLocation(false)
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 300000,
-      }
-    )
-
-    return () => {
-      isCancelled = true
-    }
-  }, [stepData?.location])
-  useIsomorphicLayoutEffect(() => toggleValidation(isValid), [isValid])
-
-  const onSubmit: SubmitHandler<ShareYourGoalsFormValues> = ({
-    languages,
-    location,
-  }) => {
-    const hasLocation =
-      location && location.length > 0 && location.some((l) => l.trim())
-    const hasLanguages = languages && languages.length > 0
-    if (!hasLocation && !hasLanguages) {
-      setFormError("Please enter at least one field")
-      return
-    }
-    setFormError(null)
-    setStepData({
-      ...stepData,
-      location: location?.join(", "),
-      language: languages?.join(", "),
-    })
-    toggleValidation(true)
-    nextStep()
-  }
-
-  const { totalSteps, currentStep } = useStepRootContext()
-
-  const progress = ((currentStep + 1) / totalSteps) * 100
-
-  const skip = () => {
-    toggleValidation(true)
-    const nextStepIndex = currentStep + 1
-    setStep(nextStepIndex)
-  }
-
-  const back = () => {
-    setStepData({
-      ...stepData,
-      location: getValues("location")?.join(", "),
-      language: getValues("languages")?.join(", "),
-    })
-    prevStep()
-  }
-
-  return (
-    <div className="min-h-screen flex 2xl:pl-[480px] bg-white">
-      {sidebar}
-
-      <form
-        className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
-        onSubmit={handleSubmit(onSubmit)}
-      >
-        <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
-          <div className="flex gap-x-2 items-center">
-            <CircularProgress
-              show={false}
-              size={15.43}
-              strokeWidth={2.5}
-              value={progress}
-            />
-            <span className="text-[11px] leading-[15.43px] text-gray-700">
-              STEP 2 / 5
-            </span>
-          </div>
-
-          <h1 className="text-2xl leading-[36px] mt-2 text-dark-blue-400 font-semibold">
-            Confirm your location
-          </h1>
-
-          <p className="text-base leading-[19.36px] text-dark-blue-400 mt-2 font-light">
-            Share your information to tailor your experience and project
-            matches..
-          </p>
-
-          <div className="mt-10 2xl:mt-[50px]">
-            <div className="space-y-6">
-              <Controller
-                control={control}
-                name="location"
-                render={({ field }) => (
-                  <input
-                    type="hidden"
-                    value={field.value?.[0] ?? ""}
-                    readOnly
-                  />
-                )}
-              />
-              <Card className="block border-gray-200 p-4 md:p-5 shadow-none hover:border-gray-200 hover:ring-0">
-                <p className="text-xs md:text-sm text-dark-blue-400">
-                  We detected your current location as{" "}
-                  <span className="font-semibold">{detectedLocation}</span>
-                </p>
-                {isDetectingLocation && (
-                  <p className="mt-1 text-xs text-gray-600">
-                    Detecting your precise location...
-                  </p>
-                )}
-                {locationDetectError && (
-                  <p className="mt-1 text-xs text-gray-600">
-                    {locationDetectError}
-                  </p>
-                )}
-                <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
-                  <GoogleMap
-                    title="Detected location map"
-                    location={detectedLocation}
-                    latitude={detectedCoordinates?.latitude}
-                    longitude={detectedCoordinates?.longitude}
-                  />
-                </div>
-                <p className="mt-4 text-center text-sm font-semibold text-dark-blue-400">
-                  Is this your home country?
-                </p>
-                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={isHomeCountry ? "filled" : "outlined"}
-                    visual={isHomeCountry ? "primary" : "gray"}
-                    onClick={() => setIsHomeCountry(true)}
-                  >
-                    Yes, this is my home country
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={!isHomeCountry ? "filled" : "outlined"}
-                    visual={!isHomeCountry ? "primary" : "gray"}
-                    onClick={() => setIsHomeCountry(false)}
-                  >
-                    No, I&apos;m currently traveling
-                  </Button>
-                </div>
-              </Card>
-              <div className="flex flex-col gap-y-1.5">
-                <Label
-                  className="text-dark-blue-400"
-                  htmlFor="speaking-language"
-                  size="sm"
-                >
-                  What languages do you speak?
-                </Label>
-                <Controller
-                  control={control}
-                  name="languages"
-                  render={({ field: { onChange, value } }) => {
-                    const selectedLanguages = Array.isArray(value) ? value : []
-
-                    return (
-                      <div className="flex flex-col gap-y-1.5">
-                        <Combobox
-                          className="w-full"
-                          value={selectedLanguages}
-                          onChange={(values) => {
-                            const next = getUniqueOptions(
-                              (values as string[]).filter(Boolean)
-                            )
-                            onChange(next)
-                            setLanguagesQuery("")
-                            setIsLanguagesOpen(false)
-                            setSuppressLanguageFocusOpen(true)
-                          }}
-                          multiple
-                        >
-                          <ComboboxTrigger>
-                            <ComboboxInput
-                              id="speaking-language"
-                              size="lg"
-                              className="pl-3.5"
-                              placeholder="Enter your languages"
-                              value={languagesQuery}
-                              onFocus={() => {
-                                if (suppressLanguageFocusOpen) {
-                                  setSuppressLanguageFocusOpen(false)
-                                  return
-                                }
-                                setIsLanguagesOpen(true)
-                              }}
-                              onBlur={() =>
-                                setTimeout(() => setIsLanguagesOpen(false), 150)
-                              }
-                              onChange={(event) => {
-                                setLanguagesQuery(event.target.value)
-                                setIsLanguagesOpen(true)
-                              }}
-                              onKeyDown={async (event) => {
-                                if (event.key === HOT_KEYS.ENTER) {
-                                  const hasSuggestions =
-                                    isLanguagesOpen &&
-                                    languagesQuery.trim().length > 0 &&
-                                    filteredLanguages.length > 0
-
-                                  if (hasSuggestions) {
-                                    event.preventDefault()
-                                    const activeOption = document.querySelector(
-                                      '[role="option"][data-headlessui-state~="active"]'
-                                    ) as HTMLElement | null
-                                    const activeLabel =
-                                      activeOption?.textContent?.trim() ?? ""
-
-                                    const selectedLabel =
-                                      activeLabel || filteredLanguages[0]
-
-                                    if (selectedLabel) {
-                                      void addLanguageValue(
-                                        selectedLabel,
-                                        onChange,
-                                        selectedLanguages
-                                      )
-                                      return
-                                    }
-                                  }
-
-                                  event.preventDefault()
-                                  void addLanguageValue(
-                                    languagesQuery,
-                                    onChange,
-                                    selectedLanguages
-                                  )
-                                }
-                              }}
-                              invalid={hookFormHasError({
-                                errors,
-                                name: "languages",
-                              })}
-                            />
-                          </ComboboxTrigger>
-                          <ScaleOutIn show={isLanguagesOpen}>
-                            <ComboboxOptions>
-                              <ScrollArea viewportClassName="max-h-[304px]">
-                                {filteredLanguages.map((item) => (
-                                  <ComboboxOption
-                                    key={item}
-                                    value={item}
-                                    className="font-normal ui-active:font-normal"
-                                    onClick={() =>
-                                      void addLanguageValue(
-                                        item,
-                                        onChange,
-                                        selectedLanguages
-                                      )
-                                    }
-                                  >
-                                    {({ active }) => (
-                                      <HighlightedSuggestion
-                                        label={item}
-                                        query={languagesQuery}
-                                        active={active}
-                                      />
-                                    )}
-                                  </ComboboxOption>
-                                ))}
-                              </ScrollArea>
-                            </ComboboxOptions>
-                          </ScaleOutIn>
-                        </Combobox>
-
-                        {getIsNotEmpty(selectedLanguages) && (
-                          <div className="flex flex-wrap gap-3">
-                            {selectedLanguages.map((item) => (
-                              <SelectionBadge
-                                key={item}
-                                onRemove={() =>
-                                  removeLanguageValue(
-                                    item,
-                                    onChange,
-                                    selectedLanguages
-                                  )
-                                }
-                              >
-                                {item}
-                              </SelectionBadge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  }}
-                />
-              </div>
-
-              {formError && <ErrorMessage size="sm">{formError}</ErrorMessage>}
-            </div>
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
-          <div className="flex items-center justify-between">
-            <Button
-              size="md"
-              variant="outlined"
-              visual="gray"
-              type="button"
-              onClick={back}
-            >
-              Back
-            </Button>
-
-            <div className="flex items-center gap-x-6">
-              <Button
-                className="opacity-50 hover:opacity-100"
-                variant="ghost"
-                visual="gray"
-                type="button"
-                size="md"
-                onClick={skip}
-              >
-                Skip
-              </Button>
-              <Button size="md" visual="primary">
-                Continue
-              </Button>
-            </div>
-          </div>
-        </div>
-      </form>
-    </div>
-  )
 }
 
 const FALLBACK_TOP_SKILLS = Array.from(
@@ -2078,10 +1755,15 @@ const TopSkills = ({
         multiple
       >
         <ComboboxTrigger className="flex flex-col gap-y-1.5">
-          <ComboboxLabel size="sm" className="text-dark-blue-400">
+          <ComboboxLabel
+            size="sm"
+            className="text-dark-blue-400"
+            htmlFor="top-skills"
+          >
             What are your top skills?
           </ComboboxLabel>
           <ComboboxInput
+            id="top-skills"
             size="lg"
             className="pl-3.5"
             placeholder="e.g., react.js, css"
@@ -2099,18 +1781,8 @@ const TopSkills = ({
           <ComboboxOptions>
             <ScrollArea viewportClassName="max-h-[304px]">
               {filteredRoles.map((role, index) => (
-                <ComboboxOption
-                  key={index}
-                  value={role}
-                  className="font-normal ui-active:font-normal"
-                >
-                  {({ active }) => (
-                    <HighlightedSuggestion
-                      label={role}
-                      query={inputValue}
-                      active={active}
-                    />
-                  )}
+                <ComboboxOption key={index} value={role}>
+                  <HighlightedSuggestion label={role} query={inputValue} />
                 </ComboboxOption>
               ))}
             </ScrollArea>
@@ -2119,7 +1791,7 @@ const TopSkills = ({
       </Combobox>
 
       {getIsNotEmpty(values) && (
-        <div className="flex flex-wrap gap-3">
+        <div className="mt-1.5 flex flex-wrap gap-3">
           {values.map((item, index) => (
             <SelectionBadge key={index} onRemove={() => removeValue(index)}>
               {item}
@@ -2149,6 +1821,7 @@ const ShowcaseYourTalent = ({
   stepData: CreateTalentType | null
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
 }) => {
+  const { logoutHandler } = useAuth()
   const [formError, setFormError] = useState<string | null>(null)
   const {
     formState: { errors, isValid },
@@ -2318,14 +1991,31 @@ const ShowcaseYourTalent = ({
     industriesWorkedWith,
     yourTopSkills,
   }) => {
-    const hasAnyField =
-      recentJobTitle ||
-      (industriesWorkedWith && industriesWorkedWith.length > 0) ||
-      (yourTopSkills && yourTopSkills.length > 0)
-    if (!hasAnyField) {
-      setFormError("Please enter at least one field")
-      return
+    // One generic line could not say WHICH field was missing. Each field now
+    // reports itself, under the input it belongs to.
+    let missing = false
+    if (!recentJobTitle?.trim()) {
+      setError("recentJobTitle", {
+        type: "manual",
+        message: "Please enter your most recent job title",
+      })
+      missing = true
     }
+    if (!industriesWorkedWith?.length) {
+      setError("industriesWorkedWith", {
+        type: "manual",
+        message: "Please select at least one industry",
+      })
+      missing = true
+    }
+    if (!yourTopSkills?.length) {
+      setError("yourTopSkills", {
+        type: "manual",
+        message: "Please add at least one skill",
+      })
+      missing = true
+    }
+    if (missing) return
     setFormError(null)
     setStepData({
       ...stepData,
@@ -2367,6 +2057,18 @@ const ShowcaseYourTalent = ({
         className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={handleSubmit(onSubmit)}
       >
+        <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+          <Button
+            size="sm"
+            variant="ghost"
+            visual="gray"
+            type="button"
+            onClick={logoutHandler}
+          >
+            Log out
+          </Button>
+        </div>
+
         <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
             <CircularProgress
@@ -2497,7 +2199,6 @@ const ShowcaseYourTalent = ({
                                 <ComboboxOption
                                   key={item}
                                   value={item}
-                                  className="font-normal ui-active:font-normal"
                                   onClick={() => {
                                     onChange(item)
                                     clearErrors("recentJobTitle")
@@ -2505,13 +2206,10 @@ const ShowcaseYourTalent = ({
                                     setIsJobTitleOpen(false)
                                   }}
                                 >
-                                  {({ active }) => (
-                                    <HighlightedSuggestion
-                                      label={item}
-                                      query={jobTitleQuery}
-                                      active={active}
-                                    />
-                                  )}
+                                  <HighlightedSuggestion
+                                    label={item}
+                                    query={jobTitleQuery}
+                                  />
                                 </ComboboxOption>
                               ))}
                             </ScrollArea>
@@ -2520,7 +2218,7 @@ const ShowcaseYourTalent = ({
                       </Combobox>
 
                       {value && (
-                        <div className="flex flex-wrap gap-3">
+                        <div className="mt-1.5 flex flex-wrap gap-3">
                           <SelectionBadge
                             onRemove={() => {
                               onChange("")
@@ -2535,15 +2233,15 @@ const ShowcaseYourTalent = ({
                     </div>
                   )}
                 />
+                <HookFormErrorMessage
+                  errors={errors}
+                  name="recentJobTitle"
+                  render={({ message }) => (
+                    <ErrorMessage size="sm">{message}</ErrorMessage>
+                  )}
+                />
               </div>
               <div className="flex flex-col gap-y-1.5">
-                <Label
-                  size="sm"
-                  className="text-dark-blue-400"
-                  htmlFor="industries"
-                >
-                  Which industries have you worked in?
-                </Label>
                 <Controller
                   control={control}
                   name="industriesWorkedWith"
@@ -2563,7 +2261,14 @@ const ShowcaseYourTalent = ({
                         setSuppressIndustryFocusOpen(true)
                       }}
                     >
-                      <ComboboxTrigger>
+                      <ComboboxTrigger className="flex flex-col gap-y-1.5">
+                        <ComboboxLabel
+                          size="sm"
+                          className="text-dark-blue-400"
+                          htmlFor="industries"
+                        >
+                          Which industries have you worked in?
+                        </ComboboxLabel>
                         <ComboboxInput
                           id="industries"
                           size="lg"
@@ -2631,16 +2336,12 @@ const ShowcaseYourTalent = ({
                               <ComboboxOption
                                 key={item}
                                 value={item}
-                                className="font-normal ui-active:font-normal"
                                 onClick={() => void addIndustryValue(item)}
                               >
-                                {({ active }) => (
-                                  <HighlightedSuggestion
-                                    label={item}
-                                    query={industriesQuery}
-                                    active={active}
-                                  />
-                                )}
+                                <HighlightedSuggestion
+                                  label={item}
+                                  query={industriesQuery}
+                                />
                               </ComboboxOption>
                             ))}
                           </ScrollArea>
@@ -2649,8 +2350,15 @@ const ShowcaseYourTalent = ({
                     </Combobox>
                   )}
                 />
+                <HookFormErrorMessage
+                  errors={errors}
+                  name="industriesWorkedWith"
+                  render={({ message }) => (
+                    <ErrorMessage size="sm">{message}</ErrorMessage>
+                  )}
+                />
                 {selectedIndustries.length > 0 && (
-                  <div className="flex flex-wrap gap-3">
+                  <div className="mt-1.5 flex flex-wrap gap-3">
                     {selectedIndustries.map((item) => (
                       <SelectionBadge
                         key={item}
@@ -2677,6 +2385,13 @@ const ShowcaseYourTalent = ({
                         name: "yourTopSkills",
                       })}
                     />
+                  )}
+                />
+                <HookFormErrorMessage
+                  errors={errors}
+                  name="yourTopSkills"
+                  render={({ message }) => (
+                    <ErrorMessage size="sm">{message}</ErrorMessage>
                   )}
                 />
               </div>
@@ -2716,7 +2431,7 @@ const ShowcaseYourTalent = ({
               Back
             </Button>
 
-            <div className="flex items-center gap-x-6">
+            <div className="flex items-center gap-x-3">
               <Button
                 className="opacity-50 hover:opacity-100"
                 variant="ghost"
@@ -2888,10 +2603,15 @@ const ProjectPreferences = ({
         multiple
       >
         <ComboboxTrigger className="flex flex-col gap-y-1.5">
-          <ComboboxLabel size="sm" className="text-dark-blue-400">
+          <ComboboxLabel
+            size="sm"
+            className="text-dark-blue-400"
+            htmlFor="project-preferences"
+          >
             What types of projects would you like to work on?
           </ComboboxLabel>
           <ComboboxInput
+            id="project-preferences"
             size="lg"
             className="pl-3.5"
             placeholder="Enter your project preferences (e.g., Data Analysis)"
@@ -2926,16 +2646,9 @@ const ProjectPreferences = ({
                 <ComboboxOption
                   key={index}
                   value={role}
-                  className="font-normal ui-active:font-normal"
                   onClick={() => selectSuggestedValue(role)}
                 >
-                  {({ active }) => (
-                    <HighlightedSuggestion
-                      label={role}
-                      query={inputValue}
-                      active={active}
-                    />
-                  )}
+                  <HighlightedSuggestion label={role} query={inputValue} />
                 </ComboboxOption>
               ))}
             </ScrollArea>
@@ -2944,7 +2657,7 @@ const ProjectPreferences = ({
       </Combobox>
 
       {getIsNotEmpty(values) && (
-        <div className="flex flex-wrap gap-3">
+        <div className="mt-1.5 flex flex-wrap gap-3">
           {values.map((item, index) => (
             <SelectionBadge key={index} onRemove={() => removeValue(index)}>
               {item}
@@ -3161,11 +2874,32 @@ const CustomAvailabilityTimeSelector = ({
 
   const isOn = disabled != null ? !disabled : true
 
+  // The rows animate in and out, so they need keys that stay with a row for
+  // its lifetime. Keying by index made a removal collapse whichever row ended
+  // up last rather than the one that was deleted.
+  const rowUid = React.useRef(0)
+  const [rowIds, setRowIds] = React.useState<number[]>(() =>
+    (state ?? []).map(() => rowUid.current++)
+  )
+
+  // Availability type changes reset the slots without going through add or
+  // remove; realign before paint so a row never renders without a key.
+  useIsomorphicLayoutEffect(() => {
+    setRowIds((prev) => {
+      if (prev.length === state.length) return prev
+      const next = prev.slice(0, state.length)
+      while (next.length < state.length) next.push(rowUid.current++)
+      return next
+    })
+  }, [state.length])
+
   const add = () => {
+    setRowIds((prev) => [...prev, rowUid.current++])
     setState((prev) => [...prev, defaultSlot])
   }
 
   const remove = (index: number) => {
+    setRowIds((prev) => prev.filter((_, i) => i !== index))
     setState((prev) => prev.filter((_, i) => i !== index))
   }
 
@@ -3188,169 +2922,191 @@ const CustomAvailabilityTimeSelector = ({
         </div>
 
         <div className="flex items-star gap-x-3">
-          <div className="flex flex-col gap-y-3">
-            {state.map((t, index) => (
-              <div className="inline-flex items-center gap-x-3" key={index}>
-                <div className="flex items-center">
-                  <Select
-                    disabled={!isOn}
-                    value={t.startTime}
-                    onValueChange={(value) =>
-                      setState((prev) => {
-                        const nextState = prev
-                          .slice()
-                          .map((item, i) =>
-                            i === index ? { ...item, startTime: value } : item
-                          )
+          {/* -mt-3 cancels the first row's pt-3. Carrying the 12px gap inside
+              each row means the spacing collapses with it, instead of the
+              flex gap leaving a 12px hole mid-animation. */}
+          <div className="flex flex-col -mt-3">
+            <AnimatePresence initial={false}>
+              {state.map((t, index) => (
+                <motion.div
+                  key={rowIds[index] ?? index}
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                  className="overflow-hidden"
+                >
+                  <div className="inline-flex items-center gap-x-3 pt-3">
+                    <div className="flex items-center">
+                      <Select
+                        disabled={!isOn}
+                        value={t.startTime}
+                        onValueChange={(value) =>
+                          setState((prev) => {
+                            const nextState = prev
+                              .slice()
+                              .map((item, i) =>
+                                i === index
+                                  ? { ...item, startTime: value }
+                                  : item
+                              )
 
-                        return nextState
-                      })
-                    }
-                  >
-                    <SelectTrigger indicator={false} className="rounded-r-none">
-                      <SelectValue />
-                    </SelectTrigger>
+                            return nextState
+                          })
+                        }
+                      >
+                        <SelectTrigger
+                          indicator={false}
+                          className="rounded-r-none"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
 
-                    <SelectContent>
-                      <ScrollArea viewportClassName="max-h-[304px]">
-                        {TIMES.map((time, index) => (
-                          <SelectItem value={time} key={index}>
-                            {time}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    disabled={!isOn}
-                    value={t.startTimeDayPeriod}
-                    onValueChange={(value) =>
-                      setState((prev) => {
-                        const nextState = prev
-                          .slice()
-                          .map((item, i) =>
-                            i === index
-                              ? { ...item, startTimeDayPeriod: value }
-                              : item
-                          )
+                        <SelectContent>
+                          <ScrollArea viewportClassName="max-h-[304px]">
+                            {TIMES.map((time, index) => (
+                              <SelectItem value={time} key={index}>
+                                {time}
+                              </SelectItem>
+                            ))}
+                          </ScrollArea>
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        disabled={!isOn}
+                        value={t.startTimeDayPeriod}
+                        onValueChange={(value) =>
+                          setState((prev) => {
+                            const nextState = prev
+                              .slice()
+                              .map((item, i) =>
+                                i === index
+                                  ? { ...item, startTimeDayPeriod: value }
+                                  : item
+                              )
 
-                        return nextState
-                      })
-                    }
-                  >
-                    <SelectTrigger
-                      indicator={false}
-                      className="rounded-l-none rounded-r-[5px] border-l-0"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
+                            return nextState
+                          })
+                        }
+                      >
+                        <SelectTrigger
+                          indicator={false}
+                          className="rounded-l-none rounded-r-[5px] border-l-0"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
 
-                    <SelectContent>
-                      <ScrollArea viewportClassName="max-h-[304px]">
-                        {DAY_PERIODS.map((dayPeriod, index) => (
-                          <SelectItem value={dayPeriod} key={index}>
-                            {dayPeriod}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <span className="text-base leading-8 font-semibold text-gray-400">
-                  to
-                </span>
-                <div className="flex items-center">
-                  <Select
-                    disabled={!isOn}
-                    value={t.endTime}
-                    onValueChange={(value) =>
-                      setState((prev) => {
-                        const nextState = prev
-                          .slice()
-                          .map((item, i) =>
-                            i === index ? { ...item, endTime: value } : item
-                          )
+                        <SelectContent>
+                          <ScrollArea viewportClassName="max-h-[304px]">
+                            {DAY_PERIODS.map((dayPeriod, index) => (
+                              <SelectItem value={dayPeriod} key={index}>
+                                {dayPeriod}
+                              </SelectItem>
+                            ))}
+                          </ScrollArea>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <span className="text-base leading-8 font-semibold text-gray-400">
+                      to
+                    </span>
+                    <div className="flex items-center">
+                      <Select
+                        disabled={!isOn}
+                        value={t.endTime}
+                        onValueChange={(value) =>
+                          setState((prev) => {
+                            const nextState = prev
+                              .slice()
+                              .map((item, i) =>
+                                i === index ? { ...item, endTime: value } : item
+                              )
 
-                        return nextState
-                      })
-                    }
-                  >
-                    <SelectTrigger indicator={false} className="rounded-r-none">
-                      <SelectValue />
-                    </SelectTrigger>
+                            return nextState
+                          })
+                        }
+                      >
+                        <SelectTrigger
+                          indicator={false}
+                          className="rounded-r-none"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
 
-                    <SelectContent>
-                      <ScrollArea viewportClassName="max-h-[304px]">
-                        {TIMES.map((time, index) => (
-                          <SelectItem value={time} key={index}>
-                            {time}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    disabled={!isOn}
-                    value={t.endTimeDayPeriod}
-                    onValueChange={(value) =>
-                      setState((prev) => {
-                        const nextState = prev
-                          .slice()
-                          .map((item, i) =>
-                            i === index
-                              ? { ...item, endTimeDayPeriod: value }
-                              : item
-                          )
+                        <SelectContent>
+                          <ScrollArea viewportClassName="max-h-[304px]">
+                            {TIMES.map((time, index) => (
+                              <SelectItem value={time} key={index}>
+                                {time}
+                              </SelectItem>
+                            ))}
+                          </ScrollArea>
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        disabled={!isOn}
+                        value={t.endTimeDayPeriod}
+                        onValueChange={(value) =>
+                          setState((prev) => {
+                            const nextState = prev
+                              .slice()
+                              .map((item, i) =>
+                                i === index
+                                  ? { ...item, endTimeDayPeriod: value }
+                                  : item
+                              )
 
-                        return nextState
-                      })
-                    }
-                  >
-                    <SelectTrigger
-                      indicator={false}
-                      className="rounded-l-none rounded-r-[5px] border-l-0"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
+                            return nextState
+                          })
+                        }
+                      >
+                        <SelectTrigger
+                          indicator={false}
+                          className="rounded-l-none rounded-r-[5px] border-l-0"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
 
-                    <SelectContent>
-                      <ScrollArea viewportClassName="max-h-[304px]">
-                        {DAY_PERIODS.map((dayPeriod, index) => (
-                          <SelectItem value={dayPeriod} key={index}>
-                            {dayPeriod}
-                          </SelectItem>
-                        ))}
-                      </ScrollArea>
-                    </SelectContent>
-                  </Select>
-                </div>
+                        <SelectContent>
+                          <ScrollArea viewportClassName="max-h-[304px]">
+                            {DAY_PERIODS.map((dayPeriod, index) => (
+                              <SelectItem value={dayPeriod} key={index}>
+                                {dayPeriod}
+                              </SelectItem>
+                            ))}
+                          </ScrollArea>
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                {index > 0 ? (
-                  <IconButton
-                    className="rounded-full opacity-0 hover:opacity-100"
-                    visual="error"
-                    variant="ghost"
-                    size="md"
-                    type="button"
-                    onClick={() => remove(index)}
-                  >
-                    <Trash03 className="size-[15px]" />
-                  </IconButton>
-                ) : (
-                  <IconButton
-                    className="rounded-[5px] bg-white"
-                    variant="outlined"
-                    visual="gray"
-                    size="md"
-                    type="button"
-                    onClick={isOn ? add : noop}
-                    disabled={!isOn}
-                  >
-                    <Plus className="size-[15px]" />
-                  </IconButton>
-                )}
-              </div>
-            ))}
+                    {index > 0 ? (
+                      <IconButton
+                        className="rounded-full opacity-0 hover:opacity-100"
+                        visual="error"
+                        variant="ghost"
+                        size="md"
+                        type="button"
+                        onClick={() => remove(index)}
+                      >
+                        <Trash03 className="size-[15px]" />
+                      </IconButton>
+                    ) : (
+                      <IconButton
+                        className="rounded-[5px] bg-white"
+                        variant="outlined"
+                        visual="gray"
+                        size="md"
+                        type="button"
+                        onClick={isOn ? add : noop}
+                        disabled={!isOn}
+                      >
+                        <Plus className="size-[15px]" />
+                      </IconButton>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         </div>
       </div>
@@ -3401,8 +3157,10 @@ const SetYourPreferences = ({
   setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
   setTalentUser: React.Dispatch<React.SetStateAction<User | null>>
 }) => {
+  const { logoutHandler } = useAuth()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = React.useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
 
   const {
     getValues,
@@ -3486,9 +3244,11 @@ const SetYourPreferences = ({
       formData.append("lookingToWorkWith", item)
     })
 
-    if (stepData?.isStudent != null) {
-      formData.append("isStudent", stepData.isStudent.toString())
-    }
+    // Always send this, even when every step was skipped: a zero-entry
+    // FormData serialises to an empty body and the gateway rejects it with
+    // 400 "Multipart: Unexpected end of form", which made Continue on the
+    // final step look dead.
+    formData.append("isStudent", String(stepData?.isStudent ?? false))
 
     return formData
   }
@@ -3545,6 +3305,25 @@ const SetYourPreferences = ({
     yourAvailability,
     customAvailability,
   }) => {
+    // Specific per-field messages under each input, worded from that field's
+    // own label. A generic line cannot say which one is missing.
+    let missing = false
+    if (!projects?.length) {
+      setError("projects", {
+        type: "manual",
+        message: "Please enter your project preferences",
+      })
+      missing = true
+    }
+    if (!yourAvailability?.trim()) {
+      setError("yourAvailability", {
+        type: "manual",
+        message: "Please select your availability",
+      })
+      missing = true
+    }
+    if (missing) return
+    setFormError(null)
     const availability: AVAILABILITY = yourAvailability
       ?.replaceAll("-", "_")
       ?.toUpperCase() as AVAILABILITY
@@ -3641,6 +3420,18 @@ const SetYourPreferences = ({
         className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
         onSubmit={handleSubmit(onSubmit)}
       >
+        <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+          <Button
+            size="sm"
+            variant="ghost"
+            visual="gray"
+            type="button"
+            onClick={logoutHandler}
+          >
+            Log out
+          </Button>
+        </div>
+
         <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
           <div className="flex gap-x-2 items-center">
             <CircularProgress
@@ -3678,6 +3469,13 @@ const SetYourPreferences = ({
                     />
                   )}
                 />
+                <HookFormErrorMessage
+                  name="projects"
+                  errors={errors}
+                  render={({ message }) => (
+                    <ErrorMessage size="sm">{message}</ErrorMessage>
+                  )}
+                />
               </div>
 
               <div className="flex flex-col gap-y-1.5">
@@ -3688,7 +3486,10 @@ const SetYourPreferences = ({
                     <YourAvailability
                       value={value}
                       onValueChange={onChange}
-                      invalid={hookFormHasError({ errors, name: "projects" })}
+                      invalid={hookFormHasError({
+                        errors,
+                        name: "yourAvailability",
+                      })}
                     />
                   )}
                 />
@@ -3758,7 +3559,7 @@ const SetYourPreferences = ({
               Back
             </Button>
 
-            <div className="flex items-center gap-x-6">
+            <div className="flex items-center gap-x-3">
               <Button
                 className="opacity-50 hover:opacity-100"
                 variant="ghost"
@@ -4080,9 +3881,1156 @@ const DoNextSidebar = () => {
   )
 }
 
+// Mirrors the resume upload gates and copy used on the talent profile
+// (talent-profile/page.tsx:488-518, 4716-4750) so both entry points reject the
+// same files with the same wording.
+const RESUME_ACCEPTED_EXTENSIONS = [".pdf", ".doc", ".docx"]
+const RESUME_ACCEPTED_TYPES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]
+const RESUME_MAX_SIZE = 5 * 1024 * 1024 // 5MB, matches resume.controller.ts
+
+// Byte transfer is ~1s of a ~16s operation and the review time can't be known
+// up front (varies with resume length; the model client also retries once). So
+// both phases share ONE scale: bytes fill 0-15%, review eases 15-99% on a
+// decelerating curve — it never stalls on a round number and never claims
+// completion early. Rather than hardcode the review duration, each successful
+// upload records its own elapsed time and the running median calibrates the
+// next one, so the estimate converges on this user's real conditions.
+// The transfer is the first slice of the single timeline; past this the label
+// moves on to reading. Keyed to progress, not the network event, so the
+// uploading label is always visible even when bytes land instantly.
+const UPLOAD_LABEL_UNTIL = 15
+
+const TOTAL_ESTIMATE_KEY = "marketeq:resume-total-ms-v2"
+const TOTAL_ESTIMATE_DEFAULT_MS = 6000
+
+const readTotalEstimateMs = (): number => {
+  try {
+    const raw = window.localStorage.getItem(TOTAL_ESTIMATE_KEY)
+    const samples = raw ? (JSON.parse(raw) as number[]) : []
+    const usable = samples.filter((n) => Number.isFinite(n) && n > 0)
+    if (!usable.length) return TOTAL_ESTIMATE_DEFAULT_MS
+    const sorted = [...usable].sort((a, b) => a - b)
+    return sorted[Math.floor(sorted.length / 2)]
+  } catch {
+    return TOTAL_ESTIMATE_DEFAULT_MS
+  }
+}
+
+const recordTotalDurationMs = (ms: number) => {
+  if (!Number.isFinite(ms) || ms <= 0) return
+  try {
+    const raw = window.localStorage.getItem(TOTAL_ESTIMATE_KEY)
+    const samples = raw ? (JSON.parse(raw) as number[]) : []
+    const next = [
+      ...samples.filter((n) => Number.isFinite(n) && n > 0),
+      ms,
+    ].slice(-5)
+    window.localStorage.setItem(TOTAL_ESTIMATE_KEY, JSON.stringify(next))
+  } catch {
+    // best-effort calibration only
+  }
+}
+
+const dashedBorderImage = (hex: string) =>
+  `url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='8' ry='8' stroke='%23${hex}' stroke-width='4' stroke-dasharray='7%2c 6'/%3e%3c/svg%3e")`
+
+const DASH_BORDER_IDLE = dashedBorderImage("D0D5DD")
+const DASH_BORDER_ACTIVE = dashedBorderImage("306CFE")
+// error-500, the same red ErrorMessage uses
+const DASH_BORDER_ERROR = dashedBorderImage("F04438")
+
+const formatFileSize = (bytes: number) => {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
+
+type ResumeUploadStatus =
+  | "idle"
+  | "dragging"
+  | "uploading"
+  | "uploaded"
+  | "failed"
+  | "service-busy"
+  | "size-limit"
+  | "unsupported"
+  | "not_a_resume"
+  | "nothing_found"
+  | "name_mismatch"
+
+// Two sentences each; Figma puts the second on its own line.
+const RESUME_ERROR_MESSAGES: Partial<
+  Record<ResumeUploadStatus, readonly [string, string]>
+> = {
+  "service-busy": [
+    "We couldn't read your resume just now.",
+    "Please try again in a moment.",
+  ],
+  "size-limit": [
+    "Uploaded file exceeds the size limit of 5MB.",
+    "Please select a different file.",
+  ],
+  unsupported: [
+    "Unsupported file type.",
+    "Only PDF, DOC, and DOCX files are accepted.",
+  ],
+  not_a_resume: [
+    "This doesn't look like a resume.",
+    "Please upload a resume file in PDF, DOC, or DOCX format.",
+  ],
+  nothing_found: [
+    "We couldn't pull any details out of this file.",
+    "Please try uploading a different resume.",
+  ],
+  name_mismatch: [
+    "This resume appears to belong to someone else.",
+    "Please upload your own resume.",
+  ],
+}
+
+// Figma 21023:11125 — shown while the resume is being read. Replaces the
+// in-card percentage: the read duration can't be predicted, so an indeterminate
+// popup is honest where a progress number was not.
+// Figma 21023:11290 provides the shell — white card, 76px featured icon,
+// bouncing dots, 18px dark-blue label. The step list is an addition: the modal
+// now reports what it actually found rather than cycling one line, which is
+// both more informative and gives the wait a sense of progress.
+// Resumes are frequently typeset in all-caps ("JANE ALVAREZ") or sloppy case,
+// so force proper casing rather than trusting what was on the page. Handles
+// hyphenated and apostrophe names (mary-jane -> Mary-Jane, o'brien -> O'Brien).
+// NOTE: deliberately does not trim. This runs on every keystroke in the name
+// fields, and trimming would eat the space the moment you typed it, making a
+// second word impossible. Callers that need trimming do it themselves.
+const toProperCase = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(
+      /(^|[\s\-'\u2019])([a-z\u00e0-\u00ff])/g,
+      (_match, prefix, letter) => `${prefix}${letter.toUpperCase()}`
+    )
+
+const READING_LABEL_DEFAULT = "Reading your resume..."
+// These play BEFORE the response lands, so nothing is known about the document
+// yet. They must describe what the parser is doing, not what it has found -
+// saying "Extracting your skills..." for a cover letter is a claim we cannot
+// back, and the file may turn out not to be a resume at all. The confirmed
+// sections, with real values, are shown afterwards from the parse result.
+const READING_SCAN_LABELS = [
+  "Looking for your personal info...",
+  "Looking for your skills...",
+  "Looking for your work experience...",
+  "Looking for your education...",
+  "Looking for your certifications...",
+  "Looking for your previous clients...",
+  "Looking for your industry expertise...",
+]
+const SCAN_ROWS = 3
+// The read phase fills to here; the section reveal carries it from here to
+// 100. One monotonic scale, so the bar can never travel backwards.
+const REVEAL_FROM = 55
+const READING_STEP_MS = 1150
+
+type ReadingStep = { label: string; count?: number; items?: string[] }
+
+// Page count without a PDF/DOCX library and without a round trip.
+//
+// PDF: /Type /Page markers and the page tree's /Count both give it from the
+// raw bytes. The text itself is NOT recoverable this way - subsetted fonts
+// store glyph ids behind a CMap - but the page count is enough to report real
+// progress while the model works.
+//
+// DOCX: a zip whose docProps/app.xml carries <Pages>. The entry is deflated,
+// and DecompressionStream is native, so it can be inflated in the browser.
+//
+// Costs nothing: no request, no dependency, no tokens. Returns null when the
+// format yields nothing, and the caller falls back to name and size.
+const inflateRaw = async (bytes: Uint8Array): Promise<string> => {
+  const stream = new Blob([bytes as BlobPart])
+    .stream()
+    .pipeThrough(new DecompressionStream("deflate-raw"))
+  return new Response(stream).text()
+}
+
+const readDocxPageCount = async (file: File): Promise<number | null> => {
+  const raw = new Uint8Array(await file.arrayBuffer())
+  const text = new TextDecoder("latin1").decode(raw)
+  const at = text.indexOf("docProps/app.xml")
+  if (at < 0) return null
+  // local file header: 30 bytes + name + extra, sizes at offsets 18 and 26/28
+  const header = at - 30
+  if (header < 0) return null
+  const view = new DataView(raw.buffer, raw.byteOffset)
+  const compressed = view.getUint32(header + 18, true)
+  const nameLen = view.getUint16(header + 26, true)
+  const extraLen = view.getUint16(header + 28, true)
+  const start = header + 30 + nameLen + extraLen
+  try {
+    const xml = await inflateRaw(raw.subarray(start, start + compressed))
+    const m = /<Pages>(\d+)<\/Pages>/.exec(xml)
+    return m ? parseInt(m[1], 10) : null
+  } catch {
+    return null
+  }
+}
+
+const readPdfPageCount = async (file: File): Promise<number | null> => {
+  const head = await file.slice(0, 2_000_000).arrayBuffer()
+  const raw = new TextDecoder("latin1").decode(head)
+  const byType = (raw.match(/\/Type\s*\/Page[^s]/g) || []).length
+  const counts = (raw.match(/\/Count\s+(\d+)/g) || []).map((m) =>
+    parseInt(m.split(/\s+/)[1], 10)
+  )
+  const best = Math.max(byType, counts.length ? Math.max(...counts) : 0)
+  return best > 0 ? best : null
+}
+
+const readPageCount = async (file: File): Promise<number | null> => {
+  try {
+    const name = file.name.toLowerCase()
+    // .doc is the legacy binary format - its page count lives in the FIB /
+    // SummaryInformation stream, which is not worth parsing here. It returns
+    // null and the caller falls back to file name and size, which still works.
+    const count = name.endsWith(".pdf")
+      ? await readPdfPageCount(file)
+      : name.endsWith(".docx")
+        ? await readDocxPageCount(file)
+        : null
+    return count && count > 0 && count < 500 ? count : null
+  } catch {
+    return null
+  }
+}
+
+const ReadingResumeModal = ({
+  open,
+  label,
+  steps,
+  completed,
+  isDone,
+  onDone,
+  percent,
+  tick,
+  fileLabel,
+}: {
+  open: boolean
+  label: string
+  steps: ReadingStep[]
+  completed: number
+  isDone: boolean
+  onDone: () => void
+  percent: number
+  tick: number
+  fileLabel?: string
+}) => (
+  <Dialog open={open}>
+    <DialogContent
+      className="w-[440px] max-w-none overflow-hidden border-0 bg-white p-8 rounded-xl transition-[height] duration-300 ease-out shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+      accessibilityTitle="Reading your resume"
+      // not dismissible: it mirrors work in flight, so closing it would lie
+      onEscapeKeyDown={(event) => event.preventDefault()}
+      onPointerDownOutside={(event) => event.preventDefault()}
+      onInteractOutside={(event) => event.preventDefault()}
+    >
+      <div className="flex flex-col items-center">
+        {/* Figma's featured icon; the ring pulses only while work is in flight */}
+        <div className="relative inline-flex size-[76px] shrink-0 items-center justify-center">
+          {!isDone && (
+            <span className="absolute inset-0 rounded-full bg-primary-50 animate-ping opacity-40" />
+          )}
+          <span
+            className={cn(
+              "relative inline-flex size-[76px] items-center justify-center rounded-full border-[14px] transition-colors",
+              isDone
+                ? "border-primary-50 bg-primary-100"
+                : "border-primary-25 bg-primary-50"
+            )}
+          >
+            {isDone ? (
+              <Check className="size-8 text-primary-600" />
+            ) : (
+              <FileText className="size-8 text-primary-500" />
+            )}
+          </span>
+        </div>
+
+        <p
+          key={label}
+          className="mt-6 animate-in fade-in text-center text-lg font-semibold leading-6 text-dark-blue-400 duration-500 ease-out fill-mode-both"
+        >
+          {label}
+        </p>
+        <p className="mt-1 text-center text-sm leading-5 text-gray-500">
+          {isDone
+            ? "You can edit any of this later."
+            : "This usually takes a few seconds."}
+        </p>
+
+        {/* Reserved height so rows appearing never shift the layout */}
+        {/* Bottom-anchored: new lines enter at the bottom and push earlier
+            ones up. Centring made the block grow in both directions, which
+            read as lines drifting up and then settling back down. */}
+        <div className="mt-6 flex min-h-[132px] w-full flex-col justify-end gap-3">
+          {steps.length === 0 ? (
+            // Read phase. Nothing is known about the document yet - it may
+            // not even be a resume - so no section can be named here.
+            <div className="flex flex-col justify-end gap-3 transition-all duration-300 ease-out">
+              <p className="truncate text-center text-sm leading-5 text-gray-500">
+                {fileLabel ?? "Checking the file..."}
+              </p>
+              {Array.from({ length: SCAN_ROWS }).map((_, row) => (
+                <div
+                  key={`sk-${row}`}
+                  className="flex items-center gap-3"
+                  aria-hidden
+                >
+                  <span className="relative size-5 shrink-0 overflow-hidden rounded-full bg-gray-100">
+                    <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                  </span>
+                  <span
+                    className="relative h-2.5 overflow-hidden rounded-full bg-gray-100"
+                    style={{ width: `${[62, 78, 46][row % 3]}%` }}
+                  >
+                    <span
+                      className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100"
+                      style={{ animationDelay: `${row * 200}ms` }}
+                    />
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            steps.map((step, index) => {
+              const isRowDone = index < completed
+              const isRowActive = index === completed
+              if (!isRowDone && !isRowActive) return null
+              return (
+                <div
+                  key={step.label}
+                  className="flex animate-in fade-in slide-in-from-bottom-3 items-center gap-3 duration-500 ease-out fill-mode-both"
+                >
+                  {isRowDone ? (
+                    <CheckCircle className="size-5 shrink-0 text-primary-500" />
+                  ) : (
+                    // spinning arc while this section is being extracted;
+                    // pairs with CheckCircle since both are circular
+                    <Loading01 className="size-5 shrink-0 animate-spin text-primary-400" />
+                  )}
+                  <span
+                    className={cn(
+                      "flex min-w-0 flex-auto flex-col transition-colors",
+                      isRowDone ? "text-dark-blue-400" : "text-gray-500"
+                    )}
+                  >
+                    <span className="text-sm leading-5">
+                      {isRowActive
+                        ? `Extracting your ${step.label.toLowerCase()}...`
+                        : step.label}
+                    </span>
+                    {/* The actual value being pulled out, not just a count */}
+                    {step.items?.length ? (
+                      <span
+                        className={cn(
+                          "flex min-w-0 items-baseline gap-1 text-xs leading-5",
+                          isRowActive ? "text-primary-500" : "text-gray-500"
+                        )}
+                      >
+                        <span className="truncate">
+                          {isRowActive
+                            ? step.items[tick % step.items.length]
+                            : step.items.slice(0, 3).join(" · ")}
+                        </span>
+                        {/* kept outside the truncating span so the ellipsis
+                            cannot swallow the count */}
+                        {!isRowActive && step.items.length > 3 && (
+                          <span className="shrink-0 whitespace-nowrap">
+                            +{step.items.length - 3} more
+                          </span>
+                        )}
+                      </span>
+                    ) : null}
+                  </span>
+                  {isRowDone && typeof step.count === "number" && (
+                    <span className="shrink-0 text-xs font-semibold leading-5 text-gray-500">
+                      {step.count}
+                    </span>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        {isDone ? (
+          <Button
+            className="mt-8 w-full animate-in fade-in slide-in-from-bottom-3 duration-500 ease-out fill-mode-both delay-150"
+            size="md"
+            visual="primary"
+            type="button"
+            onClick={onDone}
+          >
+            Done
+          </Button>
+        ) : (
+          <div className="mt-8 h-1 w-full overflow-hidden rounded-full bg-gray-100">
+            {/* Determinate: grows from zero on the same clock that drives the
+                rest of the step. A swept gradient read as a static partial
+                fill, which looked stuck rather than working. */}
+            <span
+              className="block h-full rounded-full bg-primary-500 transition-[width] duration-100 ease-linear"
+              style={{ width: `${Math.max(2, percent)}%` }}
+            />
+          </div>
+        )}
+      </div>
+    </DialogContent>
+  </Dialog>
+)
+
+const UploadYourResume = ({
+  sidebar,
+  stepData,
+  setStepData,
+}: {
+  sidebar: React.ReactNode
+  stepData: CreateTalentType | null
+  setStepData: React.Dispatch<React.SetStateAction<CreateTalentType | null>>
+}) => {
+  const { logoutHandler } = useAuth()
+  const router = useRouter()
+  const resumeInputRef = useRef<HTMLInputElement>(null)
+  const [resumeStatus, setResumeStatus] = useState<ResumeUploadStatus>("idle")
+  const [resumeFile, setResumeFile] = useState<File | null>(null)
+  const [uploadedAt, setUploadedAt] = useState<Date | null>(null)
+  const [uploadPercent, setUploadPercent] = useState(0)
+  const [isReviewing, setIsReviewing] = useState(false)
+  const [loadingMessage, setLoadingMessage] = useState("Reading your resume...")
+  const reviewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const reviewStartedAtRef = useRef<number | null>(null)
+  const [isDropzoneHovered, setIsDropzoneHovered] = useState(false)
+  const [readingLabel, setReadingLabel] = useState(READING_LABEL_DEFAULT)
+  const [readingSteps, setReadingSteps] = useState<ReadingStep[]>([])
+  const [readingCompleted, setReadingCompleted] = useState(0)
+  const [isReadingDone, setIsReadingDone] = useState(false)
+  const [resumeError, setResumeError] = useState<string | null>(null)
+  const [readingTick, setReadingTick] = useState(0)
+  const [pageCount, setPageCount] = useState<number | null>(null)
+  const [pageCursor, setPageCursor] = useState(1)
+
+  const { toggleValidation } = useStepContext()
+  const { nextStep, setStep } = useStepperContext()
+  const { totalSteps, currentStep } = useStepRootContext()
+
+  const progress = ((currentStep + 1) / totalSteps) * 100
+  const errorMessage = RESUME_ERROR_MESSAGES[resumeStatus]
+  const hasError = resumeStatus === "failed" || Boolean(errorMessage)
+
+  const stopProgressTicker = () => {
+    if (reviewTimerRef.current) {
+      clearInterval(reviewTimerRef.current)
+      reviewTimerRef.current = null
+    }
+  }
+
+  // The LLM review time is folded INTO the upload time: one clock, one
+  // percentage, started when the file is handed over and running until the
+  // profile write finishes. The expected total is the median of this user's
+  // last five uploads, so it calibrates to their real conditions instead of a
+  // hardcoded guess. Past the estimate it keeps creeping toward 99 rather than
+  // parking, and only genuine completion shows 100.
+
+  // Walk the page cursor while the document is being read, so the wait reports
+  // something real and changing. Paced across the expected duration but capped:
+  // dividing a large stored estimate by the page count gave ~5s a page, which
+  // meant page 1 sat there for the whole read.
+  useEffect(() => {
+    if (resumeStatus !== "uploading" || !pageCount || pageCount < 2) return
+    const spread = Math.round(readTotalEstimateMs() / pageCount)
+    const per = Math.min(1800, Math.max(700, spread))
+    const id = setInterval(
+      () =>
+        setPageCursor((current) =>
+          current < pageCount ? current + 1 : current
+        ),
+      per
+    )
+    return () => clearInterval(id)
+  }, [resumeStatus, pageCount])
+
+  const startProgressTicker = () => {
+    stopProgressTicker()
+    const startedAt = Date.now()
+    reviewStartedAtRef.current = startedAt
+    const total = Math.max(3000, readTotalEstimateMs())
+    reviewTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startedAt
+      // Linear to 95% across the expected total, then a constant slow crawl.
+      // Deliberately NOT asymptotic: an easing curve decays toward zero rate,
+      // which is exactly what reads as "frozen at 98%". A constant rate always
+      // visibly moves, so an overrun looks slow rather than stuck.
+      const pct =
+        elapsed <= total
+          ? (elapsed / total) * 95
+          : 95 + (elapsed - total) / 3000
+      setUploadPercent(Math.min(REVEAL_FROM, Math.max(1, Math.round(pct))))
+    }, 80)
+  }
+
+  const resetResume = () => {
+    stopProgressTicker()
+    setReadingTick(0)
+    setReadingLabel(READING_LABEL_DEFAULT)
+    setReadingSteps([])
+    setReadingCompleted(0)
+    setIsReadingDone(false)
+    setIsReviewing(false)
+    setResumeFile(null)
+    setUploadedAt(null)
+    setUploadPercent(0)
+    setResumeStatus("idle")
+  }
+
+  // Upload -> parse -> autofill the remaining onboarding steps -> apply to the
+  // profile in the background. New account, so there is nothing to conflict
+  // with; the conflict and summary UI the talent profile shows is not needed.
+  const processResume = async (file: File) => {
+    setResumeError(null)
+    setResumeFile(file)
+
+    const extension = file.name
+      .substring(file.name.lastIndexOf("."))
+      .toLowerCase()
+    if (
+      !RESUME_ACCEPTED_TYPES.includes(file.type) &&
+      !RESUME_ACCEPTED_EXTENSIONS.includes(extension)
+    ) {
+      setResumeStatus("unsupported")
+      return
+    }
+    if (file.size > RESUME_MAX_SIZE) {
+      setResumeStatus("size-limit")
+      return
+    }
+
+    setResumeStatus("uploading")
+    setPageCount(null)
+    setPageCursor(1)
+    void readPageCount(file).then(setPageCount)
+    setReadingLabel(READING_LABEL_DEFAULT)
+    setReadingSteps([])
+    setReadingCompleted(0)
+    setIsReadingDone(false)
+    setUploadPercent(0)
+    startProgressTicker()
+
+    try {
+      const { data } = await UserAPI.uploadResume(file, (percent) => {
+        if (percent >= 100) setIsReviewing(true)
+      })
+      // Deliberately NOT completing here. The response has landed but
+      // applyResume still has to run, and Continue stays disabled until it
+      // does — showing 100% now is a completion signal the user can't act on.
+      setLoadingMessage("Reading your resume...")
+
+      if (data?.status === "not_a_resume") {
+        stopProgressTicker()
+        setIsReviewing(false)
+        setResumeStatus("not_a_resume")
+        return
+      }
+      if (data?.status === "nothing_found") {
+        stopProgressTicker()
+        setIsReviewing(false)
+        setResumeStatus("nothing_found")
+        return
+      }
+      // The account already carries the registered name, so this still guards
+      // against someone uploading a resume that is not theirs.
+      if (data?.nameMismatch) {
+        stopProgressTicker()
+        setIsReviewing(false)
+        setResumeStatus("name_mismatch")
+        return
+      }
+
+      const additions = data?.additions ?? {}
+      const nameOf = (item: any): string =>
+        typeof item === "string" ? item : (item?.name ?? "")
+      const skills = (additions.skills?.items ?? [])
+        .map((item: any) => ({ name: nameOf(item) }))
+        .filter((item: { name: string }) => item.name)
+      const industries = (additions.industries?.items ?? [])
+        .map((item: any) => ({ name: nameOf(item) }))
+        .filter((item: { name: string }) => item.name)
+      const education = (additions.education?.items ?? [])
+        .map((item: any) => ({
+          school: item?.institution ?? item?.school ?? "",
+          degree: item?.degree ?? "",
+          fieldOfStudy: item?.fieldOfStudy ?? item?.field_of_study ?? "",
+        }))
+        .filter(
+          (item: { school: string; degree: string }) =>
+            item.school || item.degree
+        )
+      const workExperience = (additions.workExperience?.items ?? []).map(
+        (item: any) => ({
+          title: item.title ?? "",
+          company: item.company ?? "",
+          startDate: item.startDate,
+          endDate: item.endDate,
+          description: item.description ?? "",
+        })
+      )
+      const certifications = (additions.certifications?.items ?? [])
+        .map((item: any) => ({
+          name: nameOf(item),
+          issuer: item?.issuingBody ?? item?.issuer ?? "",
+        }))
+        .filter((item: { name: string }) => item.name)
+
+      const extractedName = (data?.extractedName ?? "").trim()
+      const [firstName, ...remainingNameParts] = extractedName
+        .split(/\s+/)
+        .filter(Boolean)
+      const lastName = remainingNameParts.join(" ")
+      const properFirstName = firstName ? toProperCase(firstName).trim() : ""
+      const properLastName = lastName ? toProperCase(lastName).trim() : ""
+      const recentJobTitle = data?.jobTitles?.[0]
+      const skillNames = skills
+        .map((skill: { name: string }) => skill.name)
+        .filter(Boolean)
+      const industryNames = industries
+        .map((industry: { name: string }) => industry.name)
+        .filter(Boolean)
+
+      // Only fill what the resume actually yielded; never overwrite a field the
+      // talent already filled in with an empty value.
+      setStepData((previous) => ({
+        ...previous,
+        ...(properFirstName ? { firstName: properFirstName } : {}),
+        ...(properLastName ? { lastName: properLastName } : {}),
+        ...(recentJobTitle ? { recentJobTitle } : {}),
+        ...(industryNames.length
+          ? { industriesWorkedIn: industryNames.join(", ") }
+          : {}),
+        // Step 3 reads its skills field back out of lookingToWorkWith.
+        ...(skillNames.length ? { lookingToWorkWith: skillNames } : {}),
+      }))
+
+      // Only surface categories the parse actually returned. A resume with no
+      // certifications never claims to be extracting them. Figma's wording.
+      const clientCompanies = Array.from(
+        new Set(
+          workExperience
+            .map((item: { company: string }) => item.company)
+            .filter(Boolean)
+        )
+      )
+      // `additions` only carries NON-conflicting items, so anything already on
+      // the profile is excluded. The checklist is meant to report what is in
+      // the resume, not the delta, so fold the conflicts back in by type.
+      const conflicts: any[] = Array.isArray(data?.conflicts)
+        ? data.conflicts
+        : []
+      const conflictsOfType = (type: string) =>
+        conflicts.filter((item) => item?.type === type).length
+      const educationTotal = education.length + conflictsOfType("education")
+      const workTotal = workExperience.length + conflictsOfType("work")
+      const certificationTotal =
+        certifications.length + conflictsOfType("certification")
+
+      // Order follows the resume's own hierarchy: who you are, what you can do,
+      // then where you did it.
+      const conflictLabels = (type: string) =>
+        conflicts
+          .filter((item) => item?.type === type)
+          .map((item) => item?.incoming?.label || item?.existing?.label)
+          .filter(Boolean)
+
+      const workItems = [
+        ...workExperience.map((item: { title: string; company: string }) =>
+          [item.title, item.company].filter(Boolean).join(" at ")
+        ),
+        ...conflictLabels("work"),
+      ]
+      const educationItems = [
+        ...education.map((item: { degree: string; school: string }) =>
+          [item.degree, item.school].filter(Boolean).join(", ")
+        ),
+        ...conflictLabels("education"),
+      ]
+      const certificationItems = [
+        ...certifications.map((item: { name: string }) => item.name),
+        ...conflictLabels("certification"),
+      ]
+
+      const foundSteps: ReadingStep[] = [
+        ...(extractedName
+          ? [{ label: "Personal Info", items: [extractedName] }]
+          : []),
+        ...(skillNames.length
+          ? [{ label: "Skills", count: skillNames.length, items: skillNames }]
+          : []),
+        ...(workTotal
+          ? [{ label: "Work Experience", count: workTotal, items: workItems }]
+          : []),
+        ...(educationTotal
+          ? [
+              {
+                label: "Education",
+                count: educationTotal,
+                items: educationItems,
+              },
+            ]
+          : []),
+        ...(certificationTotal
+          ? [
+              {
+                label: "Certifications",
+                count: certificationTotal,
+                items: certificationItems,
+              },
+            ]
+          : []),
+        ...(clientCompanies.length
+          ? [
+              {
+                label: "Previous Clients",
+                count: clientCompanies.length,
+                items: clientCompanies,
+              },
+            ]
+          : []),
+        ...(industryNames.length
+          ? [
+              {
+                label: "Industry Expertise",
+                count: industryNames.length,
+                items: industryNames,
+              },
+            ]
+          : []),
+      ]
+      // Deliberately NOT stopping the feed here. applyResume still has to run,
+      // and cutting the lines off at the response left a static screen for the
+      // remainder of the wait. The feed runs until everything is genuinely done.
+
+      try {
+        setLoadingMessage("Updating your profile...")
+        await UserAPI.applyResume({
+          parseResultId: data?.parseResultId,
+          skills,
+          education,
+          workExperience,
+          certifications,
+          industries,
+        })
+        if (workExperience.length > 0) {
+        }
+      } catch (applyError) {
+        // Autofill already landed in stepData, so onboarding can continue even
+        // if the background profile write fails.
+        console.error("Failed to auto-apply resume data:", applyError)
+      }
+
+      // Only now do we know what the document actually contains, so this is
+      // the first point at which naming a section is truthful. A cover letter
+      // reaches here with foundSteps empty and claims nothing.
+      setReadingSteps(foundSteps)
+      // The ticker has run the bar to ~99% by now, so the reveal would play
+      // against a loader that already looks finished. Hand the last stretch of
+      // the bar to the reveal itself: park it, then advance one slice per
+      // section so it fills as the sections land.
+      stopProgressTicker()
+      // Deliberately NOT setting a value here. The read phase is capped at
+      // REVEAL_FROM, so the bar carries straight on from where it is. Parking
+      // it at a fixed number made the bar run to 100 during the read and then
+      // jump backwards the moment the sections started.
+      for (let index = 0; index < foundSteps.length; index++) {
+        setReadingCompleted(index + 1)
+        setUploadPercent(
+          Math.round(
+            REVEAL_FROM +
+              ((100 - REVEAL_FROM) * (index + 1)) / foundSteps.length
+          )
+        )
+        await new Promise((resolve) => setTimeout(resolve, READING_STEP_MS))
+      }
+      setReadingCompleted(foundSteps.length)
+      if (reviewStartedAtRef.current) {
+        recordTotalDurationMs(Date.now() - reviewStartedAtRef.current)
+        reviewStartedAtRef.current = null
+      }
+      setUploadPercent(100)
+      setIsReviewing(false)
+      // Hold the modal open on the summary until it is dismissed. Without this
+      // the status flip below closes it immediately and skips the Done button.
+      setReadingLabel(
+        foundSteps.length
+          ? "We've added this to your profile"
+          : "Your resume has been added"
+      )
+      setIsReadingDone(true)
+      setUploadedAt(data?.uploadedAt ? new Date(data.uploadedAt) : new Date())
+      setResumeStatus("uploaded")
+      toggleValidation(true)
+    } catch (error) {
+      stopProgressTicker()
+      setIsReviewing(false)
+      // 502/503 means the upload itself succeeded and the extraction service
+      // couldn't answer — telling the user "upload failed" is wrong, and hides
+      // that retrying usually works.
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status
+      setResumeStatus(
+        status === 502 || status === 503 || status === 504
+          ? "service-busy"
+          : "failed"
+      )
+    }
+  }
+
+  const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    // Continuing with no resume is the same outcome as skipping, so it must not
+    // be reachable from Continue. Skip remains the way past this step.
+    if (resumeStatus !== "uploaded") {
+      setResumeError("Please upload your resume")
+      return
+    }
+    setResumeError(null)
+    toggleValidation(true)
+    nextStep()
+  }
+
+  const skip = () => {
+    toggleValidation(true)
+    setStep(currentStep + 1)
+  }
+
+  return (
+    <div className="min-h-screen flex 2xl:pl-[480px] bg-white">
+      {sidebar}
+
+      <ReadingResumeModal
+        open={resumeStatus === "uploading" || isReadingDone}
+        label={readingLabel}
+        steps={readingSteps}
+        completed={readingCompleted}
+        isDone={isReadingDone}
+        onDone={() => setIsReadingDone(false)}
+        percent={uploadPercent}
+        tick={readingTick}
+        fileLabel={
+          resumeFile
+            ? pageCount && pageCount > 1
+              ? `Reading page ${pageCursor} of ${pageCount} · ${resumeFile.name}`
+              : `Reading ${resumeFile.name} · ${formatFileSize(resumeFile.size)}`
+            : undefined
+        }
+      />
+
+      <form
+        className="relative grid items-start flex-auto px-5 md:px-10 py-10 2xl:py-[100px] 2xl:px-[200px]"
+        onSubmit={onSubmit}
+      >
+        <div className="absolute right-5 top-5 z-30 md:right-10 md:top-10">
+          <Button
+            size="sm"
+            variant="ghost"
+            visual="gray"
+            type="button"
+            onClick={logoutHandler}
+          >
+            Log out
+          </Button>
+        </div>
+
+        <div className="max-w-[488px] 2xl:max-w-[560px] w-full mx-auto">
+          <div className="flex gap-x-2 items-center">
+            <CircularProgress
+              show={false}
+              size={15.43}
+              strokeWidth={2.5}
+              value={progress}
+            />
+            <span className="text-[11px] leading-[15.43px] text-gray-700">
+              STEP 1 / 5
+            </span>
+          </div>
+
+          <h1 className="text-2xl leading-[36px] mt-2 text-dark-blue-400 font-semibold">
+            Upload your resume
+          </h1>
+
+          <p className="text-base leading-[19.36px] text-dark-blue-400 mt-2 font-light">
+            Add your resume to complete your profile faster!
+          </p>
+
+          <div className="mt-10 2xl:mt-[50px]">
+            {/* Always mounted, so Replace can open the picker straight from the
+                uploaded state. Cancelling the picker fires no change event, so
+                the existing file simply stays. */}
+            <input
+              ref={resumeInputRef}
+              type="file"
+              accept=".pdf,.doc,.docx"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) void processResume(file)
+                event.target.value = ""
+              }}
+            />
+            <div className="space-y-6">
+              {hasError ? (
+                <div className="flex min-h-[148px] w-full flex-col gap-3 items-center justify-center rounded-lg border border-error-300 bg-error-25 px-6 py-4">
+                  <div className="size-14 shrink-0 rounded-full border-8 border-error-50 bg-error-100 inline-flex items-center justify-center">
+                    <AlertTriangle className="size-7 text-error-500" />
+                  </div>
+
+                  <p className="text-sm font-medium text-error-500 text-center">
+                    {resumeStatus === "failed" ? (
+                      <>
+                        Upload failed, please try again.
+                        <br />
+                        <span className="font-normal">{resumeFile?.name}</span>
+                      </>
+                    ) : errorMessage ? (
+                      <>
+                        {errorMessage[0]}
+                        <br />
+                        {errorMessage[1]}
+                      </>
+                    ) : null}
+                  </p>
+
+                  <button
+                    type="button"
+                    className="text-sm font-semibold leading-5 text-error-500 underline decoration-error-500/30 hover:decoration-error-500"
+                    onClick={resetResume}
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : resumeStatus === "uploading" ? (
+                <div className="relative flex h-16 w-full flex-col items-start gap-2 overflow-hidden rounded-lg border border-gray-200 bg-white p-3.5">
+                  {/* Figma "Progress fill" (21020:10515): behind the row, offset
+                      -1px so it covers the border, width tracks the upload. */}
+                  <div
+                    className="absolute left-[-1px] top-[-1px] h-16 bg-gray-50 transition-[width]"
+                    style={{ width: `${uploadPercent}%` }}
+                  />
+                  <div className="relative flex w-full items-center justify-between">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch">
+                      <div className="size-9 shrink-0 rounded-full bg-primary-50 inline-flex items-center justify-center">
+                        <File02 className="size-4 text-primary-500" />
+                      </div>
+                      <div className="flex min-w-0 flex-1 flex-col justify-center">
+                        <p className="truncate text-xs font-medium leading-5 text-dark-blue-400">
+                          {resumeFile?.name}
+                        </p>
+                        <p className="truncate text-[11px] leading-[18px] text-gray-500">
+                          {uploadPercent < UPLOAD_LABEL_UNTIL
+                            ? `${formatFileSize(resumeFile?.size ?? 0)} \u2013 ${uploadPercent}% uploaded`
+                            : `${loadingMessage} ${uploadPercent}%`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center justify-center">
+                      <CircularProgress
+                        size={32}
+                        strokeWidth={4}
+                        value={uploadPercent}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : resumeStatus === "uploaded" ? (
+                <div className="flex w-full flex-col items-start overflow-hidden rounded-lg border-2 border-primary-500 bg-primary-25 p-3.5">
+                  <div className="flex w-full items-center gap-2 pr-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 self-stretch">
+                      <div className="size-9 shrink-0 rounded-full bg-primary-50 inline-flex items-center justify-center">
+                        <File02 className="size-4 text-primary-500" />
+                      </div>
+                      <div className="flex min-w-0 flex-1 flex-col justify-center">
+                        <p className="truncate text-xs font-medium leading-5 text-dark-blue-400">
+                          {resumeFile?.name}
+                        </p>
+                        <p className="text-[11px] leading-[18px] text-gray-500">
+                          {uploadedAt
+                            ? `Added on ${uploadedAt.toLocaleDateString(
+                                "en-US",
+                                {
+                                  month: "long",
+                                  day: "numeric",
+                                  year: "numeric",
+                                }
+                              )}`
+                            : "Added"}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs font-semibold leading-5 text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500"
+                      onClick={() => resumeInputRef.current?.click()}
+                    >
+                      Replace
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className={cn(
+                    "group flex min-h-[148px] w-full cursor-pointer flex-col gap-3 items-center justify-center rounded-lg px-6 py-4 transition-colors",
+                    resumeError
+                      ? "bg-white hover:bg-error-25"
+                      : resumeStatus === "dragging"
+                        ? "bg-primary-25"
+                        : "bg-white hover:bg-primary-25"
+                  )}
+                  style={{
+                    backgroundImage: resumeError
+                      ? DASH_BORDER_ERROR
+                      : resumeStatus === "dragging"
+                        ? DASH_BORDER_ACTIVE
+                        : isDropzoneHovered
+                          ? DASH_BORDER_ACTIVE
+                          : DASH_BORDER_IDLE,
+                  }}
+                  onMouseEnter={() => setIsDropzoneHovered(true)}
+                  onMouseLeave={() => setIsDropzoneHovered(false)}
+                  onDragOver={(event) => {
+                    event.preventDefault()
+                    setResumeStatus("dragging")
+                  }}
+                  onDragLeave={() => setResumeStatus("idle")}
+                  onClick={() => resumeInputRef.current?.click()}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    setResumeStatus("idle")
+                    const file = event.dataTransfer.files?.[0]
+                    if (file) void processResume(file)
+                  }}
+                >
+                  <div
+                    className={cn(
+                      "size-14 shrink-0 rounded-full border-8 inline-flex items-center justify-center",
+                      resumeError
+                        ? "border-error-25 bg-error-50"
+                        : "border-primary-25 bg-primary-50"
+                    )}
+                  >
+                    <FileText
+                      className={cn(
+                        "size-7",
+                        resumeError ? "text-error-500" : "text-primary-500"
+                      )}
+                    />
+                  </div>
+
+                  <p
+                    className={cn(
+                      "text-xs leading-5 text-center",
+                      resumeError ? "text-error-500" : "text-gray-600"
+                    )}
+                  >
+                    Drag &amp; drop or{" "}
+                    <button
+                      type="button"
+                      className={cn(
+                        "font-medium capitalize leading-5 underline",
+                        resumeError
+                          ? "text-error-500 decoration-error-500/30 hover:decoration-error-500"
+                          : "text-primary-500 decoration-primary-500/30 hover:decoration-primary-500"
+                      )}
+                      onClick={(event) => {
+                        // stop the parent handler so the picker opens once, and
+                        // open it here since this button owns the interaction
+                        event.stopPropagation()
+                        resumeInputRef.current?.click()
+                      }}
+                    >
+                      Choose file
+                    </button>{" "}
+                    to upload
+                  </p>
+                  <p
+                    className={cn(
+                      "text-[11px] font-medium leading-[18px] text-center",
+                      resumeError ? "text-error-500" : "text-gray-600"
+                    )}
+                  >
+                    PDF, DOC, DOCX (max 5MB)
+                  </p>
+                </div>
+              )}
+
+              {/* Sits with the field it describes, under the dropzone */}
+              {resumeError && (
+                <ErrorMessage size="sm">{resumeError}</ErrorMessage>
+              )}
+
+              {/* Standing helper text, not part of the error state - it keeps
+                  its normal styling when the resume field errors. */}
+              <p className="text-xs font-light leading-normal text-dark-blue-400">
+                Your resume will remain private and will not be shared with any
+                third parties. See our{" "}
+                <Link
+                  href="/privacy-policy"
+                  className="font-medium capitalize text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500"
+                >
+                  Privacy Policy
+                </Link>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 z-20 mx-auto mt-6 w-full max-w-[488px] self-end bg-white py-4 2xl:mt-8 2xl:max-w-[560px]">
+          <div className="flex items-start justify-between">
+            <Button
+              size="md"
+              variant="outlined"
+              visual="gray"
+              type="button"
+              onClick={() => router.push("/onboarding")}
+            >
+              Back
+            </Button>
+
+            <div className="flex items-center gap-x-3">
+              <Button
+                className="opacity-50 hover:opacity-100"
+                variant="ghost"
+                visual="gray"
+                type="button"
+                size="md"
+                onClick={skip}
+              >
+                Skip
+              </Button>
+              <Button
+                size="md"
+                visual="primary"
+                disabled={resumeStatus === "uploading"}
+              >
+                Continue
+              </Button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 const steps: Steps[] = [
-  { label: "introduce-yourself", isValid: false, disabled: false },
-  { label: "confirm-your-location", isValid: false, disabled: true },
+  { label: "upload-your-resume", isValid: false, disabled: false },
+  { label: "introduce-yourself", isValid: false, disabled: true },
   { label: "showcase-your-talent", isValid: false, disabled: true },
   { label: "create-your-username", isValid: false, disabled: true },
   { label: "set-your-preferences", isValid: false, disabled: true },
@@ -4090,16 +5038,16 @@ const steps: Steps[] = [
 ]
 
 const TalentOnboarding = ({
+  uploadYourResume,
   introduceYourself,
   createYourUsername,
-  shareYourLocation,
   showcaseYourTalent,
   setYourPreferences,
   doNext,
 }: {
+  uploadYourResume: React.ReactNode
   introduceYourself: React.ReactNode
   createYourUsername: React.ReactNode
-  shareYourLocation: React.ReactNode
   showcaseYourTalent: React.ReactNode
   setYourPreferences: React.ReactNode
   doNext: React.ReactNode
@@ -4134,8 +5082,8 @@ const TalentOnboarding = ({
     <StepperProvider value={stepperValue}>
       <StepRootProvider value={stepperRootValue}>
         <StepControl>
+          <Step>{uploadYourResume}</Step>
           <Step>{introduceYourself}</Step>
-          <Step>{shareYourLocation}</Step>
           <Step>{showcaseYourTalent}</Step>
           <Step>{createYourUsername}</Step>
           <Step>{setYourPreferences}</Step>
@@ -4152,6 +5100,13 @@ export default function TalentOnboardingRoot() {
 
   return (
     <TalentOnboarding
+      uploadYourResume={
+        <UploadYourResume
+          sidebar={<Sidebar />}
+          stepData={stepData}
+          setStepData={setStepData}
+        />
+      }
       introduceYourself={
         <IntroduceYourself
           sidebar={<Sidebar />}
@@ -4161,13 +5116,6 @@ export default function TalentOnboardingRoot() {
       }
       createYourUsername={
         <CreateYourUsername
-          sidebar={<Sidebar />}
-          stepData={stepData}
-          setStepData={setStepData}
-        />
-      }
-      shareYourLocation={
-        <ShareYourLocation
           sidebar={<Sidebar />}
           stepData={stepData}
           setStepData={setStepData}

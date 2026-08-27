@@ -7,7 +7,11 @@ import { Repository, EntityManager, DataSource } from 'typeorm';
 import { Offer } from './entities/offer.entity';
 import { OfferStatus } from './enums/offer-status.enum';
 import { OfferStateMachine, OfferConcurrentModificationException } from './offer-state-machine';
-import { ActiveOfferAlreadyExistsException, OfferNotResendableException } from '../common/exceptions/offer.exceptions';
+import {
+  ActiveOfferAlreadyExistsException,
+  OfferNotResendableException,
+  InternalOfferException,
+} from '../common/exceptions/offer.exceptions';
 import { OutboxService } from '../outbox/outbox.service';
 import { AblyService } from '../realtime/ably.service';
 import { ListingsClient } from '../integrations/listings.client';
@@ -26,6 +30,15 @@ import {
 import { OfferHistoryService } from '../offer-history/offer-history.service';
 import { OfferTermsSnapshot } from '../offer-history/entities/offer-history-event.entity';
 import { OFFER_CONSTANTS } from '../common/constants/offer.constants';
+import { normalizeDateOnly } from '../common/utils/normalize-date-only';
+import { ListOffersQueryDto } from './dto/list-offers-query.dto';
+import { OfferListQueryBuilder } from './offer-list-query.builder';
+import { derivePartyRole } from '../guards/party-role.util';
+import {
+  LatestCounterOfferSummary,
+  OfferListItem,
+  PaginatedOfferListResponse,
+} from './interfaces/offer-response.interface';
 
 // Re-export for counter-offers service
 export { OfferConcurrentModificationException };
@@ -57,6 +70,123 @@ export class OffersService {
   // Backward-compat alias used by controller GET :id
   async findById(id: string): Promise<Offer> {
     return this.findByIdOrThrow(id);
+  }
+
+  // ============================================================
+  // list() — GET /v1/offers — role-scoped, paginated offers inbox
+  // ============================================================
+
+  /**
+   * userId comes from the JWT (CurrentUser), never from the query string —
+   * OfferListQueryBuilder.resolvePartyFilter is the only thing that
+   * decides the WHERE clause, so `as` can narrow to one side of userId's
+   * own offers but can never widen the query to another user's.
+   *
+   * No role param: libs/auth's JwtStrategy.validate() never sets one (see
+   * roles.guard.ts's comment), so the default scope is "offers where
+   * userId is either party" rather than branching on a role that's always
+   * undefined.
+   */
+  async list(
+    userId: string,
+    query: ListOffersQueryDto,
+  ): Promise<PaginatedOfferListResponse> {
+    const partyFilter = OfferListQueryBuilder.resolvePartyFilter(userId, query.as);
+    const sortSpec = OfferListQueryBuilder.resolveSort(query.sort, query.order);
+    const offset = OfferListQueryBuilder.resolveOffset(query.page, query.limit);
+
+    const qb = this.offerRepo.createQueryBuilder('o');
+
+    if (partyFilter.mode === 'either') {
+      // BitmapOr over idx_offers_client_id + idx_offers_talent_id (also
+      // satisfiable via idx_offers_client_talent's leading column) at
+      // realistic table sizes — confirmed with EXPLAIN against the local
+      // seed data (SET enable_seqscan=off surfaces the BitmapOr plan; the
+      // planner just prefers a seq scan on this table while it's this
+      // small, which is expected and not a sign of a missing index).
+      qb.where('(o.client_id = :partyId OR o.talent_id = :partyId)', { partyId: partyFilter.userId });
+    } else {
+      const column = partyFilter.mode === 'client' ? 'client_id' : 'talent_id';
+      qb.where(`o.${column} = :partyId`, { partyId: partyFilter.userId });
+    }
+
+    if (query.status && query.status.length > 0) {
+      qb.andWhere('o.status IN (:...statuses)', { statuses: query.status });
+    }
+
+    qb.orderBy(`o.${sortSpec.column}`, sortSpec.direction)
+      // Tie-breaker: createdAt/expiresAt aren't unique, so without a
+      // second key, rows on the boundary between two pages could shift
+      // between requests and either repeat or get skipped.
+      .addOrderBy('o.id', sortSpec.direction)
+      .skip(offset)
+      .take(query.limit);
+
+    const [offers, total] = await qb.getManyAndCount();
+
+    const latestCounterOffers = await this.fetchLatestCounterOffers(
+      offers.map((offer) => offer.id),
+    );
+
+    const data: OfferListItem[] = offers.map((offer) => {
+      // Always derived from clientId/talentId vs userId — never from
+      // `as`, which only shaped the WHERE clause above. null here would
+      // mean the WHERE clause and derivePartyRole disagree on membership,
+      // which the query construction above rules out by design.
+      const viewerRole = derivePartyRole(offer, userId);
+      if (!viewerRole) {
+        this.logger.error(`Offer ${offer.id} returned by the party filter but userId ${userId} is neither party.`);
+        throw new InternalOfferException();
+      }
+      return {
+        ...offer,
+        viewerRole,
+        latestCounterOffer: latestCounterOffers.get(offer.id) ?? null,
+      };
+    });
+
+    return { data, total, page: query.page, limit: query.limit };
+  }
+
+  // One extra query for the whole page (not one per row) — avoids the N+1
+  // a naive per-offer lookup would cause. DISTINCT ON (offer_id) with
+  // created_at DESC, id DESC picks exactly the latest counter-offer per
+  // offer id in a single pass.
+  private async fetchLatestCounterOffers(
+    offerIds: string[],
+  ): Promise<Map<string, LatestCounterOfferSummary>> {
+    const latestByOfferId = new Map<string, LatestCounterOfferSummary>();
+    if (offerIds.length === 0) return latestByOfferId;
+
+    const rows = await this.dataSource.query(
+      `
+        SELECT DISTINCT ON (offer_id)
+          id, offer_id, submitted_by, submitted_by_id, status,
+          rate, currency_code, duration_months, start_date, created_at
+        FROM offer_service.counter_offers
+        WHERE offer_id = ANY($1)
+        ORDER BY offer_id, created_at DESC, id DESC
+      `,
+      [offerIds],
+    );
+
+    for (const raw of rows) {
+      latestByOfferId.set(raw.offer_id, {
+        id: raw.id,
+        submittedBy: raw.submitted_by,
+        submittedById: raw.submitted_by_id,
+        status: raw.status,
+        rate: raw.rate,
+        currencyCode: raw.currency_code,
+        durationMonths: raw.duration_months,
+        startDate: normalizeDateOnly(raw.start_date),
+        createdAt: raw.created_at instanceof Date
+          ? raw.created_at.toISOString()
+          : raw.created_at,
+      });
+    }
+
+    return latestByOfferId;
   }
 
   // ============================================================
@@ -586,7 +716,7 @@ export class OffersService {
       workSchedule: typeof raw.work_schedule === 'string'
         ? JSON.parse(raw.work_schedule)
         : (raw.work_schedule ?? raw.workSchedule),
-      startDate: raw.start_date ?? raw.startDate,
+      startDate: normalizeDateOnly(raw.start_date ?? raw.startDate),
       message: raw.message ?? null,
       expiresAt: raw.expires_at ? new Date(raw.expires_at) : (raw.expiresAt ?? null),
       warningSentAt: raw.warning_sent_at ? new Date(raw.warning_sent_at) : (raw.warningSentAt ?? null),

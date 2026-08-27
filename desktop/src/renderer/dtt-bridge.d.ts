@@ -17,6 +17,7 @@ import type {
   AuthStatus,
   AuthStatusChangedPayload,
   BackendContract,
+  BackendTask,
   BreakExpiredPayload,
   BreakExpiringPayload,
   CaptureHealth,
@@ -117,6 +118,7 @@ export interface DttOnboardingBridge {
 
 export interface DttContractsBridge {
   getMine: () => Promise<BackendContract[]>;
+  getTasks: (contractId: string) => Promise<BackendTask[]>;
 }
 
 export interface DttBridgeGlobal {

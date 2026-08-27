@@ -48,3 +48,14 @@ paths = [
   # "-----BEGIN PRIVATE KEY-----" appears as a pattern argument, not a key.
   '''^frontend/src/crypto/keys\.ts$''',
 ]
+
+# Matched values to ignore. Scoped to the exact string so the surrounding file
+# stays fully scanned -- a real credential committed there is still caught.
+regexes = [
+  # listings-service copies a job listing's brief attachment fields across:
+  #   if (dto.briefR2Key !== undefined) fields.briefR2Key = dto.briefR2Key;
+  # briefR2Key is a Cloudflare R2 object key (a storage path), not a
+  # credential. generic-api-key matches the "...Key = ..." shape of the
+  # assignment and reports the source text "dto.briefR2Key" as the secret.
+  '''^dto\.briefR2Key$''',
+]
