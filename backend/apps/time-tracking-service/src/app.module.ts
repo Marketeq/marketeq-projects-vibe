@@ -59,7 +59,10 @@ import { DeviceRegistration } from './entities/device-registration.entity';
           entities: [ActivityWatchEvent, Screenshot, ManualTime, AdminSettings, UserPreferences, Tooltip, ContractTask, Session, TimeEntry, BreakEvent, IdleEvent, ActivityMinute, Dispute, DeviceRegistration],
           synchronize: false,
           migrationsRun: true,
-          migrations: [__dirname + '/../migrations/*{.ts,.js}'],
+          migrations: [
+            __dirname + '/../migrations/*{.ts,.js}',
+            __dirname + '/migrations/*{.ts,.js}',
+          ],
           schema: 'time_tracking',
           logging: !isProd,
           ssl: useSSL ? { rejectUnauthorized: false } : undefined,
