@@ -2918,12 +2918,22 @@ const BottomBar = ({
   };
 
   return (
-    <div className="h-[78px] z-40 fixed left-0 bottom-0 right-0 bg-white border-b border-gray-200">
-      <Progress value={progressValue} bubble={false} />
-      <div className="grid h-[70px] grid-cols-3 items-center py-[15px] pr-[17px] pl-[32px]">
-        <div className="flex justify-start">
+    <div className="fixed right-0 bottom-0 left-0 z-40 h-[84px] bg-white">
+      <div className="h-2 w-full bg-gray-200">
+        <div
+          className="h-2 rounded-[4px] bg-primary-500"
+          style={{
+            width:
+              typeof progressValue === "number"
+                ? `${Math.max(0, Math.min(100, progressValue))}%`
+                : "0%",
+          }}
+        />
+      </div>
+      <div className="flex h-[76px] items-center justify-between border-b border-gray-200 px-[50px] py-4">
+        <div className="flex w-[120px] justify-center opacity-0">
           <Button
-            className="h-8"
+            className="h-11 rounded-[44px] px-6"
             disabled={!hasPreviousStep}
             variant="outlined"
             visual="gray"
@@ -2943,14 +2953,14 @@ const BottomBar = ({
           </Button>
         </div>
 
-        <span className="text-center text-xs leading-[18px] font-semibold text-gray-700">
+        <span className="w-[82px] text-center text-base font-semibold leading-6 text-gray-800">
           Step {currentStep + 1} of 5
         </span>
 
-        <div className="flex justify-end">
+        <div className="flex w-[128px] justify-center">
           {hasNextStep ? (
             <Button
-              className="h-8"
+              className="h-11 rounded-[44px] px-6 opacity-50"
               disabled={!isValid}
               onClick={() => {
                 if (isValid) {
@@ -2968,7 +2978,7 @@ const BottomBar = ({
             </Button>
           ) : (
             <Button
-              className="h-8"
+              className="h-11 rounded-[44px] px-6 opacity-50"
               disabled={!isValid}
               onClick={() => {
                 handleSubmit();
