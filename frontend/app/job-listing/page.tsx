@@ -2346,34 +2346,26 @@ const Sidebar = () => {
 
 const Header = ({ onSaveExit }: { onSaveExit?: () => void }) => {
   return (
-    <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200">
-      <div>
-        <h3 className="text-sm leading-[16.94px] text-dark-blue-400 font-semibold">
+    <div className="sticky top-0 flex h-[92px] items-center gap-x-12 border-b border-gray-200 bg-white px-[50px] py-4">
+      <div className="flex h-[60px] flex-1 flex-col items-start justify-center gap-y-2">
+        <h3 className="text-[24px] font-bold leading-8 text-dark-blue-400">
           Job Creation
         </h3>
-        <p className="text-xs leading-[18px] text-dark-blue-400">
+        <p className="text-sm leading-5 text-gray-500">
           We&apos;ll guide you through the steps to set up roles, add details,
           and get ready to hire.
         </p>
       </div>
 
-      <div className="flex items-center gap-x-3">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <IconButton
-                className="text-gray-500"
-                variant="ghost"
-                visual="gray"
-                onClick={onSaveExit}
-              >
-                <X className="size-4" />
-              </IconButton>
-            </TooltipTrigger>
-            <TooltipContent>Close</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
+      <IconButton
+        aria-label="Close"
+        className="size-8 shrink-0 p-0 text-gray-400"
+        variant="ghost"
+        visual="gray"
+        onClick={onSaveExit}
+      >
+        <X className="size-8" />
+      </IconButton>
     </div>
   );
 };
