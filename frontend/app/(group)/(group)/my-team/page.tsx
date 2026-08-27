@@ -82,6 +82,8 @@ interface AccountMember {
   role: string
   avatarSrc?: string
   company: string
+  /** Team the company label refers to, so the label can link to its profile. */
+  companyId?: string
   status: "active" | "pending"
 }
 
@@ -242,16 +244,19 @@ function buildAccountColumns(
       header: "Company",
       cell: (info) => {
         const val = info.getValue()
-        return val ? (
+        if (!val) return <span className="text-sm text-gray-300">&mdash;</span>
+
+        const companyId = info.row.original.companyId
+
+        return (
           <Button
             className="text-sm p-0 h-auto"
             variant="link"
             visual="primary"
+            asChild
           >
-            {val}
+            <NextLink href="/client-profile">{val}</NextLink>
           </Button>
-        ) : (
-          <span className="text-sm text-gray-300">&mdash;</span>
         )
       },
     }),
@@ -638,8 +643,9 @@ const ExternalTeamCard = ({
                 className="xs:max-lg:text-[10px] xs:max-lg:leading-4"
                 variant="link"
                 visual="primary"
+                asChild
               >
-                {company}
+                <NextLink href="/client-profile">{company}</NextLink>
               </Button>
             </div>
           )}
@@ -818,6 +824,7 @@ export default function MyTeam() {
             `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(liveAvatarFallbackSeed)}`,
           // Never show internal UUIDs in UI labels; use a readable fallback.
           company: inv.teamName ?? "Client Team",
+          companyId: inv.teamId ?? inv.team?.id ?? teamId,
           status,
         }
       }
