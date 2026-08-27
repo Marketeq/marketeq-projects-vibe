@@ -1011,10 +1011,6 @@ export class PublishService {
   ): Promise<Project> {
     const project = await this.ensureProjectOwnership(projectId, userId);
 
-    if (project.status === 'published') {
-      return project;
-    }
-
     try {
       const media = await this.mediaRepository.find({ projectId: project.id });
       const hasCover =

@@ -128,18 +128,44 @@ describe('PublishService moderation flow', () => {
     }
   });
 
-  it('returns existing project immediately when publish retry is called for published project', async () => {
+  it('re-moderates edited media and recomputes the live gallery when re-publishing a published project', async () => {
+    // Editing a published listing stages media in the media table but leaves
+    // project.mediaUrls (the live gallery source) frozen. Re-publishing
+    // re-moderates the staged media and recomputes mediaUrls from it, so the
+    // edits go live only after passing moderation again.
     projectRepository.findOne.mockResolvedValue({
       id: 'project-2',
       userId: 'user-2',
       title: 'Already live',
       status: 'published',
     });
+    mediaRepository.find.mockResolvedValue({
+      featuredImage: 'https://cdn.example.com/new-featured.jpg',
+      additionalImages: ['https://cdn.example.com/new-2.jpg'],
+    });
+    (moderationService.moderateProject as jest.Mock).mockResolvedValue({
+      status: 'approved',
+    });
+    projectRepository.update.mockResolvedValue({
+      id: 'project-2',
+      status: 'published',
+    });
 
     const result = await service.publishExistingProject('user-2', 'project-2');
 
     expect(result.status).toBe('published');
-    expect(moderationService.moderateProject).not.toHaveBeenCalled();
+    expect(moderationService.moderateImageUrl).toHaveBeenCalled();
+    expect(moderationService.moderateProject).toHaveBeenCalled();
+    expect(projectRepository.update).toHaveBeenCalledWith(
+      'project-2',
+      expect.objectContaining({
+        status: 'published',
+        mediaUrls: [
+          'https://cdn.example.com/new-featured.jpg',
+          'https://cdn.example.com/new-2.jpg',
+        ],
+      }),
+    );
   });
 
   it('returns 502 and marks project as publish_blocked when moderation response is invalid', async () => {
