@@ -3030,6 +3030,7 @@ const ProjectInfoTip = ({
             ? "Not sure which option to choose?"
             : "What does having a scope mean?"}
         </span>
+
       </div>
 
       <div className="mt-3">
@@ -3587,9 +3588,9 @@ const ProjectInfo = ({
 
   const onSubmit: SubmitHandler<ProjectInfoFormValues> = (values) => {};
   const projectInfoValues = useWatch({ control: methods.control });
-  const [contractChoice, setContractChoice] = useState<"new" | "existing">(
-    "new",
-  );
+  const [contractChoice, setContractChoice] = useState<
+    "new" | "existing" | null
+  >(null);
   const [scopeChoice, setScopeChoice] = useState<
     "known" | "unknown" | "none" | null
   >(null);
@@ -4173,19 +4174,19 @@ const ProjectInfo = ({
           <div className="flex-auto min-w-0">
             <div className="space-y-16">
               <div>
-                <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
+                <h1 className="text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
                   Let&apos;s set the foundation
                 </h1>
 
-                <div className="mt-8 space-y-4">
-                  <p className="text-base leading-6 font-semibold text-dark-blue-400">
+                <div className="mt-8 space-y-3">
+                  <p className="text-[18px] font-medium leading-7 text-dark-blue-400">
                     Are you adding team members to a new contract or an existing
                     one?
                   </p>
 
                   <RadioGroup
                     className="flex flex-wrap gap-2"
-                    value={contractChoice}
+                    value={contractChoice ?? undefined}
                     onValueChange={(value) => {
                       const nextChoice = value as "new" | "existing";
 
@@ -4220,7 +4221,7 @@ const ProjectInfo = ({
                         key={option.value}
                         value={option.value}
                         className={cn(
-                          "inline-flex h-10 items-center justify-center rounded-full border border-gray-300 bg-white px-4 text-sm leading-5 font-semibold text-dark-blue-400 shadow-xs focus-visible:outline-none",
+                          "inline-flex h-10 items-center justify-center rounded-[52px] border border-gray-300 bg-white px-4 text-sm leading-5 font-medium text-dark-blue-400 focus-visible:outline-none",
                           contractChoice === option.value &&
                             "border-primary-500 text-primary-500",
                         )}
@@ -4341,7 +4342,7 @@ const ProjectInfo = ({
                       })}
                     </RadioGroup>
                   </div>
-                ) : (
+                ) : contractChoice === "new" ? (
                   <>
                     <div className="mt-12 space-y-4">
                       <p className="text-base leading-6 font-semibold text-dark-blue-400">
@@ -4515,7 +4516,7 @@ const ProjectInfo = ({
                       </div>
                     ) : null}
                   </>
-                )}
+                ) : null}
               </div>
             </div>
 
