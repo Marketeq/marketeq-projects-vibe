@@ -18,6 +18,7 @@ interface SendTransacEmailRequest {
   to: BrevoRecipient[];
   subject?: string;
   htmlContent?: string;
+  textContent?: string;
   templateId?: number;
   params?: Record<string, unknown>;
   tags?: string[];
@@ -74,6 +75,7 @@ export class BrevoService {
         to: request.to,
         subject: request.subject,
         htmlContent: request.htmlContent,
+        textContent: request.textContent,
         templateId: request.templateId,
         params: request.params,
         tags: request.tags,
@@ -106,6 +108,22 @@ export class BrevoService {
       htmlContent: `<p>${body}</p>${
         link ? `<p><a href="${link}">View on Marketeq</a></p>` : ''
       }`,
+      tags: ['notification'],
+    });
+  }
+
+  /** Sends a fully-rendered HTML document (branded templates) as-is. */
+  async sendHtmlEmail(
+    to: string,
+    title: string,
+    html: string,
+    text?: string,
+  ): Promise<void> {
+    await this.send({
+      to: [{ email: to }],
+      subject: title,
+      htmlContent: html,
+      textContent: text,
       tags: ['notification'],
     });
   }
