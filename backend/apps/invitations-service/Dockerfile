@@ -18,6 +18,10 @@ EXPOSE 3013
 # tsc's inferred rootDir to the backend/ root, so the build output lands at
 # dist/apps/invitations-service/apps/invitations-service/src/main.js
 # instead of dist/main.js. ecosystem.config.js already compensates for this
-# with svcNested(); this CMD previously pointed at dist/main, which does
-# not exist in that layout.
-CMD ["node", "apps/invitations-service/src/main.js"]
+# with svcNested().
+#
+# The COPY above takes the *contents* of dist/apps/invitations-service, so
+# one level is stripped and the entrypoint lands at
+# /app/dist/apps/invitations-service/src/main.js. WORKDIR is /app, so the
+# path below must keep the dist/ prefix.
+CMD ["node", "dist/apps/invitations-service/src/main.js"]
