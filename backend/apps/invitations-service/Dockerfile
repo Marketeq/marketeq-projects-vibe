@@ -12,4 +12,12 @@ WORKDIR /app
 COPY --from=builder /app/dist/apps/invitations-service ./dist
 COPY --from=builder /app/node_modules ./node_modules
 EXPOSE 3013
-CMD ["node", "dist/main"]
+# decorators/public.decorator.ts and guards/jwt-auth.guard.ts import
+# @libs/auth, which tsconfig.json path-maps to ./libs/auth/src, a sibling
+# of apps/, not a descendant of apps/invitations-service/src. That widens
+# tsc's inferred rootDir to the backend/ root, so the build output lands at
+# dist/apps/invitations-service/apps/invitations-service/src/main.js
+# instead of dist/main.js. ecosystem.config.js already compensates for this
+# with svcNested(); this CMD previously pointed at dist/main, which does
+# not exist in that layout.
+CMD ["node", "apps/invitations-service/src/main.js"]
