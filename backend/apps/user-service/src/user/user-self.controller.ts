@@ -11,7 +11,6 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { CurrentUser } from '../decorators/current-user.decorator';
@@ -95,7 +94,6 @@ export class UserSelfController {
   constructor(
     private readonly userService: UserService,
     private readonly r2Service: R2Service,
-    private readonly configService: ConfigService,
   ) {}
 
   @ApiOperation({ summary: 'Get current user' })
@@ -159,16 +157,16 @@ export class UserSelfController {
     // multer-reported mimetype so downstream storage uses what the bytes say.
     file.mimetype = detectedMimeType;
 
-    // Storage is optional in local/dev environments: if R2 is not wired up we
-    // log a warning and return a null URL so the caller can proceed without
-    // blocking onboarding. Production deployments are expected to configure
-    // these env vars, in which case the happy path below runs.
-    const bucket =
-      this.configService.get<string>('CLOUDFLARE_R2_BUCKET') ||
-      this.configService.get<string>('R2_BUCKET');
-    if (!bucket) {
+    // Storage is optional in local/dev environments: if R2 is not fully wired
+    // up we log a warning and return a null URL so the caller can proceed
+    // without blocking onboarding. Production deployments are expected to
+    // configure these env vars, in which case the happy path below runs.
+    // Checked via R2Service.isConfigured() (not just the bucket name) so a
+    // partially-filled .env degrades gracefully instead of 500ing out of
+    // getClient() mid-upload.
+    if (!this.r2Service.isConfigured()) {
       this.logger.warn(
-        'Skipping avatar upload: CLOUDFLARE_R2_BUCKET is not configured',
+        'Skipping avatar upload: Cloudflare R2 is not fully configured',
       );
       return { url: null };
     }
