@@ -1096,9 +1096,9 @@ const InviteYourTeam = ({
       })
 
       const inviteUrl =
-        response?.data?.url ||
-        (response?.data?.token
-          ? `${inviteBaseUrl}/invite/accept?token=${response.data.token}`
+        response?.url ||
+        (response?.token
+          ? `${inviteBaseUrl}/invite/accept?token=${response.token}`
           : "")
 
       if (!inviteUrl) {

@@ -1,14 +1,19 @@
 export interface CreateInvitationDto {
   teamId: string
+  companyId?: string
   role: "admin" | "editor" | "viewer"
   emails: string[]
   note?: string
+  /** Granular permission-role ids picked in select-permissions-panel.tsx */
+  permissions?: string[]
 }
 
 export interface CreateInvitationLinkDto {
   teamId: string
+  companyId?: string
   teamName: string
   role: "admin" | "editor" | "viewer"
+  permissions?: string[]
 }
 
 export interface AcceptInvitationDto {
@@ -52,6 +57,8 @@ export interface Invitation {
   note?: string | null
   teamId?: string
   teamName?: string
+  companyId?: string
+  permissions?: string[]
   invitedEmail?: string
   expiresAt?: string
   createdAt?: string
@@ -67,15 +74,37 @@ export interface Invitation {
 
 export interface ListInvitationsParams {
   teamId?: string
+  companyId?: string
   invitedEmail?: string
   status?: "pending" | "accepted" | "canceled" | "expired"
   limit?: number
   cursor?: string
 }
 
+/** GET /invitations/preview?token=, a pre-auth route that renders the invite
+ * banner without requiring the visitor to be signed in. */
+export interface InvitationPreview {
+  companyId: string | null
+  companyName: string | null
+  companyLogoUrl: string | null
+  inviterName: string | null
+  inviterUsername: string | null
+  role: string
+  /** Granular permission-role ids (select-permissions-panel.tsx) the inviter
+   * assigned. These are the actual roles to display, not the legacy
+   * `role` field. */
+  permissions: string[]
+  expiresAt: string
+  status: "pending" | "accepted" | "canceled" | "expired"
+}
+
 export interface CreateInvitationResult {
   id: string
-  email: string
+  /** POST /v1/invitations returns the saved rows, whose column is
+   * `invitedEmail`. `email` is only present on the per-item rejection shape
+   * (ALREADY_MEMBER), so read the address through both. */
+  invitedEmail?: string
+  email?: string
   status: "pending" | "accepted" | "canceled" | "expired"
   expiresAt: string
   teamName?: string
