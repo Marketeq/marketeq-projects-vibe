@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -23,6 +24,8 @@ import { UserEventPublisher } from "./user-event.publisher";
 
 @Injectable()
 export class UserService {
+  private readonly logger = new Logger(UserService.name);
+
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
@@ -104,6 +107,13 @@ export class UserService {
     });
   }
 
+  // Counting in the DB rather than measuring a page of listUsers(): the
+  // paged call caps at `limit`, so a caller that only needs a total silently
+  // plateaus there once the real count passes it.
+  async countUsers(): Promise<{ count: number }> {
+    return { count: await this.userRepository.count() };
+  }
+
   async getUserByEmail(email: string): Promise<User> {
     const user = await this.userRepository.findOne({ where: { email } });
     if (!user) throw new NotFoundException("User not found");
@@ -115,6 +125,7 @@ export class UserService {
     email: string;
     firstName?: string;
     lastName?: string;
+    username?: string;
     avatarUrl?: string;
     role: string;
     onboardingDismissed: boolean;
@@ -128,6 +139,7 @@ export class UserService {
       email: user.email,
       firstName: user.firstName ?? undefined,
       lastName: user.lastName ?? undefined,
+      username: user.username ?? undefined,
       avatarUrl: user.avatarUrl ?? undefined,
       role: user.role ?? "client",
       onboardingDismissed: user.onboardingDismissed,
@@ -141,6 +153,7 @@ export class UserService {
     email: string;
     firstName?: string;
     lastName?: string;
+    username?: string;
     avatarUrl?: string;
     role: string;
     onboardingDismissed: boolean;
@@ -154,6 +167,7 @@ export class UserService {
       email: user.email,
       firstName: user.firstName ?? undefined,
       lastName: user.lastName ?? undefined,
+      username: user.username ?? undefined,
       avatarUrl: user.avatarUrl ?? undefined,
       role: user.role ?? "client",
       onboardingDismissed: user.onboardingDismissed,
@@ -362,10 +376,24 @@ export class UserService {
       where: { email: dto.email },
     });
 
-    if (existingByEmail) {
-      if (existingByEmail.id !== dto.id) {
-        throw new ConflictException("User already exists with a different id");
-      }
+    if (existingByEmail && existingByEmail.id !== dto.id) {
+      // The auth account that owned this profile was deleted and signed up
+      // again with the same address, so it came back under a new id.
+      // auth-service is the source of truth for identity: retire the stale
+      // profile here and let the create below issue a fresh one under the
+      // current id.
+      //
+      // This used to throw ConflictException, which left the account
+      // permanently unsyncable. No profile row was ever created for the new
+      // id, so every lookup by id came back empty. Company rosters then
+      // rendered the member with a null email and the UI dropped them
+      // silently. `remove` (not `delete`) so the dead account's cascaded
+      // relations go with it rather than a new signup inheriting them.
+      this.logger.warn(
+        `Retiring stale profile for ${dto.email}: id ${existingByEmail.id} -> ${dto.id}`,
+      );
+      await this.userRepository.remove(existingByEmail);
+    } else if (existingByEmail) {
       Object.assign(existingByEmail, {
         role: dto.role ?? existingByEmail.role,
         provider: dto.provider ?? existingByEmail.provider ?? resolvedProvider,
