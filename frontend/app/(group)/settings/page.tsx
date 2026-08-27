@@ -32,13 +32,17 @@ import {
   EyeOff,
   Fingerprint01,
   Lock01,
+  Mail01,
+  Smartphone,
   HelpCircle,
   Image as ImageIcon,
   Phone,
   Plus,
+  Save01,
   Send01,
   Settings02,
   Share06,
+  Trash01,
   Trash03,
   X,
   X2,
@@ -285,7 +289,74 @@ export default function SettingsPage() {
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [showSessionsModal, setShowSessionsModal] = useState(false)
   const [twoFactorPhone, setTwoFactorPhone] = useState("")
+  const isTwoFactorEnabled = user?.twoFactorEnabled ?? false
+  const [addedTwoFactorNumbers, setAddedTwoFactorNumbers] = useState<string[]>(
+    []
+  )
+  const [isAddingBackupNumber, setIsAddingBackupNumber] = useState(false)
+
+  const [isSecurityQuestionsOpen, setIsSecurityQuestionsOpen] = useState(false)
+  const [areSecurityQuestionsSaved, setAreSecurityQuestionsSaved] =
+    useState(false)
+  const [securityQuestions, setSecurityQuestions] = useState([
+    { question: "", answer: "" },
+    { question: "", answer: "" },
+  ])
+
+  const securityQuestionOptions = [
+    "What is the name of your first pet?",
+    "What was the name of your first school?",
+    "What city were you born in?",
+    "What is your mother's maiden name?",
+    "What was the make of your first car?",
+    "What is your favourite book?",
+  ]
+
+  const canSaveSecurityQuestions = securityQuestions.every(
+    (q) => q.question !== "" && q.answer.trim() !== ""
+  )
+
+  const updateSecurityQuestion = (
+    index: number,
+    field: "question" | "answer",
+    value: string
+  ) =>
+    setSecurityQuestions((prev) =>
+      prev.map((q, i) => (i === index ? { ...q, [field]: value } : q))
+    )
+
+  const [isPhoneVerificationOpen, setIsPhoneVerificationOpen] = useState(false)
+  const [recoveryPhone, setRecoveryPhone] = useState("")
+  const [isRecoveryLinkSent, setIsRecoveryLinkSent] = useState(false)
+  const [isRecoveryPhoneVerified, setIsRecoveryPhoneVerified] = useState(false)
+  const recoveryPhoneLast4 = recoveryPhone.replace(/\D/g, "").slice(-4)
+
+  const closeRecoveryMagicLink = () => {
+    setIsRecoveryPhoneVerified(true)
+    setSavedAlertMessage("Successfully added account recovery number")
+    setIsSavedAlertMounted(true)
+    setIsRecoveryLinkSent(false)
+  }
+
+  const twoFactorNumbers = [
+    ...((user as any)?.twoFactorPhone
+      ? [(user as any).twoFactorPhone as string]
+      : []),
+    ...addedTwoFactorNumbers,
+  ]
   const [isMagicLinkSent, setIsMagicLinkSent] = useState(false)
+
+  // Front-end only: a real magic link is confirmed on the device, so there is
+  // no in-app verification step to hang this off yet. Dismissing the modal
+  // completes the add-a-number flow so the list state is demonstrable.
+  const closeMagicLink = () => {
+    if (isAddingBackupNumber && twoFactorPhone) {
+      setAddedTwoFactorNumbers((prev) => [...prev, twoFactorPhone])
+      setIsAddingBackupNumber(false)
+      setTwoFactorPhone("")
+    }
+    setIsMagicLinkSent(false)
+  }
   const twoFactorPhoneLast4 = twoFactorPhone.replace(/\D/g, "").slice(-4)
   const [show2FASetup, setShow2FASetup] = useState(false)
   const [show2FADisable, setShow2FADisable] = useState(false)
@@ -1612,7 +1683,98 @@ export default function SettingsPage() {
                 </Dialog>
               )}
 
-              {activeTab === "two-factor-auth" && (
+              {activeTab === "two-factor-auth" &&
+                isTwoFactorEnabled &&
+                !isAddingBackupNumber && (
+                <>
+                  <div className="flex items-start justify-between gap-6">
+                    <div className="flex w-[658px] flex-col items-start gap-3">
+                      <div className="flex items-center gap-x-3">
+                        <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                          Two-Factor Authentication
+                        </h1>
+                        <Badge
+                          visual="success"
+                          size="sm"
+                          className="bg-success-50"
+                        >
+                          Enabled
+                        </Badge>
+                      </div>
+                      <p className="w-full text-sm text-gray-500">
+                        Two-factor authentication is enabled. Your account is
+                        protected with an additional verification step.
+                      </p>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setTwoFactorPhone("")
+                        setIsAddingBackupNumber(true)
+                      }}
+                      leftIcon={<Plus className="size-[15px]" />}
+                    >
+                      Add Backup Number
+                    </Button>
+                  </div>
+
+                  <div className="mt-6 flex w-[550px] flex-col items-start gap-6">
+                    {twoFactorNumbers.map((number, index) => (
+                      <div
+                        key={`${number}-${index}`}
+                        className="flex w-[550px] items-start justify-between gap-5 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                      >
+                        <div className="flex flex-col justify-center gap-3">
+                          <div className="flex flex-col justify-center gap-1">
+                            <span className="text-sm font-medium leading-[17px] text-gray-900">
+                              Phone Number
+                            </span>
+                            <span className="text-base text-gray-500">
+                              {number}
+                            </span>
+                          </div>
+                          <div className="flex flex-col justify-center gap-1">
+                            <span className="text-sm font-medium text-success-500">
+                              Verified
+                            </span>
+                            <span className="text-sm font-medium text-gray-900">
+                              Codes are sent via text message.
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-x-3">
+                          <IconButton
+                            variant="ghost"
+                            visual="gray"
+                            size="sm"
+                            className="size-8 rounded-[5px]"
+                          >
+                            <Edit01 className="size-5 text-gray-500" />
+                          </IconButton>
+                          <IconButton
+                            variant="ghost"
+                            visual="gray"
+                            size="sm"
+                            className="size-8 rounded-[5px]"
+                            onClick={() =>
+                              setAddedTwoFactorNumbers((prev) =>
+                                prev.filter((n) => n !== number)
+                              )
+                            }
+                          >
+                            <Trash01 className="size-5 text-gray-500" />
+                          </IconButton>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {activeTab === "two-factor-auth" &&
+                (!isTwoFactorEnabled || isAddingBackupNumber) && (
                 <>
                   <div className="flex items-start justify-between gap-6">
                     <div className="flex w-[658px] flex-col items-start gap-3">
@@ -1653,7 +1815,9 @@ export default function SettingsPage() {
 
                   <Dialog
                     open={isMagicLinkSent}
-                    onOpenChange={setIsMagicLinkSent}
+                    onOpenChange={(open) =>
+                      open ? setIsMagicLinkSent(true) : closeMagicLink()
+                    }
                   >
                     <DialogContent
                       className="flex w-[508px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 px-[55px] pb-6 pt-[55px] shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
@@ -1701,7 +1865,7 @@ export default function SettingsPage() {
                         visual="gray"
                         size="sm"
                         className="absolute right-2.5 top-2.5 size-[38px] rounded-[5px]"
-                        onClick={() => setIsMagicLinkSent(false)}
+                        onClick={closeMagicLink}
                       >
                         <X className="size-6 text-gray-500 opacity-50" />
                       </IconButton>
@@ -1717,9 +1881,388 @@ export default function SettingsPage() {
               )}
 
               {activeTab === "account-recovery" && (
-                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
-                  Account Recovery
-                </h1>
+                <>
+                  <div className="flex w-[658px] flex-col items-start gap-3">
+                    <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                      Account Recovery
+                    </h1>
+                    <p className="w-full text-sm text-gray-500">
+                      Set up recovery options in case you lose access to your
+                      account.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 flex w-[550px] flex-col items-start gap-2.5">
+                    <Button
+                      variant="ghost"
+                      visual="gray"
+                      size="sm"
+                      onClick={() => setIsPhoneVerificationOpen(true)}
+                      className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                    >
+                      <span className="flex items-center gap-x-3">
+                        <span className="flex size-11 items-center justify-center rounded-lg border-[1.5px] border-gray-200">
+                          <Phone className="size-5 text-primary-500" />
+                        </span>
+                        <span className="text-sm font-medium leading-[17px] text-gray-900">
+                          Phone Verification
+                        </span>
+                        {isRecoveryPhoneVerified && (
+                          <Badge
+                            visual="success"
+                            size="sm"
+                            className="bg-success-50"
+                          >
+                            Enabled
+                          </Badge>
+                        )}
+                      </span>
+                      <span className="flex size-8 items-center justify-center rounded-[5px]">
+                        <ChevronRight className="size-5 text-gray-500" />
+                      </span>
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      visual="gray"
+                      size="sm"
+                      onClick={() => setIsSecurityQuestionsOpen(true)}
+                      className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                    >
+                      <span className="flex items-center gap-x-3">
+                        <span className="flex size-11 items-center justify-center rounded-lg border-[1.5px] border-gray-200">
+                          <HelpCircle className="size-5 text-primary-500" />
+                        </span>
+                        <span className="text-sm font-medium leading-[17px] text-gray-900">
+                          Security Questions
+                        </span>
+                        {areSecurityQuestionsSaved && (
+                          <Badge
+                            visual="success"
+                            size="sm"
+                            className="bg-success-50"
+                          >
+                            Enabled
+                          </Badge>
+                        )}
+                      </span>
+                      <span className="flex size-8 items-center justify-center rounded-[5px]">
+                        <ChevronRight className="size-5 text-gray-500" />
+                      </span>
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      visual="gray"
+                      size="sm"
+                      className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                    >
+                      <span className="flex items-center gap-x-3">
+                        <span className="flex size-11 items-center justify-center rounded-lg border-[1.5px] border-gray-200">
+                          <Mail01 className="size-5 text-primary-500" />
+                        </span>
+                        <span className="text-sm font-medium leading-[17px] text-gray-900">
+                          Recovery Email
+                        </span>
+                      </span>
+                      <span className="flex size-8 items-center justify-center rounded-[5px]">
+                        <ChevronRight className="size-5 text-gray-500" />
+                      </span>
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      visual="gray"
+                      size="sm"
+                      className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                    >
+                      <span className="flex items-center gap-x-3">
+                        <span className="flex size-11 items-center justify-center rounded-lg border-[1.5px] border-gray-200">
+                          <Smartphone className="size-5 text-primary-500" />
+                        </span>
+                        <span className="text-sm font-medium leading-[17px] text-gray-900">
+                          App Authenticator
+                        </span>
+                      </span>
+                      <span className="flex size-8 items-center justify-center rounded-[5px]">
+                        <ChevronRight className="size-5 text-gray-500" />
+                      </span>
+                    </Button>
+                  </div>
+
+                  <div className="relative mt-6 w-[550px]">
+                    {isSavedAlertMounted && (
+                      <Alert
+                        variant="success"
+                        className={cn(
+                          "absolute left-0 top-0 z-10 w-max min-w-[296px] items-center rounded-[5px] pointer-events-none transition-opacity duration-300",
+                          isSavedAlertVisible ? "opacity-100" : "opacity-0"
+                        )}
+                      >
+                        <AlertIcon>
+                          <CheckCircle className="size-5 text-success-500" />
+                        </AlertIcon>
+                        <AlertTitle className="whitespace-nowrap text-success-600">
+                          {savedAlertMessage}
+                        </AlertTitle>
+                      </Alert>
+                    )}
+                  </div>
+
+                  <Dialog
+                    open={isSecurityQuestionsOpen}
+                    onOpenChange={setIsSecurityQuestionsOpen}
+                  >
+                    <DialogContent
+                      className="flex w-[556px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="absolute right-2.5 top-2.5 size-[38px] rounded-[5px]"
+                        onClick={() => setIsSecurityQuestionsOpen(false)}
+                      >
+                        <X className="size-6 text-gray-500 opacity-50" />
+                      </IconButton>
+
+                      <div className="flex w-full flex-col items-start gap-5">
+                        <div className="flex w-full flex-col items-start gap-2">
+                          <DialogTitle className="w-full text-lg leading-7 font-semibold text-gray-900">
+                            Security Questions
+                          </DialogTitle>
+                          <DialogDescription className="w-full text-sm text-gray-500">
+                            Torem ipsum dolor sit amet, consectetur adipiscing
+                            elit. Nunc vulputate libero et velit interdum, ac
+                            aliquet odio mattis.
+                          </DialogDescription>
+                        </div>
+
+                        <div className="flex h-[340px] w-full flex-col items-start gap-5 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+                          {securityQuestions.map((entry, index) => (
+                            <div
+                              key={index}
+                              className="flex w-full flex-col items-start gap-5"
+                            >
+                              <div className="flex w-full flex-col items-start gap-1.5">
+                                <Label size="sm">
+                                  Security Question {index + 1}
+                                </Label>
+                                <Listbox
+                                  value={entry.question}
+                                  onChange={(value) =>
+                                    updateSecurityQuestion(
+                                      index,
+                                      "question",
+                                      value as string
+                                    )
+                                  }
+                                >
+                                  <ListboxButton
+                                    placeholder="Select a question"
+                                    displayValue={(val) =>
+                                      (val as string) || null
+                                    }
+                                  />
+                                  <ListboxOptions>
+                                    {securityQuestionOptions.map((option) => (
+                                      <ListboxOption
+                                        key={option}
+                                        value={option}
+                                      >
+                                        {option}
+                                      </ListboxOption>
+                                    ))}
+                                  </ListboxOptions>
+                                </Listbox>
+                              </div>
+
+                              <div className="flex w-full flex-col items-start gap-1.5">
+                                <Label size="sm">Your Answer</Label>
+                                <Input
+                                  placeholder="Enter your answer"
+                                  value={entry.answer}
+                                  onChange={(e) =>
+                                    updateSecurityQuestion(
+                                      index,
+                                      "answer",
+                                      e.target.value
+                                    )
+                                  }
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex w-full items-start justify-end gap-x-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() =>
+                            setSecurityQuestions((prev) => [
+                              ...prev,
+                              { question: "", answer: "" },
+                            ])
+                          }
+                        >
+                          Add Question
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={!canSaveSecurityQuestions}
+                          onClick={() => {
+                            setAreSecurityQuestionsSaved(true)
+                            setIsSecurityQuestionsOpen(false)
+                            setSavedAlertMessage(
+                              "Successfully saved security questions"
+                            )
+                            setIsSavedAlertMounted(true)
+                          }}
+                          leftIcon={<Save01 className="size-[15px]" />}
+                        >
+                          Save Security Questions
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog
+                    open={isPhoneVerificationOpen}
+                    onOpenChange={setIsPhoneVerificationOpen}
+                  >
+                    <DialogContent
+                      className="flex w-[467px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="absolute right-2.5 top-2.5 size-[38px] rounded-[5px]"
+                        onClick={() => setIsPhoneVerificationOpen(false)}
+                      >
+                        <X className="size-6 text-gray-500 opacity-50" />
+                      </IconButton>
+
+                      <div className="flex w-full flex-col items-start gap-5">
+                        <div className="flex w-full flex-col items-start gap-2">
+                          <DialogTitle className="w-full text-lg leading-7 font-semibold text-gray-900">
+                            Phone Verification
+                          </DialogTitle>
+                          <DialogDescription className="w-full text-sm text-gray-500">
+                            Enter your phone number and we&apos;ll send a magic
+                            link to the number entered. You&apos;ll be able to
+                            use this number if you ever need to recover your
+                            account.
+                          </DialogDescription>
+                        </div>
+
+                        <div className="flex w-full flex-col items-start gap-1.5">
+                          <Label size="sm">Phone Number</Label>
+                          <PhoneNumberInput
+                            defaultCountry="us"
+                            placeholder="(555) 555-5555"
+                            disableDialCodePrefill
+                            value={recoveryPhone}
+                            onChange={setRecoveryPhone}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex w-full items-start justify-end gap-x-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => setIsPhoneVerificationOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={!isPhoneValid(recoveryPhone)}
+                          onClick={() => {
+                            setIsPhoneVerificationOpen(false)
+                            setIsRecoveryLinkSent(true)
+                          }}
+                          leftIcon={<Send01 className="size-[15px]" />}
+                        >
+                          Send Link
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog
+                    open={isRecoveryLinkSent}
+                    onOpenChange={(open) =>
+                      open
+                        ? setIsRecoveryLinkSent(true)
+                        : closeRecoveryMagicLink()
+                    }
+                  >
+                    <DialogContent
+                      className="flex w-[508px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 px-[55px] pb-6 pt-[55px] shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <div className="flex w-full flex-col items-center gap-5">
+                        <span className="flex size-12 items-center justify-center rounded-full border-8 border-primary-25 bg-primary-50">
+                          <Phone className="size-6 text-primary-500" />
+                        </span>
+
+                        <div className="flex w-full flex-col items-center gap-2">
+                          <DialogTitle className="w-full text-center text-lg leading-7 font-semibold text-gray-900">
+                            Please check your phone
+                          </DialogTitle>
+                          <DialogDescription className="text-center text-sm text-gray-500">
+                            We sent a magic link sent to phone number ending
+                            with{" "}
+                            <span className="font-semibold text-gray-900">
+                              {recoveryPhoneLast4}
+                            </span>
+                            .
+                          </DialogDescription>
+                          <p className="w-full text-center text-sm text-gray-500">
+                            The link will expire in{" "}
+                            <span className="font-semibold text-gray-900">
+                              24 hours
+                            </span>
+                            .
+                          </p>
+                        </div>
+                      </div>
+
+                      <Button size="sm">Resend Link</Button>
+
+                      <p className="w-full text-center text-sm text-gray-500">
+                        No longer have access to this email?{" "}
+                        <a href="#" className="underline">
+                          Start account recovery
+                        </a>
+                      </p>
+
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="absolute right-2.5 top-2.5 size-[38px] rounded-[5px]"
+                        onClick={closeRecoveryMagicLink}
+                      >
+                        <X className="size-6 text-gray-500 opacity-50" />
+                      </IconButton>
+                    </DialogContent>
+                  </Dialog>
+                </>
               )}
 
               {activeTab === "users" && (
