@@ -4017,7 +4017,7 @@ const ProjectInfo = ({
       id: "marketeq-projects-network",
       title: "Marketeq Projects Network",
       badges: ["Design Phase"],
-      icon: <Copy className="size-5" />,
+      icon: <MdOutlineAssignment className="size-6" />,
       avatars: ["AK", "NS", "RP", "+3"],
       workType: "project" as const,
     },
@@ -4034,7 +4034,7 @@ const ProjectInfo = ({
       id: "ecommerce-react-build",
       title: "E-commerce Website Build with React JS",
       badges: ["Development Phase", "Service"],
-      icon: <RefreshCcw05 className="size-5" />,
+      icon: <MdAutorenew className="size-6" />,
       avatars: ["RK", "SB"],
       workType: "service" as const,
     },
@@ -4330,7 +4330,7 @@ const ProjectInfo = ({
                                     >
                                       {badge === "Service" ? (
                                         <span className="inline-flex items-center gap-x-1">
-                                          <RefreshCcw05 className="size-3.5 shrink-0 text-primary-500" />
+                                          <MdAutorenew className="size-3.5 shrink-0 text-primary-500" />
                                           <span>Service</span>
                                         </span>
                                       ) : (
