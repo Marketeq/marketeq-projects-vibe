@@ -194,6 +194,9 @@ import {
   Accordion,
   AccordionItem,
   AccordionTrigger,
+  Avatar,
+  AvatarFallback,
+  AvatarGroup,
   Badge,
   Button,
   Card,
@@ -4310,12 +4313,12 @@ const ProjectInfo = ({
                             disabled={disabled}
                             title={option.disabledReason}
                             className={cn(
-                              "flex w-full items-center gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
+                              "flex h-[92px] w-full items-center gap-[48px] rounded-lg border border-gray-300 bg-white py-4 pl-4 pr-6 text-left focus-visible:outline-none",
                               selected && "border-primary-500",
                               disabled && "cursor-not-allowed opacity-60",
                             )}
                           >
-                            <span className="inline-flex size-[72px] shrink-0 items-center justify-center overflow-hidden rounded bg-primary-50 text-primary-500">
+                            <span className="inline-flex size-[60px] shrink-0 items-center justify-center overflow-hidden rounded-[4px] bg-primary-50 text-primary-500">
                               {"image" in option ? (
                                 <img
                                   alt=""
@@ -4328,10 +4331,10 @@ const ProjectInfo = ({
                             </span>
 
                             <span className="min-w-0 flex-auto">
-                              <span className="block text-base leading-6 font-semibold text-dark-blue-400">
+                              <span className="block text-[18px] leading-7 font-semibold text-dark-blue-400">
                                 {option.title}
                               </span>
-                              <span className="mt-2 flex flex-wrap gap-1.5">
+                              <span className="mt-1.5 flex flex-wrap gap-1.5">
                                 {option.badges.map((badge) => (
                                   <Badge
                                     key={badge}
@@ -4345,20 +4348,35 @@ const ProjectInfo = ({
                               </span>
                             </span>
 
-                            <span className="hidden items-center -space-x-2 md:flex">
-                              {option.avatars.map((avatar) => (
-                                <span
-                                  key={avatar}
-                                  className="inline-flex size-6 items-center justify-center rounded-full border border-white bg-primary-50 text-[10px] leading-none font-semibold text-primary-500"
-                                >
-                                  {avatar}
-                                </span>
-                              ))}
+                            <span className="hidden items-center md:flex">
+                              <AvatarGroup className="!cursor-default" size="xs" reverse={false}>
+                                {option.avatars
+                                  .filter((avatar) => !avatar.startsWith("+"))
+                                  .slice(0, 4)
+                                  .map((avatar) => (
+                                    <Avatar
+                                      key={`${option.id}-${avatar}`}
+                                      size="xs"
+                                      className="border-2 border-white hover:ring-0 active:ring-0"
+                                    >
+                                      <AvatarFallback className="bg-primary-50 text-[10px] font-semibold leading-none text-primary-500">
+                                        {avatar}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                  ))}
+                                {option.avatars.find((avatar) => avatar.startsWith("+")) ? (
+                                  <span className="inline-flex size-6 items-center justify-center rounded-full border-2 border-primary-500 bg-white text-[10px] leading-none font-semibold text-primary-500">
+                                    {option.avatars.find((avatar) =>
+                                      avatar.startsWith("+"),
+                                    )}
+                                  </span>
+                                ) : null}
+                              </AvatarGroup>
                             </span>
 
                             <span
                               className={cn(
-                                "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
+                                "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300 bg-white",
                                 selected && "border-[5px] border-primary-500",
                               )}
                             />
