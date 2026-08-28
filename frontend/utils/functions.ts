@@ -122,6 +122,35 @@ export function capitalize(str: string) {
   if (!str) return "" // Check if the string is empty or undefined
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
 }
+
+/**
+ * `users.role` is a free-text varchar, not a typed enum column, so it holds
+ * either an account type (written by user.service.ts on every signup) or a
+ * legacy job-title string depending on when the row was last written. Any
+ * code falling back to `user.role`/`profile.role` as display text (job
+ * title, headline, etc.) must filter these out first, or a client/admin
+ * account can end up with "client"/"admin" rendered as their job title.
+ */
+export function isAccountTypeRole(role?: string | null) {
+  return !!role && ["admin", "talent", "client"].includes(role.trim().toLowerCase())
+}
+
+/**
+ * Title-cases a person or company name for display: upper-case the first
+ * letter of every word, but leave any word that already contains an uppercase
+ * letter alone so deliberate casing like "eBay", "AT&T", "McDonald" or
+ * "O'Brien" is not flattened. Unlike `capitalize`, it never lower-cases the
+ * rest of a word. Display only, and never run it over an email address, whose
+ * local part is case-sensitive by spec. The invite emails apply the same rule
+ * server-side (backend/apps/notification-service/src/templates/email-primitives.ts).
+ */
+export function capitalizeWords(value?: string) {
+  return (value ?? "").replace(/(^|\s)(\S+)/g, (_m, lead, word) =>
+    /[A-Z]/.test(word)
+      ? lead + word
+      : lead + word.charAt(0).toUpperCase() + word.slice(1)
+  )
+}
 export function debounce(cb: () => void, wait?: number) {
   let timeoutId: ReturnType<typeof setTimeout> | undefined = setTimeout(
     cb,

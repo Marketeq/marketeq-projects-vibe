@@ -1,46 +1,50 @@
 import {
-  AcceptInvitationDto,
   AcceptInvitationResponse,
   CreateInvitationDto,
   CreateInvitationLinkDto,
+  CreateInvitationResult,
+  Invitation,
+  InvitationLinkResponse,
+  InvitationListResponse,
+  InvitationPreview,
   ListInvitationsParams,
 } from "@/types/invitation"
 import AxiosRequest from ".."
 
-const INVITATIONS_BASE = "/invitations"
+// /v1/invitations resolves to the same invitations-service as the legacy
+// /invitations path (see backend/apps/api-gateway/src/proxy/proxy.controller.ts).
+// The /v1 form is used going forward per the MyTeam epic doc.
+const INVITATIONS_BASE = "/v1/invitations"
 
-interface InvitationsAPIType {
-  createInvitations: (
-    dto: CreateInvitationDto
-  ) => ReturnType<typeof AxiosRequest.post<CreateInvitationDto>>
-  createInvitationLink: (
-    dto: CreateInvitationLinkDto
-  ) => ReturnType<typeof AxiosRequest.post<CreateInvitationLinkDto>>
-  listInvitations: (
-    params?: ListInvitationsParams
-  ) => ReturnType<typeof AxiosRequest.get>
-  getInvitation: (id: string) => ReturnType<typeof AxiosRequest.get>
-  resendInvitation: (
-    id: string
-  ) => ReturnType<typeof AxiosRequest.post<Record<string, never>>>
-  cancelInvitation: (id: string) => ReturnType<typeof AxiosRequest.del>
-  acceptInvitation: (
-    inviteToken: string
-  ) => ReturnType<typeof AxiosRequest.post<AcceptInvitationResponse>>
+const unwrapList = (payload: unknown): InvitationListResponse => {
+  if (payload && typeof payload === "object" && "data" in (payload as InvitationListResponse)) {
+    const typed = payload as InvitationListResponse
+    return { data: Array.isArray(typed.data) ? typed.data : [], nextCursor: typed.nextCursor ?? null }
+  }
+  return { data: Array.isArray(payload) ? (payload as Invitation[]) : [], nextCursor: null }
 }
 
-export const InvitationsAPI: InvitationsAPIType = {
-  createInvitations: (dto) => {
-    return AxiosRequest.post(`${INVITATIONS_BASE}`, dto)
+export const InvitationsAPI = {
+  createInvitations: async (
+    dto: CreateInvitationDto
+  ): Promise<CreateInvitationResult[]> => {
+    const res = await AxiosRequest.post(INVITATIONS_BASE, dto)
+    return Array.isArray(res.data) ? res.data : []
   },
 
-  createInvitationLink: (dto) => {
-    return AxiosRequest.post(`${INVITATIONS_BASE}/link`, dto)
+  createInvitationLink: async (
+    dto: CreateInvitationLinkDto
+  ): Promise<InvitationLinkResponse> => {
+    const res = await AxiosRequest.post(`${INVITATIONS_BASE}/link`, dto)
+    return res.data
   },
 
-  listInvitations: (params) => {
+  listInvitations: async (
+    params?: ListInvitationsParams
+  ): Promise<InvitationListResponse> => {
     const query = new URLSearchParams()
     if (params?.teamId) query.set("teamId", params.teamId)
+    if (params?.companyId) query.set("companyId", params.companyId)
     if (params?.invitedEmail) query.set("invitedEmail", params.invitedEmail)
     if (params?.status) query.set("status", params.status)
     if (params?.limit) query.set("limit", params.limit.toString())
@@ -51,24 +55,39 @@ export const InvitationsAPI: InvitationsAPIType = {
       ? `${INVITATIONS_BASE}?${queryString}`
       : INVITATIONS_BASE
 
-    return AxiosRequest.get(url)
+    const res = await AxiosRequest.get(url)
+    return unwrapList(res.data)
   },
 
-  getInvitation: (id: string) => {
-    return AxiosRequest.get(`${INVITATIONS_BASE}/${id}`)
+  getInvitation: async (id: string): Promise<Invitation> => {
+    const res = await AxiosRequest.get(`${INVITATIONS_BASE}/${id}`)
+    return res.data
   },
 
-  resendInvitation: (id: string) => {
-    return AxiosRequest.post(`${INVITATIONS_BASE}/${id}/resend`, {})
+  /** Pre-auth preview. Renders the invite banner without requiring the
+   * visitor to be signed in (backend route is @Public()). */
+  previewInvitation: async (token: string): Promise<InvitationPreview> => {
+    const res = await AxiosRequest.get(
+      `${INVITATIONS_BASE}/preview?token=${encodeURIComponent(token)}`
+    )
+    return res.data
   },
 
-  cancelInvitation: (id: string) => {
-    return AxiosRequest.del(`${INVITATIONS_BASE}/${id}/cancel`)
+  resendInvitation: async (id: string): Promise<Invitation> => {
+    const res = await AxiosRequest.post(`${INVITATIONS_BASE}/${id}/resend`, {})
+    return res.data
   },
 
-  acceptInvitation: (inviteToken: string) => {
-    return AxiosRequest.post(`${INVITATIONS_BASE}/accept`, {
+  cancelInvitation: async (id: string): Promise<void> => {
+    await AxiosRequest.del(`${INVITATIONS_BASE}/${id}/cancel`)
+  },
+
+  acceptInvitation: async (
+    inviteToken: string
+  ): Promise<AcceptInvitationResponse> => {
+    const res = await AxiosRequest.post(`${INVITATIONS_BASE}/accept`, {
       token: inviteToken,
     })
+    return res.data
   },
 }

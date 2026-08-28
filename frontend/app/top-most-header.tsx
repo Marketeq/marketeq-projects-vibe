@@ -31,6 +31,7 @@ import { useNotificationChannel } from "@/utils/useNotificationChannel"
 import {
   BarChart2,
   Bell,
+  Briefcase02,
   ChevronDown,
   CoinStack,
   FileCheck02,
@@ -99,6 +100,18 @@ import {
 import { ScrollBar } from "@/components/ui"
 
 const OFFER_NOTIFICATION_EVENT = "contract.offer.received"
+const INVITE_NOTIFICATION_EVENT = "team.invitation.received"
+
+// The panel is 370px wide and capped at 463px tall including the View All row.
+// The chrome around the list (tab bar + paddings + View All) measures 112.3px,
+// so this is the tallest the scroll viewport can be without busting that cap.
+// It is a max, not a height: a short list hugs its content instead.
+const NOTIFICATION_LIST_MAX_HEIGHT = 350
+
+// The panel scrolls, so it lists everything the endpoint will hand back rather
+// than an arbitrary handful. 100 is that endpoint's own hard ceiling, so asking
+// for more is a no-op; anything older lives behind View All.
+const NOTIFICATION_PANEL_LIMIT = 100
 const OFFER_ACCEPTED_STORAGE_PREFIX = "inbox_offer_accepted"
 const COUNTER_OFFER_STORAGE_PREFIX = "inbox_counter_offer_submitted"
 const OFFER_DECLINED_STORAGE_PREFIX = "inbox_offer_declined"
@@ -482,7 +495,9 @@ const Notifications = () => {
     try {
       setLoading(true)
 
-      const response = await NotificationsAPI.list({ limit: 8 })
+      const response = await NotificationsAPI.list({
+        limit: NOTIFICATION_PANEL_LIMIT,
+      })
       const items: UiNotificationItem[] = Array.isArray(response?.data?.data)
         ? response.data.data.map(mapApiNotificationToUi)
         : []
@@ -498,15 +513,51 @@ const Notifications = () => {
       }
 
       setAllNotifications(items)
-      setUnreadBadgeCount(items.filter((item) => !item.read).length)
+
+      // The bell badge counts every unread notification, not just the 8 this
+      // panel fetches, so it comes from the dedicated count endpoint. The page
+      // count is only a fallback so a transient failure can't blank the badge.
+      const pageUnreadCount = items.filter((item) => !item.read).length
+      try {
+        const unreadResponse = await NotificationsAPI.getUnreadCount()
+        const unreadCount = unreadResponse?.data?.unreadCount
+        const resolved =
+          typeof unreadCount === "number" ? unreadCount : pageUnreadCount
+        setUnreadBadgeCount(resolved)
+        return resolved
+      } catch (error) {
+        if (!isTransientNotificationsApiError(error)) {
+          console.error("Failed to load unread notification count:", error)
+        }
+        setUnreadBadgeCount(pageUnreadCount)
+        return pageUnreadCount
+      }
     } catch (error) {
       if (!isTransientNotificationsApiError(error)) {
         console.error("Failed to load header notifications:", error)
       }
       setAllNotifications([])
       setUnreadBadgeCount(0)
+      return 0
     } finally {
       setLoading(false)
+    }
+  }, [])
+
+  // Opening the panel is what "viewing" means for the bell, so the count
+  // clears on open. This is also what keeps the badge reachable: it counts
+  // every unread notification server-side while the panel only lists the most
+  // recent few, so anything past that window could never be cleared by
+  // clicking it. Rows keep their own unread styling from local state, so you
+  // can still see which ones were new.
+  const markAllNotificationsRead = useCallback(async () => {
+    try {
+      await NotificationsAPI.markAllRead()
+      setUnreadBadgeCount(0)
+    } catch (error) {
+      if (!isTransientNotificationsApiError(error)) {
+        console.error("Failed to mark all notifications as read:", error)
+      }
     }
   }, [])
 
@@ -516,8 +567,18 @@ const Notifications = () => {
 
   useEffect(() => {
     if (!open) return
-    loadNotifications(false)
-  }, [open, loadNotifications])
+    let cancelled = false
+
+    void (async () => {
+      const unread = await loadNotifications(false)
+      if (cancelled || unread === 0) return
+      await markAllNotificationsRead()
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, loadNotifications, markAllNotificationsRead])
 
   useNotificationChannel({
     onNotificationNew: (payload) => {
@@ -525,10 +586,14 @@ const Notifications = () => {
 
       setAllNotifications((prev) => {
         const deduped = prev.filter((item) => item.id !== nextItem.id)
-        return [nextItem, ...deduped].slice(0, 8)
+        return [nextItem, ...deduped].slice(0, NOTIFICATION_PANEL_LIMIT)
       })
       setUnreadBadgeCount((prev) => prev + 1)
-      setActiveTab("Messages")
+      if (nextItem.kind === "message") {
+        setActiveTab("Messages")
+      } else {
+        setActiveTab("Notifications")
+      }
     },
     onBadgeCount: ({ unreadCount }) => {
       setUnreadBadgeCount(unreadCount)
@@ -751,7 +816,18 @@ const Notifications = () => {
       return
     }
 
-    router.push(item.href)
+    // Team invites are read-only in the panel for now: clicking marks them read
+    // and drops the bell count, deliberately without navigating anywhere. The
+    // panel stays open so that count change is visible.
+    if (item.event === INVITE_NOTIFICATION_EVENT) {
+      return
+    }
+
+    if (item.href) {
+      setOpen(false)
+      router.push(item.href)
+      return
+    }
   }
 
   const handleInboxThreadClick = (thread: InboxThreadSummary) => {
@@ -826,14 +902,14 @@ const Notifications = () => {
       item.kind === "project"
         ? {
             label: "Project",
-            className: "bg-[#FEF3F2] text-[#B42318]",
+            className: "bg-[#ECFDF3] text-[#027A48]",
             icon: FileCheck02,
           }
         : item.kind === "team"
           ? {
               label: "Team",
               className: "bg-[#ECFDF3] text-[#027A48]",
-              icon: Users,
+              icon: Briefcase02,
             }
           : item.kind === "message"
             ? {
@@ -853,14 +929,39 @@ const Notifications = () => {
       <button
         key={item.id}
         type="button"
-        className="w-full text-left hover:bg-gray-100 rounded-lg flex py-2.5 px-3 items-start gap-x-3 transition-colors"
+        className={cn(
+          "w-full text-left rounded-lg flex py-2.5 px-3 items-start gap-x-4 transition-colors",
+          !item.read ? "bg-[#F8F9FC] hover:bg-gray-100" : "hover:bg-gray-50"
+        )}
         onClick={() => handleNotificationClick(item)}
       >
         {item.isUserNotification ? (
-          <Avatar size="md" isOnline>
-            <AvatarImage src={item.avatarSrc} alt={item.avatarAlt} />
-            <AvatarFallback>{item.title.slice(0, 1)}</AvatarFallback>
-          </Avatar>
+          <div className="relative inline-block shrink-0">
+            <Avatar size="md">
+              <AvatarImage src={item.avatarSrc} alt={item.avatarAlt} />
+              <AvatarFallback>{item.title.slice(0, 1)}</AvatarFallback>
+            </Avatar>
+            <span
+              className={cn(
+                "absolute -bottom-1.5 -right-2 flex size-[21px] items-center justify-center rounded-full",
+                item.kind === "team"
+                  ? "bg-success-100 text-success-500"
+                  : item.kind === "project"
+                    ? "bg-success-100 text-success-500"
+                    : item.kind === "message"
+                      ? "bg-primary-50 text-primary-600"
+                      : "bg-[#EEF4FF] text-[#3538CD]"
+              )}
+            >
+              {item.kind === "team" ? (
+                <Briefcase02 className="size-2.5" />
+              ) : item.kind === "project" ? (
+                <FileCheck02 className="size-2.5" />
+              ) : (
+                <AccentIcon className="size-2.5" />
+              )}
+            </span>
+          </div>
         ) : (
           <span
             className={cn(
@@ -895,12 +996,14 @@ const Notifications = () => {
             </span>
           </div>
 
-          <div className="mt-1 text-sm leading-[16.94px] text-gray-700">
+          <div className="mt-1 text-sm leading-[16.94px] text-gray-700 break-words">
             {item.description}
           </div>
-          <div className="mt-2 text-xs font-semibold text-primary-500">
-            {item.ctaLabel}
-          </div>
+          {item.ctaLabel ? (
+            <div className="mt-1 text-xs font-semibold leading-5 text-primary-500 underline underline-offset-2">
+              {item.ctaLabel}
+            </div>
+          ) : null}
         </div>
       </button>
     )
@@ -910,14 +1013,23 @@ const Notifications = () => {
     <>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <IconButton
-            className="rounded-full"
-            size="md"
-            variant="ghost"
-            visual="gray"
-          >
-            <Bell className="size-[18px]" />
-          </IconButton>
+          <div className="relative inline-flex">
+            <IconButton
+              className="rounded-full"
+              size="md"
+              variant="ghost"
+              visual="gray"
+            >
+              <Bell className="size-[18px]" />
+            </IconButton>
+            {unreadBadgeCount + inboxTotalUnread > 0 ? (
+              <span className="absolute top-0 right-0 pointer-events-none inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-error-100 px-2 text-[10px] font-bold leading-[18px] text-error-500">
+                {unreadBadgeCount + inboxTotalUnread > 99
+                  ? "99+"
+                  : unreadBadgeCount + inboxTotalUnread}
+              </span>
+            ) : null}
+          </div>
         </PopoverTrigger>
         <PopoverContent
           className="w-[370px] bg-white border border-gray-100 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]"
@@ -947,8 +1059,9 @@ const Notifications = () => {
             <TabsContent value="Notifications">
               <div className="py-3 border-b border-gray-100 flex flex-col gap-y-1">
                 <ScrollArea
-                  className="h-[328px]"
                   scrollBar={<ScrollBar className="w-4 px-1" />}
+                  viewportClassName="[&>div]:!block"
+                  viewportStyle={{ maxHeight: NOTIFICATION_LIST_MAX_HEIGHT }}
                 >
                   <div className="px-2">
                     {loading ? (
@@ -983,8 +1096,9 @@ const Notifications = () => {
             <TabsContent value="Messages">
               <div className="py-3 border-b border-gray-100 flex flex-col gap-y-1">
                 <ScrollArea
-                  className="h-[328px]"
                   scrollBar={<ScrollBar className="w-4 px-1" />}
+                  viewportClassName="[&>div]:!block"
+                  viewportStyle={{ maxHeight: NOTIFICATION_LIST_MAX_HEIGHT }}
                 >
                   <div className="px-2">
                     {(() => {

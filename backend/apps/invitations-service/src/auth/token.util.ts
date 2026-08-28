@@ -13,9 +13,11 @@ export function nowPlusDays(days: number): Date {
 export interface InviteLinkTokenPayload {
   type: 'link';
   teamId: string;
+  companyId?: string;
   role: 'admin' | 'editor' | 'viewer';
   teamName?: string;
   invitedBy: string;
+  invitedByEmail?: string;
   exp: number;
 }
 

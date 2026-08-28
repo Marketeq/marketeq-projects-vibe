@@ -22,6 +22,7 @@ import { SimilarProfileModule } from './similar-profiles/similar-profile.module'
 import { AffiliatedTeamModule } from './affiliated-teams/affiliated-teams.module';
 import { FavoritesModule } from './favorites/favorites.module';
 import { TeamsModule } from './teams/teams.module';
+import { CompaniesModule } from './companies/companies.module';
 import { UserMangementModule } from './user-mangement/user-mangement.module';
 import { OffersModule } from './offers/offers.modules';
 import { HireRequestsModule } from './hire-requests/hire-requests.module';
@@ -73,6 +74,7 @@ import { ResumeModule } from './resume/resume.module';
     AuthModule,
     TalentModule,
     TeamsModule,
+    CompaniesModule,
     SimilarProfileModule,
     AffiliatedTeamModule,
     FavoritesModule,
