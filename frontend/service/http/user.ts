@@ -101,6 +101,10 @@ export const UserAPI = {
   listUsers: (limit = 50, offset = 0) =>
     AxiosRequest.get(`${USER_BASE}/v1/users?limit=${limit}&offset=${offset}`),
 
+  // Total user count. Use this instead of measuring listUsers(), which is
+  // paged, so its length plateaus at the limit rather than growing.
+  countUsers: () => AxiosRequest.get(`${USER_BASE}/v1/users/count`),
+
   // Profile
   getProfile: (userId: string) =>
     AxiosRequest.get(`${USER_BASE}/v1/users/${userId}`),

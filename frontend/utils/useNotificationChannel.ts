@@ -9,6 +9,11 @@ type NotificationNewPayload = {
   body: string
   link?: string
   category: string
+  // notification-service publishes these too; the invite card reads its
+  // avatar and "View Invite" label straight out of metadata, so leaving
+  // them off the type lets a publisher-side rename break the UI silently.
+  event?: string
+  metadata?: Record<string, unknown> | null
 }
 
 type NotificationBadgePayload = {

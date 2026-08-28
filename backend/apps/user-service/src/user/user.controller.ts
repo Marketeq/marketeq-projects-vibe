@@ -38,6 +38,14 @@ export class UserController {
     return this.userService.listUsers(parsedLimit, parsedOffset);
   }
 
+  // Must stay above @Get(':id'), because Nest matches routes in declaration order,
+  // so below it 'count' would bind as an :id and fail UUID lookup.
+  @ApiOperation({ summary: 'Count users' })
+  @Get('count')
+  countUsers() {
+    return this.userService.countUsers();
+  }
+
   @ApiOperation({ summary: 'Get user by id' })
   @Get(':id')
   getUser(@Param('id') id: string) {
