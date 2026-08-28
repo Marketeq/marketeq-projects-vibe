@@ -43,7 +43,7 @@ const NotificationCard = ({
       role="status"
       aria-live="polite"
       className={cn(
-        "fixed right-6 top-6 z-[100] w-[calc(100vw-3rem)] max-w-[390px] font-[Inter]",
+        "fixed right-6 top-6 z-[100] w-[calc(100vw-3rem)] max-w-[390px]",
         "animate-in fade-in slide-in-from-top-2 duration-200"
       )}
     >

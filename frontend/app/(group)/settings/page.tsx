@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useBillingExportStore } from "@/lib/billing-export"
 import { useSearchParams } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
@@ -78,6 +79,8 @@ export default function SettingsPage() {
   }, [tabParam])
 
   const toggleInviteWindow = useInviteWindowStore((s) => s.toggle)
+  const invoiceExporters = useBillingExportStore((s) => s.exporters.invoices)
+  const transactionExporters = useBillingExportStore((s) => s.exporters.transactions)
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [profileForm, setProfileForm] = useState({
@@ -659,9 +662,23 @@ export default function SettingsPage() {
                               Export
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start" sideOffset={4}>
-                            <DropdownMenuItem>Export CSV</DropdownMenuItem>
-                            <DropdownMenuItem>Export PDF</DropdownMenuItem>
+                          <DropdownMenuContent
+                            align="start"
+                            sideOffset={4}
+                            className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[var(--radix-dropdown-menu-trigger-width)]"
+                          >
+                            <DropdownMenuItem
+                              disabled={!transactionExporters}
+                              onClick={() => transactionExporters?.exportCsv()}
+                            >
+                              Export CSV
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!transactionExporters}
+                              onClick={() => transactionExporters?.exportPdf()}
+                            >
+                              Export PDF
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                         <IconButton
@@ -691,10 +708,74 @@ export default function SettingsPage() {
 
               {activeTab === "billing-invoices" && (
                 <>
-                  <h1 className="text-xl font-bold text-dark-blue-400 mb-5">
-                    Invoices
-                  </h1>
+                  <div className="flex items-start justify-between gap-x-5 mb-5">
+                    <h1 className="text-xl font-bold text-dark-blue-400">
+                      Invoices
+                    </h1>
+                    <div className="flex items-center gap-x-6">
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="sm"
+                        className="text-gray-500 underline decoration-gray-500/30 hover:decoration-gray-500 hover:text-dark-blue-500 transition-colors duration-300"
+                        leftIcon={<HelpCircle className="size-[15px]" />}
+                      >
+                        Get Help
+                      </Button>
+                      <div className="flex items-center gap-x-3">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outlined"
+                              visual="gray"
+                              size="sm"
+                              className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                              rightIcon={<ChevronDown className="size-[15px]" />}
+                            >
+                              Export
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            align="start"
+                            sideOffset={4}
+                            className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[var(--radix-dropdown-menu-trigger-width)]"
+                          >
+                            <DropdownMenuItem
+                              disabled={!invoiceExporters}
+                              onClick={() => invoiceExporters?.exportCsv()}
+                            >
+                              Export CSV
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!invoiceExporters}
+                              onClick={() => invoiceExporters?.exportPdf()}
+                            >
+                              Export PDF
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <IconButton
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                          onClick={() => toggleInviteWindow(true, "Share Your Invoices")}
+                        >
+                          <Share06 className="size-[15px]" />
+                        </IconButton>
+                        {/* <IconButton
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                        >
+                          <Settings02 className="size-[15px]" />
+                        </IconButton> */}
+                      </div>
+                    </div>
+                  </div>
                   <BillingInvoicesContent />
+
                 </>
               )}
 

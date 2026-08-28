@@ -998,7 +998,7 @@ export const InviteWindow = () => {
         <DialogContent
           className={cn(showCompanySteps ? "max-w-[560px]" : "max-w-[690px]")}
         >
-          <div className="font-[Inter]">
+          <div>
             {showCompanySteps ? (
               <InviteCompanySteps
                 onCancel={() => handleOpenChange(false)}
