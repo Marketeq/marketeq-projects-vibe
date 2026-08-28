@@ -2398,6 +2398,7 @@ const BottomBar = ({
   isExistingContractFlow?: boolean;
   selectedExistingContractId?: string | null;
 }) => {
+  const router = useRouter();
   const { nextStep, prevStep, setStep } = useStepperContext();
   const { hasNextStep, hasPreviousStep, totalSteps, currentStep, stepsState } =
     useStepRootContext();
@@ -2940,26 +2941,22 @@ const BottomBar = ({
         />
       </div>
       <div className="flex h-[76px] items-center justify-between border-b border-gray-200 px-[50px] py-4">
-        <div className="flex w-[120px] justify-center opacity-0">
-          <Button
-            className="h-11 rounded-[44px] px-6"
-            disabled={!hasPreviousStep}
-            variant="outlined"
-            visual="gray"
-            onClick={() => {
-              if (workType === "service" && currentStep === 3) {
-                setStep(2);
-                return;
-              }
-              if (workType !== "service" && currentStep === 3) {
-                setStep(2);
-                return;
-              }
-              setStep(Math.max(0, currentStep - 1));
-            }}
-          >
-            Go Back
-          </Button>
+        <div className="flex w-[120px] justify-center">
+          {currentStep > 0 ? (
+            <Button
+              className="h-11 rounded-[44px] px-6"
+              disabled={!hasPreviousStep}
+              variant="outlined"
+              visual="gray"
+              onClick={() => {
+                if (hasPreviousStep) {
+                  prevStep();
+                }
+              }}
+            >
+              Go Back
+            </Button>
+          ) : null}
         </div>
 
         <span className="w-[82px] text-center text-base font-semibold leading-6 text-gray-800">
