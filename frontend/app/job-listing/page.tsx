@@ -4340,9 +4340,17 @@ const ProjectInfo = ({
                                     key={badge}
                                     size="sm"
                                     visual="gray"
-                                    className="border border-gray-200 bg-white"
+                                    variant="rounded"
+                                    className="h-[27px] rounded-[5px] border border-gray-300 bg-white px-2 py-[6px] text-[12px] leading-[15px] font-semibold text-dark-blue-400 mix-blend-normal"
                                   >
-                                    {badge}
+                                    {badge === "Service" ? (
+                                      <span className="inline-flex items-center gap-x-1">
+                                        <RefreshCcw05 className="size-3.5 shrink-0 text-primary-500" />
+                                        <span>Service</span>
+                                      </span>
+                                    ) : (
+                                      badge
+                                    )}
                                   </Badge>
                                 ))}
                               </span>
