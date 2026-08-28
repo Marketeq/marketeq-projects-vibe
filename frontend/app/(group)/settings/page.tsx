@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useDropzone } from "react-dropzone"
+import Cookies from "js-cookie"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
+import { AuthAPI } from "@/service/http/auth"
 import { ClientAPI } from "@/service/http/client"
 import { cn, getIsNotEmpty } from "@/utils/functions"
 import languagesMock from "@/public/mock/languages.json"
@@ -21,12 +23,16 @@ import {
 } from "@/components/two-factor-setup"
 import { PhoneNumberInput, isPhoneValid } from "@/components/phone-number-input"
 import dynamic from "next/dynamic"
+import { AndroidBrand, AppleBrand, MicrosoftBrand } from "@blend-metrics/icons/brands"
 import {
   AlertTriangle,
+  ArrowDown,
   Check,
   CheckCircle,
   ChevronDown,
+  ArrowLeft,
   ChevronRight,
+  Dot,
   Edit01,
   Eye,
   EyeOff,
@@ -41,6 +47,7 @@ import {
   Save01,
   Send01,
   Settings02,
+  ShieldOff,
   Share06,
   Trash01,
   Trash03,
@@ -102,6 +109,12 @@ import {
   ListboxOption,
   ListboxOptions,
   Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
   useToast,
 } from "@/components/ui"
 
@@ -294,6 +307,176 @@ export default function SettingsPage() {
     []
   )
   const [isAddingBackupNumber, setIsAddingBackupNumber] = useState(false)
+
+  type DeviceSession = {
+    id: string
+    userAgent: string
+    browserName?: string | null
+    osName?: string | null
+    deviceType?: string | null
+    lastActiveAt: string
+    createdAt: string
+    ipAddress?: string | null
+    osVersion?: string | null
+    isCurrent: boolean
+  }
+
+  const [deviceDetail, setDeviceDetail] = useState<DeviceSession | null>(null)
+  const [isRemoveDeviceOpen, setIsRemoveDeviceOpen] = useState(false)
+
+  const [deviceSessions, setDeviceSessions] = useState<DeviceSession[]>([])
+  const [isLoadingDevices, setIsLoadingDevices] = useState(false)
+  const currentSessionId = Cookies.get("session_id") ?? ""
+
+  useEffect(() => {
+    if (activeTab !== "devices") return
+
+    setIsLoadingDevices(true)
+    AuthAPI.GetSessions(currentSessionId)
+      .then((res) => {
+        if (res?.status === 200 && Array.isArray(res.data)) {
+          // Current session first, then most recently active — same ordering
+          // ActiveSessionsModal uses.
+          const sorted = [...res.data].sort((a, b) => {
+            if (a.isCurrent) return -1
+            if (b.isCurrent) return 1
+            return (
+              new Date(b.lastActiveAt).getTime() -
+              new Date(a.lastActiveAt).getTime()
+            )
+          })
+          setDeviceSessions(sorted)
+        }
+      })
+      .catch(() => {
+        // Silent: the panel renders its own empty state.
+      })
+      .finally(() => setIsLoadingDevices(false))
+  }, [activeTab, currentSessionId])
+
+  // The backend's parsed UA columns are often null on older sessions, so fall
+  // back to reading the raw userAgent. Same rules as parseUserAgent() in
+  // components/active-sessions-modal.tsx — worth extracting to a shared util.
+  const uaOs = (ua: string) => {
+    if (!ua) return ""
+    if (/Windows NT/.test(ua)) return "Windows"
+    if (/Mac OS X/.test(ua)) return "macOS"
+    if (/Android/.test(ua)) return "Android"
+    if (/iPhone|iPad|iPod/.test(ua)) return "iOS"
+    if (/Linux/.test(ua)) return "Linux"
+    return ""
+  }
+
+  const uaBrowser = (ua: string) => {
+    if (!ua) return ""
+    if (/Edg(?:e)?\//.test(ua)) return "Edge"
+    if (/OPR\/|Opera\//.test(ua)) return "Opera"
+    if (/Chrome\//.test(ua) && !/Edg|Edge/i.test(ua)) return "Chrome"
+    if (/Safari\//.test(ua) && !/Chrome|Edg|Edge|OPR|Opera/i.test(ua))
+      return "Safari"
+    if (/Firefox\//.test(ua)) return "Firefox"
+    return ""
+  }
+
+  // "Mac OS X 10_15_7" -> "10.15.7"
+  const uaOsVersion = (ua: string) => {
+    if (!ua) return ""
+    const mac = ua.match(/Mac OS X ([0-9_]+)/)
+    if (mac) return mac[1].replace(/_/g, ".")
+    const win = ua.match(/Windows NT ([0-9.]+)/)
+    if (win) return win[1]
+    const ios = ua.match(/OS ([0-9_]+) like Mac/)
+    if (ios) return ios[1].replace(/_/g, ".")
+    const android = ua.match(/Android ([0-9.]+)/)
+    if (android) return android[1]
+    return ""
+  }
+
+  const capitalise = (v: string) =>
+    v ? v.charAt(0).toUpperCase() + v.slice(1) : v
+
+  const resolvedOs = (d: DeviceSession) => d.osName || uaOs(d.userAgent)
+  const resolvedBrowser = (d: DeviceSession) =>
+    d.browserName || uaBrowser(d.userAgent)
+
+  // No deviceName column exists yet, so compose the most specific label the
+  // data supports: "macOS Chrome", falling back to the device type.
+  const deviceLabel = (d: DeviceSession) =>
+    [resolvedOs(d), resolvedBrowser(d)].filter(Boolean).join(" ") ||
+    capitalise(d.deviceType ?? "") ||
+    "Unknown device"
+
+  const deviceTypeLabel = (d: DeviceSession) => {
+    const os = resolvedOs(d).toLowerCase()
+    if (os.includes("android")) return "Android"
+    if (os.includes("ios") || os.includes("iphone")) return "iPhone"
+    if (os.includes("win")) return "Windows"
+    if (os.includes("mac")) return "Mac"
+    return capitalise(d.deviceType ?? "") || "Unknown"
+  }
+
+  const relativeActivity = (iso: string) => {
+    const then = new Date(iso).getTime()
+    if (Number.isNaN(then)) return "—"
+    const mins = Math.floor((Date.now() - then) / 60000)
+    if (mins < 1) return "Just now"
+    if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`
+    const hours = Math.floor(mins / 60)
+    if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`
+    const days = Math.floor(hours / 24)
+    if (days <= 7) return `${days} day${days === 1 ? "" : "s"} ago`
+    return new Date(iso).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
+  }
+
+  const [selectedDevices, setSelectedDevices] = useState<string[]>([])
+  const allDevicesSelected =
+    deviceSessions.length > 0 &&
+    selectedDevices.length === deviceSessions.length
+
+  // Both entry points land on Device Details: the row chevron, and selecting a
+  // device then pressing Remove Device. The actual revoke happens from there.
+  const openDeviceDetail = (device: DeviceSession) => setDeviceDetail(device)
+
+  const handleRemoveFromList = () => {
+    const first = deviceSessions.find((d) => selectedDevices.includes(d.id))
+    if (first) setDeviceDetail(first)
+  }
+
+  const handleConfirmRemoveDevice = async () => {
+    if (!deviceDetail) return
+    const id = deviceDetail.id
+
+    setIsRemoveDeviceOpen(false)
+
+    setDeviceSessions((prev) => prev.filter((d) => d.id !== id))
+    setSelectedDevices((prev) => prev.filter((i) => i !== id))
+    setDeviceDetail(null)
+
+    await AuthAPI.RevokeSession(id).catch(() => {})
+
+    AuthAPI.GetSessions(currentSessionId)
+      .then((res) => {
+        if (res?.status === 200 && Array.isArray(res.data)) {
+          setDeviceSessions(res.data)
+        }
+      })
+      .catch(() => {})
+
+    setSavedAlertMessage("Device removed")
+    setIsSavedAlertMounted(true)
+  }
+
+  const deviceTypeIcon = (type: string) => {
+    if (type === "Android")
+      return <AndroidBrand className="size-6 shrink-0" />
+    if (type === "Windows")
+      return <MicrosoftBrand className="size-6 shrink-0" />
+    return <AppleBrand className="size-6 shrink-0" />
+  }
 
   const [isSecurityQuestionsOpen, setIsSecurityQuestionsOpen] = useState(false)
   const [areSecurityQuestionsSaved, setAreSecurityQuestionsSaved] =
@@ -2277,10 +2460,376 @@ export default function SettingsPage() {
                 </h1>
               )}
 
-              {activeTab === "devices" && (
-                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
-                  Devices
-                </h1>
+              {activeTab === "devices" && !deviceDetail && (
+                <>
+                  <div className="flex items-start justify-between gap-6">
+                  <div className="flex flex-col items-start gap-3">
+                    <div className="flex items-center gap-x-3">
+                      <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                        Devices
+                      </h1>
+                      <Badge visual="primary" size="sm">
+                        {deviceSessions.length}{" "}
+                        {deviceSessions.length === 1 ? "device" : "devices"}
+                      </Badge>
+                    </div>
+                    <p className="w-full text-sm text-gray-500">
+                      View and manage the devices that have access to your
+                      account.
+                    </p>
+                  </div>
+
+                    {selectedDevices.length > 0 && (
+                      <div className="flex items-start gap-x-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => setSelectedDevices([])}
+                        >
+                          Cancel
+                        </Button>
+                        <Button size="sm" onClick={handleRemoveFromList}>
+                          Remove Device
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-6 w-full overflow-x-auto">
+                    <Table className="min-w-[1088px] border-separate border-spacing-0">
+                      <TableHeader className="bg-transparent [&_tr]:border-0">
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead>
+                            <span className="flex items-center gap-x-3">
+                              <Checkbox
+                                size="md"
+                                checked={allDevicesSelected}
+                                onCheckedChange={(checked) =>
+                                  setSelectedDevices(
+                                    checked === true
+                                      ? deviceSessions.map((d) => d.id)
+                                      : []
+                                  )
+                                }
+                              />
+                              Name
+                            </span>
+                          </TableHead>
+                          <TableHead>
+                            <span className="flex items-center gap-x-1">
+                              Device Type
+                              <ArrowDown className="size-4" />
+                            </span>
+                          </TableHead>
+                          <TableHead>
+                            <span className="flex items-center gap-x-1">
+                              Status
+                              <ArrowDown className="size-4" />
+                            </span>
+                          </TableHead>
+                          <TableHead>
+                            <span className="flex items-center gap-x-1">
+                              Most Recent Activity
+                              <ArrowDown className="size-4" />
+                            </span>
+                          </TableHead>
+                          <TableHead className="w-16" />
+                        </TableRow>
+                      </TableHeader>
+
+                      <TableBody
+                        className={cn(
+                          "bg-white [&_tr]:border-0",
+                          "[&_tr:first-child>td]:shadow-[0px_-1px_4px_rgba(0,0,0,0.015)]",
+                          "[&_td]:border-b [&_td]:border-gray-200",
+                          "[&_tr>td:first-child]:border-l [&_tr>td:last-child]:border-r",
+                          "[&_tr:first-child>td]:border-t",
+                          "[&_tr:first-child>td:first-child]:rounded-tl-lg",
+                          "[&_tr:first-child>td:last-child]:rounded-tr-lg",
+                          "[&_tr:last-child>td:first-child]:rounded-bl-lg",
+                          "[&_tr:last-child>td:last-child]:rounded-br-lg"
+                        )}
+                      >
+                        {deviceSessions.map((device) => (
+                          <TableRow key={device.id} className="h-[72px]">
+                            <TableCell className="py-4">
+                              <span className="flex items-center gap-x-3">
+                                <Checkbox
+                                  size="md"
+                                  checked={selectedDevices.includes(device.id)}
+                                  onCheckedChange={(checked) =>
+                                    setSelectedDevices((prev) =>
+                                      checked === true
+                                        ? [...prev, device.id]
+                                        : prev.filter((i) => i !== device.id)
+                                    )
+                                  }
+                                />
+                                <span className="text-sm font-semibold text-gray-900">
+                                  {deviceLabel(device)}
+                                </span>
+                              </span>
+                            </TableCell>
+
+                            <TableCell className="py-4">
+                              <span className="flex items-center gap-x-3.5">
+                                {deviceTypeIcon(deviceTypeLabel(device))}
+                                {deviceTypeLabel(device)}
+                              </span>
+                            </TableCell>
+
+                            <TableCell className="py-4">
+                              <Badge
+                                visual="success"
+                                size="sm"
+                                className="bg-success-50 pl-1.5"
+                              >
+                                <Dot className="size-2 text-success-500" />
+                                Active
+                              </Badge>
+                            </TableCell>
+
+                            <TableCell className="py-4">
+                              {relativeActivity(device.lastActiveAt)}
+                            </TableCell>
+
+                            <TableCell className="py-4 pr-4 text-right">
+                              <IconButton
+                                variant="ghost"
+                                visual="gray"
+                                size="sm"
+                                className="size-8 rounded-[5px]"
+                                onClick={() => openDeviceDetail(device)}
+                              >
+                                <ChevronRight className="size-5 text-gray-500" />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+
+                        {!isLoadingDevices && deviceSessions.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="py-10 text-center">
+                              No devices have accessed your account yet.
+                            </TableCell>
+                          </TableRow>
+                        )}
+
+                        {isLoadingDevices && deviceSessions.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="py-10 text-center">
+                              Loading devices…
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
+              )}
+
+              {activeTab === "devices" && deviceDetail && (
+                <>
+                  <div className="flex w-full items-center justify-between gap-1">
+                    <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                      Device Details
+                    </h1>
+                    <div className="flex items-start justify-end gap-x-3">
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        onClick={() => setDeviceDetail(null)}
+                        leftIcon={<ArrowLeft className="size-[15px]" />}
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => setIsRemoveDeviceOpen(true)}
+                      >
+                        Remove Device
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_4px_rgba(0,0,0,0.03)]">
+                    <div className="flex h-[69px] items-center px-6">
+                      <h2 className="text-lg leading-7 font-semibold text-gray-900">
+                        User Information
+                      </h2>
+                    </div>
+
+                    <Table className="w-full min-w-[1088px] table-fixed border-t border-gray-200">
+                      <TableHeader className="bg-gray-50 [&_tr]:border-0">
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="w-[111px] whitespace-nowrap border-b border-gray-200 hover:text-gray-600">
+                            <span className="flex items-center gap-x-1">
+                              Status
+                              <ArrowDown className="size-4" />
+                            </span>
+                          </TableHead>
+                          <TableHead className="w-[188px] whitespace-nowrap border-b border-gray-200 hover:text-gray-600">
+                            <span className="flex items-center gap-x-1">
+                              Most Recent Activity
+                              <HelpCircle className="size-4 text-gray-400" />
+                            </span>
+                          </TableHead>
+                          <TableHead className="w-[129px] whitespace-nowrap border-b border-gray-200 hover:text-gray-600">
+                            First Activity
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap border-b border-gray-200 hover:text-gray-600">
+                            <span className="flex items-center gap-x-1">
+                              Device Name
+                              <Edit01 className="size-4 text-gray-400" />
+                            </span>
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+
+                      <TableBody className="bg-white">
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell>
+                            <Badge
+                              visual="success"
+                              size="sm"
+                              className="bg-success-50 pl-1.5"
+                            >
+                              <Dot className="size-2 text-success-500" />
+                              Active
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {relativeActivity(deviceDetail.lastActiveAt)}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {new Date(deviceDetail.createdAt).toLocaleDateString(
+                              "en-US",
+                              { month: "short", day: "numeric", year: "numeric" }
+                            )}
+                          </TableCell>
+                          <TableCell className="truncate">
+                            {deviceLabel(deviceDetail)}
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+
+                    <div className="flex h-[69px] items-center border-t border-gray-200 px-6">
+                      <h2 className="text-lg leading-7 font-semibold text-gray-900">
+                        Device Information
+                      </h2>
+                    </div>
+
+                    <Table className="w-full min-w-[1088px] table-fixed border-t border-gray-200">
+                      <TableHeader className="bg-gray-50 [&_tr]:border-0">
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="w-[159px] whitespace-nowrap border-b border-gray-200 hover:text-gray-600">
+                            Device Name
+                          </TableHead>
+                          <TableHead className="w-[154px] whitespace-nowrap border-b border-gray-200 hover:text-gray-600">
+                            Device Type
+                          </TableHead>
+                          <TableHead className="w-[131px] whitespace-nowrap border-b border-gray-200 hover:text-gray-600">
+                            Device OS
+                          </TableHead>
+                          <TableHead className="w-[134px] whitespace-nowrap border-b border-gray-200 hover:text-gray-600">
+                            Location
+                          </TableHead>
+                          <TableHead className="whitespace-nowrap border-b border-gray-200 hover:text-gray-600">
+                            IP Address
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+
+                      <TableBody className="bg-white">
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell className="truncate">
+                            {deviceLabel(deviceDetail)}
+                          </TableCell>
+                          <TableCell>
+                            <span className="flex items-center gap-x-3.5">
+                              {deviceTypeIcon(deviceTypeLabel(deviceDetail))}
+                              {deviceTypeLabel(deviceDetail)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {[
+                              resolvedOs(deviceDetail),
+                              deviceDetail.osVersion ||
+                                uaOsVersion(deviceDetail.userAgent),
+                            ]
+                              .filter(Boolean)
+                              .join(" ") || "—"}
+                          </TableCell>
+                          <TableCell>—</TableCell>
+                          <TableCell className="truncate">
+                            {deviceDetail.ipAddress || "—"}
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  <Dialog
+                    open={isRemoveDeviceOpen}
+                    onOpenChange={setIsRemoveDeviceOpen}
+                  >
+                    <DialogContent
+                      className="flex w-[534px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 p-[55px] shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="absolute right-2.5 top-2.5 size-[38px] rounded-[5px]"
+                        onClick={() => setIsRemoveDeviceOpen(false)}
+                      >
+                        <X className="size-6 text-gray-500 opacity-50" />
+                      </IconButton>
+
+                      <div className="flex w-full flex-col items-center gap-5">
+                        <span className="flex size-12 items-center justify-center rounded-full border-8 border-warning-50 bg-warning-100">
+                          <AlertTriangle className="size-6 text-warning-500" />
+                        </span>
+
+                        <div className="flex w-full flex-col items-center gap-2">
+                          <DialogTitle className="max-w-[284px] text-center text-lg leading-7 font-semibold text-gray-900">
+                            Are you sure you want to remove this device?
+                          </DialogTitle>
+                          <DialogDescription className="text-center text-sm text-gray-500">
+                            This device will be signed out and will no longer
+                            have access to your account.
+                          </DialogDescription>
+                        </div>
+                      </div>
+
+                      <div className="flex w-full items-start justify-center gap-x-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={handleConfirmRemoveDevice}
+                          leftIcon={<ShieldOff className="size-[15px]" />}
+                        >
+                          Remove &amp; Revoke Access
+                        </Button>
+                        <Button
+                          visual="error"
+                          size="sm"
+                          onClick={handleConfirmRemoveDevice}
+                          leftIcon={<Trash01 className="size-[15px]" />}
+                        >
+                          Yes, Remove Device
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </>
               )}
 
               {activeTab === "ip-restrictions" && (
