@@ -80,6 +80,7 @@ import {
   File as FileIcon,
   HelpCircle,
   Home03,
+  Lightbulb03,
   Lightbulb05,
   Lock01,
   MoreHorizontal,
@@ -3023,7 +3024,7 @@ const ProjectInfoTip = ({
         <span className="text-base leading-normal font-semibold text-gray-400">
           Quick tip
         </span>
-        <Lightbulb05 className="ml-auto size-5 shrink-0 text-gray-400" />
+        <Lightbulb03 className="ml-auto size-5 shrink-0 text-gray-400" />
       </div>
       <div
         className={cn(
