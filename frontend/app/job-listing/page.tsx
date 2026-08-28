@@ -3009,12 +3009,14 @@ const ProjectInfoTip = ({
   return (
     <div
       className={cn(
-        "p-5 rounded-lg bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] relative",
-        isContractTip ? "w-[322px]" : "w-[269px]",
+        "p-5 rounded-lg bg-white border border-gray-200 relative",
+        isContractTip
+          ? "flex h-[288px] w-[322px] flex-col items-start gap-y-4 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
+          : "w-[269px] shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]",
         className,
       )}
     >
-      {showArrow && (
+      {showArrow && !isContractTip && (
         <div className="absolute size-[25.45px] rotate-45 top-[35px] -left-[12.725px] bg-white border-l border-b border-gray-200" />
       )}
 
@@ -3029,7 +3031,7 @@ const ProjectInfoTip = ({
       <div
         className={cn(
           "flex flex-col items-start",
-          isContractTip ? "mt-6 h-52 w-full gap-y-2" : "mt-1",
+          isContractTip ? "h-52 w-full gap-y-2" : "mt-1",
         )}
       >
         <span
