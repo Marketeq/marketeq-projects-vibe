@@ -4505,36 +4505,42 @@ const ProjectInfo = ({
                                 "Recurring work with consistent needs",
                               icon: <MdAutorenew className="size-6" />,
                             },
-                          ].map((option) => (
-                            <HeadlessRadioGroupItem
-                              key={option.value}
-                              value={option.value}
-                              className={cn(
-                                "flex h-20 w-[435px] flex-1 items-center gap-x-4 rounded-lg border border-gray-300 bg-white py-4 pl-4 pr-6 text-left focus-visible:outline-none",
-                                workTypeChoice === option.value &&
-                                  "border-primary-500",
-                              )}
-                            >
-                              <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
-                                {option.icon}
-                              </span>
-                              <span className="flex h-12 min-w-0 flex-auto flex-col items-start">
-                                <span className="block h-7 w-full text-lg leading-7 font-semibold text-dark-blue-400">
-                                  {option.label}
-                                </span>
-                                <span className="block h-5 w-full text-sm leading-5 text-dark-blue-400">
-                                  {option.description}
-                                </span>
-                              </span>
-                              <span
+                          ].map((option) => {
+                            const selected = workTypeChoice === option.value;
+                            return (
+                              <HeadlessRadioGroupItem
+                                key={option.value}
+                                value={option.value}
                                 className={cn(
-                                  "inline-flex size-[18px] shrink-0 rounded-full border-[1.5px] border-gray-300",
-                                  workTypeChoice === option.value &&
-                                    "border-[5px] border-primary-500",
+                                  "flex h-20 w-[435px] flex-1 items-center gap-x-4 rounded-lg border border-gray-300 bg-white py-4 pl-4 pr-6 text-left focus-visible:outline-none",
+                                  selected &&
+                                    "border-2 border-primary-500 bg-primary-25",
                                 )}
-                              />
-                            </HeadlessRadioGroupItem>
-                          ))}
+                              >
+                                <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                                  {option.icon}
+                                </span>
+                                <span className="flex h-12 min-w-0 flex-auto flex-col items-start">
+                                  <span className="block h-7 w-full text-lg leading-7 font-semibold text-dark-blue-400">
+                                    {option.label}
+                                  </span>
+                                  <span className="block h-5 w-full text-sm leading-5 text-dark-blue-400">
+                                    {option.description}
+                                  </span>
+                                </span>
+                                <span
+                                  className={cn(
+                                    "inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border-[1.5px] border-gray-300",
+                                    selected && "border-primary-500",
+                                  )}
+                                >
+                                  {selected ? (
+                                    <span className="size-2 rounded-full bg-primary-500" />
+                                  ) : null}
+                                </span>
+                              </HeadlessRadioGroupItem>
+                            );
+                          })}
                         </RadioGroup>
                       </div>
                     ) : null}
