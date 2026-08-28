@@ -58,7 +58,12 @@ import {
 } from "@/utils/hooks";
 import { createContext, createStrictContext } from "@/utils/react-utils";
 import { TagsInputHiddenInput } from "@ark-ui/react";
-import { MdAutorenew, MdOutlineAssignment } from "react-icons/md";
+import {
+  MdAutorenew,
+  MdOutlineAssignment,
+  MdOutlineGroups,
+  MdOutlinePerson,
+} from "react-icons/md";
 import {
   AlertCircle,
   AlertTriangle,
@@ -95,8 +100,6 @@ import {
   Trash2,
   Type,
   UploadCloud,
-  UserCircle,
-  Users,
   X,
   X2,
 } from "@blend-metrics/icons";
@@ -4409,7 +4412,7 @@ const ProjectInfo = ({
                               onNoScopeFlowChange?.(nextScopeChoice === "none");
                               if (nextScopeChoice === "none") {
                                 setWorkTypeChoice(null);
-                                setHiringModeChoice("team");
+                                setHiringModeChoice(null);
                               } else {
                                 setHiringModeChoice(null);
                               }
@@ -4422,13 +4425,13 @@ const ProjectInfo = ({
                     </div>
 
                     {scopeChoice === "none" ? (
-                      <div className="mt-12 space-y-5">
-                        <p className="text-base leading-6 font-semibold text-dark-blue-400">
+                      <div className="mt-12 flex flex-col gap-y-3">
+                        <p className="h-7 w-full rounded text-lg leading-7 font-medium text-dark-blue-400">
                           Are you hiring for one role or multiple?
                         </p>
 
                         <RadioGroup
-                          className="grid gap-4 md:grid-cols-2"
+                          className="flex h-20 w-full items-start gap-x-4"
                           value={hiringModeChoice ?? ""}
                           onValueChange={(value) =>
                             setHiringModeChoice(value as HiringModeChoice)
@@ -4440,45 +4443,51 @@ const ProjectInfo = ({
                               label: "Team",
                               description:
                                 "I\u2019ll need multiple people for different roles",
-                              icon: <Users className="size-5" />,
+                              icon: <MdOutlineGroups className="size-6" />,
                             },
                             {
                               value: "individual",
                               label: "Individual",
                               description:
                                 "I\u2019ll start with one person/role",
-                              icon: <UserCircle className="size-5" />,
+                              icon: <MdOutlinePerson className="size-6" />,
                             },
-                          ].map((option) => (
-                            <HeadlessRadioGroupItem
-                              key={option.value}
-                              value={option.value}
-                              className={cn(
-                                "flex items-center gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
-                                hiringModeChoice === option.value &&
-                                  "border-primary-500",
-                              )}
-                            >
-                              <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
-                                {option.icon}
-                              </span>
-                              <span className="min-w-0 flex-auto">
-                                <span className="block text-base leading-6 font-semibold text-dark-blue-400">
-                                  {option.label}
-                                </span>
-                                <span className="mt-0.5 block text-sm leading-5 text-dark-blue-400">
-                                  {option.description}
-                                </span>
-                              </span>
-                              <span
+                          ].map((option) => {
+                            const selected = hiringModeChoice === option.value;
+                            return (
+                              <HeadlessRadioGroupItem
+                                key={option.value}
+                                value={option.value}
                                 className={cn(
-                                  "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
-                                  hiringModeChoice === option.value &&
-                                    "border-[5px] border-primary-500",
+                                  "flex h-20 w-[435px] items-center gap-x-4 rounded-lg border border-gray-200 bg-white py-4 pl-4 pr-6 text-left focus-visible:outline-none",
+                                  selected &&
+                                    "border-2 border-primary-500 bg-primary-25",
                                 )}
-                              />
-                            </HeadlessRadioGroupItem>
-                          ))}
+                              >
+                                <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                                  {option.icon}
+                                </span>
+                                <span className="flex h-12 min-w-0 flex-auto flex-col items-start">
+                                  <span className="block h-7 w-full text-lg leading-7 font-semibold text-dark-blue-400">
+                                    {option.label}
+                                  </span>
+                                  <span className="block h-5 w-full text-sm leading-5 text-dark-blue-400">
+                                    {option.description}
+                                  </span>
+                                </span>
+                                <span
+                                  className={cn(
+                                    "inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border-[1.5px] border-gray-300",
+                                    selected && "border-primary-500",
+                                  )}
+                                >
+                                  {selected ? (
+                                    <span className="size-2 rounded-full bg-primary-500" />
+                                  ) : null}
+                                </span>
+                              </HeadlessRadioGroupItem>
+                            );
+                          })}
                         </RadioGroup>
                       </div>
                     ) : scopeChoice ? (
