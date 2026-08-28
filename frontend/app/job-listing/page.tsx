@@ -2996,7 +2996,6 @@ const BottomBar = ({
 
 const ProjectInfoTip = ({
   closeTrigger,
-  showArrow,
   className,
   variant = "scope",
 }: {
@@ -3009,37 +3008,31 @@ const ProjectInfoTip = ({
   return (
     <div
       className={cn(
-        "p-5 rounded-lg bg-white border border-gray-200 relative",
+        "flex w-[322px] flex-col items-start gap-y-4 p-5 rounded-lg bg-white border border-gray-200 relative shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]",
         isContractTip
-          ? "flex h-[288px] w-[322px] flex-col items-start gap-y-4 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
-          : "w-[269px] shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]",
+          ? "h-[288px]"
+          : "h-[252px]",
         className,
       )}
     >
-      {showArrow && !isContractTip && (
-        <div className="absolute size-[25.45px] rotate-45 top-[35px] -left-[12.725px] bg-white border-l border-b border-gray-200" />
-      )}
-
       {closeTrigger}
 
-      <div className="flex items-center gap-x-2">
-        <span className="text-base leading-normal font-semibold text-gray-400">
+      <div className="flex h-6 w-full items-start justify-between gap-x-2">
+        <span className="h-6 flex-1 rounded text-base leading-6 font-semibold text-gray-400">
           Quick tip
         </span>
-        <Lightbulb03 className="ml-auto size-5 shrink-0 text-gray-400" />
+        <Lightbulb03 className="size-5 shrink-0 text-gray-400" />
       </div>
       <div
         className={cn(
           "flex flex-col items-start",
-          isContractTip ? "h-52 w-full gap-y-2" : "mt-1",
+          isContractTip ? "h-52 w-full gap-y-2" : "h-[172px] w-full gap-y-2",
         )}
       >
         <span
           className={cn(
             "font-semibold text-dark-blue-400",
-            isContractTip
-              ? "h-14 w-full text-lg leading-7"
-              : "text-base leading-6",
+            "h-14 w-full text-lg leading-7",
           )}
         >
           {isContractTip
@@ -3048,7 +3041,10 @@ const ProjectInfoTip = ({
         </span>
 
         <div
-          className={cn("w-full", isContractTip ? "h-36 space-y-1" : "mt-3")}
+          className={cn(
+            "w-full space-y-1",
+            isContractTip ? "h-36" : "h-[108px]",
+          )}
         >
           {(isContractTip
             ? [
@@ -3071,10 +3067,7 @@ const ProjectInfoTip = ({
               ]
           ).map((item, index) => (
             <div
-              className={cn(
-                "flex items-start gap-x-3",
-                isContractTip ? "py-0" : "py-1",
-              )}
+              className="flex items-start gap-x-3"
               key={index}
             >
               <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
