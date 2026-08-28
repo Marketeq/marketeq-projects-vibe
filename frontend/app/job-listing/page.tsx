@@ -4318,15 +4318,23 @@ const ProjectInfo = ({
                               disabled && "cursor-not-allowed opacity-60",
                             )}
                           >
-                            <span className="inline-flex size-[60px] shrink-0 items-center justify-center overflow-hidden rounded-[4px] bg-primary-50 text-primary-500">
+                            <span className="inline-flex h-[60px] w-[88px] shrink-0 items-center justify-center rounded-[4px] bg-primary-50 text-primary-500">
                               {"image" in option ? (
                                 <img
                                   alt=""
-                                  className="h-full w-full object-cover"
+                                  className="block h-full w-full rounded-[4px] object-cover"
                                   src={option.image}
                                 />
                               ) : (
-                                option.icon
+                                React.isValidElement(option.icon)
+                                  ? React.cloneElement(option.icon as React.ReactElement, {
+                                      className: cn(
+                                        "size-6 shrink-0 text-primary-500",
+                                        (option.icon as React.ReactElement).props
+                                          ?.className,
+                                      ),
+                                    })
+                                  : option.icon
                               )}
                             </span>
 
