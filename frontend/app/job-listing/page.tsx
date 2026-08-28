@@ -4237,16 +4237,16 @@ const ProjectInfo = ({
 
                 {contractChoice === "existing" ? (
                   <div className="mt-12 space-y-5">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                      <p className="text-base leading-6 font-semibold text-dark-blue-400">
+                    <div className="flex h-9 w-full items-start justify-between gap-3">
+                      <p className="w-[520px] text-[18px] font-medium leading-7 text-dark-blue-400">
                         Choose project, service, or team which you want to add
                         jobs
                       </p>
 
-                      <div className="md:w-[223px]">
+                      <div className="w-[223px]">
                         <InputGroup>
                           <InputLeftElement>
-                            <SearchMd className="size-4 text-gray-400" />
+                            <SearchMd className="size-4 text-gray-400/50" />
                           </InputLeftElement>
                           <Input
                             placeholder="Search"
@@ -4254,6 +4254,7 @@ const ProjectInfo = ({
                             onChange={(event) =>
                               setContractSearchValue(event.target.value)
                             }
+                            className="h-9 border-gray-300 px-3 py-2.5 pl-9 text-sm leading-6 shadow-xs placeholder:text-gray-500/50"
                           />
                         </InputGroup>
                       </div>
