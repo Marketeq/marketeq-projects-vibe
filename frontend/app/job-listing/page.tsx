@@ -3008,7 +3008,8 @@ const ProjectInfoTip = ({
   return (
     <div
       className={cn(
-        "p-5 rounded-lg w-[269px] bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] relative",
+        "p-5 rounded-lg bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] relative",
+        isContractTip ? "w-[322px]" : "w-[269px]",
         className,
       )}
     >
@@ -3024,41 +3025,62 @@ const ProjectInfoTip = ({
         </span>
         <Lightbulb05 className="ml-auto size-5 shrink-0 text-gray-400" />
       </div>
-      <div className="mt-1">
-        <span className="text-base leading-6 font-semibold text-dark-blue-400">
+      <div
+        className={cn(
+          "flex flex-col items-start",
+          isContractTip ? "mt-6 h-52 w-full gap-y-2" : "mt-1",
+        )}
+      >
+        <span
+          className={cn(
+            "font-semibold text-dark-blue-400",
+            isContractTip
+              ? "h-14 w-full text-lg leading-7"
+              : "text-base leading-6",
+          )}
+        >
           {isContractTip
             ? "Not sure which option to choose?"
             : "What does having a scope mean?"}
         </span>
 
-      </div>
-
-      <div className="mt-3">
-        {(isContractTip
-          ? [
-              <>
-                If you want to start a <strong>new service or project</strong>{" "}
-                and create jobs under it, choose{" "}
-                <strong>Create new contract</strong>
-              </>,
-              <>
-                If you want to{" "}
-                <strong>add more jobs to a project or service</strong>{" "}
-                you&apos;ve already started, choose{" "}
-                <strong>Add to existing contract</strong>
-              </>,
-            ]
-          : [
-              "You know which roles you need",
-              "You can outline key tasks or responsibilities",
-              "You have clear deliverables or goals in mind",
-            ]
-        ).map((item, index) => (
-          <div className="flex items-start gap-x-3 py-1" key={index}>
-            <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
-            <span className="text-sm leading-5 text-dark-blue-400">{item}</span>
-          </div>
-        ))}
+        <div
+          className={cn("w-full", isContractTip ? "h-36 space-y-1" : "mt-3")}
+        >
+          {(isContractTip
+            ? [
+                <>
+                  If you want to start a{" "}
+                  <strong>new service or project</strong> and create jobs under
+                  it, choose <strong>Create new contract</strong>
+                </>,
+                <>
+                  If you want to{" "}
+                  <strong>add more jobs to a project or service</strong>{" "}
+                  you&apos;ve already started, choose{" "}
+                  <strong>Add to existing contract</strong>
+                </>,
+              ]
+            : [
+                "You know which roles you need",
+                "You can outline key tasks or responsibilities",
+                "You have clear deliverables or goals in mind",
+              ]
+          ).map((item, index) => (
+            <div
+              className={cn(
+                "flex items-start gap-x-3",
+                isContractTip ? "py-0" : "py-1",
+              )}
+              key={index}
+            >
+              <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
+              <span className="text-sm leading-5 text-dark-blue-400">
+                {item}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -5757,7 +5779,7 @@ const ProjectInfo = ({
           <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
             <ProjectInfoTip
               showArrow
-              variant={contractChoice === "existing" ? "contract" : "scope"}
+              variant={contractChoice === "new" ? "scope" : "contract"}
             />
           </div>
         </div>
