@@ -58,6 +58,7 @@ import {
 } from "@/utils/hooks";
 import { createContext, createStrictContext } from "@/utils/react-utils";
 import { TagsInputHiddenInput } from "@ark-ui/react";
+import { MdAutorenew, MdOutlineAssignment } from "react-icons/md";
 import {
   AlertCircle,
   AlertTriangle,
@@ -4478,13 +4479,13 @@ const ProjectInfo = ({
                         </RadioGroup>
                       </div>
                     ) : scopeChoice ? (
-                      <div className="mt-12 space-y-5">
-                        <p className="text-base leading-6 font-semibold text-dark-blue-400">
+                      <div className="mt-12 flex h-[120px] w-full flex-col items-start gap-y-3">
+                        <p className="h-7 w-full rounded text-lg leading-7 font-medium text-dark-blue-400">
                           What type of work is this?
                         </p>
 
                         <RadioGroup
-                          className="grid gap-4 md:grid-cols-2"
+                          className="flex h-20 w-full items-start gap-x-4"
                           value={workTypeChoice ?? ""}
                           onValueChange={(value) =>
                             setWorkTypeChoice(value as WorkTypeChoice)
@@ -4495,21 +4496,21 @@ const ProjectInfo = ({
                               value: "project",
                               label: "Project",
                               description: "One-time job with a defined scope",
-                              icon: <Copy className="size-5" />,
+                              icon: <MdOutlineAssignment className="size-6" />,
                             },
                             {
                               value: "service",
                               label: "Service",
                               description:
                                 "Recurring work with consistent needs",
-                              icon: <RefreshCcw05 className="size-5" />,
+                              icon: <MdAutorenew className="size-6" />,
                             },
                           ].map((option) => (
                             <HeadlessRadioGroupItem
                               key={option.value}
                               value={option.value}
                               className={cn(
-                                "flex items-center gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
+                                "flex h-20 w-[435px] flex-1 items-center gap-x-4 rounded-lg border border-gray-300 bg-white py-4 pl-4 pr-6 text-left focus-visible:outline-none",
                                 workTypeChoice === option.value &&
                                   "border-primary-500",
                               )}
@@ -4517,17 +4518,17 @@ const ProjectInfo = ({
                               <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
                                 {option.icon}
                               </span>
-                              <span className="min-w-0 flex-auto">
-                                <span className="block text-base leading-6 font-semibold text-dark-blue-400">
+                              <span className="flex h-12 min-w-0 flex-auto flex-col items-start">
+                                <span className="block h-7 w-full text-lg leading-7 font-semibold text-dark-blue-400">
                                   {option.label}
                                 </span>
-                                <span className="mt-0.5 block text-sm leading-5 text-dark-blue-400">
+                                <span className="block h-5 w-full text-sm leading-5 text-dark-blue-400">
                                   {option.description}
                                 </span>
                               </span>
                               <span
                                 className={cn(
-                                  "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
+                                  "inline-flex size-[18px] shrink-0 rounded-full border-[1.5px] border-gray-300",
                                   workTypeChoice === option.value &&
                                     "border-[5px] border-primary-500",
                                 )}
