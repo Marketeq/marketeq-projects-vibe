@@ -4318,49 +4318,51 @@ const ProjectInfo = ({
                               disabled && "cursor-not-allowed opacity-60",
                             )}
                           >
-                            <span className="inline-flex h-[60px] w-[88px] shrink-0 items-center justify-center rounded-[4px] bg-primary-50 text-primary-500">
-                              {"image" in option ? (
-                                <img
-                                  alt=""
-                                  className="block h-full w-full rounded-[4px] object-cover"
-                                  src={option.image}
-                                />
-                              ) : (
-                                React.isValidElement(option.icon)
-                                  ? React.cloneElement(option.icon as React.ReactElement, {
-                                      className: cn(
-                                        "size-6 shrink-0 text-primary-500",
-                                        (option.icon as React.ReactElement).props
-                                          ?.className,
-                                      ),
-                                    })
-                                  : option.icon
-                              )}
-                            </span>
-
-                            <span className="min-w-0 flex-auto">
-                              <span className="block text-[18px] leading-7 font-semibold text-dark-blue-400">
-                                {option.title}
+                            <span className="flex h-[60px] min-w-0 flex-1 items-center gap-4">
+                              <span className="inline-flex h-[60px] w-[88px] shrink-0 items-center justify-center rounded-[4px] bg-primary-50 text-primary-500">
+                                {"image" in option ? (
+                                  <img
+                                    alt=""
+                                    className="block h-full w-full rounded-[4px] object-cover"
+                                    src={option.image}
+                                  />
+                                ) : (
+                                  React.isValidElement(option.icon)
+                                    ? React.cloneElement(option.icon as React.ReactElement, {
+                                        className: cn(
+                                          "size-6 shrink-0 text-primary-500",
+                                          (option.icon as React.ReactElement).props
+                                            ?.className,
+                                        ),
+                                      })
+                                    : option.icon
+                                )}
                               </span>
-                              <span className="mt-1.5 flex flex-wrap gap-1.5">
-                                {option.badges.map((badge) => (
-                                  <Badge
-                                    key={badge}
-                                    size="sm"
-                                    visual="gray"
-                                    variant="rounded"
-                                    className="h-[27px] rounded-[5px] border border-gray-300 bg-white px-2 py-[6px] text-[12px] leading-[15px] font-semibold text-dark-blue-400 mix-blend-normal"
-                                  >
-                                    {badge === "Service" ? (
-                                      <span className="inline-flex items-center gap-x-1">
-                                        <RefreshCcw05 className="size-3.5 shrink-0 text-primary-500" />
-                                        <span>Service</span>
-                                      </span>
-                                    ) : (
-                                      badge
-                                    )}
-                                  </Badge>
-                                ))}
+
+                              <span className="flex h-[60px] min-w-0 flex-1 flex-col justify-center gap-1">
+                                <span className="block text-[18px] leading-7 font-semibold text-dark-blue-400">
+                                  {option.title}
+                                </span>
+                                <span className="flex h-[27px] items-center gap-2">
+                                  {option.badges.map((badge) => (
+                                    <Badge
+                                      key={badge}
+                                      size="sm"
+                                      visual="gray"
+                                      variant="rounded"
+                                      className="h-[27px] rounded-[5px] border border-gray-300 bg-white px-2 py-[6px] text-[12px] leading-[15px] font-semibold text-dark-blue-400 mix-blend-normal"
+                                    >
+                                      {badge === "Service" ? (
+                                        <span className="inline-flex items-center gap-x-1">
+                                          <RefreshCcw05 className="size-3.5 shrink-0 text-primary-500" />
+                                          <span>Service</span>
+                                        </span>
+                                      ) : (
+                                        badge
+                                      )}
+                                    </Badge>
+                                  ))}
+                                </span>
                               </span>
                             </span>
 
