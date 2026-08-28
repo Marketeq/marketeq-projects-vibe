@@ -4362,24 +4362,27 @@ const ProjectInfo = ({
                   </div>
                 ) : contractChoice === "new" ? (
                   <>
-                    <div className="mt-12 space-y-4">
-                      <p className="text-base leading-6 font-semibold text-dark-blue-400">
+                    <div className="mt-12 flex h-20 w-full flex-col items-start gap-y-3">
+                      <p className="h-7 w-full rounded text-lg leading-7 font-medium text-dark-blue-400">
                         Do you already know the scope of work?
                       </p>
 
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex h-10 w-full items-start gap-x-2">
                         {[
                           {
                             value: "known",
                             label: "Yes, I know what needs to be done",
+                            className: "w-[265px]",
                           },
                           {
                             value: "unknown",
                             label: "Not yet, I need help figuring it out",
+                            className: "w-64",
                           },
                           {
                             value: "none",
                             label: "Continue without a scope",
+                            className: "w-[204px]",
                           },
                         ].map((option) => (
                           <Button
@@ -4388,9 +4391,10 @@ const ProjectInfo = ({
                             variant="outlined"
                             visual="gray"
                             className={cn(
-                              "rounded-full",
+                              "h-10 items-start gap-x-4 rounded-[52px] px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none",
+                              option.className,
                               scopeChoice === option.value &&
-                                "border-primary-500 text-primary-500",
+                                "border-2 border-primary-500 bg-primary-25 text-dark-blue-400",
                             )}
                             onClick={() => {
                               const nextScopeChoice = option.value as
