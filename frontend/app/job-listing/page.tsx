@@ -2962,7 +2962,10 @@ const BottomBar = ({
         <div className="flex w-[128px] justify-center">
           {hasNextStep ? (
             <Button
-              className="h-11 rounded-[44px] px-6 opacity-50"
+              className={cn(
+                "h-11 w-32 rounded-[44px] px-6 py-2.5 text-lg leading-7 font-semibold",
+                !isValid && "opacity-50",
+              )}
               disabled={!isValid}
               onClick={() => {
                 if (isValid) {
