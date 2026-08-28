@@ -4248,7 +4248,7 @@ const ProjectInfo = ({
                         className={cn(
                           "inline-flex h-10 items-center justify-center rounded-[52px] border border-gray-300 bg-white px-4 text-sm leading-5 font-medium text-dark-blue-400 focus-visible:outline-none",
                           contractChoice === option.value &&
-                            "border-primary-500 text-primary-500",
+                            "border-2 border-primary-500 bg-primary-25 text-dark-blue-400",
                         )}
                       >
                         {option.label}
