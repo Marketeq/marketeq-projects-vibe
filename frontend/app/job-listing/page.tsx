@@ -195,8 +195,9 @@ import {
   AccordionItem,
   AccordionTrigger,
   Avatar,
-  AvatarFallback,
   AvatarGroup,
+  AvatarFallback,
+  AvatarImage,
   Badge,
   Button,
   Card,
@@ -4344,18 +4345,20 @@ const ProjectInfo = ({
 
                             <span className="hidden items-center md:flex">
                               <AvatarGroup className="!cursor-default" size="xs" reverse={false}>
-                                {option.avatars
-                                  .filter((avatar) => !avatar.startsWith("+"))
-                                  .slice(0, 4)
+                                {[
+                                  "/woman.jpg",
+                                  "/man.jpg",
+                                  "/girl.jpeg",
+                                  "/guy.jpeg",
+                                ]
+                                  .slice(0, option.avatars.length > 2 ? 4 : 2)
                                   .map((avatar) => (
                                     <Avatar
                                       key={`${option.id}-${avatar}`}
                                       size="xs"
                                       className="border-2 border-white hover:ring-0 active:ring-0"
                                     >
-                                      <AvatarFallback className="bg-primary-50 text-[10px] font-semibold leading-none text-primary-500">
-                                        {avatar}
-                                      </AvatarFallback>
+                                      <AvatarImage src={avatar} alt="" />
                                     </Avatar>
                                   ))}
                                 {option.avatars.find((avatar) => avatar.startsWith("+")) ? (
