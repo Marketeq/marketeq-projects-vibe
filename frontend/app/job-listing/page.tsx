@@ -3644,7 +3644,7 @@ const ProjectInfo = ({
   );
   const [selectedExistingListing, setSelectedExistingListing] = useState<
     string | null
-  >("ecommerce-react-build");
+  >(null);
   const [contractSearchValue, setContractSearchValue] = useState("");
   const [apiExistingListingOptions, setApiExistingListingOptions] = useState<
     ExistingListingOption[]
@@ -4125,29 +4125,8 @@ const ProjectInfo = ({
       return;
     }
 
-    const currentSelectionIsVisible = apiExistingListingOptions.some(
-      (option) =>
-        option.id === selectedExistingListing && !option.disabledReason,
-    );
-
-    if (currentSelectionIsVisible) return;
-
-    const firstSelectableOption = apiExistingListingOptions.find(
-      (option) => !option.disabledReason,
-    );
-
-    if (!firstSelectableOption) return;
-
-    setSelectedExistingListing(firstSelectableOption.id);
-    onExistingContractSelectionChange?.(firstSelectableOption.id);
-    setWorkTypeChoice(firstSelectableOption.workType);
-  }, [
-    apiExistingListingOptions,
-    contractChoice,
-    onExistingContractSelectionChange,
-    selectedExistingListing,
-    setWorkTypeChoice,
-  ]);
+    if (selectedExistingListing) return;
+  }, [apiExistingListingOptions, contractChoice, selectedExistingListing]);
 
   return (
     <form className="contents" onSubmit={methods.handleSubmit(onSubmit)}>
@@ -4224,10 +4203,6 @@ const ProjectInfo = ({
                         setScopeChoice(null);
                         onNoScopeFlowChange?.(false);
                         setHiringModeChoice(null);
-                        setSelectedExistingListing("ecommerce-react-build");
-                        onExistingContractSelectionChange?.(
-                          "ecommerce-react-build",
-                        );
                         setWorkTypeChoice("service");
                       } else {
                         setSelectedExistingListing(null);
@@ -4314,7 +4289,7 @@ const ProjectInfo = ({
                             title={option.disabledReason}
                             className={cn(
                               "flex h-[92px] w-full items-center gap-[48px] rounded-lg border border-gray-300 bg-white py-4 pl-4 pr-6 text-left focus-visible:outline-none",
-                              selected && "border-primary-500",
+                              selected && "border-2 border-primary-500 bg-primary-25",
                               disabled && "cursor-not-allowed opacity-60",
                             )}
                           >
@@ -4394,10 +4369,14 @@ const ProjectInfo = ({
 
                             <span
                               className={cn(
-                                "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300 bg-white",
-                                selected && "border-[5px] border-primary-500",
+                                "relative inline-flex size-[18px] shrink-0 rounded-full border-[1.5px] border-gray-300 bg-white",
+                                selected && "border-primary-500",
                               )}
-                            />
+                            >
+                              {selected ? (
+                                <span className="absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-500" />
+                              ) : null}
+                            </span>
                           </HeadlessRadioGroupItem>
                         );
                       })}
