@@ -57,7 +57,11 @@ const SelectContent = React.forwardRef<
     >
       <SelectPrimitive.Viewport
         className={cn(
-          "py-1 max-h-[var(--radix-select-content-available-height)] overflow-y-auto",
+          // Capped and given a visible scrollbar, matching CommandList in
+          // own-combobox. Without the cap a long list (US states, countries)
+          // grew to the full viewport height and macOS overlay scrollbars left
+          // no indication it could scroll at all.
+          "py-1 max-h-[232px] overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-rounded-full",
           position === "popper" &&
             "w-full min-w-[var(--radix-select-trigger-width)]"
         )}

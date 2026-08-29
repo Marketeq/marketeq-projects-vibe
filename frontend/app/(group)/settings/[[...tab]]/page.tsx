@@ -11,6 +11,8 @@ import languagesMock from "@/public/mock/languages.json"
 import ActiveSessionsModal from "@/components/active-sessions-modal"
 import NotificationPreferences from "@/components/notification-preferences"
 import SecuritySettingsStepper from "@/components/security-settings"
+import { SettingsTaxInfo } from "@/components/settings-tax-info"
+import { isTalentAccount } from "@/components/no-team-assigned"
 import SettingsSidebar, {
   buildSettingsTabItems,
 } from "@/components/settings-sidebar"
@@ -507,11 +509,23 @@ export default function SettingsPage() {
                 </>
               )}
 
-              {activeTab === "tax-info" && (
-                <h1 className="text-xl font-bold text-dark-blue-400">
-                  Tax Info
-                </h1>
-              )}
+              {activeTab === "tax-info" &&
+                (isTalentAccount(user) ? (
+                  <SettingsTaxInfo />
+                ) : (
+                  // Clients pay Marketeq; Marketeq pays talent. There is no
+                  // W-9 to collect from a client, so the screen does not exist
+                  // for them even by direct URL.
+                  <div className="rounded-lg border border-gray-200 bg-white p-8">
+                    <h1 className="text-xl font-bold text-dark-blue-400">
+                      Tax Info
+                    </h1>
+                    <p className="mt-2 text-sm font-light leading-[1.5] text-dark-blue-400">
+                      Tax information is only collected from talent accounts.
+                      Switch to your talent profile if you need to submit a W-9.
+                    </p>
+                  </div>
+                ))}
 
               {activeTab === "login-password" && (
                 <>

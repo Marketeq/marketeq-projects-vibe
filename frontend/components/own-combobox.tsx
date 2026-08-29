@@ -463,12 +463,21 @@ export const CountriesCombobox = ({
   placeholder,
   triggerClassName,
   defaultValue,
+  contentClassName,
+  contentSideOffset,
+  disabled,
 }: {
   value?: string
   onValueChange?: (country: string) => void
   placeholder?: string
   triggerClassName?: string
   defaultValue?: string
+  /** Matches the disabled prop every other form control exposes. */
+  disabled?: boolean
+  /** Override the popover width. Defaults to the 202px chip popover. */
+  contentClassName?: string
+  /** Gap between trigger and popover. Defaults to the PopoverContent 8px. */
+  contentSideOffset?: number
 }) => {
   const data = useAsync(async () => {
     if (countriesCache) return countriesCache
@@ -544,8 +553,9 @@ export const CountriesCombobox = ({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
+          disabled={disabled}
           className={cn(
-            "bg-gray-100 focus-visible:outline-none pr-2 p-[5px] border border-gray-300 border-dashed rounded-[5px] inline-flex items-center gap-x-1.5",
+            "bg-gray-100 focus-visible:outline-none pr-2 p-[5px] border border-gray-300 border-dashed rounded-[5px] inline-flex items-center gap-x-1.5 disabled:cursor-not-allowed disabled:opacity-50",
             triggerClassName
           )}
         >
@@ -591,7 +601,13 @@ export const CountriesCombobox = ({
           <ChevronDown className="group-data-[state=open]:inline-block hidden size-[18px] shrink-0 text-gray-500" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[202px] pb-2 px-0 pt-0 z-50 bg-white border-gray-100 rounded-lg border shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
+      <PopoverContent
+        sideOffset={contentSideOffset}
+        className={cn(
+          "w-[202px] pb-2 px-0 pt-0 z-50 bg-white border-gray-100 rounded-lg border shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]",
+          contentClassName
+        )}
+      >
         <Command>
           <CommandInput
             placeholder="Search"
