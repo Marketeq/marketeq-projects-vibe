@@ -3010,82 +3010,118 @@ const ProjectInfoTip = ({
   closeTrigger?: React.ReactNode;
   showArrow?: boolean;
   className?: string;
-  variant?: "scope" | "contract";
+  variant?: "scope" | "contract" | "describeProjectStep";
 }) => {
   const isContractTip = variant === "contract";
+  const isDescribeProjectStepTip = variant === "describeProjectStep";
   return (
     <div
       className={cn(
-        "flex w-[322px] flex-col items-start gap-y-4 p-5 rounded-lg bg-white border border-gray-200 relative shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]",
+        isDescribeProjectStepTip
+          ? "flex w-[322px] flex-col items-start gap-4 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,0.04)]"
+          : "flex w-[322px] flex-col items-start gap-y-4 p-5 rounded-lg bg-white border border-gray-200 relative shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]",
         isContractTip
           ? "h-[288px]"
-          : "h-[252px]",
+          : isDescribeProjectStepTip
+            ? "h-[260px]"
+            : "h-[252px]",
         className,
       )}
     >
       {closeTrigger}
 
-      <div className="flex h-6 w-full items-start justify-between gap-x-2">
-        <span className="h-6 flex-1 rounded text-base leading-6 font-semibold text-gray-400">
-          Quick tip
-        </span>
-        <Lightbulb03 className="size-5 shrink-0 text-gray-400" />
-      </div>
-      <div
-        className={cn(
-          "flex flex-col items-start",
-          isContractTip ? "h-52 w-full gap-y-2" : "h-[172px] w-full gap-y-2",
-        )}
-      >
-        <span
-          className={cn(
-            "font-semibold text-dark-blue-400",
-            "h-14 w-full text-lg leading-7",
-          )}
-        >
-          {isContractTip
-            ? "Not sure which option to choose?"
-            : "What does having a scope mean?"}
-        </span>
-
-        <div
-          className={cn(
-            "w-full space-y-1",
-            isContractTip ? "h-36" : "h-[108px]",
-          )}
-        >
-          {(isContractTip
-            ? [
-                <>
-                  If you want to start a{" "}
-                  <strong>new service or project</strong> and create jobs under
-                  it, choose <strong>Create new contract</strong>
-                </>,
-                <>
-                  If you want to{" "}
-                  <strong>add more jobs to a project or service</strong>{" "}
-                  you&apos;ve already started, choose{" "}
-                  <strong>Add to existing contract</strong>
-                </>,
-              ]
-            : [
-                "You know which roles you need",
-                "You can outline key tasks or responsibilities",
-                "You have clear deliverables or goals in mind",
-              ]
-          ).map((item, index) => (
-            <div
-              className="flex items-start gap-x-3"
-              key={index}
+      {isDescribeProjectStepTip ? (
+        <>
+          <div className="flex h-6 w-full items-start justify-between gap-x-2">
+            <span className="flex h-6 flex-1 items-center text-base font-semibold leading-6 text-gray-400">
+              Quick tip
+            </span>
+            <Lightbulb03 className="size-5 shrink-0 text-gray-400" />
+          </div>
+          <div className="flex h-[180px] w-[282px] flex-col items-start gap-2">
+            <span className="w-full text-[18px] font-semibold leading-7 text-dark-blue-400">
+              Give us a few details now to save time later:
+            </span>
+            <ul className="w-full space-y-1">
+              {[
+                "What the project is about",
+                "What needs to be done",
+                "How it should be done",
+                "What the end result should look like",
+                "Any tools or skills that are important",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-x-3">
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
+                  <span className="text-sm leading-5 text-dark-blue-400">
+                    {item}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex h-6 w-full items-start justify-between gap-x-2">
+            <span className="h-6 flex-1 rounded text-base leading-6 font-semibold text-gray-400">
+              Quick tip
+            </span>
+            <Lightbulb03 className="size-5 shrink-0 text-gray-400" />
+          </div>
+          <div
+            className={cn(
+              "flex flex-col items-start",
+              isContractTip ? "h-52 w-full gap-y-2" : "h-[172px] w-full gap-y-2",
+            )}
+          >
+            <span
+              className={cn(
+                "font-semibold text-dark-blue-400",
+                "h-14 w-full text-lg leading-7",
+              )}
             >
-              <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
-              <span className="text-sm leading-5 text-dark-blue-400">
-                {item}
-              </span>
+              {isContractTip
+                ? "Not sure which option to choose?"
+                : "What does having a scope mean?"}
+            </span>
+
+            <div
+              className={cn(
+                "w-full space-y-1",
+                isContractTip ? "h-36" : "h-[108px]",
+              )}
+            >
+              {(isContractTip
+                ? [
+                    <>
+                      If you want to start a{" "}
+                      <strong>new service or project</strong> and create jobs
+                      under it, choose <strong>Create new contract</strong>
+                    </>,
+                    <>
+                      If you want to{" "}
+                      <strong>add more jobs to a project or service</strong>{" "}
+                      you&apos;ve already started, choose{" "}
+                      <strong>Add to existing contract</strong>
+                    </>,
+                  ]
+                : [
+                    "You know which roles you need",
+                    "You can outline key tasks or responsibilities",
+                    "You have clear deliverables or goals in mind",
+                  ]
+              ).map((item, index) => (
+                <div className="flex items-start gap-x-3" key={index}>
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
+                  <span className="text-sm leading-5 text-dark-blue-400">
+                    {item}
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
@@ -9731,29 +9767,9 @@ const DescribeProjectStep = ({
         </div>
 
         <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
-          <div className="w-[269px] rounded-lg border border-gray-200 bg-white p-4 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-            <div className="flex items-center gap-x-2">
-              <span className="text-base leading-normal font-semibold text-gray-400">
-                Quick tip
-              </span>
-              <Lightbulb05 className="ml-auto size-5 shrink-0 text-gray-400" />
-            </div>
-            <p className="mt-3 text-sm leading-5 font-semibold text-dark-blue-400">
-              {isService
-                ? "Help us understand your service needs"
-                : "Give us a few details now to save time later"}
-            </p>
-            <div className="mt-2 space-y-1.5">
-              {tipItems.map((item) => (
-                <div className="flex items-start gap-x-3" key={item}>
-                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
-                  <span className="text-xs leading-[18px] text-dark-blue-400">
-                    {item}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ProjectInfoTip
+            variant="describeProjectStep"
+          />
         </div>
       </div>
     </ScrollArea>
