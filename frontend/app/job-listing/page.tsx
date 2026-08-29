@@ -9357,7 +9357,7 @@ const DescribeProjectStep = ({
         className="px-5 pb-[100px] pt-6 md:px-10 min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-8 min-[1024px]:gap-x-[41.45px]"
       >
         <div className="min-w-0 flex-auto min-[1024px]:max-w-[720px]">
-          <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
+          <h1 className="text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
             {isService ? "Describe your service" : "Describe your project"}
           </h1>
 
