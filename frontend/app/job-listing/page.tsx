@@ -9682,98 +9682,118 @@ const DescribeProjectStep = ({
                       <HeadlessRadioGroupItem key={id} value={id} asChild>
                         <div
                           className={cn(
-                            "box-border flex h-[84px] w-[435px] flex-row items-center gap-4 rounded-lg border border-gray-200 bg-white py-4 pr-6 pl-4 text-left focus-visible:outline-none",
+                            "box-border flex w-[435px] items-center gap-4 rounded-lg border border-gray-200 bg-white py-4 pr-6 pl-4 text-left focus-visible:outline-none",
+                            isOther && selected
+                              ? "h-[116px] flex-col items-start justify-center gap-3"
+                              : "h-[84px] flex-row",
                             selected && "border-primary-500",
                           )}
                         >
-                          <span
-                            className={cn(
-                              "flex h-[52px] w-[361px] flex-col items-start gap-1",
-                              !option.label && "justify-center",
-                            )}
-                          >
-                            <span className="block h-7 self-stretch text-[18px] leading-7 font-semibold text-dark-blue-400">
-                              {option.value}
-                              {option.unit ? (
-                                <span className="ml-1 text-[18px] leading-7 font-semibold text-dark-blue-400">
-                                  {" "}
-                                  {option.unit}
-                                </span>
-                              ) : null}
-                            </span>
-                            {option.label ? (
-                              <span className="block h-5 self-stretch text-[14px] leading-5 font-normal text-dark-blue-400">
-                                {option.label}
-                              </span>
-                            ) : null}
-                          </span>
-                          <span
-                            className={cn(
-                              "box-border inline-flex size-[18px] shrink-0 rounded-full border-[1.5px] border-gray-300",
-                              selected && "border-[5px] border-primary-500",
-                            )}
-                          />
                           {isOther && selected ? (
-                            <div className="mt-3 flex items-center gap-x-2">
-                              <Input
-                                className="h-8 text-xs"
-                                placeholder="Enter duration"
-                                value={customDuration}
-                                onClick={(event) => event.stopPropagation()}
-                                onChange={(event) => {
-                                  const value = event.target.value;
-                                  setCustomDuration(value);
-                                  updateDraftDetails({
-                                    durationMonths: isService
-                                      ? undefined
-                                      : getDraftDurationMonths(
-                                          duration,
-                                          value,
-                                          customDurationUnit,
-                                        ),
-                                  });
-                                }}
-                              />
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    type="button"
-                                    variant="outlined"
-                                    visual="gray"
-                                    className="h-8 min-w-[92px] justify-between px-3 text-xs leading-[18px] font-normal text-dark-blue-400"
-                                    onClick={(event) => event.stopPropagation()}
-                                  >
-                                    {customDurationUnit}
-                                    <ChevronDown className="size-4 text-gray-500" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent
-                                  align="start"
-                                  className="min-w-[92px]"
-                                >
-                                  {projectDurationUnits.map((unit) => (
-                                    <DropdownMenuItem
-                                      key={unit}
-                                      onSelect={() => {
-                                        setCustomDurationUnit(unit);
-                                        updateDraftDetails({
-                                          durationMonths: isService
-                                            ? undefined
-                                            : getDraftDurationMonths(
-                                                duration,
-                                                customDuration,
-                                                unit,
-                                              ),
-                                        });
-                                      }}
+                            <>
+                              <div className="flex h-7 w-full items-center justify-between gap-2">
+                                <span className="block h-7 w-[369px] text-[18px] leading-7 font-semibold text-dark-blue-400">
+                                  {option.value}
+                                </span>
+                                <span className="relative inline-flex size-5 shrink-0 rounded-full border-[1.5px] border-primary-500 box-border">
+                                  <span className="absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-500" />
+                                </span>
+                              </div>
+                              <div className="flex h-11 w-[395px] items-start gap-2">
+                                <Input
+                                  className="h-11 w-[251px] rounded-[5px] px-3.5 text-[16px] leading-6 text-gray-400 placeholder:text-gray-400"
+                                  placeholder="Enter duration"
+                                  value={customDuration}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    setCustomDuration(value);
+                                    updateDraftDetails({
+                                      durationMonths: isService
+                                        ? undefined
+                                        : getDraftDurationMonths(
+                                            duration,
+                                            value,
+                                            customDurationUnit,
+                                          ),
+                                    });
+                                  }}
+                                />
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="outlined"
+                                      visual="gray"
+                                      className="h-11 w-[136px] justify-between rounded-[5px] px-3.5 text-[16px] leading-6 font-normal text-dark-blue-400"
+                                      onClick={(event) => event.stopPropagation()}
                                     >
-                                      {unit}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          ) : null}
+                                      {customDurationUnit}
+                                      <ChevronDown className="size-4 text-gray-500" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent
+                                    align="start"
+                                    className="min-w-[92px]"
+                                  >
+                                    {projectDurationUnits.map((unit) => (
+                                      <DropdownMenuItem
+                                        key={unit}
+                                        onSelect={() => {
+                                          setCustomDurationUnit(unit);
+                                          updateDraftDetails({
+                                            durationMonths: isService
+                                              ? undefined
+                                              : getDraftDurationMonths(
+                                                  duration,
+                                                  customDuration,
+                                                  unit,
+                                                ),
+                                          });
+                                        }}
+                                      >
+                                        {unit}
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <span
+                                className={cn(
+                                  "flex h-[52px] w-[361px] flex-col items-start gap-1",
+                                  !option.label && "justify-center",
+                                )}
+                              >
+                                <span className="block h-7 self-stretch text-[18px] leading-7 font-semibold text-dark-blue-400">
+                                  {option.value}
+                                  {option.unit ? (
+                                    <span className="ml-1 text-[18px] leading-7 font-semibold text-dark-blue-400">
+                                      {" "}
+                                      {option.unit}
+                                    </span>
+                                  ) : null}
+                                </span>
+                                {option.label ? (
+                                  <span className="block h-5 self-stretch text-[14px] leading-5 font-normal text-dark-blue-400">
+                                    {option.label}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span
+                                className={cn(
+                                  "box-border relative inline-flex size-[18px] shrink-0 rounded-full border-[1.5px] border-gray-300",
+                                  selected && "border-primary-500",
+                                )}
+                              >
+                                {selected ? (
+                                  <span className="absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-500" />
+                                ) : null}
+                              </span>
+                            </>
+                          )}
                         </div>
                       </HeadlessRadioGroupItem>
                     );
