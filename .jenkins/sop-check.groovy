@@ -178,6 +178,8 @@ pipeline {
                                 frontend/components/navigation/marketplace-secondary-nav.tsx|\
                                 "frontend/app/(group)/active-project/[id]/page.tsx"|\
                                 "frontend/app/(group)/job-screening/page.tsx"|\
+                                frontend/components/settings-tax-info.tsx|\
+                                "backend/apps/user-service/src/tax-info/"*|\
                                 "frontend/app/(group)/billing/page.tsx"|\
                                 "frontend/app/(group)/billing/transactions/page.tsx"|\
                                 "frontend/app/(group)/billing/invoices/page.tsx"|\

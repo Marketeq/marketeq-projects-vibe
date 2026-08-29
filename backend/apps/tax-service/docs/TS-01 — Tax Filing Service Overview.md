@@ -268,6 +268,9 @@ Outbound:
 
 ## 7.1 Tax support: route into the platform assistant
 
+> Full requirements: **TS-02 — Tax Support Assistant Requirements**, in this
+> directory. The summary below is the decision; TS-02 is what to build against.
+
 The Taxes screen carries an **Ask a Question** card. It must route into the
 **platform-wide chatbot already being designed**, not into a second tax-specific
 bot. One assistant, given tax context.

@@ -967,8 +967,44 @@ export function SettingsTaxInfo() {
 
             {/* Same line-art style as the onboarding role picker: 2.5 stroke in
                 primary-500, lighter blues as accents, on a primary-50 tile. */}
-            <div className="flex size-[200px] shrink-0 items-center justify-center rounded-lg bg-primary-50">
+            <div className="relative flex h-[200px] w-full shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary-50 lg:w-[320px]">
+              {/* Background texture, in the lightest tone of the same palette
+                  and at half the stroke weight, so it fills the width without
+                  competing with the line art in front of it. */}
               <svg
+                className="pointer-events-none absolute inset-0 size-full"
+                viewBox="0 0 320 200"
+                fill="none"
+                preserveAspectRatio="xMidYMid slice"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden
+              >
+                <g fill="none" stroke="#C9D9FF" strokeWidth="1.25">
+                  <circle cx="18" cy="176" r="34" />
+                  <circle cx="18" cy="176" r="52" />
+                  <circle cx="18" cy="176" r="70" />
+                  <circle cx="302" cy="26" r="30" />
+                  <circle cx="302" cy="26" r="46" />
+                  <circle cx="302" cy="26" r="62" />
+                </g>
+                <g fill="#C9D9FF">
+                  <circle cx="44" cy="30" r="2" />
+                  <circle cx="64" cy="30" r="2" />
+                  <circle cx="84" cy="30" r="2" />
+                  <circle cx="44" cy="50" r="2" />
+                  <circle cx="64" cy="50" r="2" />
+                  <circle cx="44" cy="70" r="2" />
+                  <circle cx="236" cy="150" r="2" />
+                  <circle cx="256" cy="150" r="2" />
+                  <circle cx="276" cy="150" r="2" />
+                  <circle cx="256" cy="170" r="2" />
+                  <circle cx="276" cy="170" r="2" />
+                  <circle cx="276" cy="190" r="2" />
+                </g>
+              </svg>
+
+              <svg
+                className="relative"
                 width="132"
                 height="132"
                 viewBox="0 0 132 132"
