@@ -9359,6 +9359,22 @@ const DescribeProjectStep = ({
     descriptionFieldVariant === "project"
       ? "h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400"
       : "h-20 text-sm";
+  const describeProjectContainerClassName =
+    descriptionFieldVariant === "project"
+      ? "min-w-0 flex-auto max-w-[886px]"
+      : "min-w-0 flex-auto min-[1024px]:max-w-[720px]";
+  const describeProjectContentClassName =
+    descriptionFieldVariant === "project"
+      ? "mt-4 flex flex-col gap-16"
+      : "mt-4 space-y-2";
+  const describeProjectQuestionClassName =
+    descriptionFieldVariant === "project" ? "space-y-3" : "space-y-2";
+  const describeProjectGroupClassName =
+    descriptionFieldVariant === "project" ? "mt-16 space-y-4" : "space-y-2";
+  const describeProjectLabelRowClassName =
+    descriptionFieldVariant === "project"
+      ? "flex h-7 items-baseline justify-between gap-2"
+      : "flex items-baseline justify-between gap-2";
 
   return (
     <ScrollArea
@@ -9370,37 +9386,39 @@ const DescribeProjectStep = ({
         ref={contentRef}
         className="px-5 pb-[100px] pt-6 md:px-10 min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-8 min-[1024px]:gap-x-[41.45px]"
       >
-        <div className="min-w-0 flex-auto min-[1024px]:max-w-[720px]">
+        <div className={describeProjectContainerClassName}>
           <h1 className="text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
             {isService ? "Describe your service" : "Describe your project"}
           </h1>
 
-          <div className="mt-4 space-y-2">
-            <div className="flex items-baseline justify-between gap-2">
-              <Label className={descriptionLabelClassName}>
-                {isService
-                  ? "What kind of ongoing help do you need?"
-                  : "What do you want to accomplish with this project?"}
-              </Label>
-              <span className={descriptionCounterClassName}>
-                {description.length}/100
-              </span>
+          <div className={describeProjectContentClassName}>
+            <div className={describeProjectQuestionClassName}>
+              <div className={describeProjectLabelRowClassName}>
+                <Label className={descriptionLabelClassName}>
+                  {isService
+                    ? "What kind of ongoing help do you need?"
+                    : "What do you want to accomplish with this project?"}
+                </Label>
+                <span className={descriptionCounterClassName}>
+                  {description.length}/100
+                </span>
+              </div>
+              <Textarea
+                maxLength={100}
+                value={description}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setDescription(value);
+                  updateDraftDetails({ description: value.trim() });
+                }}
+                placeholder={
+                  isService
+                    ? "I need ongoing design and development support for my e-commerce store..."
+                    : "I need help building a new website for my e-commerce store..."
+                }
+                className={descriptionTextareaClassName}
+              />
             </div>
-            <Textarea
-              maxLength={100}
-              value={description}
-              onChange={(event) => {
-                const value = event.target.value;
-                setDescription(value);
-                updateDraftDetails({ description: value.trim() });
-              }}
-              placeholder={
-                isService
-                  ? "I need ongoing design and development support for my e-commerce store..."
-                  : "I need help building a new website for my e-commerce store..."
-              }
-              className={descriptionTextareaClassName}
-            />
           </div>
 
           {isService ? (
@@ -9575,22 +9593,22 @@ const DescribeProjectStep = ({
             </>
           ) : null}
 
-          <div className="mt-5 space-y-2">
-            <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
+          <div className={describeProjectGroupClassName}>
+            <Label className="text-[18px] leading-7 font-medium text-dark-blue-400">
               What&apos;s your estimated budget for this{" "}
               {isService ? "service" : "project"}?
             </Label>
-            <div className="space-y-1.5">
-              <Label className="text-xs leading-[18px] text-gray-500">
-                Amount
-              </Label>
-              <div className="flex items-center gap-x-2">
-                <InputGroup fieldHeight="2rem" className="w-[132px]">
-                  <InputLeftElement className="text-xs text-gray-500">
+            <div className="flex w-[320px] items-end gap-2">
+              <div className="flex w-[176px] flex-col gap-1.5">
+                <Label className="text-sm leading-5 font-medium text-gray-500">
+                  Amount
+                </Label>
+                <InputGroup fieldHeight="2rem" className="w-full">
+                  <InputLeftElement className="text-[16px] leading-6 text-gray-400">
                     $
                   </InputLeftElement>
                   <Input
-                    className="h-8 text-xs"
+                    className="h-11 rounded-[5px] border-gray-300 px-[14px] py-2.5 pl-8 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400"
                     inputMode="decimal"
                     value={budget}
                     onChange={(event) => {
@@ -9602,19 +9620,24 @@ const DescribeProjectStep = ({
                     }}
                   />
                 </InputGroup>
+              </div>
+              <div className="flex w-[136px] flex-col gap-1.5">
+                <Label className="invisible text-sm leading-5 font-medium text-gray-500">
+                  Amount
+                </Label>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       type="button"
                       variant="outlined"
                       visual="gray"
-                      className="h-8 min-w-[100px] justify-between px-3 text-xs leading-[18px] font-normal text-dark-blue-400"
+                      className="h-11 w-full justify-between rounded-[5px] px-[14px] py-2.5 text-[16px] leading-6 font-normal text-dark-blue-400"
                     >
                       {budgetUnit}
-                      <ChevronDown className="size-4 text-gray-500" />
+                      <ChevronDown className="size-4 text-gray-400" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="min-w-[100px]">
+                  <DropdownMenuContent align="start" className="min-w-[136px]">
                     {["per week", "per month"].map((unit) => (
                       <DropdownMenuItem
                         key={unit}
@@ -9637,7 +9660,7 @@ const DescribeProjectStep = ({
 
           {!isService ? (
             <>
-              <div className="mt-5 space-y-3">
+              <div className="mt-16 space-y-3">
                 <Label className="text-base leading-6 font-semibold text-dark-blue-400">
                   How long do you expect this job to last?
                 </Label>
