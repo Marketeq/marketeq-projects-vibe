@@ -9601,19 +9601,66 @@ const DescribeProjectStep = ({
                 <Label className="text-sm leading-5 font-medium text-gray-500">
                   Amount
                 </Label>
-                <InputGroup fieldHeight="2rem" className="w-full">
-                  <InputLeftElement className="text-[16px] leading-6 text-gray-400">
+                <InputGroup fieldHeight="2.75rem" className="w-[176px]">
+                  <InputLeftElement className="text-[16px] leading-6 text-dark-blue-400">
                     $
                   </InputLeftElement>
                   <Input
-                    className="h-11 rounded-[5px] border-gray-300 px-[14px] py-2.5 pl-8 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400"
+                    className="h-11 w-[176px] rounded-[5px] border-gray-300 px-[14px] py-2.5 pl-8 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
                     inputMode="decimal"
+                    pattern="^\d*(\.\d{0,2})?$"
                     value={budget}
                     onChange={(event) => {
-                      const value = event.target.value;
-                      setBudget(value);
+                      const value = event.target.value.replace(/[^0-9.]/g, "");
+                      const [whole = "", fraction = ""] = value.split(".");
+                      const nextValue = value.includes(".")
+                        ? `${whole}.${fraction.slice(0, 2)}`
+                        : whole;
+                      setBudget(nextValue);
                       updateDraftDetails({
-                        budgetAmount: Number(value.replace(/,/g, "")) || 0,
+                        budgetAmount: Number(nextValue.replace(/,/g, "")) || 0,
+                      });
+                    }}
+                    onKeyDown={(event) => {
+                      const allowedKeys = [
+                        "Backspace",
+                        "Delete",
+                        "ArrowLeft",
+                        "ArrowRight",
+                        "Tab",
+                        "Home",
+                        "End",
+                      ];
+                      if (
+                        allowedKeys.includes(event.key) ||
+                        (event.metaKey || event.ctrlKey)
+                      ) {
+                        return;
+                      }
+                      if (!/^[0-9.]$/.test(event.key)) {
+                        event.preventDefault();
+                        return;
+                      }
+                      if (
+                        event.key === "." &&
+                        typeof budget === "string" &&
+                        budget.includes(".")
+                      ) {
+                        event.preventDefault();
+                      }
+                    }}
+                    onBlur={() => {
+                      const numericValue = Number(budget);
+                      if (!Number.isFinite(numericValue)) return;
+
+                      const hasDecimals = budget.includes(".");
+                      const nextValue = hasDecimals
+                        ? numericValue.toFixed(2)
+                        : numericValue.toFixed(2);
+
+                      setBudget(nextValue);
+                      updateDraftDetails({
+                        budgetAmount: numericValue || 0,
                       });
                     }}
                   />
