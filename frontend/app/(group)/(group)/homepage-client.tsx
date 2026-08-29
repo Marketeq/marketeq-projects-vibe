@@ -461,12 +461,6 @@ function formatPrice(min: number | null, max: number | null): string {
 
 // ── Card renderers ──────────────────────────────────────────────────────────
 
-// Fallback avatar group — matches the static page's visual: 6 stacked
-// placeholder avatars so the ListingCard always renders an AvatarGroup.
-// When the backend starts populating `item.collaborators`, the real values
-// take precedence.
-const FALLBACK_COLLABORATORS = fromLength(6).map(() => "/woman.jpg")
-
 function renderProjectCarousel(item: ProjectCard) {
   return (
     <ListingCard
@@ -483,11 +477,7 @@ function renderProjectCarousel(item: ProjectCard) {
       duration={formatDuration(item.duration)}
       rating={item.rating ?? 4.9}
       reviewCount={item.reviewCount ?? 5}
-      collaborators={
-        item.collaborators && item.collaborators.length > 0
-          ? item.collaborators
-          : FALLBACK_COLLABORATORS
-      }
+      collaborators={item.collaborators}
       favoriteSlot={<FavoriteButton />}
     />
   )

@@ -21,6 +21,9 @@ import {
   talentProfileUrl,
   teamDetailsUrl,
 } from "@/src/lib/listing-urls"
+import React from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/contexts/auth"
 import { cn, plainTextFromRichTextHtml } from "@/utils/functions"
 import {
   Briefcase,
@@ -34,11 +37,16 @@ import {
   MarkerPin02,
   RefreshCw,
   Star,
+  User01,
   Users,
 } from "@blend-metrics/icons"
 import { Money } from "@/components/money"
 import { NextImage } from "@/components/next-image"
 import { NextLink } from "@/components/next-link"
+import {
+  isTalentAccount,
+  NoTeamAssigned,
+} from "@/components/no-team-assigned"
 import { TalentSearchCard } from "@/components/talent-search-card"
 import {
   Avatar,
@@ -54,6 +62,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   IconButton,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@/components/ui"
 
 /* ─── Types ────────────────────────────────────────────────────────────── */
@@ -87,6 +99,12 @@ interface ProjectLikeProps {
    * Use this when you need tooltips, custom images, or other complex behavior.
    */
   avatarsSlot?: React.ReactNode
+  /**
+   * Called when someone clicks "Claim this Project/Service" in the no-team
+   * tooltip. Omit it and the CTA sends them to the listing's details page,
+   * where the real claim flow lives.
+   */
+  onClaim?: () => void
   /** Optional badge rendered over the media (e.g. "Service"). */
   badge?: string
   /** Optional href override; if omitted, computed from kind + id. */
@@ -150,6 +168,7 @@ export type ListingCardProps =
 
 /* ─── Master dispatch ──────────────────────────────────────────────────── */
 
+
 export function ListingCard(props: ListingCardProps) {
   if (props.kind === "talent") {
     const href = props.href ?? talentProfileUrl(props.username)
@@ -204,6 +223,7 @@ function ProjectListingCard({
   href,
   mode = "browse",
   onEdit,
+  onClaim,
   favoriteSlot,
   cardVariant = "default",
 }: ProjectLikeProps) {
@@ -212,6 +232,12 @@ function ProjectListingCard({
   // — so without flattening it first the tags show up on screen as literal
   // text. Detail pages still render the real markup.
   const plainDescription = plainTextFromRichTextHtml(description)
+  const router = useRouter()
+  const { user } = useAuth()
+  // The unclaimed-team empty state is a talent-facing call to action. Clients
+  // and signed-out visitors just don't see the row until somebody owns it.
+  const isTalent = isTalentAccount(user)
+  const hasTeam = !!collaborators && collaborators.length > 0
   const computedHref =
     href ??
     (cardVariant === "job" || cardVariant === "job-grid"
@@ -222,14 +248,49 @@ function ProjectListingCard({
           ? serviceDetailsUrl(id)
           : projectDetailsUrl(id))
   const badgeText = kind === "service" ? "Service" : badge?.trim()
+  // Strip any lead-in the data already carries ("Starting at $50,000",
+  // "From $50,000 budget") so the card owns the wording, not the content.
+  const LEAD_IN = /^\s*(starting\s+(at|from)|starts?\s+(at|from)|from|as\s+low\s+as)\s*/i
+
   const budgetText = (() => {
     const value = String(budget ?? "")
-      .replace(/\s*\/\s*(hr|hour|month)\s*$/i, "")
+      .replace(LEAD_IN, "")
+      .replace(/\s*\/\s*(hr|hours?|hourly|mo|months?|monthly|wk|weeks?|yr|years?)\s*$/i, "")
       .replace(/\s+budget\s*$/i, "")
+      .trim()
     const numericValue = Number(value.replace(/[$,\s]/g, ""))
     return value && !Number.isNaN(numericValue)
       ? `$${numericValue.toLocaleString()}`
       : value
+  })()
+
+  // Locked timeline format. Units: hours, days, weeks, months.
+  // Content supplies the number and unit; the card owns the wording, the
+  // casing and the singular/plural, so changing content cannot change format.
+  //   "12 weeks" | "Starting from 12 Weeks" | "12 wks" -> "Starting from 12 weeks"
+  //   "1 month"                                        -> "Starting from 1 month"
+  // Anything non-numeric ("Ongoing", "Full-Time") passes through unprefixed.
+  const durationText = (() => {
+    const raw = String(duration ?? "")
+      .replace(LEAD_IN, "")
+      .trim()
+    if (!raw) return ""
+
+    const match = raw.match(/^(\d+(?:\.\d+)?)\s*(hours?|hrs?|days?|weeks?|wks?|months?|mos?)\b/i)
+    if (!match) return raw
+
+    const amount = Number(match[1])
+    const unit = match[2].toLowerCase().replace(/s$/, "")
+    const canonical =
+      unit === "hr" || unit === "hour"
+        ? "hour"
+        : unit === "wk" || unit === "week"
+          ? "week"
+          : unit === "mo" || unit === "month"
+            ? "month"
+            : "day"
+
+    return `Starting from ${amount} ${canonical}${amount === 1 ? "" : "s"}`
   })()
   const budgetSuffix =
     budgetText && kind === "service"
@@ -614,7 +675,7 @@ function ProjectListingCard({
         href={computedHref}
         className="block focus-visible:outline-none group/card"
       >
-        <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+        <div className="h-[140px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
           {mediaUrl ? (
             <NextImage
               className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
@@ -628,18 +689,36 @@ function ProjectListingCard({
               <Briefcase className="size-10 text-gray-300" />
             </div>
           )}
-          {badgeText && (
-            <span className="absolute top-2 right-2 inline-flex max-w-[60%] items-center gap-1 truncate rounded-md bg-[#00000091] px-2 py-0.5 text-[10px] font-semibold text-white shadow">
-              {kind === "service" && (
-                <RefreshCw className="size-3 shrink-0 text-[#98B6FF]" />
-              )}
-              <span className="truncate">{badgeText}</span>
-            </span>
-          )}
+          <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-2">
+            {badgeText ? (
+              <span className="inline-flex max-w-[60%] items-center gap-1 truncate rounded-[5px] bg-black/[.57] px-1.5 py-1 text-[10px] font-bold text-white shadow">
+                {kind === "service" && (
+                  <RefreshCw className="size-3 shrink-0 text-[#98B6FF]" />
+                )}
+                <span className="truncate">{badgeText}</span>
+              </span>
+            ) : (
+              <span />
+            )}
+
+            {mode !== "owned" && favoriteSlot ? (
+              <span
+                className="pointer-events-auto inline-flex shrink-0"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+              >
+                {favoriteSlot}
+              </span>
+            ) : (
+              <span />
+            )}
+          </div>
         </div>
 
         <div className="mt-3 flex items-start gap-x-3">
-          <span className="line-clamp-2 min-w-0 flex-auto text-base font-bold leading-tight text-dark-blue-400">
+          <span className="line-clamp-2 min-w-0 flex-auto text-base font-bold leading-normal text-dark-blue-400">
             <span className="hover:underline">{title}</span>
           </span>
 
@@ -661,10 +740,10 @@ function ProjectListingCard({
           {typeof rating === "number" && (
             <div className="inline-flex shrink-0 items-center gap-x-1">
               <Star className="size-[15px] text-primary-500 fill-primary-500" />
-              <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
+              <span className="inline-flex items-center gap-x-1 text-sm font-medium leading-normal text-dark-blue-400">
                 {rating.toFixed(1)}{" "}
                 {typeof reviewCount === "number" && (
-                  <span className="font-extralight">({reviewCount})</span>
+                  <span className="font-light">({reviewCount})</span>
                 )}
               </span>
             </div>
@@ -672,27 +751,27 @@ function ProjectListingCard({
         </div>
 
         {plainDescription && (
-          <p className="mt-3 line-clamp-3 text-sm leading-[1.4] font-extralight text-dark-blue-400">
+          <p className="mt-3 line-clamp-3 text-sm font-light leading-normal text-dark-blue-400">
             {plainDescription}
           </p>
         )}
 
-        <div className="mt-[14.5px] flex flex-col gap-y-3">
-          {duration && (
+        <div className="mt-[14px] flex flex-col gap-y-3">
+          {kind !== "service" && durationText && (
             <div className="flex items-center gap-x-[6.4px]">
               <Clock className="size-[18px] shrink-0 text-primary-500" />
-              <span className="font-medium text-sm leading-none text-dark-blue-400">
-                {duration}
+              <span className="text-sm font-medium leading-normal text-dark-blue-400">
+                {durationText}
               </span>
             </div>
           )}
 
           <div className="flex items-center gap-x-[6.4px]">
             <Money className="size-[18px] shrink-0 text-primary-500" />
-            <span className="font-medium text-sm leading-none text-dark-blue-400">
+            <span className="flex items-center text-sm font-medium leading-normal text-dark-blue-400">
               {budgetText}
-              {kind === "service" && budgetSuffix ? (
-                <span className="text-[10px] font-light leading-none">
+              {kind === "service" ? (
+                <span className="text-center text-xs font-light leading-normal">
                   {budgetSuffix}
                 </span>
               ) : (
@@ -704,17 +783,24 @@ function ProjectListingCard({
       </NextLink>
 
       <div className="mt-auto pt-5 flex items-end justify-between">
-        {avatarsSlot ?? (
+        {avatarsSlot ??
+          (!hasTeam ? (
+            isTalent ? (
+              <NoTeamAssigned
+                kind={kind === "service" ? "service" : "project"}
+                onClaim={onClaim ?? (() => router.push(computedHref))}
+              />
+            ) : (
+              <span />
+            )
+          ) : (
           <AvatarGroup
             max={5}
             size="sm"
             excess
             excessClassName="border-gray-300 text-gray-500"
           >
-            {(collaborators && collaborators.length > 0
-              ? collaborators
-              : ["/woman.jpg"]
-            ).map((src, i) => (
+            {collaborators.map((src, i) => (
               <Avatar
                 key={i}
                 size="sm"
@@ -725,7 +811,7 @@ function ProjectListingCard({
               </Avatar>
             ))}
           </AvatarGroup>
-        )}
+          ))}
 
         {mode === "owned" ? (
           <IconButton
@@ -736,9 +822,7 @@ function ProjectListingCard({
           >
             <Edit03 className="size-4" />
           </IconButton>
-        ) : (
-          favoriteSlot
-        )}
+        ) : null}
       </div>
     </article>
   )
