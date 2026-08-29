@@ -4,6 +4,7 @@ import * as React from "react"
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import { claimProject } from "@/src/lib/api/claim"
 import {
   isTalentAccount,
   NoTeamAssigned,
@@ -5494,7 +5495,17 @@ export default function ProjectDetails({
                     </Tooltip>
                   </TooltipProvider>
                 ) : (
-                  <NoTeamAssigned kind="project" />
+                  <NoTeamAssigned
+                    kind="project"
+                    onClaim={
+                      project?.id
+                        ? () => claimProject(String(project.id))
+                        : undefined
+                    }
+                    editHref={
+                      project?.id ? `/my-listings/${project.id}` : undefined
+                    }
+                  />
                 )}
               </div>
               ) : null}
