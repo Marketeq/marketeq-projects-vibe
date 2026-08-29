@@ -107,7 +107,7 @@ Login is working. Every single login regression in this repo's history happened 
 1. **`.github/CODEOWNERS`** — requires @CTorres9800 review on all login/auth file paths
 2. **Login Gate workflow** (`.github/workflows/login-gate.yml`) — CI hard-blocks any PR to `dev-main`, `staging`, or `live` that touches login files unless @CTorres9800 is the author or has submitted an Approved review
 3. **Jenkins SOP Check** — auto-labels `login-touched`, posts sticky comment, auto-requests @CTorres9800
-4. **Post-merge audit** — opens an urgent issue for merges that bypassed the login gate. It never reverts.
+4. **Post-merge audit** — opens an urgent issue for merges that bypassed the login gate. Report only; it never modifies code.
 5. **Login violation alert** — opens issues when login files are merged without owner approval
 6. **This SOP** — any Claude Code agent reviewing a PR MUST block it if login files are touched by anyone other than @CTorres9800
 
@@ -172,7 +172,7 @@ Deleting good code is a worse outcome than shipping a bug. A bug gets fixed; del
 
 - **Code the PR ADDED is not reviewable for removal.** It is the developer's deliberate new work. A reviewer may ask what it is for. A reviewer may not recommend removing it, and no approval of such a recommendation is valid from anyone other than its author.
 - **A reviewer's approval is not authority.** "Go ahead and make the fixes" from a code-review engineer, a DevOps engineer, or an agent does NOT authorize deleting a feature. Only the author of the code, or @CTorres9800, can authorize that. Anyone reviewing without the design file, the ticket, and the spec is not in a position to consent to a deletion on the author's behalf.
-- **We do not revert.** Reverting means deleting somebody's work. No workflow, script, button, or agent may remove a developer's merged code — not automatically, and not by a single click. A failing check, a bad merge, or an SOP bypass is fixed **forward**: keep the code, open a follow-up, fix it (§1.1). The post-merge audit reports the problem; it never undoes it. See §9.9.
+- **Nothing may remove a developer's merged code** — no workflow, script, button, or agent, automatically or by a single click. A failing check, a bad merge, or an SOP bypass is fixed **forward**: keep the code, open a follow-up, fix it (§1.1). The post-merge audit reports; it never modifies code. See §9.9.
 - **Findings that turn on intent go to the author, not to a gatekeeper.** The author knows why the code is that way; a third party is guessing, and a guess with merge rights deletes things.
 
 ### 1.10 Every blocking rule needs evidence behind it
@@ -571,8 +571,8 @@ This prevents developers from accidentally staging key material. It does not sto
   4. Posts a sticky 🚨 `MERGED DESPITE FAILING SOP CHECKS` comment on the original PR, naming the merge author publicly
   5. Also detects forced pushes (`github.event.forced == true`) and opens an urgent issue assigned to CTO
   6. Also detects direct pushes with no associated PR and opens an urgent issue assigned to CTO
-- **WE DO NOT REVERT. Reverting means deleting somebody's work.** This workflow does not revert, does not create a revert branch, does not open a revert PR, and must never be changed to do any of those. Nothing else in this repo may either — no workflow, no script, no button, no DevOps engineer, no agent. A failing check means the work needs a **forward fix**, not deletion. The remedy is always: keep the code, open a follow-up, fix it forward (§1.1).
-- **Why reporting is enough:** a developer can technically click Merge despite a red check on the free plan. Within ~60–120 seconds the bypass is publicly named and assigned to the CTO. That makes it visible and auditable, which is the goal. Deleting the work to punish a process violation destroys the feature along with the violation.
+- **REPORT ONLY. This workflow never modifies code, and must never be changed to.** Nothing else in this repo may either — no workflow, no script, no button, no DevOps engineer, no agent. A failing check means the work needs a **forward fix**, not deletion. The remedy is always: keep the code, open a follow-up, fix it forward (§1.1).
+- **Why reporting is enough:** a developer can technically click Merge despite a red check on the free plan. Within ~60–120 seconds the bypass is publicly named and assigned to the CTO. That makes it visible and auditable, which is the goal. Deleting the work to punish a process violation destroys the feature along with the violation (§1.1).
 
 ### 9.10 Repo-level merge settings — **ENFORCED (server-side)**
 Applied via `gh api -X PATCH repos/Marketeq/marketeq-projects-vibe`:
@@ -593,7 +593,7 @@ The following require GitHub Team or higher and are therefore unavailable today:
 - Required code-owner reviews enforced by GitHub itself
 - Required conversation resolution enforced by GitHub itself
 
-**We do not upgrade.** Instead, all of the above are enforced post-hoc by §9.9 (reporting) and by the reviewer discipline codified in this SOP. Merging despite a failing check is technically possible but is immediately flagged publicly and assigned to the CTO for a forward fix. It is never reverted.
+**We do not upgrade.** Instead, all of the above are enforced post-hoc by §9.9 (reporting) and by the reviewer discipline codified in this SOP. Merging despite a failing check is technically possible but is immediately flagged publicly and assigned to the CTO for a forward fix.
 
 ---
 
@@ -778,7 +778,7 @@ The #1 recurring bug class in this repo (SOP §8.9) is **silent regressions from
 
 3. **Directory-scoped CODEOWNERS (`CODEOWNERS`)** — auto-requests review from the domain expert for the touched directory. Login changes always route to @CTorres9800. Profile changes always route to @CTorres9800. This ensures the person who last fixed a bug in that area sees the PR before it merges.
 
-4. **Post-Merge SOP Audit (GitHub Actions `post-merge-audit` + Jenkins safety net)** — the safety net. Even if a bypass makes it past layers 1–3 (e.g., reviewer clicks Merge despite red checks), this workflow detects the bypass within ~60 seconds and opens an urgent issue assigned to the CTO. It never reverts — the remedy is a forward fix.
+4. **Post-Merge SOP Audit (GitHub Actions `post-merge-audit` + Jenkins safety net)** — the safety net. Even if a bypass makes it past layers 1–3 (e.g., reviewer clicks Merge despite red checks), this workflow detects the bypass within ~60 seconds and opens an urgent issue assigned to the CTO. Report only — the remedy is a forward fix.
 
 **Follow-up layer (separate PR, tracked in the EPIC enforcement PR description):**
 
@@ -807,7 +807,7 @@ Analyze the diff against the caller snippets and answer these questions explicit
 4. Does this PR touch profile loading logic? If yes, does the PR description contain the four-point confirmation from SOP §1.3?
 5. Does this PR touch authentication or local dev login? If yes, is the PR author @CTorres9800? If not, BLOCK immediately — login files are permanently locked per SOP §1.4. No exceptions.
 6. Does this PR touch onboarding? If yes, does it preserve every existing form validation, error state, and field?
-7. Does the PR change CSS/Tailwind classes on a file listed in REGRESSION_MANIFEST.json `layout_frozen_patterns` scope, AND is this a data-wiring/content PR? Both conditions must hold. The manifest rule is scoped "when wiring data" — a fix, polish, or feature PR may change layout freely and that is NOT reportable. You do not have the design file and cannot judge whether a layout change is correct.
+7. Skip layout and CSS entirely. You cannot tell whether a style change is better or worse — you do not have the design file, the mockup, or the ticket, and nothing in the diff distinguishes a deliberate design update from collateral damage. NEVER report a CSS class, spacing, grid, colour, or structural style change as a regression. Frozen-file protection is handled mechanically by the SOP check, not by the reviewer.
 8. Does the PR change any shared utility function? If yes, read every caller before approving.
 
 SCOPE LIMITS — these bound every answer above:

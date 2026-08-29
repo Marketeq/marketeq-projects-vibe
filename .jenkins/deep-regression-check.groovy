@@ -264,10 +264,8 @@ For each hunk that removes or rewrites PRE-EXISTING code, list every behavior of
 - Has any query builder (.select, .addSelect, .leftJoin, .leftJoinAndSelect) been modified?
 - Has any TypeORM relation loading changed?
 
-### 4. LAYOUT/UI REGRESSIONS (NARROW -- read the condition carefully)
-- This check applies ONLY when the PR is a data-wiring or add-content PR. In that case it should ONLY replace static text with dynamic data, and layout changes are reportable.
-- For ANY other PR (fix, polish, feature, refactor), layout changes are the developer's call and are NOT reportable. You do not have the design file and CANNOT tell a deliberate layout fix from collateral damage. Do not guess. Do not report it.
-- Were any hover effects, transitions, or animations removed from a frozen file listed in REGRESSION_MANIFEST.json?
+### 4. LAYOUT/CSS -- DO NOT ANALYZE
+Skip layout and CSS entirely. You cannot tell whether a style change is better or worse: you do not have the design file, the mockup, or the ticket. A class change may be a deliberate fix, a design update, or collateral damage, and nothing in the diff distinguishes them. NEVER report a CSS class, spacing, grid, colour, or structural style change as a regression. Frozen-file protection is handled mechanically by the SOP check, not by you.
 
 ### 5. AUTH/SECURITY REGRESSIONS
 - Were any guards, decorators, or middleware changed?
@@ -293,7 +291,7 @@ You MUST respond with valid JSON only, no markdown fencing:
       "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
       "file": "path/to/file.ts",
       "line_range": "42-48",
-      "category": "DATA_FLOW | COMPONENT | API_CONTRACT | LAYOUT | AUTH | IMPORT | COPY",
+      "category": "DATA_FLOW | COMPONENT | API_CONTRACT | AUTH | IMPORT | COPY",
       "description": "What specifically broke and why",
       "before": "What the code did before",
       "after": "What the code does now",
@@ -331,8 +329,6 @@ ${IMPORTERS}
 ## API/TYPE SHAPE CHANGES (before vs after)
 ${API_SHAPES}
 
-## LAYOUT/CSS CHANGES (should be empty if this is a data-wiring PR)
-${LAYOUT_CHANGES}
 PROMPT_END
 
                         # Build API request body directly from prompt.txt (all file-based, no shell vars)

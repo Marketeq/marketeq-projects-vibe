@@ -5,10 +5,8 @@ name: Post-Merge SOP Audit
 # this workflow, which checks whether the merged PR had failing SOP
 # checks. If yes, it opens an issue and tags the CTO.
 #
-# This workflow REPORTS ONLY. It must never revert, never create a
-# revert branch, and never open a revert PR -- reverting means deleting
-# somebody's work, which this repo does not do (CODE_REVIEW_SOP SS1.1,
-# SS1.9, SS9.9). A bypass is made visible and fixed FORWARD.
+# This workflow REPORTS ONLY -- it never modifies code. A bypass is made
+# visible and fixed forward. See CODE_REVIEW_SOP SS1.1.
 
 on:
   push:
@@ -119,7 +117,7 @@ EOF
 
 A commit was pushed to a protected branch without going through a pull request. Per Code Review SOP §6, all changes must flow through a squash-merged PR with required SOP and AI Breakage checks.
 
-**CTO action required:** review, and fix forward if needed. Do not revert -- see Code Review SOP SS1.1.
+**CTO action required:** review, and fix forward if needed (Code Review SOP SS1.1).
 
 🤖 Auto-opened by \`.github/workflows/post-merge-audit.yml\`
 EOF
@@ -172,7 +170,7 @@ EOF
           fi
 
           # Race-condition guard: if ALL checks are "not found" (none actually
-          # failed), this is likely a timing issue — do NOT auto-revert.
+          # failed), this is likely a timing issue — do not flag it.
           ACTUAL_FAILURES=0
           for f in "${FAILED[@]}"; do
             if [[ "$f" != *"(not found)"* ]]; then
@@ -181,7 +179,7 @@ EOF
           done
 
           if [ ${#FAILED[@]} -gt 0 ] && [ "$ACTUAL_FAILURES" -eq 0 ]; then
-            echo "WARNING: ${#FAILED[@]} checks not found but none actually failed — skipping revert (likely timing race)"
+            echo "WARNING: ${#FAILED[@]} checks not found but none actually failed — skipping flag (likely timing race)"
             echo "status=ok" >> "$GITHUB_OUTPUT"
           elif [ ${#FAILED[@]} -gt 0 ] || [ "$REVIEW" = "CHANGES_REQUESTED" ]; then
             echo "status=violation" >> "$GITHUB_OUTPUT"
@@ -189,7 +187,7 @@ EOF
             echo "status=ok" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Flag SOP violation (alert only, no auto-revert)
+      - name: Flag SOP violation (report only)
         if: steps.checks.outputs.status == 'violation'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -209,7 +207,7 @@ This PR was merged to \`${BRANCH}\` by @${{ github.actor }} with one or more req
 
 ${FAILED_LIST}
 
-**No auto-revert was performed.** CTO review is required to determine if any action is needed.
+CTO review is required to determine if any action is needed. Fix forward -- keep the code and open a follow-up PR.
 
 Auto-flagged by \`.github/workflows/post-merge-audit.yml\`
 EOF
@@ -241,7 +239,7 @@ ${FAILED_LIST}
 
 **CTO action required:**
 1. Review the merged code for any actual regressions
-2. If something is wrong, fix it forward -- keep the code, open a follow-up PR. Do not revert (Code Review SOP SS1.1)
+2. If something is wrong, fix it forward -- keep the code, open a follow-up PR (Code Review SOP SS1.1)
 3. Close this issue after review
 
 Auto-opened by \`.github/workflows/post-merge-audit.yml\`
