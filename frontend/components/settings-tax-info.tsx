@@ -668,32 +668,6 @@ export function SettingsTaxInfo() {
   // it off `data` meant switching country showed the wrong certification until
   // the form was saved, so a non-US filer was shown the W-9's "I am a U.S.
   // citizen" affirmation.
-  /**
-   * Sets the country and keeps the rest of the form legal for it.
-   *
-   * The entity classifications are W-9 concepts. A foreign entity files a
-   * W-8BEN-E, which is a different form this platform does not produce, so a
-   * non-US filer is not offered a combination that cannot be documented.
-   */
-  const setCountry = (value: string) => {
-    setForm((prev) => {
-      if (
-        isUnitedStates(value) ||
-        !ENTITY_CLASSIFICATIONS.has(prev.federalTaxClassification)
-      ) {
-        return { ...prev, country: value }
-      }
-      return {
-        ...prev,
-        country: value,
-        federalTaxClassification: "Individual",
-        tinType: "SSN",
-        exemptPayeeCode: "",
-        fatcaExemptionCode: "",
-      }
-    })
-  }
-
   const formKind = isUnitedStates(form.country) ? "W-9" : "W-8BEN"
   const showsExemptions =
     isW9Form(formKind) &&
@@ -1208,7 +1182,7 @@ export function SettingsTaxInfo() {
             value={form.country === "United States" ? "us" : "outside"}
             disabled={readOnly}
             onValueChange={(v) => {
-              setCountry(v === "us" ? "United States" : "")
+              set("country", v === "us" ? "United States" : "")
             }}
             className="flex items-center gap-x-8"
           >
@@ -1372,11 +1346,7 @@ export function SettingsTaxInfo() {
                     <SelectValue placeholder="How you file with the IRS" />
                   </SelectTrigger>
                   <SelectContent>
-                    {CLASSIFICATIONS.filter(
-                      (c) =>
-                        isW9Form(formKind) ||
-                        !ENTITY_CLASSIFICATIONS.has(c.label)
-                    ).map((c) => (
+                    {CLASSIFICATIONS.map((c) => (
                       <SelectItem key={c.label} value={c.label}>
                         {c.label}
                       </SelectItem>
@@ -1529,7 +1499,7 @@ export function SettingsTaxInfo() {
                   placeholder="Where you pay tax"
                   value={form.country}
                   onValueChange={(v) => {
-                    setCountry(v)
+                    set("country", v)
                   }}
                   // Its default trigger is a dashed grey chip. Match the other
                   // fields on this form: white, solid border, same height.
