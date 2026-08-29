@@ -9355,7 +9355,7 @@ const DescribeProjectStep = ({
       : "text-xs leading-[18px] text-gray-500";
   const descriptionTextareaClassName =
     descriptionFieldVariant === "project"
-      ? "h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400"
+      ? "h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
       : "h-20 text-sm";
   const describeProjectContainerClassName =
     descriptionFieldVariant === "project"
@@ -9877,7 +9877,7 @@ const DescribeProjectStep = ({
           ) : null}
         </div>
 
-        <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
+        <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start">
           <ProjectInfoTip
             variant="describeProjectStep"
           />
@@ -10015,7 +10015,7 @@ const ReviewToolsTechnologiesStep = ({
           </TagsInputRoot>
         </div>
 
-        <div className="xs:max-[1180px]:hidden shrink-0 self-start sticky top-6">
+        <div className="xs:max-[1180px]:hidden shrink-0 self-start">
           <div className="w-[321px] rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
             <div className="flex items-center gap-x-2">
               <span className="text-base leading-normal font-semibold text-gray-400">
