@@ -103,6 +103,7 @@ export default function SettingsPage() {
   const transactionExporters = useBillingExportStore((s) => s.exporters.transactions)
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
   const [profileForm, setProfileForm] = useState({
     firstName: "",
     lastName: "",
@@ -188,6 +189,7 @@ export default function SettingsPage() {
   }
 
   const handleProfileSave = async () => {
+    setProfileError(null)
     if (!user?.id) return
 
     setIsSaving(true)
@@ -215,7 +217,7 @@ export default function SettingsPage() {
             : prev
         )
         setIsEditing(false)
-        toast({ title: "Profile updated successfully" })
+        toast({ title: "Profile updated successfully", variant: "success" })
       } else {
         throw new Error("Failed to update profile")
       }
@@ -225,7 +227,12 @@ export default function SettingsPage() {
         error?.response?.data?.message ||
         error?.message ||
         "Something went wrong"
-      toast({ title: errorMessage, variant: "destructive" })
+      // Toasts confirm successes only; a failed save reports itself inline.
+      setProfileError(
+        errorMessage.startsWith("Please")
+          ? errorMessage
+          : `Please try again. ${errorMessage}`
+      )
     } finally {
       setIsSaving(false)
     }
@@ -485,6 +492,12 @@ export default function SettingsPage() {
                       {isSaving ? "Saving..." : "Save Changes"}
                     </Button>
                   </div>
+
+                  {profileError && (
+                    <p className="mt-3 text-xs font-medium text-error-500">
+                      {profileError}
+                    </p>
+                  )}
                 </>
               )}
 

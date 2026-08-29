@@ -1,6 +1,15 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useAuth } from "@/contexts/auth"
+import {
+  type TaxInfo,
+  getTaxFormPreview,
+  getTaxInfo,
+  saveTaxInfo,
+  submitTaxInfo,
+} from "@/src/lib/api/tax-info"
+import { cn } from "@/utils/functions"
 import {
   AlertCircle,
   ArrowRight,
@@ -9,24 +18,16 @@ import {
   Download01,
   Edit03,
   File02,
-  Hourglass03,
   HelpCircle,
+  Hourglass03,
   MessageQuestionSquare,
   Play,
   X,
 } from "@blend-metrics/icons"
-import {
-  getTaxInfo,
-  saveTaxInfo,
-  submitTaxInfo,
-  type TaxInfo,
-} from "@/src/lib/api/tax-info"
-import NextLink from "@/components/next-link"
-import NextImage from "@/components/next-image"
-import { useAuth } from "@/contexts/auth"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import NextImage from "@/components/next-image"
+import NextLink from "@/components/next-link"
 import { CountriesCombobox } from "@/components/own-combobox"
-import { cn } from "@/utils/functions"
 import {
   Accordion,
   AccordionContent,
@@ -35,6 +36,11 @@ import {
   Badge,
   Button,
   Checkbox,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
   Input,
   Label,
   RadioGroup,
@@ -44,11 +50,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogTitle,
-  DialogTrigger,
   SelectValue,
   Tabs,
   TabsList,
@@ -123,7 +124,7 @@ const FAQ_SECTIONS = [
       },
       {
         q: "What is a 1099 form, and do I receive one?",
-        a: "There are two. A 1099-NEC is issued by Marketeq to US contractors we paid directly, once those payments reach $600 in a calendar year, and it reports them to the IRS. A 1099-K is issued by a third-party payment processor such as Stripe or PayPal when one handled the transactions and their reporting threshold is met. Reporting thresholds for the 1099-K have changed several times, so check the current rules. Neither form is issued to non-US persons, who are covered by a W-8 series form instead.",
+        a: "A 1099-K. Because clients pay Marketeq and Marketeq pays you, we settle your payments rather than passing them between you and each client, so the form that reports them is a Form 1099-K. It reports gross settled volume for the year, before platform fees and any refunds, along with a month by month breakdown, which is why the figure on it is usually higher than what reached your account. Your clients do not issue you anything, and you should not expect a separate 1099-NEC for the same money. Reporting thresholds have changed several times in recent years, so check the current figures on irs.gov. Neither form is issued to non-US persons, who are covered by a W-8 series form instead.",
       },
       {
         q: "What if I didn't receive a 1099 form from a client?",
@@ -179,15 +180,57 @@ const FAQ_SECTIONS = [
 // Same list client-profile uses. Only applies when filing from the USA; other
 // countries keep a free-text field because provinces vary too much to enumerate.
 const US_STATES: string[] = [
-  "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
-  "Connecticut", "Delaware", "District of Columbia", "Florida", "Georgia",
-  "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky",
-  "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota",
-  "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire",
-  "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota",
-  "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island",
-  "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont",
-  "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming",
+  "Alabama",
+  "Alaska",
+  "Arizona",
+  "Arkansas",
+  "California",
+  "Colorado",
+  "Connecticut",
+  "Delaware",
+  "District of Columbia",
+  "Florida",
+  "Georgia",
+  "Hawaii",
+  "Idaho",
+  "Illinois",
+  "Indiana",
+  "Iowa",
+  "Kansas",
+  "Kentucky",
+  "Louisiana",
+  "Maine",
+  "Maryland",
+  "Massachusetts",
+  "Michigan",
+  "Minnesota",
+  "Mississippi",
+  "Missouri",
+  "Montana",
+  "Nebraska",
+  "Nevada",
+  "New Hampshire",
+  "New Jersey",
+  "New Mexico",
+  "New York",
+  "North Carolina",
+  "North Dakota",
+  "Ohio",
+  "Oklahoma",
+  "Oregon",
+  "Pennsylvania",
+  "Rhode Island",
+  "South Carolina",
+  "South Dakota",
+  "Tennessee",
+  "Texas",
+  "Utah",
+  "Vermont",
+  "Virginia",
+  "Washington",
+  "West Virginia",
+  "Wisconsin",
+  "Wyoming",
 ]
 
 /**
@@ -237,10 +280,7 @@ const daysUntilFilingDeadline = () => {
       ? now.getFullYear() + 1
       : now.getFullYear()
   const deadline = new Date(year, 3, 15)
-  return Math.max(
-    0,
-    Math.ceil((deadline.getTime() - now.getTime()) / 86400000)
-  )
+  return Math.max(0, Math.ceil((deadline.getTime() - now.getTime()) / 86400000))
 }
 
 // An individual files under an SSN; an entity files under an EIN. Selecting a
@@ -259,7 +299,9 @@ const CLASSIFICATIONS: { label: string; tinType: "SSN" | "EIN" }[] = [
 const formatTin = (raw: string, tinType: string) => {
   const digits = raw.replace(/\D/g, "").slice(0, 9)
   if (tinType === "EIN") {
-    return digits.length > 2 ? `${digits.slice(0, 2)}-${digits.slice(2)}` : digits
+    return digits.length > 2
+      ? `${digits.slice(0, 2)}-${digits.slice(2)}`
+      : digits
   }
   if (digits.length > 5)
     return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`
@@ -268,6 +310,10 @@ const formatTin = (raw: string, tinType: string) => {
 }
 
 const isTinComplete = (value: string) => value.replace(/\D/g, "").length === 9
+
+/** The country list labels the US "USA"; older records stored the long name. */
+const isUnitedStates = (country?: string | null) =>
+  country === "USA" || country === "United States"
 
 /**
  * Force capitalisation on a legal name. Only the first letter of each part is
@@ -280,13 +326,20 @@ const namesMatch = (a: string, b: string) =>
   b.trim().replace(/\s+/g, " ").toLowerCase()
 
 const capitalizeName = (value: string) =>
-  value.replace(/(^|[\s\-'])(\p{L})/gu, (_, sep, letter) => sep + letter.toUpperCase())
+  value.replace(
+    /(^|[\s\-'])(\p{L})/gu,
+    (_, sep, letter) => sep + letter.toUpperCase()
+  )
 
+// Part III of Form W-8BEN. A non-US person never signs a W-9: item 3 of the W-9
+// certification is an affirmation of US person status, which is the opposite of
+// what a W-8BEN establishes.
 const W8BEN_CERTIFICATION = [
-  "I am the individual that is the beneficial owner of all the income to which this form relates, or am using this form to document myself for chapter 4 purposes; and",
-  "I am not a U.S. person; and",
-  "The income to which this form relates is not effectively connected with the conduct of a trade or business in the United States; and",
-  "The details given on this form are correct, and I will submit a new form within 30 days if any certification becomes incorrect.",
+  "I am the individual that is the beneficial owner (or am authorized to sign for the individual that is the beneficial owner) of all the income or proceeds to which this form relates, or am using this form to document myself for chapter 4 purposes; and",
+  "The person named on this form is not a U.S. person; and",
+  "The income to which this form relates is not effectively connected with the conduct of a trade or business in the United States, or is effectively connected but is not subject to tax under an applicable income tax treaty; and",
+  "The person named on this form is a resident of the treaty country listed on this form, if any, within the meaning of the income tax treaty between that country and the United States; and",
+  "I will submit a new form within 30 days if any certification made on this form becomes incorrect.",
 ]
 
 const W9_CERTIFICATION = [
@@ -329,11 +382,25 @@ export function SettingsTaxInfo() {
   const [certRead, setCertRead] = useState(false)
   // Errors appear once Submit has been pressed, not while someone is typing.
   const [showErrors, setShowErrors] = useState(false)
+  // Toasts are for confirmations only, so a failed save reports itself inline.
+  const [saveError, setSaveError] = useState<string | null>(null)
   const certRef = useRef<HTMLDivElement | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(false)
   const [data, setData] = useState<TaxInfo | null>(null)
+  // An SSN and an EIN are different numbers, so each keeps its own value while
+  // the other is on screen. Switching type parks the current one and restores
+  // whatever was last typed for the type being switched to.
+  const tinDrafts = useRef<Record<string, string>>({ SSN: "", EIN: "" })
+  const switchTinType = (next: string) => {
+    setForm((prev) => {
+      if (prev.tinType === next) return prev
+      tinDrafts.current[prev.tinType] = prev.tin
+      return { ...prev, tinType: next, tin: tinDrafts.current[next] ?? "" }
+    })
+  }
+
   const [form, setForm] = useState({
     legalFullName: "",
     federalTaxClassification: "Individual",
@@ -376,24 +443,29 @@ export function SettingsTaxInfo() {
 
   const hydrate = useCallback(
     (next: TaxInfo) => {
-    setData(next)
-    setForm((prev) => ({
-      ...prev,
-      legalFullName: next.legalFullName || accountName,
-      federalTaxClassification: next.federalTaxClassification ?? "Individual",
-      tinType: next.tinType ?? "SSN",
-      tin: "",
-      country: next.country ?? "United States",
-      addressLine1: next.addressLine1 ?? "",
-      addressLine2: next.addressLine2 ?? "",
-      city: next.city ?? "",
-      stateOrProvince: next.stateOrProvince ?? "",
-      postalCode: next.postalCode ?? "",
-      signature: next.signature ?? "",
-      signedDate: next.signedDate || todayFormatted(),
-      consentESignature: !!next.consentESignature,
-      consentDigitalDelivery: !!next.consentDigitalDelivery,
-    }))
+      setData(next)
+      tinDrafts.current = { SSN: "", EIN: "" }
+      setForm((prev) => ({
+        ...prev,
+        legalFullName: next.legalFullName || accountName,
+        federalTaxClassification: next.federalTaxClassification ?? "Individual",
+        tinType: next.tinType ?? "SSN",
+        // The stored number is never sent back, so both drafts start empty and
+        // the field falls back to the "saved and ending in" hint.
+        tin: "",
+        country: next.country ?? "United States",
+        addressLine1: next.addressLine1 ?? "",
+        addressLine2: next.addressLine2 ?? "",
+        city: next.city ?? "",
+        stateOrProvince: next.stateOrProvince ?? "",
+        postalCode: next.postalCode ?? "",
+        signature: next.signature ?? "",
+        // The date stamps this signing, so it is always today, including on a
+        // resubmission of a record that was signed on an earlier date.
+        signedDate: todayFormatted(),
+        consentESignature: !!next.consentESignature,
+        consentDigitalDelivery: !!next.consentDigitalDelivery,
+      }))
     },
     [accountName]
   )
@@ -419,19 +491,17 @@ export function SettingsTaxInfo() {
     setForm((prev) => ({ ...prev, [key]: value }))
 
   const persist = async (patch: Partial<typeof form>) => {
+    setSaveError(null)
     setSaving(true)
     try {
       // An untouched TIN field means "leave the stored one alone".
       const { tin, ...rest } = { ...form, ...patch }
       const next = await saveTaxInfo(tin ? { ...rest, tin } : rest)
       hydrate(next)
-      toast({ title: "Tax information saved" })
+      toast({ title: "Tax information saved", variant: "success" })
       return next
     } catch (e) {
-      toast({
-        title: "Could not save",
-        description: e instanceof Error ? e.message : undefined,
-      })
+      setSaveError(e instanceof Error ? e.message : "Please try saving again")
       return null
     } finally {
       setSaving(false)
@@ -450,6 +520,7 @@ export function SettingsTaxInfo() {
       return
     }
 
+    setSaveError(null)
     setSaving(true)
     try {
       // Signing and submitting is one action. There is no meaningful state
@@ -461,17 +532,58 @@ export function SettingsTaxInfo() {
       toast({
         title: `Your ${formKind} was submitted`,
         description: "Your tax documents are ready under Tax Forms.",
+        variant: "success",
       })
       setTab("tax-forms")
     } catch (e) {
-      toast({
-        title: "Could not submit",
-        description: e instanceof Error ? e.message : undefined,
-      })
+      setSaveError(
+        e instanceof Error ? e.message : "Please try submitting again"
+      )
     } finally {
       setSaving(false)
     }
   }
+
+  // Each card shows the contractor's own filled-in copy. The renders are
+  // fetched as blob URLs because the preview sits behind the same auth as the
+  // download, and are revoked when the set of forms changes or the page closes.
+  const [previews, setPreviews] = useState<Record<string, string>>({})
+
+  // `data.forms` is a fresh array on every render, so the effect keys off the
+  // identifiers instead; depending on the array itself would refetch in a loop.
+  const previewForms = data?.forms ?? []
+  const previewKey = previewForms
+    .map((form) => `${form.id}:${form.previewUrl ?? ""}`)
+    .join("|")
+  const formsRef = useRef(previewForms)
+  formsRef.current = previewForms
+
+  useEffect(() => {
+    let live = true
+    const created: string[] = []
+
+    Promise.all(
+      formsRef.current.map(async (form) => {
+        if (!form.previewUrl) return null
+        const url = await getTaxFormPreview(form.previewUrl)
+        if (!url) return null
+        created.push(url)
+        return [form.id, url] as const
+      })
+    ).then((entries) => {
+      const resolved = entries.filter(Boolean) as (readonly [string, string])[]
+      if (!live) {
+        created.forEach((url) => URL.revokeObjectURL(url))
+        return
+      }
+      setPreviews(Object.fromEntries(resolved))
+    })
+
+    return () => {
+      live = false
+      created.forEach((url) => URL.revokeObjectURL(url))
+    }
+  }, [previewKey])
 
   if (loading) {
     return (
@@ -481,7 +593,27 @@ export function SettingsTaxInfo() {
     )
   }
 
-  const identificationComplete = !!data?.identificationComplete
+  // Completeness is measured from what is on screen. Reading it off the last
+  // server response let Submit fire against stale state and come back with a
+  // server-side "complete every field" error the form had already satisfied.
+  // The TIN counts as present when a complete one is typed, or when one is
+  // already stored and the field was left untouched.
+  const tinSatisfied = form.tin ? isTinComplete(form.tin) : !!data?.tinLast4
+  const identificationMissing: Record<string, boolean> = {
+    legalFullName: !form.legalFullName.trim(),
+    federalTaxClassification: !form.federalTaxClassification,
+    tinType: !form.tinType,
+    tin: !tinSatisfied,
+    country: !form.country,
+    addressLine1: !form.addressLine1.trim(),
+    addressLine2: !form.addressLine2.trim(),
+    city: !form.city.trim(),
+    stateOrProvince: !form.stateOrProvince,
+    postalCode: !form.postalCode.trim(),
+  }
+  const identificationComplete = !Object.values(identificationMissing).some(
+    Boolean
+  )
   const forms = data?.forms ?? []
   const certificationProgress = data?.certificationProgress ?? 0
   // Editable only while editing. Previously this also depended on completeness,
@@ -491,9 +623,17 @@ export function SettingsTaxInfo() {
   // Progress is measured from what is on screen, not from the last server
   // response. Nothing autosaves, so a typed signature would otherwise leave the
   // badge at 0% and Submit disabled with no explanation.
+  // Each certification field reports its own failure, so pressing Submit with
+  // an empty signature, a bad date or an unticked consent says which one.
+  const signatureMissing = !form.signature.trim()
+  // The date is the date of signing, so it has to be today's.
+  const signedDateInvalid = (form.signedDate ?? "").trim() !== todayFormatted()
+
+  // A malformed date must not count towards completion, or Submit would go
+  // through while the field shows an error.
   const certParts = [
-    !!form.signature,
-    !!form.signedDate,
+    !signatureMissing,
+    !signedDateInvalid,
     form.consentESignature,
     form.consentDigitalDelivery,
   ]
@@ -501,17 +641,23 @@ export function SettingsTaxInfo() {
     (certParts.filter(Boolean).length / certParts.length) * 100
   )
 
-
   const signatureMatches =
     !!form.signature && !!accountName && namesMatch(form.signature, accountName)
   const signatureInvalid = !!form.signature && !signatureMatches
 
-  const formKind = data?.formKind ?? (form.country === "United States" ? "W-9" : "W-8BEN")
+  // Driven by the country on screen, not by the last server response. Reading
+  // it off `data` meant switching country showed the wrong certification until
+  // the form was saved, so a non-US filer was shown the W-9's "I am a U.S.
+  // citizen" affirmation.
+  const formKind = isUnitedStates(form.country) ? "W-9" : "W-8BEN"
   const isW9 = formKind === "W-9"
 
   // Documents are served by user-service, not by Next. A NextLink would
   // resolve these against the app origin and 404.
-  const apiBase = (getPublicApiUrl() || "http://localhost:4000").replace(/\/$/, "")
+  const apiBase = (getPublicApiUrl() || "http://localhost:4000").replace(
+    /\/$/,
+    ""
+  )
 
   const days = daysUntilFilingDeadline()
   const deadline = deadlineStage(days)
@@ -614,8 +760,16 @@ export function SettingsTaxInfo() {
                       </Badge>
                     )}
 
-                    <div className="flex h-[170px] items-center justify-center rounded-md bg-gray-50">
-                      <File02 className="size-10 text-gray-300" />
+                    <div className="flex h-[170px] items-center justify-center overflow-hidden rounded-md bg-gray-50 p-3">
+                      {previews[form.id] ? (
+                        <img
+                          src={previews[form.id]}
+                          alt={`${form.formType} for ${form.taxYear}`}
+                          className="size-full rounded-sm object-cover object-top"
+                        />
+                      ) : (
+                        <File02 className="size-10 text-gray-300" />
+                      )}
                     </div>
 
                     <div className="mt-4 flex items-start justify-between gap-3">
@@ -686,21 +840,31 @@ export function SettingsTaxInfo() {
             <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white px-6 py-20 text-center">
               <File02 className="size-12 text-gray-300" />
               <p className="mt-4 text-xl font-bold text-dark-blue-400">
-                We do not have any tax form to display
+                {data?.submitted
+                  ? "No tax forms have been issued yet"
+                  : "We do not have any tax form to display"}
               </p>
-              <p className="mt-1.5 text-sm font-light text-dark-blue-400">
-                Please complete the {formKind}{" "}
-                <Button
-                  variant="link"
-                  visual="primary"
-                  size="sm"
-                  className="h-auto px-0 py-0 align-baseline text-sm font-medium underline decoration-primary-500/30 transition-colors duration-300 hover:decoration-primary-500 hover:text-primary-600"
-                  onClick={() => setTab("tax-information")}
-                >
-                  Tax Information
-                </Button>{" "}
-                to display your tax forms.
-              </p>
+              {data?.submitted ? (
+                <p className="mt-1.5 max-w-md text-sm font-light text-dark-blue-400">
+                  Your 1099-K will appear here once it is issued. Forms are
+                  furnished by January 31 for the previous tax year, and only
+                  when your settled payments reach the IRS reporting threshold.
+                </p>
+              ) : (
+                <p className="mt-1.5 text-sm font-light text-dark-blue-400">
+                  Please complete the {formKind}{" "}
+                  <Button
+                    variant="link"
+                    visual="primary"
+                    size="sm"
+                    className="h-auto px-0 py-0 align-baseline text-sm font-medium underline decoration-primary-500/30 transition-colors duration-300 hover:decoration-primary-500 hover:text-primary-600"
+                    onClick={() => setTab("tax-information")}
+                  >
+                    Tax Information
+                  </Button>{" "}
+                  to display your tax forms.
+                </p>
+              )}
             </div>
           )}
 
@@ -740,7 +904,10 @@ export function SettingsTaxInfo() {
                     {/* The card itself is not clickable; the action is an
                         explicit link on the right. */}
                     {card.href ? (
-                      <NextLink href={card.href} className={cn(linkClass, "ml-4")}>
+                      <NextLink
+                        href={card.href}
+                        className={cn(linkClass, "ml-4")}
+                      >
                         {card.linkLabel}
                       </NextLink>
                     ) : (
@@ -797,10 +964,42 @@ export function SettingsTaxInfo() {
                   strokeWidth="2.5"
                   fill="white"
                 />
-                <line x1="30" y1="34" x2="56" y2="34" stroke="#98B6FF" strokeWidth="2.5" strokeLinecap="round" />
-                <line x1="30" y1="46" x2="68" y2="46" stroke="#C9D9FF" strokeWidth="2.5" strokeLinecap="round" />
-                <line x1="30" y1="58" x2="62" y2="58" stroke="#C9D9FF" strokeWidth="2.5" strokeLinecap="round" />
-                <line x1="30" y1="70" x2="48" y2="70" stroke="#C9D9FF" strokeWidth="2.5" strokeLinecap="round" />
+                <line
+                  x1="30"
+                  y1="34"
+                  x2="56"
+                  y2="34"
+                  stroke="#98B6FF"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="30"
+                  y1="46"
+                  x2="68"
+                  y2="46"
+                  stroke="#C9D9FF"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="30"
+                  y1="58"
+                  x2="62"
+                  y2="58"
+                  stroke="#C9D9FF"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="30"
+                  y1="70"
+                  x2="48"
+                  y2="70"
+                  stroke="#C9D9FF"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                />
 
                 {/* Expert reply */}
                 <path
@@ -954,406 +1153,506 @@ export function SettingsTaxInfo() {
       )}
 
       {tab === "tax-information" && (
-      <div className="flex flex-col gap-6">
-        {/* Filing location. Derived from the residence country rather than a
+        <div className="flex flex-col gap-6">
+          {/* Filing location. Derived from the residence country rather than a
             separate field, so the two can never disagree. */}
-        <RadioGroup
-          value={form.country === "United States" ? "us" : "outside"}
-          disabled={readOnly}
-          onValueChange={(v) => {
-            set("country", v === "us" ? "United States" : "")
-          }}
-          className="flex items-center gap-x-8"
-        >
-          <div className="flex items-center gap-x-2">
-            <RadioGroupItem value="us" id="filing-us" />
-            <Label htmlFor="filing-us" className="text-sm font-normal text-dark-blue-400">
-              Filing From USA
-            </Label>
-          </div>
-          <div className="flex items-center gap-x-2">
-            <RadioGroupItem value="outside" id="filing-outside" />
-            <Label htmlFor="filing-outside" className="text-sm font-normal text-dark-blue-400">
-              Filing Outside USA
-            </Label>
-          </div>
-        </RadioGroup>
-        {/* Tax Identification */}
-        <section className="rounded-lg border border-gray-200 bg-white p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-x-3">
-                <h2 className="text-xl font-bold text-dark-blue-400">
-                  Tax Identification
-                </h2>
-                {!editing && (
-                  <Badge
-                    visual={identificationComplete ? "success" : "orange"}
-                    className="shrink-0 gap-x-1.5 rounded-full px-3 py-1 text-xs font-medium"
-                  >
-                    {identificationComplete ? "Completed" : "Incomplete"}
-                    {identificationComplete ? (
-                      <CheckCircle className="size-4" />
-                    ) : (
-                      <AlertCircle className="size-4" />
-                    )}
-                  </Badge>
-                )}
-              </div>
-              <p className="mt-2 text-sm font-light leading-[1.5] text-dark-blue-400">
-                Your taxpayer identification information will be included on W9
-                or W8 series substitute form.
-              </p>
+          <RadioGroup
+            value={form.country === "United States" ? "us" : "outside"}
+            disabled={readOnly}
+            onValueChange={(v) => {
+              set("country", v === "us" ? "United States" : "")
+            }}
+            className="flex items-center gap-x-8"
+          >
+            <div className="flex items-center gap-x-2">
+              <RadioGroupItem value="us" id="filing-us" />
+              <Label
+                htmlFor="filing-us"
+                className="text-sm font-normal text-dark-blue-400"
+              >
+                Filing From USA
+              </Label>
             </div>
+            <div className="flex items-center gap-x-2">
+              <RadioGroupItem value="outside" id="filing-outside" />
+              <Label
+                htmlFor="filing-outside"
+                className="text-sm font-normal text-dark-blue-400"
+              >
+                Filing Outside USA
+              </Label>
+            </div>
+          </RadioGroup>
+          {/* Tax Identification */}
+          <section className="rounded-lg border border-gray-200 bg-white p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-x-3">
+                  <h2 className="text-xl font-bold text-dark-blue-400">
+                    Tax Identification
+                  </h2>
+                  {!editing && (
+                    <Badge
+                      visual={identificationComplete ? "success" : "orange"}
+                      className="shrink-0 gap-x-1.5 rounded-full px-3 py-1 text-xs font-medium"
+                    >
+                      {identificationComplete ? "Completed" : "Incomplete"}
+                      {identificationComplete ? (
+                        <CheckCircle className="size-4" />
+                      ) : (
+                        <AlertCircle className="size-4" />
+                      )}
+                    </Badge>
+                  )}
+                </div>
+                <p className="mt-2 text-sm font-light leading-[1.5] text-dark-blue-400">
+                  Your taxpayer identification information will be included on
+                  W9 or W8 series substitute form.
+                </p>
+              </div>
 
-            {/* While editing this slot holds the actions. The badge describes
+              {/* While editing this slot holds the actions. The badge describes
                 the saved record, so it would be wrong next to unsaved edits. */}
-            {editing ? (
-              <div className="flex shrink-0 items-center gap-x-3">
-                {data?.exists && (
+              {editing ? (
+                <div className="flex shrink-0 items-center gap-x-3">
+                  {data?.exists && (
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="md"
+                      className="bg-white"
+                      disabled={saving}
+                      onClick={() => {
+                        if (data) hydrate(data)
+                        setEditing(false)
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                  <Button
+                    visual="primary"
+                    size="md"
+                    disabled={saving}
+                    onClick={async () => {
+                      const next = await persist({})
+                      if (next) setEditing(false)
+                    }}
+                  >
+                    {saving ? "Saving…" : "Save"}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex shrink-0 items-center">
                   <Button
                     variant="outlined"
                     visual="gray"
                     size="md"
                     className="bg-white"
-                    disabled={saving}
-                    onClick={() => {
-                      if (data) hydrate(data)
-                      setEditing(false)
-                    }}
+                    leftIcon={<Edit03 className="size-4" />}
+                    onClick={() => setEditing(true)}
                   >
-                    Cancel
+                    Edit
                   </Button>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label
+                  htmlFor="tax-legal-name"
+                  className="text-sm font-normal text-dark-blue-400"
+                >
+                  Full Legal Name
+                </Label>
+                <Input
+                  id="tax-legal-name"
+                  placeholder="e.g. Jacob Mathew"
+                  value={form.legalFullName}
+                  disabled={readOnly}
+                  onChange={(e) =>
+                    set("legalFullName", capitalizeName(e.target.value))
+                  }
+                  isInvalid={showErrors && identificationMissing.legalFullName}
+                />
+                {showErrors && identificationMissing.legalFullName && (
+                  <p className="text-xs font-medium text-error-500">
+                    Please enter your full legal name
+                  </p>
                 )}
-                <Button
-                  visual="primary"
-                  size="md"
-                  disabled={saving}
-                  onClick={async () => {
-                    const next = await persist({})
-                    if (next) setEditing(false)
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm font-normal text-dark-blue-400">
+                  Federal Tax Classification
+                </Label>
+                <Select
+                  value={form.federalTaxClassification}
+                  disabled={readOnly}
+                  onValueChange={(v) => {
+                    // Switching classification switches the identifier with it,
+                    // and each identifier keeps its own number.
+                    const tinType =
+                      CLASSIFICATIONS.find((c) => c.label === v)?.tinType ??
+                      "SSN"
+                    setForm((prev) => {
+                      if (prev.tinType === tinType) {
+                        return { ...prev, federalTaxClassification: v }
+                      }
+                      tinDrafts.current[prev.tinType] = prev.tin
+                      return {
+                        ...prev,
+                        federalTaxClassification: v,
+                        tinType,
+                        tin: tinDrafts.current[tinType] ?? "",
+                      }
+                    })
                   }}
                 >
-                  {saving ? "Saving…" : "Save"}
-                </Button>
-              </div>
-            ) : (
-              <div className="flex shrink-0 items-center">
-                <Button
-                  variant="outlined"
-                  visual="gray"
-                  size="md"
-                  className="bg-white"
-                  leftIcon={<Edit03 className="size-4" />}
-                  onClick={() => setEditing(true)}
-                >
-                  Edit
-                </Button>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="tax-legal-name" className="text-sm font-normal text-dark-blue-400">
-                Full Legal Name
-              </Label>
-              <Input
-                id="tax-legal-name"
-                placeholder="e.g. Jacob Mathew"
-                value={form.legalFullName}
-                disabled={readOnly}
-                onChange={(e) =>
-                  set("legalFullName", capitalizeName(e.target.value))
-                }
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-sm font-normal text-dark-blue-400">
-                Federal Tax Classification
-              </Label>
-              <Select
-                value={form.federalTaxClassification}
-                disabled={readOnly}
-                onValueChange={(v) => {
-                  // Switching classification switches the identifier with it,
-                  // and clears a number that no longer applies.
-                  const tinType =
-                    CLASSIFICATIONS.find((c) => c.label === v)?.tinType ?? "SSN"
-                  const changed = tinType !== form.tinType
-                  setForm((prev) => ({
-                    ...prev,
-                    federalTaxClassification: v,
-                    tinType,
-                    tin: changed ? "" : prev.tin,
-                  }))
-                }}
-              >
-                <SelectTrigger className="text-base shadow-xs">
-                  <SelectValue placeholder="How you file with the IRS" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CLASSIFICATIONS.map((c) => (
-                    <SelectItem key={c.label} value={c.label}>
-                      {c.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="mt-5 flex flex-col gap-1.5">
-            <Label className="text-sm font-normal text-dark-blue-400">
-              Taxpayer Identification type
-            </Label>
-            <RadioGroup
-              value={form.tinType}
-              disabled={readOnly}
-              onValueChange={(v) => {
-                set("tinType", v)
-              }}
-              className="flex flex-col gap-y-2"
-            >
-              <div className="flex items-center gap-x-2">
-                <RadioGroupItem value="SSN" id="tin-ssn" />
-                <Label htmlFor="tin-ssn" className="text-sm font-normal text-dark-blue-400">
-                  Social Security Number
-                </Label>
-              </div>
-              <div className="flex items-center gap-x-2">
-                <RadioGroupItem value="EIN" id="tin-ein" />
-                <Label htmlFor="tin-ein" className="text-sm font-normal text-dark-blue-400">
-                  Employment Identification Number
-                </Label>
-              </div>
-            </RadioGroup>
-
-            <div className="mt-2 md:w-1/2 md:pr-2.5">
-              <Input
-                aria-label={
-                  form.tinType === "EIN"
-                    ? "Employer identification number"
-                    : "Social security number"
-                }
-                // IRS formats: SSN is 3-2-4, EIN is 2-7.
-                placeholder={
-                  form.tinType === "EIN" ? "XX-XXXXXXX" : "XXX-XX-XXXX"
-                }
-                inputMode="numeric"
-                maxLength={11}
-                isInvalid={showErrors && !!form.tin && !isTinComplete(form.tin)}
-                value={form.tin}
-                disabled={readOnly}
-                onChange={(e) => set("tin", formatTin(e.target.value, form.tinType))}
-              />
-              {showErrors && !!form.tin && !isTinComplete(form.tin) && (
-                <p className="mt-1.5 text-xs font-medium text-error-500">
-                  {form.tinType === "EIN"
-                    ? "Please enter a 9 digit EIN, formatted XX-XXXXXXX."
-                    : "Please enter a 9 digit SSN, formatted XXX-XX-XXXX."}
-                </p>
-              )}
-              {data?.tinLast4 && !form.tin && (
-                <p className="mt-1.5 text-xs font-light text-gray-500">
-                  Saved and ending in {data.tinLast4}. Type a new number to
-                  replace it.
-                </p>
-              )}
-            </div>
-          </div>
-
-          <p className="mt-6 text-sm leading-[1.5] text-dark-blue-400">
-            <span className="font-bold">Residence:</span>{" "}
-            <span className="font-light">
-              Your taxpayer residence information will be included on W9 or W8
-              series substitute form.
-            </span>
-          </p>
-
-          <div className="mt-4 grid grid-cols-1 gap-5 md:grid-cols-3">
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-sm font-normal text-dark-blue-400">
-                Country
-              </Label>
-              <CountriesCombobox
-                disabled={readOnly}
-                placeholder="Where you pay tax"
-                value={form.country}
-                onValueChange={(v) => {
-                  set("country", v)
-                }}
-                // Its default trigger is a dashed grey chip. Match the other
-                // fields on this form: white, solid border, same height.
-                // Standard dropdown field: flag on the left, label left-aligned
-                // in the same 14px/normal/gray-black the Select trigger uses.
-                // The combobox's own label span is 12px medium gray-700 and
-                // capped at 120px, so it is overridden here.
-                // Flag left, country name left, chevron pinned right, like any
-                // other dropdown field. The component hides its chevron behind
-                // `group-data-[state=open]`, a variant that emits no CSS in
-                // this build, so it is forced visible here.
-                triggerClassName="h-11 w-full justify-start gap-x-2 border-solid border-gray-300 bg-white px-[14px] py-3 shadow-xs [&>svg]:ml-auto [&>svg]:inline-block [&_span.truncate]:max-w-none [&_span.truncate]:text-base [&_span.truncate]:font-normal [&_span.truncate]:leading-normal [&_span.truncate]:text-gray-black"
-                // Popover matches the field width and sits 4px below it.
-                contentClassName="w-[var(--radix-popover-trigger-width)]"
-                contentSideOffset={4}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="tax-street-1" className="text-sm font-normal text-dark-blue-400">
-                Street Address 1
-              </Label>
-              <Input
-                id="tax-street-1"
-                placeholder="e.g. 1st Oregon Street"
-                value={form.addressLine1}
-                disabled={readOnly}
-                onChange={(e) => set("addressLine1", e.target.value)}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="tax-street-2" className="text-sm font-normal text-dark-blue-400">
-                Street Address 2
-              </Label>
-              <Input
-                id="tax-street-2"
-                placeholder="e.g. Apt 3107"
-                value={form.addressLine2}
-                disabled={readOnly}
-                onChange={(e) => set("addressLine2", e.target.value)}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="tax-city" className="text-sm font-normal text-dark-blue-400">
-                City
-              </Label>
-              <Input
-                id="tax-city"
-                placeholder="e.g. Edison"
-                value={form.city}
-                disabled={readOnly}
-                onChange={(e) => set("city", e.target.value)}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="tax-state" className="text-sm font-normal text-dark-blue-400">
-                State or Province
-              </Label>
-              {form.country === "United States" ? (
-                <Select
-                  value={form.stateOrProvince}
-                  disabled={readOnly}
-                  onValueChange={(v) => set("stateOrProvince", v)}
-                >
                   <SelectTrigger className="text-base shadow-xs">
-                    <SelectValue placeholder="e.g. New Jersey" />
+                    <SelectValue placeholder="How you file with the IRS" />
                   </SelectTrigger>
                   <SelectContent>
-                    {US_STATES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
+                    {CLASSIFICATIONS.map((c) => (
+                      <SelectItem key={c.label} value={c.label}>
+                        {c.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              ) : (
+                {showErrors &&
+                  identificationMissing.federalTaxClassification && (
+                    <p className="text-xs font-medium text-error-500">
+                      Please select how you file with the IRS
+                    </p>
+                  )}
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-1.5">
+              <Label className="text-sm font-normal text-dark-blue-400">
+                Taxpayer Identification type
+              </Label>
+              <RadioGroup
+                value={form.tinType}
+                disabled={readOnly}
+                onValueChange={switchTinType}
+                className="flex flex-col gap-y-2"
+              >
+                <div className="flex items-center gap-x-2">
+                  <RadioGroupItem value="SSN" id="tin-ssn" />
+                  <Label
+                    htmlFor="tin-ssn"
+                    className="text-sm font-normal text-dark-blue-400"
+                  >
+                    Social Security Number
+                  </Label>
+                </div>
+                <div className="flex items-center gap-x-2">
+                  <RadioGroupItem value="EIN" id="tin-ein" />
+                  <Label
+                    htmlFor="tin-ein"
+                    className="text-sm font-normal text-dark-blue-400"
+                  >
+                    Employment Identification Number
+                  </Label>
+                </div>
+              </RadioGroup>
+              {showErrors && identificationMissing.tinType && (
+                <p className="text-xs font-medium text-error-500">
+                  Please select your taxpayer identification type
+                </p>
+              )}
+
+              <div className="mt-2 md:w-1/2 md:pr-2.5">
                 <Input
-                  id="tax-state"
-                  placeholder="e.g. Ontario"
-                  value={form.stateOrProvince}
+                  aria-label={
+                    form.tinType === "EIN"
+                      ? "Employer identification number"
+                      : "Social security number"
+                  }
+                  // IRS formats: SSN is 3-2-4, EIN is 2-7.
+                  placeholder={
+                    form.tinType === "EIN" ? "XX-XXXXXXX" : "XXX-XX-XXXX"
+                  }
+                  inputMode="numeric"
+                  maxLength={11}
+                  isInvalid={showErrors && identificationMissing.tin}
+                  value={form.tin}
                   disabled={readOnly}
-                  onChange={(e) => set("stateOrProvince", e.target.value)}
+                  onChange={(e) =>
+                    set("tin", formatTin(e.target.value, form.tinType))
+                  }
                 />
+                {showErrors && identificationMissing.tin && (
+                  <p className="mt-1.5 text-xs font-medium text-error-500">
+                    {form.tinType === "EIN"
+                      ? "Please enter your 9 digit employer identification number"
+                      : "Please enter your 9 digit social security number"}
+                  </p>
+                )}
+                {data?.tinLast4 && !form.tin && (
+                  <p className="mt-1.5 text-xs font-light text-gray-500">
+                    Saved and ending in {data.tinLast4}. Type a new number to
+                    replace it.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <p className="mt-6 text-sm leading-[1.5] text-dark-blue-400">
+              <span className="font-bold">Residence:</span>{" "}
+              <span className="font-light">
+                Your taxpayer residence information will be included on W9 or W8
+                series substitute form.
+              </span>
+            </p>
+
+            <div className="mt-4 grid grid-cols-1 gap-5 md:grid-cols-3">
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm font-normal text-dark-blue-400">
+                  Country
+                </Label>
+                <CountriesCombobox
+                  disabled={readOnly}
+                  placeholder="Where you pay tax"
+                  value={form.country}
+                  onValueChange={(v) => {
+                    set("country", v)
+                  }}
+                  // Its default trigger is a dashed grey chip. Match the other
+                  // fields on this form: white, solid border, same height.
+                  // Standard dropdown field: flag on the left, label left-aligned
+                  // in the same 14px/normal/gray-black the Select trigger uses.
+                  // The combobox's own label span is 12px medium gray-700 and
+                  // capped at 120px, so it is overridden here.
+                  // Flag left, country name left, chevron pinned right, like any
+                  // other dropdown field. The component hides its chevron behind
+                  // `group-data-[state=open]`, a variant that emits no CSS in
+                  // this build, so it is forced visible here.
+                  triggerClassName="h-11 w-full justify-start gap-x-2 border-solid border-gray-300 bg-white px-[14px] py-3 shadow-xs [&>svg]:ml-auto [&>svg]:inline-block [&_span.truncate]:max-w-none [&_span.truncate]:text-base [&_span.truncate]:font-normal [&_span.truncate]:leading-normal [&_span.truncate]:text-gray-black"
+                  // Popover matches the field width and sits 4px below it.
+                  contentClassName="w-[var(--radix-popover-trigger-width)]"
+                  contentSideOffset={4}
+                />
+                {showErrors && identificationMissing.country && (
+                  <p className="text-xs font-medium text-error-500">
+                    Please select the country where you pay tax
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label
+                  htmlFor="tax-street-1"
+                  className="text-sm font-normal text-dark-blue-400"
+                >
+                  Street Address 1
+                </Label>
+                <Input
+                  id="tax-street-1"
+                  placeholder="e.g. 1st Oregon Street"
+                  value={form.addressLine1}
+                  disabled={readOnly}
+                  onChange={(e) => set("addressLine1", e.target.value)}
+                  isInvalid={showErrors && identificationMissing.addressLine1}
+                />
+                {showErrors && identificationMissing.addressLine1 && (
+                  <p className="text-xs font-medium text-error-500">
+                    Please enter your street address
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label
+                  htmlFor="tax-street-2"
+                  className="text-sm font-normal text-dark-blue-400"
+                >
+                  Street Address 2
+                </Label>
+                <Input
+                  id="tax-street-2"
+                  placeholder="e.g. Apt 3107"
+                  value={form.addressLine2}
+                  disabled={readOnly}
+                  onChange={(e) => set("addressLine2", e.target.value)}
+                  isInvalid={showErrors && identificationMissing.addressLine2}
+                />
+                {showErrors && identificationMissing.addressLine2 && (
+                  <p className="text-xs font-medium text-error-500">
+                    Please enter your apartment or suite number
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label
+                  htmlFor="tax-city"
+                  className="text-sm font-normal text-dark-blue-400"
+                >
+                  City
+                </Label>
+                <Input
+                  id="tax-city"
+                  placeholder="e.g. Edison"
+                  value={form.city}
+                  disabled={readOnly}
+                  onChange={(e) => set("city", e.target.value)}
+                  isInvalid={showErrors && identificationMissing.city}
+                />
+                {showErrors && identificationMissing.city && (
+                  <p className="text-xs font-medium text-error-500">
+                    Please enter your city
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label
+                  htmlFor="tax-state"
+                  className="text-sm font-normal text-dark-blue-400"
+                >
+                  State or Province
+                </Label>
+                {isUnitedStates(form.country) ? (
+                  <Select
+                    value={form.stateOrProvince}
+                    disabled={readOnly}
+                    onValueChange={(v) => set("stateOrProvince", v)}
+                  >
+                    <SelectTrigger className="text-base shadow-xs">
+                      <SelectValue placeholder="e.g. New Jersey" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {US_STATES.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    id="tax-state"
+                    placeholder="e.g. Ontario"
+                    value={form.stateOrProvince}
+                    disabled={readOnly}
+                    onChange={(e) => set("stateOrProvince", e.target.value)}
+                  />
+                )}
+                {showErrors && identificationMissing.stateOrProvince && (
+                  <p className="text-xs font-medium text-error-500">
+                    Please select your state or province
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label
+                  htmlFor="tax-postal"
+                  className="text-sm font-normal text-dark-blue-400"
+                >
+                  Postal Code
+                </Label>
+                <Input
+                  id="tax-postal"
+                  placeholder="e.g. 07730"
+                  value={form.postalCode}
+                  disabled={readOnly}
+                  onChange={(e) => set("postalCode", e.target.value)}
+                  isInvalid={showErrors && identificationMissing.postalCode}
+                />
+                {showErrors && identificationMissing.postalCode && (
+                  <p className="text-xs font-medium text-error-500">
+                    Please enter your ZIP or postal code
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+
+          {/* Certification */}
+          <section className="rounded-lg border border-gray-200 bg-white p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-x-3">
+                  <h2 className="text-xl font-bold text-dark-blue-400">
+                    Tax Certification and Confirmation
+                  </h2>
+                  <Badge
+                    visual={localCertProgress === 100 ? "success" : "orange"}
+                    className="shrink-0 gap-x-1.5 rounded-full px-3 py-1 text-xs font-medium"
+                  >
+                    {localCertProgress === 100
+                      ? "Completed"
+                      : localCertProgress === 0
+                        ? "Incomplete"
+                        : `${localCertProgress}% Completed`}
+                    {localCertProgress === 100 ? (
+                      <CheckCircle className="size-4" />
+                    ) : (
+                      <AlertCircle className="size-4" />
+                    )}
+                  </Badge>
+                </div>
+                <p className="mt-2 text-sm font-light leading-[1.5] text-dark-blue-400">
+                  Please read the {formKind} Certification carefully and scroll
+                  to the bottom to provide your consent for electronic delivery
+                  of the document.
+                </p>
+              </div>
+              {/* The certified form is built entirely from what was
+                submitted, so it is complete and downloadable as soon as it
+                is signed. */}
+              {data?.submitted && (
+                <a
+                  href={`${apiBase}/user/tax-info/documents/certification`}
+                  download
+                  className="flex shrink-0 items-center gap-x-1.5 text-sm font-medium text-primary-500 underline decoration-primary-500/30 transition-colors duration-300 hover:decoration-primary-500 hover:text-primary-600"
+                >
+                  <Download01 className="size-4" />
+                  Download {formKind}
+                </a>
               )}
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="tax-postal" className="text-sm font-normal text-dark-blue-400">
-                Postal Code
-              </Label>
-              <Input
-                id="tax-postal"
-                placeholder="e.g. 07730"
-                value={form.postalCode}
-                disabled={readOnly}
-                onChange={(e) => set("postalCode", e.target.value)}
-              />
-            </div>
-          </div>
-
-        </section>
-
-        {/* Certification */}
-        <section className="rounded-lg border border-gray-200 bg-white p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-x-3">
-                <h2 className="text-xl font-bold text-dark-blue-400">
-                  Tax Certification and Confirmation
-                </h2>
-                <Badge
-                  visual={localCertProgress === 100 ? "success" : "orange"}
-                  className="shrink-0 gap-x-1.5 rounded-full px-3 py-1 text-xs font-medium"
-                >
-                  {localCertProgress === 100
-                    ? "Completed"
-                    : localCertProgress === 0
-                      ? "Incomplete"
-                      : `${localCertProgress}% Completed`}
-                  {localCertProgress === 100 ? (
-                    <CheckCircle className="size-4" />
-                  ) : (
-                    <AlertCircle className="size-4" />
-                  )}
-                </Badge>
-              </div>
-              <p className="mt-2 text-sm font-light leading-[1.5] text-dark-blue-400">
-                Please read the {formKind} Certification carefully and scroll to
-                the bottom to provide your consent for electronic delivery of
-                the document.
-              </p>
-            </div>
-
-          </div>
-
-          {/* Not collapsible: this is a perjury certification, and a collapsed
+            {/* Not collapsible: this is a perjury certification, and a collapsed
               panel lets someone consent below without ever opening the text
               they are certifying to. */}
-          <div className="mt-6">
-            <p className="text-sm font-bold text-dark-blue-400">
-              {formKind} Certification
-            </p>
-            <p className="mt-1 text-sm font-light leading-[1.5] text-dark-blue-400">
-              Read the certification in full, scrolling to the end, before you
-              consent below.
-            </p>
-            {/* Padding goes on the content, not the ScrollArea root: the root
+            <div className="mt-6">
+              <p className="text-sm font-bold text-dark-blue-400">
+                {formKind} Certification
+              </p>
+              <p className="mt-1 text-sm font-light leading-[1.5] text-dark-blue-400">
+                Read the certification in full, scrolling to the end, before you
+                consent below.
+              </p>
+              {/* Padding goes on the content, not the ScrollArea root: the root
                 sits outside the viewport, so padding there insets the scroll
                 region and the scrollbar instead of letting content run to the
                 edge of the box. */}
-            <ScrollArea className="mt-3 h-[260px] rounded-lg border border-gray-200 bg-gray-50">
-              <div className="p-4" ref={certRef}>
+              <ScrollArea className="mt-3 h-[260px] rounded-lg border border-gray-200 bg-gray-50">
+                <div className="p-4" ref={certRef}>
                   <p className="text-sm font-bold text-dark-blue-400">
                     Under penalties of perjury, I certify that:
                   </p>
                   <ol className="mt-3 flex list-decimal flex-col gap-y-2 pl-5 text-sm font-light leading-[1.5] text-dark-blue-400">
-                    {(isW9 ? W9_CERTIFICATION : W8BEN_CERTIFICATION).map((line, i) => (
-                      <li key={i}>
-                        {line}
-                        {isW9 && i === 1 && (
-                          <span className="mt-1 flex flex-col gap-y-1 pl-3">
-                            {W9_BACKUP_WITHHOLDING.map((sub) => (
-                              <span key={sub}>{sub}</span>
-                            ))}
-                          </span>
-                        )}
-                      </li>
-                    ))}
+                    {(isW9 ? W9_CERTIFICATION : W8BEN_CERTIFICATION).map(
+                      (line, i) => (
+                        <li key={i}>
+                          {line}
+                          {isW9 && i === 1 && (
+                            <span className="mt-1 flex flex-col gap-y-1 pl-3">
+                              {W9_BACKUP_WITHHOLDING.map((sub) => (
+                                <span key={sub}>{sub}</span>
+                              ))}
+                            </span>
+                          )}
+                        </li>
+                      )
+                    )}
                   </ol>
                   <p className="mt-5 text-sm font-bold text-dark-blue-400">
                     Electronic Consent
@@ -1363,106 +1662,151 @@ export function SettingsTaxInfo() {
                       <p key={paragraph}>{paragraph}</p>
                     ))}
                   </div>
-            </div>
-            </ScrollArea>
+                </div>
+              </ScrollArea>
 
-            {showErrors && !certRead && !data?.submitted && (
-              <p className="mt-1.5 text-xs font-medium text-error-500">
-                Please read the certification to the end.
-              </p>
-            )}
-          </div>
-
-          <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="tax-signature" className="text-sm font-normal text-dark-blue-400">
-                <span className="font-medium">Signature</span>{" "}
-                <span className="font-light">(Write your Full legal name)</span>
-              </Label>
-              <Input
-                id="tax-signature"
-                placeholder="Type your name to sign"
-                value={form.signature}
-                isInvalid={showErrors && signatureInvalid}
-                onChange={(e) => set("signature", e.target.value)}
-              />
-              {showErrors && signatureInvalid && (
-                <p className="text-xs font-medium text-error-500">
-                  Please match the name on your account,{" "}
-                  <span className="font-semibold">{accountName}</span>. Update it
-                  under Personal Info if it is wrong.
+              {showErrors && !certRead && !data?.submitted && (
+                <p className="mt-1.5 text-xs font-medium text-error-500">
+                  Please read the certification to the end
                 </p>
               )}
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="tax-signed-date" className="text-sm font-medium text-dark-blue-400">
-                Date
-              </Label>
-              <Input
-                id="tax-signed-date"
-                placeholder="MM-DD-YYYY"
-                value={form.signedDate}
-                onChange={(e) => set("signedDate", e.target.value)}
-              />
-            </div>
-          </div>
+            <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label
+                  htmlFor="tax-signature"
+                  className="text-sm font-normal text-dark-blue-400"
+                >
+                  <span className="font-medium">Signature</span>{" "}
+                  <span className="font-light">
+                    (Write your Full legal name)
+                  </span>
+                </Label>
+                <Input
+                  id="tax-signature"
+                  placeholder="Type your name to sign"
+                  value={form.signature}
+                  isInvalid={
+                    showErrors && (signatureMissing || signatureInvalid)
+                  }
+                  onChange={(e) => set("signature", e.target.value)}
+                />
+                {showErrors && signatureMissing && (
+                  <p className="text-xs font-medium text-error-500">
+                    Please type your full legal name to sign
+                  </p>
+                )}
+                {showErrors && signatureInvalid && (
+                  <p className="text-xs font-medium text-error-500">
+                    Please match the name on your account,{" "}
+                    <span className="font-semibold">{accountName}</span>. Update
+                    it under Personal Info if it is wrong.
+                  </p>
+                )}
+              </div>
 
-          <div className="mt-5 flex flex-col gap-y-3">
-            <div className="flex items-center gap-x-2">
-              <Checkbox
-                id="consent-signature"
-                checked={form.consentESignature}
-                onCheckedChange={(checked) => {
-                  const next = checked === true
-                  set("consentESignature", next)
-                }}
-              />
-              <Label htmlFor="consent-signature" className="text-sm font-normal text-dark-blue-400">
-                I consent to provide an electronic signature by typing my
-                signature above.
-              </Label>
+              <div className="flex flex-col gap-1.5">
+                <Label
+                  htmlFor="tax-signed-date"
+                  className="text-sm font-medium text-dark-blue-400"
+                >
+                  Date
+                </Label>
+                <Input
+                  id="tax-signed-date"
+                  placeholder="MM-DD-YYYY"
+                  value={form.signedDate}
+                  isInvalid={showErrors && signedDateInvalid}
+                  readOnly
+                />
+                {showErrors && signedDateInvalid && (
+                  <p className="text-xs font-medium text-error-500">
+                    Please enter today's date
+                  </p>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-x-2">
-              <Checkbox
-                id="consent-digital"
-                checked={form.consentDigitalDelivery}
-                onCheckedChange={(checked) => {
-                  const next = checked === true
-                  set("consentDigitalDelivery", next)
-                }}
-              />
-              <Label htmlFor="consent-digital" className="text-sm font-normal text-dark-blue-400">
-                I consent to receive tax documents digitally.
-              </Label>
-            </div>
-          </div>
 
-          <div className="mt-8 flex flex-col gap-3 border-t border-gray-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs font-light leading-[1.5] text-gray-500">
-              {saving
-                ? "Saving…"
-                : !identificationComplete
-                  ? "Complete and save your tax identification first."
-                  : localCertProgress < 100
-                    ? "Add your signature, the date and both consents to submit."
-                    : !signatureMatches
-                      ? "Your signature must match the name on your account."
-                      : "Submitting certifies this form under penalties of perjury."}
-            </p>
-            <div className="flex shrink-0 items-center gap-x-3">
-              <Button
-                visual="primary"
-                size="xl"
-                disabled={saving}
-                onClick={submit}
-              >
-                {data?.submitted ? `Resubmit ${formKind}` : `Submit ${formKind}`}
-              </Button>
+            <div className="mt-5 flex flex-col gap-y-3">
+              <div className="flex items-center gap-x-2">
+                <Checkbox
+                  id="consent-signature"
+                  checked={form.consentESignature}
+                  onCheckedChange={(checked) => {
+                    const next = checked === true
+                    set("consentESignature", next)
+                  }}
+                />
+                <Label
+                  htmlFor="consent-signature"
+                  className="text-sm font-normal text-dark-blue-400"
+                >
+                  I consent to provide an electronic signature by typing my
+                  signature above.
+                </Label>
+              </div>
+              {showErrors && !form.consentESignature && (
+                <p className="-mt-1.5 text-xs font-medium text-error-500">
+                  Please consent to signing electronically
+                </p>
+              )}
+              <div className="flex items-center gap-x-2">
+                <Checkbox
+                  id="consent-digital"
+                  checked={form.consentDigitalDelivery}
+                  onCheckedChange={(checked) => {
+                    const next = checked === true
+                    set("consentDigitalDelivery", next)
+                  }}
+                />
+                <Label
+                  htmlFor="consent-digital"
+                  className="text-sm font-normal text-dark-blue-400"
+                >
+                  I consent to receive tax documents digitally.
+                </Label>
+              </div>
+              {showErrors && !form.consentDigitalDelivery && (
+                <p className="-mt-1.5 text-xs font-medium text-error-500">
+                  Please consent to receiving your tax documents digitally
+                </p>
+              )}
             </div>
-          </div>
-        </section>
-      </div>
+
+            <div className="mt-8 flex flex-col gap-3 border-t border-gray-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-light leading-[1.5] text-gray-500">
+                {saving
+                  ? "Saving…"
+                  : !identificationComplete
+                    ? "Complete and save your tax identification first."
+                    : localCertProgress < 100
+                      ? "Add your signature, the date and both consents to submit."
+                      : !signatureMatches
+                        ? "Your signature must match the name on your account."
+                        : "Submitting certifies this form under penalties of perjury."}
+              </p>
+              <div className="flex shrink-0 items-center gap-x-3">
+                <Button
+                  visual="primary"
+                  size="xl"
+                  disabled={saving}
+                  onClick={submit}
+                >
+                  {data?.submitted
+                    ? `Resubmit ${formKind}`
+                    : `Submit ${formKind}`}
+                </Button>
+              </div>
+            </div>
+
+            {saveError && (
+              <p className="mt-3 text-xs font-medium text-error-500">
+                {saveError}
+              </p>
+            )}
+          </section>
+        </div>
       )}
     </div>
   )
