@@ -3553,7 +3553,7 @@ export default function Projects() {
                 }}
               >
                 <div
-                  className={`grid gap-[15px] ${l2 ? "grid-rows-1" : "grid-rows-2"} grid-flow-col`}
+                  className={`grid items-start gap-[15px] ${l2 ? "grid-rows-1" : "grid-rows-2"} grid-flow-col`}
                   style={{ gridAutoColumns: "calc((100% - 60px) / 5)" }}
                 >
                   {subcategories.length > 0 ? (
@@ -3587,7 +3587,7 @@ export default function Projects() {
                               <h1 className="text-base leading-none font-semibold text-dark-blue-400 transition duration-300">
                                 {subcat.name}
                               </h1>
-                              <p className="text-[13px] leading-[1.4] font-light text-dark-blue-400 mt-1 line-clamp-3">
+                              <p className="text-[13px] leading-[1.4] font-light text-dark-blue-400 mt-1 line-clamp-2">
                                 {subcat.description ||
                                   `Explore ${subcat.name} category`}
                               </p>
@@ -4509,7 +4509,7 @@ export default function Projects() {
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
                         {getCarouselItemsForTab(talentUsers, "Featured").slice(0, 8).map((u: TalentUser, idx: number) => (
                           <SwiperSlide
-                            className="h-[448px] w-[355px]"
+                            className="h-auto w-[355px]"
                             key={u.id}
                           >
                             <ListingCard
@@ -4608,7 +4608,7 @@ export default function Projects() {
                       <TabsContent key={sub.name} value={sub.name}>
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
-                            <article className="py-[50px] h-full min-h-[440px] rounded-lg bg-error-700 flex flex-col items-start justify-end px-6" style={{ backgroundColor: "#DC6803" }}>
+                            <article className="py-[50px] h-full rounded-lg bg-error-700 flex flex-col items-start justify-end px-6" style={{ backgroundColor: "#DC6803" }}>
                               <h1 className="text-[28px] font-bold leading-none text-white">
                                 {sub.name} Projects
                               </h1>
@@ -5364,7 +5364,7 @@ export default function Projects() {
                                           <span className="text-[10px] leading-none font-medium text-dark-blue-400">
                                             {isServiceTab ? "Service" : "DevOps"}
                                           </span>
-                                          <h1 className="mt-1 text-base leading-none font-semibold text-dark-blue-400">
+                                          <h1 className="mt-1 line-clamp-2 min-h-[32px] text-base leading-none font-semibold text-dark-blue-400">
                                             {name}
                                           </h1>
                                         </div>
@@ -5537,7 +5537,7 @@ export default function Projects() {
                           </div>
                         </div>
 
-                        <p className="mt-3 line-clamp-3 text-sm leading-[1.4] font-extralight text-dark-blue-400">
+                        <p className="mt-3 line-clamp-3 min-h-[59px] text-sm leading-[1.4] font-extralight text-dark-blue-400">
                           Brief Description of the project. Lorem ipsum dolor
                           sit amet, consectetur adipiscing elit, sed do eiusmod
                           tempor incididunt.
@@ -6412,7 +6412,7 @@ export default function Projects() {
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
                             <article
-                              className="py-[50px] h-full min-h-[440px] rounded-lg bg-error-700 flex flex-col items-start justify-end px-6"
+                              className="py-[50px] h-full rounded-lg bg-error-700 flex flex-col items-start justify-end px-6"
                               style={{ backgroundColor: "#2459DB" }}
                             >
                                 <h1 className="text-[28px] font-bold leading-none text-white">
@@ -6441,7 +6441,7 @@ export default function Projects() {
                             .slice(0, 8)
                             .map((u: any, idx: number) => (
                               <SwiperSlide
-                                className="h-[448px] w-[355px]"
+                                className="h-auto w-[355px]"
                                 key={u?.id ?? idx}
                               >
                                 <ListingCard
@@ -6786,7 +6786,7 @@ export default function Projects() {
                           {pageKind === "talent" &&
                             talentUsers.map((talent: any, idx: number) => (
                               <SwiperSlide
-                                className="h-[448px] w-[355px]"
+                                className="h-auto w-[355px]"
                                 key={`recommended-${talent.id}`}
                               >
                                 <ListingCard
@@ -6879,7 +6879,7 @@ export default function Projects() {
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
                             <article
-                              className="py-[50px] h-full min-h-[440px] rounded-lg bg-error-700 flex flex-col items-start justify-end px-6"
+                              className="py-[50px] h-full rounded-lg bg-error-700 flex flex-col items-start justify-end px-6"
                               style={{ backgroundColor: "#027A48" }}
                             >
                               <h1 className="text-[28px] font-bold leading-none text-white">
@@ -6911,7 +6911,7 @@ export default function Projects() {
                             .slice(0, 8)
                             .map((u: any, idx: number) => (
                               <SwiperSlide
-                                className="h-[448px] w-[355px]"
+                                className="h-auto w-[355px]"
                                 key={u?.id ?? idx}
                               >
                                 <ListingCard
@@ -7060,7 +7060,7 @@ export default function Projects() {
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
                             <article
-                              className="h-full min-h-[440px] rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
+                              className="h-full rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
                               style={{ backgroundColor: "#2459DB" }}
                             >
                                 <h1 className="text-[28px] font-bold leading-none text-white">
@@ -7088,7 +7088,7 @@ export default function Projects() {
                             .slice(0, 8)
                             .map((u: any, idx: number) => (
                               <SwiperSlide
-                                className="h-[448px] w-[355px]"
+                                className="h-auto w-[355px]"
                                 key={u?.id ?? idx}
                               >
                                 <ListingCard
@@ -7216,7 +7216,7 @@ export default function Projects() {
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
                             <article
-                              className="h-full min-h-[440px] rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
+                              className="h-full rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
                               style={{ backgroundColor: "#027A48" }}
                             >
                               <div className="pt-6">
@@ -7350,8 +7350,8 @@ export default function Projects() {
                       <TabsContent key={sub.name} value={sub.name}>
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           {!(l2 && pageKind === "show-all") && (
-                            <SwiperSlide className="h-[420px] w-[355px]">
-                              <article className="py-[50px] h-full min-h-[440px] rounded-lg bg-error-700 flex flex-col items-start justify-end px-6">
+                            <SwiperSlide className="h-auto w-[355px]">
+                              <article className="py-[50px] h-full rounded-lg bg-error-700 flex flex-col items-start justify-end px-6">
                                 <h1 className="text-[28px] font-bold leading-none text-white">
                                   {sub.name} Services
                                 </h1>
@@ -7393,7 +7393,7 @@ export default function Projects() {
                               return (
                                 <SwiperSlide
                                   key={service.id ?? idx}
-                                  className="h-[420px] w-[355px]"
+                                  className="h-auto w-[355px]"
                                 >
                                   <ListingCard
                                     kind="service"
@@ -7482,7 +7482,7 @@ export default function Projects() {
                     <h2 className="mt-2 text-lg font-bold leading-6 text-dark-blue-400 group-hover:underline">
                       {project.title}
                     </h2>
-                    <p className="mt-2 line-clamp-3 text-sm font-light leading-5 text-dark-blue-400">
+                    <p className="mt-2 line-clamp-3 min-h-[60px] text-sm font-light leading-5 text-dark-blue-400">
                       {project.description}
                     </p>
                   </NextLink>
