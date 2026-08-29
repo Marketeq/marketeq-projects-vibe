@@ -8,6 +8,9 @@ export type TaxInfo = {
   tinType?: string | null
   /** Full TIN is never returned by the API. */
   tinLast4?: string | null
+  /** W-9 line 4 codes. Entities only, and optional even then. */
+  exemptPayeeCode?: string | null
+  fatcaExemptionCode?: string | null
   country?: string | null
   addressLine1?: string | null
   addressLine2?: string | null
@@ -35,6 +38,8 @@ export type TaxForm = {
   amount: string
   taxYear: string
   downloadUrl: string
+  /** PNG render of this form, filled in with the contractor's details. */
+  previewUrl?: string
   isLastYear: boolean
 }
 
@@ -83,4 +88,26 @@ export async function submitTaxInfo(): Promise<TaxInfo> {
     throw new Error(body?.message ?? "Could not submit your tax information")
   }
   return res.json()
+}
+
+/**
+ * Loads the filled-in render of a form as an object URL.
+ *
+ * The preview is behind the same auth as the download, and a plain `<img>`
+ * would not carry credentials cross-origin, so it is fetched the same way the
+ * rest of this module fetches and handed back as a blob URL. Callers must
+ * revoke the URL when they are done with it.
+ */
+export async function getTaxFormPreview(
+  previewUrl: string
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${base()}${previewUrl}`, {
+      credentials: "include",
+    })
+    if (!res.ok) return null
+    return URL.createObjectURL(await res.blob())
+  } catch {
+    return null
+  }
 }

@@ -3,6 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { TinEncryptionService } from './tin-encryption.service';
 import { Repository } from 'typeorm';
 import { TaxInfo } from './tax-info.entity';
+import {
+  payerIsConfigured,
+  type Payment1099KReport,
+} from './tax-document.service';
 import { UpsertTaxInfoDto } from './tax-info.dto';
 
 // Every field on the form is mandatory. There are no optional fields here:
@@ -21,6 +25,10 @@ const IDENTIFICATION_FIELDS = [
 ] as const;
 
 /** A TIN is nine digits, whatever punctuation it was typed with. */
+/** The country list labels the US "USA"; older records stored the long name. */
+const isUnitedStates = (country?: string | null) =>
+  country === 'USA' || country === 'United States';
+
 const isTinComplete = (tin?: string | null) =>
   !!tin && tin.replace(/\D/g, '').length === 9;
 
@@ -38,7 +46,9 @@ export class TaxInfoService {
    * being a US person, which is false.
    */
   private formKindFor(entity?: TaxInfo | null): 'W-9' | 'W-8BEN' {
-    return entity?.country === 'United States' ? 'W-9' : 'W-8BEN';
+    // The country list labels the US "USA"; older records stored the long name.
+    // Matching only the long name classified US filers as non-US.
+    return isUnitedStates(entity?.country) ? 'W-9' : 'W-8BEN';
   }
 
   /** Fields the signature certifies. Changing any of them voids it. */
@@ -104,12 +114,56 @@ export class TaxInfoService {
   }
 
   /**
-   * Documents the platform can produce once the W-9 is certified.
+   * Documents the contractor RECEIVES, once the W-9 is certified.
    *
    * The W-9 substitute is ours to issue: it is built from what the user just
    * certified, so it exists the moment they submit. The two 1099s are the
    * year-end reports of what was actually paid, so they are listed for the
    * current and previous tax year and resolve to a generated PDF.
+   */
+  /**
+   * The settled volume a 1099-K reports for one tax year.
+   *
+   * This platform settles payments from many clients to one contractor, which
+   * makes it a third party settlement organization under IRC 6050W, so the form
+   * issued here is a 1099-K and not a 1099-NEC. What it reports is gross
+   * settled volume with a transaction count and a monthly breakdown, which
+   * comes from settlement records in payout-service, not from net earnings.
+   *
+   * That aggregation is not built yet, so nothing can be issued. See
+   * apps/tax-service/docs for the design.
+   */
+  private settlementReport(
+    _entity: TaxInfo,
+    _taxYear: number,
+  ): Payment1099KReport | null {
+    return null;
+  }
+
+  /**
+   * Whether a complete 1099-K can be produced for a tax year. Both the filer
+   * block and the settled volume must be known; a form is listed only when
+   * every box it needs can be filled.
+   */
+  canIssue1099(entity: TaxInfo, taxYear: number) {
+    return (
+      !!entity.submittedAt &&
+      payerIsConfigured() &&
+      !!this.settlementReport(entity, taxYear)
+    );
+  }
+
+  /** The settled volume for a year, for the document endpoints. */
+  reportFor(entity: TaxInfo, taxYear: number) {
+    return this.settlementReport(entity, taxYear);
+  }
+
+  /**
+   * The forms this contractor has actually been issued.
+   *
+   * Tax Forms lists documents the contractor RECEIVES. A W-9 is not one of
+   * them: they fill it out and give it to us. A copy of what they certified is
+   * still downloadable, but from Tax Information, not from here.
    */
   private buildForms(entity: TaxInfo) {
     if (!entity.submittedAt) return [];
@@ -117,35 +171,18 @@ export class TaxInfoService {
     const submittedYear = new Date(entity.submittedAt).getFullYear();
     const span = (start: number) => `${start} - ${start + 1}`;
 
-    return [
-      {
-        id: `${entity.id}-cert`,
-        formType: this.formKindFor(entity),
-        issuerName: entity.legalFullName ?? '',
-        amount: '',
-        taxYear: span(submittedYear),
-        downloadUrl: `/user/tax-info/documents/certification`,
-        isLastYear: false,
-      },
-      {
-        id: `${entity.id}-nec-${submittedYear}`,
-        formType: '1099-NEC' as const,
+    return [submittedYear, submittedYear - 1]
+      .filter((year) => this.canIssue1099(entity, year))
+      .map((year) => ({
+        id: `${entity.id}-k-${year}`,
+        formType: '1099-K' as const,
         issuerName: 'Marketeq Digital',
-        amount: '',
-        taxYear: span(submittedYear),
-        downloadUrl: `/user/tax-info/documents/1099-nec/${submittedYear}`,
-        isLastYear: false,
-      },
-      {
-        id: `${entity.id}-nec-${submittedYear - 1}`,
-        formType: '1099-NEC' as const,
-        issuerName: 'Marketeq Digital',
-        amount: '',
-        taxYear: span(submittedYear - 1),
-        downloadUrl: `/user/tax-info/documents/1099-nec/${submittedYear - 1}`,
-        isLastYear: true,
-      },
-    ];
+        amount: this.settlementReport(entity, year)?.grossAmount ?? '',
+        taxYear: span(year),
+        downloadUrl: `/user/tax-info/documents/1099-k/${year}`,
+        previewUrl: `/user/tax-info/documents/1099-k/${year}/preview`,
+        isLastYear: year === submittedYear - 1,
+      }));
   }
 
   /**
@@ -156,7 +193,9 @@ export class TaxInfoService {
   async submit(userId: string) {
     const entity = await this.repo.findOne({ where: { userId } });
     if (!entity) {
-      throw new BadRequestException('Add your tax information before submitting');
+      throw new BadRequestException(
+        'Please add your tax information before submitting',
+      );
     }
 
     const missing: string[] = [];
@@ -172,7 +211,7 @@ export class TaxInfoService {
 
     if (missing.length) {
       throw new BadRequestException(
-        `Complete every field before submitting: ${missing.join(', ')}`,
+        `Please complete every field before submitting: ${missing.join(', ')}`,
       );
     }
 
@@ -180,12 +219,18 @@ export class TaxInfoService {
     return this.get(userId);
   }
 
-  /** Raw entity plus the last four TIN digits, for PDF rendering only. */
+  /**
+   * Raw entity plus the TIN, for PDF rendering only. The W-9 the taxpayer
+   * downloads carries their full number, exactly as the paper form does; the
+   * furnished 1099 copy masks it.
+   */
   async forDocument(userId: string) {
     const entity = await this.repo.findOne({ where: { userId } });
+    const tin = entity ? this.tinCrypto.decrypt(entity.tin) : null;
     return {
       entity,
-      tinLast4: entity ? this.tinCrypto.last4(this.tinCrypto.decrypt(entity.tin)) : null,
+      tin,
+      tinLast4: tin ? this.tinCrypto.last4(tin) : null,
     };
   }
 
