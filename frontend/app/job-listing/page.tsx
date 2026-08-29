@@ -9661,7 +9661,7 @@ const DescribeProjectStep = ({
           {!isService ? (
             <>
               <div className="mt-16 space-y-3">
-                <Label className="text-base leading-6 font-semibold text-dark-blue-400">
+                <Label className="text-[18px] leading-7 font-medium text-dark-blue-400">
                   How long do you expect this job to last?
                 </Label>
                 <RadioGroup
