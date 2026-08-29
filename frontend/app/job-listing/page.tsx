@@ -9755,29 +9755,31 @@ const DescribeProjectStep = ({
                 </RadioGroup>
               </div>
 
-              <div className="mt-5 space-y-2">
-                <div className="flex items-center justify-between gap-x-4">
-                  <Label className="text-base leading-6 font-semibold text-dark-blue-400">
-                    How will you know this project is successful?
-                  </Label>
-                  <span className="text-xs leading-[18px] text-gray-500">
-                    {successCriteria.length}/100
-                  </span>
+              {isService ? (
+                <div className="mt-5 space-y-2">
+                  <div className="flex items-center justify-between gap-x-4">
+                    <Label className="text-base leading-6 font-semibold text-dark-blue-400">
+                      How will you know this project is successful?
+                    </Label>
+                    <span className="text-xs leading-[18px] text-gray-500">
+                      {successCriteria.length}/100
+                    </span>
+                  </div>
+                  <Textarea
+                    maxLength={100}
+                    value={successCriteria}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setSuccessCriteria(value);
+                      updateDraftDetails({
+                        successCriteria: isService ? undefined : value.trim(),
+                      });
+                    }}
+                    placeholder="Launch MVP by October, increase signups by 20, working prototype demo"
+                    className="h-20 text-sm"
+                  />
                 </div>
-                <Textarea
-                  maxLength={100}
-                  value={successCriteria}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setSuccessCriteria(value);
-                    updateDraftDetails({
-                      successCriteria: isService ? undefined : value.trim(),
-                    });
-                  }}
-                  placeholder="Launch MVP by October, increase signups by 20, working prototype demo"
-                  className="h-20 text-sm"
-                />
-              </div>
+              ) : null}
             </>
           ) : null}
         </div>
