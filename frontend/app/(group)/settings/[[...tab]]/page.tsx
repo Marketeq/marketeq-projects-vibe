@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useBillingExportStore } from "@/lib/billing-export"
-import { useSearchParams } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
@@ -70,13 +70,31 @@ import {
 export default function SettingsPage() {
   const { user, setUser } = useAuth()
   const { toast } = useToast()
+  const router = useRouter()
+  const routeParams = useParams()
   const searchParams = useSearchParams()
-  const tabParam = searchParams.get("tab")
+
+  // /settings/<tab> is the real URL. ?tab= is still honoured so links shared
+  // before this existed keep working, and bare /settings lands on the first
+  // tab. The segment ids match the hrefs in settings-sidebar.tsx.
+  const segments = routeParams?.tab
+  const routeTab = Array.isArray(segments) ? segments[0] : segments
+  const tabParam = routeTab ?? searchParams.get("tab")
   const [activeTab, setActiveTab] = useState(tabParam || "personal-info")
 
   useEffect(() => {
     if (tabParam) setActiveTab(tabParam)
   }, [tabParam])
+
+  // Selecting a tab now becomes a navigation, so each screen is linkable and
+  // the back button walks between them.
+  const goToTab = useCallback(
+    (tab: string) => {
+      setActiveTab(tab)
+      router.push(`/settings/${tab}`, { scroll: false })
+    },
+    [router]
+  )
 
   const toggleInviteWindow = useInviteWindowStore((s) => s.toggle)
   const invoiceExporters = useBillingExportStore((s) => s.exporters.invoices)
@@ -229,7 +247,7 @@ export default function SettingsPage() {
   return (
     <AuthenticatedRoute>
       <div className="flex bg-gray-50 h-screen overflow-hidden">
-        <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+        <SettingsSidebar activeTab={activeTab} onTabChange={goToTab} />
 
         <div
           ref={contentRef}
@@ -254,7 +272,7 @@ export default function SettingsPage() {
                 {settingsTabItems.map((item) => (
                   <button
                     key={item.id}
-                    onClick={() => setActiveTab(item.id)}
+                    onClick={() => goToTab(item.id)}
                       className={cn(
                         "flex items-center gap-1.5 px-3 pb-3 text-sm border-b-2 transition-colors whitespace-nowrap",
                         activeTab === item.id

@@ -22,7 +22,6 @@ import {
   teamDetailsUrl,
 } from "@/src/lib/listing-urls"
 import React from "react"
-import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { cn, plainTextFromRichTextHtml } from "@/utils/functions"
 import {
@@ -43,6 +42,7 @@ import {
 import { Money } from "@/components/money"
 import { NextImage } from "@/components/next-image"
 import { NextLink } from "@/components/next-link"
+import { claimProject } from "@/src/lib/api/claim"
 import {
   isTalentAccount,
   NoTeamAssigned,
@@ -232,7 +232,6 @@ function ProjectListingCard({
   // — so without flattening it first the tags show up on screen as literal
   // text. Detail pages still render the real markup.
   const plainDescription = plainTextFromRichTextHtml(description)
-  const router = useRouter()
   const { user } = useAuth()
   // The unclaimed-team empty state is a talent-facing call to action. Clients
   // and signed-out visitors just don't see the row until somebody owns it.
@@ -258,10 +257,17 @@ function ProjectListingCard({
       .replace(/\s*\/\s*(hr|hours?|hourly|mo|months?|monthly|wk|weeks?|yr|years?)\s*$/i, "")
       .replace(/\s+budget\s*$/i, "")
       .trim()
-    const numericValue = Number(value.replace(/[$,\s]/g, ""))
-    return value && !Number.isNaN(numericValue)
+    // Figma 8:9378 shows a single figure, not a range. If the data hands us
+    // "$500 - $3,000", show the starting price so the format stays fixed.
+    const range = value.match(
+      /^\$?\s*([\d.,]+)\s*(?:–|—|-|to)\s*\$?\s*([\d.,]+)$/i
+    )
+    const single = range ? range[1] : value
+
+    const numericValue = Number(single.replace(/[$,\s]/g, ""))
+    return single && !Number.isNaN(numericValue)
       ? `$${numericValue.toLocaleString()}`
-      : value
+      : single
   })()
 
   // Locked timeline format. Units: hours, days, weeks, months.
@@ -737,7 +743,15 @@ function ProjectListingCard({
             </span>
           )}
 
-          {typeof rating === "number" && (
+          {/* A rating is an average of reviews, so with zero reviews there is
+              nothing to average. Hide the star, the score and the counter
+              until a review actually exists.
+              An unclaimed listing has never been delivered either, so any
+              review count on it is not real. Both conditions must hold. */}
+          {hasTeam &&
+            typeof reviewCount === "number" &&
+            reviewCount > 0 &&
+            typeof rating === "number" && (
             <div className="inline-flex shrink-0 items-center gap-x-1">
               <Star className="size-[15px] text-primary-500 fill-primary-500" />
               <span className="inline-flex items-center gap-x-1 text-sm font-medium leading-normal text-dark-blue-400">
@@ -788,7 +802,13 @@ function ProjectListingCard({
             isTalent ? (
               <NoTeamAssigned
                 kind={kind === "service" ? "service" : "project"}
-                onClaim={onClaim ?? (() => router.push(computedHref))}
+                onClaim={
+                onClaim ??
+                (kind === "project" ? () => claimProject(id) : undefined)
+              }
+              // /my-listings/:id is the in-line editor (edit in place with a
+              // client-view preview). /edit-listing/:id is the full edit flow.
+              editHref={`/my-listings/${id}`}
               />
             ) : (
               <span />
