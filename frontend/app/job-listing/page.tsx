@@ -8990,8 +8990,8 @@ const DescribeProjectStep = ({
     (Number.isFinite(customDurationAmount) && customDurationAmount > 0);
   const isValid =
     description.trim().length > 0 &&
-    deliverables.trim().length > 0 &&
-    (isService || successCriteria.trim().length > 0) &&
+    (isService ? deliverables.trim().length > 0 : true) &&
+    (isService ? successCriteria.trim().length > 0 : true) &&
     Number(budget.replace(/,/g, "")) >= 0 &&
     (isService || hasValidCustomDuration);
   const budgetAmount = Number(budget.replace(/,/g, "")) || 0;
@@ -9729,7 +9729,7 @@ const DescribeProjectStep = ({
                       <HeadlessRadioGroupItem key={id} value={id} asChild>
                         <div
                           className={cn(
-                            "box-border flex w-[435px] items-center gap-4 rounded-lg border border-gray-200 bg-white py-4 pr-6 pl-4 text-left focus-visible:outline-none",
+                            "box-border flex w-[435px] cursor-pointer items-center gap-4 rounded-lg border border-gray-200 bg-white py-4 pr-6 pl-4 text-left focus-visible:outline-none",
                             isOther && selected
                               ? "h-[116px] flex-col items-start justify-center gap-3"
                               : "h-[84px] flex-row",
