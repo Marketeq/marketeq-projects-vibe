@@ -266,6 +266,36 @@ Outbound:
 6. **State reporting** is not considered at all. Several states have their own
    1099-K thresholds and filing requirements.
 
+## 7.1 Tax support: route into the platform assistant
+
+> Full requirements: **TS-02 — Tax Support Assistant Requirements**, in this
+> directory. The summary below is the decision; TS-02 is what to build against.
+
+The Taxes screen carries an **Ask a Question** card. It must route into the
+**platform-wide chatbot already being designed**, not into a second tax-specific
+bot. One assistant, given tax context.
+
+The card previously read *"Chat with our Tax Expert — our experts, with 25+
+years of experience"*. There are no tax experts, so that claim was removed on
+2026-08-29. **Do not reintroduce it**, and do not present the assistant as a
+person or a credentialed professional.
+
+When the assistant is wired up, three things should carry over:
+
+1. **Scope it to how this platform reports, not to tax law.** "Why is box 1a
+   larger than what reached my account" has one correct answer we already know.
+   "Should I form an S corp" does not, and should be declined.
+2. **Ground it in existing content** — the FAQs on the Taxes screen and this
+   document — rather than letting it answer from memory. Grounded answers are
+   shorter, cheaper and consistent with the page they sit beside.
+3. **Make the boundary a refusal rule in the system prompt**, not just a line of
+   small print. It should decline individualised advice and point to a licensed
+   tax professional. A disclaimer under a confident wrong answer is worthless.
+
+Cost controls worth keeping if usage grows: a small model, prompt caching on the
+system prompt and FAQ corpus, a low `max_tokens`, and server-side per-user
+limits.
+
 ## 8. Migration notes
 
 Move, do not rewrite. The generation code is verified against the real forms and
