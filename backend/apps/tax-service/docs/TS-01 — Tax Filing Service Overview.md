@@ -229,6 +229,17 @@ Outbound:
    - Non-US persons receive **neither a 1099-K nor a 1099-NEC**. Where there is
      US-source withholdable income the form is a **1042-S**, which is not built
      and is a separate reporting pipeline.
+   - **No treaty claim is collected.** W-9 line 4 exemptions are US-only, but
+     the non-US analogue is the treaty claim in **W-8BEN Part II, lines 9 and
+     10**: treaty country, article, withholding rate and income type. Without
+     it a contractor in a treaty country cannot reduce US withholding they are
+     entitled to reduce. This is the closer equivalent to line 4 than anything
+     else on the form, and it is missing.
+   - **Only W-8BEN is offered, never W-8BEN-E.** W-8BEN is for foreign
+     *individuals*. A foreign *entity* must file **W-8BEN-E**, which carries a
+     Chapter 4 (FATCA) status that W-8BEN has no field for. Today a foreign
+     company cannot be documented correctly at all, and the classification
+     list offers entity types without regard to whether the filer is US or not.
 6. **State reporting** is not considered at all. Several states have their own
    1099-K thresholds and filing requirements.
 

@@ -21,6 +21,14 @@ export class UpsertTaxInfoDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(32)
   tin?: string;
 
+  @ApiPropertyOptional({ description: 'W-9 line 4 exempt payee code. Entities only.' })
+  @IsOptional() @IsString() @MaxLength(2)
+  exemptPayeeCode?: string;
+
+  @ApiPropertyOptional({ description: 'W-9 line 4 FATCA reporting code. Entities only.' })
+  @IsOptional() @IsString() @MaxLength(2)
+  fatcaExemptionCode?: string;
+
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80)
   country?: string;
 

@@ -285,6 +285,21 @@ const daysUntilFilingDeadline = () => {
 
 // An individual files under an SSN; an entity files under an EIN. Selecting a
 // classification therefore decides which identifier applies.
+/**
+ * Line 4 of the W-9 states its codes "apply only to certain entities, not
+ * individuals", so the exemption fields are shown only for the entity
+ * classifications and stay hidden for an individual or sole proprietor.
+ */
+const ENTITY_CLASSIFICATIONS = new Set([
+  "C Corporation",
+  "S Corporation",
+  "Partnership",
+  "Trust or Estate",
+])
+
+/** Line 4 exists on the W-9 only; a W-8BEN has no equivalent. */
+const isW9Form = (kind: string) => kind === "W-9"
+
 const CLASSIFICATIONS: { label: string; tinType: "SSN" | "EIN" }[] = [
   { label: "Individual", tinType: "SSN" },
   { label: "Sole Proprietor", tinType: "SSN" },
@@ -406,6 +421,8 @@ export function SettingsTaxInfo() {
     federalTaxClassification: "Individual",
     tinType: "SSN",
     tin: "",
+    exemptPayeeCode: "",
+    fatcaExemptionCode: "",
     country: "United States",
     addressLine1: "",
     addressLine2: "",
@@ -453,6 +470,8 @@ export function SettingsTaxInfo() {
         // The stored number is never sent back, so both drafts start empty and
         // the field falls back to the "saved and ending in" hint.
         tin: "",
+        exemptPayeeCode: next.exemptPayeeCode ?? "",
+        fatcaExemptionCode: next.fatcaExemptionCode ?? "",
         country: next.country ?? "United States",
         addressLine1: next.addressLine1 ?? "",
         addressLine2: next.addressLine2 ?? "",
@@ -649,7 +668,36 @@ export function SettingsTaxInfo() {
   // it off `data` meant switching country showed the wrong certification until
   // the form was saved, so a non-US filer was shown the W-9's "I am a U.S.
   // citizen" affirmation.
+  /**
+   * Sets the country and keeps the rest of the form legal for it.
+   *
+   * The entity classifications are W-9 concepts. A foreign entity files a
+   * W-8BEN-E, which is a different form this platform does not produce, so a
+   * non-US filer is not offered a combination that cannot be documented.
+   */
+  const setCountry = (value: string) => {
+    setForm((prev) => {
+      if (
+        isUnitedStates(value) ||
+        !ENTITY_CLASSIFICATIONS.has(prev.federalTaxClassification)
+      ) {
+        return { ...prev, country: value }
+      }
+      return {
+        ...prev,
+        country: value,
+        federalTaxClassification: "Individual",
+        tinType: "SSN",
+        exemptPayeeCode: "",
+        fatcaExemptionCode: "",
+      }
+    })
+  }
+
   const formKind = isUnitedStates(form.country) ? "W-9" : "W-8BEN"
+  const showsExemptions =
+    isW9Form(formKind) &&
+    ENTITY_CLASSIFICATIONS.has(form.federalTaxClassification)
   const isW9 = formKind === "W-9"
 
   // Documents are served by user-service, not by Next. A NextLink would
@@ -1160,7 +1208,7 @@ export function SettingsTaxInfo() {
             value={form.country === "United States" ? "us" : "outside"}
             disabled={readOnly}
             onValueChange={(v) => {
-              set("country", v === "us" ? "United States" : "")
+              setCountry(v === "us" ? "United States" : "")
             }}
             className="flex items-center gap-x-8"
           >
@@ -1296,9 +1344,18 @@ export function SettingsTaxInfo() {
                     const tinType =
                       CLASSIFICATIONS.find((c) => c.label === v)?.tinType ??
                       "SSN"
+                    // An individual cannot hold a line 4 code, so switching
+                    // away from an entity clears anything already entered.
+                    const exemptions = ENTITY_CLASSIFICATIONS.has(v)
+                      ? {}
+                      : { exemptPayeeCode: "", fatcaExemptionCode: "" }
                     setForm((prev) => {
                       if (prev.tinType === tinType) {
-                        return { ...prev, federalTaxClassification: v }
+                        return {
+                          ...prev,
+                          federalTaxClassification: v,
+                          ...exemptions,
+                        }
                       }
                       tinDrafts.current[prev.tinType] = prev.tin
                       return {
@@ -1306,6 +1363,7 @@ export function SettingsTaxInfo() {
                         federalTaxClassification: v,
                         tinType,
                         tin: tinDrafts.current[tinType] ?? "",
+                        ...exemptions,
                       }
                     })
                   }}
@@ -1314,7 +1372,11 @@ export function SettingsTaxInfo() {
                     <SelectValue placeholder="How you file with the IRS" />
                   </SelectTrigger>
                   <SelectContent>
-                    {CLASSIFICATIONS.map((c) => (
+                    {CLASSIFICATIONS.filter(
+                      (c) =>
+                        isW9Form(formKind) ||
+                        !ENTITY_CLASSIFICATIONS.has(c.label)
+                    ).map((c) => (
                       <SelectItem key={c.label} value={c.label}>
                         {c.label}
                       </SelectItem>
@@ -1329,6 +1391,54 @@ export function SettingsTaxInfo() {
                   )}
               </div>
             </div>
+
+            {showsExemptions && (
+              <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label
+                    htmlFor="tax-exempt-payee"
+                    className="text-sm font-normal text-dark-blue-400"
+                  >
+                    <span className="font-medium">Exempt Payee Code</span>{" "}
+                    <span className="font-light">(if any)</span>
+                  </Label>
+                  <Input
+                    id="tax-exempt-payee"
+                    placeholder="e.g. 5"
+                    maxLength={2}
+                    value={form.exemptPayeeCode}
+                    disabled={readOnly}
+                    onChange={(e) => set("exemptPayeeCode", e.target.value)}
+                  />
+                  <p className="text-xs font-light text-gray-500">
+                    Only certain entities have one. Leave it blank if you do
+                    not. It exempts you from backup withholding, not from tax.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label
+                    htmlFor="tax-fatca"
+                    className="text-sm font-normal text-dark-blue-400"
+                  >
+                    <span className="font-medium">FATCA Exemption Code</span>{" "}
+                    <span className="font-light">(if any)</span>
+                  </Label>
+                  <Input
+                    id="tax-fatca"
+                    placeholder="e.g. A"
+                    maxLength={2}
+                    value={form.fatcaExemptionCode}
+                    disabled={readOnly}
+                    onChange={(e) => set("fatcaExemptionCode", e.target.value)}
+                  />
+                  <p className="text-xs font-light text-gray-500">
+                    Applies only to accounts maintained outside the United
+                    States. Leave it blank if that is not your situation.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="mt-5 flex flex-col gap-1.5">
               <Label className="text-sm font-normal text-dark-blue-400">
@@ -1419,7 +1529,7 @@ export function SettingsTaxInfo() {
                   placeholder="Where you pay tax"
                   value={form.country}
                   onValueChange={(v) => {
-                    set("country", v)
+                    setCountry(v)
                   }}
                   // Its default trigger is a dashed grey chip. Match the other
                   // fields on this form: white, solid border, same height.

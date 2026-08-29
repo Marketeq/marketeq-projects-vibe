@@ -184,6 +184,10 @@ export class TaxDocumentService {
     const box = classificationBox[entity.federalTaxClassification ?? ''];
     if (box !== undefined) check(`${B}.c1_1[${box}]`);
 
+    // Line 4. Optional, and blank for individuals and sole proprietors.
+    set(`${P}.f1_05[0]`, entity.exemptPayeeCode ?? '');
+    set(`${P}.f1_06[0]`, entity.fatcaExemptionCode ?? '');
+
     {
       const digits = tinDigits;
       if (entity.tinType === 'EIN') {

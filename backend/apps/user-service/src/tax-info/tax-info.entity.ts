@@ -36,6 +36,16 @@ export class TaxInfo {
   @Column({ type: 'text', nullable: true })
   tin?: string | null;
 
+  // ── Line 4 exemptions ─────────────────────────────────────────────────
+  // Genuinely optional on the W-9, and the form states the codes "apply only
+  // to certain entities, not individuals". Blank for every individual and sole
+  // proprietor, so these are never part of the completeness rules.
+  @Column({ type: 'text', nullable: true })
+  exemptPayeeCode?: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  fatcaExemptionCode?: string | null;
+
   // ── Residence ─────────────────────────────────────────────────────────
   @Column({ type: 'text', nullable: true })
   country?: string | null;

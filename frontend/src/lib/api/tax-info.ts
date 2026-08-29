@@ -8,6 +8,9 @@ export type TaxInfo = {
   tinType?: string | null
   /** Full TIN is never returned by the API. */
   tinLast4?: string | null
+  /** W-9 line 4 codes. Entities only, and optional even then. */
+  exemptPayeeCode?: string | null
+  fatcaExemptionCode?: string | null
   country?: string | null
   addressLine1?: string | null
   addressLine2?: string | null
