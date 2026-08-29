@@ -9346,6 +9346,20 @@ const DescribeProjectStep = ({
     viewport?.scrollTo({ top: 0 });
   }, [isService, resetScopeFile]);
 
+  const descriptionFieldVariant = isService ? "service" : "project";
+  const descriptionLabelClassName =
+    descriptionFieldVariant === "project"
+      ? "text-[18px] leading-7 font-medium text-dark-blue-400"
+      : "text-sm leading-5 font-semibold text-dark-blue-400";
+  const descriptionCounterClassName =
+    descriptionFieldVariant === "project"
+      ? "text-sm leading-5 font-normal text-gray-400"
+      : "text-xs leading-[18px] text-gray-500";
+  const descriptionTextareaClassName =
+    descriptionFieldVariant === "project"
+      ? "h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400"
+      : "h-20 text-sm";
+
   return (
     <ScrollArea
       className="h-[calc(theme(size.full)-148px)] overflow-x-hidden"
@@ -9362,13 +9376,13 @@ const DescribeProjectStep = ({
           </h1>
 
           <div className="mt-4 space-y-2">
-            <div className="flex items-center justify-between gap-x-4">
-              <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
+            <div className="flex items-baseline justify-between gap-2">
+              <Label className={descriptionLabelClassName}>
                 {isService
                   ? "What kind of ongoing help do you need?"
-                  : "What are you building?"}
+                  : "What do you want to accomplish with this project?"}
               </Label>
-              <span className="text-xs leading-[18px] text-gray-500">
+              <span className={descriptionCounterClassName}>
                 {description.length}/100
               </span>
             </div>
@@ -9385,7 +9399,7 @@ const DescribeProjectStep = ({
                   ? "I need ongoing design and development support for my e-commerce store..."
                   : "I need help building a new website for my e-commerce store..."
               }
-              className="h-20 text-sm"
+              className={descriptionTextareaClassName}
             />
           </div>
 
