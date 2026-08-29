@@ -36,7 +36,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 7. `.github/CODEOWNERS` — directory-scoped ownership, auto-requests the right reviewers on every PR.
 
 **Post-merge enforcement (triggered on push to protected branches):**
-7. `post-merge-audit` — auto-reverts merges that bypassed SOP checks.
+7. `post-merge-audit` — opens an urgent issue (assigned to @CTorres9800) for merges that bypassed SOP checks, and publicly flags the bypass. **It never reverts.** We do not revert in this repo: reverting means deleting somebody's work. No workflow, script, button, or agent may remove a developer's merged code. A failing check is fixed forward. See `CODE_REVIEW_SOP.md` §1.1 and §1.9.
 8. `login-violation-alert` — opens issues when login files are merged without owner approval.
 
 **Post-deploy automation:**
