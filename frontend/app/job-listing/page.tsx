@@ -9403,175 +9403,177 @@ const DescribeProjectStep = ({
             />
           </div>
 
-          <div className="mt-5 space-y-2">
-            <div className="flex items-center justify-between gap-x-4">
-              <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-                {isService
-                  ? "What are the main tasks or deliverables?"
-                  : "What are the main tasks or deliverables?"}
-              </Label>
-              <span className="text-xs leading-[18px] text-gray-500">
-                {deliverables.length}/100
-              </span>
-            </div>
-            <Textarea
-              maxLength={100}
-              value={deliverables}
-              onChange={(event) => {
-                const value = event.target.value;
-                setDeliverables(value);
-                updateDraftDetails({ deliverables: value.trim() });
-              }}
-              placeholder="UX design, front-end development, database setup"
-              className="h-20 text-sm"
-            />
-          </div>
+          {isService ? (
+            <>
+              <div className="mt-5 space-y-2">
+                <div className="flex items-center justify-between gap-x-4">
+                  <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
+                    What are the main tasks or deliverables?
+                  </Label>
+                  <span className="text-xs leading-[18px] text-gray-500">
+                    {deliverables.length}/100
+                  </span>
+                </div>
+                <Textarea
+                  maxLength={100}
+                  value={deliverables}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setDeliverables(value);
+                    updateDraftDetails({ deliverables: value.trim() });
+                  }}
+                  placeholder="UX design, front-end development, database setup"
+                  className="h-20 text-sm"
+                />
+              </div>
 
-          <div className="mt-5 space-y-2">
-            <div className="space-y-1">
-              <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-                Do you have documentation or a brief to share? (Optional)
-              </Label>
-              <p className="text-xs leading-[18px] text-gray-500">
-                If you&apos;ve already written a scope or have a doc with
-                details, upload it here. It&apos;ll help us better match the
-                team to your needs.
-              </p>
-            </div>
-            {scopeFile ? (
-              <div
-                className={cn(
-                  "rounded-lg border border-gray-200 bg-white px-4 py-3",
-                  scopeUploadStatus === "error" &&
-                    "border-error-300 bg-error-25",
-                )}
-              >
-                <div className="flex items-start gap-x-3">
+              <div className="mt-5 space-y-2">
+                <div className="space-y-1">
+                  <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
+                    Do you have documentation or a brief to share? (Optional)
+                  </Label>
+                  <p className="text-xs leading-[18px] text-gray-500">
+                    If you&apos;ve already written a scope or have a doc with
+                    details, upload it here. It&apos;ll help us better match
+                    the team to your needs.
+                  </p>
+                </div>
+                {scopeFile ? (
                   <div
                     className={cn(
-                      "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-[6px] border-gray-50 bg-gray-100 text-gray-500",
+                      "rounded-lg border border-gray-200 bg-white px-4 py-3",
                       scopeUploadStatus === "error" &&
-                        "border-error-50 bg-error-100 text-error-500",
+                        "border-error-300 bg-error-25",
                     )}
                   >
-                    {scopeUploadStatus === "error" ? (
-                      <AlertCircle className="size-5" />
-                    ) : (
-                      <FileIcon className="size-5" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-auto">
-                    <p
-                      className={cn(
-                        "truncate text-xs leading-[18px] font-semibold text-dark-blue-400",
-                        scopeUploadStatus === "error" && "text-error-500",
-                      )}
-                    >
-                      {scopeFile.name}
-                    </p>
-                    <p
-                      className={cn(
-                        "text-xs leading-[18px] text-gray-500",
-                        scopeUploadStatus === "error" && "text-error-500",
-                      )}
-                    >
-                      {convertToKbOrMb(scopeFile.size)}
-                    </p>
-                  </div>
-                  <IconButton
-                    className="size-8 text-gray-500"
-                    type="button"
-                    variant="ghost"
-                    visual={scopeUploadStatus === "error" ? "error" : "gray"}
-                    onClick={resetScopeFile}
-                  >
-                    <X className="size-4" />
-                  </IconButton>
-                </div>
+                    <div className="flex items-start gap-x-3">
+                      <div
+                        className={cn(
+                          "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-[6px] border-gray-50 bg-gray-100 text-gray-500",
+                          scopeUploadStatus === "error" &&
+                            "border-error-50 bg-error-100 text-error-500",
+                        )}
+                      >
+                        {scopeUploadStatus === "error" ? (
+                          <AlertCircle className="size-5" />
+                        ) : (
+                          <FileIcon className="size-5" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-auto">
+                        <p
+                          className={cn(
+                            "truncate text-xs leading-[18px] font-semibold text-dark-blue-400",
+                            scopeUploadStatus === "error" && "text-error-500",
+                          )}
+                        >
+                          {scopeFile.name}
+                        </p>
+                        <p
+                          className={cn(
+                            "text-xs leading-[18px] text-gray-500",
+                            scopeUploadStatus === "error" && "text-error-500",
+                          )}
+                        >
+                          {convertToKbOrMb(scopeFile.size)}
+                        </p>
+                      </div>
+                      <IconButton
+                        className="size-8 text-gray-500"
+                        type="button"
+                        variant="ghost"
+                        visual={scopeUploadStatus === "error" ? "error" : "gray"}
+                        onClick={resetScopeFile}
+                      >
+                        <X className="size-4" />
+                      </IconButton>
+                    </div>
 
-                {scopeUploadStatus === "uploading" ? (
-                  <div className="mt-2 flex items-center gap-x-3 pl-12">
-                    <Progress value={scopeUploadProgress} />
-                    <span className="text-xs leading-[18px] font-semibold text-gray-700">
-                      {scopeUploadProgress}%
-                    </span>
+                    {scopeUploadStatus === "uploading" ? (
+                      <div className="mt-2 flex items-center gap-x-3 pl-12">
+                        <Progress value={scopeUploadProgress} />
+                        <span className="text-xs leading-[18px] font-semibold text-gray-700">
+                          {scopeUploadProgress}%
+                        </span>
+                      </div>
+                    ) : null}
+                    {scopeUploadStatus === "error" && scopeUploadError ? (
+                      <div className="mt-2 flex items-center justify-between gap-x-3 pl-12">
+                        <span className="text-xs leading-[18px] text-error-500">
+                          {scopeUploadError}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="link"
+                          visual="error"
+                          onClick={() => {
+                            const contentType =
+                              getScopeFileContentType(scopeFile);
+                            if (contentType) {
+                              void uploadScopeFile(scopeFile, contentType);
+                            }
+                          }}
+                        >
+                          Try again
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-                {scopeUploadStatus === "error" && scopeUploadError ? (
-                  <div className="mt-2 flex items-center justify-between gap-x-3 pl-12">
-                    <span className="text-xs leading-[18px] text-error-500">
-                      {scopeUploadError}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="link"
-                      visual="error"
-                      onClick={() => {
-                        const contentType = getScopeFileContentType(scopeFile);
-                        if (contentType) {
-                          void uploadScopeFile(scopeFile, contentType);
-                        }
+                ) : (
+                  <label
+                    className={cn(
+                      "flex h-[150px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center focus-within:ring-2 focus-within:ring-primary-500",
+                      isScopeDropActive && "border-primary-500",
+                    )}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      setIsScopeDropActive(true);
+                    }}
+                    onDragLeave={(event) => {
+                      event.preventDefault();
+                      setIsScopeDropActive(false);
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "copy";
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      setIsScopeDropActive(false);
+                      acceptScopeFile(event.dataTransfer.files?.[0]);
+                    }}
+                  >
+                    <input
+                      className="sr-only"
+                      type="file"
+                      accept=".pdf,.docx"
+                      onChange={(event) => {
+                        acceptScopeFile(event.target.files?.[0]);
+                        event.target.value = "";
                       }}
-                    >
-                      Try again
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <label
-                className={cn(
-                  "flex h-[150px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center focus-within:ring-2 focus-within:ring-primary-500",
-                  isScopeDropActive && "border-primary-500",
+                    />
+                    <span className="inline-flex size-10 items-center justify-center rounded-full border-[6px] border-gray-50 bg-gray-100">
+                      <UploadCloud className="size-5 text-gray-500" />
+                    </span>
+                    <span className="mt-3 text-xs leading-5 text-gray-600">
+                      Drag and drop your service scope or{" "}
+                      <span className="font-semibold text-primary-500">
+                        Choose a file
+                      </span>
+                    </span>
+                    <span className="mt-1 max-w-[408px] text-xs leading-[14.52px] text-gray-500">
+                      Upload a scope document to help clients understand your
+                      service details and allow us to generate accurate
+                      suggestions.
+                    </span>
+                    <span className="mt-3 text-xs leading-[14.52px] text-gray-500">
+                      Recommended Format: PDF or DOCX
+                    </span>
+                  </label>
                 )}
-                onDragEnter={(event) => {
-                  event.preventDefault();
-                  setIsScopeDropActive(true);
-                }}
-                onDragLeave={(event) => {
-                  event.preventDefault();
-                  setIsScopeDropActive(false);
-                }}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "copy";
-                }}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  setIsScopeDropActive(false);
-                  acceptScopeFile(event.dataTransfer.files?.[0]);
-                }}
-              >
-                <input
-                  className="sr-only"
-                  type="file"
-                  accept=".pdf,.docx"
-                  onChange={(event) => {
-                    acceptScopeFile(event.target.files?.[0]);
-                    event.target.value = "";
-                  }}
-                />
-                <span className="inline-flex size-10 items-center justify-center rounded-full border-[6px] border-gray-50 bg-gray-100">
-                  <UploadCloud className="size-5 text-gray-500" />
-                </span>
-                <span className="mt-3 text-xs leading-5 text-gray-600">
-                  Drag and drop your {isService ? "service" : "project"} scope
-                  or{" "}
-                  <span className="font-semibold text-primary-500">
-                    Choose a file
-                  </span>
-                </span>
-                <span className="mt-1 max-w-[408px] text-xs leading-[14.52px] text-gray-500">
-                  Upload a scope document to help clients understand your
-                  {isService ? " service" : " project"} details and allow us to
-                  generate accurate suggestions.
-                </span>
-                <span className="mt-3 text-xs leading-[14.52px] text-gray-500">
-                  Recommended Format: PDF or DOCX
-                </span>
-              </label>
-            )}
-          </div>
+              </div>
+            </>
+          ) : null}
 
           <div className="mt-5 space-y-2">
             <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
