@@ -3018,7 +3018,7 @@ const ProjectInfoTip = ({
     <div
       className={cn(
         isDescribeProjectStepTip
-          ? "flex w-[322px] flex-col items-start gap-4 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,0.04)]"
+          ? "flex w-[322px] flex-col items-start gap-4 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
           : "flex w-[322px] flex-col items-start gap-y-4 p-5 rounded-lg bg-white border border-gray-200 relative shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]",
         isContractTip
           ? "h-[288px]"
@@ -3032,13 +3032,13 @@ const ProjectInfoTip = ({
 
       {isDescribeProjectStepTip ? (
         <>
-          <div className="flex h-6 w-full items-start justify-between gap-x-2">
+          <div className="flex h-6 w-full items-center justify-between gap-x-2">
             <span className="flex h-6 flex-1 items-center text-base font-semibold leading-6 text-gray-400">
               Quick tip
             </span>
             <Lightbulb03 className="size-5 shrink-0 text-gray-400" />
           </div>
-          <div className="flex h-[180px] w-[282px] flex-col items-start gap-2">
+          <div className="flex w-[282px] flex-col items-start gap-2">
             <span className="w-full text-[18px] font-semibold leading-7 text-dark-blue-400">
               Give us a few details now to save time later:
             </span>
@@ -9363,7 +9363,7 @@ const DescribeProjectStep = ({
       : "min-w-0 flex-auto min-[1024px]:max-w-[720px]";
   const describeProjectContentClassName =
     descriptionFieldVariant === "project"
-      ? "mt-4 flex flex-col gap-16"
+      ? "mt-8 flex flex-col gap-16"
       : "mt-4 space-y-2";
   const describeProjectQuestionClassName =
     descriptionFieldVariant === "project" ? "space-y-3" : "space-y-2";
@@ -9382,7 +9382,7 @@ const DescribeProjectStep = ({
     >
       <div
         ref={contentRef}
-        className="px-5 pb-[100px] pt-6 md:px-10 min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-8 min-[1024px]:gap-x-[41.45px]"
+        className="flex flex-col gap-y-8 px-5 pb-[100px] pt-6 md:px-10 min-[1024px]:flex-row min-[1024px]:gap-8 min-[1024px]:px-[100px] min-[1024px]:py-[50px]"
       >
         <div className={describeProjectContainerClassName}>
           <h1 className="text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
