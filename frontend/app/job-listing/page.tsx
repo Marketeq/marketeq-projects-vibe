@@ -8793,9 +8793,7 @@ const DescribeProjectStep = ({
   const [budgetUnit, setBudgetUnit] = useState(
     details.budgetFrequency === "per_month" ? "per month" : "per week",
   );
-  const [duration, setDuration] = useState(
-    getDurationSelectionFromMonths(details.durationMonths),
-  );
+  const [duration, setDuration] = useState("");
   const [customDuration, setCustomDuration] = useState(
     typeof details.durationMonths === "number" &&
       getDurationSelectionFromMonths(details.durationMonths).startsWith(
@@ -9684,32 +9682,37 @@ const DescribeProjectStep = ({
                       <HeadlessRadioGroupItem key={id} value={id} asChild>
                         <div
                           className={cn(
-                            "rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
+                            "box-border flex h-[84px] w-[435px] flex-row items-center gap-4 rounded-lg border border-gray-200 bg-white py-4 pr-6 pl-4 text-left focus-visible:outline-none",
                             selected && "border-primary-500",
                           )}
                         >
-                          <span className="flex items-center justify-between gap-x-4">
-                            <span className="text-base leading-6 font-semibold text-dark-blue-400">
+                          <span
+                            className={cn(
+                              "flex h-[52px] w-[361px] flex-col items-start gap-1",
+                              !option.label && "justify-center",
+                            )}
+                          >
+                            <span className="block h-7 self-stretch text-[18px] leading-7 font-semibold text-dark-blue-400">
                               {option.value}
                               {option.unit ? (
-                                <span className="ml-1 text-sm leading-5 font-normal text-gray-500">
+                                <span className="ml-1 text-[18px] leading-7 font-semibold text-dark-blue-400">
                                   {" "}
                                   {option.unit}
                                 </span>
                               ) : null}
                             </span>
-                            <span
-                              className={cn(
-                                "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
-                                selected && "border-[5px] border-primary-500",
-                              )}
-                            />
+                            {option.label ? (
+                              <span className="block h-5 self-stretch text-[14px] leading-5 font-normal text-dark-blue-400">
+                                {option.label}
+                              </span>
+                            ) : null}
                           </span>
-                          {option.label ? (
-                            <span className="mt-2 block text-sm leading-5 text-gray-500">
-                              {option.label}
-                            </span>
-                          ) : null}
+                          <span
+                            className={cn(
+                              "box-border inline-flex size-[18px] shrink-0 rounded-full border-[1.5px] border-gray-300",
+                              selected && "border-[5px] border-primary-500",
+                            )}
+                          />
                           {isOther && selected ? (
                             <div className="mt-3 flex items-center gap-x-2">
                               <Input
