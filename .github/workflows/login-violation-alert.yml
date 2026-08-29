@@ -144,7 +144,7 @@ jobs:
           @${PUSHER} — you must do one of the following within 24 hours:
 
           1. **Get retroactive approval**: Ask @CTorres9800 to review commit [\`${COMMIT_SHA:0:8}\`](https://github.com/${{ github.repository }}/commit/${COMMIT_SHA}) and confirm login still works locally for both client and talent accounts
-          2. **Revert the change**: Open a PR that reverts only the login file changes from this commit
+          2. **Fix forward**: Open a PR that corrects the login file changes from this commit. Do not revert -- reverting deletes the author's work (Code Review SOP SS1.1)
 
           If login is confirmed broken, this becomes a P0 incident.
 

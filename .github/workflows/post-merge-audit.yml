@@ -3,11 +3,12 @@ name: Post-Merge SOP Audit
 # The free GitHub org plan cannot block merges on failing checks, so we
 # enforce the SOP POST-HOC: every push to a protected branch triggers
 # this workflow, which checks whether the merged PR had failing SOP
-# checks. If yes, it opens an automatic revert PR and tags the CTO.
+# checks. If yes, it opens an issue and tags the CTO.
 #
-# This is the strongest enforcement available on the free plan. The
-# merge technically happens, but a bypass gets auto-reverted within
-# minutes and the bypass author is publicly called out.
+# This workflow REPORTS ONLY. It must never revert, never create a
+# revert branch, and never open a revert PR -- reverting means deleting
+# somebody's work, which this repo does not do (CODE_REVIEW_SOP SS1.1,
+# SS1.9, SS9.9). A bypass is made visible and fixed FORWARD.
 
 on:
   push:
@@ -118,7 +119,7 @@ EOF
 
 A commit was pushed to a protected branch without going through a pull request. Per Code Review SOP §6, all changes must flow through a squash-merged PR with required SOP and AI Breakage checks.
 
-**CTO action required:** review and revert if necessary.
+**CTO action required:** review, and fix forward if needed. Do not revert -- see Code Review SOP SS1.1.
 
 🤖 Auto-opened by \`.github/workflows/post-merge-audit.yml\`
 EOF
@@ -240,7 +241,7 @@ ${FAILED_LIST}
 
 **CTO action required:**
 1. Review the merged code for any actual regressions
-2. If a revert is needed, do it manually
+2. If something is wrong, fix it forward -- keep the code, open a follow-up PR. Do not revert (Code Review SOP SS1.1)
 3. Close this issue after review
 
 Auto-opened by \`.github/workflows/post-merge-audit.yml\`
