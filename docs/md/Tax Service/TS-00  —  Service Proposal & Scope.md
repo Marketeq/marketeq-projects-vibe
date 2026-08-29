@@ -70,6 +70,7 @@ Taxes settings screen. It is not where it belongs long term.
 ## 2. What it owns
 
 - Taxpayer identity: W-9 (US) and W-8 series (non-US) records, including the TIN
+  and the optional W-9 line 4 exemption codes (entities only)
 - TIN matching against IRS records
 - Year-end aggregation of reportable payments
 - 1099-K generation, transmission and corrections (see the correction above)

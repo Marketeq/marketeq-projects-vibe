@@ -130,6 +130,23 @@ Copy B's `f2_*` names), so **always scope the lookup to `CopyB[0]` first**.
 | `c1_1[0..6]` | Line 3a classification, in printed order: Individual/sole proprietor, C corp, S corp, Partnership, Trust/estate, LLC, Other |
 | `f1_11`, `f1_12`, `f1_13` | SSN, split 3-2-4 |
 | `f1_14`, `f1_15` | EIN, split 2-7 |
+| `f1_05` | Line 4 exempt payee code |
+| `f1_06` | Line 4 FATCA reporting code |
+
+**Line 4 is optional and entity-only.** The form states the codes "apply only to
+certain entities, not individuals", so both fields are collected but are
+deliberately **excluded from the mandatory field list**: an entity with no code
+still reaches 100% and can submit. Stored as `exemptPayeeCode` and
+`fatcaExemptionCode` (migration `1797400000000-AddTaxInfoExemptions`), and the
+UI shows them only for C Corporation, S Corporation, Partnership and
+Trust/estate, on a W-9 only.
+
+Two things people get wrong about these codes, worth keeping in any copy:
+the exempt payee code exempts from **backup withholding, not from tax**, and the
+FATCA code applies only to accounts maintained outside the United States.
+Note also that the corporate exemption that removes a payee from 1099-NEC
+reporting **does not carry over to a 1099-K**: under §6050W, payments to
+corporations are reportable.
 
 The signature line and date are **not** form fields. They are drawn onto the
 page at `y ≈ 205`, `x = 150` and `x = 400`.
@@ -235,6 +252,12 @@ Outbound:
      it a contractor in a treaty country cannot reduce US withholding they are
      entitled to reduce. This is the closer equivalent to line 4 than anything
      else on the form, and it is missing.
+   - **A non-US filer can still pick an entity classification.** The
+     classification list is intentionally unfiltered by country, so a foreign
+     company can select C Corporation or Partnership even though the form it
+     needs is a W-8BEN-E this platform does not produce. That combination is
+     reachable today and is resolved by building W-8BEN-E support, not by
+     hiding classifications.
    - **Only W-8BEN is offered, never W-8BEN-E.** W-8BEN is for foreign
      *individuals*. A foreign *entity* must file **W-8BEN-E**, which carries a
      Chapter 4 (FATCA) status that W-8BEN has no field for. Today a foreign
