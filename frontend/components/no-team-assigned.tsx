@@ -20,15 +20,26 @@ import {
 /**
  * Who may see the unclaimed-team state.
  *
- * `resolveDashboardRole` returns undefined when an account carries none of
- * `role` / `accountType` / `userType` in a form it recognises. Requiring an
- * explicit TALENT match meant those accounts were silently treated as clients
- * and never saw the state at all. This asks the inverse question instead:
- * everyone signed in may see it EXCEPT accounts we can positively identify as
- * clients. Signed out stays hidden, since it is treated as a client.
+ * Must go through `resolveDashboardRole`, not a direct `role` check. Accounts
+ * commonly store `role: CLIENT` alongside `userType: talent`; `role` is the
+ * active session the switcher flips and `accountType` only ever exists
+ * client-side, so it is lost on reload. The resolver prefers TALENT across all
+ * three fields, which is the only reading that gets this right.
  */
-export const isTalentAccount = (user?: Parameters<typeof resolveDashboardRole>[0]) =>
-  !!user && resolveDashboardRole(user) !== ROLE.CLIENT
+export const isTalentAccount = (
+  user?: (Parameters<typeof resolveDashboardRole>[0] & {
+    activeRole?: string | null
+  }) | null
+) => {
+  // The switcher now persists which role the account is acting as. Prefer it
+  // when present; fall back to the old inference for every account that has
+  // never switched, so nothing changes for them.
+  const active = (user as { activeRole?: string | null } | null | undefined)
+    ?.activeRole?.toUpperCase?.()
+  if (active === ROLE.TALENT) return true
+  if (active === ROLE.CLIENT) return false
+  return resolveDashboardRole(user) === ROLE.TALENT
+}
 
 /**
  * Shown wherever a project or service has no owner and no team yet.

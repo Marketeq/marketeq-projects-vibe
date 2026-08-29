@@ -799,10 +799,7 @@ function ProjectListingCard({
       <div className="mt-auto pt-5 flex items-end justify-between">
         {avatarsSlot ??
           (!hasTeam ? (
-            // TODO(role-gate): the talent-only gate is off until we confirm
-            // which field the signed-in account carries its role on. Restore
-            // `isTalent ? ... : <span />` once verified.
-            true ? (
+            isTalent ? (
               <NoTeamAssigned
                 kind={kind === "service" ? "service" : "project"}
                 onClaim={

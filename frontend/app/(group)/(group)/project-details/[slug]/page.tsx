@@ -5409,10 +5409,8 @@ export default function ProjectDetails({
                 ) : null
               })()}
 
-              {/* TODO(role-gate): matches the card. The talent-only gate is off
-                  until we confirm which field the signed-in account carries its
-                  role on. Restore `|| isTalentAccount(user)` once verified. */}
-              {true ? (
+              {(Array.isArray(currentTeam) && currentTeam.length > 0) ||
+              isTalentAccount(user) ? (
               <div className="flex flex-col items-start gap-y-3 mt-6">
                 <span className="inline-block text-xs font-medium text-dark-blue-400">
                   Current Team
