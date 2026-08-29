@@ -953,14 +953,15 @@ export function SettingsTaxInfo() {
           <div className="flex flex-col items-center gap-8 rounded-lg border border-gray-200 bg-white p-10 lg:flex-row lg:justify-between">
             <div className="min-w-0">
               <h2 className="text-2xl font-bold text-dark-blue-400">
-                Chat with our Tax Expert
+                Questions about your tax forms?
               </h2>
               <p className="mt-3 max-w-[420px] text-sm font-light leading-[1.5] text-dark-blue-400">
-                Our experts, with 25+ years of experience, are here to help, no
-                question is too small or complex!
+                Ask about your W-9, your 1099-K, and how Marketeq reports the
+                payments it settles for you. For advice about your own tax
+                situation, speak to a licensed tax professional.
               </p>
               <Button visual="primary" className="mt-6">
-                Chat Now
+                Ask a Question
               </Button>
             </div>
 
