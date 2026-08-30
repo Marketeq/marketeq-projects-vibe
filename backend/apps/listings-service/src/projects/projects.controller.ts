@@ -127,6 +127,12 @@ export class ProjectsController {
     return this.service.update(id, dto, req.user?.sub ?? req.user?.id ?? req.user?.userId);
   }
 
+  @Post(':id/claim')
+  @UseGuards(JwtAuthGuard)
+  claim(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.service.claim(id, req.user?.sub ?? req.user?.id ?? req.user?.userId);
+  }
+
   @Put(':id/publish')
   @UseGuards(JwtAuthGuard)
   publish(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {

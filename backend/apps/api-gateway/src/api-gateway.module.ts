@@ -9,6 +9,7 @@ import { ProxyController } from './proxy/proxy.controller'
 import { TalentUploadController } from './controllers/talent-upload.controller'
 import { ResumeUploadController } from './controllers/resume-upload.controller'
 import { UserAvatarUploadController } from './controllers/user-avatar-upload.controller'
+import { CompanyLogoUploadController } from './controllers/company-logo-upload.controller'
 import { PublishMediaController } from './controllers/publish-media.controller'
 import { PublishRichTextImageController } from './controllers/publish-rich-text-image.controller'
 import { HomepageModule } from './homepage/homepage.module'
@@ -64,6 +65,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
     TalentUploadController,
     ResumeUploadController,
     UserAvatarUploadController,
+    CompanyLogoUploadController,
     PublishMediaController,
     PublishRichTextImageController,
     ProxyController,

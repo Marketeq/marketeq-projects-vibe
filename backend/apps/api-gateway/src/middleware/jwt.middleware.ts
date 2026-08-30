@@ -79,6 +79,12 @@ const PUBLIC_PATTERNS = [
   // same reasoning as the webhooks entry above. payout-service's own
   // @Public() on this route is powerless against this upstream gateway check.
   /^\/v1\/oauth\/(?:paypal|wise|payoneer)\/callback$/,
+  // Renders the invite banner / accept-invite flow before the visitor is
+  // signed in. The route is already @Public() in invitations-service, but
+  // that decorator is powerless against this upstream gateway check, same as
+  // the webhooks/oauth-callback entries above.
+  /^\/v1\/invitations\/preview$/,
+  /^\/invitations\/preview$/,
 ]
 
 function isPublic(path: string): boolean {

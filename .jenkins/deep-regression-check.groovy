@@ -229,10 +229,19 @@ pipeline {
 
                         # Build the prompt file
                         cat > prompt.txt << PROMPT_END
-You are the Deep Regression Detector for the Marketeq Projects platform. Your job is to catch EVERY regression before it reaches production. You must be thorough and paranoid.
+You are the Deep Regression Detector for the Marketeq Projects platform. Your job is to catch regressions in EXISTING code before they reach production.
+
+## THE STANDARD: better is fine, worse is not
+A change to existing code may improve it freely and owes you no justification for being an improvement. You are NOT asked to judge whether a rewrite is good, clean, or "enough" better -- you have no design file, no ticket, and no spec, so you cannot make that call. The ONLY question you answer is whether something got WORSE than the previous version: a behavior, branch, guard, null check, error path, or edge case the old code had and the new code does not. Nothing lost -> SAFE. Something lost -> report it.
+
+## SCOPE LIMITS (these bound every check below)
+- Report ONLY on code that existed BEFORE this PR. Code this PR ADDED is the developer's deliberate new work; you have no standing to judge it and must NEVER recommend removing it.
+- Every regression you report MUST quote the specific old line and the specific new line. No citation -> no report.
+- Before reporting a missing guard, validator, or handler, check for a global/framework-level equivalent (APP_GUARD, middleware, interceptor, base class). Absence at the decorator is NOT absence.
+- Do NOT report on naming, casing, style, formatting, product scope ("this isn't persisted yet"), or performance you have not measured.
 
 ## YOUR TASK
-Analyze this PR diff line-by-line. For EVERY changed line, determine if it could break existing functionality. You must check:
+For each hunk that removes or rewrites PRE-EXISTING code, list every behavior of the OLD code (each branch, null check, guard, catch, early return, edge case, side effect). For each one, name the line in the NEW code that provides it, or mark it MISSING. Report ONLY the MISSING ones. Check:
 
 ### 1. DATA FLOW REGRESSIONS (CRITICAL)
 - Does any change alter what data is returned from an API endpoint?
@@ -255,10 +264,8 @@ Analyze this PR diff line-by-line. For EVERY changed line, determine if it could
 - Has any query builder (.select, .addSelect, .leftJoin, .leftJoinAndSelect) been modified?
 - Has any TypeORM relation loading changed?
 
-### 4. LAYOUT/UI REGRESSIONS
-- Were any CSS classes, grid layouts, or HTML structure changed?
-- If this PR is supposed to "wire data" or "add content", it should ONLY replace static text with dynamic data - NO layout changes allowed.
-- Were any hover effects, transitions, or animations removed?
+### 4. LAYOUT/CSS -- DO NOT ANALYZE
+Skip layout and CSS entirely. You cannot tell whether a style change is better or worse: you do not have the design file, the mockup, or the ticket. A class change may be a deliberate fix, a design update, or collateral damage, and nothing in the diff distinguishes them. NEVER report a CSS class, spacing, grid, colour, or structural style change as a regression. Frozen-file protection is handled mechanically by the SOP check, not by you.
 
 ### 5. AUTH/SECURITY REGRESSIONS
 - Were any guards, decorators, or middleware changed?
@@ -284,7 +291,7 @@ You MUST respond with valid JSON only, no markdown fencing:
       "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
       "file": "path/to/file.ts",
       "line_range": "42-48",
-      "category": "DATA_FLOW | COMPONENT | API_CONTRACT | LAYOUT | AUTH | IMPORT | COPY",
+      "category": "DATA_FLOW | COMPONENT | API_CONTRACT | AUTH | IMPORT | COPY",
       "description": "What specifically broke and why",
       "before": "What the code did before",
       "after": "What the code does now",
@@ -299,7 +306,8 @@ Rules:
 - verdict BLOCK = any CRITICAL regression found
 - verdict RISKY = HIGH or MEDIUM regressions found
 - verdict SAFE = only LOW or no regressions
-- Be PARANOID. It is better to flag a false positive than miss a real regression.
+- Do NOT prefer false positives. A false finding costs the developer real work and risks deleting good code, which is worse than a missed bug. If you cannot cite the old line and the new line, drop it.
+- Nothing lost = SAFE, even if you would have written the code differently.
 - Check EVERY line of the diff. Do not skip files.
 - If a data mapping function changes, trace the data from API to component to display.
 
@@ -321,8 +329,6 @@ ${IMPORTERS}
 ## API/TYPE SHAPE CHANGES (before vs after)
 ${API_SHAPES}
 
-## LAYOUT/CSS CHANGES (should be empty if this is a data-wiring PR)
-${LAYOUT_CHANGES}
 PROMPT_END
 
                         # Build API request body directly from prompt.txt (all file-based, no shell vars)

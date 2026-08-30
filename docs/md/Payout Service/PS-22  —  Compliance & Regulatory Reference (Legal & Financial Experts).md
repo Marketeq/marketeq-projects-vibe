@@ -4,6 +4,32 @@
 
 PS-22 --- Compliance & Regulatory Reference (Legal & Financial Experts)
 
+> ## ⚠️ DOCUMENT-LEVEL CORRECTION --- 2026-08-29
+>
+> **Every reference to "1099-NEC" in this document should read "1099-K", and
+> every reference to a "$600" reporting threshold is stale.**
+>
+> This document was written assuming Marketeq is a payer issuing 1099-NECs.
+> It is not. Clients pay the platform and the platform pays the contractor,
+> who earns from many clients and withdraws through several rails, which makes
+> Marketeq a **third party settlement organization** under **IRC 6050W**.
+> Treas. Reg. 1.6041-1(a)(1)(iv) excludes payments settled through a third
+> party network from 1099-NEC reporting so the same money is not reported
+> twice, and clients issue nothing.
+>
+> The threshold moved repeatedly: ARPA set $600, the IRS delayed it twice with
+> phased amounts, and the 2025 reconciliation act restored the original
+> **$20,000 and 200 transactions** test. Confirm with tax counsel each filing
+> year; some states set lower thresholds.
+>
+> The form names were left in place below rather than edited, because the
+> tables are fixed-width and renaming would break their alignment. The
+> substance of this document --- retention periods, TIN matching, backup
+> withholding, OFAC, filing deadlines --- remains correct.
+>
+> Authoritative source: `backend/apps/tax-service/docs/TS-01 — Tax Filing
+> Service Overview.md`.
+
   -----------------------------------------------------------------------
   **Property**        **Value**
   ------------------- ---------------------------------------------------
@@ -584,7 +610,32 @@ account, which it retains.
 
 # **7. Tax Reporting Obligations**
 
-## **7.1 United States --- 1099-NEC**
+> ### ⚠️ Correction, 2026-08-29 --- this section names the wrong form
+>
+> This section was written assuming Marketeq pays contractors as a payer and
+> issues **1099-NEC**s at a **$600** threshold. Both are wrong.
+>
+> Clients pay the platform and the **platform** pays the contractor, who earns
+> from many clients and withdraws through several rails. That makes Marketeq a
+> **third party settlement organization** under **IRC 6050W**, so the form is a
+> **1099-K**. Treas. Reg. 1.6041-1(a)(1)(iv) explicitly *excludes* payments
+> settled through a third party network from 1099-NEC reporting, to prevent the
+> same money being reported twice. Clients issue nothing.
+>
+> The **$600 figure is also stale.** ARPA set $600, the IRS delayed it twice
+> with phased amounts, and the 2025 reconciliation act restored the original
+> **$20,000 and 200 transactions** test. Confirm with tax counsel for each
+> filing year; several states set their own lower thresholds.
+>
+> A 1099-K reports **gross settled volume** before fees, refunds and
+> chargebacks, with a transaction count and a monthly breakdown, not net
+> compensation.
+>
+> **Do not act on this section without reading `backend/apps/tax-service/docs/TS-01`
+> first.** Retention, TIN matching and backup withholding below remain correct.
+
+
+## **7.1 United States --- 1099-K** (this subsection still describes the superseded 1099-NEC; see the correction above)
 
   ------------------------------------------------------------------------
   **Obligation**     **Detail**                        **Deadline**

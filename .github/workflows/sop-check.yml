@@ -148,6 +148,8 @@ jobs:
               frontend/app/top-most-header.tsx|\
               "frontend/app/(group)/active-project/[id]/page.tsx"|\
               "frontend/app/(group)/job-screening/page.tsx"|\
+              frontend/components/settings-tax-info.tsx|\
+              "backend/apps/user-service/src/tax-info/"*|\
               "frontend/app/(group)/billing/page.tsx"|\
               "frontend/app/(group)/billing/transactions/page.tsx"|\
               "frontend/app/(group)/billing/invoices/page.tsx"|\
@@ -158,6 +160,8 @@ jobs:
               "frontend/app/sign-up/"*|\
               "frontend/app/forgot-password/"*|\
               "frontend/app/reset-password/"*|\
+              frontend/components/navigation/marketplace-secondary-nav.tsx|\
+              frontend/middleware.ts|\
               frontend/contexts/auth.tsx|\
               frontend/service/http/auth.ts|\
               frontend/src/lib/api/auth.ts|\
@@ -165,6 +169,10 @@ jobs:
               frontend/hoc/UnauthenticatedRoute.tsx|\
               "frontend/components/auth/"*|\
               "backend/apps/auth-service/"*|\
+              "backend/apps/user-service/src/guards/"*|\
+              backend/apps/api-gateway/src/proxy/proxy.service.ts|\
+              "backend/libs/shared/src/guards/"*|\
+              "backend/libs/shared/src/decorators/"*|\
               "frontend/app/(group)/my-jobs/page.tsx")
                 FROZEN_UI_HIT=1
                 FROZEN_UI_FILES="$FROZEN_UI_FILES\n- \`$f\`" ;;

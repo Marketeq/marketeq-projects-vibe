@@ -47,6 +47,8 @@ export class AblyNotificationsService {
     body: string;
     link?: string;
     category: string;
+    event?: string;
+    metadata?: Record<string, unknown> | null;
   }) {
     if (this.disabled || !this.client) {
       this.logger.debug(

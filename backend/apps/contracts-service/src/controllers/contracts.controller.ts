@@ -2,10 +2,12 @@ import { Controller, Post, Put, Get, Param, Body, Req, Headers, ForbiddenExcepti
 import { Request } from 'express';
 import { ContractsService } from '../services/contracts.service';
 import { GroupsService } from '../services/groups.service';
+import { TalentNetworkService } from '../services/talent-network.service';
 import { EndContractDto } from '../dtos/end-contract.dto';
 import { AcceptRejectDto } from '../dtos/accept-reject.dto';
 import { LogHireInitiatedDto } from '../dtos/log-hire-initiated.dto';
 import { ContractGroupSummaryDto } from '../dtos/contract-group-summary.dto';
+import { TalentNetworkDto } from '../dtos/talent-network.dto';
 import { CreateContractDto } from '../dtos/create-contract.dto';
 import { ConfigService } from '@nestjs/config';
 import { Public } from '../decorators/public.decorator';
@@ -16,6 +18,7 @@ export class ContractsController {
   constructor(
     private readonly contractsService: ContractsService,
     private readonly groupsService: GroupsService,
+    private readonly talentNetworkService: TalentNetworkService,
     private readonly configService: ConfigService,
     private readonly auditLoggerService: AuditLoggerService,
   ) {}
@@ -87,6 +90,20 @@ export class ContractsController {
       groupId: id,
     });
     return contract;
+  }
+
+  // The signed-in client's Talent Network: active, pending and past talent,
+  // derived from contracts (there is no Talent Network table). Identity from
+  // req.user only, never a path param, same as `groups/mine` above.
+  //
+  // Declared ahead of `@Get(':id')`: both are one-segment GETs, so with the
+  // reverse order Nest would match `:id` first and this route would never
+  // fire.
+  @Get('talent-network')
+  async getTalentNetwork(
+    @Req() req: Request & { user: { sub: string } },
+  ): Promise<TalentNetworkDto> {
+    return this.talentNetworkService.getTalentNetwork(req.user.sub);
   }
 
   // List contracts for a client. clientId still comes from the path (kept

@@ -69,6 +69,14 @@ export class User {
   @Column({ nullable: true })
   role?: string;
 
+  // Which role the account is currently acting as. An account can hold both
+  // roles (see talentOnboardedAt / clientOnboardedAt), and `role` / `userType`
+  // are single-valued profile labels that can disagree, so neither can express
+  // the active session. Previously the switcher kept this in memory only, so it
+  // was lost on reload. Nullable: absence means fall back to the old inference.
+  @Column({ type: 'text', nullable: true })
+  activeRole?: string | null;
+
   @Column({ default: 'EMAIL' })
   provider: string;
 

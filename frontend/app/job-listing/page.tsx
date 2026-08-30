@@ -2014,7 +2014,7 @@ const plainTextFromRichTextHtml = (value: string) => {
 const getRichTextCharacterCount = (value: string) =>
   plainTextFromRichTextHtml(value).length;
 
-const DURATION_TYPE = ["days", "weeks", "hours"] as const;
+const DURATION_TYPE = ["hours", "days", "weeks", "months"] as const;
 
 const formatDurationUnit = (
   value: number,
@@ -2023,6 +2023,7 @@ const formatDurationUnit = (
   if (value === 1) {
     if (type === "days") return "day";
     if (type === "weeks") return "week";
+    if (type === "months") return "month";
     return "hour";
   }
 
@@ -2034,6 +2035,7 @@ const durationToDays = (
   type: (typeof DURATION_TYPE)[number],
 ) => {
   if (type === "weeks") return value * 7;
+  if (type === "months") return value * 30;
   if (type === "hours") return Math.max(1, Math.ceil(value / 24));
   return value;
 };
@@ -8065,7 +8067,7 @@ const ProjectScope = ({
   type DurationFormValues = {
     duration: {
       value: number;
-      type: "days" | "weeks" | "hours";
+      type: "hours" | "days" | "weeks" | "months";
     };
   };
 

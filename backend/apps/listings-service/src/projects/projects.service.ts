@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Inject,
   Injectable,
   Logger,
@@ -333,6 +334,34 @@ export class ProjectsService {
     await this.repo.update(id, writable);
     const updated = await this.repo.findOne({ where: { id } });
     if (updated) this.emitAlgoliaUpsert(updated);
+    return this.findOne(id);
+  }
+
+  /**
+   * Claim an unowned project. The update is conditional on `userId IS NULL` so
+   * the first commit wins: a second concurrent claim matches zero rows and is
+   * rejected, rather than silently overwriting the first claimer.
+   */
+  async claim(id: string, userId: string) {
+    if (!userId) throw new ForbiddenException('Sign in to claim a project');
+
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(Project)
+      .set({ userId })
+      .where('id = :id', { id })
+      .andWhere('"userId" IS NULL')
+      .execute();
+
+    if (!result.affected) {
+      const existing = await this.repo.findOne({ where: { id } });
+      if (!existing) throw new NotFoundException('Project not found');
+      if (existing.userId === userId) return this.findOne(id);
+      throw new ConflictException('This project has just been claimed by someone else');
+    }
+
+    const claimed = await this.repo.findOne({ where: { id } });
+    if (claimed) this.emitAlgoliaUpsert(claimed);
     return this.findOne(id);
   }
 

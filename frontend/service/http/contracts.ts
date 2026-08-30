@@ -39,6 +39,58 @@ export const getContractsForClient = async (
   return Array.isArray(res.data) ? res.data : []
 }
 
+export type TalentNetworkStatus = "active" | "pending" | "past"
+
+export interface TalentNetworkContractDTO {
+  id: string
+  groupId: string
+  title: string
+  status: string
+  rate: number
+  schedule: string
+  duration: string
+  startAtISO: string | null
+  endAtISO: string | null
+  projectId: string | null
+  serviceId: string | null
+  teamId: string | null
+  jobId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TalentNetworkEntryDTO {
+  talentId: string
+  status: TalentNetworkStatus
+  countsTowardTeam: boolean
+  contract: TalentNetworkContractDTO
+  contractIds: string[]
+  firstHiredAtISO: string | null
+  lastEndedAtISO: string | null
+}
+
+export interface TalentNetworkCountsDTO {
+  active: number
+  pending: number
+  past: number
+  total: number
+}
+
+export interface TalentNetworkDTO {
+  clientId: string
+  active: TalentNetworkEntryDTO[]
+  pending: TalentNetworkEntryDTO[]
+  past: TalentNetworkEntryDTO[]
+  counts: TalentNetworkCountsDTO
+}
+
+// Identity comes from req.user server-side, same as getMyContractGroups.
+// Never trust a caller-supplied clientId for "whose network is this".
+export const getTalentNetwork = async (): Promise<TalentNetworkDTO | null> => {
+  const res = await AxiosRequest.get("/contracts/talent-network")
+  return res.data ?? null
+}
+
 export const getContract = async (id: string): Promise<ContractDTO | null> => {
   const res = await AxiosRequest.get(`/contracts/${encodeURIComponent(id)}`)
   return res.data ?? null

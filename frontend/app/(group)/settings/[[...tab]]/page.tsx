@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useBillingExportStore } from "@/lib/billing-export"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
@@ -10,6 +11,8 @@ import languagesMock from "@/public/mock/languages.json"
 import ActiveSessionsModal from "@/components/active-sessions-modal"
 import NotificationPreferences from "@/components/notification-preferences"
 import SecuritySettingsStepper from "@/components/security-settings"
+import { SettingsTaxInfo } from "@/components/settings-tax-info"
+import { isTalentAccount } from "@/components/no-team-assigned"
 import SettingsSidebar, {
   buildSettingsTabItems,
 } from "@/components/settings-sidebar"
@@ -69,17 +72,38 @@ import {
 export default function SettingsPage() {
   const { user, setUser } = useAuth()
   const { toast } = useToast()
+  const router = useRouter()
+  const routeParams = useParams()
   const searchParams = useSearchParams()
-  const tabParam = searchParams.get("tab")
+
+  // /settings/<tab> is the real URL. ?tab= is still honoured so links shared
+  // before this existed keep working, and bare /settings lands on the first
+  // tab. The segment ids match the hrefs in settings-sidebar.tsx.
+  const segments = routeParams?.tab
+  const routeTab = Array.isArray(segments) ? segments[0] : segments
+  const tabParam = routeTab ?? searchParams.get("tab")
   const [activeTab, setActiveTab] = useState(tabParam || "personal-info")
 
   useEffect(() => {
     if (tabParam) setActiveTab(tabParam)
   }, [tabParam])
 
+  // Selecting a tab now becomes a navigation, so each screen is linkable and
+  // the back button walks between them.
+  const goToTab = useCallback(
+    (tab: string) => {
+      setActiveTab(tab)
+      router.push(`/settings/${tab}`, { scroll: false })
+    },
+    [router]
+  )
+
   const toggleInviteWindow = useInviteWindowStore((s) => s.toggle)
+  const invoiceExporters = useBillingExportStore((s) => s.exporters.invoices)
+  const transactionExporters = useBillingExportStore((s) => s.exporters.transactions)
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
   const [profileForm, setProfileForm] = useState({
     firstName: "",
     lastName: "",
@@ -165,6 +189,7 @@ export default function SettingsPage() {
   }
 
   const handleProfileSave = async () => {
+    setProfileError(null)
     if (!user?.id) return
 
     setIsSaving(true)
@@ -192,7 +217,7 @@ export default function SettingsPage() {
             : prev
         )
         setIsEditing(false)
-        toast({ title: "Profile updated successfully" })
+        toast({ title: "Profile updated successfully", variant: "success" })
       } else {
         throw new Error("Failed to update profile")
       }
@@ -202,7 +227,12 @@ export default function SettingsPage() {
         error?.response?.data?.message ||
         error?.message ||
         "Something went wrong"
-      toast({ title: errorMessage, variant: "destructive" })
+      // Toasts confirm successes only; a failed save reports itself inline.
+      setProfileError(
+        errorMessage.startsWith("Please")
+          ? errorMessage
+          : `Please try again. ${errorMessage}`
+      )
     } finally {
       setIsSaving(false)
     }
@@ -226,7 +256,7 @@ export default function SettingsPage() {
   return (
     <AuthenticatedRoute>
       <div className="flex bg-gray-50 h-screen overflow-hidden">
-        <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+        <SettingsSidebar activeTab={activeTab} onTabChange={goToTab} />
 
         <div
           ref={contentRef}
@@ -251,7 +281,7 @@ export default function SettingsPage() {
                 {settingsTabItems.map((item) => (
                   <button
                     key={item.id}
-                    onClick={() => setActiveTab(item.id)}
+                    onClick={() => goToTab(item.id)}
                       className={cn(
                         "flex items-center gap-1.5 px-3 pb-3 text-sm border-b-2 transition-colors whitespace-nowrap",
                         activeTab === item.id
@@ -462,6 +492,12 @@ export default function SettingsPage() {
                       {isSaving ? "Saving..." : "Save Changes"}
                     </Button>
                   </div>
+
+                  {profileError && (
+                    <p className="mt-3 text-xs font-medium text-error-500">
+                      {profileError}
+                    </p>
+                  )}
                 </>
               )}
 
@@ -486,11 +522,23 @@ export default function SettingsPage() {
                 </>
               )}
 
-              {activeTab === "tax-info" && (
-                <h1 className="text-xl font-bold text-dark-blue-400">
-                  Tax Info
-                </h1>
-              )}
+              {activeTab === "tax-info" &&
+                (isTalentAccount(user) ? (
+                  <SettingsTaxInfo />
+                ) : (
+                  // Clients pay Marketeq; Marketeq pays talent. There is no
+                  // W-9 to collect from a client, so the screen does not exist
+                  // for them even by direct URL.
+                  <div className="rounded-lg border border-gray-200 bg-white p-8">
+                    <h1 className="text-xl font-bold text-dark-blue-400">
+                      Tax Info
+                    </h1>
+                    <p className="mt-2 text-sm font-light leading-[1.5] text-dark-blue-400">
+                      Tax information is only collected from talent accounts.
+                      Switch to your talent profile if you need to submit a W-9.
+                    </p>
+                  </div>
+                ))}
 
               {activeTab === "login-password" && (
                 <>
@@ -659,9 +707,23 @@ export default function SettingsPage() {
                               Export
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start" sideOffset={4}>
-                            <DropdownMenuItem>Export CSV</DropdownMenuItem>
-                            <DropdownMenuItem>Export PDF</DropdownMenuItem>
+                          <DropdownMenuContent
+                            align="start"
+                            sideOffset={4}
+                            className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[var(--radix-dropdown-menu-trigger-width)]"
+                          >
+                            <DropdownMenuItem
+                              disabled={!transactionExporters}
+                              onClick={() => transactionExporters?.exportCsv()}
+                            >
+                              Export CSV
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!transactionExporters}
+                              onClick={() => transactionExporters?.exportPdf()}
+                            >
+                              Export PDF
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                         <IconButton
@@ -691,10 +753,74 @@ export default function SettingsPage() {
 
               {activeTab === "billing-invoices" && (
                 <>
-                  <h1 className="text-xl font-bold text-dark-blue-400 mb-5">
-                    Invoices
-                  </h1>
+                  <div className="flex items-start justify-between gap-x-5 mb-5">
+                    <h1 className="text-xl font-bold text-dark-blue-400">
+                      Invoices
+                    </h1>
+                    <div className="flex items-center gap-x-6">
+                      <Button
+                        variant="link"
+                        visual="gray"
+                        size="sm"
+                        className="text-gray-500 underline decoration-gray-500/30 hover:decoration-gray-500 hover:text-dark-blue-500 transition-colors duration-300"
+                        leftIcon={<HelpCircle className="size-[15px]" />}
+                      >
+                        Get Help
+                      </Button>
+                      <div className="flex items-center gap-x-3">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outlined"
+                              visual="gray"
+                              size="sm"
+                              className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                              rightIcon={<ChevronDown className="size-[15px]" />}
+                            >
+                              Export
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            align="start"
+                            sideOffset={4}
+                            className="w-[var(--radix-dropdown-menu-trigger-width)] min-w-[var(--radix-dropdown-menu-trigger-width)]"
+                          >
+                            <DropdownMenuItem
+                              disabled={!invoiceExporters}
+                              onClick={() => invoiceExporters?.exportCsv()}
+                            >
+                              Export CSV
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!invoiceExporters}
+                              onClick={() => invoiceExporters?.exportPdf()}
+                            >
+                              Export PDF
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <IconButton
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                          onClick={() => toggleInviteWindow(true, "Share Your Invoices")}
+                        >
+                          <Share06 className="size-[15px]" />
+                        </IconButton>
+                        {/* <IconButton
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                        >
+                          <Settings02 className="size-[15px]" />
+                        </IconButton> */}
+                      </div>
+                    </div>
+                  </div>
                   <BillingInvoicesContent />
+
                 </>
               )}
 

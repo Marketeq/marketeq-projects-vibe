@@ -30,6 +30,7 @@ export type AblyNotificationPayload = {
   body: string
   link?: string
   category: string
+  event?: string
   metadata?: Record<string, unknown> | null
 }
 
@@ -439,7 +440,9 @@ export const isUserNotification = (
     kind === "message" ||
     normalizedTitle.startsWith("@") ||
     !!readAvatarUrl(item.metadata) ||
-    typeof item.metadata?.senderUsername === "string"
+    typeof item.metadata?.senderUsername === "string" ||
+    typeof item.metadata?.inviterUsername === "string" ||
+    typeof item.metadata?.inviterId === "string"
   )
 }
 
@@ -449,6 +452,9 @@ export const formatNotificationTime = (value: string) => {
   const timestamp = new Date(value).getTime()
   const deltaSeconds = Math.round((timestamp - Date.now()) / 1000)
 
+  // Anything inside the last minute reads as "Just now" rather than
+  // "now" / "12 seconds ago". Also absorbs small client/server clock skew,
+  // which would otherwise render a fresh notification as "in 2 seconds".
   if (Math.abs(deltaSeconds) < 60) return "Just now"
 
   const ranges: Array<[Intl.RelativeTimeFormatUnit, number]> = [
@@ -542,7 +548,7 @@ export const getNotificationCta = (
     case "message":
       return "Open conversation"
     case "team":
-      return "Open team"
+      return "View Invite"
     case "project":
       return "Open details"
     case "system":
@@ -594,9 +600,10 @@ export const mapApiNotificationToUi = (
 export const mapAblyNotificationToUi = (
   item: AblyNotificationPayload
 ): UiNotificationItem => {
-  const liveEvent = isOfferNotification(item)
-    ? inferOfferEventFromTitle(item.title)
-    : ""
+  const itemEvent = item.event || (item.metadata?.event as string) || ""
+  const liveEvent =
+    itemEvent ||
+    (isOfferNotification(item) ? inferOfferEventFromTitle(item.title) : "")
   const kind = getNotificationKind({
     id: item.id,
     title: item.title,

@@ -1213,7 +1213,7 @@ year, so that I can estimate my tax liability.
            earnings to date.\"
 
   **3**    A note is shown when ytdEarningsUSD \>= 500: \"You may receive a
-           1099-NEC form for this tax year. Ensure your tax information is up
+           1099-K form for this tax year. Ensure your tax information is up
            to date.\" --- linking to the tax settings screen.
 
   **4**    The note is not shown for non-US contractors.
@@ -1259,7 +1259,7 @@ and return to my withdrawal.
 ## **US-41 KYC Tier 2 intercept --- US**
 
 As a US contractor who has not provided tax information, I want to be
-prompted to add it, so that Marketeq can issue my 1099-NEC.
+prompted to add it, so that Marketeq can issue my 1099-K. (**Correction 2026-08-29:** the form is a **1099-K** under IRC 6050W, not a 1099-NEC, and the $600 threshold is stale. See `backend/apps/tax-service/docs/TS-01`.)
 
   ----------------------------------------------------------------------------
   **\#**   **Acceptance criterion**
