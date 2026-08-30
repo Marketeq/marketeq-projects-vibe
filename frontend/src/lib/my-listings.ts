@@ -26,6 +26,8 @@ export interface MyListing {
   reviewCount?: number
   mediaUrl?: string
   updatedAt?: string
+  datePublished?: string | null
+  teamAvatars?: string[]
 }
 
 export const MY_LISTINGS_STORAGE_KEY = "marketeq-project-drafts"
@@ -330,6 +332,8 @@ async function fetchBackendListings(): Promise<MyListing[]> {
         ? `$${Number(p.budget).toLocaleString()} budget`
         : "Budget TBD",
       updatedAt: p.updatedAt || p.createdAt,
+      datePublished: p.projectDatePublished ?? null,
+      teamAvatars: Array.isArray(p.teamAvatars) ? p.teamAvatars : [],
     }))
   } catch (err) {
     console.warn("Failed to fetch backend listings; using local fallback:", err)
