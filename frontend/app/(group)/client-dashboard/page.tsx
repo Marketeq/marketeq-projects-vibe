@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
@@ -34,6 +34,10 @@ import NextLink from "@/components/next-link"
 import SecuritySettingsStepper from "@/components/security-settings"
 import { PhoneVerificationDialog } from "@/components/phone-verification-dialog"
 import { ClientStatusDialog } from "@/app/(group)/complete-client-profile/page"
+import {
+  BillingPaymentMethodsContent,
+  type BillingPaymentMethodsContentHandle,
+} from "@/app/(group)/payments/page"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   Accordion,
@@ -978,11 +982,15 @@ export default function ClientDashboard() {
     setShowPhoneVerification(true)
   }, [])
 
-  // The add-payment-method flow lives on the billing payment methods screen;
-  // `?add=1` opens its dialog on arrival rather than duplicating it here.
+  // Opens the billing add-payment-method dialog in place. The flow is mounted
+  // here in dialogs-only mode so the dashboard stays put behind it rather than
+  // navigating to billing, and the dialogs are the same ones billing uses.
+  const paymentMethodsRef = useRef<BillingPaymentMethodsContentHandle | null>(
+    null
+  )
   const handleVerifyPaymentMethod = useCallback(() => {
-    router.push("/settings/billing-payment-methods?add=1")
-  }, [router])
+    paymentMethodsRef.current?.openAddPaymentMethodDialog()
+  }, [])
 
   const fetchProfile = useCallback(async (userId: string) => {
     try {
@@ -1044,6 +1052,8 @@ export default function ClientDashboard() {
           open={showCompleteProfile}
           onOpenChange={setShowCompleteProfile}
         />
+
+        <BillingPaymentMethodsContent ref={paymentMethodsRef} dialogsOnly />
 
         <PhoneVerificationDialog
           open={showPhoneVerification}

@@ -25,6 +25,10 @@ import { UserAPI } from "@/service/http/user"
 import { ClientAPI } from "@/service/http/client"
 import { TeamsAPI } from "@/service/http/teams"
 import { InvitationsAPI } from "@/service/http/invitations"
+import {
+  BillingPaymentMethodsContent,
+  type BillingPaymentMethodsContentHandle,
+} from "@/app/(group)/payments/page"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { hookFormHasError } from "@/utils/functions"
 import { useCallbackRef, useControllableState } from "@/utils/hooks"
@@ -1380,8 +1384,12 @@ const PaymentMethodDialog = ({
 }: StepProps) => {
   const onFinished = useCallbackRef(onFinishedProp)
   const [open, setOpen] = useStepDialog({ opened, onOpenedChange })
-  const router = useRouter()
   const [added, setAdded] = useState(false)
+  // The billing add-payment-method dialogs, mounted here in dialogs-only mode
+  // so the step opens them in place instead of navigating to billing.
+  const paymentMethodsRef = useRef<BillingPaymentMethodsContentHandle | null>(
+    null
+  )
 
   useEffect(() => {
     onFinished(added)
@@ -1395,6 +1403,7 @@ const PaymentMethodDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
+      <BillingPaymentMethodsContent ref={paymentMethodsRef} dialogsOnly />
       <StepShell
         title="Payment Method"
         description="Unlock the ability to hire and pay talent."
@@ -1429,7 +1438,7 @@ const PaymentMethodDialog = ({
             visual="gray"
             onClick={() => {
               setAdded(true)
-              router.push("/settings/billing-payment-methods?add=1")
+              paymentMethodsRef.current?.openAddPaymentMethodDialog()
             }}
           >
             <CreditCard02 className="size-4" />
