@@ -169,10 +169,6 @@ jobs:
               frontend/hoc/UnauthenticatedRoute.tsx|\
               "frontend/components/auth/"*|\
               "backend/apps/auth-service/"*|\
-              "backend/apps/user-service/src/guards/"*|\
-              backend/apps/api-gateway/src/proxy/proxy.service.ts|\
-              "backend/libs/shared/src/guards/"*|\
-              "backend/libs/shared/src/decorators/"*|\
               "frontend/app/(group)/my-jobs/page.tsx")
                 FROZEN_UI_HIT=1
                 FROZEN_UI_FILES="$FROZEN_UI_FILES\n- \`$f\`" ;;

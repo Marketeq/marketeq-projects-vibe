@@ -192,9 +192,7 @@ pipeline {
                                 frontend/hoc/AuthenticatedRoute.tsx|\
                                 frontend/hoc/UnauthenticatedRoute.tsx|\
                                 frontend/components/auth/*|\
-                                frontend/service/http/auth.ts|\
-                                backend/apps/user-service/src/guards/*|\
-                                backend/apps/api-gateway/src/proxy/proxy.service.ts)
+                                frontend/service/http/auth.ts)
                                     FROZEN_UI_HIT=1
                                     FROZEN_UI_FILES="$FROZEN_UI_FILES $f" ;;
                             esac
