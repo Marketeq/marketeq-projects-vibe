@@ -97,6 +97,79 @@ pipeline {
                         echo '{"verdict":"SKIP","summary":"No base to diff against","regressions":[]}' > /tmp/verdict.json
                         exit 0
                     fi
+
+                    # ---- Same-line conflict extraction (SOP 5.1) ----------------
+                    # Finds lines changed by BOTH this PR and the base branch since
+                    # they diverged, and emits all three versions of each region:
+                    # the merge base, this PR's version, and the base's version.
+                    # That is what the model needs to say which side is newer and
+                    # whether either one loses behaviour the other has.
+                    cat > /tmp/conflicts.py << 'CONFPY'
+import re, subprocess, sys
+
+NL = chr(10)
+
+BASE_SHA = sys.argv[1]
+BASE_REF = "origin/" + sys.argv[2]
+
+def sh(*a):
+    try:
+        return subprocess.run(["git"] + list(a), capture_output=True, text=True,
+                              timeout=60).stdout
+    except Exception:
+        return ""
+
+def changed(rev):
+    return set(x for x in sh("diff", "--name-only", BASE_SHA, rev).split(NL) if x)
+
+def ranges(rev, path):
+    out = []
+    for line in sh("diff", "-U0", BASE_SHA, rev, "--", path).split(NL):
+        if not line.startswith("@@"):
+            continue
+        m = re.match(r"@@ -([0-9]+)(?:,([0-9]+))? ", line)
+        if not m:
+            continue
+        st = int(m.group(1)); ct = int(m.group(2) or 1)
+        out.append((st, st + ct - 1) if ct else (st, st))
+    return out
+
+def show(rev, path, lo, hi):
+    body = sh("show", "%s:%s" % (rev, path))
+    if not body:
+        return "(file absent at this revision)"
+    L = body.split(NL)
+    lo = max(1, lo - 3); hi = min(len(L), hi + 3)
+    return NL.join("%5d| %s" % (i, L[i-1]) for i in range(lo, hi+1))
+
+both = changed("HEAD") & changed(BASE_REF)
+blocks = []
+for path in sorted(both):
+    pr_r, base_r = ranges("HEAD", path), ranges(BASE_REF, path)
+    for (s1, e1) in pr_r:
+        for (s2, e2) in base_r:
+            lo, hi = max(s1, s2), min(e1, e2)
+            if lo <= hi:
+                parts = [
+                    "=== %s lines %d-%d (merge-base numbering) ===" % (path, lo, hi),
+                    "--- AT MERGE BASE (what both sides started from) ---",
+                    show(BASE_SHA, path, lo, hi),
+                    "--- THIS PR VERSION ---",
+                    show("HEAD", path, lo, hi),
+                    "--- BASE BRANCH VERSION (already merged, newer) ---",
+                    show(BASE_REF, path, lo, hi),
+                ]
+                blocks.append(NL.join(parts))
+                break
+        if len(blocks) >= 12:
+            break
+    if len(blocks) >= 12:
+        break
+
+print(NL.join(blocks) if blocks else "")
+CONFPY
+                    python3 /tmp/conflicts.py "$BASE_SHA" "${BASE_REF}" > ../conflict_hunks.txt 2>/dev/null || echo "" > ../conflict_hunks.txt
+                    echo "Same-line conflict regions: $(grep -c '^=== ' ../conflict_hunks.txt 2>/dev/null || echo 0)"
                     echo "$BASE_SHA" > ../base_sha.txt
 
                     CHANGED=$(git diff --name-only "$BASE_SHA"...HEAD 2>/dev/null || echo "")
@@ -226,6 +299,7 @@ pipeline {
                         API_SHAPES=$(cat api_shape_changes.txt 2>/dev/null | head -c 15000)
                         LAYOUT_CHANGES=$(cat layout_changes.txt 2>/dev/null | head -c 10000)
                         MANIFEST=$(cat manifest.json 2>/dev/null | head -c 20000)
+                        CONFLICT_HUNKS=$(cat ../conflict_hunks.txt 2>/dev/null | head -c 40000)
 
                         # Build the prompt file
                         cat > prompt.txt << PROMPT_END
@@ -264,6 +338,20 @@ For each hunk that removes or rewrites PRE-EXISTING code, list every behavior of
 - Has any query builder (.select, .addSelect, .leftJoin, .leftJoinAndSelect) been modified?
 - Has any TypeORM relation loading changed?
 
+### 3b. SAME-LINE CONFLICTS -- IS THE NEWER SIDE BETTER OR WORSE? (run whenever CONFLICTING REGIONS below is non-empty)
+These are lines changed by BOTH this PR and the base branch since they diverged. You get three versions of each region: the MERGE BASE both sides started from, THIS PR'S VERSION, and the BASE BRANCH'S VERSION -- which is already merged and therefore NEWER.
+
+Answer exactly two questions per region:
+
+(a) WHICH IS NEWER, AND WHAT DID IT CHANGE? The base branch version is newer by definition. State what it changed relative to the merge base.
+
+(b) IS ANYTHING LOST? Enumerate every behaviour in the NEWER (base branch) version -- each branch, null check, guard, catch, early return, edge case, side effect. For each, find it in THIS PR'S version or mark it MISSING. Then reverse it: enumerate this PR's behaviours and check them against the base version.
+- Nothing MISSING either way -> compatible, both sets of behaviour can coexist. SAFE.
+- This PR is MISSING something the newer base version has -> **this is the clobber.** A squash merge would silently delete work already on the base branch. Report CRITICAL with the exact lines from both sides.
+- The base is missing something this PR has -> that is the PR's new work. NOT a regression, do not report it.
+
+Report only what is MISSING. Do NOT judge style, naming, or which version reads better -- only whether behaviour is lost. Better is fine; worse is not. Do NOT recommend deleting either side: where two changes can coexist, both are kept, and only a genuine contradiction makes one lose, which is the author's call, not yours.
+
 ### 4. LAYOUT/CSS -- DO NOT ANALYZE
 Skip layout and CSS entirely. You cannot tell whether a style change is better or worse: you do not have the design file, the mockup, or the ticket. A class change may be a deliberate fix, a design update, or collateral damage, and nothing in the diff distinguishes them. NEVER report a CSS class, spacing, grid, colour, or structural style change as a regression. Frozen-file protection is handled mechanically by the SOP check, not by you.
 
@@ -291,7 +379,7 @@ You MUST respond with valid JSON only, no markdown fencing:
       "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
       "file": "path/to/file.ts",
       "line_range": "42-48",
-      "category": "DATA_FLOW | COMPONENT | API_CONTRACT | AUTH | IMPORT | COPY",
+      "category": "DATA_FLOW | COMPONENT | API_CONTRACT | AUTH | IMPORT | COPY | SAME_LINE_CONFLICT",
       "description": "What specifically broke and why",
       "before": "What the code did before",
       "after": "What the code does now",
@@ -319,6 +407,10 @@ ${AFFECTED_FLOWS}
 
 ## CHANGED FILES
 ${CHANGED_FILES}
+
+## CONFLICTING REGIONS -- same lines changed by this PR AND by the base branch
+## (empty means no same-line conflicts; skip check 3b entirely if so)
+${CONFLICT_HUNKS}
 
 ## FULL DIFF (with 10 lines of context)
 ${DIFF}

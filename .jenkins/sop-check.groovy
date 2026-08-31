@@ -141,6 +141,7 @@ pipeline {
                                 frontend/contexts/auth.tsx|frontend/src/lib/api/auth.ts|\
                                 frontend/middleware.ts|backend/apps/auth-service/*|\
                                 backend/libs/shared/src/guards/*|backend/libs/shared/src/decorators/*|\
+                                backend/apps/user-service/src/guards/*|\
                                 frontend/.env.local.example|frontend/.env.staging.example|\
                                 frontend/.env.production.example|backend/.env.local.example|\
                                 backend/.env.staging.example|backend/.env.production.example)
@@ -178,8 +179,16 @@ pipeline {
                                 frontend/components/navigation/marketplace-secondary-nav.tsx|\
                                 "frontend/app/(group)/active-project/[id]/page.tsx"|\
                                 "frontend/app/(group)/job-screening/page.tsx"|\
+                                frontend/components/listing-card.tsx|\
+                                frontend/components/listing-card-compact.tsx|\
+                                frontend/components/search-card.tsx|\
+                                frontend/components/search-card-landscape.tsx|\
+                                frontend/components/talent-profile-card.tsx|\
+                                frontend/components/talent-search-card.tsx|\
+                                frontend/components/talent-search-card-landscape.tsx|\
+                                frontend/components/talent-card-landscape.tsx|\
                                 frontend/components/settings-tax-info.tsx|\
-                                "backend/apps/user-service/src/tax-info/"*|\
+                                frontend/src/lib/api/tax-info.ts|\
                                 "frontend/app/(group)/billing/page.tsx"|\
                                 "frontend/app/(group)/billing/transactions/page.tsx"|\
                                 "frontend/app/(group)/billing/invoices/page.tsx"|\
@@ -192,9 +201,7 @@ pipeline {
                                 frontend/hoc/AuthenticatedRoute.tsx|\
                                 frontend/hoc/UnauthenticatedRoute.tsx|\
                                 frontend/components/auth/*|\
-                                frontend/service/http/auth.ts|\
-                                backend/apps/user-service/src/guards/*|\
-                                backend/apps/api-gateway/src/proxy/proxy.service.ts)
+                                frontend/service/http/auth.ts)
                                     FROZEN_UI_HIT=1
                                     FROZEN_UI_FILES="$FROZEN_UI_FILES $f" ;;
                             esac
@@ -208,7 +215,7 @@ pipeline {
                                     | grep -o '"name"[[:space:]]*:[[:space:]]*"frozen-unlock"' || true)
                             fi
                             if [ -z "$FROZEN_UNLOCK" ]; then
-                                add "Frozen file(s) touched:$FROZEN_UI_FILES -- these are locked (SOP 1.4). Only @CTorres9800 may modify them. Remove the changes from this PR, or ask @CTorres9800 for the frozen-unlock label."
+                                add "Frozen file(s) touched:$FROZEN_UI_FILES -- treated as a conflict, and the frozen version WINS. The existing file stands as-is; revert nothing and delete nothing, just drop these changes out of this PR and the rest can merge. Only @CTorres9800 can override, via the frozen-unlock label (SOP 1.4)."
                             fi
                         fi
 
