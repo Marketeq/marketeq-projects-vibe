@@ -25,7 +25,15 @@ const AccordionTrigger = React.forwardRef<
   <AccordionPrimitive.Header asChild>
     <AccordionPrimitive.Trigger
       ref={ref}
-      className={cn("group/trigger focus-visible:outline-none", className)}
+      // Plain `group` is deliberate and load-bearing. Chevron rotation is done
+      // at the call site with `group-data-[state=open]:rotate-180`; the NAMED
+      // form (`group-data-[state=open]/trigger:`) emits no CSS in this setup,
+      // and neither does the stacked `data-[state=open]:[&>svg]:rotate-180`.
+      // `group/trigger` is kept for existing call sites that reference it.
+      className={cn(
+        "group group/trigger focus-visible:outline-none",
+        className
+      )}
       {...props}
     >
       {children}
@@ -43,7 +51,11 @@ const AccordionContent = React.forwardRef<
   <AccordionPrimitive.Content
     ref={ref}
     className={cn(
-      "rounded-b-lg border-x border-b border-gray-200 transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down",
+      // No border here. Every caller already borders the item or its wrapper,
+      // so a border on the content drew a second line down the sides and along
+      // the bottom once opened. The container owns the border; the content
+      // owns only the reveal animation.
+      "overflow-hidden transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down",
       className
     )}
     {...props}

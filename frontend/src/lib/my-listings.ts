@@ -3,15 +3,26 @@
 import { useCallback, useEffect, useState } from "react"
 import { ProjectAPI } from "@/service/http/project"
 
-export type MyListingType = "project" | "service"
+export const MY_LISTING_TYPES = ["project", "service"] as const
 
-export type MyListingStatus =
-  | "Active"
-  | "Draft"
-  | "Paused"
-  | "Completed"
-  | "In Review"
-  | "Needs Update"
+export type MyListingType = (typeof MY_LISTING_TYPES)[number]
+
+/**
+ * Every status a listing can hold, in the order the filter menu shows them.
+ * The type is derived from this array so the two can never drift apart —
+ * a status that isn't listed here cannot be filtered for, and a filter option
+ * that isn't a real status won't compile.
+ */
+export const MY_LISTING_STATUSES = [
+  "Active",
+  "Draft",
+  "In Review",
+  "Needs Update",
+  "Paused",
+  "Completed",
+] as const
+
+export type MyListingStatus = (typeof MY_LISTING_STATUSES)[number]
 
 export interface MyListing {
   id: string
@@ -26,6 +37,8 @@ export interface MyListing {
   reviewCount?: number
   mediaUrl?: string
   updatedAt?: string
+  datePublished?: string | null
+  teamAvatars?: string[]
 }
 
 export const MY_LISTINGS_STORAGE_KEY = "marketeq-project-drafts"
@@ -330,6 +343,8 @@ async function fetchBackendListings(): Promise<MyListing[]> {
         ? `$${Number(p.budget).toLocaleString()} budget`
         : "Budget TBD",
       updatedAt: p.updatedAt || p.createdAt,
+      datePublished: p.projectDatePublished ?? null,
+      teamAvatars: Array.isArray(p.teamAvatars) ? p.teamAvatars : [],
     }))
   } catch (err) {
     console.warn("Failed to fetch backend listings; using local fallback:", err)

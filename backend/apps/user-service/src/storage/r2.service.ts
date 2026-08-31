@@ -27,6 +27,32 @@ export class R2Service {
     return undefined;
   }
 
+  isConfigured(): boolean {
+    const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
+    const accessKeyId = this.getEnv(
+      'CLOUDFLARE_R2_ACCESS_KEY_ID',
+      'CLOUDFLARE_R2_ACCESS_KEY',
+      'R2_ACCESS_KEY_ID',
+    );
+    const secretAccessKey = this.getEnv(
+      'CLOUDFLARE_R2_SECRET_ACCESS_KEY',
+      'CLOUDFLARE_R2_SECRET_KEY',
+      'R2_SECRET_ACCESS_KEY',
+    );
+    const accountId = this.getEnv(
+      'CLOUDFLARE_ACCOUNT_ID',
+      'CLOUDFLARE_R2_ACCOUNT_ID',
+      'R2_ACCOUNT_ID',
+    );
+    const endpoint =
+      this.getEnv('CLOUDFLARE_R2_ENDPOINT', 'R2_ENDPOINT') ??
+      (accountId
+        ? `https://${accountId}.r2.cloudflarestorage.com`
+        : undefined);
+
+    return Boolean(bucket && accessKeyId && secretAccessKey && endpoint);
+  }
+
   async uploadAvatar(
     userId: string,
     file: Express.Multer.File,

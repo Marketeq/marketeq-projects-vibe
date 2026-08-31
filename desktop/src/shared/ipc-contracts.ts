@@ -111,6 +111,7 @@ export const IPC = {
 
   // --- Contracts (fetched from backend API) ---
   contractsGetMine: 'contracts:get-mine',
+  contractsGetTasks: 'contracts:get-tasks',
 
 
   // --- Shell helpers ---
@@ -514,4 +515,11 @@ export interface BackendContract {
   note: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface BackendTask {
+  id: string;
+  contractId: string;
+  name: string;
+  archived: boolean;
 }

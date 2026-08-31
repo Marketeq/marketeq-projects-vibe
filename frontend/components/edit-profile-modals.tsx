@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI, type UserProfilePayload } from "@/service/http/user"
 import { getIssuerNameFromUrl } from "@/src/lib/certification-brand"
-import { cn, hookFormHasError } from "@/utils/functions"
+import { cn, hookFormHasError, isAccountTypeRole } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
 import {
   AlertCircle,
@@ -1426,13 +1426,18 @@ export const MoreInfoDialog = ({
       if (profile?.jobTitles && profile.jobTitles.length > 0) {
         setInfoChunks(profile.jobTitles)
         setCanPerformAction(false)
-      } else if (profile?.role || profile?.rateMax) {
+      } else if (
+        (profile?.role && !isAccountTypeRole(profile.role)) ||
+        profile?.rateMax
+      ) {
         // Legacy: single title from old fields — migrate into chunk
+        const legacyRole =
+          profile?.role && !isAccountTypeRole(profile.role) ? profile.role : ""
         const clientRate = Number(profile.rateMax) || 0
         const fee = Math.round(clientRate * 0.2)
         const earning = clientRate - fee
         const legacyChunk: MoreInfoFormValues = {
-          jobTitle: profile.role || "Professional",
+          jobTitle: legacyRole || "Professional",
           clientRate,
           earning,
           fee,
@@ -1442,7 +1447,7 @@ export const MoreInfoDialog = ({
           setInfoChunks([legacyChunk])
           setCanPerformAction(false)
         } else {
-          methods.reset({ ...defaultValues, jobTitle: profile.role || "" })
+          methods.reset({ ...defaultValues, jobTitle: legacyRole })
           setCanPerformAction(true)
         }
       } else {

@@ -44,4 +44,5 @@ export interface Conversation {
   participantUsername?: string
   participantAvatarUrl?: string
   lastMessagePreview?: string
+  isOfferNotificationThread?: boolean
 }

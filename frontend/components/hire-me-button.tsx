@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { cn } from "@/utils/functions"
+import { cn, isAccountTypeRole } from "@/utils/functions"
 import {
   ArrowRight,
   ChevronDown,
@@ -75,10 +75,13 @@ export function getDefaultJobTitle(
   // `undefined` specifically instead.
   const fallback =
     options?.fallback !== undefined ? options.fallback : "Full Stack Developer"
+  const legacyRole =
+    profile?.role && !isAccountTypeRole(profile.role) ? profile.role : ""
+
   return (
     jobTitles?.find((job: any) => job.isDefault || job.saveAsDefault)?.jobTitle ||
     jobTitles?.[0]?.jobTitle ||
-    profile?.role ||
+    legacyRole ||
     fallback
   )
 }

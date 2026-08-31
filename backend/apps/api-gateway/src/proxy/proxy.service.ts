@@ -69,6 +69,9 @@ export class ProxyService {
     const headers: Record<string, string> = {
       'content-type': req.headers['content-type'] as string || 'application/json',
       ...(req.headers['x-internal-token'] ? { 'x-internal-token': req.headers['x-internal-token'] as string } : {}),
+      // Company-scoped invitations routes (CompanyContextGuard) read this
+      // to authorize the caller against :companyId.
+      ...(req.headers['x-company-id'] ? { 'x-company-id': req.headers['x-company-id'] as string } : {}),
       // Stripe/Ramp webhook signature headers — downstream (payout-service)
       // verifies authenticity via these, not JWT, so they must survive the
       // proxy same as the raw body below (main.ts captures req.rawBody for

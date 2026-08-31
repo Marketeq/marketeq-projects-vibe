@@ -29,6 +29,7 @@ import {
 } from '../messaging/events/offer-payload-builders';
 import { OfferHistoryService } from '../offer-history/offer-history.service';
 import { OfferTermsSnapshot } from '../offer-history/entities/offer-history-event.entity';
+import { normalizeDateOnly } from '../common/utils/normalize-date-only';
 
 @Injectable()
 export class CounterOffersService {
@@ -468,7 +469,7 @@ export class CounterOffersService {
       workSchedule: typeof raw.work_schedule === 'string'
         ? JSON.parse(raw.work_schedule)
         : (raw.work_schedule ?? raw.workSchedule),
-      startDate: raw.start_date ?? raw.startDate,
+      startDate: normalizeDateOnly(raw.start_date ?? raw.startDate),
       message: raw.message ?? null,
       expiresAt: raw.expires_at ? new Date(raw.expires_at) : (raw.expiresAt ?? null),
       warningSentAt: raw.warning_sent_at ? new Date(raw.warning_sent_at) : (raw.warningSentAt ?? null),
@@ -499,7 +500,7 @@ export class CounterOffersService {
       workSchedule: typeof raw.work_schedule === 'string'
         ? JSON.parse(raw.work_schedule)
         : (raw.work_schedule ?? raw.workSchedule),
-      startDate: raw.start_date ?? raw.startDate,
+      startDate: normalizeDateOnly(raw.start_date ?? raw.startDate),
       message: raw.message ?? null,
       expiresAt: raw.expires_at ? new Date(raw.expires_at) : (raw.expiresAt ?? null),
       warningSentAt: raw.warning_sent_at ? new Date(raw.warning_sent_at) : (raw.warningSentAt ?? null),

@@ -1,16 +1,21 @@
 export interface OfferDialogData {
   senderDisplayName: string
   senderUsername: string
+  senderAvatarSrc?: string
   senderProfileHref?: string
   offerType: string
   receivedLabel: string
   offerTitle: string
   offerRate: string
+  originalOfferRate?: string
   role: string
   duration: string
   schedule: string
   startDate: string
   expiresLabel: string
+  message?: string
+  statusDateLabel?: string
+  statusReason?: string
 }
 
 export interface OfferHistoryItem {

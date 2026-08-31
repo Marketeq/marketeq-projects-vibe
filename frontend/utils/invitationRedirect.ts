@@ -1,19 +1,36 @@
 import { AcceptInvitationResponse } from "@/types/invitation"
 
-type InvitationRedirectResult = {
-  destination: string
-  nextStep: "go_to_team" | "continue_onboarding"
-  teamId?: string
+// Backend error codes (InvitationExceptionFilter, see
+// backend/apps/invitations-service/src/common/invitation-exceptions.ts)
+// mapped to user-facing copy, instead of string-matching raw error messages
+// (which breaks the moment a message's wording changes).
+const INVITATION_ERROR_MESSAGES: Record<string, string> = {
+  EMAIL_MISMATCH:
+    "You are signed in with a different account. Please sign in using the invited email address and try again.",
+  TOKEN_EXPIRED:
+    "This invitation link is invalid or has expired. Please ask the team owner to send a new invite.",
+  INVALID_TOKEN:
+    "This invitation link is invalid or has expired. Please ask the team owner to send a new invite.",
+  ALREADY_ACCEPTED:
+    "This invitation has already been accepted. You can view your team from the My Team page.",
+  INVITATION_CANCELED:
+    "This invitation was canceled. Please ask the team owner to send a new invite if you still need access.",
+  NOT_FOUND:
+    "We couldn't find this invitation. Please check that you opened the latest invite link.",
+  UNAUTHORIZED:
+    "Please sign in with the invited account to accept this invitation.",
+  FORBIDDEN:
+    "Please sign in with the invited account to accept this invitation.",
 }
 
-const DEFAULT_TEAM_PATH = "/my-team"
-const DEFAULT_ONBOARDING_PATH = "/onboarding"
-
-function withTeamId(path: string, teamId?: string) {
-  if (!teamId) return path
-
-  const separator = path.includes("?") ? "&" : "?"
-  return `${path}${separator}teamId=${encodeURIComponent(teamId)}`
+export function getInvitationErrorMessage(
+  code: string | undefined,
+  rawMessage: string
+): string {
+  if (code && INVITATION_ERROR_MESSAGES[code]) {
+    return INVITATION_ERROR_MESSAGES[code]
+  }
+  return rawMessage
 }
 
 export function getAcceptInvitationPayload(
@@ -38,64 +55,4 @@ export function getAcceptInvitationPayload(
   }
 
   return undefined
-}
-
-export function getPostAcceptRedirect(
-  response?: AcceptInvitationResponse | null
-): InvitationRedirectResult {
-  const normalizedResponse = getAcceptInvitationPayload(response)
-  const nextStep = normalizedResponse?.postAccept?.nextStep
-  const reason = normalizedResponse?.postAccept?.reason
-  const suggestedPath = normalizedResponse?.postAccept?.suggestedPath
-  const teamId = normalizedResponse?.postAccept?.teamId
-
-  if (nextStep === "go_to_team") {
-    return {
-      destination: withTeamId(suggestedPath || DEFAULT_TEAM_PATH, teamId),
-      nextStep,
-      teamId,
-    }
-  }
-
-  if (nextStep === "continue_onboarding") {
-    return {
-      destination: withTeamId(suggestedPath || DEFAULT_ONBOARDING_PATH, teamId),
-      nextStep,
-      teamId,
-    }
-  }
-
-  if (reason === "existing_user_completed_onboarding") {
-    return {
-      destination: withTeamId(suggestedPath || DEFAULT_TEAM_PATH, teamId),
-      nextStep: "go_to_team",
-      teamId,
-    }
-  }
-
-  if (reason === "existing_user_needs_onboarding") {
-    return {
-      destination: withTeamId(suggestedPath || DEFAULT_ONBOARDING_PATH, teamId),
-      nextStep: "continue_onboarding",
-      teamId,
-    }
-  }
-
-  const acceptedUser = normalizedResponse?.acceptedUser
-  const hasCompletedOnboarding =
-    acceptedUser?.hasCompletedOnboarding ?? acceptedUser?.onboardingDismissed
-
-  if (hasCompletedOnboarding) {
-    return {
-      destination: withTeamId(DEFAULT_TEAM_PATH, teamId),
-      nextStep: "go_to_team",
-      teamId,
-    }
-  }
-
-  return {
-    destination: withTeamId(DEFAULT_ONBOARDING_PATH, teamId),
-    nextStep: "continue_onboarding",
-    teamId,
-  }
 }

@@ -4,6 +4,11 @@ import * as React from "react"
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import { claimProject } from "@/src/lib/api/claim"
+import {
+  isTalentAccount,
+  NoTeamAssigned,
+} from "@/components/no-team-assigned"
 import { apiFetch } from "@/src/lib/api"
 import { useAblyChannel } from "@/utils/useAblyChannel"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
@@ -5405,6 +5410,8 @@ export default function ProjectDetails({
                 ) : null
               })()}
 
+              {(Array.isArray(currentTeam) && currentTeam.length > 0) ||
+              isTalentAccount(user) ? (
               <div className="flex flex-col items-start gap-y-3 mt-6">
                 <span className="inline-block text-xs font-medium text-dark-blue-400">
                   Current Team
@@ -5488,23 +5495,20 @@ export default function ProjectDetails({
                     </Tooltip>
                   </TooltipProvider>
                 ) : (
-                  <div className="flex flex-col items-start gap-y-2">
-                    <div className="flex items-center -space-x-2">
-                      {[0, 1, 2].map((i) => (
-                        <div
-                          key={i}
-                          className="size-8 rounded-full border border-dashed border-gray-300 bg-gray-100 flex items-center justify-center ring-2 ring-white"
-                        >
-                          <User01 className="size-3.5 text-gray-400" />
-                        </div>
-                      ))}
-                    </div>
-                    <span className="text-xs text-gray-400 font-extralight leading-none">
-                      No team assigned yet
-                    </span>
-                  </div>
+                  <NoTeamAssigned
+                    kind="project"
+                    onClaim={
+                      project?.id
+                        ? () => claimProject(String(project.id))
+                        : undefined
+                    }
+                    editHref={
+                      project?.id ? `/my-listings/${project.id}` : undefined
+                    }
+                  />
                 )}
               </div>
+              ) : null}
 
               <div className="mt-6 space-y-3">
                 <div className="flex items-center gap-x-[6.4px]">
