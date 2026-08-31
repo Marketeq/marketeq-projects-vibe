@@ -10,7 +10,7 @@ import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
 import { AuthAPI } from "@/service/http/auth"
 import { ClientAPI } from "@/service/http/client"
-import { cn, getIsNotEmpty } from "@/utils/functions"
+import { cn, convertToKbOrMb, getIsNotEmpty } from "@/utils/functions"
 import languagesMock from "@/public/mock/languages.json"
 import ActiveSessionsModal from "@/components/active-sessions-modal"
 import NotificationPreferences from "@/components/notification-preferences"
@@ -39,14 +39,18 @@ import {
   Edit01,
   Eye,
   EyeOff,
+  File04,
   Fingerprint01,
   Lock01,
   Mail01,
   Smartphone,
   HelpCircle,
   Image as ImageIcon,
+  InfoCircle,
+  LinkExternal01,
   Phone,
   Plus,
+  SearchLg,
   Save01,
   Send01,
   Settings02,
@@ -54,6 +58,8 @@ import {
   Share06,
   Trash01,
   Trash03,
+  Upload01,
+  UploadCloud02,
   X,
   X2,
 } from "@blend-metrics/icons"
@@ -88,6 +94,7 @@ const BillingMyPlansContent = dynamic(
 )
 import {
   Alert,
+  AlertContent,
   AlertIcon,
   AlertTitle,
   Avatar,
@@ -111,6 +118,9 @@ import {
   ListboxButton,
   ListboxOption,
   ListboxOptions,
+  RadioGroup,
+  RadioGroupItem,
+  Progress,
   Switch,
   Table,
   TableBody,
@@ -120,6 +130,13 @@ import {
   TableRow,
   useToast,
 } from "@/components/ui"
+
+// The value shown in the design. There is no endpoint that reports the caller's
+// public IP, so this stays a constant until that wiring is done separately.
+const currentIpAddress = "11.12.122.122"
+
+// Cap on how many IPs one dialog can add before "Add More" greys out.
+const MAX_IP_ROWS = 10
 
 export default function SettingsPage() {
   const { user, setUser } = useAuth()
@@ -153,6 +170,41 @@ export default function SettingsPage() {
   const toggleInviteWindow = useInviteWindowStore((s) => s.toggle)
   const invoiceExporters = useBillingExportStore((s) => s.exporters.invoices)
   const transactionExporters = useBillingExportStore((s) => s.exporters.transactions)
+  const [isAddIpsOpen, setIsAddIpsOpen] = useState(false)
+  const [ipEntryType, setIpEntryType] = useState("single")
+  const [ipRows, setIpRows] = useState([
+    { address: "", rangeFrom: "", rangeTo: "", description: "" },
+  ])
+  const [isIpDiscardOpen, setIsIpDiscardOpen] = useState(false)
+  const [editingIpId, setEditingIpId] = useState<string | null>(null)
+  const [ipFormBaseline, setIpFormBaseline] = useState("")
+  const [isCsvOpen, setIsCsvOpen] = useState(false)
+  const [csvFileName, setCsvFileName] = useState<string | null>(null)
+  const [csvEntries, setCsvEntries] = useState<
+    { id: string; address: string; description: string; addedAt: string }[]
+  >([])
+  const [isCsvPreview, setIsCsvPreview] = useState(false)
+  const [csvFileSize, setCsvFileSize] = useState(0)
+  const [csvProgress, setCsvProgress] = useState(0)
+  const [csvStatus, setCsvStatus] = useState<"idle" | "uploading" | "done">(
+    "idle"
+  )
+  const csvTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (csvStatus === "uploading" && csvProgress >= 100) setCsvStatus("done")
+  }, [csvProgress, csvStatus])
+
+  useEffect(
+    () => () => {
+      if (csvTimerRef.current) clearInterval(csvTimerRef.current)
+    },
+    []
+  )
+  const [isIpRestrictionEnabled, setIsIpRestrictionEnabled] = useState(true)
+  const [allowedIps, setAllowedIps] = useState<
+    { id: string; address: string; description: string; addedAt: string }[]
+  >([])
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
@@ -768,6 +820,231 @@ export default function SettingsPage() {
     }
     setActiveTab(map[value])
   }
+
+  // A range needs both ends to mean anything, so both must be filled before Save
+  // turns on; a single IP only needs the one field.
+  const hasAnyIpAddress = ipRows.some((row) =>
+    ipEntryType === "range"
+      ? row.rangeFrom.trim().length > 0 && row.rangeTo.trim().length > 0
+      : row.address.trim().length > 0
+  )
+
+  const serialiseIpForm = (
+    type: string,
+    rows: typeof ipRows
+  ) => JSON.stringify({ type, rows })
+
+  // Measured against what the dialog opened with, so an edit that changes
+  // nothing closes cleanly instead of falsely claiming unsaved work.
+  const hasIpEdits = serialiseIpForm(ipEntryType, ipRows) !== ipFormBaseline
+
+  const RANGE_SEPARATOR = " – "
+
+  const openAddIps = () => {
+    const rows = [{ address: "", rangeFrom: "", rangeTo: "", description: "" }]
+    setEditingIpId(null)
+    setIpEntryType("single")
+    setIpRows(rows)
+    setIpFormBaseline(serialiseIpForm("single", rows))
+    setIsAddIpsOpen(true)
+  }
+
+  const openEditIp = (entry: {
+    id: string
+    address: string
+    description: string
+  }) => {
+    const isRange = entry.address.includes(RANGE_SEPARATOR)
+    const [from, to] = isRange
+      ? entry.address.split(RANGE_SEPARATOR)
+      : ["", ""]
+    const rows = [
+      {
+        address: isRange ? "" : entry.address,
+        rangeFrom: from ?? "",
+        rangeTo: to ?? "",
+        description: entry.description,
+      },
+    ]
+    const type = isRange ? "range" : "single"
+    setEditingIpId(entry.id)
+    setIpEntryType(type)
+    setIpRows(rows)
+    setIpFormBaseline(serialiseIpForm(type, rows))
+    setIsAddIpsOpen(true)
+  }
+
+  const resetIpRows = () =>
+    setIpRows([{ address: "", rangeFrom: "", rangeTo: "", description: "" }])
+
+  // Local-only for now so the populated table can be exercised; the real
+  // persistence lands with the IP backend.
+  const handleSaveIps = () => {
+    const now = Date.now()
+    const entries = ipRows
+      .filter((row) =>
+        ipEntryType === "range"
+          ? row.rangeFrom.trim().length > 0 && row.rangeTo.trim().length > 0
+          : row.address.trim().length > 0
+      )
+      .map((row, index) => ({
+        id: `${now}-${index}`,
+        address:
+          ipEntryType === "range"
+            ? `${row.rangeFrom.trim()} – ${row.rangeTo.trim()}`
+            : row.address.trim(),
+        description: row.description.trim(),
+        addedAt: new Date().toISOString(),
+      }))
+
+    if (entries.length === 0) return
+
+    if (editingIpId) {
+      // Editing acts on one entry and keeps its original Date Added.
+      const [updated] = entries
+      setAllowedIps((prev) =>
+        prev.map((entry) =>
+          entry.id === editingIpId
+            ? {
+                ...entry,
+                address: updated.address,
+                description: updated.description,
+              }
+            : entry
+        )
+      )
+      setSavedAlertMessage("Successfully updated IP address")
+    } else {
+      setAllowedIps((prev) => [...entries, ...prev])
+      setSavedAlertMessage("Successfully added IP addresses")
+    }
+
+    setEditingIpId(null)
+    resetIpRows()
+    setIsAddIpsOpen(false)
+    setIsSavedAlertMounted(true)
+  }
+
+  const removeAllowedIp = (id: string) =>
+    setAllowedIps((prev) => prev.filter((entry) => entry.id !== id))
+
+  // Closing with edits pending routes through the discard prompt instead. Covers
+  // the X, Escape and overlay clicks, since they all come through onOpenChange.
+  const requestCloseAddIps = () => {
+    if (hasIpEdits) {
+      setIsIpDiscardOpen(true)
+      return
+    }
+    setEditingIpId(null)
+    setIsAddIpsOpen(false)
+  }
+
+  // One address per line, per the dialog copy. A second comma-separated field
+  // is taken as the description so a richer export still imports cleanly.
+  const parseIpCsv = (text: string) =>
+    text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line, index) => {
+        const [address, ...rest] = line.split(",")
+        return {
+          id: `csv-${Date.now()}-${index}`,
+          address: address.trim(),
+          description: rest.join(",").trim(),
+          addedAt: new Date().toISOString(),
+        }
+      })
+      .filter((entry) => entry.address.length > 0)
+
+  const onCsvDropAccepted = useCallback((files: File[]) => {
+    const file = files[0]
+    if (!file) return
+
+    if (csvTimerRef.current) clearInterval(csvTimerRef.current)
+
+    setCsvFileName(file.name)
+    setCsvFileSize(file.size)
+    setCsvEntries([])
+    setCsvProgress(0)
+    setCsvStatus("uploading")
+
+    const reader = new FileReader()
+    reader.onloadend = () =>
+      setCsvEntries(parseIpCsv(String(reader.result ?? "")))
+    reader.readAsText(file)
+
+    // Reading a local file finishes instantly, so there is no real transfer to
+    // report yet. This ramp stands in for upload progress until the IP backend
+    // exists and can report it for real.
+    csvTimerRef.current = setInterval(() => {
+      setCsvProgress((prev) => {
+        const next = prev + 10
+        if (next >= 100 && csvTimerRef.current) {
+          clearInterval(csvTimerRef.current)
+          csvTimerRef.current = null
+        }
+        return Math.min(next, 100)
+      })
+    }, 150)
+  }, [])
+
+  const removeCsvEntry = (id: string) =>
+    setCsvEntries((prev) => prev.filter((entry) => entry.id !== id))
+
+  const clearCsvFile = () => {
+    if (csvTimerRef.current) {
+      clearInterval(csvTimerRef.current)
+      csvTimerRef.current = null
+    }
+    setCsvFileName(null)
+    setCsvFileSize(0)
+    setCsvEntries([])
+    setCsvProgress(0)
+    setCsvStatus("idle")
+    setIsCsvPreview(false)
+  }
+
+  const {
+    getRootProps: getCsvRootProps,
+    getInputProps: getCsvInputProps,
+    isDragActive: isCsvDragActive,
+  } = useDropzone({
+    multiple: false,
+    maxFiles: 1,
+    maxSize: 800 * 1024 * 1024,
+    accept: { "text/csv": [".csv"] },
+    onDropAccepted: onCsvDropAccepted,
+  })
+
+  const closeCsvDialog = () => {
+    setIsCsvOpen(false)
+    clearCsvFile()
+  }
+
+  const handleSaveCsvIps = () => {
+    if (csvEntries.length === 0 || csvStatus !== "done") return
+    setAllowedIps((prev) => [...csvEntries, ...prev])
+    closeCsvDialog()
+    setSavedAlertMessage("Successfully added IP addresses")
+    setIsSavedAlertMounted(true)
+  }
+
+  const updateIpRow = (
+    index: number,
+    field: "address" | "rangeFrom" | "rangeTo" | "description",
+    value: string
+  ) =>
+    setIpRows((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+    )
+
+  const addIpRow = () =>
+    setIpRows((prev) =>
+      prev.length >= MAX_IP_ROWS
+        ? prev
+        : [...prev, { address: "", rangeFrom: "", rangeTo: "", description: "" }]
+    )
 
   const handleProfileChange = (field: string, value: string) => {
     setProfileForm((prev) => ({ ...prev, [field]: value }))
@@ -2894,9 +3171,738 @@ export default function SettingsPage() {
               )}
 
               {activeTab === "ip-restrictions" && (
-                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
-                  IP Restrictions
-                </h1>
+                <>
+                  <div className="w-full">
+                    <div className="flex items-start justify-between gap-6">
+                      <div className="flex w-[550px] flex-col items-start gap-6">
+                        <div className="flex w-full flex-col items-start gap-3">
+                          <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                            IP Address Restriction
+                          </h1>
+                          <p className="w-full text-sm text-gray-500">
+                            Control which IP addresses are allowed to access
+                            your account. Any device outside these addresses
+                            will be blocked from signing in.{" "}
+                            <a href="#" className="text-primary-500 underline">
+                              Learn More
+                            </a>
+                            .
+                          </p>
+                        </div>
+                        <div className="flex items-start gap-x-3">
+                          <span className="text-sm font-medium text-gray-700">
+                            Your current IP address is:
+                          </span>
+                          <span className="text-sm font-bold text-gray-700">
+                            {currentIpAddress}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start justify-end gap-x-3">
+                        <Button
+                          variant="light"
+                          visual="primary"
+                          size="sm"
+                          className="bg-primary-500/15"
+                          onClick={() => setIsCsvOpen(true)}
+                          leftIcon={<Upload01 className="size-[15px]" />}
+                        >
+                          Upload CSV
+                        </Button>
+                        <Button
+                          variant="filled"
+                          visual="primary"
+                          size="sm"
+                          className="shadow-xs"
+                          onClick={openAddIps}
+                          leftIcon={<Plus className="size-[15px]" />}
+                        >
+                          Add IPs
+                        </Button>
+                      </div>
+                    </div>
+
+                    {allowedIps.length > 0 && (
+                      <div className="mt-6 flex items-center gap-x-3">
+                        <Switch
+                          checked={isIpRestrictionEnabled}
+                          onCheckedChange={setIsIpRestrictionEnabled}
+                        />
+                        <span className="flex items-center gap-x-2 text-sm font-medium text-gray-700">
+                          Enable IP Restriction
+                          <HelpCircle className="size-3.5 text-gray-400" />
+                        </span>
+                      </div>
+                    )}
+
+                    {allowedIps.length === 0 ? (
+                      <div className="mt-6 w-full rounded-lg border border-gray-200 bg-white shadow-[0px_1px_4px_rgba(0,0,0,0.03)]">
+                        <div className="flex flex-col gap-5">
+                          <div className="flex items-start gap-4 px-6 pt-5">
+                            <div className="flex flex-1 flex-col justify-center gap-1">
+                              <h2 className="text-lg font-semibold text-gray-black">
+                                Allowed IP Addresses
+                              </h2>
+                            </div>
+                            <div className="flex items-center gap-x-3">
+                              <Button
+                                variant="outlined"
+                                visual="gray"
+                                size="md"
+                                className="bg-white shadow-xs"
+                                onClick={openAddIps}
+                                leftIcon={<Plus className="size-[15px]" />}
+                              >
+                                Add IPs
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="h-px w-full bg-gray-200" />
+                        </div>
+
+                        <div className="flex flex-col items-center justify-center gap-8 px-8 pb-8 pt-10">
+                          <div className="flex items-center justify-center">
+                            <div className="flex w-[352px] flex-col items-center gap-6">
+                              <div className="flex w-full flex-col items-center gap-4">
+                                <div className="flex size-12 items-center justify-center rounded-[28px] border-8 border-gray-50 bg-gray-100">
+                                  <SearchLg className="size-6 text-gray-500" />
+                                </div>
+                                <div className="flex w-full flex-col items-center gap-1">
+                                  <p className="text-center text-base font-semibold text-gray-black">
+                                    No IP&apos;s Found
+                                  </p>
+                                  <p className="text-center text-sm text-gray-600">
+                                    You do not currently have any allowed IP
+                                    addresses. Use the buttons above to add
+                                    allowed IPs
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <Alert className="w-full rounded-[5px]">
+                            <AlertIcon className="mt-0.5 shrink-0">
+                              <InfoCircle className="size-5 text-gray-500" />
+                            </AlertIcon>
+                            <AlertContent className="flex items-start justify-between gap-x-3">
+                              <ul className="list-disc pl-4 text-sm text-gray-500">
+                                <li>
+                                  Allowed IP addresses are whitelisted by you.
+                                </li>
+                                <li>
+                                  You can add individual IP addresses or an IP
+                                  range.
+                                </li>
+                                <li>
+                                  You can use the Upload CSV button to add
+                                  several IP addresses and ranges at once.
+                                </li>
+                              </ul>
+                              <Button
+                                variant="link"
+                                visual="primary"
+                                size="sm"
+                                className="h-5 shrink-0 p-0 capitalize"
+                                rightIcon={
+                                  <LinkExternal01 className="size-[15px]" />
+                                }
+                              >
+                                Learn More
+                              </Button>
+                            </AlertContent>
+                          </Alert>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-6 flex w-full flex-col items-start gap-3.5">
+                        <h2 className="text-lg font-medium text-gray-900">
+                          Allowed IP Addresses
+                        </h2>
+
+                        <div className="w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-[0px_1px_3px_rgba(16,24,40,0.1),0px_1px_2px_rgba(16,24,40,0.06)]">
+                          <Table>
+                            <TableHeader className="bg-gray-50">
+                              <TableRow className="hover:bg-transparent">
+                                <TableHead>IP Address</TableHead>
+                                <TableHead>Description</TableHead>
+                                <TableHead>
+                                  <span className="flex items-center gap-x-1">
+                                    Date Added
+                                    <ArrowDown className="size-4" />
+                                  </span>
+                                </TableHead>
+                                <TableHead className="w-[148px]" />
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody className="[&_tr:last-child_td]:border-b-0">
+                              {allowedIps.map((entry) => (
+                                <TableRow
+                                  key={entry.id}
+                                  className="hover:bg-transparent"
+                                >
+                                  <TableCell className="text-gray-600">
+                                    {entry.address}
+                                  </TableCell>
+                                  <TableCell className="text-gray-600">
+                                    {entry.description || "n/a"}
+                                  </TableCell>
+                                  <TableCell className="text-gray-600">
+                                    {relativeActivity(entry.addedAt)}
+                                  </TableCell>
+                                  <TableCell>
+                                    <span className="flex items-center gap-x-1">
+                                      <IconButton
+                                        variant="ghost"
+                                        visual="gray"
+                                        size="sm"
+                                        className="size-10 rounded-lg"
+                                        onClick={() => openEditIp(entry)}
+                                      >
+                                        <Edit01 className="size-5 text-gray-600" />
+                                      </IconButton>
+                                      <IconButton
+                                        variant="ghost"
+                                        visual="gray"
+                                        size="sm"
+                                        className="size-10 rounded-lg"
+                                        onClick={() =>
+                                          removeAllowedIp(entry.id)
+                                        }
+                                      >
+                                        <Trash01 className="size-5 text-gray-600" />
+                                      </IconButton>
+                                    </span>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+                    )}
+
+                    {isSavedAlertMounted && (
+                      <Alert
+                        variant="success"
+                        className={cn(
+                          // Pinned to the scrolling content pane, not to this
+                          // panel — anchoring it here made it ride the table
+                          // downwards as rows were added. left offset clears
+                          // the sidebar, matching the pane's own pl-[288px].
+                          "pointer-events-none fixed bottom-6 left-4 z-50 w-max items-center rounded-xl shadow-[0px_1px_5px_rgba(16,24,40,0.08)] transition-opacity duration-300 min-[1024px]:left-[304px]",
+                          isSavedAlertVisible ? "opacity-100" : "opacity-0"
+                        )}
+                      >
+                        <AlertIcon>
+                          <CheckCircle className="size-5 text-success-600" />
+                        </AlertIcon>
+                        <AlertTitle className="whitespace-nowrap text-success-700">
+                          {savedAlertMessage}
+                        </AlertTitle>
+                      </Alert>
+                    )}
+                  </div>
+
+                  <Dialog
+                    open={isCsvOpen}
+                    onOpenChange={(open) =>
+                      open ? setIsCsvOpen(true) : closeCsvDialog()
+                    }
+                  >
+                    <DialogContent
+                      className={cn(
+                        "flex max-w-[calc(100vw-2rem)] flex-col items-center gap-8 px-6 py-7 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]",
+                        isCsvPreview ? "w-[768px]" : "w-[560px]"
+                      )}
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <div className="flex w-full items-start justify-between gap-8">
+                        <DialogTitle className="text-2xl leading-9 font-semibold text-gray-800">
+                          Add IPs
+                        </DialogTitle>
+                        <IconButton
+                          variant="ghost"
+                          visual="gray"
+                          size="sm"
+                          className="size-8 rounded-[5px]"
+                          onClick={closeCsvDialog}
+                        >
+                          <X className="size-4 text-gray-500" />
+                        </IconButton>
+                      </div>
+
+                      <DialogDescription className="w-full text-sm font-medium text-gray-700">
+                        {isCsvPreview ? (
+                          "These IP addresses are currently allowed to access your account."
+                        ) : (
+                          <>
+                            Upload a CSV file to add multiple IP addresses at
+                            once. Each address should be on its own line.{" "}
+                            <a href="#" className="text-primary-500 underline">
+                              Sample CSV
+                            </a>
+                            .
+                          </>
+                        )}
+                      </DialogDescription>
+
+                      {isCsvPreview ? (
+                        <div className="max-h-[404px] w-full overflow-y-auto overflow-x-hidden rounded-xl border border-gray-200 bg-white shadow-[0px_1px_3px_rgba(16,24,40,0.1),0px_1px_2px_rgba(16,24,40,0.06)] scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+                          <Table>
+                            <TableHeader className="sticky top-0 z-10 bg-gray-50 [&_th]:bg-gray-50">
+                              <TableRow className="hover:bg-transparent">
+                                <TableHead>IP Address</TableHead>
+                                <TableHead>Description</TableHead>
+                                <TableHead>
+                                  <span className="flex items-center gap-x-1">
+                                    Date Added
+                                    <ArrowDown className="size-4" />
+                                  </span>
+                                </TableHead>
+                                <TableHead className="w-[148px]" />
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody className="[&_tr:last-child_td]:border-b-0">
+                              {csvEntries.map((entry) => (
+                                <TableRow
+                                  key={entry.id}
+                                  className="hover:bg-transparent"
+                                >
+                                  <TableCell className="text-gray-600">
+                                    {entry.address}
+                                  </TableCell>
+                                  <TableCell className="text-gray-600">
+                                    {entry.description || "n/a"}
+                                  </TableCell>
+                                  <TableCell className="text-gray-600">
+                                    {relativeActivity(entry.addedAt)}
+                                  </TableCell>
+                                  <TableCell>
+                                    <span className="flex items-center gap-x-1">
+                                      <IconButton
+                                        variant="ghost"
+                                        visual="gray"
+                                        size="sm"
+                                        className="size-10 rounded-lg"
+                                      >
+                                        <Edit01 className="size-5 text-gray-600" />
+                                      </IconButton>
+                                      <IconButton
+                                        variant="ghost"
+                                        visual="gray"
+                                        size="sm"
+                                        className="size-10 rounded-lg"
+                                        onClick={() => removeCsvEntry(entry.id)}
+                                      >
+                                        <Trash01 className="size-5 text-gray-600" />
+                                      </IconButton>
+                                    </span>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      ) : csvStatus === "idle" ? (
+                        <div
+                          {...getCsvRootProps({
+                            className: cn(
+                              "flex w-full cursor-pointer flex-col items-center gap-1 rounded-xl border border-gray-200 bg-white px-6 py-4 transition-colors duration-300 hover:border-primary-300",
+                              isCsvDragActive &&
+                                "border-primary-500 bg-primary-25"
+                            ),
+                          })}
+                        >
+                          <input hidden {...getCsvInputProps()} />
+                          <div className="flex w-full flex-col items-center gap-3">
+                            <span className="flex size-10 items-center justify-center rounded-[28px] border-[6px] border-gray-50 bg-gray-100">
+                              <UploadCloud02 className="size-5 text-gray-600" />
+                            </span>
+                            <div className="flex w-full flex-col items-center gap-1">
+                              <p className="flex w-full items-start justify-center gap-1 text-sm text-gray-600">
+                                <span className="font-semibold text-primary-500">
+                                  Click to upload
+                                </span>
+                                or drag and drop
+                              </p>
+                              <p className="w-full text-center text-xs text-gray-600">
+                                CSV (max.800 MB)
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          className={cn(
+                            "relative flex w-full items-start gap-1 rounded-xl border bg-white p-4",
+                            csvStatus === "done"
+                              ? "border-primary-500"
+                              : "border-gray-200"
+                          )}
+                        >
+                          <div className="flex flex-1 items-start gap-4">
+                            <span className="flex size-8 shrink-0 items-center justify-center rounded-[28px] border-4 border-primary-25 bg-primary-50">
+                              <File04 className="size-4 text-primary-500" />
+                            </span>
+                            <div className="flex flex-1 flex-col items-start gap-1">
+                              <div className="flex w-full flex-col items-start">
+                                <p className="w-full text-sm font-medium text-gray-700">
+                                  {csvFileName}
+                                </p>
+                                <p className="w-full text-sm text-gray-600">
+                                  {convertToKbOrMb(csvFileSize)}
+                                </p>
+                              </div>
+                              <div className="flex w-full items-center gap-x-3">
+                                <Progress
+                                  value={csvProgress}
+                                  bubble={false}
+                                  className="h-2 flex-1 bg-gray-200"
+                                />
+                                <span className="shrink-0 text-sm font-medium text-gray-700">
+                                  {csvProgress}%
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {csvStatus === "done" ? (
+                            <span className="absolute right-4 top-4 flex size-4 items-center justify-center rounded-full bg-primary-500">
+                              <Check className="size-2.5 text-white" />
+                            </span>
+                          ) : (
+                            <IconButton
+                              variant="ghost"
+                              visual="gray"
+                              size="sm"
+                              className="absolute right-2 top-2 size-9 rounded-lg"
+                              onClick={clearCsvFile}
+                            >
+                              <Trash01 className="size-5 text-gray-500" />
+                            </IconButton>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex w-full items-start justify-end gap-x-3 pt-5">
+                        {csvStatus === "done" && !isCsvPreview && (
+                          <Button
+                            variant="light"
+                            visual="primary"
+                            size="sm"
+                            className="bg-primary-500/15"
+                            onClick={() => setIsCsvPreview(true)}
+                            leftIcon={<Eye className="size-[15px]" />}
+                          >
+                            Preview
+                          </Button>
+                        )}
+                        <Button
+                          variant="filled"
+                          visual="primary"
+                          size="sm"
+                          className="shadow-xs"
+                          disabled={
+                            csvStatus !== "done" || csvEntries.length === 0
+                          }
+                          onClick={handleSaveCsvIps}
+                          leftIcon={<Save01 className="size-[15px]" />}
+                        >
+                          Save IPs
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog
+                    open={isAddIpsOpen}
+                    onOpenChange={(open) =>
+                      open ? setIsAddIpsOpen(true) : requestCloseAddIps()
+                    }
+                  >
+                    <DialogContent
+                      className="flex w-[647px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 px-6 py-7 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <div className="flex w-full items-start justify-between gap-8">
+                        <DialogTitle className="text-2xl leading-9 font-semibold text-gray-800">
+                          Add IPs
+                        </DialogTitle>
+                        <IconButton
+                          variant="ghost"
+                          visual="gray"
+                          size="sm"
+                          className="size-8 rounded-[5px]"
+                          onClick={requestCloseAddIps}
+                        >
+                          <X className="size-4 text-gray-500" />
+                        </IconButton>
+                      </div>
+
+                      <DialogDescription className="w-full text-sm font-medium text-gray-700">
+                        Enter an IP address or range to allow access to your
+                        account.
+                      </DialogDescription>
+
+                      <RadioGroup
+                        value={ipEntryType}
+                        onValueChange={setIpEntryType}
+                        className="flex w-full items-start gap-12"
+                      >
+                        <div className="flex items-center justify-center gap-x-3">
+                          <RadioGroupItem
+                            id="ip-entry-single"
+                            value="single"
+                            size="md"
+                            className="data-[state=checked]:bg-primary-100"
+                          />
+                          <Label
+                            htmlFor="ip-entry-single"
+                            className="text-sm font-medium text-gray-700"
+                          >
+                            Single IP
+                          </Label>
+                        </div>
+                        <div className="flex items-center justify-center gap-x-3">
+                          <RadioGroupItem
+                            id="ip-entry-range"
+                            value="range"
+                            size="md"
+                            className="data-[state=checked]:bg-primary-100"
+                          />
+                          <Label
+                            htmlFor="ip-entry-range"
+                            className="text-sm font-medium text-gray-700"
+                          >
+                            IP Range
+                          </Label>
+                        </div>
+                      </RadioGroup>
+
+                      <div
+                        className={cn(
+                          "flex w-full flex-col gap-8 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg",
+                          // Two range rows or three single rows before it scrolls,
+                          // so the dialog settles at the height each design shows.
+                          ipEntryType === "range"
+                            ? "max-h-[352px]"
+                            : "max-h-[274px]"
+                        )}
+                      >
+                        {ipRows.map((row, index) => (
+                          <div
+                            key={index}
+                            className="flex w-full shrink-0 flex-col gap-5"
+                          >
+                            {ipEntryType === "range" ? (
+                              <div className="flex w-full flex-col items-start gap-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Label
+                                    htmlFor={`ip-range-from-${index}`}
+                                    className="text-sm font-medium text-gray-700"
+                                  >
+                                    IP Range
+                                  </Label>
+                                  {index === 0 && (
+                                    <HelpCircle className="size-3.5 text-gray-400" />
+                                  )}
+                                </div>
+                                <div className="flex w-full items-center gap-1.5">
+                                  <Input
+                                    id={`ip-range-from-${index}`}
+                                    placeholder="XX.XX.XXX.XXX"
+                                    className="flex-1 rounded-lg"
+                                    value={row.rangeFrom}
+                                    onChange={(event) =>
+                                      updateIpRow(
+                                        index,
+                                        "rangeFrom",
+                                        event.target.value
+                                      )
+                                    }
+                                  />
+                                  <span className="shrink-0 text-xs leading-5 text-gray-700">
+                                    to
+                                  </span>
+                                  <Input
+                                    aria-label="IP range end"
+                                    placeholder="XX.XX.XXX.XXX"
+                                    className="flex-1 rounded-lg"
+                                    value={row.rangeTo}
+                                    onChange={(event) =>
+                                      updateIpRow(
+                                        index,
+                                        "rangeTo",
+                                        event.target.value
+                                      )
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div className="flex w-full items-start gap-5">
+                              {ipEntryType === "single" && (
+                                <div className="flex flex-1 flex-col items-start gap-1.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <Label
+                                      htmlFor={`ip-address-${index}`}
+                                      className="text-sm font-medium text-gray-700"
+                                    >
+                                      IP Address
+                                    </Label>
+                                    {index === 0 && (
+                                      <HelpCircle className="size-3.5 text-gray-400" />
+                                    )}
+                                  </div>
+                                  <Input
+                                    id={`ip-address-${index}`}
+                                    placeholder="XX.XX.XXX.XXX"
+                                    className="rounded-lg"
+                                    value={row.address}
+                                    onChange={(event) =>
+                                      updateIpRow(
+                                        index,
+                                        "address",
+                                        event.target.value
+                                      )
+                                    }
+                                  />
+                                </div>
+                              )}
+                              <div className="flex flex-1 flex-col items-start gap-1.5">
+                                <Label
+                                  htmlFor={`ip-description-${index}`}
+                                  className="text-sm font-medium text-gray-700"
+                                >
+                                  Description (Optional)
+                                </Label>
+                                <Input
+                                  id={`ip-description-${index}`}
+                                  placeholder="Description"
+                                  className="rounded-lg"
+                                  value={row.description}
+                                  onChange={(event) =>
+                                    updateIpRow(
+                                      index,
+                                      "description",
+                                      event.target.value
+                                    )
+                                  }
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex w-full items-start justify-end gap-x-3 pt-5">
+                        {hasAnyIpAddress && !editingIpId && (
+                          <Button
+                            variant="light"
+                            visual="primary"
+                            size="sm"
+                            className="bg-primary-500/15"
+                            disabled={ipRows.length >= MAX_IP_ROWS}
+                            onClick={addIpRow}
+                            leftIcon={<Plus className="size-[15px] text-white" />}
+                          >
+                            Add More
+                          </Button>
+                        )}
+                        <Button
+                          variant="filled"
+                          visual="primary"
+                          size="sm"
+                          className="shadow-xs"
+                          disabled={!hasAnyIpAddress}
+                          onClick={handleSaveIps}
+                          leftIcon={<Save01 className="size-[15px]" />}
+                        >
+                          Save IPs
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog
+                    open={isIpDiscardOpen}
+                    onOpenChange={setIsIpDiscardOpen}
+                  >
+                    <DialogContent
+                      className="flex max-w-[512px] flex-col items-center gap-8 p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <div className="flex w-full flex-col items-start gap-10">
+                        <div className="flex w-full flex-col items-start gap-5">
+                          <div className="flex w-full items-start justify-between gap-5">
+                            <span className="flex size-12 items-center justify-center rounded-full border-8 border-warning-50 bg-warning-100">
+                              <AlertTriangle className="size-6 text-warning-500" />
+                            </span>
+                            <IconButton
+                              variant="ghost"
+                              visual="gray"
+                              size="sm"
+                              className="rounded-[5px]"
+                              onClick={() => setIsIpDiscardOpen(false)}
+                            >
+                              <X className="size-5 text-gray-500" />
+                            </IconButton>
+                          </div>
+
+                          <div className="flex w-full flex-col items-start gap-2">
+                            <DialogTitle className="w-full text-lg leading-7 font-semibold text-gray-900">
+                              Unsaved changes
+                            </DialogTitle>
+                            <p className="w-full text-sm text-gray-500">
+                              We sent a magic link to{" "}
+                              <span className="font-bold text-gray-700">
+                                {user?.email}
+                              </span>
+                            </p>
+                            <DialogDescription className="w-full text-sm text-gray-500">
+                              Do you want to save your password or leave and
+                              discard changes?
+                            </DialogDescription>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-x-3">
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            size="lg"
+                            onClick={() => {
+                              setIsIpDiscardOpen(false)
+                              setEditingIpId(null)
+                              resetIpRows()
+                              setIsAddIpsOpen(false)
+                            }}
+                          >
+                            Exit Without Saving
+                          </Button>
+                          <Button
+                            size="lg"
+                            onClick={() => {
+                              setIsIpDiscardOpen(false)
+                              handleSaveIps()
+                            }}
+                          >
+                            Save & Exit
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </>
               )}
 
               {activeTab === "integrations" && (
