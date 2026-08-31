@@ -179,6 +179,7 @@ pipeline {
                                 "frontend/app/(group)/active-project/[id]/page.tsx"|\
                                 "frontend/app/(group)/job-screening/page.tsx"|\
                                 frontend/components/settings-tax-info.tsx|\
+                                frontend/src/lib/api/tax-info.ts|\
                                 "backend/apps/user-service/src/tax-info/"*|\
                                 "frontend/app/(group)/billing/page.tsx"|\
                                 "frontend/app/(group)/billing/transactions/page.tsx"|\
