@@ -18,6 +18,7 @@ import {
   ChevronDown,
   HelpCircle,
   MoreHorizontal,
+  Plus,
   SearchMd,
   XCircle,
   Star01,
@@ -286,7 +287,7 @@ const ClientMyJobsView = () => {
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <h1 className="text-xl font-bold text-dark-blue-400">My Jobs</h1>
           <Button onClick={() => router.push("/job-listing")}>
-            Create Job
+            <Plus className="size-4" /> Create Job
           </Button>
         </div>
 
