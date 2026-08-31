@@ -179,6 +179,14 @@ pipeline {
                                 frontend/components/navigation/marketplace-secondary-nav.tsx|\
                                 "frontend/app/(group)/active-project/[id]/page.tsx"|\
                                 "frontend/app/(group)/job-screening/page.tsx"|\
+                                frontend/components/listing-card.tsx|\
+                                frontend/components/listing-card-compact.tsx|\
+                                frontend/components/search-card.tsx|\
+                                frontend/components/search-card-landscape.tsx|\
+                                frontend/components/talent-profile-card.tsx|\
+                                frontend/components/talent-search-card.tsx|\
+                                frontend/components/talent-search-card-landscape.tsx|\
+                                frontend/components/talent-card-landscape.tsx|\
                                 frontend/components/settings-tax-info.tsx|\
                                 frontend/src/lib/api/tax-info.ts|\
                                 "frontend/app/(group)/billing/page.tsx"|\
