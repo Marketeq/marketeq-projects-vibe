@@ -198,6 +198,18 @@ No Jenkins pipeline, GitHub workflow, script, bot, or agent may **destroy** work
 
 The reason is simple: a pipeline has no design file, no ticket, and no spec, so it cannot know which side of a conflict was intended. A pipeline that edits code it cannot judge will eventually delete work that was there on purpose, and the developer gets blamed for a deletion they did not make.
 
+### 1.12 A page you were sent to look at is READ-ONLY
+
+When you are pointed at another page, screen, or component — to copy it, to match a width, spacing, colour, animation, or behaviour, or just to see how it works — **that source is read-only for that task**. Read it, take what you need, apply it where the work actually belongs, and leave the source byte-for-byte unchanged.
+
+This holds for every phrasing of the instruction: "copy the X from Y", "check how Y does it", "look at Y", "match Y's width", "see Y for reference". The destination changes. The reference does not.
+
+It holds **even when the source looks wrong**. Inconsistent spacing, a stale class, a value you would have written differently, an obvious cleanup — none of these are yours to fix on the way past. The screen works today, and an unrequested edit to a working screen is exactly the kind of change nobody asked for and nobody reviews carefully, because the PR is titled after the destination.
+
+**Reviewers:** if a PR's stated purpose is a change to page A, and the diff also touches page B where B is the thing being copied or measured, block it and ask why B changed. The answer is almost always "I tidied it while I was in there."
+
+If the source genuinely needs a change, say so in the PR or to the CTO and let them decide. Do not make it.
+
 ### 1.10 Every blocking rule needs evidence behind it
 A rule that blocks a PR must be traceable to something factual: a named surviving caller, a failing check, a contract in `REGRESSION_MANIFEST.json`, or a specific incident in §8. Strictness with no evidence behind it produces false blocks, and false blocks cost the developer real work.
 
