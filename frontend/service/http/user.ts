@@ -83,6 +83,11 @@ export interface UserProfilePayload {
   industry?: string
   businessGoals?: string[]
   gettingStartedStep?: number | null
+  // Client company profile — collected by the client "Complete My Profile"
+  // steps. `teamName` is the company name; the logo reuses `avatarUrl`.
+  teamName?: string
+  companyWebsite?: string
+  workplaceValues?: string[]
 }
 
 export const UserAPI = {
@@ -90,6 +95,10 @@ export const UserAPI = {
   me: () => AxiosRequest.get(`${USER_BASE}/user/me`),
   handleSkip: (data: { role: string }) =>
     AxiosRequest.patch(`${USER_BASE}/user/onboarding-dismissed`, data),
+  // Account recovery / contact number. Served by UserSelfController, so it
+  // acts on the signed-in user and takes no id. Pass null to clear.
+  updatePhone: (phone: string | null) =>
+    AxiosRequest.patch(`${USER_BASE}/user/phone`, { phone }),
   // ES-06: Currency Settings entry point — sets the region currency
   // earnings-service falls back to USD without.
   updateCurrency: (currency: string) =>

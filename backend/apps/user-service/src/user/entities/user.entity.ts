@@ -92,6 +92,16 @@ export class User {
   @Column({ nullable: true })
   teamName?: string;
 
+  // Client company profile. `teamName` above is the company name; these two
+  // carry the rest of what the client "Complete My Profile" steps collect.
+  // Kept on the user row so a single getProfile call returns the whole
+  // completion state, the same way the talent steps read theirs.
+  @Column({ nullable: true })
+  companyWebsite?: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  workplaceValues?: any;
+
   @Column({ nullable: true })
   inviteCode?: string;
 

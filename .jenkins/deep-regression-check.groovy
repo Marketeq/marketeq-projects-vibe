@@ -107,6 +107,8 @@ pipeline {
                     cat > /tmp/conflicts.py << 'CONFPY'
 import re, subprocess, sys
 
+NL = chr(10)
+
 BASE_SHA = sys.argv[1]
 BASE_REF = "origin/" + sys.argv[2]
 
@@ -118,14 +120,14 @@ def sh(*a):
         return ""
 
 def changed(rev):
-    return set(x for x in sh("diff", "--name-only", BASE_SHA, rev).split("\n") if x)
+    return set(x for x in sh("diff", "--name-only", BASE_SHA, rev).split(NL) if x)
 
 def ranges(rev, path):
     out = []
-    for line in sh("diff", "-U0", BASE_SHA, rev, "--", path).split("\n"):
+    for line in sh("diff", "-U0", BASE_SHA, rev, "--", path).split(NL):
         if not line.startswith("@@"):
             continue
-        m = re.match(r"@@ -(\d+)(?:,(\d+))? ", line)
+        m = re.match(r"@@ -([0-9]+)(?:,([0-9]+))? ", line)
         if not m:
             continue
         st = int(m.group(1)); ct = int(m.group(2) or 1)
@@ -136,9 +138,9 @@ def show(rev, path, lo, hi):
     body = sh("show", "%s:%s" % (rev, path))
     if not body:
         return "(file absent at this revision)"
-    L = body.split("\n")
+    L = body.split(NL)
     lo = max(1, lo - 3); hi = min(len(L), hi + 3)
-    return "\n".join("%5d| %s" % (i, L[i-1]) for i in range(lo, hi+1))
+    return NL.join("%5d| %s" % (i, L[i-1]) for i in range(lo, hi+1))
 
 both = changed("HEAD") & changed(BASE_REF)
 blocks = []
@@ -148,20 +150,23 @@ for path in sorted(both):
         for (s2, e2) in base_r:
             lo, hi = max(s1, s2), min(e1, e2)
             if lo <= hi:
-                blocks.append(
-                    "=== %s lines %d-%d (merge-base numbering) ===\n"
-                    "--- AT MERGE BASE (what both sides started from) ---\n%s\n"
-                    "--- THIS PR'S VERSION ---\n%s\n"
-                    "--- BASE BRANCH'S VERSION (already merged, newer) ---\n%s\n"
-                    % (path, lo, hi, show(BASE_SHA, path, lo, hi),
-                       show("HEAD", path, lo, hi), show(BASE_REF, path, lo, hi)))
+                parts = [
+                    "=== %s lines %d-%d (merge-base numbering) ===" % (path, lo, hi),
+                    "--- AT MERGE BASE (what both sides started from) ---",
+                    show(BASE_SHA, path, lo, hi),
+                    "--- THIS PR VERSION ---",
+                    show("HEAD", path, lo, hi),
+                    "--- BASE BRANCH VERSION (already merged, newer) ---",
+                    show(BASE_REF, path, lo, hi),
+                ]
+                blocks.append(NL.join(parts))
                 break
         if len(blocks) >= 12:
             break
     if len(blocks) >= 12:
         break
 
-print("\n".join(blocks) if blocks else "")
+print(NL.join(blocks) if blocks else "")
 CONFPY
                     python3 /tmp/conflicts.py "$BASE_SHA" "${BASE_REF}" > ../conflict_hunks.txt 2>/dev/null || echo "" > ../conflict_hunks.txt
                     echo "Same-line conflict regions: $(grep -c '^=== ' ../conflict_hunks.txt 2>/dev/null || echo 0)"

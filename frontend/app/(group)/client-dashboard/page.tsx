@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
@@ -32,6 +32,12 @@ import { useToggle } from "react-use"
 import { DashboardFooter } from "@/components/dashboard-footer"
 import NextLink from "@/components/next-link"
 import SecuritySettingsStepper from "@/components/security-settings"
+import { PhoneVerificationDialog } from "@/components/phone-verification-dialog"
+import { ClientStatusDialog } from "@/app/(group)/complete-client-profile/page"
+import {
+  BillingPaymentMethodsContent,
+  type BillingPaymentMethodsContentHandle,
+} from "@/app/(group)/payments/page"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   Accordion,
@@ -68,6 +74,7 @@ type DashboardProfile = {
   lastName?: string | null
   username?: string | null
   avatarUrl?: string | null
+  phone?: string | null
   bio?: string | null
   overview?: string | null
   location?: string | null
@@ -531,16 +538,22 @@ const RecentActivity = ({
   )
 }
 
-const RightDrawer = ({ profile }: { profile?: DashboardProfile | null }) => {
+const RightDrawer = ({
+  profile,
+  ...handlers
+}: { profile?: DashboardProfile | null } & ProfileCtaHandlers) => {
   return (
     <>
-      <RightSidebarUpPart profile={profile} />
+      <RightSidebarUpPart profile={profile} {...handlers} />
       <RightSidebarDownPart />
     </>
   )
 }
 
-const Content = ({ profile }: { profile?: DashboardProfile | null }) => {
+const Content = ({
+  profile,
+  ...handlers
+}: { profile?: DashboardProfile | null } & ProfileCtaHandlers) => {
   const [isOpen, toggleIsOpen] = useToggle(false)
   return (
     <div className="flex-auto pt-3.5 px-3.5 md:pt-6 md:px-6 min-[1024px]:px-8 min-[1200px]:pl-[248px] min-[1024px]:pt-8 min-[1200px]:pr-[50px]">
@@ -551,7 +564,7 @@ const Content = ({ profile }: { profile?: DashboardProfile | null }) => {
           <RecentProjects />
         </div>
 
-        <RightSidebar profile={profile} />
+        <RightSidebar profile={profile} {...handlers} />
 
         <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
           <DialogContent
@@ -586,7 +599,7 @@ const Content = ({ profile }: { profile?: DashboardProfile | null }) => {
               className="w-full h-[calc(theme(size.full)-theme(size.12))]"
               scrollBar={<ScrollBar className="w-4 p-1" />}
             >
-              <RightDrawer profile={profile} />
+              <RightDrawer profile={profile} {...handlers} />
             </ScrollArea>
           </DialogContent>
         </Dialog>
@@ -611,13 +624,24 @@ const rightSidebarUpPartVariants = cva(
   }
 )
 
+type ProfileCtaHandlers = {
+  onCompleteProfile?: () => void
+  onVerifyPhone?: () => void
+  onVerifyPaymentMethod?: () => void
+}
+
 const RightSidebarUpPart = ({
   className,
   variant,
   profile,
-}: { className?: string; profile?: DashboardProfile | null } & VariantProps<
-  typeof rightSidebarUpPartVariants
->) => {
+  onCompleteProfile,
+  onVerifyPhone,
+  onVerifyPaymentMethod,
+}: {
+  className?: string
+  profile?: DashboardProfile | null
+} & ProfileCtaHandlers &
+  VariantProps<typeof rightSidebarUpPartVariants>) => {
   const { user } = useAuth()
   const displayUser = profile || user
   const fullName =
@@ -699,23 +723,22 @@ const RightSidebarUpPart = ({
         </div>
 
         <div className="mt-5">
-          <NextLink href="/complete-profile">
-            <Button
-              className="w-full gap-2 rounded-[4px] border-2 border-primary-500 text-primary-500"
-              size="md"
-              variant="outlined"
-            >
-              {profileCompletion === 100 ? (
-                <>
-                  <Edit03 className="size-[15px]" /> Edit My Profile
-                </>
-              ) : (
-                <>
-                  <UserCircle className="size-[15px]" /> Complete My Profile
-                </>
-              )}
-            </Button>
-          </NextLink>
+          <Button
+            className="w-full gap-2 rounded-[4px] border-2 border-primary-500 text-primary-500 transition-colors duration-300 hover:bg-primary-500 hover:text-white"
+            size="md"
+            variant="outlined"
+            onClick={onCompleteProfile}
+          >
+            {profileCompletion === 100 ? (
+              <>
+                <Edit03 className="size-[15px]" /> Edit My Profile
+              </>
+            ) : (
+              <>
+                <UserCircle className="size-[15px]" /> Complete My Profile
+              </>
+            )}
+          </Button>
         </div>
 
         {profileCompletion < 100 && (
@@ -740,14 +763,16 @@ const RightSidebarUpPart = ({
 
             <div className="flex flex-col items-start gap-2">
               <Button
-                className="gap-2 text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30"
+                className="gap-2 text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30 transition-colors duration-300 hover:text-primary-600 hover:decoration-primary-600"
                 variant="link"
+                onClick={onVerifyPhone}
               >
                 <Phone className="size-[15px]" /> Verify Phone Number
               </Button>
               <Button
-                className="gap-2 text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30"
+                className="gap-2 text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30 transition-colors duration-300 hover:text-primary-600 hover:decoration-primary-600"
                 variant="link"
+                onClick={onVerifyPaymentMethod}
               >
                 <Bank className="size-[15px]" /> Verify Payment Method
               </Button>
@@ -925,10 +950,13 @@ const RightSidebarDownPart = ({
   )
 }
 
-const RightSidebar = ({ profile }: { profile?: DashboardProfile | null }) => {
+const RightSidebar = ({
+  profile,
+  ...handlers
+}: { profile?: DashboardProfile | null } & ProfileCtaHandlers) => {
   return (
     <div className="w-[322px] shrink-0 min-[1440px]:block hidden">
-      <RightSidebarUpPart variant="secondary" profile={profile} />
+      <RightSidebarUpPart variant="secondary" profile={profile} {...handlers} />
       <RightSidebarDownPart variant="secondary" />
     </div>
   )
@@ -943,6 +971,26 @@ export default function ClientDashboard() {
   const router = useRouter()
   const [showSecurityModal, setShowSecurityModal] = useState(false)
   const [profile, setProfile] = useState<DashboardProfile | null>(null)
+  const [showCompleteProfile, setShowCompleteProfile] = useState(false)
+  const [showPhoneVerification, setShowPhoneVerification] = useState(false)
+
+  const handleCompleteProfile = useCallback(() => {
+    setShowCompleteProfile(true)
+  }, [])
+
+  const handleVerifyPhone = useCallback(() => {
+    setShowPhoneVerification(true)
+  }, [])
+
+  // Opens the billing add-payment-method dialog in place. The flow is mounted
+  // here in dialogs-only mode so the dashboard stays put behind it rather than
+  // navigating to billing, and the dialogs are the same ones billing uses.
+  const paymentMethodsRef = useRef<BillingPaymentMethodsContentHandle | null>(
+    null
+  )
+  const handleVerifyPaymentMethod = useCallback(() => {
+    paymentMethodsRef.current?.openAddPaymentMethodDialog()
+  }, [])
 
   const fetchProfile = useCallback(async (userId: string) => {
     try {
@@ -993,7 +1041,28 @@ export default function ClientDashboard() {
       )}
       <AuthenticatedRoute>
         <LeftSidebar forceRole="CLIENT" />
-        <Content profile={profile} />
+        <Content
+          profile={profile}
+          onCompleteProfile={handleCompleteProfile}
+          onVerifyPhone={handleVerifyPhone}
+          onVerifyPaymentMethod={handleVerifyPaymentMethod}
+        />
+
+        <ClientStatusDialog
+          open={showCompleteProfile}
+          onOpenChange={setShowCompleteProfile}
+        />
+
+        <BillingPaymentMethodsContent ref={paymentMethodsRef} dialogsOnly />
+
+        <PhoneVerificationDialog
+          open={showPhoneVerification}
+          onOpenChange={setShowPhoneVerification}
+          defaultPhone={profile?.phone ?? user?.phone ?? ""}
+          onVerified={() => {
+            if (user?.id) fetchProfile(user.id)
+          }}
+        />
       </AuthenticatedRoute>
     </>
   )
