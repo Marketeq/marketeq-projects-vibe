@@ -885,7 +885,7 @@ export default function MyJobsPage() {
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <NextLink
-                                    href="/job-screening"
+                                    href={`/job-details/${job.id}`}
                                     className="text-lg font-semibold leading-normal text-dark-blue-400 hover:underline"
                                   >
                                     {job.title}
