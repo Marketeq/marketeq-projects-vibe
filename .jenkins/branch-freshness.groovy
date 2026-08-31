@@ -95,7 +95,7 @@ pipeline {
                         // rebase and never resolve a conflict on the author's behalf.
                         if (behindBy > 0 && !hasOverlap) {
                             echo "Branch is ${behindBy} behind with no same-line conflicts -- updating it automatically."
-                            def rc = sh(returnStatus: true, script: """
+                            def updRc = sh(returnStatus: true, script: """
                                 code=\$(curl -s -o upd.json -w '%{http_code}' -X PUT \
                                   -H "Authorization: token \$GH_TOKEN" \
                                   -H "Accept: application/vnd.github+json" \
@@ -103,7 +103,7 @@ pipeline {
                                 echo "update-branch -> HTTP \$code"
                                 [ "\$code" = "202" ]
                             """)
-                            if (rc == 0) {
+                            if (updRc == 0) {
                                 echo "Branch updated. It is now current with ${baseRef}."
                                 postStatus(baseRef, headSha, 'success',
                                     "Was ${behindBy} behind, updated automatically - now current with ${baseRef}")

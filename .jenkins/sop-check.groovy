@@ -215,7 +215,7 @@ pipeline {
                                     | grep -o '"name"[[:space:]]*:[[:space:]]*"frozen-unlock"' || true)
                             fi
                             if [ -z "$FROZEN_UNLOCK" ]; then
-                                add "Frozen file(s) touched:$FROZEN_UI_FILES -- these are locked (SOP 1.4). Only @CTorres9800 may modify them. Remove the changes from this PR, or ask @CTorres9800 for the frozen-unlock label."
+                                add "Frozen file(s) touched:$FROZEN_UI_FILES -- treated as a conflict, and the frozen version WINS. The existing file stands as-is; revert nothing and delete nothing, just drop these changes out of this PR and the rest can merge. Only @CTorres9800 can override, via the frozen-unlock label (SOP 1.4)."
                             fi
                         fi
 
