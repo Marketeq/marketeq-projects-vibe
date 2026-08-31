@@ -5,14 +5,17 @@ import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import { ProjectAPI } from "@/service/http/project"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import {
-  formatRelativeTime,
+  MY_LISTING_STATUSES,
   type MyListing,
+  type MyListingStatus,
+  type MyListingType,
+  formatRelativeTime,
   statusToBadgeVisual,
   useMyListings,
 } from "@/src/lib/my-listings"
-import { ProjectAPI } from "@/service/http/project"
 import { cn } from "@/utils/functions"
 import {
   Archive,
@@ -82,11 +85,13 @@ const newListingOptions = [
 ]
 
 // Filter options per the my-listings Figma ("Filter by" → Offer type / Status type).
-const OFFER_TYPE_OPTIONS = [
+// Both lists come from the listing model itself, so a filter option can never
+// name a status or type the app doesn't actually produce.
+const OFFER_TYPE_OPTIONS: { value: MyListingType; label: string }[] = [
   { value: "project", label: "Projects" },
   { value: "service", label: "Services" },
 ]
-const STATUS_OPTIONS = ["Active", "Pending", "Paused", "Canceled", "Completed"]
+const STATUS_OPTIONS = MY_LISTING_STATUSES
 
 export default function MyListingsPage() {
   const router = useRouter()
@@ -101,17 +106,15 @@ export default function MyListingsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState("All")
   const [sortBy, setSortBy] = useState<string>("recent")
-  const [typeFilters, setTypeFilters] = useState<string[]>([])
-  const [statusFilters, setStatusFilters] = useState<string[]>([])
+  const [typeFilters, setTypeFilters] = useState<MyListingType[]>([])
+  const [statusFilters, setStatusFilters] = useState<MyListingStatus[]>([])
 
-  const toggleFilter = (
-    value: string,
-    setter: React.Dispatch<React.SetStateAction<string[]>>
+  const toggleFilter = <T,>(
+    value: T,
+    setter: React.Dispatch<React.SetStateAction<T[]>>
   ) =>
     setter((prev) =>
-      prev.includes(value)
-        ? prev.filter((v) => v !== value)
-        : [...prev, value]
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
     )
 
   const activeFilterCount = typeFilters.length + statusFilters.length
@@ -181,8 +184,10 @@ export default function MyListingsPage() {
         <DropdownMenuItem>
           <Users className="h-4 w-4" /> Manage members
         </DropdownMenuItem>
+        {/* Routes to the full editor, so the label says Edit rather than
+            Rename — there is no inline-rename endpoint yet. */}
         <DropdownMenuItem onClick={() => goEdit(listing.id)}>
-          <Edit3 className="h-4 w-4" /> Rename {noun}
+          <Edit3 className="h-4 w-4" /> Edit {noun}
         </DropdownMenuItem>
         <DropdownMenuItem>
           <Pause className="h-4 w-4" /> Pause {noun}
@@ -595,7 +600,7 @@ export default function MyListingsPage() {
                       <tr>
                         <th className="text-left px-6 py-3 border-b border-gray-200">
                           <span className="text-xs leading-[18px] font-medium text-dark-blue-400">
-                            Project Name
+                            Listing Name
                           </span>
                         </th>
                         <th className="text-left px-6 py-3 border-b border-gray-200">
@@ -624,9 +629,24 @@ export default function MyListingsPage() {
                           onClick={() => goEdit(listing.id)}
                         >
                           <td className="px-6 py-2">
-                            <span className="text-sm font-semibold text-dark-blue-400">
-                              {listing.title}
-                            </span>
+                            <div className="flex items-center gap-x-2">
+                              <span className="text-sm font-semibold text-dark-blue-400">
+                                {listing.title}
+                              </span>
+                              {/* The Type column was replaced by Team, so the
+                                  service marker moves next to the name here —
+                                  same badge the grid card uses. */}
+                              {listing.type === "service" && (
+                                <Badge
+                                  size="md"
+                                  visual="gray"
+                                  className="gap-x-1"
+                                >
+                                  <RefreshCw className="size-3" />
+                                  Service
+                                </Badge>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-2">
                             {listing.teamAvatars &&
