@@ -192,9 +192,9 @@ pipeline {
                         # Per-PR waiver: @CTorres9800 adds the `frozen-unlock` label.
                         design_surface() {
                             # $1 = git revision, $2 = path. Prints a stable fingerprint.
-                            git show "$1:$2" 2>/dev/null | tr ">" ">\n" | {
+                            git show "$1:$2" 2>/dev/null | {
                                 grep -oE 'class(Name)?="[^"]*"|</?[A-Za-z][A-Za-z0-9.]*' || true
-                            } | sed 's/[[:space:]]\+/ /g' | sort | uniq -c
+                            } | tr -s '[:space:]' ' ' | sort | uniq -c
                         }
 
                         FROZEN_UI_HIT=0
