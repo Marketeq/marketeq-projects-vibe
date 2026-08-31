@@ -62,7 +62,13 @@ module.exports = {
     // offer-service entry in boot-all.js (both 3011). It was 3025 here, so the
     // gateway proxied /offers to a port nothing was listening on.
     svcNested('offer-service', 3011),
-    svc('resume-parsing-service', 3033),
+    // 3028 is correct HERE. This file is the local PM2 config, and the
+    // api-gateway defaults RESUME_PARSING_SERVICE_URL to localhost:3028 for
+    // exactly that reason (proxy.controller.ts). boot-all.js separately uses
+    // 3033 because it puts payout-service on 3028; that collision does not
+    // exist in this file, where payout-service is on 3022. Moving this to
+    // 3033 breaks resume parsing under PM2 -- the gateway keeps calling 3028.
+    svc('resume-parsing-service', 3028),
     {
       name: 'cms-service',
       script: npmLauncher,
