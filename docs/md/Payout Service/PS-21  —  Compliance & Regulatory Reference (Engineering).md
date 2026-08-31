@@ -21,7 +21,10 @@ PS-21 --- Compliance & Regulatory Reference (Engineering)
   required**          expansion.
 
   **Regulations       NACHA ACH rules, Stripe compliance, FinCEN BSA, IRS
-  covered**           1099, OFAC, jurisdiction payout timing, W-9/W-8BEN,
+  covered**           1099-K under IRC 6050W (NOT 1099-NEC --- the platform
+                      settles payments, so it is a third party settlement
+                      organization; see backend/apps/tax-service/docs/TS-01),
+                      OFAC, jurisdiction payout timing, W-9/W-8BEN,
                       crypto regulatory classification.
 
   **Prerequisites**   PS-02, PS-12, PS-15, PS-20, earnings-service

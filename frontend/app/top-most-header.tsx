@@ -97,6 +97,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui"
+import { persistActiveRole } from "@/src/lib/api/active-role"
 import { ScrollBar } from "@/components/ui"
 
 const OFFER_NOTIFICATION_EVENT = "contract.offer.received"
@@ -1941,6 +1942,7 @@ export const TopMostHeader = ({
                         ...user,
                         userType: newType,
                         accountType: newRole,
+                        activeRole: newRole,
                         role: newRole,
                       }
                     : null
@@ -1950,6 +1952,7 @@ export const TopMostHeader = ({
                           ...prev,
                           userType: newType,
                           accountType: newRole,
+                          activeRole: newRole,
                           role: newRole,
                         }
                       : prev
@@ -1958,6 +1961,11 @@ export const TopMostHeader = ({
                     UserAPI.updateProfile(user.id, { userType: newType }).catch(
                       () => {}
                     )
+                    // Persist the active role so it survives a reload.
+                    // `accountType` only ever lived in memory, so after a
+                    // refresh the app fell back to inferring from `role` and
+                    // showed the wrong role's features.
+                    persistActiveRole(newRole).catch(() => {})
                   }
                   // Check if the user needs onboarding for the target role
                   const needsOnboarding =

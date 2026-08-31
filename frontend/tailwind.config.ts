@@ -142,7 +142,7 @@ const config: Config = {
         "5xl": "1920px",
       },
       fontFamily: {
-        sans: ["var(--font-noto-sans)", ...defaultTheme.fontFamily.sans],
+        sans: ["var(--font-inter)", ...defaultTheme.fontFamily.sans],
       },
       keyframes: {
         "accordion-down": {

@@ -755,7 +755,7 @@ gas cost × 10 safety factor).
   **Jurisdiction**   **Classification**   **Tax treatment for **Marketeq reporting **Notes**
                                           contractor**        obligation**         
   ------------------ -------------------- ------------------- -------------------- ----------------
-  **United States**  Property (IRS Notice Contractor receives 1099-NEC issued for  Ramp and Transak
+  **United States**  Property (IRS Notice Contractor receives 1099-K issued for  Ramp and Transak
                      2014-21). Not        crypto FMV at time  total USD earnings   are licensed
                      currency.            of payout as        (already handled by  MSBs (FinCEN).
                                           ordinary income.    earnings-service).   Marketeq is not

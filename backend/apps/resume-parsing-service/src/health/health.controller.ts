@@ -2,6 +2,16 @@ import { Controller, Get } from '@nestjs/common';
 
 @Controller('health')
 export class HealthController {
+  // api-gateway's /services/health probe hits `${url}/health` on every
+  // service (proxy.controller.ts). Without this route that probe 404s, which
+  // the aggregator counts as "the process answered" rather than "the service
+  // is healthy" — and every probe was logged as an unhandled exception.
+  // auth-service defines the same bare route.
+  @Get()
+  health() {
+    return { status: 'ok', service: 'resume-parsing-service' };
+  }
+
   @Get('live')
   live() {
     return { status: 'ok' };

@@ -22,6 +22,7 @@ import { Request } from 'express';
 import { RefreshTimezoneDto } from './dtos/refresh-timezone.dto';
 import { UpdatePhoneDto } from './dtos/update-phone.dto';
 import { UpdateCurrencyDto } from './dtos/update-currency.dto';
+import { UpdateActiveRoleDto } from './dtos/update-active-role.dto';
 import { R2Service } from '../storage/r2.service';
 
 const ALLOWED_AVATAR_MIME_TYPES = new Set([
@@ -201,6 +202,19 @@ export class UserSelfController {
   // Currency Settings entry point shown when earnings-service falls back
   // to USD (no resolvable preference on this profile).
   @ApiOperation({ summary: 'Update preferred display currency' })
+  @Patch('active-role')
+  async updateActiveRole(
+    @CurrentUser() user: JwtUser,
+    @Body() dto: UpdateActiveRoleDto,
+  ) {
+    const resolved = await this.userService.getUserByClaims(user);
+    const updated = await this.userService.updateActiveRole(
+      resolved.id,
+      dto.activeRole,
+    );
+    return { id: updated.id, activeRole: updated.activeRole ?? null };
+  }
+
   @Patch('currency')
   async updateCurrency(
     @CurrentUser() user: JwtUser,

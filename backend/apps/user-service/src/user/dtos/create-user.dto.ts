@@ -158,6 +158,21 @@ export class CreateUserDto {
   @IsString()
   businessGoals?: string;
 
+  @ApiPropertyOptional({ example: 'Acme Construction' })
+  @IsOptional()
+  @IsString()
+  teamName?: string;
+
+  @ApiPropertyOptional({ example: 'acme.com' })
+  @IsOptional()
+  @IsString()
+  companyWebsite?: string;
+
+  @ApiPropertyOptional({ example: ['Collaboration', 'Transparency'] })
+  @IsOptional()
+  @IsArray()
+  workplaceValues?: string[];
+
   @ApiPropertyOptional({ example: 2 })
   @IsOptional()
   @IsInt()
