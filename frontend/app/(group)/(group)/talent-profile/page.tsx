@@ -110,11 +110,6 @@ interface SimilarProfile {
 }
 
 import NextLink from "@/components/next-link"
-import {
-  ReadMoreLess,
-  ReadMoreLessComp,
-  ReadMoreLessRoot,
-} from "@/components/read-more-less"
 import { SaveTalentButton } from "@/components/save-talent-button"
 import {
   ShowMoreLess,
@@ -395,6 +390,61 @@ function LineClampText({
   )
 }
 
+// 2-line clamp for work-experience descriptions. Measures with a ResizeObserver
+// so the "Read More" toggle only appears when the text actually overflows two
+// lines — accurate and stays correct on resize (not a flaky measure-on-mount,
+// and not a char-count guess that mis-fires on text that fits within 2 lines).
+function ClampedDescription({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const [overflowing, setOverflowing] = useState(false)
+  const ref = useRef<HTMLParagraphElement>(null)
+
+  useEffect(() => {
+    // Only measure while collapsed (clamp applied); when expanded there's no
+    // clamp, so keep the last "overflowing" value to preserve View Less.
+    if (expanded) return
+    const el = ref.current
+    if (!el) return
+    const measure = () =>
+      setOverflowing(el.scrollHeight > el.clientHeight + 1)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [text, expanded])
+
+  return (
+    <div className="mt-3">
+      <p
+        ref={ref}
+        className="text-sm font-extralight text-gray-700 break-words leading-relaxed"
+        style={
+          expanded
+            ? undefined
+            : {
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                overflowWrap: "anywhere",
+              }
+        }
+      >
+        {text}
+      </p>
+      {overflowing && (
+        <button
+          type="button"
+          className="mt-1 text-sm font-semibold text-gray-700 hover:text-gray-900 focus-visible:outline-none"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "Read Less" : "...Read More"}
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function TalentProfilePage() {
   return (
     <Suspense>
@@ -404,7 +454,7 @@ export default function TalentProfilePage() {
 }
 
 function Default() {
-  const { user, isLoading: isAuthLoading, openAuthModal, setPendingRedirect } = useAuth()
+  const { user, isLoading: isAuthLoading, openAuthModal, setPendingRedirect, setUser } = useAuth()
   const { toggle: openInviteWindow } = useInviteWindowStore()
   const router = useRouter()
   const pathname = usePathname()
@@ -791,9 +841,21 @@ function Default() {
   const handleAvatarUpload = useCallback(
     async (file: File) => {
       await ClientAPI.UploadAvatar(file)
-      refreshProfile()
+      if (!profile?.id) return
+      try {
+        const res = await UserAPI.getProfile(profile.id)
+        if (res?.data) {
+          setProfile(res.data)
+          // Keep the global auth user in sync so the top-right nav avatar
+          // updates immediately, without needing a page refresh.
+          const nextAvatar = res.data.avatarUrl ?? null
+          setUser((prev) => (prev ? { ...prev, avatarUrl: nextAvatar } : prev))
+        }
+      } catch {
+        /* noop */
+      }
     },
-    [refreshProfile]
+    [profile?.id, setUser]
   )
 
   const handleRemoveAvatar = useCallback(async () => {
@@ -801,10 +863,11 @@ function Default() {
     try {
       await UserAPI.updateProfile(profile.id, { avatarUrl: "" })
       refreshProfile()
+      setUser((prev) => (prev ? { ...prev, avatarUrl: null } : prev))
     } catch {
       /* noop */
     }
-  }, [profile?.id, refreshProfile])
+  }, [profile?.id, refreshProfile, setUser])
 
   const [deleteConfirm, setDeleteConfirm] = useState<{
     type: "experience" | "education"
@@ -2748,35 +2811,9 @@ function Default() {
                                                 </div>
 
                                                 {exp.description && (
-                                                  <ReadMoreLessRoot>
-                                                    <ReadMoreLessComp
-                                                      max={52}
-                                                      text={exp.description}
-                                                    >
-                                                      {({
-                                                        readMore,
-                                                        text,
-                                                        toggle,
-                                                      }) => (
-                                                        <>
-                                                          <p className="mt-3 text-sm leading-none font-extralight text-gray-700 break-words">
-                                                            {text}{" "}
-                                                            <Button
-                                                              className="text-gray-700 hover:no-underline hover:text-gray-900 font-semibold"
-                                                              size="sm"
-                                                              variant="link"
-                                                              visual="gray"
-                                                              onClick={toggle}
-                                                            >
-                                                              {readMore
-                                                                ? null
-                                                                : "...Read More"}
-                                                            </Button>
-                                                          </p>
-                                                        </>
-                                                      )}
-                                                    </ReadMoreLessComp>
-                                                  </ReadMoreLessRoot>
+                                                  <ClampedDescription
+                                                    text={exp.description}
+                                                  />
                                                 )}
                                                 {Array.isArray(exp.skills) && exp.skills.length > 0 && (
                                                   <div className="mt-3 flex flex-wrap gap-2">
