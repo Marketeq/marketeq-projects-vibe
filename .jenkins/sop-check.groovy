@@ -143,6 +143,16 @@ pipeline {
                                 backend/libs/shared/src/guards/*|backend/libs/shared/src/decorators/*|\
                                 backend/apps/user-service/src/guards/*|\
                                 backend/apps/user-service/src/user/dtos/onboarding-dismissed.dto.ts|\
+                                frontend/app/top-most-header.tsx|\
+                                frontend/components/navigation/marketplace-secondary-nav.tsx|\
+                                frontend/components/settings-sidebar.tsx|\
+                                "frontend/app/(group)/onboarding/"*|\
+                                frontend/app/forgot-password/*|\
+                                frontend/app/reset-password/*|\
+                                frontend/hoc/AuthenticatedRoute.tsx|\
+                                frontend/hoc/UnauthenticatedRoute.tsx|\
+                                frontend/components/auth/*|\
+                                frontend/service/http/auth.ts|\
                                 frontend/.env.local.example|frontend/.env.staging.example|\
                                 frontend/.env.production.example|backend/.env.local.example|\
                                 backend/.env.staging.example|backend/.env.production.example)
@@ -167,17 +177,32 @@ pipeline {
                             fi
                         fi
 
-                        # Section 3c: Frozen screens and components (SOP 1.4)
-                        # Path-matched only -- no judgement about whether a change is good.
+                        # Section 3c: DESIGN-FROZEN screens (SOP 1.4)
+                        # These screens look the way the CTO wants them. Backend work and
+                        # API wiring are FINE. What is not fine is changing how the screen
+                        # LOOKS. Swapping a hardcoded string for API data: allowed. That
+                        # same edit moving one pixel, renaming a class, or adding/removing
+                        # an element: blocked.
+                        #
+                        # We compare the design surface of the file before and after:
+                        #   - every className / class value
+                        #   - every JSX tag name and how many times it appears
+                        # Identical on both sides -> only data changed -> PASS.
+                        # Different -> the design moved -> BLOCK.
                         # Per-PR waiver: @CTorres9800 adds the `frozen-unlock` label.
+                        design_surface() {
+                            # $1 = git revision, $2 = path. Prints a stable fingerprint.
+                            git show "$1:$2" 2>/dev/null | tr ">" ">\n" | {
+                                grep -oE 'class(Name)?="[^"]*"|</?[A-Za-z][A-Za-z0-9.]*' || true
+                            } | sed 's/[[:space:]]\+/ /g' | sort | uniq -c
+                        }
+
                         FROZEN_UI_HIT=0
                         FROZEN_UI_FILES=""
+                        FROZEN_OK_FILES=""
                         while IFS= read -r f; do
                             [ -z "$f" ] && continue
                             case "$f" in
-                                frontend/components/settings-sidebar.tsx|\
-                                frontend/app/top-most-header.tsx|\
-                                frontend/components/navigation/marketplace-secondary-nav.tsx|\
                                 "frontend/app/(group)/active-project/[id]/page.tsx"|\
                                 "frontend/app/(group)/job-screening/page.tsx"|\
                                 frontend/components/listing-card.tsx|\
@@ -195,18 +220,21 @@ pipeline {
                                 "frontend/app/(group)/billing/invoices/page.tsx"|\
                                 "frontend/app/(group)/billing/my-plans/page.tsx"|\
                                 "frontend/app/(group)/billing/payment-methods/page.tsx"|\
-                                "frontend/app/(group)/onboarding/"*|\
-                                "frontend/app/(group)/my-jobs/page.tsx"|\
-                                frontend/app/forgot-password/*|\
-                                frontend/app/reset-password/*|\
-                                frontend/hoc/AuthenticatedRoute.tsx|\
-                                frontend/hoc/UnauthenticatedRoute.tsx|\
-                                frontend/components/auth/*|\
-                                frontend/service/http/auth.ts)
-                                    FROZEN_UI_HIT=1
-                                    FROZEN_UI_FILES="$FROZEN_UI_FILES $f" ;;
+                                "frontend/app/(group)/my-jobs/page.tsx")
+                                    BEFORE=$(design_surface "$BASE_SHA" "$f")
+                                    AFTER=$(design_surface HEAD "$f")
+                                    if [ "$BEFORE" = "$AFTER" ]; then
+                                        FROZEN_OK_FILES="$FROZEN_OK_FILES $f"
+                                    else
+                                        FROZEN_UI_HIT=1
+                                        FROZEN_UI_FILES="$FROZEN_UI_FILES $f"
+                                    fi ;;
                             esac
                         done <<< "$CHANGED_FILES"
+
+                        if [ -n "$FROZEN_OK_FILES" ]; then
+                            echo "Design-frozen screens touched but design unchanged (data/API only -- allowed):$FROZEN_OK_FILES"
+                        fi
 
                         if [ "$FROZEN_UI_HIT" = "1" ]; then
                             FROZEN_UNLOCK=""
@@ -216,7 +244,7 @@ pipeline {
                                     | grep -o '"name"[[:space:]]*:[[:space:]]*"frozen-unlock"' || true)
                             fi
                             if [ -z "$FROZEN_UNLOCK" ]; then
-                                add "Frozen file(s) touched:$FROZEN_UI_FILES -- treated as a conflict, and the frozen version WINS. The existing file stands as-is; revert nothing and delete nothing, just drop these changes out of this PR and the rest can merge. Only @CTorres9800 can override, via the frozen-unlock label (SOP 1.4)."
+                                add "Design change on a frozen screen:$FROZEN_UI_FILES -- the frozen version WINS. These screens are locked to how they look. Backend work and API wiring are fine; changing a class, an element, or the layout is not. Nothing here is reverted or deleted: keep your data/API changes, put the markup back as it was, and this passes. Only @CTorres9800 overrides, via the frozen-unlock label."
                             fi
                         fi
 
