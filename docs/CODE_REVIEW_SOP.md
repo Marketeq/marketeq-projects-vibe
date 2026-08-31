@@ -183,13 +183,18 @@ Deleting good code is a worse outcome than shipping a bug. A bug gets fixed; del
 
 ### 1.11 Automation never changes a developer's code
 
-No Jenkins pipeline, GitHub workflow, script, bot, or agent may modify code a developer wrote. Not their branch, not their commits, not their merged work. This covers, without exception:
+No Jenkins pipeline, GitHub workflow, script, bot, or agent may **destroy** work a developer wrote. The test is not whether automation touched the branch — it is whether anything the author wrote could be lost.
 
-- **No rebasing or updating their branch.** `gh pr update-branch`, `git rebase`, and any force-push rewrite the author's commits. That is automation editing a developer's work, even when the content survives.
-- **No auto-fixes, auto-formatting, or auto-resolved conflicts** pushed to their branch.
-- **No reverts** (§1.1).
+**Allowed — non-destructive, safe to automate:**
+- **Bringing a stale branch current with a merge commit.** `gh pr update-branch <N>` (no flag) adds a merge commit on top. Every existing commit survives, nothing is force-pushed, no history is rewritten. Automate this freely.
 
-**On conflicts, automation checks which side is better. It does not choose, and it does not edit.** Analyse in a local scratch merge that is thrown away (§3.6), run the per-hunk test in §5.1 to see whether either side would lose behaviour, and **report the finding to the author**. The author resolves their own conflict, better informed than they were before.
+**Forbidden — destructive:**
+- **`--rebase`, `git rebase`, or any force-push on the author's branch.** These rewrite the author's commits. The content may survive, but their history does not, and a force-push can drop work pushed between the read and the write.
+- **Auto-resolving a conflict.** Choosing a side deletes the other side's work, and nothing in the result shows what went missing.
+- **Auto-fixes or auto-formatting** pushed to their branch.
+- **Reverts** (§1.1).
+
+**On conflicts, automation checks which side is better. It does not choose, and it does not edit.** A non-destructive update stops when it hits a conflict, which is correct — that is where a human is genuinely needed. Analyse in a local scratch merge that is thrown away (§3.6), run the per-hunk test in §5.1 to see whether either side would lose behaviour, and **report the finding to the author**. The author resolves their own conflict, better informed than they were before.
 
 The reason is simple: a pipeline has no design file, no ticket, and no spec, so it cannot know which side of a conflict was intended. A pipeline that edits code it cannot judge will eventually delete work that was there on purpose, and the developer gets blamed for a deletion they did not make.
 
@@ -268,7 +273,7 @@ Run every PR through this checklist in order. A single "❌ fail" blocks the mer
   gh api repos/Marketeq/marketeq-projects-vibe/compare/<base>...<head> --jq '.behind_by'
   ```
   **If `behind_by` >= 1, block and tell the author to update their branch.** Do NOT use `--admin` to bypass this.
-- [ ] **The reviewer never writes to the author's branch.** No `gh pr update-branch`, no rebase, no force-push, no commit, no automated fix. Rebasing rewrites the author's commits, which is devops code changing a developer's work — see §1.11. The author updates their own branch.
+- [ ] **Bring it current non-destructively, or not at all (§1.11).** `gh pr update-branch <NUMBER>` with **no flag** is a merge commit: every author commit survives, nothing is force-pushed. That is safe to run automatically. **Never pass `--rebase`** and never force-push — those rewrite the author's commits. If the update stops on a conflict, that is correct: report it, do not resolve it.
 - [ ] **Review a current tree, produced locally and thrown away.** To analyse a stale branch, merge the base into it in a scratch checkout, read the result, then discard it:
   ```bash
   git fetch origin <base>
@@ -322,7 +327,7 @@ A branch cannot merge when any of these are true:
 - The `Scan for committed secrets` gitleaks check is ❌
 - Any required CODEOWNER review is missing (see §9)
 
-**The reviewer does not update, rebase, or resolve the author's branch (§1.11).** Conflicts are the author's to resolve. Your job is to analyse them in a local scratch merge (§3.6), determine per hunk whether either side would lose behaviour, and **report what you found** so the author can resolve it with that information in hand.
+**The reviewer may bring the branch current non-destructively (`gh pr update-branch`, no flag), but never rebases, force-pushes, or resolves the author's conflicts (§1.11).** Conflicts are the author's to resolve. Your job is to analyse them in a local scratch merge (§3.6), determine per hunk whether either side would lose behaviour, and **report what you found** so the author can resolve it with that information in hand.
 
 Post a block comment (§7) with what each conflicting hunk contains, which side holds what, and the commands the author should run. Apply §5.1's per-hunk test when analysing, not when editing:
 
@@ -358,9 +363,10 @@ Once the checklist passes and the PR is `MERGEABLE`, **verify the branch is up t
 ```bash
 # Check how far behind the branch is
 gh api repos/Marketeq/marketeq-projects-vibe/compare/<base>...<head> --jq '.behind_by'
-# If behind_by >= 1: BLOCK and ask the author to update their own branch.
-# Do NOT run `gh pr update-branch` or rebase it yourself -- that rewrites
-# their commits, which is automation changing a developer's code (SS1.11).
+# If behind_by >= 1, bring it current non-destructively (merge commit):
+gh pr update-branch <NUMBER>     # NO --rebase, ever. See SS1.11.
+# Every author commit survives; nothing is force-pushed.
+# If it stops on a conflict, report the conflict -- do not resolve it.
 ```
 
 Only after the branch is up to date, merge with:
@@ -670,10 +676,10 @@ branch if it passes every one of the following checks:
        NestJS exceptions for errors, correct useEffect deps, correct
        Next.js route group placement.
    (6) Branch freshness — MERGEABLE and zero commits behind base.
-       Check behind_by. If >= 1, block and ask the AUTHOR to update
-       their branch -- never run update-branch or rebase yourself
-       (SS1.11). To analyse, merge the base locally in a scratch
-       checkout and discard it. NEVER use --admin.
+       Check behind_by. If >= 1, run `gh pr update-branch <N>` with NO
+       flag (merge commit, non-destructive). NEVER pass --rebase and
+       never force-push (SS1.11). If it stops on a conflict, report the
+       conflict; do not resolve it. NEVER use --admin.
    (7) Memory/perf — no infinite loops, unbounded queries, heap risks.
 
 6. Confirm the gitleaks "Scan for committed secrets" check is passing.
@@ -866,7 +872,7 @@ Primary prompt source: GitHub Actions `.github/workflows/ai-breakage-check.yml`.
 | 2026-05-22 | CI/CD split: PR gate checks on GitHub Actions, post-merge on both GitHub Actions + Jenkins, post-deploy on Jenkins only. All workflow/pipeline references updated accordingly. |
 | 2026-07-08 | Added §4.1 Selective Merge rule: never close entire PRs with mixed quality. Cherry-pick good code, reject only specific violations. |
 | 2026-07-09 | Added §8.11 stale branch code loss bug. Hardened §3.6 to require branches up to date before merge (max 5 commits behind). Hard-blocked `--admin` flag. Added staleness check to `sop-check.yml` workflow. Updated §6 merge procedure to require `gh pr update-branch` before merge. Updated review prompt §10 accordingly. |
-| 2026-08-31 | **Automation never changes a developer's code (new §1.11).** Reverses the auto-rebase added on 2026-08-28: `gh pr update-branch --rebase` force-pushes and rewrites the author's commits, which is devops code editing a developer's work. Reviewers now CHECK freshness and block at >=1 behind; the AUTHOR updates their own branch. To analyse a stale branch, merge the base locally in a scratch checkout and discard it (§3.6). On conflicts, automation determines which side is better and REPORTS it (§5, §5.1) -- it never resolves or edits. |
+| 2026-08-31 | **Automation may not DESTROY a developer's work (new §1.11).** The line is destructive vs non-destructive, not touched vs untouched. Allowed: auto-updating a stale branch with `gh pr update-branch` (no flag) — a merge commit, every author commit survives, no force-push. Forbidden: `--rebase` and any force-push (rewrites their commits), auto-resolving conflicts (deletes one side), auto-fixes pushed to their branch, and reverts. On a conflict the update stops, which is correct: automation determines which side is better and REPORTS it (§5, §5.1); the author resolves. Supersedes the 2026-08-28 `--rebase` instruction. |
 | 2026-08-28 | **The standard for changes to existing code: better is fine, worse is not.** Stated in §1.1 as a floor rather than a bar — a rewrite needs no justification for being an improvement; it is rejected only when a behavior, guard, null check, error path, or edge case present in the previous version is missing from the new one. Decided by the §15 coverage test, never by a general impression of quality. Added §5.1: conflicts are resolved one hunk at a time, coverage-tested in both directions, defaulting to preserving the engineer's work; blanket `--ours`/`--theirs` forbidden. Standing authorization for `gh pr update-branch --rebase`. |
 | 2026-08-28 | **Less opinionated, more factual.** Added §1.9 (only the author or CTO may authorize deleting the author's work; a reviewer's approval is not authority; no single-action deletion of merged work) and §1.10 (every blocking rule needs evidence). Hardened §3.6: branch is auto-rebased with `gh pr update-branch --rebase` before review and before merge, block at >=1 behind instead of >5. Scoped §4.1 so layout changes are only a violation inside the manifest's "when wiring data" scope. **Removed all revert machinery:** §9.9 is now reporting-only (opens an urgent issue, never creates a revert branch or revert PR), matching §1.1 fix-forward. We do not revert; reverting means deleting somebody's work. Added scope limits and the coverage test to the §10 and §15 prompts; removed "Be paranoid / prefer false positives" from §15. |
 | 2026-08-11 | **ABSOLUTE LOGIN LOCKDOWN.** §1.4 upgraded from "four-point confirmation required" to "CTO ONLY, NO EXCEPTIONS." Login files are permanently locked. No developer, contractor, or agent may touch them. Only @CTorres9800 may modify login/auth files. Login Gate workflow expanded to cover dev-main, staging, and live branches. All review prompts updated to hard-block login PRs from non-CTO authors. |
