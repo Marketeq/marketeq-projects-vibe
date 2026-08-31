@@ -1063,7 +1063,11 @@ function ContractCard({
           <div className="flex items-center flex-none min-w-[423px]">
           <AvatarGroup size="md" max={4} excess excessClassName="!border-gray-400 !text-gray-500 !text-[13px] !font-medium !bg-white">
             {contract.teamMembers.map((member, i) => (
-              <Avatar key={i} size="md" className="hover:ring-0 active:ring-0">
+              <Avatar
+                key={i}
+                size="md"
+                className="border-2 border-white hover:ring-0 active:ring-0"
+              >
                 <AvatarImage src={member.avatar} alt={member.name} />
                 <AvatarFallback>{member.name[0]}</AvatarFallback>
               </Avatar>
