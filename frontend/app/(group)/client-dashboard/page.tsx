@@ -236,13 +236,13 @@ const Welcome = ({
           </h1>
 
           <div className="flex items-center gap-x-3">
-            <NextLink href="/publish-project">
+            <NextLink href="/job-listing">
               <Button
                 className="text-dark-blue-400 bg-white xs:max-md:hidden"
                 variant="outlined"
                 visual="gray"
               >
-                <Plus className="size-3.5" /> Create a Project
+                <Plus className="size-3.5" /> Post a Job
               </Button>
             </NextLink>
             <Button
@@ -256,13 +256,13 @@ const Welcome = ({
           </div>
         </div>
 
-        <NextLink href="/publish-project" className="md:hidden">
+        <NextLink href="/job-listing" className="md:hidden">
           <Button
             className="text-dark-blue-400 bg-white"
             variant="outlined"
             visual="gray"
           >
-            <Plus className="size-3.5" /> Create a Project
+            <Plus className="size-3.5" /> Post a Job
           </Button>
         </NextLink>
       </div>
@@ -716,9 +716,16 @@ const RightSidebarUpPart = ({
             {fullName}
           </h1>
           {username && (
-            <p className="text-[13px] text-center leading-[15.73px] text-dark-blue-400">
+            <NextLink
+              href={
+                displayUser?.username
+                  ? `/client-profile?username=${encodeURIComponent(displayUser.username)}`
+                  : "/client-profile"
+              }
+              className="block text-[13px] text-center leading-[15.73px] text-dark-blue-400 transition-colors duration-300 hover:text-primary-500 hover:underline"
+            >
               {username}
-            </p>
+            </NextLink>
           )}
         </div>
 
@@ -800,33 +807,18 @@ const RightSidebarUpPart = ({
         </div>
       </div>
 
-      {(bio || interests.length > 0) && (
-        <div className="py-5 border-b border-gray-200">
-          {bio && (
-            <>
-              <h1 className="text-sm leading-[16.94px] font-bold text-dark-blue-400">
-                About
-              </h1>
-              <p className="mt-3 text-[13px] leading-[15.73px] text-dark-blue-400 line-clamp-2">
-                {bio}
-              </p>
-            </>
-          )}
-
-          {interests.length > 0 && (
-            <div className={bio ? "mt-5" : ""}>
-              <h1 className="text-sm leading-[16.94px] font-bold text-dark-blue-400">
-                My Interests
-              </h1>
-              <div className="flex flex-wrap mt-3 gap-2">
-                {interests.map((interest) => (
-                  <Badge key={interest} size="md" visual="gray">
-                    {interest}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
+      {interests.length > 0 && (
+        <div className="py-5">
+          <h1 className="text-sm leading-[16.94px] font-bold text-dark-blue-400">
+            My Interests
+          </h1>
+          <div className="flex flex-wrap mt-3 gap-2">
+            {interests.map((interest) => (
+              <Badge key={interest} size="md" visual="gray">
+                {interest}
+              </Badge>
+            ))}
+          </div>
         </div>
       )}
 

@@ -101,7 +101,7 @@ export const PhoneVerificationDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[740px] gap-0 p-0">
+      <DialogContent className="max-w-[700px] gap-0 p-0">
         <div className="px-6 pb-[50px] pt-6">
           <div className="flex items-start justify-between gap-x-2">
             <div className="flex-auto space-y-2">
