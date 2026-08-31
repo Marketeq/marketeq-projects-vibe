@@ -79,14 +79,38 @@ pipeline {
                         def prBranch = m['HEADREF'] ?: '?'
                         def overlapCount = (m['OVERLAP_COUNT'] ?: '0').toInteger()
                         def overlapFiles = m['OVERLAP'] ?: ''
-    def disjointCount = (m['DISJOINT_COUNT'] ?: '0').toInteger()
-    def disjointFiles = m['DISJOINT'] ?: ''
+                        def disjointCount = (m['DISJOINT_COUNT'] ?: '0').toInteger()
+                        def disjointFiles = m['DISJOINT'] ?: ''
                         def hasOverlap = overlapCount > 0
 
                         echo "PR #${prNum}: ${prBranch} -> ${baseRef}"
                         echo "Branch is ${behindBy} commit(s) behind and ${aheadBy} ahead of '${baseRef}'"
                         echo "PR touches ${m['PRFILES']} file(s); '${baseRef}' changed ${m['BASEFILES']} file(s) since the merge base"
                         echo "Overlap: ${overlapCount} file(s) ${hasOverlap ? '-- ' + overlapFiles : ''}"
+
+                        // AUTO-UPDATE (SOP 1.11): if the branch is behind but nothing
+                        // conflicts, bring it current automatically. This uses GitHub's
+                        // "Update branch", which is a MERGE commit -- every one of the
+                        // author's commits survives and nothing is force-pushed. We never
+                        // rebase and never resolve a conflict on the author's behalf.
+                        if (behindBy > 0 && !hasOverlap) {
+                            echo "Branch is ${behindBy} behind with no same-line conflicts -- updating it automatically."
+                            def rc = sh(returnStatus: true, script: """
+                                code=\$(curl -s -o upd.json -w '%{http_code}' -X PUT \
+                                  -H "Authorization: token \$GH_TOKEN" \
+                                  -H "Accept: application/vnd.github+json" \
+                                  "https://api.github.com/repos/${REPO}/pulls/${prNum}/update-branch")
+                                echo "update-branch -> HTTP \$code"
+                                [ "\$code" = "202" ]
+                            """)
+                            if (rc == 0) {
+                                echo "Branch updated. It is now current with ${baseRef}."
+                                postStatus(baseRef, headSha, 'success',
+                                    "Was ${behindBy} behind, updated automatically - now current with ${baseRef}")
+                                return
+                            }
+                            echo "Automatic update did not apply; reporting instead."
+                        }
 
                         // Decision logic -- SOP 3.6: a branch must be at ZERO commits
                         // behind before merge, so any distance >= 1 blocks. Overlap is
@@ -242,7 +266,7 @@ try:
         if not patch:
             return list(WHOLE)
         out = []
-        for line in patch.split("\n"):
+        for line in patch.split(chr(10)):
             if not line.startswith("@@"):
                 continue
             try:
