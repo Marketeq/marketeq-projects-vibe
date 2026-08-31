@@ -855,11 +855,44 @@ export class PublishService {
     };
   }
 
-  async getMyProjects(userId: string): Promise<Project[]> {
-    return this.projectRepository.findAll({
+  async getMyProjects(
+    userId: string,
+  ): Promise<(Project & { teamAvatars: string[] })[]> {
+    const projects = await this.projectRepository.findAll({
       filterOptions: {
         userId,
       },
+    });
+
+    // Resolve team-member avatars for every project in one pass so the
+    // listings cards can render an avatar stack without an N+1 fetch per card.
+    const allMemberIds = Array.from(
+      new Set(
+        projects
+          .flatMap((p) =>
+            Array.isArray(p.teamMemberIds) ? p.teamMemberIds : [],
+          )
+          .filter(Boolean)
+          .map(String),
+      ),
+    );
+    const hydrated = await this.userProfileClient.hydrateTeam(
+      allMemberIds,
+      userId,
+    );
+    const avatarByUserId = new Map(
+      hydrated.map((m) => [String(m.userId), m.avatarUrl]),
+    );
+
+    return projects.map((p) => {
+      const ids = [
+        String(userId),
+        ...(Array.isArray(p.teamMemberIds) ? p.teamMemberIds.map(String) : []),
+      ];
+      const teamAvatars = Array.from(new Set(ids))
+        .map((id) => avatarByUserId.get(id))
+        .filter((url): url is string => Boolean(url));
+      return { ...p, teamAvatars };
     });
   }
 
