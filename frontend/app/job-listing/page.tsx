@@ -16868,7 +16868,9 @@ function PublishProject({
 
   const handleSaveExit = React.useCallback(() => {
     toggleIsSaveExitDialogOpen(false);
-    router.push("/my-listings");
+    // Jobs live on My Jobs; /my-listings is a leftover from the project flow
+    // this screen was built from.
+    router.push("/my-jobs");
   }, [toggleIsSaveExitDialogOpen, router]);
   const isJobListingRoute =
     typeof window !== "undefined" &&
