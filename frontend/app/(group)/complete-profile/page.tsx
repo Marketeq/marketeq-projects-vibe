@@ -9,8 +9,9 @@ import React, {
   useState,
 } from "react"
 import dynamic from "next/dynamic"
-import { useSearchParams } from "next/navigation"
-import { useAuth } from "@/contexts/auth"
+import { useRouter, useSearchParams } from "next/navigation"
+import { resolveDashboardRole, useAuth } from "@/contexts/auth"
+import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   EducationPayload,
   ExperiencePayload,
@@ -67,7 +68,7 @@ import {
 } from "react-hook-form"
 import { useToggle } from "react-use"
 import { z } from "zod"
-import { UserProfile } from "@/types/user"
+import { ROLE, UserProfile } from "@/types/user"
 import NextImage from "@/components/next-image"
 import { getCompanyBrandFromName } from "@/src/lib/certification-brand"
 import {
@@ -325,13 +326,29 @@ const RightSidebar = () => {
 export default function TalentDashboardPage() {
   return (
     <Suspense>
-      <TalentDashboard />
+      <AuthenticatedRoute>
+        <TalentDashboard />
+      </AuthenticatedRoute>
     </Suspense>
   )
 }
 
 function TalentDashboard() {
   const [isOpen, toggleIsOpen] = useToggle(false)
+  const router = useRouter()
+  const { user } = useAuth()
+  const isTalent = resolveDashboardRole(user) === ROLE.TALENT
+
+  // Complete My Profile is a talent-only workflow (AC-CMP-011). Visitors are
+  // handled by AuthenticatedRoute (sign-in); a signed-in non-talent (client) is
+  // bounced to their own dashboard and never sees the workflow.
+  useEffect(() => {
+    if (user && !isTalent) {
+      router.replace("/client-dashboard")
+    }
+  }, [user, isTalent, router])
+
+  if (user && !isTalent) return null
 
   return (
     <>
@@ -828,6 +845,7 @@ export const StatusDialog = ({
         next={next}
         previous={previous}
         userId={user?.id ?? ""}
+        progressPercent={progressPercent}
         profile={profile}
         profileLoading={profileLoading}
         profileError={profileError}
