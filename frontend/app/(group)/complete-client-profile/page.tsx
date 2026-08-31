@@ -27,20 +27,21 @@ import { UserAPI } from "@/service/http/user"
 import { hookFormHasError } from "@/utils/functions"
 import { useCallbackRef, useControllableState } from "@/utils/hooks"
 import {
-  Briefcase,
+  Bank,
+  Briefcase02,
   Building03,
+  Building06,
   Check,
   ChevronRight,
   CreditCard02,
-  Globe01,
+  Globe03,
   Home03,
   ImagePlus,
-  MarkerPin01,
+  MarkerPin04,
   Phone,
   SearchMd,
-  Star,
-  ThumbsUp,
   UploadCloud,
+  Users01,
   UsersPlus,
   X,
   X2,
@@ -165,27 +166,27 @@ const content = {
     desc: "Make your company instantly recognizable.",
   },
   WEBSITE: {
-    icon: <Globe01 className="size-5" />,
+    icon: <Globe03 className="size-5" />,
     title: "Website",
     desc: "Give people a place to learn more about your business",
   },
   INDUSTRIES: {
-    icon: <Briefcase className="size-5" />,
+    icon: <Briefcase02 className="size-5" />,
     title: "Industries",
     desc: "Get matched with the right talent and clients for your field.",
   },
   LOCATION: {
-    icon: <MarkerPin01 className="size-5" />,
+    icon: <MarkerPin04 className="size-5" />,
     title: "Location",
     desc: "Help talent and clients know where you're located",
   },
   COMPANY_BIO: {
-    icon: <Star className="size-5" />,
+    icon: <Building06 className="size-5" />,
     title: "Company Bio",
     desc: "Tell your story and what sets your company apart.",
   },
   WORKPLACE_VALUES: {
-    icon: <ThumbsUp className="size-5" />,
+    icon: <Users01 className="size-5" />,
     title: "Workplace Values",
     desc: "Show what it's like to work with your company.",
   },
@@ -200,7 +201,7 @@ const content = {
     desc: "Keep your account secure and stay reachable",
   },
   PAYMENT_METHOD: {
-    icon: <CreditCard02 className="size-5" />,
+    icon: <Bank className="size-5" />,
     title: "Payment Method",
     desc: "Unlock the ability to hire and pay talent",
   },
@@ -1548,7 +1549,7 @@ const Congratulations = ({
                 },
                 {
                   icon: (
-                    <Briefcase className="shrink-0 size-8 text-dark-blue-400" />
+                    <Briefcase02 className="shrink-0 size-8 text-dark-blue-400" />
                   ),
                   label: "Post a job",
                   href: "/job-listing",
