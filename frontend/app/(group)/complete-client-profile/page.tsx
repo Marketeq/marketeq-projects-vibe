@@ -10,7 +10,6 @@
  *
  * The talent file is the source and is left untouched.
  */
-
 import React, {
   Fragment,
   SVGProps,
@@ -21,15 +20,10 @@ import React, {
 } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import { UserAPI } from "@/service/http/user"
 import { ClientAPI } from "@/service/http/client"
-import { TeamsAPI } from "@/service/http/teams"
 import { InvitationsAPI } from "@/service/http/invitations"
-import {
-  BillingPaymentMethodsContent,
-  type BillingPaymentMethodsContentHandle,
-} from "@/app/(group)/payments/page"
-import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { TeamsAPI } from "@/service/http/teams"
+import { UserAPI } from "@/service/http/user"
 import { hookFormHasError } from "@/utils/functions"
 import { useCallbackRef, useControllableState } from "@/utils/hooks"
 import {
@@ -57,6 +51,7 @@ import Confetti from "react-confetti"
 import { Controller, SubmitHandler, useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
 import { UserProfile } from "@/types/user"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { PhoneNumberInput, isPhoneValid } from "@/components/phone-number-input"
 import {
   Avatar,
@@ -84,6 +79,10 @@ import {
   ScrollBar,
   Textarea,
 } from "@/components/ui"
+import {
+  BillingPaymentMethodsContent,
+  type BillingPaymentMethodsContentHandle,
+} from "@/app/(group)/payments/page"
 
 const Bulb = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -707,7 +706,9 @@ const MAX_COMPANY_INDUSTRIES = 10
 
 const industriesFormSchema = z.object({
   industries: z
-    .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
+    .array(
+      z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
+    )
     .min(1, "Please at least provide 1 industry")
     .max(
       MAX_COMPANY_INDUSTRIES,
@@ -798,7 +799,9 @@ const IndustriesDialog = ({
       try {
         if (profile?.industries?.length) {
           await Promise.all(
-            profile.industries.map((ind) => UserAPI.removeIndustry(String(ind.id)))
+            profile.industries.map((ind) =>
+              UserAPI.removeIndustry(String(ind.id))
+            )
           )
         }
         await Promise.all(
@@ -1224,7 +1227,8 @@ const TeamMembersDialog = ({
     .split(/[\s,;]+/)
     .map((value) => value.trim())
     .filter(Boolean)
-  const allValid = emails.length > 0 && emails.every((e) => emailPattern.test(e))
+  const allValid =
+    emails.length > 0 && emails.every((e) => emailPattern.test(e))
 
   useEffect(() => {
     onFinished(allValid)
@@ -1362,7 +1366,9 @@ const ContactNumberDialog = ({
           onChange={(value) => setPhone(value)}
         />
         {phone && !valid ? (
-          <ErrorMessage size="sm">Please enter a valid phone number</ErrorMessage>
+          <ErrorMessage size="sm">
+            Please enter a valid phone number
+          </ErrorMessage>
         ) : null}
         {saveError ? <ErrorMessage size="sm">{saveError}</ErrorMessage> : null}
       </StepShell>
@@ -1428,8 +1434,8 @@ const PaymentMethodDialog = ({
       >
         <div className="rounded-lg border border-gray-200 bg-white p-6">
           <p className="text-base text-dark-blue-400">
-            Add a card or bank account to start hiring. Your details are
-            handled by our payment provider and are never shared with talent.
+            Add a card or bank account to start hiring. Your details are handled
+            by our payment provider and are never shared with talent.
           </p>
           <Button
             type="button"
@@ -1894,40 +1900,44 @@ export const ClientStatusDialog = ({
           variant="unanimated"
           className="shadow-[0px_20px_24px_-4px_rgba(16,24,40,.08)] max-w-[451px] bottom-5 right-5 duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-bottom-5 data-[state=open]:slide-in-from-bottom-5"
         >
-          <ScrollArea
-            viewportStyle={{ maxHeight: "calc(100vh - 88px)" }}
-            scrollBar={<ScrollBar className="w-4 p-1" />}
-          >
-            <div className="border border-gray-200 overflow-hidden rounded-[10px]">
-              <div className="p-6 bg-white border-gray-200 flex items-center gap-x-[18px] border-b">
-                <div className="flex-auto space-y-2">
-                  <p className="text-sm leading-none text-dark-blue-400">
-                    Boost your company&apos;s visibility
-                    {user?.firstName ? `, ${user.firstName}` : ""}!
-                  </p>
-                  <h2 className="text-lg font-semibold leading-none text-dark-blue-400">
-                    Complete your profile to get hired by top clients.
-                  </h2>
-                </div>
-                {(() => {
-                  const remaining = (
-                    Object.keys(content) as (keyof typeof content)[]
-                  ).reduce(
-                    (prev, cur) => (dialogsState[cur].finished ? prev - 1 : prev),
-                    Object.keys(content).length
-                  )
-                  return remaining === 0 ? (
-                    <Badge visual="success" size="lg">
-                      All done! 🎉
-                    </Badge>
-                  ) : (
-                    <Badge visual="primary" size="lg">
-                      {remaining} step{remaining !== 1 ? "s" : ""} left
-                    </Badge>
-                  )
-                })()}
+          {/* Fixed at the talent modal's height (651px). The header is pinned;
+              only the step cards below it scroll, and overflow-hidden keeps
+              the 10px corners intact while they do. */}
+          <div className="flex h-[651px] flex-col overflow-hidden rounded-[10px] border border-gray-200">
+            {/* Header stays put; only the step cards below it scroll. */}
+            <div className="shrink-0 p-6 bg-white border-gray-200 flex items-center gap-x-[18px] border-b">
+              <div className="flex-auto space-y-2">
+                <p className="text-sm leading-none text-dark-blue-400">
+                  Boost your company&apos;s visibility
+                  {user?.firstName ? `, ${user.firstName}` : ""}!
+                </p>
+                <h2 className="text-lg font-semibold leading-none text-dark-blue-400">
+                  Complete your profile to get hired by top clients.
+                </h2>
               </div>
-              <div className="p-6 space-y-2.5 bg-gray-50">
+              {(() => {
+                const remaining = (
+                  Object.keys(content) as (keyof typeof content)[]
+                ).reduce(
+                  (prev, cur) => (dialogsState[cur].finished ? prev - 1 : prev),
+                  Object.keys(content).length
+                )
+                return remaining === 0 ? (
+                  <Badge visual="success" size="lg">
+                    All done! 🎉
+                  </Badge>
+                ) : (
+                  <Badge visual="primary" size="lg">
+                    {remaining} step{remaining !== 1 ? "s" : ""} left
+                  </Badge>
+                )
+              })()}
+            </div>
+            <ScrollArea
+              className="min-h-0 flex-1 bg-gray-50"
+              scrollBar={<ScrollBar className="w-4 p-1" />}
+            >
+              <div className="p-6 space-y-2.5">
                 {(Object.keys(content) as (keyof typeof content)[]).map(
                   (dialogName) => (
                     <Fragment key={dialogName}>
@@ -2005,8 +2015,8 @@ export const ClientStatusDialog = ({
                   )
                 )}
               </div>
-            </div>
-          </ScrollArea>
+            </ScrollArea>
+          </div>
 
           <div className="flex items-center justify-end mt-3">
             <DialogClose className="group text-gray-400 transition duration-300 hover:opacity-50 focus-visible:outline-none size-11 shrink-0 rounded-full bg-white border border-gray-300 hover:border-gray-500 hover:text-gray-950 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] inline-flex items-center justify-center">
