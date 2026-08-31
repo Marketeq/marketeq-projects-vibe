@@ -170,6 +170,19 @@ export default function SettingsPage() {
     window.scrollTo(0, 0)
   }, [activeTab])
 
+  // `?add=1` opens the add-payment-method dialog on arrival, so entry points
+  // elsewhere (the client dashboard "Verify Payment Method" link, the profile
+  // completion step) reuse this flow instead of duplicating it.
+  const addParam = searchParams.get("add")
+  useEffect(() => {
+    if (activeTab !== "billing-payment-methods" || addParam !== "1") return
+    const timer = setTimeout(
+      () => paymentMethodsRef.current?.openAddPaymentMethodDialog(),
+      0
+    )
+    return () => clearTimeout(timer)
+  }, [activeTab, addParam])
+
   const accountRole = useMemo(() => resolveDashboardRole(user), [user])
   const settingsTabItems = useMemo(() => buildSettingsTabItems(accountRole), [accountRole])
 

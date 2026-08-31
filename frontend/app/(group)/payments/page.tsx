@@ -457,8 +457,18 @@ export const BillingPaymentMethodsContent = forwardRef<
   BillingPaymentMethodsContentHandle,
   {
     embedded?: boolean
+    /**
+     * Mounts only the dialogs, not the payment methods list. Lets a screen
+     * that just needs the add-payment-method flow (the client dashboard
+     * "Verify Payment Method" link) open it in place instead of navigating
+     * to billing, without duplicating the dialogs.
+     */
+    dialogsOnly?: boolean
   }
->(function BillingPaymentMethodsContent({ embedded = false }, ref) {
+>(function BillingPaymentMethodsContent(
+  { embedded = false, dialogsOnly = false },
+  ref
+) {
   const { toast } = useToast()
   const [methods, setMethods] = useState(INITIAL_PAYMENT_METHODS)
   const [selectedMethodId, setSelectedMethodId] = useState(
@@ -1099,7 +1109,7 @@ export const BillingPaymentMethodsContent = forwardRef<
 
   return (
     <>
-      {!embedded ? (
+      {dialogsOnly ? null : !embedded ? (
         <AuthenticatedRoute>
           <div className="flex h-[100dvh] overflow-hidden bg-gray-50">
             <LeftSidebar />
