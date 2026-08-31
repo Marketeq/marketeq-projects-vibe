@@ -141,6 +141,7 @@ pipeline {
                                 frontend/contexts/auth.tsx|frontend/src/lib/api/auth.ts|\
                                 frontend/middleware.ts|backend/apps/auth-service/*|\
                                 backend/libs/shared/src/guards/*|backend/libs/shared/src/decorators/*|\
+                                backend/apps/user-service/src/guards/*|\
                                 frontend/.env.local.example|frontend/.env.staging.example|\
                                 frontend/.env.production.example|backend/.env.local.example|\
                                 backend/.env.staging.example|backend/.env.production.example)
@@ -180,7 +181,6 @@ pipeline {
                                 "frontend/app/(group)/job-screening/page.tsx"|\
                                 frontend/components/settings-tax-info.tsx|\
                                 frontend/src/lib/api/tax-info.ts|\
-                                "backend/apps/user-service/src/tax-info/"*|\
                                 "frontend/app/(group)/billing/page.tsx"|\
                                 "frontend/app/(group)/billing/transactions/page.tsx"|\
                                 "frontend/app/(group)/billing/invoices/page.tsx"|\
