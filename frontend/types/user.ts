@@ -34,6 +34,9 @@ export type User = {
   customAvailability?: CustomAvailabilityDay[] | null
   recentJobTitle?: string | null
   jobTitles?: string[] | null
+  teamName?: string | null
+  companyWebsite?: string | null
+  workplaceValues?: string[] | null
   clientOnboardedAt?: string | Date | null
   talentOnboardedAt?: string | Date | null
   onboardedAt?: string | Date | null
@@ -123,6 +126,7 @@ export type UserProfile = User & {
   userType?: string | null
   industry?: string | null
   businessGoals?: string[] | null
+  lookingToWorkWith?: string[] | null
   totalProjectsCompleted?: number | null
   clientSuccessRating?: number | null
   repeatHireRate?: number | null

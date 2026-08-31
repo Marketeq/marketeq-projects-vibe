@@ -142,6 +142,7 @@ pipeline {
                                 frontend/middleware.ts|backend/apps/auth-service/*|\
                                 backend/libs/shared/src/guards/*|backend/libs/shared/src/decorators/*|\
                                 backend/apps/user-service/src/guards/*|\
+                                backend/apps/user-service/src/user/dtos/onboarding-dismissed.dto.ts|\
                                 frontend/.env.local.example|frontend/.env.staging.example|\
                                 frontend/.env.production.example|backend/.env.local.example|\
                                 backend/.env.staging.example|backend/.env.production.example)
