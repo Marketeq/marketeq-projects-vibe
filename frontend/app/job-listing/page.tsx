@@ -9604,11 +9604,11 @@ const DescribeProjectStep = ({
                   Amount
                 </Label>
                 <InputGroup fieldHeight="2.75rem" className="w-[176px]">
-                  <InputLeftElement className="text-[16px] leading-6 text-dark-blue-400">
+                  <InputLeftElement className="text-[16px] leading-6 text-gray-400">
                     $
                   </InputLeftElement>
                   <Input
-                    className="h-11 w-[176px] rounded-[5px] border-gray-300 px-[14px] py-2.5 pl-8 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
+                    className="h-11 w-[176px] rounded-[5px] border-gray-300 px-[14px] py-2.5 pl-8 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400"
                     inputMode="decimal"
                     pattern="^\d*(\.\d{0,2})?$"
                     value={budget}
