@@ -1398,22 +1398,22 @@ export default function FavoritesPage() {
             </TabsList>
           </div>
 
-          <div className="hidden items-center gap-x-3 lg:gap-x-6 self-start md:flex">
-            <div className="flex items-center gap-x-3 lg:gap-x-3.5">
-              <SortDropdown value={sortBy} onChange={setSortBy} />
+          {/* One flat 24px cluster, matching Figma 13101-74250 and the group
+              page header. */}
+          <div className="hidden items-center gap-x-3 self-start md:flex lg:gap-x-6">
+            <SortDropdown value={sortBy} onChange={setSortBy} />
 
-              <ToggleGroupRoot
-                value={value}
-                onValueChange={(details) => setValue(details.value)}
-              >
-                <ToggleGroupItem value={GRID_LAYOUT}>
-                  <Grid className="size-4 lg:size-6" />
-                </ToggleGroupItem>
-                <ToggleGroupItem value={LIST_LAYOUT}>
-                  <List className="size-4 lg:size-6" />
-                </ToggleGroupItem>
-              </ToggleGroupRoot>
-            </div>
+            <ToggleGroupRoot
+              value={value}
+              onValueChange={(details) => setValue(details.value)}
+            >
+              <ToggleGroupItem value={GRID_LAYOUT}>
+                <Grid className="size-4 lg:size-6" />
+              </ToggleGroupItem>
+              <ToggleGroupItem value={LIST_LAYOUT}>
+                <List className="size-4 lg:size-6" />
+              </ToggleGroupItem>
+            </ToggleGroupRoot>
 
             <NewGroupModal
               onCreated={handleGroupCreated}
