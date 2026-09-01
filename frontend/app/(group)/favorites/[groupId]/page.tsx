@@ -87,103 +87,6 @@ interface ItemData {
   listingType?: string
 }
 
-/* ─── Project/Service List Card ─── */
-
-const ProjectListCard = ({
-  item,
-  favorite,
-  onRemove,
-}: {
-  item: ItemData
-  favorite: Favorite
-  onRemove: () => void
-}) => {
-  const router = useRouter()
-  const coverImage =
-    item.mediaUrls?.[0] || item.coverImage || item.thumbnail || "/dashboard.png"
-  const title = item.title || "Untitled"
-  const slug = item.slug || ""
-  const itemId = String(item.id)
-  const isService = favorite.type === "service"
-  const l1Category = (item.categories?.[0] || item.category || "research")
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-  const detailHref = slug
-    ? isService
-      ? buildServiceUrl(l1Category, slug, itemId)
-      : buildProjectUrl(l1Category, slug, itemId)
-    : `/project-details/${itemId}`
-
-  return (
-    <div
-      className="flex md:flex-row flex-col border overflow-hidden bg-white border-gray-200 shadow-[0px_2px_5px_0px_theme(colors.black/[.04])] rounded-lg cursor-pointer"
-      onClick={(e) => {
-        if ((e.target as HTMLElement).closest("[data-dropdown-zone]")) return
-        router.push(detailHref)
-      }}
-    >
-      <div className="relative w-full md:w-[200px] lg:w-[284px] h-[140px] md:h-auto flex-shrink-0 group overflow-hidden border-r border-black/5">
-        <NextImage
-          className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-          src={coverImage}
-          alt={title}
-          fill
-          sizes="284px"
-        />
-      </div>
-
-      <div className="flex-auto p-4 lg:p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-auto">
-            <div className="flex items-start gap-x-3">
-              <span className="font-bold text-base leading-tight text-dark-blue-400 hover:underline line-clamp-1">
-                {title}
-              </span>
-              <div className="inline-flex items-center gap-x-1 shrink-0 mt-0.5">
-                <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                <span className="text-sm leading-none text-dark-blue-400 font-medium">
-                  {item.rating || "4.9"}
-                </span>
-              </div>
-            </div>
-
-            <p className="mt-2 text-sm font-extralight text-dark-blue-400 line-clamp-2">
-              {item.summary ||
-                item.description?.slice(0, 160) ||
-                "Project description"}
-            </p>
-
-            <div className="mt-3 flex items-center gap-x-6">
-              <div className="flex items-center gap-x-[6.4px]">
-                <Clock className="size-[16px] shrink-0 text-primary-500" />
-                <span className="font-medium text-sm leading-none text-dark-blue-400">
-                  {isService
-                    ? item.deliveryTime || "Monthly"
-                    : item.duration || "12 weeks"}
-                </span>
-              </div>
-              <div className="flex items-center gap-x-[6.4px]">
-                <Money className="size-[16px] shrink-0 text-primary-500" />
-                <span className="font-medium text-sm leading-none text-dark-blue-400">
-                  {isService
-                    ? `$${item.priceMin ? `${Number(item.priceMin).toLocaleString()} - $${Number(item.priceMax).toLocaleString()}` : "5,000 - $15,000"}/mo`
-                    : `$${item.budget ? Number(item.budget).toLocaleString() : item.scopeTotal?.budget || "50,000"}`}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div data-dropdown-zone>
-            <ItemDropdown onRemove={onRemove} />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* ─── Shared ─── */
-
 const ItemDropdown = ({
   className,
   onRemove,
@@ -432,17 +335,6 @@ export default function FavoriteGroupDetailPage() {
 
   return (
     <div className="p-3.5 md:p-10 lg:py-[60px] lg:px-[200px]">
-      {/* Back link + header */}
-      <div className="flex items-center gap-3 mb-6">
-        <button
-          onClick={() => router.push("/favorites")}
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-dark-blue-400 transition-colors"
-        >
-          <ArrowLeft className="size-4" />
-          My Favorites
-        </button>
-      </div>
-
       {/* Section 1 — the My Favorites header (Figma 13111-46360). */}
       <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400">
         My Favorites
@@ -659,14 +551,59 @@ export default function FavoriteGroupDetailPage() {
           </div>
         ) : (
           <div className="grid gap-y-3">
-            {sortedProjects.map((fav) => (
-              <ProjectListCard
-                key={fav.id}
-                item={itemData[fav.itemId] || { id: fav.itemId }}
-                favorite={fav}
-                onRemove={() => handleRemoveFavorite(fav.id)}
-              />
-            ))}
+            {sortedProjects.map((fav) => {
+              const item = itemData[fav.itemId] || { id: fav.itemId }
+              const isService = fav.type === "service"
+              const categorySlug = (
+                item.categories?.[0] ||
+                item.category ||
+                "research"
+              )
+                .toLowerCase()
+                .replace(/\s+/g, "-")
+              const itemId = String(item.id)
+
+              return (
+                <ListingCard
+                  key={fav.id}
+                  kind={isService ? "service" : "project"}
+                  id={itemId}
+                  layout="list"
+                  cardVariant="is-favorited"
+                  href={
+                    item.slug
+                      ? isService
+                        ? buildServiceUrl(categorySlug, item.slug, itemId)
+                        : buildProjectUrl(categorySlug, item.slug, itemId)
+                      : undefined
+                  }
+                  title={item.title || "Untitled"}
+                  description={item.summary || item.description}
+                  mediaUrl={
+                    item.mediaUrls?.[0] || item.coverImage || item.thumbnail
+                  }
+                  budget={
+                    isService
+                      ? item.priceMin
+                        ? `$${Number(item.priceMin).toLocaleString()} - $${Number(
+                            item.priceMax
+                          ).toLocaleString()}`
+                        : ""
+                      : item.budget
+                        ? `$${Number(item.budget).toLocaleString()}`
+                        : ""
+                  }
+                  duration={isService ? item.deliveryTime : item.duration}
+                  rating={item.rating}
+                  reviewCount={item.reviewCount}
+                  optionsSlot={
+                    <ItemDropdown
+                      onRemove={() => handleRemoveFavorite(fav.id)}
+                    />
+                  }
+                />
+              )
+            })}
           </div>
         )}
       </div>

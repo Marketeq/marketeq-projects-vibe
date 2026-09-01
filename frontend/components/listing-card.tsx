@@ -125,6 +125,11 @@ interface ProjectLikeProps {
   favoriteSlot?: React.ReactNode
   /** "is-favorited" variant: slot for the bottom-right options menu. */
   optionsSlot?: React.ReactNode
+  /**
+   * Card shape. "grid" is the default portrait card; "list" is the wide
+   * landscape row with the media on the left, used by list-view toggles.
+   */
+  layout?: "grid" | "list"
   /** Search pages can opt into the jobs-specific landscape treatment. */
   cardVariant?: ListingCardVariant
 }
@@ -237,6 +242,7 @@ function ProjectListingCard({
   onClaim,
   favoriteSlot,
   optionsSlot,
+  layout = "grid",
   cardVariant = "default",
 }: ProjectLikeProps) {
   // Listing descriptions are authored in the rich-text editor and stored as
@@ -681,6 +687,127 @@ function ProjectListingCard({
                 <DropdownMenuSeparator />
               </DropdownMenuContent>
             </DropdownMenu>
+          </div>
+        </div>
+      </article>
+    )
+  }
+
+  // List layout — Figma 13111-48107. Media 284px on the left, content right:
+  // title + description with the options menu top-right, the team below, then
+  // duration/budget on one line with the rating pushed to the far right.
+  if (layout === "list") {
+    return (
+      <article className="flex w-full items-start overflow-hidden rounded-[8px] border border-[rgba(18,42,75,0.15)] bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,0.04)]">
+        <NextLink
+          href={computedHref}
+          className="relative w-[284px] shrink-0 self-stretch border-b border-black/15 bg-[#fbfbfb] focus-visible:outline-none"
+        >
+          {mediaUrl ? (
+            <NextImage
+              className="object-cover"
+              src={mediaUrl}
+              alt={title}
+              fill
+              sizes="284px"
+            />
+          ) : (
+            <span className="absolute inset-0 flex items-center justify-center">
+              <Briefcase className="size-10 text-gray-300" />
+            </span>
+          )}
+        </NextLink>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-y-5 p-5">
+          <div className="flex flex-col gap-y-3.5">
+            <div className="flex items-start gap-x-6">
+              <div className="flex min-w-0 flex-1 flex-col gap-y-3 text-dark-blue-400">
+                <NextLink
+                  href={computedHref}
+                  className="text-base font-bold leading-normal hover:underline focus-visible:outline-none"
+                >
+                  {title}
+                </NextLink>
+                {plainDescription && (
+                  <p className="line-clamp-2 text-sm font-light leading-normal">
+                    {plainDescription}
+                  </p>
+                )}
+              </div>
+
+              {cardVariant === "is-favorited" && optionsSlot ? (
+                <span
+                  className="inline-flex h-6 shrink-0 items-center"
+                  data-dropdown-zone
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }}
+                >
+                  {optionsSlot}
+                </span>
+              ) : null}
+            </div>
+
+            {avatarsSlot ??
+              (hasTeam ? (
+                <AvatarGroup
+                  max={5}
+                  size="sm"
+                  excess
+                  excessClassName="border-gray-300 text-gray-500"
+                >
+                  {collaborators.map((src, i) => (
+                    <Avatar
+                      key={i}
+                      size="sm"
+                      className="border-2 border-white hover:ring-0 active:ring-0"
+                    >
+                      <AvatarImage src={src} alt="Collaborator" />
+                      <AvatarFallback />
+                    </Avatar>
+                  ))}
+                </AvatarGroup>
+              ) : null)}
+          </div>
+
+          <div className="flex items-end justify-between gap-x-6">
+            <div className="flex items-center gap-x-6">
+              {kind !== "service" && durationText && (
+                <div className="flex items-center gap-x-[6.4px]">
+                  <Clock className="size-[18px] shrink-0 text-primary-500" />
+                  <span className="text-sm font-medium leading-normal text-dark-blue-400">
+                    {durationText}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-center gap-x-[6.4px]">
+                <Money className="size-[18px] shrink-0 text-primary-500" />
+                <span className="flex items-center text-sm font-medium leading-normal text-dark-blue-400">
+                  {budgetText}
+                  {kind === "service" ? (
+                    <span className="text-center text-xs font-light leading-normal">
+                      {budgetSuffix}
+                    </span>
+                  ) : (
+                    budgetSuffix
+                  )}
+                </span>
+              </div>
+            </div>
+
+            {typeof rating === "number" && (
+              <div className="inline-flex shrink-0 items-center gap-x-1">
+                <Star className="size-[15px] fill-primary-500 text-primary-500" />
+                <span className="inline-flex items-center gap-x-1 text-sm font-medium leading-normal text-dark-blue-400">
+                  {rating.toFixed(1)}{" "}
+                  {typeof reviewCount === "number" && (
+                    <span className="font-light">({reviewCount})</span>
+                  )}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </article>
