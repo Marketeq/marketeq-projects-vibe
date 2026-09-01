@@ -69,9 +69,67 @@ print(json.dumps({'title': 'URGENT: forced push to ${params.BRANCH} by @${params
             steps {
                 withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
                     sh """#!/bin/bash
+                        export COMMIT_SHA="${params.COMMIT_SHA}"
+
                         PR_DATA=\$(curl -sf -H "Authorization: token \$GH_TOKEN" \
                             "https://api.github.com/repos/${env.REPO}/commits/${params.COMMIT_SHA}/pulls" 2>/dev/null || echo "[]")
                         PR_NUM=\$(echo "\$PR_DATA" | python3 -c "import sys,json; prs=json.load(sys.stdin); print(prs[0]['number'] if prs else '')" 2>/dev/null || echo "")
+
+                        # GitHub populates the commit -> PR association behind /commits/<sha>/pulls
+                        # ASYNCHRONOUSLY. For a squash merge it can still be empty minutes after the
+                        # merge, so this audit -- which runs ~30s later -- would see no PR and report
+                        # a fully reviewed merge as a direct push. That is what opened the bogus
+                        # urgent issue #549 for PR #545: the endpoint returned [] at 23:01, then
+                        # returned PR #545 for the same commit a few minutes on.
+                        #
+                        # Waiting longer would only make the race less likely, never remove it, so
+                        # resolve the PR deterministically instead: GitHub appends "(#N)" to the
+                        # squash commit subject, so recover N from there.
+                        #
+                        # The number is then VERIFIED against the API: PR #N must be merged AND its
+                        # merge_commit_sha must be this exact commit. Without that check, writing
+                        # "(#123)" into a real direct-push commit message would skip the audit.
+                        if [ -z "\$PR_NUM" ] || [ "\$PR_NUM" = "None" ]; then
+                            PR_NUM=\$(curl -sf -H "Authorization: token \$GH_TOKEN" \
+                                "https://api.github.com/repos/${env.REPO}/commits/${params.COMMIT_SHA}" 2>/dev/null | python3 -c '
+import json, os, sys, urllib.request
+
+try:
+    commit = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+
+subject = (commit.get("commit", {}).get("message") or "").split(chr(10))[0].rstrip()
+
+# Trailing "(#N)" only -- no regex, backslash escapes do not survive the Groovy string.
+num = ""
+if subject.endswith(")"):
+    start = subject.rfind("(#")
+    if start != -1:
+        candidate = subject[start + 2:-1]
+        if candidate.isdigit():
+            num = candidate
+
+if not num:
+    sys.exit(0)
+
+request = urllib.request.Request(
+    "https://api.github.com/repos/" + os.environ["REPO"] + "/pulls/" + num,
+    headers={"Authorization": "token " + os.environ["GH_TOKEN"]},
+)
+try:
+    pr = json.load(urllib.request.urlopen(request, timeout=15))
+except Exception:
+    sys.exit(0)
+
+if pr.get("merged") and pr.get("merge_commit_sha") == os.environ["COMMIT_SHA"]:
+    print(num)
+' 2>/dev/null || echo "")
+
+                            if [ -n "\$PR_NUM" ]; then
+                                echo "Squash merge of PR #\$PR_NUM -- merge_commit_sha matches ${params.COMMIT_SHA}, auditing that PR"
+                            fi
+                        fi
 
                         if [ -z "\$PR_NUM" ] || [ "\$PR_NUM" = "None" ]; then
                             # Promotion merges (dev-main -> staging, staging -> live-mvp) are pushed
