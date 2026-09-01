@@ -95,14 +95,31 @@ interface Project {
   team: { image: string; alternativeText: string }[]
   status: string
   nextMilestone: string
+  /** Contract id and group, for the contract details link. */
+  contractId?: string
+  groupName?: string
 }
 
-const TableRow = ({ team, nextMilestone, projectName, status }: Project) => {
+const TableRow = ({
+  team,
+  nextMilestone,
+  projectName,
+  status,
+  contractId,
+  groupName,
+}: Project) => {
+  // Same target My Contracts uses for a contract title.
+  const detailsHref = contractId
+    ? `/active-project/${contractId}?title=${encodeURIComponent(
+        projectName
+      )}&group=${encodeURIComponent(groupName ?? projectName)}`
+    : "/my-contracts"
+
   return (
     <tr className="first:pt-3 last:pb-3">
       <td className="max-w-[260px] px-6 py-3.5 text-sm leading-5 font-semibold text-dark-blue-400">
         <NextLink
-          href="/my-contracts"
+          href={detailsHref}
           className="block truncate hover:underline"
           title={projectName}
         >
@@ -201,6 +218,8 @@ const SAMPLE_RECENT_CONTRACTS: Project[] = [
   {
     projectName:
       "Redesigning and Optimizing Website for Enhanced User Experience.",
+    contractId: "c1",
+    groupName: "Website Redesign",
     team: [
       { image: "/man.jpg", alternativeText: "Sarah Chen" },
       { image: "/images/avatar-1.png", alternativeText: "Alex Rivera" },
@@ -216,12 +235,16 @@ const SAMPLE_RECENT_CONTRACTS: Project[] = [
   },
   {
     projectName: "Frontend Developer for Mobile App",
+    contractId: "c2",
+    groupName: "Website Redesign",
     team: [{ image: "/man.jpg", alternativeText: "Alex Rivera" }],
     status: "Active",
     nextMilestone: "$95/hr",
   },
   {
     projectName: "QA Engineer for Mobile App",
+    contractId: "c3",
+    groupName: "Website Redesign",
     team: [{ image: "/man.jpg", alternativeText: "Jordan Lee" }],
     status: "Pending",
     nextMilestone: "$70/hr",
@@ -229,6 +252,8 @@ const SAMPLE_RECENT_CONTRACTS: Project[] = [
   {
     projectName:
       "Redesigning and Optimizing Website for Enhanced User Experience.",
+    contractId: "c4",
+    groupName: "Website Services",
     team: [
       { image: "/man.jpg", alternativeText: "Chris Patel" },
       { image: "/images/avatar-1.png", alternativeText: "Dana Kim" },
@@ -244,6 +269,8 @@ const SAMPLE_RECENT_CONTRACTS: Project[] = [
   },
   {
     projectName: "Content Writer for SEO",
+    contractId: "c5",
+    groupName: "Website Services",
     team: [{ image: "/man.jpg", alternativeText: "Dana Kim" }],
     status: "Active",
     nextMilestone: "$50/hr",
@@ -315,6 +342,8 @@ const useRecentContracts = (): Project[] => {
             const members = byGroup.get(c.groupId) ?? [c.talentId]
             return {
               projectName: c.title,
+              contractId: c.id,
+              groupName: c.title,
               team: members.filter(Boolean).map((id) => {
                 const talent = talents.get(id)
                 return {
