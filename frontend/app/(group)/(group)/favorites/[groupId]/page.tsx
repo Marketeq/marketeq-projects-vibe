@@ -238,6 +238,9 @@ export default function FavoriteGroupDetailPage() {
     : groupType === "service"
       ? "services"
       : "projects"
+  const groupsHref = `/favorites?tab=${encodeURIComponent(
+    isTalent ? "Talent" : groupType === "service" ? "Services" : "Projects"
+  )}`
   const activeTabLabel = isTalent
     ? "Talent"
     : groupType === "service"
@@ -514,7 +517,7 @@ export default function FavoriteGroupDetailPage() {
             </ToggleGroupRoot>
 
           <NewGroupModal
-            onCreated={() => router.push("/favorites")}
+            onCreated={() => router.push(groupsHref)}
             existingNames={[]}
             activeTab={activeTabLabel}
           />
@@ -536,7 +539,7 @@ export default function FavoriteGroupDetailPage() {
           className="group px-0 text-base font-semibold capitalize leading-6 text-gray-500"
           variant="link"
           visual="gray"
-          onClick={() => router.push("/favorites")}
+          onClick={() => router.push(groupsHref)}
         >
           <ArrowLeft className="size-[15px] transition duration-300 group-hover:-translate-x-[4px]" />{" "}
           Back To Groups
