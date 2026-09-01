@@ -13,6 +13,7 @@ import { MethodType } from '../entities/deposit-method.entity';
 import { CryptoPayoutExecutorService } from '../execution/crypto-payout-executor.service';
 import { CardPayoutExecutorService } from '../card/card-payout-executor.service';
 import { BankPayoutExecutorService } from '../bank/bank-payout-executor.service';
+import { PaypalPayoutExecutorService } from '../paypal/paypal-payout-executor.service';
 
 @Processor({ name: 'payout-processing' })
 export class PayoutQueueProcessor {
@@ -24,6 +25,7 @@ export class PayoutQueueProcessor {
     private readonly cryptoExecutor: CryptoPayoutExecutorService,
     private readonly cardExecutor: CardPayoutExecutorService,
     private readonly bankExecutor: BankPayoutExecutorService,
+    private readonly paypalExecutor: PaypalPayoutExecutorService,
   ) {}
 
   @Process('process-payout')
@@ -47,8 +49,10 @@ export class PayoutQueueProcessor {
       case MethodType.BANK_STRIPE:
       case MethodType.BANK_MANUAL:
         return this.bankExecutor.executeBankPayout(payoutRequestId);
+      case MethodType.PAYPAL:
+        return this.paypalExecutor.executePaypalPayout(payoutRequestId);
       default:
-        // PAYPAL/WISE/PAYONEER/TEQ_COIN execution isn't built yet — leave the
+        // WISE/PAYONEER/TEQ_COIN execution isn't built yet — leave the
         // payout QUEUED rather than silently dropping the job, so it stays
         // visible instead of vanishing.
         this.logger.warn(`No executor for method type ${payout.depositMethod.methodType} — payout ${payoutRequestId} left unprocessed`);

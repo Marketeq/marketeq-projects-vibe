@@ -80,7 +80,7 @@ const PUBLIC_PATTERNS = [
   // layer that a downstream @Public() decorator has no power over.
   // Enumerated rather than a /v1/webhooks/* wildcard so that adding a new
   // route under this namespace does not silently make it unauthenticated.
-  /^\/v1\/webhooks\/(?:stripe|ramp)$/,
+  /^\/v1\/webhooks\/(?:stripe|ramp|paypal)$/,
   // PayPal/Wise/Payoneer redirect the browser here straight from the
   // provider's own login page — there's no Marketeq session cookie to send,
   // same reasoning as the webhooks entry above. payout-service's own
