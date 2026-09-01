@@ -8820,6 +8820,9 @@ const DescribeProjectStep = ({
   const [scopeUploadError, setScopeUploadError] = useState("");
   const [isScopeDropActive, setIsScopeDropActive] = useState(false);
   const scopeUploadTimerRef = useRef<number | null>(null);
+  const scopeFilePickerSelectionRef = useRef(false);
+  const scopeFileInputRef = useRef<HTMLInputElement | null>(null);
+  const scopeFilePickerScrollTopRef = useRef(0);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const lastHydratedDraftDetailsSignatureRef = useRef("");
   const fetchedPersistedDescribeListingIdRef = useRef<string | null>(null);
@@ -9470,6 +9473,15 @@ const DescribeProjectStep = ({
                       "flex h-[341px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white px-6 py-[100px] text-center focus-within:ring-2 focus-within:ring-primary-500",
                       isScopeDropActive && "border-primary-500",
                     )}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      const viewport = contentRef.current?.closest(
+                        "[data-radix-scroll-area-viewport]",
+                      ) as HTMLElement | null;
+                      scopeFilePickerScrollTopRef.current =
+                        viewport?.scrollTop ?? 0;
+                      scopeFileInputRef.current?.click();
+                    }}
                     onDragEnter={(event) => {
                       event.preventDefault();
                       setIsScopeDropActive(true);
@@ -9489,11 +9501,51 @@ const DescribeProjectStep = ({
                     }}
                   >
                     <input
+                      ref={scopeFileInputRef}
                       className="sr-only"
                       type="file"
                       accept=".pdf,.docx"
+                      onFocus={(event) => {
+                        event.currentTarget.blur();
+                        const viewport = contentRef.current?.closest(
+                          "[data-radix-scroll-area-viewport]",
+                        ) as HTMLElement | null;
+                        viewport?.scrollTo({
+                          top: scopeFilePickerScrollTopRef.current,
+                        });
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        scopeFilePickerSelectionRef.current = false;
+                        const viewport = contentRef.current?.closest(
+                          "[data-radix-scroll-area-viewport]",
+                        ) as HTMLElement | null;
+                        const handleWindowFocus = () => {
+                          if (scopeFilePickerSelectionRef.current) return;
+
+                          viewport?.scrollTo({
+                            top: scopeFilePickerScrollTopRef.current,
+                          });
+                        };
+                        window.addEventListener("focus", handleWindowFocus, {
+                          once: true,
+                        });
+                      }}
                       onChange={(event) => {
-                        acceptScopeFile(event.target.files?.[0]);
+                        const file = event.target.files?.[0];
+                        if (!file) {
+                          window.requestAnimationFrame(() => {
+                            const viewport = contentRef.current?.closest(
+                              "[data-radix-scroll-area-viewport]",
+                            ) as HTMLElement | null;
+                            viewport?.scrollTo({
+                              top: scopeFilePickerScrollTopRef.current,
+                            });
+                          });
+                          return;
+                        }
+                        scopeFilePickerSelectionRef.current = true;
+                        acceptScopeFile(file);
                         event.target.value = "";
                       }}
                     />
