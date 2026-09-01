@@ -447,7 +447,7 @@ export default function FavoriteGroupDetailPage() {
   return (
     <div className="p-3.5 md:p-10 lg:px-[200px] lg:py-[100px]">
       {/* Section 1 — the My Favorites header (Figma 13111-46360). */}
-      <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400">
+      <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400 xs:max-md:mt-6">
         My Favorites
       </h1>
 
@@ -463,7 +463,7 @@ export default function FavoriteGroupDetailPage() {
             <SearchMd className="size-[18px]" />
           </Button>
 
-          {showSearch ? (
+          {showSearch && (
             <Input
               className="mb-2.5 h-9 w-[260px] text-sm"
               placeholder={`Search ${isTalent ? "talent" : "projects"}...`}
@@ -471,14 +471,17 @@ export default function FavoriteGroupDetailPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               autoFocus
             />
-          ) : (
-            <Tabs
+          )}
+
+          <Tabs
               value={activeTabLabel}
               onValueChange={(tab) =>
                 router.push(`/favorites?tab=${encodeURIComponent(tab)}`)
               }
             >
-              <TabsList className="flex justify-start border-b-0 px-0">
+              <TabsList
+                className={`flex justify-start border-b-0 px-0 ${showSearch ? "hidden" : ""}`}
+              >
                 {FAVORITE_TABS.map((tab) => {
                   const count = tabCounts[tab] ?? 0
                   return (
@@ -493,8 +496,7 @@ export default function FavoriteGroupDetailPage() {
                   )
                 })}
               </TabsList>
-            </Tabs>
-          )}
+          </Tabs>
         </div>
 
         <div className="flex items-center gap-x-3 self-start lg:gap-x-6">

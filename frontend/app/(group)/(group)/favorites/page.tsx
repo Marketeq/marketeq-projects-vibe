@@ -1309,9 +1309,22 @@ export default function FavoritesPage() {
     publishCounts({ Projects: projectCount, Services: serviceCount })
   }, [projectCount, serviceCount, publishCounts])
 
-  const sortedProjectGroups = sortGroups(projectGroups, sortBy)
-  const sortedServiceGroups = sortGroups(serviceGroups, sortBy)
-  const sortedSampleGroups = [...sampleGroups].sort((a, b) => {
+  // Search matches the group page: the button toggles an input in place of
+  // the tabs, and it filters the groups on this screen by name.
+  const [showSearch, setShowSearch] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const matchesSearch = (name: string) =>
+    !searchQuery || name.toLowerCase().includes(searchQuery.toLowerCase())
+
+  const sortedProjectGroups = sortGroups(projectGroups, sortBy).filter((g) =>
+    matchesSearch(g.name)
+  )
+  const sortedServiceGroups = sortGroups(serviceGroups, sortBy).filter((g) =>
+    matchesSearch(g.name)
+  )
+  const sortedSampleGroups = [...sampleGroups]
+    .filter((g) => matchesSearch(g.name))
+    .sort((a, b) => {
     switch (sortBy) {
       case "newest":
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -1377,11 +1390,24 @@ export default function FavoritesPage() {
               variant="ghost"
               visual="gray"
               size="md"
+              onClick={() => setShowSearch(!showSearch)}
             >
               <SearchMd className="size-[18px]" />
             </Button>
 
-            <TabsList className="flex justify-start border-b-0 px-0">
+            {showSearch && (
+              <Input
+                className="mb-2.5 h-9 w-[260px] text-sm"
+                placeholder="Search groups..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+              />
+            )}
+
+            <TabsList
+              className={`flex justify-start border-b-0 px-0 ${showSearch ? "hidden" : ""}`}
+            >
               {FAVORITE_TABS.map((tab) => {
                 const count = tabCounts[tab] ?? 0
                 return (
