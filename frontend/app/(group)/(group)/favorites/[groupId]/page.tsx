@@ -7,6 +7,7 @@ import { UserAPI } from "@/service/http/user"
 import {
   type Favorite,
   type FavoriteGroup,
+  getAllFavoritesGrouped,
   getFavoritesByGroup,
   getGroups,
   addFavorite,
@@ -300,6 +301,7 @@ export default function FavoriteGroupDetailPage() {
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null)
   const [pendingMoveId, setPendingMoveId] = useState<string | null>(null)
   const [groups, setGroups] = useState<FavoriteGroup[]>([])
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({})
   const [moveTargetId, setMoveTargetId] = useState("")
   const [isMoving, setIsMoving] = useState(false)
 
@@ -332,6 +334,25 @@ export default function FavoriteGroupDetailPage() {
     }
     setPendingRemoveId(null)
   }
+
+  // The header tabs carry the same counts as the groups index.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const [projects, services] = await Promise.all([
+        getAllFavoritesGrouped("project"),
+        getAllFavoritesGrouped("service"),
+      ])
+      if (cancelled) return
+      setTabCounts({
+        Projects: projects.flatMap((g) => g.favorites ?? []).length,
+        Services: services.flatMap((g) => g.favorites ?? []).length,
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const openMoveDialog = async (favoriteId: string) => {
     setPendingMoveId(favoriteId)
@@ -465,12 +486,20 @@ export default function FavoriteGroupDetailPage() {
                 router.push(`/favorites?tab=${encodeURIComponent(tab)}`)
               }
             >
-              <TabsList className="justify-start border-b-0 px-0">
-                {FAVORITE_TABS.map((tab) => (
-                  <TabsTrigger key={tab} value={tab}>
-                    {tab}
-                  </TabsTrigger>
-                ))}
+              <TabsList className="flex justify-start border-b-0 px-0">
+                {FAVORITE_TABS.map((tab) => {
+                  const count = tabCounts[tab] ?? 0
+                  return (
+                    <TabsTrigger
+                      key={tab}
+                      className="xs:max-lg:text-xs xs:max-lg:leading-5"
+                      value={tab}
+                    >
+                      {tab}
+                      {count > 0 ? ` (${count})` : ""}
+                    </TabsTrigger>
+                  )
+                })}
               </TabsList>
             </Tabs>
           )}
@@ -486,12 +515,12 @@ export default function FavoriteGroupDetailPage() {
               <ToggleGroupItem
                 value={GRID_LAYOUT}
               >
-                <Grid className="size-[18px]" />
+                <Grid className="size-4 lg:size-6" />
               </ToggleGroupItem>
               <ToggleGroupItem
                 value={LIST_LAYOUT}
               >
-                <List className="size-[18px]" />
+                <List className="size-4 lg:size-6" />
               </ToggleGroupItem>
             </ToggleGroupRoot>
 
