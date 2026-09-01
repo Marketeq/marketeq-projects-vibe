@@ -9973,7 +9973,7 @@ const DescribeProjectStep = ({
               </div>
 
               {scopeKnowledgeChoice === "known" ? (
-                <div className="space-y-3">
+                <div className="mt-16 space-y-3">
                   <div className="flex h-7 items-baseline justify-between gap-2">
                     <Label className={descriptionLabelClassName}>
                       How will you know this project is successful?
