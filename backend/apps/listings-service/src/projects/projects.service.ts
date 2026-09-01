@@ -8,7 +8,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Not, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import { ClientProxy } from '@nestjs/microservices';
 import { Project } from './entities/project.entity';
 import { ListingStatus } from '../shared/enums/listing.enum';
@@ -21,6 +21,8 @@ import {
 } from '../project-sync/deliverables/deliverables.adapter';
 import { FAQ_ADAPTER, FaqAdapter } from '../publish/faq/faq.adapter';
 import { RelatedTermsService } from './related-terms.service';
+import { taxonomyChildren } from './related-taxonomy';
+import { ReportProjectDto } from './dto/report-project.dto';
 
 @Injectable()
 export class ProjectsService {
@@ -131,29 +133,16 @@ export class ProjectsService {
     });
     if (!item) throw new NotFoundException('Project not found');
 
-    const [
-      similarProjects,
-      projectHistoryRatings,
-      team,
-      relatedCategories,
-      relatedSkills,
-    ] = await Promise.all([
+    const [similarProjects, projectHistoryRatings, team] = await Promise.all([
       this.getSimilarProjects(item),
       this.getProjectHistoryRatings(item),
       this.resolveTeamMembers(item),
-      this.relatedTerms.relatedCategories([
-        ...(item.categories ?? []),
-        ...(item.subcategories ?? []),
-      ]),
-      this.relatedTerms.relatedSkills(this.getSkillsAndTools(item)),
     ]);
 
     return {
       ...this.shapeProject(item),
       ownerId: item.userId ? String(item.userId) : null,
       similarProjects,
-      relatedCategories,
-      relatedSkills,
       team,
       isTemporarilyUnavailable: team.length === 0,
       projectHistoryRatings,
@@ -580,9 +569,18 @@ export class ProjectsService {
   }
 
 
+  async getSimilarById(id: string) {
+    const item = await this.repo.findOne({ where: { id } });
+    if (!item) return [];
+    return this.getSimilarProjects(item);
+  }
+
   private async getSimilarProjects(project: Project) {
     const published = await this.repo.find({
-      where: { status: ListingStatus.Published, listingType: 'project' },
+      where: {
+        status: ListingStatus.Published,
+        listingType: In(['project', 'service']),
+      },
       order: { featured: 'DESC', createdAt: 'DESC' },
       take: 200,
     });
@@ -750,6 +748,66 @@ export class ProjectsService {
     return project.recentQuestions ?? [];
   }
 
+  async getRelatedTerms(projectId: string) {
+    const project = await this.repo.findOne({ where: { id: projectId } });
+    if (!project) throw new NotFoundException('Project not found');
+
+    const [
+      relatedCategories,
+      relatedSkills,
+      relatedCategoryGroups,
+      relatedSkillGroups,
+    ] = await Promise.all([
+      this.relatedTerms.relatedCategories([
+        ...(project.categories ?? []),
+        ...(project.subcategories ?? []),
+      ]),
+      this.relatedTerms.relatedSkills(this.getSkillsAndTools(project)),
+      this.relatedTerms
+        .relatedCategoryGroups(project.categories ?? [])
+        .catch(() => []),
+      this.relatedTerms
+        .relatedSkillGroups(this.getSkillsAndTools(project))
+        .catch(() => []),
+    ]);
+
+    const curatedTags = (groups: Array<{ name: string; items: string[] }>) =>
+      groups.flatMap((g) => [g.name, ...(taxonomyChildren(g.name) ?? [])]);
+    const relatedSearchTags = [
+      ...curatedTags(relatedSkillGroups as Array<{ name: string; items: string[] }>),
+      ...curatedTags(relatedCategoryGroups as Array<{ name: string; items: string[] }>),
+    ];
+
+    return {
+      relatedCategories,
+      relatedSkills,
+      relatedCategoryGroups,
+      relatedSkillGroups,
+      relatedSearchTags,
+    };
+  }
+
+  async reportProject(
+    projectId: string,
+    dto: ReportProjectDto,
+    reporterId?: string,
+  ) {
+    const project = await this.repo.findOne({ where: { id: projectId } });
+    if (!project) throw new NotFoundException('Project not found');
+
+    this.logger.warn(
+      `[ProjectReport] project=${projectId} reporter=${
+        reporterId ?? 'anon'
+      } reason="${dto.reason}" attachments=${
+        dto.attachments?.length ?? 0
+      } description=${
+        dto.description ? JSON.stringify(dto.description.slice(0, 200)) : 'n/a'
+      }`,
+    );
+
+    return { success: true };
+  }
+
   async getRelatedSearches(projectId: string, limit = 60) {
     const project = await this.repo.findOne({ where: { id: projectId } });
     if (!project) throw new NotFoundException('Project not found');
@@ -760,48 +818,14 @@ export class ProjectsService {
       ...(project.programmingLanguages ?? []),
       ...(project.developmentTech ?? []),
       ...(project.subcategories ?? []),
+      ...(project.categories ?? []),
     ]
       .map((t) => t?.trim())
       .filter((t): t is string => !!t);
 
-    const ownSet = new Set(ownTerms.map((t) => t.toLowerCase()));
-
-    const related = await this.repo.find({
-      where: { status: ListingStatus.Published, listingType: 'project' },
-      select: ['skills', 'tags', 'programmingLanguages', 'developmentTech', 'subcategories'],
-      take: 200,
-    });
-
-    const freq = new Map<string, { term: string; count: number }>();
-    for (const r of related) {
-      const terms = [
-        ...(r.skills ?? []),
-        ...(r.tags ?? []),
-        ...(r.programmingLanguages ?? []),
-        ...(r.developmentTech ?? []),
-        ...(r.subcategories ?? []),
-      ]
-        .map((t) => t?.trim())
-        .filter((t): t is string => !!t);
-
-      if (!terms.some((t) => ownSet.has(t.toLowerCase()))) continue;
-
-      for (const t of terms) {
-        const key = t.toLowerCase();
-        if (ownSet.has(key)) continue;
-        const cur = freq.get(key);
-        if (cur) cur.count++;
-        else freq.set(key, { term: t, count: 1 });
-      }
-    }
-
-    const expansion = Array.from(freq.values())
-      .sort((a, b) => b.count - a.count)
-      .map((x) => x.term);
-
     const seen = new Set<string>();
     const out: string[] = [];
-    for (const t of [...ownTerms, ...expansion]) {
+    for (const t of ownTerms) {
       const key = t.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
