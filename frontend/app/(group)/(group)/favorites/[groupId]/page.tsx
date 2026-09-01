@@ -782,11 +782,19 @@ export default function FavoriteGroupDetailPage() {
                     </span>
                   </SelectTrigger>
                   <SelectContent>
-                    {groups.map((group) => (
-                      <SelectItem key={group.id} value={group.id}>
-                        {group.name}
-                      </SelectItem>
-                    ))}
+                    {/* The viewport's native thin scrollbar is an overlay on
+                        macOS and can never appear; the rest of the app's
+                        dropdowns show the ScrollArea bar instead. */}
+                    <ScrollArea
+                      viewportClassName="max-h-[250px]"
+                      scrollBar={<ScrollBar className="w-4 p-1" />}
+                    >
+                      {groups.map((group) => (
+                        <SelectItem key={group.id} value={group.id}>
+                          {group.name}
+                        </SelectItem>
+                      ))}
+                    </ScrollArea>
                   </SelectContent>
                 </Select>
               </>
