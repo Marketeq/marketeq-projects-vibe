@@ -37,7 +37,10 @@ import {
   favoriteGroupNameFromParam,
 } from "@/src/lib/listing-urls"
 import { ListingCard } from "@/components/listing-card"
-import { FAVORITE_TABS } from "@/src/lib/favorites-tabs"
+import { FAVORITE_TABS,
+  FAVORITES_LAYOUT_TOGGLE_ITEM,
+  FAVORITES_LAYOUT_TOGGLE_ROOT,
+} from "@/src/lib/favorites-tabs"
 import { toast } from "@/components/ui/toast/use-toast"
 import { ToastAction } from "@/components/ui/toast/toast"
 import { NewGroupModal } from "@/app/(group)/(group)/favorites/page"
@@ -479,18 +482,18 @@ export default function FavoriteGroupDetailPage() {
           <SortDropdown value={sortBy} onChange={setSortBy} />
 
             <ToggleGroupRoot
-              className="gap-x-0 overflow-hidden rounded-[5px] border-gray-200 bg-white p-0"
+              className={FAVORITES_LAYOUT_TOGGLE_ROOT}
               value={value}
               onValueChange={(details) => setValue(details.value)}
             >
               <ToggleGroupItem
-                className="size-10 rounded-none bg-gray-100 px-0 data-[state=on]:bg-white data-[state=on]:shadow-none"
+                className={FAVORITES_LAYOUT_TOGGLE_ITEM}
                 value={GRID_LAYOUT}
               >
                 <Grid className="size-[18px]" />
               </ToggleGroupItem>
               <ToggleGroupItem
-                className="size-10 rounded-none bg-gray-100 px-0 data-[state=on]:bg-white data-[state=on]:shadow-none"
+                className={FAVORITES_LAYOUT_TOGGLE_ITEM}
                 value={LIST_LAYOUT}
               >
                 <List className="size-[18px]" />
