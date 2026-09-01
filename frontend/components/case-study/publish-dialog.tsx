@@ -75,6 +75,10 @@ const SUGGESTED_SKILLS = [
 export interface PublishDetails {
   title: string
   coverImage: string
+  coverImageZoom: number
+  coverImageRotation: number
+  coverImageOffsetX: number
+  coverImageOffsetY: number
   skills: string[]
 }
 
@@ -103,6 +107,8 @@ export function PublishDialog({
   const [coverImage, setCoverImage] = useState<string | null>(null)
   const [coverImageZoom, setCoverImageZoom] = useState(1)
   const [coverImageRotation, setCoverImageRotation] = useState(0)
+  const [coverImageOffsetX, setCoverImageOffsetX] = useState(50)
+  const [coverImageOffsetY, setCoverImageOffsetY] = useState(50)
   const [isImageEditOpen, setIsImageEditOpen] = useState(false)
   const [titleValue, setTitleValue] = useState(initialTitle)
   const [skills, setSkills] = useState<string[]>([])
@@ -126,6 +132,8 @@ export function PublishDialog({
     setCoverImage(url)
     setCoverImageZoom(1)
     setCoverImageRotation(0)
+    setCoverImageOffsetX(50)
+    setCoverImageOffsetY(50)
   }
 
   const isTitleValid = titleValue.trim().length > 0
@@ -136,7 +144,15 @@ export function PublishDialog({
     if (publishing) return
     setAttemptedSubmit(true)
     if (hasBlockingErrors) return
-    onPublish({ title: titleValue.trim(), coverImage, skills })
+    onPublish({
+      title: titleValue.trim(),
+      coverImage,
+      coverImageZoom,
+      coverImageRotation,
+      coverImageOffsetX,
+      coverImageOffsetY,
+      skills,
+    })
   }
 
   const availableSuggestions = SUGGESTED_SKILLS.filter(
@@ -177,7 +193,7 @@ export function PublishDialog({
                   src={coverImage}
                   alt="Cover"
                   className="h-full w-full object-cover"
-                  style={imageTransformStyle(coverImageZoom, coverImageRotation)}
+                  style={imageTransformStyle(coverImageZoom, coverImageRotation, coverImageOffsetX, coverImageOffsetY)}
                 />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -211,6 +227,8 @@ export function PublishDialog({
                           setCoverImage(null)
                           setCoverImageZoom(1)
                           setCoverImageRotation(0)
+                          setCoverImageOffsetX(50)
+                          setCoverImageOffsetY(50)
                         }}
                         aria-label="Remove image"
                         className="inline-flex size-9 shrink-0 items-center justify-center text-error-600 hover:bg-error-100 focus-visible:outline-none"
@@ -234,9 +252,15 @@ export function PublishDialog({
               title="Edit Cover Image"
               initialZoom={coverImageZoom}
               initialRotation={coverImageRotation}
-              onSave={({ zoom, rotation }) => {
+              initialOffsetX={coverImageOffsetX}
+              initialOffsetY={coverImageOffsetY}
+              aspectRatio={290 / 200}
+              objectFit="cover"
+              onSave={({ zoom, rotation, offsetX, offsetY }) => {
                 setCoverImageZoom(zoom)
                 setCoverImageRotation(rotation)
+                setCoverImageOffsetX(offsetX)
+                setCoverImageOffsetY(offsetY)
               }}
             />
             <input
