@@ -6,7 +6,11 @@ import { useRouter } from "next/navigation"
 import { UserAPI } from "@/service/http/user"
 import {
   type Favorite,
+  type FavoriteGroup,
   getFavoritesByGroup,
+  getGroups,
+  addFavorite,
+  moveFavorite,
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import {
@@ -19,6 +23,7 @@ import { getFirstItem } from "@/utils/functions"
 import {
   ArrowLeft,
   ArrowRight,
+  Check,
   Clock,
   MoreHorizontal,
   SearchMd,
@@ -31,6 +36,8 @@ import {
   favoriteGroupNameFromParam,
 } from "@/src/lib/listing-urls"
 import { ListingCard } from "@/components/listing-card"
+import { toast } from "@/components/ui/toast/use-toast"
+import { ToastAction } from "@/components/ui/toast/toast"
 import { NewGroupModal } from "@/app/(group)/favorites/page"
 import NextLink from "@/components/next-link"
 import { cn } from "@/utils/functions"
@@ -46,6 +53,10 @@ import {
   AvatarGroup,
   AvatarImage,
   Button,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
   DropdownMenu,
   DropdownMenuCheckItem,
   DropdownMenuContent,
@@ -270,11 +281,80 @@ export default function FavoriteGroupDetailPage() {
     setTalents((prev) => prev.filter((t) => t.id !== talentId))
   }
 
-  const handleRemoveFavorite = async (favoriteId: string) => {
-    const success = await removeFavorite(favoriteId)
-    if (success) {
-      setFavorites((prev) => prev.filter((f) => f.id !== favoriteId))
+  // Removing is destructive, so it goes through a confirmation. Moving opens
+  // a picker of the other groups.
+  const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null)
+  const [pendingMoveId, setPendingMoveId] = useState<string | null>(null)
+  const [groups, setGroups] = useState<FavoriteGroup[]>([])
+  const [moveTargetId, setMoveTargetId] = useState("")
+  const [isMoving, setIsMoving] = useState(false)
+
+  const handleRemoveFavorite = async () => {
+    if (!pendingRemoveId) return
+    const removed = favorites.find((f) => f.id === pendingRemoveId)
+    const success = await removeFavorite(pendingRemoveId)
+    if (success && removed) {
+      setFavorites((prev) => prev.filter((f) => f.id !== pendingRemoveId))
+      toast({
+        title: "Item removed from this group",
+        action: (
+          <ToastAction
+            altText="Undo remove"
+            onClick={async () => {
+              const restored = await addFavorite({
+                type: removed.type,
+                itemId: removed.itemId,
+                groupId,
+              })
+              if (restored) setFavorites((prev) => [restored, ...prev])
+            }}
+          >
+            Undo
+          </ToastAction>
+        ),
+      })
     }
+    setPendingRemoveId(null)
+  }
+
+  const openMoveDialog = async (favoriteId: string) => {
+    setPendingMoveId(favoriteId)
+    setMoveTargetId("")
+    try {
+      const all = await getGroups()
+      setGroups(all.filter((g) => g.id !== groupId))
+    } catch {
+      setGroups([])
+    }
+  }
+
+  const handleMoveFavorite = async () => {
+    if (!pendingMoveId || !moveTargetId) return
+    const favoriteId = pendingMoveId
+    const target = groups.find((g) => g.id === moveTargetId)
+    const movedItem = favorites.find((f) => f.id === favoriteId)
+    setIsMoving(true)
+    const moved = await moveFavorite(favoriteId, { groupId: moveTargetId })
+    if (moved) {
+      // It now lives in another group, so it leaves this list.
+      setFavorites((prev) => prev.filter((f) => f.id !== favoriteId))
+      toast({
+        title: `Moved to ${target?.name ?? "another group"}`,
+        action: (
+          <ToastAction
+            altText="Undo move"
+            onClick={async () => {
+              const back = await moveFavorite(favoriteId, { groupId })
+              if (back && movedItem) setFavorites((prev) => [movedItem, ...prev])
+            }}
+          >
+            Undo
+          </ToastAction>
+        ),
+      })
+    }
+    setIsMoving(false)
+    setPendingMoveId(null)
   }
 
   const filteredTalents = searchQuery
@@ -334,7 +414,7 @@ export default function FavoriteGroupDetailPage() {
   const filteredCount = isTalent ? sortedTalents.length : sortedProjects.length
 
   return (
-    <div className="p-3.5 md:p-10 lg:py-[60px] lg:px-[200px]">
+    <div className="p-3.5 md:p-10 lg:px-[200px] lg:py-[100px]">
       {/* Section 1 — the My Favorites header (Figma 13111-46360). */}
       <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400">
         My Favorites
@@ -549,7 +629,8 @@ export default function FavoriteGroupDetailPage() {
                   reviewCount={item.reviewCount}
                   optionsSlot={
                     <ItemDropdown
-                      onRemove={() => handleRemoveFavorite(fav.id)}
+                      onRemove={() => setPendingRemoveId(fav.id)}
+                      onMove={() => openMoveDialog(fav.id)}
                     />
                   }
                 />
@@ -605,7 +686,8 @@ export default function FavoriteGroupDetailPage() {
                   reviewCount={item.reviewCount}
                   optionsSlot={
                     <ItemDropdown
-                      onRemove={() => handleRemoveFavorite(fav.id)}
+                      onRemove={() => setPendingRemoveId(fav.id)}
+                      onMove={() => openMoveDialog(fav.id)}
                     />
                   }
                 />
@@ -614,6 +696,100 @@ export default function FavoriteGroupDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Move an item to another group */}
+      <Dialog
+        open={Boolean(pendingMoveId)}
+        onOpenChange={(open) => !open && setPendingMoveId(null)}
+      >
+        <DialogContent className="max-w-[420px] p-0">
+          <div className="border-b border-gray-200 px-6 py-5">
+            <DialogTitle asChild>
+              <h2 className="text-lg font-semibold leading-7 text-dark-blue-400">
+                Move to another group
+              </h2>
+            </DialogTitle>
+            <p className="mt-1 text-sm text-gray-500">
+              Choose the group this item should move to.
+            </p>
+          </div>
+
+          <ScrollArea viewportClassName="max-h-[280px]">
+            <div className="flex flex-col gap-y-1 p-3">
+              {groups.length === 0 ? (
+                <p className="px-3 py-6 text-center text-sm text-gray-400">
+                  You have no other groups to move this into.
+                </p>
+              ) : (
+                groups.map((group) => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => setMoveTargetId(group.id)}
+                    className={cn(
+                      "flex items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-300",
+                      moveTargetId === group.id
+                        ? "bg-primary-50 font-semibold text-primary-500"
+                        : "text-dark-blue-400 hover:bg-gray-50"
+                    )}
+                  >
+                    {group.name}
+                    {moveTargetId === group.id && (
+                      <Check className="size-4 shrink-0" />
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          </ScrollArea>
+
+          <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
+            <DialogClose asChild>
+              <Button variant="link" visual="gray">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              size="sm"
+              disabled={!moveTargetId || isMoving}
+              onClick={handleMoveFavorite}
+            >
+              Move Item
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm before removing an item */}
+      <Dialog
+        open={Boolean(pendingRemoveId)}
+        onOpenChange={(open) => !open && setPendingRemoveId(null)}
+      >
+        <DialogContent className="max-w-[420px] p-0">
+          <div className="px-6 py-5">
+            <DialogTitle asChild>
+              <h2 className="text-lg font-semibold leading-7 text-dark-blue-400">
+                Remove this item?
+              </h2>
+            </DialogTitle>
+            <p className="mt-1 text-sm text-gray-500">
+              It will be taken out of {groupName}. You can undo this right
+              after.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
+            <DialogClose asChild>
+              <Button variant="link" visual="gray">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button size="sm" visual="error" onClick={handleRemoveFavorite}>
+              <Trash2 className="size-4" /> Remove Item
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
