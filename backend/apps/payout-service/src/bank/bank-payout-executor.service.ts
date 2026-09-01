@@ -8,7 +8,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { PayoutRequest, PayoutStatus } from '../entities/payout-request.entity';
+import { PayoutRequest, PayoutStatus, PayoutSpeed } from '../entities/payout-request.entity';
 import { DepositMethod, MethodType, VerificationStatus } from '../entities/deposit-method.entity';
 import { AuditService } from '../audit/audit.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
@@ -95,12 +95,20 @@ export class BankPayoutExecutorService {
         });
         transferId = transfer.id;
 
+        // Previously always omitted (implicit 'standard') regardless of
+        // speed — a contractor who paid the instant fee still got a real
+        // 1-2 business day payout, silently. method: 'instant' is what
+        // actually invokes Stripe's real Instant Payouts product; Stripe
+        // itself rejects this if the connected account isn't instant-payout
+        // capable, which the surrounding try/catch already turns into a
+        // normal failPayout() rather than a silent fallback to standard.
         const stripePayout = await this.stripe.payouts.create(
           {
             amount: amountCents,
             currency: 'usd',
             destination: method.stripeExternalAccountId,
             metadata: { payoutRequestId, contractorId: payout.contractorId },
+            ...(payout.speed === PayoutSpeed.INSTANT ? { method: 'instant' } : {}),
           },
           { stripeAccount: method.stripeConnectAccountId },
         );
