@@ -9783,11 +9783,16 @@ const DescribeProjectStep = ({
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent
                                     align="start"
-                                    className="min-w-[92px]"
+                                    className="h-[118px] w-[136px] min-w-0 overflow-y-scroll rounded-[5px] border-gray-100 bg-white p-0 shadow-[0px_4px_19px_rgba(0,0,0,0.04)] scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
                                   >
                                     {projectDurationUnits.map((unit) => (
                                       <DropdownMenuItem
                                         key={unit}
+                                        className={cn(
+                                          "h-[34px] w-full shrink-0 px-3 py-2.5 text-[13px] leading-[13px] text-gray-500 hover:bg-gray-50 hover:text-gray-black focus:bg-gray-50 focus:text-gray-black",
+                                          unit === customDurationUnit &&
+                                            "bg-gray-50 text-gray-black",
+                                        )}
                                         onSelect={() => {
                                           setCustomDurationUnit(unit);
                                           updateDraftDetails({
