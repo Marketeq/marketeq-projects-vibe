@@ -558,6 +558,30 @@ export class NotificationService {
     return { sent: true };
   }
 
+  /** Sent when a user shares a project listing via email. Consumed from the
+   * notification.email.project_shared event emitted by invitations-service. */
+  async sendSharedProjectEmail(payload: {
+    to: string;
+    sharerName?: string;
+    projectTitle?: string;
+    projectUrl: string;
+    note?: string;
+  }) {
+    this.logger.log(
+      `sendSharedProjectEmail: to=${payload.to} project=${payload.projectTitle ?? 'n/a'}`,
+    );
+
+    await this.brevoService.sendShareProjectEmail(payload.to, {
+      sharerName: payload.sharerName,
+      projectTitle: payload.projectTitle,
+      projectUrl: payload.projectUrl,
+      note: payload.note,
+    });
+
+    this.logger.log(`Shared project email sent successfully: to=${payload.to}`);
+    return { sent: true };
+  }
+
   /** Sent to the inviter once someone accepts their invitation. This is the
    * counterpart to sendTeamInvitationEmail, which goes to the invitee. */
   async sendInvitationAcceptedEmail(payload: {

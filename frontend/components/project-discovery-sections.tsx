@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Check } from "@blend-metrics/icons"
 import * as RadixTabs from "@radix-ui/react-tabs"
+import { cn } from "@/utils/functions"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { projectDetailsUrl } from "@/src/lib/listing-urls"
 import { ListingCard } from "@/components/listing-card"
@@ -26,6 +27,95 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
+
+const titleCase = (s: string): string =>
+  s.replace(/\b\w/g, (c) => c.toUpperCase())
+
+const Shimmer = ({ className }: { className?: string }) => (
+  <div className={cn("relative bg-gray-100 rounded overflow-hidden", className)}>
+    <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+  </div>
+)
+
+const SkeletonCards = () => (
+  <div className="mt-6 flex gap-x-5">
+    {Array.from({ length: 4 }).map((_, i) => (
+      <div key={i} className="flex-1 min-w-0 space-y-3">
+        <Shimmer className="h-[190px] w-full rounded-lg" />
+        <Shimmer className="h-4 w-3/4" />
+        <Shimmer className="h-3 w-full" />
+        <Shimmer className="h-3 w-1/2" />
+        <div className="flex items-center gap-x-2 pt-1">
+          <Shimmer className="h-8 w-8 rounded-full" />
+          <Shimmer className="h-8 w-8 rounded-full" />
+          <Shimmer className="h-8 w-8 rounded-full" />
+        </div>
+      </div>
+    ))}
+  </div>
+)
+
+const SkeletonColumns = () => (
+  <div className="mt-5 py-5 flex items-start justify-between">
+    {Array.from({ length: 4 }).map((_, ci) => (
+      <div key={ci} className="flex flex-col gap-y-3 items-start w-[22%]">
+        <Shimmer className="h-5 w-32 mb-1" />
+        {Array.from({ length: 9 }).map((_, i) => (
+          <Shimmer key={i} className="h-4 w-28" />
+        ))}
+      </div>
+    ))}
+  </div>
+)
+
+const SKELETON_TAG_WIDTHS = [
+  "w-20", "w-28", "w-16", "w-32", "w-24", "w-24", "w-16", "w-28", "w-20",
+  "w-24", "w-28", "w-16", "w-24", "w-20", "w-28", "w-20", "w-24", "w-16",
+]
+
+const SkeletonTags = () => (
+  <div className="mt-6 flex flex-wrap gap-3">
+    {SKELETON_TAG_WIDTHS.map((w, i) => (
+      <Shimmer key={i} className={cn("h-8 rounded-full", w)} />
+    ))}
+  </div>
+)
+
+const SkeletonHeader = () => (
+  <div className="space-y-2">
+    <Shimmer className="h-8 w-64" />
+    <Shimmer className="h-5 w-[420px] max-w-full" />
+  </div>
+)
+
+const SkeletonTitle = ({ className }: { className?: string }) => (
+  <Shimmer className={cn("h-8 w-64", className)} />
+)
+
+const SkeletonTabs = () => (
+  <div className="mt-5 flex items-center gap-x-3">
+    <Shimmer className="h-9 w-[150px] rounded-full" />
+    <Shimmer className="h-9 w-[120px] rounded-full" />
+  </div>
+)
+
+const SkeletonRecentlyViewed = () => (
+  <div className="mt-[50px] py-[35px]">
+    <Shimmer className="h-6 w-44" />
+    <div className="mt-[29px] grid grid-cols-3 gap-x-[42px] gap-y-10">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="flex items-start gap-x-6">
+          <Shimmer className="size-[100px] shrink-0 rounded-lg" />
+          <div className="flex-1 space-y-2 pr-[45.54px]">
+            <Shimmer className="h-4 w-full" />
+            <Shimmer className="h-4 w-2/3" />
+            <Shimmer className="mt-3 h-3 w-1/2" />
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+)
 
 const listingCollaborators = (item: any): string[] => {
   const candidates =
@@ -58,14 +148,25 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
   )
   const [recentlyViewed, setRecentlyViewed] = React.useState<any[]>([])
   const [relatedSearches, setRelatedSearches] = React.useState<string[]>([])
+  const [similarReady, setSimilarReady] = React.useState<boolean>(
+    Array.isArray(project?.similarProjects)
+  )
+  const [recommendedReady, setRecommendedReady] = React.useState(false)
+  const [relatedTermsReady, setRelatedTermsReady] = React.useState(false)
+  const [recentlyViewedReady, setRecentlyViewedReady] = React.useState(false)
+  const cloudRef = React.useRef<HTMLDivElement>(null)
+  const [cloudMaxH, setCloudMaxH] = React.useState<number | undefined>(undefined)
 
   React.useEffect(() => {
-    setData(project)
+    setData((prev: any) =>
+      prev && prev.id === project?.id ? { ...prev, ...project } : project
+    )
   }, [project])
 
   React.useEffect(() => {
     if (!project?.slug) return
     if (Array.isArray(project?.similarProjects)) return
+    if (project?.listingType === "service") return
     const apiBase = getPublicApiUrl() || "http://localhost:4000"
     let cancelled = false
     fetch(`${apiBase}/v1/projects/slug/${project.slug}`)
@@ -86,21 +187,91 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
 
     fetch(`${apiBase}/v1/projects/${project.id}/related-searches`)
       .then((r) => (r.ok ? r.json() : []))
-      .then(setRelatedSearches)
+      .then((x) => setRelatedSearches(Array.isArray(x) ? x : []))
       .catch(() => {})
 
+    setRelatedTermsReady(false)
+    fetch(`${apiBase}/v1/projects/${project.id}/related-terms`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((rt) => {
+        if (rt) setData((prev: any) => ({ ...prev, ...rt }))
+      })
+      .catch(() => {})
+      .finally(() => setRelatedTermsReady(true))
+
+    if (!Array.isArray(project?.similarProjects)) {
+      setSimilarReady(false)
+      fetch(`${apiBase}/v1/projects/${project.id}/similar`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((sp) => {
+          if (Array.isArray(sp))
+            setData((prev: any) => ({ ...prev, similarProjects: sp }))
+        })
+        .catch(() => {})
+        .finally(() => setSimilarReady(true))
+    } else {
+      setSimilarReady(true)
+    }
+
+    setRecommendedReady(false)
     fetch(`${apiBase}/v1/recently-viewed/recommended`, {
       credentials: "include",
     })
       .then((r) => (r.ok ? r.json() : []))
-      .then(setRecommendedProjects)
+      .then((x) => setRecommendedProjects(Array.isArray(x) ? x : []))
       .catch(() => {})
+      .finally(() => setRecommendedReady(true))
 
+    setRecentlyViewedReady(false)
     fetch(`${apiBase}/v1/recently-viewed`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : []))
-      .then(setRecentlyViewed)
+      .then((x) => setRecentlyViewed(Array.isArray(x) ? x : []))
       .catch(() => {})
+      .finally(() => setRecentlyViewedReady(true))
   }, [project?.id])
+
+  const relatedCloud = React.useMemo(() => {
+    const seen = new Set<string>()
+    const out: string[] = []
+    const curatedTags = (data?.relatedSearchTags as string[]) ?? []
+    for (const t of [...relatedSearches, ...curatedTags]) {
+      if (out.length >= 80) break
+      const key = (t ?? "").toLowerCase().trim()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      out.push(t)
+    }
+    return out
+  }, [relatedSearches, data?.relatedSearchTags])
+
+  React.useLayoutEffect(() => {
+    const el = cloudRef.current
+    if (!el) return
+    const measure = () => {
+      const kids = Array.from(el.children) as HTMLElement[]
+      if (kids.length === 0) {
+        setCloudMaxH(undefined)
+        return
+      }
+      const base = el.getBoundingClientRect().top
+      const rowTops: number[] = []
+      for (const k of kids) {
+        const top = Math.round(k.getBoundingClientRect().top - base)
+        if (!rowTops.some((r) => Math.abs(r - top) < 2)) rowTops.push(top)
+      }
+      rowTops.sort((a, b) => a - b)
+      if (rowTops.length <= 5) {
+        setCloudMaxH(undefined)
+        return
+      }
+      const rowHeight = kids[0].getBoundingClientRect().height
+      setCloudMaxH(rowTops[4] + rowHeight)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [relatedCloud])
 
   return (
     <>
@@ -110,16 +281,20 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
           <div className="space-y-6">
             <Carousel className="w-full" opts={{ align: "start" }}>
               <div className="flex items-end justify-between">
-                <div className="space-y-2">
-                  <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
-                    Similar Projects
-                  </h1>
+                {!similarReady ? (
+                  <SkeletonHeader />
+                ) : (
+                  <div className="space-y-2">
+                    <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
+                      Similar Projects
+                    </h1>
 
-                  <p className="text-lg font-light text-dark-blue-400 leading-none">
-                    Users who have viewed this project have also expressed
-                    interest in these as well
-                  </p>
-                </div>
+                    <p className="text-lg font-light text-dark-blue-400 leading-none">
+                      Users who have viewed this project have also expressed
+                      interest in these as well
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-x-3">
                   <Button
@@ -155,7 +330,9 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
                 </div>
               </div>
 
-              {(data?.similarProjects ?? []).length > 0 ? (
+              {!similarReady ? (
+                <SkeletonCards />
+              ) : (data?.similarProjects ?? []).length > 0 ? (
                 <CarouselContent className="-ml-5 mt-6">
                   {(data?.similarProjects ?? []).map((sp: any) => (
                     <CarouselItem key={sp.id} className="basis-1/4 pl-5">
@@ -215,7 +392,12 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
           </div>
 
           {/* Recommended Projects */}
-          {recommendedProjects.length > 0 && (
+          {!recommendedReady ? (
+            <div className="space-y-6 mt-[50px]">
+              <SkeletonHeader />
+              <SkeletonCards />
+            </div>
+          ) : recommendedProjects.length > 0 ? (
             <div className="space-y-6 mt-[50px]">
               <Carousel className="w-full" opts={{ align: "start" }}>
                 <div className="flex items-end justify-between">
@@ -314,37 +496,85 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
                 </CarouselContent>
               </Carousel>
             </div>
-          )}
+          ) : null}
 
           {/* More Ways to Explore */}
           <div className="mt-[50px]">
-            <h1 className="text-[28px] font-bold leading-none text-dark-blue-400">
-              More Ways to Explore
-            </h1>
+            {!relatedTermsReady ? (
+              <SkeletonTitle />
+            ) : (
+              <h1 className="text-[28px] font-bold leading-none text-dark-blue-400">
+                More Ways to Explore
+              </h1>
+            )}
 
             <Tabs className="mt-5" defaultValue="Related Categories">
-              <RadixTabs.List className="flex items-center gap-x-3">
-                <TabsTrigger
-                  variant="unstyled"
-                  className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                  value="Related Categories"
-                  showUnderline={false}
-                >
-                  Related Categories
-                </TabsTrigger>
-                <TabsTrigger
-                  variant="unstyled"
-                  className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                  value="Related Skills"
-                  showUnderline={false}
-                >
-                  Related Skills
-                </TabsTrigger>
-              </RadixTabs.List>
+              {!relatedTermsReady ? (
+                <SkeletonTabs />
+              ) : (
+                <RadixTabs.List className="flex items-center gap-x-3">
+                  <TabsTrigger
+                    variant="unstyled"
+                    className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                    value="Related Categories"
+                    showUnderline={false}
+                  >
+                    Related Categories
+                  </TabsTrigger>
+                  <TabsTrigger
+                    variant="unstyled"
+                    className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
+                    value="Related Skills"
+                    showUnderline={false}
+                  >
+                    Related Skills
+                  </TabsTrigger>
+                </RadixTabs.List>
+              )}
 
               <TabsContent value="Related Categories">
+                {!relatedTermsReady ? (
+                  <SkeletonColumns />
+                ) : (
                 <div className="mt-5 py-5 flex items-start justify-between">
                   {(() => {
+                    const groups = (
+                      data?.relatedCategoryGroups ?? []
+                    ).filter(
+                      (g: any) =>
+                        g?.name &&
+                        Array.isArray(g?.items) &&
+                        g.items.length > 0
+                    )
+                    if (groups.length > 0) {
+                      return groups.slice(0, 4).map((g: any, ci: number) => (
+                        <div
+                          key={ci}
+                          className="flex flex-col gap-y-3 items-start"
+                        >
+                          <h2 className="text-lg leading-none font-bold text-dark-blue-400">
+                            {titleCase(g.name)}
+                          </h2>
+                          {g.items
+                            .slice(0, 9)
+                            .map((cat: string, i: number) => (
+                              <Button
+                                key={i}
+                                variant="link"
+                                className="text-dark-blue-400"
+                                asChild
+                              >
+                                <NextLink
+                                  href={`/search?q=${encodeURIComponent(cat)}`}
+                                >
+                                  {titleCase(cat)}
+                                </NextLink>
+                              </Button>
+                            ))}
+                        </div>
+                      ))
+                    }
+
                     const cats = data?.relatedCategories ?? []
                     const allCats = [...(data?.categories ?? []), ...cats]
                     const unique = Array.from(new Set(allCats)).filter(Boolean)
@@ -369,7 +599,7 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
                         className="flex flex-col gap-y-3 items-start"
                       >
                         <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                          {headers[ci] ?? "Categories"}
+                          {titleCase(headers[ci] ?? "Categories")}
                         </h2>
                         {col.map((cat: string, i: number) => (
                           <Button
@@ -381,7 +611,7 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
                             <NextLink
                               href={`/search?q=${encodeURIComponent(cat)}`}
                             >
-                              {cat}
+                              {titleCase(cat)}
                             </NextLink>
                           </Button>
                         ))}
@@ -389,11 +619,52 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
                     ))
                   })()}
                 </div>
+                )}
               </TabsContent>
 
               <TabsContent value="Related Skills">
+                {!relatedTermsReady ? (
+                  <SkeletonColumns />
+                ) : (
                 <div className="mt-5 py-5 flex items-start justify-between">
                   {(() => {
+                    const groups = (data?.relatedSkillGroups ?? []).filter(
+                      (g: any) =>
+                        g?.name &&
+                        Array.isArray(g?.items) &&
+                        g.items.length > 0
+                    )
+                    if (groups.length > 0) {
+                      return groups.slice(0, 4).map((g: any, ci: number) => (
+                        <div
+                          key={ci}
+                          className="flex flex-col gap-y-3 items-start"
+                        >
+                          <h2 className="text-lg leading-none font-bold text-dark-blue-400">
+                            {titleCase(g.name)}
+                          </h2>
+                          {g.items
+                            .slice(0, 9)
+                            .map((skill: string, i: number) => (
+                              <Button
+                                key={i}
+                                variant="link"
+                                className="text-dark-blue-400"
+                                asChild
+                              >
+                                <NextLink
+                                  href={`/search?q=${encodeURIComponent(
+                                    skill
+                                  )}`}
+                                >
+                                  {titleCase(skill)}
+                                </NextLink>
+                              </Button>
+                            ))}
+                        </div>
+                      ))
+                    }
+
                     const skills = data?.relatedSkills ?? []
                     const allSkills = [
                       ...(data?.skills ?? []),
@@ -416,7 +687,7 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
                         className="flex flex-col gap-y-3 items-start"
                       >
                         <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                          {headers[ci]}
+                          {titleCase(headers[ci])}
                         </h2>
                         {col.map((skill: string, i: number) => (
                           <Button
@@ -428,7 +699,7 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
                             <NextLink
                               href={`/search?q=${encodeURIComponent(skill)}`}
                             >
-                              {skill}
+                              {titleCase(skill)}
                             </NextLink>
                           </Button>
                         ))}
@@ -436,18 +707,34 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
                     ))
                   })()}
                 </div>
+                )}
               </TabsContent>
             </Tabs>
           </div>
 
           {/* Related Searches */}
           <div className="mt-[50px]">
-            <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-              Related Searches
-            </h1>
+            {!relatedTermsReady ? (
+              <SkeletonTitle />
+            ) : (
+              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                Related Searches
+              </h1>
+            )}
 
-            <div className="mt-6 flex flex-wrap gap-3">
-              {relatedSearches.map((label, i) => (
+            {!relatedTermsReady ? (
+              <SkeletonTags />
+            ) : (
+            <div
+              ref={cloudRef}
+              className="mt-6 flex flex-wrap gap-3"
+              style={
+                cloudMaxH
+                  ? { maxHeight: cloudMaxH, overflow: "hidden" }
+                  : undefined
+              }
+            >
+              {relatedCloud.map((label, i) => (
                 <NextLink
                   key={i}
                   href={`/search?q=${encodeURIComponent(label)}`}
@@ -462,11 +749,14 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
                 </NextLink>
               ))}
             </div>
+            )}
           </div>
         </div>
 
         {/* Recently Viewed */}
-        {recentlyViewed.length > 0 && (
+        {!recentlyViewedReady ? (
+          <SkeletonRecentlyViewed />
+        ) : recentlyViewed.length > 0 ? (
           <div className="mt-[50px] py-[35px]">
             <div className="flex items-center justify-between">
               <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
@@ -493,7 +783,7 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
                     </div>
 
                     <div className="pr-[45.54px]">
-                      <h1 className="cursor-pointer hover:underline transition duration-300 text-base font-bold leading-none line-clamp-2 text-dark-blue-400">
+                      <h1 className="cursor-pointer hover:underline transition duration-300 text-base font-bold leading-snug line-clamp-2 text-dark-blue-400">
                         {rv.title}
                       </h1>
 
@@ -526,7 +816,7 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
               ))}
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </>
   )

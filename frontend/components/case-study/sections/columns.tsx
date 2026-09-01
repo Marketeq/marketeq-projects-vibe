@@ -192,7 +192,9 @@ function ColumnsEdit({
                                   className="size-full object-contain rounded-lg"
                                   style={imageTransformStyle(
                                     colData[item]?.imageZoom,
-                                    colData[item]?.imageRotation
+                                    colData[item]?.imageRotation,
+                                    colData[item]?.imageOffsetX,
+                                    colData[item]?.imageOffsetY
                                   )}
                                 />
                               </div>
@@ -213,6 +215,8 @@ function ColumnsEdit({
                                     imageUrl: undefined,
                                     imageZoom: undefined,
                                     imageRotation: undefined,
+                                    imageOffsetX: undefined,
+                                    imageOffsetY: undefined,
                                   },
                                 }))
                               }}
@@ -231,13 +235,18 @@ function ColumnsEdit({
                         title="Edit Image"
                         initialZoom={colData[item]?.imageZoom ?? 1}
                         initialRotation={colData[item]?.imageRotation ?? 0}
-                        onSave={({ zoom, rotation }) =>
+                        initialOffsetX={colData[item]?.imageOffsetX ?? 50}
+                        initialOffsetY={colData[item]?.imageOffsetY ?? 50}
+                        aspectRatio={346.67 / 250}
+                        onSave={({ zoom, rotation, offsetX, offsetY }) =>
                           setColData((prev) => ({
                             ...prev,
                             [item]: {
                               ...prev[item],
                               imageZoom: zoom,
                               imageRotation: rotation,
+                              imageOffsetX: offsetX,
+                              imageOffsetY: offsetY,
                             },
                           }))
                         }
@@ -314,11 +323,16 @@ function ColumnsView({ data }: { data?: Record<string, unknown> }) {
               style={{ flexGrow: col.width ?? 1, flexBasis: 0 }}
               className="min-w-0"
             >
-              <BlockImage
-                url={col.imageUrl}
-                zoom={col.imageZoom}
-                rotation={col.imageRotation}
-              />
+              <div className="relative overflow-hidden rounded-lg h-[250px]">
+                <BlockImage
+                  url={col.imageUrl}
+                  zoom={col.imageZoom}
+                  rotation={col.imageRotation}
+                  offsetX={col.imageOffsetX}
+                  offsetY={col.imageOffsetY}
+                  className="absolute inset-0 h-full w-full object-contain"
+                />
+              </div>
               <Html
                 html={col.titleHtml}
                 className="text-2xl leading-[29px] font-semibold text-dark-blue-400 mt-6"

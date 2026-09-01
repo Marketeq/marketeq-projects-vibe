@@ -1,10 +1,8 @@
 "use client"
 
-import {
-  addSection,
-  createCaseStudy,
-  saveCaseStudy,
-} from "@/lib/hooks/use-case-study-store"
+import { useState } from "react"
+import { CaseStudyAPI } from "@/service/http/case-study"
+import { addSection, regionsToSchemaJson, type EditorRegion } from "@/lib/case-study-mapper"
 import {
   Button,
   Dialog,
@@ -20,14 +18,15 @@ const DEFAULT_TITLE = "Your case study's title"
 /**
  * "Start Creating Your Case Study" modal — the entry point from the
  * profile Portfolio grid's "Create a Case Study" tile. Both paths create a
- * new case study in the same localStorage store the rest of the builder
- * uses (see lib/hooks/use-case-study-store.ts) and hand the new id back to
- * the caller via onCreated, which opens the existing CaseStudyEditor.
+ * new case study via CaseStudyAPI and hand the new id back to the caller
+ * via onCreated, which opens the existing CaseStudyEditor (which hydrates
+ * by fetching that id).
  *
  * "Use a Template" seeds the new case study with one of every section in
  * SECTION_TILES (the same catalog the in-editor "+ Add New Block" picker
  * offers), in that order, so the editor opens already populated with the
- * full template instead of a single empty section.
+ * full template instead of a single empty section — persisted via an
+ * immediate Update call before the editor ever mounts.
  */
 export function CreateCaseStudyModal({
   open,
@@ -38,21 +37,37 @@ export function CreateCaseStudyModal({
   onOpenChange: (open: boolean) => void
   onCreated: (caseStudyId: string) => void
 }) {
-  const startFromScratch = () => {
-    const cs = createCaseStudy(DEFAULT_TITLE)
-    onOpenChange(false)
-    onCreated(cs.id)
+  const [isCreating, setIsCreating] = useState(false)
+
+  const startFromScratch = async () => {
+    if (isCreating) return
+    setIsCreating(true)
+    try {
+      const { data } = await CaseStudyAPI.Create({ title: DEFAULT_TITLE })
+      onOpenChange(false)
+      onCreated(data.id)
+    } finally {
+      setIsCreating(false)
+    }
   }
 
-  const useTemplate = () => {
-    const cs = createCaseStudy(DEFAULT_TITLE)
-    const sections = SECTION_TILES.reduce(
-      (regions, { type }) => addSection(regions, type),
-      cs.sections
-    )
-    saveCaseStudy({ id: cs.id, sections })
-    onOpenChange(false)
-    onCreated(cs.id)
+  const useTemplate = async () => {
+    if (isCreating) return
+    setIsCreating(true)
+    try {
+      const { data } = await CaseStudyAPI.Create({ title: DEFAULT_TITLE })
+      const sections = SECTION_TILES.reduce<EditorRegion[]>(
+        (regions, { type }) => addSection(regions, type),
+        []
+      )
+      await CaseStudyAPI.Update(data.id, {
+        schemaJson: regionsToSchemaJson(sections),
+      })
+      onOpenChange(false)
+      onCreated(data.id)
+    } finally {
+      setIsCreating(false)
+    }
   }
 
   return (
@@ -73,11 +88,12 @@ export function CreateCaseStudyModal({
             className="flex-1"
             variant="outlined"
             visual="gray"
+            disabled={isCreating}
             onClick={startFromScratch}
           >
             Start from Scratch
           </Button>
-          <Button className="flex-1" onClick={useTemplate}>
+          <Button className="flex-1" disabled={isCreating} onClick={useTemplate}>
             Use a Template
           </Button>
         </div>

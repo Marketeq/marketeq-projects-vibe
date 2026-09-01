@@ -1,3 +1,4 @@
+import { getId } from "@/utils/functions"
 import type { CaseStudyBlock } from "@/service/http/case-study"
 
 // Mirrors State["regions"][number]["region"] in components/case-study-builder.tsx.
@@ -57,6 +58,9 @@ export interface EditorRegion {
 export interface ImageTransform {
   imageZoom?: number
   imageRotation?: number
+  /** 0-100, default 50 (centered) — see sections/_shared.tsx's imageTransformStyle. */
+  imageOffsetX?: number
+  imageOffsetY?: number
 }
 
 export interface IntroductionData extends ImageTransform {
@@ -171,8 +175,8 @@ export function normalizeGalleryImages(value: unknown): GalleryImage[] {
         return entry ? { url: entry } : null
       }
       if (entry && typeof entry === "object" && typeof (entry as { url?: unknown }).url === "string") {
-        const { url, imageZoom, imageRotation } = entry as GalleryImage
-        return url ? { url, imageZoom, imageRotation } : null
+        const { url, imageZoom, imageRotation, imageOffsetX, imageOffsetY } = entry as GalleryImage
+        return url ? { url, imageZoom, imageRotation, imageOffsetX, imageOffsetY } : null
       }
       return null
     })
@@ -227,6 +231,14 @@ export function firstCaseStudyImageUrl(
     }
   }
   return undefined
+}
+
+/** Appends a new, empty region of the given type to a regions array (used by the "Use a Template" flow). */
+export function addSection(
+  sections: EditorRegion[],
+  region: CaseStudyBlockType
+): EditorRegion[] {
+  return [...sections, { id: getId(), region }]
 }
 
 /** schemaJson.blocks (a loaded draft) -> regions (editor state), assigning fresh local ids */

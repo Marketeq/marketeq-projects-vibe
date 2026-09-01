@@ -16,20 +16,21 @@ export class MediaService {
   private readonly maxBytes: number;
 
   constructor() {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || process.env.R2_ACCOUNT_ID!;
+    const accessKeyId = process.env.CLOUDFLARE_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY_ID!;
+    const secretAccessKey = process.env.CLOUDFLARE_SECRET_ACCESS_KEY || process.env.R2_SECRET_ACCESS_KEY!;
+
     this.s3 = new S3Client({
       region: 'auto',
-      endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      credentials: {
-        accessKeyId: process.env.CLOUDFLARE_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.CLOUDFLARE_SECRET_ACCESS_KEY!,
-      },
+      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      credentials: { accessKeyId, secretAccessKey },
     });
-    this.bucket = process.env.CLOUDFLARE_BUCKET!;
-    this.cdnUrl = process.env.CLOUDFLARE_PUBLIC_URL!;
+    this.bucket = process.env.CLOUDFLARE_BUCKET || process.env.R2_BUCKET!;
+    this.cdnUrl = process.env.CLOUDFLARE_PUBLIC_URL || process.env.R2_CDN_BASE!;
     this.maxBytes = Number(process.env.MAX_FILE_SIZE_MB || 10) * 1024 * 1024;
   }
 
-  async generateUpload(fileName: string, fileSize: number): Promise<{ uploadUrl: string; publicUrl: string; key: string }> {
+  async generateUpload(fileName: string, fileSize: number): Promise<{ uploadUrl: string; publicUrl: string; key: string; contentType: string }> {
     if (fileSize > this.maxBytes) {
       throw new BadRequestException(`File exceeds maximum size of ${process.env.MAX_FILE_SIZE_MB || 10}MB`);
     }
@@ -55,6 +56,7 @@ export class MediaService {
       uploadUrl,
       publicUrl: `${this.cdnUrl}/${key}`,
       key,
+      contentType: mimeType,
     };
   }
 
