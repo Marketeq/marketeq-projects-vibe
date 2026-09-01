@@ -6,8 +6,6 @@ import { UserAPI } from "@/service/http/user"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { favoriteGroupUrl } from "@/src/lib/listing-urls"
 import { FAVORITE_TABS, isFavoriteTab,
-  FAVORITES_LAYOUT_TOGGLE_ITEM,
-  FAVORITES_LAYOUT_TOGGLE_ROOT,
 } from "@/src/lib/favorites-tabs"
 import {
   type FavoriteGroup as FavGroup,
@@ -1319,18 +1317,15 @@ export default function FavoritesPage() {
           <SortDropdown value={sortBy} onChange={setSortBy} />
 
           <ToggleGroupRoot
-            className={FAVORITES_LAYOUT_TOGGLE_ROOT}
             value={value}
             onValueChange={(details) => setValue(details.value)}
           >
             <ToggleGroupItem
-              className={FAVORITES_LAYOUT_TOGGLE_ITEM}
               value={GRID_LAYOUT}
             >
               <Grid className="size-[18px]" />
             </ToggleGroupItem>
             <ToggleGroupItem
-              className={FAVORITES_LAYOUT_TOGGLE_ITEM}
               value={LIST_LAYOUT}
             >
               <List className="size-[18px]" />
