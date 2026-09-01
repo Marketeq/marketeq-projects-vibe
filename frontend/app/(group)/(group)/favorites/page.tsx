@@ -211,11 +211,13 @@ const ProjectGroupListCard = ({
         router.push(href)
       }}
     >
-      <div className="py-3.5 lg:py-[16.5px] space-y-0.5 pl-5">
+      {/* The bar beside this is flex-auto, so without a floor here it squeezed
+          this column and wrapped "Created Sep 2026" onto two lines. */}
+      <div className="py-3.5 lg:py-[16.5px] space-y-0.5 pl-5 md:w-[180px] md:shrink-0 lg:w-[200px]">
         <h1 className="text-[11px] leading-[13.31px] lg:text-base lg:leading-[19.36px] font-bold text-dark-blue-400 line-clamp-2">
           {group.name}
         </h1>
-        <p className="text-[9px] leading-[10.89px] lg:text-sm lg:leading-[16.94px] font-light text-[#585C65]">
+        <p className="whitespace-nowrap text-[9px] leading-[10.89px] lg:text-sm lg:leading-[16.94px] font-light text-[#585C65]">
           {formatGroupDate(group.createdAt)}
         </p>
       </div>
