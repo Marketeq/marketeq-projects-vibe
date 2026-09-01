@@ -38,8 +38,8 @@ import {
 } from "@/src/lib/listing-urls"
 import { ListingCard } from "@/components/listing-card"
 import { useFavoriteCounts } from "@/app/(group)/(group)/favorites/favorites-counts"
-import { FAVORITE_TABS,
-} from "@/src/lib/favorites-tabs"
+import { FAVORITE_TABS } from "@/src/lib/favorites-tabs"
+import { cascadeClasses } from "@/src/lib/cascade"
 import { toast } from "@/components/ui/toast/use-toast"
 import { ToastAction } from "@/components/ui/toast/toast"
 import { NewGroupModal } from "@/app/(group)/(group)/favorites/page"
@@ -571,9 +571,12 @@ export default function FavoriteGroupDetailPage() {
         ) : isTalent ? (
           getFirstItem(value) === GRID_LAYOUT ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-6">
-              {sortedTalents.map((talent) => (
+              {sortedTalents.map((talent, index) => (
+                <div
+                  key={`${getFirstItem(value)}-${talent.id}`}
+                  className={cascadeClasses(index)}
+                >
                 <TalentSearchCard
-                  key={talent.id}
                   id={talent.id}
                   name={talent.firstName}
                   handle={`@${talent.username}`}
@@ -590,22 +593,27 @@ export default function FavoriteGroupDetailPage() {
                   showOptionsMenu
                   onRemove={() => handleRemoveTalent(talent.id)}
                 />
+                </div>
               ))}
             </div>
           ) : (
             <div className="flex flex-col gap-y-3">
-              {sortedTalents.map((talent) => (
-                <TalentSearchCardLandscape
-                  key={talent.id}
-                  showOptionsMenu
-                  onRemove={() => handleRemoveTalent(talent.id)}
-                />
+              {sortedTalents.map((talent, index) => (
+                <div
+                  key={`${getFirstItem(value)}-${talent.id}`}
+                  className={cascadeClasses(index)}
+                >
+                  <TalentSearchCardLandscape
+                    showOptionsMenu
+                    onRemove={() => handleRemoveTalent(talent.id)}
+                  />
+                </div>
               ))}
             </div>
           )
         ) : getFirstItem(value) === GRID_LAYOUT ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {sortedProjects.map((fav) => {
+            {sortedProjects.map((fav, index) => {
               const item = itemData[fav.itemId] || { id: fav.itemId }
               const isService = fav.type === "service"
               const categorySlug = (
@@ -618,8 +626,11 @@ export default function FavoriteGroupDetailPage() {
               const itemId = String(item.id)
 
               return (
+                <div
+                  key={`${getFirstItem(value)}-${fav.id}`}
+                  className={cascadeClasses(index)}
+                >
                 <ListingCard
-                  key={fav.id}
                   kind={isService ? "service" : "project"}
                   id={itemId}
                   cardVariant="is-favorited"
@@ -658,12 +669,13 @@ export default function FavoriteGroupDetailPage() {
                     />
                   }
                 />
+                </div>
               )
             })}
           </div>
         ) : (
           <div className="grid gap-y-3">
-            {sortedProjects.map((fav) => {
+            {sortedProjects.map((fav, index) => {
               const item = itemData[fav.itemId] || { id: fav.itemId }
               const isService = fav.type === "service"
               const categorySlug = (
@@ -676,8 +688,11 @@ export default function FavoriteGroupDetailPage() {
               const itemId = String(item.id)
 
               return (
+                <div
+                  key={`${getFirstItem(value)}-${fav.id}`}
+                  className={cascadeClasses(index)}
+                >
                 <ListingCard
-                  key={fav.id}
                   kind={isService ? "service" : "project"}
                   id={itemId}
                   layout="list"
@@ -715,6 +730,7 @@ export default function FavoriteGroupDetailPage() {
                     />
                   }
                 />
+                </div>
               )
             })}
           </div>
