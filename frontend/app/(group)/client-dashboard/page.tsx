@@ -22,7 +22,6 @@ import {
   Phone,
   UserCircle,
   MapPin,
-  MoreHorizontal,
   Plus,
   Share06,
   Star,
@@ -101,8 +100,12 @@ interface Project {
 const TableRow = ({ team, nextMilestone, projectName, status }: Project) => {
   return (
     <tr className="first:pt-3 last:pb-3">
-      <td className="px-6 py-3.5 text-sm leading-5 font-semibold text-dark-blue-400 inline-block truncate">
-        <NextLink href="/my-contracts" className="hover:underline">
+      <td className="max-w-[260px] px-6 py-3.5 text-sm leading-5 font-semibold text-dark-blue-400">
+        <NextLink
+          href="/my-contracts"
+          className="block truncate hover:underline"
+          title={projectName}
+        >
           {projectName}
         </NextLink>
       </td>
@@ -162,18 +165,9 @@ const TableRow = ({ team, nextMilestone, projectName, status }: Project) => {
         )}
       </td>
       <td className="pl-6 pr-8 py-3.5">
-        <div className="gap-x-14 flex items-center justify-between">
-          <span className="text-sm whitespace-nowrap leading-5 text-gray-500">
-            {nextMilestone}
-          </span>
-          <Button
-            className="h-auto px-1.5 py-1 text-dark-blue-400"
-            visual="gray"
-            variant="ghost"
-          >
-            <MoreHorizontal className="size-[15px]" />
-          </Button>
-        </div>
+        <span className="text-sm whitespace-nowrap leading-5 text-gray-500">
+          {nextMilestone}
+        </span>
       </td>
     </tr>
   )
@@ -351,7 +345,7 @@ const Table = () => {
 
   return (
     <>
-      <div className="overflow-x-auto scrollbar-none">
+      <div className="overflow-x-hidden">
         <table className="table-auto border-collapse w-full">
           <thead>
             <tr>
