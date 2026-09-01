@@ -7,7 +7,6 @@ import { UserAPI } from "@/service/http/user"
 import {
   type Favorite,
   type FavoriteGroup,
-  getAllFavoritesGrouped,
   getFavoritesByGroup,
   getGroups,
   addFavorite,
@@ -38,6 +37,7 @@ import {
   favoriteGroupNameFromParam,
 } from "@/src/lib/listing-urls"
 import { ListingCard } from "@/components/listing-card"
+import { useFavoriteCounts } from "@/app/(group)/(group)/favorites/favorites-counts"
 import { FAVORITE_TABS,
 } from "@/src/lib/favorites-tabs"
 import { toast } from "@/components/ui/toast/use-toast"
@@ -223,6 +223,11 @@ export default function FavoriteGroupDetailPage() {
   const [showSearch, setShowSearch] = useState(false)
   const [sortBy, setSortBy] = useState<DetailSortOption>("recent")
 
+  const { counts: tabCounts, ensureCounts } = useFavoriteCounts()
+  useEffect(() => {
+    ensureCounts()
+  }, [ensureCounts])
+
   const isTalent = groupType === "talent"
   const itemNoun = isTalent
     ? "talent"
@@ -301,7 +306,6 @@ export default function FavoriteGroupDetailPage() {
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null)
   const [pendingMoveId, setPendingMoveId] = useState<string | null>(null)
   const [groups, setGroups] = useState<FavoriteGroup[]>([])
-  const [tabCounts, setTabCounts] = useState<Record<string, number>>({})
   const [moveTargetId, setMoveTargetId] = useState("")
   const [isMoving, setIsMoving] = useState(false)
 
@@ -334,25 +338,6 @@ export default function FavoriteGroupDetailPage() {
     }
     setPendingRemoveId(null)
   }
-
-  // The header tabs carry the same counts as the groups index.
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      const [projects, services] = await Promise.all([
-        getAllFavoritesGrouped("project"),
-        getAllFavoritesGrouped("service"),
-      ])
-      if (cancelled) return
-      setTabCounts({
-        Projects: projects.flatMap((g) => g.favorites ?? []).length,
-        Services: services.flatMap((g) => g.favorites ?? []).length,
-      })
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const openMoveDialog = async (favoriteId: string) => {
     setPendingMoveId(favoriteId)

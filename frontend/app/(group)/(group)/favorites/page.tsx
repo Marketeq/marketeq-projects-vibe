@@ -5,8 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { UserAPI } from "@/service/http/user"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { favoriteGroupUrl } from "@/src/lib/listing-urls"
-import { FAVORITE_TABS, isFavoriteTab,
-} from "@/src/lib/favorites-tabs"
+import { FAVORITE_TABS, isFavoriteTab } from "@/src/lib/favorites-tabs"
+import { useFavoriteCounts } from "./favorites-counts"
 import {
   type FavoriteGroup as FavGroup,
   type Favorite,
@@ -1288,6 +1288,15 @@ export default function FavoritesPage() {
     ),
   ]
 
+  // Publish the counts this screen already derived, so moving into a group
+  // page does not refetch them.
+  const { counts: tabCounts, publishCounts } = useFavoriteCounts()
+  const projectCount = projectGroups.flatMap((g) => g.favorites).length
+  const serviceCount = serviceGroups.flatMap((g) => g.favorites).length
+  useEffect(() => {
+    publishCounts({ Projects: projectCount, Services: serviceCount })
+  }, [projectCount, serviceCount, publishCounts])
+
   const sortedProjectGroups = sortGroups(projectGroups, sortBy)
   const sortedServiceGroups = sortGroups(serviceGroups, sortBy)
   const sortedSampleGroups = [...sampleGroups].sort((a, b) => {
@@ -1362,12 +1371,7 @@ export default function FavoritesPage() {
 
             <TabsList className="flex justify-start border-b-0 px-0">
               {FAVORITE_TABS.map((tab) => {
-                const count =
-                  tab === "Projects"
-                    ? projectGroups.flatMap((g) => g.favorites).length
-                    : tab === "Services"
-                      ? serviceGroups.flatMap((g) => g.favorites).length
-                      : 0
+                const count = tabCounts[tab] ?? 0
                 return (
                   <TabsTrigger
                     key={tab}
