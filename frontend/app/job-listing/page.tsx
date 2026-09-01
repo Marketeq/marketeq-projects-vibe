@@ -9004,12 +9004,19 @@ const DescribeProjectStep = ({
   const hasValidCustomDuration =
     !isCustomDurationSelected ||
     (Number.isFinite(customDurationAmount) && customDurationAmount > 0);
+  const hasValidBudget =
+    budget.trim().length > 0 && Number(budget.replace(/,/g, "")) > 0;
   const isValid =
     description.trim().length > 0 &&
-    (isService ? deliverables.trim().length > 0 : true) &&
-    (isService ? successCriteria.trim().length > 0 : true) &&
-    Number(budget.replace(/,/g, "")) >= 0 &&
-    (isService || hasValidCustomDuration);
+    (isService
+      ? deliverables.trim().length > 0 &&
+        successCriteria.trim().length > 0 &&
+        Number(budget.replace(/,/g, "")) >= 0
+      : deliverables.trim().length > 0 &&
+        successCriteria.trim().length > 0 &&
+        hasValidBudget &&
+        Boolean(selectedDurationOption) &&
+        hasValidCustomDuration);
   const budgetAmount = Number(budget.replace(/,/g, "")) || 0;
   const budgetFrequency =
     budgetUnit === "per month" ? ("per_month" as const) : ("per_week" as const);
@@ -9094,18 +9101,19 @@ const DescribeProjectStep = ({
       details.budgetFrequency === "per_month" ? "per month" : "per week",
     );
 
-    const hydratedDuration = getDurationSelectionFromMonths(
-      details.durationMonths,
-    );
-    setDuration(hydratedDuration);
-    if (hydratedDuration.startsWith("Other--")) {
-      setCustomDuration(
-        typeof details.durationMonths === "number"
-          ? String(details.durationMonths)
-          : "",
+    if (typeof details.durationMonths === "number") {
+      const hydratedDuration = getDurationSelectionFromMonths(
+        details.durationMonths,
       );
-      setCustomDurationUnit("months");
+      setDuration(hydratedDuration);
+      if (hydratedDuration.startsWith("Other--")) {
+        setCustomDuration(String(details.durationMonths));
+        setCustomDurationUnit("months");
+      } else {
+        setCustomDuration("");
+      }
     } else {
+      setDuration("");
       setCustomDuration("");
     }
 
@@ -9201,17 +9209,18 @@ const DescribeProjectStep = ({
           listing?.budgetFrequency === "per_month" ? "per month" : "per week",
         );
 
-        const hydratedDuration =
-          getDurationSelectionFromMonths(nextDurationMonths);
-        setDuration(hydratedDuration);
-        if (hydratedDuration.startsWith("Other--")) {
-          setCustomDuration(
-            typeof nextDurationMonths === "number"
-              ? String(nextDurationMonths)
-              : "",
-          );
-          setCustomDurationUnit("months");
+        if (typeof nextDurationMonths === "number") {
+          const hydratedDuration =
+            getDurationSelectionFromMonths(nextDurationMonths);
+          setDuration(hydratedDuration);
+          if (hydratedDuration.startsWith("Other--")) {
+            setCustomDuration(String(nextDurationMonths));
+            setCustomDurationUnit("months");
+          } else {
+            setCustomDuration("");
+          }
         } else {
+          setDuration("");
           setCustomDuration("");
         }
 
@@ -9472,7 +9481,76 @@ const DescribeProjectStep = ({
                       team to your needs.
                     </p>
                   </div>
-                  <label
+                  {scopeFile ? (
+                    scopeUploadStatus === "complete" ? (
+                      <div className="box-border flex h-[72px] w-full items-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white p-4">
+                        <div className="flex h-10 min-w-0 flex-1 items-center gap-4">
+                          <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-[28px] border-4 border-primary-25 bg-primary-50">
+                            <FileIcon className="size-4 text-primary-500" />
+                          </span>
+                          <div className="flex h-10 min-w-0 flex-1 flex-col gap-1">
+                            <p className="h-5 truncate text-sm leading-5 font-medium text-gray-700">
+                              {scopeFile.name}
+                            </p>
+                            <p className="h-5 text-sm leading-5 text-gray-600">
+                              {convertToKbOrMb(
+                                details.briefSizeBytes ?? scopeFile.size,
+                              ).replace(
+                                /(\d)([A-Za-z])/, "$1 $2",
+                              )}
+                            </p>
+                          </div>
+                          <IconButton
+                            className="size-9 shrink-0 rounded-lg p-2 text-gray-400"
+                            type="button"
+                            variant="ghost"
+                            visual="gray"
+                            onClick={resetScopeFile}
+                          >
+                            <X className="size-5" />
+                          </IconButton>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        className={cn(
+                          "relative isolate box-border flex h-24 w-full items-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white p-4",
+                          scopeUploadStatus === "error" &&
+                            "border-error-300 bg-error-25",
+                        )}
+                      >
+                        <div className="flex h-16 min-w-0 flex-1 flex-col gap-1">
+                          <p className="h-5 truncate text-sm leading-5 font-medium text-gray-700">
+                            {scopeFile.name}
+                          </p>
+                          <p className="h-5 text-sm leading-5 text-gray-600">
+                            {convertToKbOrMb(scopeFile.size).replace(
+                              /(\d)([A-Za-z])/, "$1 $2",
+                            )}
+                          </p>
+                          <div className="flex h-5 items-center gap-3">
+                            <Progress
+                              className="h-2 flex-1"
+                              value={scopeUploadProgress}
+                            />
+                            <span className="flex h-5 w-7 items-center text-sm leading-5 font-medium text-gray-700">
+                              {scopeUploadProgress}%
+                            </span>
+                          </div>
+                        </div>
+                        <IconButton
+                          className="absolute top-2 right-2 size-9 rounded-lg p-2 text-gray-500"
+                          type="button"
+                          variant="ghost"
+                          visual="gray"
+                          onClick={resetScopeFile}
+                        >
+                          <Trash2 className="size-5" />
+                        </IconButton>
+                      </div>
+                    )
+                  ) : (
+                    <label
                     className={cn(
                       "flex h-[341px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white px-6 py-[100px] text-center focus-within:ring-2 focus-within:ring-primary-500",
                       isScopeDropActive && "border-primary-500",
@@ -9572,7 +9650,8 @@ const DescribeProjectStep = ({
                         Recommended Format: PDF or DOCX
                       </p>
                     </div>
-                  </label>
+                    </label>
+                  )}
                 </div>
               </>
             ) : null}
