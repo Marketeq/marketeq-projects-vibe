@@ -25,6 +25,7 @@ import {
   ArrowRight,
   Check,
   Clock,
+  FolderClosed,
   MoreHorizontal,
   SearchMd,
   Star,
@@ -64,9 +65,12 @@ import {
   IconButton,
   Input,
   Label,
-  RadioGroup,
-  RadioGroupItem,
   ScrollArea,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   ScrollBar,
   Tabs,
   TabsList,
@@ -720,31 +724,37 @@ export default function FavoriteGroupDetailPage() {
             </p>
           </div>
 
-          <ScrollArea viewportClassName="max-h-[280px]">
-            <div className="flex flex-col gap-y-1 p-3">
-              {groups.length === 0 ? (
-                <p className="px-3 py-6 text-center text-sm text-gray-400">
-                  You have no other groups to move this into.
-                </p>
-              ) : (
-                <RadioGroup
-                  className="flex flex-col gap-y-1"
-                  value={moveTargetId}
-                  onValueChange={setMoveTargetId}
-                >
-                  {groups.map((group) => (
-                    <Label
-                      key={group.id}
-                      className="flex cursor-pointer items-center gap-x-3 rounded-lg px-3 py-2.5 text-sm text-dark-blue-400 hover:bg-gray-50"
-                    >
-                      <RadioGroupItem value={group.id} size="md" />
-                      {group.name}
-                    </Label>
-                  ))}
-                </RadioGroup>
-              )}
-            </div>
-          </ScrollArea>
+          <div className="px-6 py-5">
+            {groups.length === 0 ? (
+              <p className="py-6 text-center text-sm text-gray-400">
+                You have no other groups to move this into.
+              </p>
+            ) : (
+              <>
+                <Label className="mb-1.5 block" htmlFor="move-target-group">
+                  Group
+                </Label>
+                <Select value={moveTargetId} onValueChange={setMoveTargetId}>
+                  <SelectTrigger id="move-target-group" className="w-full">
+                    <span className="flex items-center gap-x-2 truncate">
+                      <FolderClosed className="size-[18px] shrink-0 text-gray-400" />
+                      <SelectValue placeholder="Choose a group" />
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {groups.map((group) => (
+                      <SelectItem key={group.id} value={group.id}>
+                        <span className="flex items-center gap-x-2">
+                          <FolderClosed className="size-[18px] shrink-0 text-gray-400" />
+                          {group.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+          </div>
 
           <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
             <DialogClose asChild>
