@@ -1,6 +1,6 @@
 import {
-  Controller, Get, Param, Query, UseGuards, HttpCode,
-  ParseUUIDPipe, ParseIntPipe, DefaultValuePipe,
+  Controller, Get, Post, Param, Body, Query, UseGuards, HttpCode,
+  ParseUUIDPipe, ParseIntPipe, DefaultValuePipe, UnprocessableEntityException,
 } from '@nestjs/common';
 import { ServiceAuthGuard }  from '../guards/service-auth.guard';
 import { BalanceService }    from '../balance/balance.service';
@@ -37,6 +37,19 @@ export class InternalController {
       localCurrency:   snap.localCurrency,
       lastUpdatedAt:   snap.updatedAt.toISOString(),
     };
+  }
+
+  @Post('balance/:userId/hold')
+  @HttpCode(200)
+  async holdBalance(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body('amountUsd') amountUsd: string,
+  ) {
+    const result = await this.balanceSvc.holdForPayout(userId, amountUsd);
+    if (!result.ok) {
+      throw new UnprocessableEntityException('Insufficient available balance to place hold.');
+    }
+    return { userId, availableBalance: result.availableBalance };
   }
 
   @Get('ytd/:userId')

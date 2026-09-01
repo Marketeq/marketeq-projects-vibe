@@ -20,6 +20,7 @@ import { AuditService } from '../audit/audit.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
 import { PayoutError } from '../common/errors/payout.error';
 import { BrevoMailService } from '../notifications/brevo-mail.service';
+import { EarningsClient } from '../common/earnings.client';
 
 const TTL_SECONDS = 15 * 60; // 15 minutes — hard, no extension
 const MAX_RESENDS = 3;
@@ -47,6 +48,7 @@ export class MagicLinkService {
     private readonly auditService: AuditService,
     private readonly publisher: PayoutPublisher,
     private readonly brevoMail: BrevoMailService,
+    private readonly earningsClient: EarningsClient,
   ) {
     this.redis = new Redis(this.config.get<string>('REDIS_URL', 'redis://localhost:6379'));
     this.baseUrl = this.config.get('MAGIC_LINK_BASE_URL', 'http://localhost:3000/verify-withdrawal');
@@ -229,6 +231,38 @@ export class MagicLinkService {
     if (payout.status !== PayoutStatus.PENDING_VERIFICATION) {
       // Payout already advanced or cancelled — idempotent
       return { payoutRequestId, status: 'already_processed', message: 'This withdrawal has already been processed.', ...detail };
+    }
+
+    // Instant hold: debit available_balance the moment the withdrawal is
+    // confirmed, rather than waiting for the provider's completion webhook
+    // (which can take minutes to days). This is the real magic-link path
+    // (the one the actual email link hits — see PayoutController.verifyEmail);
+    // PayoutService.verifyMagicLink() is a separate, older code path guarded
+    // by the same hold.
+    const held = await this.earningsClient.holdBalance(payout.contractorId, payout.amountUsd);
+    if (!held) {
+      await this.dataSource.transaction(async (em) => {
+        await em.update(PayoutRequest, payoutRequestId, {
+          status: PayoutStatus.FAILED,
+          failureReason: 'Your available balance is insufficient for this withdrawal.',
+          failedAt: new Date(),
+        });
+        await this.auditService.log({
+          contractorId: payout.contractorId,
+          payoutRequestId,
+          actorType: 'contractor',
+          actorId: payout.contractorId,
+          action: 'withdrawal.hold_failed',
+          previousStatus: PayoutStatus.PENDING_VERIFICATION,
+          newStatus: PayoutStatus.FAILED,
+        });
+      });
+      return {
+        payoutRequestId,
+        status: 'failed',
+        message: 'Your available balance is insufficient for this withdrawal.',
+        ...detail,
+      };
     }
 
     await this.dataSource.transaction(async (em) => {

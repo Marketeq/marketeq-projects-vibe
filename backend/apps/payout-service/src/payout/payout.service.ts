@@ -22,6 +22,7 @@ import { PayoutError }        from '../common/errors/payout.error';
 import { ValidateAmountDto, ValidateAmountResponseDto } from './dto/validate-amount.dto';
 import { InitiatePayoutDto, InitiatePayoutResponseDto } from './dto/initiate-payout.dto';
 import { VerifyResponseDto }  from './dto/verify-response.dto';
+import { PayoutPublisher }    from '../publishers/payout.publisher';
 
 const INSTANT_FEE = '1.75';
 
@@ -47,6 +48,7 @@ export class PayoutService {
     private readonly magicLinkService: MagicLinkService,
     private readonly rateLimitService: WithdrawalRateLimitService,
     private readonly kycGateService: KycGateService,
+    private readonly publisher: PayoutPublisher,
     @InjectQueue('payout-processing') private readonly queue: Queue,
   ) {
     this.payoutMinimum = parseFloat(this.config.get('PAYOUT_MINIMUM_USD', '50'));
@@ -358,6 +360,37 @@ export class PayoutService {
       return { payoutRequestId: request.id, status: request.status };
     }
 
+    // Instant hold: debit available_balance the moment the withdrawal is
+    // confirmed, rather than waiting for the provider's completion webhook
+    // (which can take minutes to days). Placed before the QUEUED transaction
+    // commits below so a hold failure (insufficient balance, race with
+    // another concurrent withdrawal) fails the request instead of leaving a
+    // QUEUED payout with no funds actually reserved for it.
+    const held = await this.earningsClient.holdBalance(request.contractorId, request.amountUsd);
+    if (!held) {
+      await this.dataSource.transaction(async (em) => {
+        await em.update(MagicLinkToken, mlToken.id, { isUsed: true, usedAt: new Date() });
+        await em.update(PayoutRequest, request.id, {
+          status: PayoutStatus.FAILED,
+          failureReason: 'Your available balance is insufficient for this withdrawal.',
+          failedAt: new Date(),
+        });
+        await this.auditService.log({
+          contractorId: request.contractorId,
+          payoutRequestId: request.id,
+          actorType: 'contractor', actorId: request.contractorId,
+          action: 'withdrawal.hold_failed',
+          previousStatus: PayoutStatus.PENDING_VERIFICATION,
+          newStatus: PayoutStatus.FAILED,
+        });
+      });
+      return {
+        payoutRequestId: request.id,
+        status: PayoutStatus.FAILED,
+        message: 'Your available balance is insufficient for this withdrawal.',
+      };
+    }
+
     await this.dataSource.transaction(async (em) => {
       await em.update(MagicLinkToken, mlToken.id, { isUsed: true, usedAt: new Date() });
       await em.update(PayoutRequest, request.id, {
@@ -442,6 +475,16 @@ export class PayoutService {
           break;
         }
       }
+
+      // QUEUED means the instant hold from verifyMagicLink() already debited
+      // available_balance — reuse the same restore path payout.failed
+      // consumers use, rather than duplicating that SQL here.
+      await this.publisher.publishPayoutFailed({
+        contractorId, payoutRequestId: request.id,
+        amount: request.amountUsd, currency: request.currency ?? 'USD',
+        methodType: 'CANCELLED', reason: 'Withdrawal cancelled by contractor.',
+        failedAt: new Date().toISOString(),
+      });
     }
 
     return { status: 'cancelled' };
