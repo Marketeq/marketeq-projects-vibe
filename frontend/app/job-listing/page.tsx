@@ -9430,27 +9430,95 @@ const DescribeProjectStep = ({
             </div>
 
             {!isService && scopeKnowledgeChoice === "known" ? (
-              <div className="space-y-3">
-                <div className="flex h-7 items-baseline justify-between gap-2">
-                  <Label className={descriptionLabelClassName}>
-                    What are the main tasks or deliverables?
-                  </Label>
-                  <span className={descriptionCounterClassName}>
-                    {deliverables.length}/100
-                  </span>
+              <>
+                <div className="space-y-3">
+                  <div className="flex h-7 items-baseline justify-between gap-2">
+                    <Label className={descriptionLabelClassName}>
+                      What are the main tasks or deliverables?
+                    </Label>
+                    <span className={descriptionCounterClassName}>
+                      {deliverables.length}/100
+                    </span>
+                  </div>
+                  <Textarea
+                    maxLength={100}
+                    value={deliverables}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setDeliverables(value);
+                      updateDraftDetails({ deliverables: value.trim() });
+                    }}
+                    placeholder="UX design, front-end development, database setup"
+                    className={descriptionTextareaClassName}
+                  />
                 </div>
-                <Textarea
-                  maxLength={100}
-                  value={deliverables}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setDeliverables(value);
-                    updateDraftDetails({ deliverables: value.trim() });
-                  }}
-                  placeholder="UX design, front-end development, database setup"
-                  className={descriptionTextareaClassName}
-                />
-              </div>
+
+                <div className="flex flex-col gap-6">
+                  <div className="flex h-[52px] flex-col items-start gap-1">
+                    <Label className="text-[18px] leading-7 font-medium text-dark-blue-400">
+                      Do you have documentation or a brief to share?
+                      <span className="text-gray-400"> (Optional)</span>
+                    </Label>
+                    <p className="text-sm leading-5 text-dark-blue-400">
+                      If you&apos;ve already written a scope or have a doc with
+                      details, upload it here. It&apos;ll help us better match the
+                      team to your needs.
+                    </p>
+                  </div>
+                  <label
+                    className={cn(
+                      "flex h-[341px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white px-6 py-[100px] text-center focus-within:ring-2 focus-within:ring-primary-500",
+                      isScopeDropActive && "border-primary-500",
+                    )}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      setIsScopeDropActive(true);
+                    }}
+                    onDragLeave={(event) => {
+                      event.preventDefault();
+                      setIsScopeDropActive(false);
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "copy";
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      setIsScopeDropActive(false);
+                      acceptScopeFile(event.dataTransfer.files?.[0]);
+                    }}
+                  >
+                    <input
+                      className="sr-only"
+                      type="file"
+                      accept=".pdf,.docx"
+                      onChange={(event) => {
+                        acceptScopeFile(event.target.files?.[0]);
+                        event.target.value = "";
+                      }}
+                    />
+                    <div className="flex flex-col items-center gap-3">
+                      <span className="inline-flex size-10 items-center justify-center rounded-[28px] border-[6px] border-gray-100 bg-white">
+                        <UploadCloud className="size-5 text-gray-500" />
+                      </span>
+                      <div className="flex items-start justify-center gap-1 text-xs leading-5 text-gray-600">
+                        <span>Drag and drop your project scope or</span>
+                        <span className="font-semibold text-primary-500 underline">
+                          Choose a File
+                        </span>
+                      </div>
+                      <p className="max-w-[838px] text-center text-sm leading-5 text-dark-blue-400">
+                        Upload a scope document to help clients understand your
+                        project details and allow us to generate accurate
+                        suggestions.
+                      </p>
+                      <p className="text-sm leading-5 text-gray-500">
+                        Recommended Format: PDF or DOCX
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </>
             ) : null}
           </div>
 
