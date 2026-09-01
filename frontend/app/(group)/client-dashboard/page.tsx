@@ -6,6 +6,8 @@ import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { ROLE } from "@/types/user"
 import { UserAPI } from "@/service/http/user"
+import { getClientContracts } from "@/src/lib/api/contracts"
+import type { ContractStatus as ApiContractStatus } from "@/src/lib/api/contracts"
 import { cn } from "@/utils/functions"
 import {
   ArrowRight,
@@ -151,7 +153,7 @@ const TableRow = ({ team, nextMilestone, projectName, status }: Project) => {
         </TooltipProvider>
       </td>
       <td className="px-6 py-[13px] items-center">
-        {status === "In Progress" ? (
+        {status === "In Progress" || status === "Active" ? (
           <Badge visual="success">{status}</Badge>
         ) : (
           <Badge visual="gray">{status}</Badge>
@@ -175,7 +177,103 @@ const TableRow = ({ team, nextMilestone, projectName, status }: Project) => {
   )
 }
 
+/**
+ * Recent Contracts data.
+ *
+ * Reads the same `getClientContracts` endpoint the My Contracts page uses, so
+ * the dashboard and that page agree. Talent names/avatars are resolved from
+ * the user profile because a contract only carries `talentId`. Nothing is
+ * invented: an unresolved talent falls back to the avatar initial, never to a
+ * placeholder name or photo.
+ */
+const RECENT_CONTRACTS_LIMIT = 5
+
+const CONTRACT_STATUS_LABEL: Record<ApiContractStatus, string> = {
+  ACTIVE: "Active",
+  PENDING: "Pending",
+  ENDED: "Ended",
+  CANCELED: "Canceled",
+  DISPUTED: "Disputed",
+}
+
+const useRecentContracts = (): Project[] => {
+  const { user } = useAuth()
+  const [rows, setRows] = useState<Project[]>([])
+
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const contracts = await getClientContracts(user.id)
+        if (cancelled || !contracts.length) return
+
+        const recent = [...contracts]
+          .sort(
+            (a, b) =>
+              new Date(b.updatedAt ?? b.createdAt).getTime() -
+              new Date(a.updatedAt ?? a.createdAt).getTime()
+          )
+          .slice(0, RECENT_CONTRACTS_LIMIT)
+
+        // One lookup per distinct talent, not per contract.
+        const talentIds = Array.from(
+          new Set(recent.map((c) => c.talentId).filter(Boolean))
+        )
+        const talents = new Map<string, { name: string; avatar: string }>()
+        await Promise.all(
+          talentIds.map(async (id) => {
+            try {
+              const res = await UserAPI.getProfile(id)
+              const p = res?.data
+              if (!p) return
+              const name =
+                [p.firstName, p.lastName].filter(Boolean).join(" ") ||
+                p.username ||
+                ""
+              if (name || p.avatarUrl) {
+                talents.set(id, { name, avatar: p.avatarUrl ?? "" })
+              }
+            } catch {
+              // Leave the talent unresolved; the row still renders.
+            }
+          })
+        )
+
+        if (cancelled) return
+        setRows(
+          recent.map((c) => {
+            const talent = talents.get(c.talentId)
+            return {
+              projectName: c.title,
+              team: [
+                {
+                  image: talent?.avatar ?? "",
+                  alternativeText: talent?.name || "Talent",
+                },
+              ],
+              status: CONTRACT_STATUS_LABEL[c.status] ?? "Active",
+              nextMilestone: c.rate ? `$${c.rate}/hr` : "",
+            }
+          })
+        )
+      } catch {
+        // Contracts service unavailable — the empty state already covers it.
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
+
+  return rows
+}
+
 const Table = () => {
+  const contracts = useRecentContracts()
+
   return (
     <>
       <div className="overflow-x-auto scrollbar-none">
@@ -198,14 +296,20 @@ const Table = () => {
           </thead>
 
           <tbody>
-            <tr>
-              <td
-                colSpan={4}
-                className="px-6 py-10 text-center text-sm text-gray-400"
-              >
-                No contracts yet.
-              </td>
-            </tr>
+            {contracts.length ? (
+              contracts.map((contract, index) => (
+                <TableRow key={index} {...contract} />
+              ))
+            ) : (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="px-6 py-10 text-center text-sm text-gray-400"
+                >
+                  No contracts yet.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
