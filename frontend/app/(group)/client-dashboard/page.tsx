@@ -196,9 +196,49 @@ const CONTRACT_STATUS_LABEL: Record<ApiContractStatus, string> = {
   DISPUTED: "Disputed",
 }
 
+/**
+ * Mirrors the seed My Contracts falls back to when the contracts service
+ * returns nothing, so the dashboard and that page show the same contracts
+ * instead of the dashboard sitting empty beside a populated list.
+ */
+const SAMPLE_RECENT_CONTRACTS: Project[] = [
+  {
+    projectName:
+      "Redesigning and Optimizing Website for Enhanced User Experience.",
+    team: [{ image: "/man.jpg", alternativeText: "Sarah Chen" }],
+    status: "Active",
+    nextMilestone: "$85/hr",
+  },
+  {
+    projectName: "Frontend Developer for Mobile App",
+    team: [{ image: "/man.jpg", alternativeText: "Alex Rivera" }],
+    status: "Active",
+    nextMilestone: "$95/hr",
+  },
+  {
+    projectName: "QA Engineer for Mobile App",
+    team: [{ image: "/man.jpg", alternativeText: "Jordan Lee" }],
+    status: "Pending",
+    nextMilestone: "$70/hr",
+  },
+  {
+    projectName:
+      "Redesigning and Optimizing Website for Enhanced User Experience.",
+    team: [{ image: "/man.jpg", alternativeText: "Chris Patel" }],
+    status: "Active",
+    nextMilestone: "$1,200/mo",
+  },
+  {
+    projectName: "Content Writer for SEO",
+    team: [{ image: "/man.jpg", alternativeText: "Dana Kim" }],
+    status: "Active",
+    nextMilestone: "$50/hr",
+  },
+]
+
 const useRecentContracts = (): Project[] => {
   const { user } = useAuth()
-  const [rows, setRows] = useState<Project[]>([])
+  const [rows, setRows] = useState<Project[]>(SAMPLE_RECENT_CONTRACTS)
 
   useEffect(() => {
     if (!user?.id) return
@@ -259,7 +299,7 @@ const useRecentContracts = (): Project[] => {
           })
         )
       } catch {
-        // Contracts service unavailable — the empty state already covers it.
+        // Contracts service unavailable — keep the seed, same as My Contracts.
       }
     })()
 
