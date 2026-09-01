@@ -25,7 +25,7 @@ import {
   ArrowRight,
   Check,
   Clock,
-  FolderClosed,
+  Folder1,
   MoreHorizontal,
   SearchMd,
   Star,
@@ -316,7 +316,7 @@ export default function FavoriteGroupDetailPage() {
         action: (
           <ToastAction
             altText="Undo"
-            className="border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
+            className="h-auto shrink-0 border-0 bg-transparent p-0 text-sm font-semibold leading-5 text-success-500 underline hover:bg-transparent hover:no-underline focus:outline-none"
             onClick={async () => {
               const restored = await addFavorite({
                 type: removed.type,
@@ -361,7 +361,7 @@ export default function FavoriteGroupDetailPage() {
         action: (
           <ToastAction
             altText="Undo"
-            className="border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
+            className="h-auto shrink-0 border-0 bg-transparent p-0 text-sm font-semibold leading-5 text-success-500 underline hover:bg-transparent hover:no-underline focus:outline-none"
             onClick={async () => {
               const back = await moveFavorite(favoriteId, { groupId })
               if (back && movedItem) setFavorites((prev) => [movedItem, ...prev])
@@ -741,17 +741,14 @@ export default function FavoriteGroupDetailPage() {
                 <Select value={moveTargetId} onValueChange={setMoveTargetId}>
                   <SelectTrigger id="move-target-group" className="w-full">
                     <span className="flex items-center gap-x-2 truncate">
-                      <FolderClosed className="size-[18px] shrink-0 text-gray-400" />
+                      <Folder1 className="size-[18px] shrink-0 text-gray-400" />
                       <SelectValue placeholder="Choose a group" />
                     </span>
                   </SelectTrigger>
                   <SelectContent>
                     {groups.map((group) => (
                       <SelectItem key={group.id} value={group.id}>
-                        <span className="flex items-center gap-x-2">
-                          <FolderClosed className="size-[18px] shrink-0 text-gray-400" />
-                          {group.name}
-                        </span>
+                        {group.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
