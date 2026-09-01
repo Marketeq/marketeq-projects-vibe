@@ -207,7 +207,16 @@ const SAMPLE_RECENT_CONTRACTS: Project[] = [
   {
     projectName:
       "Redesigning and Optimizing Website for Enhanced User Experience.",
-    team: [{ image: "/man.jpg", alternativeText: "Sarah Chen" }],
+    team: [
+      { image: "/man.jpg", alternativeText: "Sarah Chen" },
+      { image: "/images/avatar-1.png", alternativeText: "Alex Rivera" },
+      { image: "/images/avatar-2.png", alternativeText: "Jordan Lee" },
+      { image: "/man.jpg", alternativeText: "Chris Patel" },
+      { image: "/images/avatar-1.png", alternativeText: "Dana Kim" },
+      { image: "/images/avatar-2.png", alternativeText: "Nina Torres" },
+      { image: "/man.jpg", alternativeText: "Leo Park" },
+      { image: "/images/avatar-1.png", alternativeText: "Mia Johnson" },
+    ],
     status: "Active",
     nextMilestone: "$85/hr",
   },
@@ -226,7 +235,16 @@ const SAMPLE_RECENT_CONTRACTS: Project[] = [
   {
     projectName:
       "Redesigning and Optimizing Website for Enhanced User Experience.",
-    team: [{ image: "/man.jpg", alternativeText: "Chris Patel" }],
+    team: [
+      { image: "/man.jpg", alternativeText: "Chris Patel" },
+      { image: "/images/avatar-1.png", alternativeText: "Dana Kim" },
+      { image: "/images/avatar-2.png", alternativeText: "Sarah Chen" },
+      { image: "/man.jpg", alternativeText: "Alex Rivera" },
+      { image: "/images/avatar-1.png", alternativeText: "Jordan Lee" },
+      { image: "/images/avatar-2.png", alternativeText: "Nina Torres" },
+      { image: "/man.jpg", alternativeText: "Leo Park" },
+      { image: "/images/avatar-1.png", alternativeText: "Mia Johnson" },
+    ],
     status: "Active",
     nextMilestone: "$1,200/mo",
   },
@@ -259,9 +277,23 @@ const useRecentContracts = (): Project[] => {
           )
           .slice(0, RECENT_CONTRACTS_LIMIT)
 
+        // A contract carries one talent; the team is everyone contracted
+        // under the same group, which is what My Contracts shows per group.
+        const byGroup = new Map<string, string[]>()
+        for (const c of contracts) {
+          if (!c.talentId) continue
+          const members = byGroup.get(c.groupId) ?? []
+          if (!members.includes(c.talentId)) members.push(c.talentId)
+          byGroup.set(c.groupId, members)
+        }
+
         // One lookup per distinct talent, not per contract.
         const talentIds = Array.from(
-          new Set(recent.map((c) => c.talentId).filter(Boolean))
+          new Set(
+            recent.flatMap(
+              (c) => byGroup.get(c.groupId) ?? [c.talentId].filter(Boolean)
+            )
+          )
         )
         const talents = new Map<string, { name: string; avatar: string }>()
         await Promise.all(
@@ -286,15 +318,16 @@ const useRecentContracts = (): Project[] => {
         if (cancelled) return
         setRows(
           recent.map((c) => {
-            const talent = talents.get(c.talentId)
+            const members = byGroup.get(c.groupId) ?? [c.talentId]
             return {
               projectName: c.title,
-              team: [
-                {
+              team: members.filter(Boolean).map((id) => {
+                const talent = talents.get(id)
+                return {
                   image: talent?.avatar ?? "",
-                  alternativeText: talent?.name || "Talent",
-                },
-              ],
+                  alternativeText: talent?.name || "Team member",
+                }
+              }),
               status: CONTRACT_STATUS_LABEL[c.status] ?? "Active",
               nextMilestone: c.rate ? `$${c.rate}/hr` : "",
             }
@@ -326,7 +359,7 @@ const Table = () => {
                 Contract Name
               </th>
               <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
-                Talent
+                Team
               </th>
               <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
                 Status
