@@ -13,6 +13,11 @@ import {
 import { useFavoriteCounts } from "./favorites-counts"
 import { FavoriteGroupCardSkeleton } from "./favorites-skeletons"
 import {
+  FavoritesHeader,
+  GRID_LAYOUT,
+  LIST_LAYOUT,
+} from "./favorites-header"
+import {
   type FavoriteGroup as FavGroup,
   type Favorite,
   createGroup as createGroupApi,
@@ -86,8 +91,6 @@ import {
   TabsTrigger,
 } from "@/components/ui"
 
-const GRID_LAYOUT = "GRID"
-const LIST_LAYOUT = "LIST"
 
 /* ─── Project Group Cards ─── */
 
@@ -1308,8 +1311,12 @@ export default function FavoritesPage() {
   const projectCount = projectGroups.flatMap((g) => g.favorites).length
   const serviceCount = serviceGroups.flatMap((g) => g.favorites).length
   useEffect(() => {
+    // Only once this screen's own groups have arrived. Publishing while it is
+    // still loading pushes zeros over the counts already in the provider, so
+    // coming back from a group page made the tab numbers tick from 0 again.
+    if (isLoading) return
     publishCounts({ Projects: projectCount, Services: serviceCount })
-  }, [projectCount, serviceCount, publishCounts])
+  }, [isLoading, projectCount, serviceCount, publishCounts])
 
   // Search matches the group page: the button toggles an input in place of
   // the tabs, and it filters the groups on this screen by name.
@@ -1376,82 +1383,26 @@ export default function FavoritesPage() {
         />
       </div>
 
-      <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400 xs:max-md:mt-6">
-        My Favorites
-      </h1>
-
-      <Tabs
-        className="mt-7 lg:mt-[19px]"
-        value={activeTab}
-        onValueChange={(tab) => isFavoriteTab(tab) && setActiveTab(tab)}
+      <FavoritesHeader
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        counts={tabCounts}
+        showSearch={showSearch}
+        onToggleSearch={() => setShowSearch(!showSearch)}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search groups..."
+        sortSlot={<SortDropdown value={sortBy} onChange={setSortBy} />}
+        layout={value}
+        onLayoutChange={setValue}
+        newGroupSlot={
+          <NewGroupModal
+            onCreated={handleGroupCreated}
+            existingNames={allGroupNames}
+            activeTab={activeTab}
+          />
+        }
       >
-        <div className="border-b h-[60px] flex items-end justify-between border-gray-200">
-          <div className="items-end inline-flex gap-x-3">
-            <Button
-              className="text-gray-500"
-              variant="ghost"
-              visual="gray"
-              size="md"
-              onClick={() => setShowSearch(!showSearch)}
-            >
-              <SearchMd className="size-[18px]" />
-            </Button>
-
-            {showSearch && (
-              <Input
-                className="mb-2.5 h-9 w-[260px] text-sm"
-                placeholder="Search groups..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                autoFocus
-              />
-            )}
-
-            <TabsList
-              className={`flex justify-start border-b-0 px-0 ${showSearch ? "hidden" : ""}`}
-            >
-              {FAVORITE_TABS.map((tab) => {
-                const count = tabCounts[tab] ?? 0
-                return (
-                  <TabsTrigger
-                    key={tab}
-                    className="xs:max-lg:text-xs xs:max-lg:leading-5"
-                    value={tab}
-                  >
-                    {tab}
-                    {count > 0 ? ` (${count})` : ""}
-                  </TabsTrigger>
-                )
-              })}
-            </TabsList>
-          </div>
-
-          {/* One flat 24px cluster, matching Figma 13101-74250 and the group
-              page header. */}
-          <div className="hidden items-center gap-x-3 self-start md:flex lg:gap-x-6">
-            <SortDropdown value={sortBy} onChange={setSortBy} />
-
-            <ToggleGroupRoot
-              value={value}
-              onValueChange={(details) => setValue(details.value)}
-            >
-              <ToggleGroupItem value={GRID_LAYOUT}>
-                <Grid className="size-4 lg:size-6" />
-              </ToggleGroupItem>
-              <ToggleGroupItem value={LIST_LAYOUT}>
-                <List className="size-4 lg:size-6" />
-              </ToggleGroupItem>
-            </ToggleGroupRoot>
-
-            <NewGroupModal
-              onCreated={handleGroupCreated}
-              existingNames={allGroupNames}
-              activeTab={activeTab}
-            />
-          </div>
-        </div>
-
-        {/* Talent Tab */}
         <TabsContent value="Talent">
           <div className="pt-[14px] lg:pt-6">
             {sortedSampleGroups.length === 0 ? (
@@ -1626,7 +1577,7 @@ export default function FavoritesPage() {
             />
           </div>
         </TabsContent>
-      </Tabs>
+      </FavoritesHeader>
     </div>
     </AuthenticatedRoute>
   )

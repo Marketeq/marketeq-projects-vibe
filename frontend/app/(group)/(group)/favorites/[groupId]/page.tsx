@@ -27,7 +27,6 @@ import {
   Clock,
   Folder1,
   MoreHorizontal,
-  SearchMd,
   Star,
   Trash2,
 } from "@blend-metrics/icons"
@@ -38,7 +37,11 @@ import {
 } from "@/src/lib/listing-urls"
 import { ListingCard } from "@/components/listing-card"
 import { useFavoriteCounts } from "@/app/(group)/(group)/favorites/favorites-counts"
-import { FAVORITE_TABS } from "@/src/lib/favorites-tabs"
+import {
+  FavoritesHeader,
+  GRID_LAYOUT,
+  LIST_LAYOUT,
+} from "@/app/(group)/(group)/favorites/favorites-header"
 import { cascadeClasses } from "@/src/lib/cascade"
 import {
   FavoriteCardSkeleton,
@@ -47,8 +50,7 @@ import {
 import { toast } from "@/components/ui/toast/use-toast"
 import { ToastAction } from "@/components/ui/toast/toast"
 import { NewGroupModal } from "@/app/(group)/(group)/favorites/page"
-import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
-import { Grid, List, SortAs } from "@/components/icons"
+import { SortAs } from "@/components/icons"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import { TalentSearchCard } from "@/components/talent-search-card"
@@ -70,7 +72,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   IconButton,
-  Input,
   Label,
   ScrollArea,
   Select,
@@ -79,13 +80,8 @@ import {
   SelectTrigger,
   SelectValue,
   ScrollBar,
-  Tabs,
-  TabsList,
-  TabsTrigger,
 } from "@/components/ui"
 
-const GRID_LAYOUT = "GRID"
-const LIST_LAYOUT = "LIST"
 
 /* ─── Full item data from API ─── */
 
@@ -446,85 +442,28 @@ export default function FavoriteGroupDetailPage() {
 
   return (
     <div className="p-3.5 md:p-10 lg:px-[200px] lg:py-[100px]">
-      {/* Section 1 — the My Favorites header (Figma 13111-46360). */}
-      <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400 xs:max-md:mt-6">
-        My Favorites
-      </h1>
-
-      <div className="mt-7 lg:mt-[19px] border-b h-[60px] flex items-end justify-between border-gray-200">
-        <div className="items-end inline-flex gap-x-3">
-          <Button
-            className="text-gray-500"
-            variant="ghost"
-            visual="gray"
-            size="md"
-            onClick={() => setShowSearch(!showSearch)}
-          >
-            <SearchMd className="size-[18px]" />
-          </Button>
-
-          {showSearch && (
-            <Input
-              className="mb-2.5 h-9 w-[260px] text-sm"
-              placeholder={`Search ${isTalent ? "talent" : "projects"}...`}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
-            />
-          )}
-
-          <Tabs
-              value={activeTabLabel}
-              onValueChange={(tab) =>
-                router.push(`/favorites?tab=${encodeURIComponent(tab)}`)
-              }
-            >
-              <TabsList
-                className={`flex justify-start border-b-0 px-0 ${showSearch ? "hidden" : ""}`}
-              >
-                {FAVORITE_TABS.map((tab) => {
-                  const count = tabCounts[tab] ?? 0
-                  return (
-                    <TabsTrigger
-                      key={tab}
-                      className="xs:max-lg:text-xs xs:max-lg:leading-5"
-                      value={tab}
-                    >
-                      {tab}
-                      {count > 0 ? ` (${count})` : ""}
-                    </TabsTrigger>
-                  )
-                })}
-              </TabsList>
-          </Tabs>
-        </div>
-
-        <div className="flex items-center gap-x-3 self-start lg:gap-x-6">
-          <SortDropdown value={sortBy} onChange={setSortBy} />
-
-            <ToggleGroupRoot
-              value={value}
-              onValueChange={(details) => setValue(details.value)}
-            >
-              <ToggleGroupItem
-                value={GRID_LAYOUT}
-              >
-                <Grid className="size-4 lg:size-6" />
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value={LIST_LAYOUT}
-              >
-                <List className="size-4 lg:size-6" />
-              </ToggleGroupItem>
-            </ToggleGroupRoot>
-
+      <FavoritesHeader
+        activeTab={activeTabLabel}
+        onTabChange={(tab) =>
+          router.push(`/favorites?tab=${encodeURIComponent(tab)}`)
+        }
+        counts={tabCounts}
+        showSearch={showSearch}
+        onToggleSearch={() => setShowSearch(!showSearch)}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder={`Search ${isTalent ? "talent" : "projects"}...`}
+        sortSlot={<SortDropdown value={sortBy} onChange={setSortBy} />}
+        layout={value}
+        onLayoutChange={setValue}
+        newGroupSlot={
           <NewGroupModal
             onCreated={() => router.push(groupsHref)}
             existingNames={[]}
             activeTab={activeTabLabel}
           />
-        </div>
-      </div>
+        }
+      />
 
       {/* Section 2 — the group heading (Figma 13113-118147). */}
       <div className="mt-8 flex items-center justify-between">
