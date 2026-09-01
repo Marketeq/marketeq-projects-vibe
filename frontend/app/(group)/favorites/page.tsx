@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { UserAPI } from "@/service/http/user"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { favoriteGroupUrl } from "@/src/lib/listing-urls"
@@ -923,7 +923,7 @@ function titleCase(str: string): string {
   return str.replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-const NewGroupModal = ({
+export const NewGroupModal = ({
   onCreated,
   existingNames,
   activeTab,
@@ -1129,7 +1129,17 @@ function EmptyState({
 
 export default function FavoritesPage() {
   const [value, setValue] = useState([GRID_LAYOUT])
-  const [activeTab, setActiveTab] = useState("Projects")
+  const searchParams = useSearchParams()
+  // `?tab=` lets other screens (the group page tabs) land on a given list.
+  const initialTab = (() => {
+    const requested = searchParams?.get("tab")
+    if (!requested) return "Projects"
+    if (requested === "Talent") return "Talent Network"
+    return ["Projects", "Services", "Talent Network"].includes(requested)
+      ? requested
+      : "Projects"
+  })()
+  const [activeTab, setActiveTab] = useState(initialTab)
   const [projectGroups, setProjectGroups] = useState<FavGroup[]>([])
   const [serviceGroups, setServiceGroups] = useState<FavGroup[]>([])
   const [talentFavorites, setTalentFavorites] = useState<Favorite[]>([])

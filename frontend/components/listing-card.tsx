@@ -11,6 +11,11 @@
  *   - "browse": shows the favorite star (default).
  *   - "owned":  shows a status badge + edit icon (used in /my-listings).
  *
+ * The "is-favorited" cardVariant is for lists that are already a set of
+ * favorites: the star over the image would be redundant there, so it is
+ * dropped and an options menu sits at the bottom right instead. Pass that
+ * menu in through `optionsSlot`, the same way `favoriteSlot` is passed.
+ *
  * Talent cards forward to the existing TalentSearchCard which already
  * implements the full grid layout with skills, rating, avatar, etc.
  */
@@ -79,7 +84,11 @@ export type ListingStatus =
   | "Needs Update"
 
 export type ListingMode = "browse" | "owned"
-export type ListingCardVariant = "default" | "job" | "job-grid"
+export type ListingCardVariant =
+  | "default"
+  | "job"
+  | "job-grid"
+  | "is-favorited"
 
 interface ProjectLikeProps {
   kind: "project" | "service"
@@ -114,6 +123,8 @@ interface ProjectLikeProps {
   onEdit?: () => void
   /** "browse" mode: slot for a favorite button (FavoriteRoot, etc.). */
   favoriteSlot?: React.ReactNode
+  /** "is-favorited" variant: slot for the bottom-right options menu. */
+  optionsSlot?: React.ReactNode
   /** Search pages can opt into the jobs-specific landscape treatment. */
   cardVariant?: ListingCardVariant
 }
@@ -225,6 +236,7 @@ function ProjectListingCard({
   onEdit,
   onClaim,
   favoriteSlot,
+  optionsSlot,
   cardVariant = "default",
 }: ProjectLikeProps) {
   // Listing descriptions are authored in the rich-text editor and stored as
@@ -707,7 +719,9 @@ function ProjectListingCard({
               <span />
             )}
 
-            {mode !== "owned" && favoriteSlot ? (
+            {mode !== "owned" &&
+            cardVariant !== "is-favorited" &&
+            favoriteSlot ? (
               <span
                 className="pointer-events-auto inline-flex shrink-0"
                 onClick={(e) => {
@@ -833,7 +847,18 @@ function ProjectListingCard({
           </AvatarGroup>
           ))}
 
-        {mode === "owned" ? (
+        {cardVariant === "is-favorited" && optionsSlot ? (
+          <span
+            className="ml-auto inline-flex shrink-0"
+            data-dropdown-zone
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+            }}
+          >
+            {optionsSlot}
+          </span>
+        ) : mode === "owned" ? (
           <IconButton
             className="rounded-full text-gray-400 hover:text-gray-800"
             visual="gray"

@@ -18,6 +18,7 @@ import { buildProjectUrl, buildServiceUrl } from "@/src/lib/urlHelpers"
 import { getFirstItem } from "@/utils/functions"
 import {
   ArrowLeft,
+  ArrowRight,
   Clock,
   MoreHorizontal,
   SearchMd,
@@ -29,6 +30,10 @@ import {
   favoriteGroupIdFromParam,
   favoriteGroupNameFromParam,
 } from "@/src/lib/listing-urls"
+import { ListingCard } from "@/components/listing-card"
+import { NewGroupModal } from "@/app/(group)/favorites/page"
+import NextLink from "@/components/next-link"
+import { cn } from "@/utils/functions"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Grid, List, SortAs } from "@/components/icons"
 import { Money } from "@/components/money"
@@ -51,6 +56,9 @@ import {
   ScrollArea,
   ScrollBar,
 } from "@/components/ui"
+
+/** Tabs from the My Favorites header (Figma 13111-46360). */
+const FAVORITE_TABS = ["Projects", "Services", "Talent", "Teams", "Jobs"]
 
 const GRID_LAYOUT = "GRID"
 const LIST_LAYOUT = "LIST"
@@ -77,113 +85,6 @@ interface ItemData {
   categories?: string[]
   category?: string
   listingType?: string
-}
-
-/* ─── Project/Service Grid Card (matches category page design) ─── */
-
-const ProjectGridCard = ({
-  item,
-  favorite,
-  onRemove,
-}: {
-  item: ItemData
-  favorite: Favorite
-  onRemove: () => void
-}) => {
-  const router = useRouter()
-  const coverImage =
-    item.mediaUrls?.[0] || item.coverImage || item.thumbnail || "/dashboard.png"
-  const title = item.title || "Untitled"
-  const slug = item.slug || ""
-  const itemId = String(item.id)
-  const isService = favorite.type === "service"
-  const l1Category = (item.categories?.[0] || item.category || "research")
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-  const detailHref = slug
-    ? isService
-      ? buildServiceUrl(l1Category, slug, itemId)
-      : buildProjectUrl(l1Category, slug, itemId)
-    : `/project-details/${itemId}`
-
-  return (
-    <article
-      className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] cursor-pointer"
-      onClick={(e) => {
-        if ((e.target as HTMLElement).closest("[data-dropdown-zone]")) return
-        router.push(detailHref)
-      }}
-    >
-      <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border cursor-pointer border-black/15">
-        <NextImage
-          className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-          src={coverImage}
-          alt={title}
-          fill
-          sizes="33vw"
-        />
-      </div>
-
-      <div className="mt-3 flex items-start gap-x-3">
-        <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline line-clamp-2">
-          {title}
-        </span>
-        <div className="inline-flex items-center gap-x-1 shrink-0">
-          <Star className="size-[15px] text-primary-500 fill-primary-500" />
-          <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-            {item.rating || "4.9"}{" "}
-            <span className="font-extralight">({item.reviewCount || 5})</span>
-          </span>
-        </div>
-      </div>
-
-      <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400 line-clamp-2">
-        {item.summary ||
-          item.description?.slice(0, 120) ||
-          "Project description"}
-      </p>
-
-      <div className="mt-[14.5px] flex flex-col gap-y-3">
-        <div className="flex items-center gap-x-[6.4px]">
-          <Clock className="size-[18px] shrink-0 text-primary-500" />
-          <span className="font-medium text-sm leading-none text-dark-blue-400">
-            {isService
-              ? item.deliveryTime || "Monthly"
-              : `Starting from ${item.duration || "12 weeks"}`}
-          </span>
-        </div>
-        <div className="flex items-center gap-x-[6.4px]">
-          <Money className="size-[18px] shrink-0 text-primary-500" />
-          <span className="font-medium text-sm leading-none text-dark-blue-400">
-            {isService
-              ? `$${item.priceMin ? `${Number(item.priceMin).toLocaleString()} - $${Number(item.priceMax).toLocaleString()}` : "5,000 - $15,000"}/month`
-              : `$${item.budget ? Number(item.budget).toLocaleString() : item.scopeTotal?.budget || "50,000"} budget`}
-          </span>
-        </div>
-      </div>
-
-      <div className="mt-5 flex items-end justify-between">
-        <AvatarGroup
-          max={5}
-          size="sm"
-          excess
-          excessClassName="border-gray-300 text-gray-500"
-        >
-          <Avatar
-            size="sm"
-            className="border-2 border-white hover:ring-0 active:ring-0"
-          >
-            <AvatarImage src="/woman.jpg" alt="Team" />
-            <AvatarFallback>T</AvatarFallback>
-          </Avatar>
-        </AvatarGroup>
-
-        <div data-dropdown-zone>
-          <ItemDropdown onRemove={onRemove} />
-        </div>
-      </div>
-    </article>
-  )
 }
 
 /* ─── Project/Service List Card ─── */
@@ -286,9 +187,11 @@ const ProjectListCard = ({
 const ItemDropdown = ({
   className,
   onRemove,
+  onMove,
 }: {
   className?: string
   onRemove?: () => void
+  onMove?: () => void
 }) => {
   return (
     <DropdownMenu modal={false}>
@@ -311,8 +214,12 @@ const ItemDropdown = ({
         onClick={(e) => e.stopPropagation()}
         onCloseAutoFocus={(e) => e.preventDefault()}
       >
+        <DropdownMenuItem onSelect={onMove}>
+          <ArrowRight className="h-4 w-4" /> Move
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem visual="destructive" onSelect={onRemove}>
-          <Trash2 className="h-4 w-4" /> Remove from Group
+          <Trash2 className="h-4 w-4" /> Remove Item
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -388,6 +295,16 @@ export default function FavoriteGroupDetailPage() {
   const [sortBy, setSortBy] = useState<DetailSortOption>("recent")
 
   const isTalent = groupType === "talent"
+  const itemNoun = isTalent
+    ? "talent"
+    : groupType === "service"
+      ? "services"
+      : "projects"
+  const activeTabLabel = isTalent
+    ? "Talent"
+    : groupType === "service"
+      ? "Services"
+      : "Projects"
   const apiBase = getPublicApiUrl() || "http://localhost:4000"
 
   useEffect(() => {
@@ -526,20 +443,13 @@ export default function FavoriteGroupDetailPage() {
         </button>
       </div>
 
+      {/* Section 1 — the My Favorites header (Figma 13111-46360). */}
       <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400">
-        {groupName}
+        My Favorites
       </h1>
-      <p className="text-sm text-gray-500 mt-1">
-        {itemCount} saved{" "}
-        {isTalent
-          ? "talent"
-          : groupType === "service"
-            ? "services"
-            : "projects"}
-      </p>
 
       <div className="mt-7 lg:mt-[19px] border-b h-[60px] flex items-end justify-between border-gray-200">
-        <div className="items-end inline-flex gap-x-3 pb-2.5">
+        <div className="items-end inline-flex gap-x-3">
           <Button
             className="text-gray-500"
             variant="ghost"
@@ -549,35 +459,81 @@ export default function FavoriteGroupDetailPage() {
           >
             <SearchMd className="size-[18px]" />
           </Button>
-          {showSearch && (
+
+          {showSearch ? (
             <Input
-              className="h-9 w-[260px] text-sm"
+              className="mb-2.5 h-9 w-[260px] text-sm"
               placeholder={`Search ${isTalent ? "talent" : "projects"}...`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               autoFocus
             />
+          ) : (
+            <div className="flex items-start gap-x-4">
+              {FAVORITE_TABS.map((tab) => {
+                const isActive = tab === activeTabLabel
+                return (
+                  <NextLink
+                    key={tab}
+                    href={`/favorites?tab=${encodeURIComponent(tab)}`}
+                    className={cn(
+                      "flex items-center justify-center px-1 pb-[11px] pt-px text-sm font-semibold capitalize",
+                      isActive
+                        ? "border-b-2 border-primary-500 text-primary-500"
+                        : "text-gray-500 hover:text-dark-blue-400"
+                    )}
+                  >
+                    {tab}
+                  </NextLink>
+                )
+              })}
+            </div>
           )}
-          <span className="self-center text-xs text-gray-400">
-            {filteredCount} of {itemCount} shown
-          </span>
         </div>
 
-        <div className="flex items-center gap-x-3 lg:gap-x-3.5 self-start pt-2">
-          <SortDropdown value={sortBy} onChange={setSortBy} />
+        <div className="flex items-center gap-x-3 self-start pt-2 lg:gap-x-6">
+          <div className="flex items-center gap-x-3 lg:gap-x-3.5">
+            <SortDropdown value={sortBy} onChange={setSortBy} />
 
-          <ToggleGroupRoot
-            value={value}
-            onValueChange={(details) => setValue(details.value)}
-          >
-            <ToggleGroupItem value={GRID_LAYOUT}>
-              <Grid className="size-4 lg:size-6" />
-            </ToggleGroupItem>
-            <ToggleGroupItem value={LIST_LAYOUT}>
-              <List className="size-4 lg:size-6" />
-            </ToggleGroupItem>
-          </ToggleGroupRoot>
+            <ToggleGroupRoot
+              value={value}
+              onValueChange={(details) => setValue(details.value)}
+            >
+              <ToggleGroupItem value={GRID_LAYOUT}>
+                <Grid className="size-4 lg:size-6" />
+              </ToggleGroupItem>
+              <ToggleGroupItem value={LIST_LAYOUT}>
+                <List className="size-4 lg:size-6" />
+              </ToggleGroupItem>
+            </ToggleGroupRoot>
+          </div>
+
+          <NewGroupModal
+            onCreated={() => router.push("/favorites")}
+            existingNames={[]}
+            activeTab={activeTabLabel}
+          />
         </div>
+      </div>
+
+      {/* Section 2 — the group heading (Figma 13113-118147). */}
+      <div className="mt-8 flex items-center justify-between">
+        <div className="flex flex-col gap-y-2 text-dark-blue-400">
+          <h2 className="text-[22px] font-semibold leading-normal">
+            {groupName}
+          </h2>
+          <p className="text-lg font-light leading-normal">
+            Below are your favorite {groupName} {itemNoun}
+          </p>
+        </div>
+
+        <NextLink
+          href="/favorites"
+          className="inline-flex items-center gap-x-2 text-base font-semibold capitalize leading-6 text-gray-500 transition-colors duration-300 hover:text-dark-blue-400"
+        >
+          <ArrowLeft className="size-[15px]" />
+          Back To Groups
+        </NextLink>
       </div>
 
       {/* Content */}
@@ -646,14 +602,60 @@ export default function FavoriteGroupDetailPage() {
           )
         ) : getFirstItem(value) === GRID_LAYOUT ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {sortedProjects.map((fav) => (
-              <ProjectGridCard
-                key={fav.id}
-                item={itemData[fav.itemId] || { id: fav.itemId }}
-                favorite={fav}
-                onRemove={() => handleRemoveFavorite(fav.id)}
-              />
-            ))}
+            {sortedProjects.map((fav) => {
+              const item = itemData[fav.itemId] || { id: fav.itemId }
+              const isService = fav.type === "service"
+              const categorySlug = (
+                item.categories?.[0] ||
+                item.category ||
+                "research"
+              )
+                .toLowerCase()
+                .replace(/\s+/g, "-")
+              const itemId = String(item.id)
+
+              return (
+                <ListingCard
+                  key={fav.id}
+                  kind={isService ? "service" : "project"}
+                  id={itemId}
+                  cardVariant="is-favorited"
+                  href={
+                    item.slug
+                      ? isService
+                        ? buildServiceUrl(categorySlug, item.slug, itemId)
+                        : buildProjectUrl(categorySlug, item.slug, itemId)
+                      : undefined
+                  }
+                  title={item.title || "Untitled"}
+                  description={item.summary || item.description}
+                  mediaUrl={
+                    item.mediaUrls?.[0] || item.coverImage || item.thumbnail
+                  }
+                  budget={
+                    isService
+                      ? item.priceMin
+                        ? `$${Number(item.priceMin).toLocaleString()} - $${Number(
+                            item.priceMax
+                          ).toLocaleString()}`
+                        : ""
+                      : item.budget
+                        ? `$${Number(item.budget).toLocaleString()}`
+                        : ""
+                  }
+                  duration={
+                    isService ? item.deliveryTime : item.duration
+                  }
+                  rating={item.rating}
+                  reviewCount={item.reviewCount}
+                  optionsSlot={
+                    <ItemDropdown
+                      onRemove={() => handleRemoveFavorite(fav.id)}
+                    />
+                  }
+                />
+              )
+            })}
           </div>
         ) : (
           <div className="grid gap-y-3">
