@@ -255,6 +255,7 @@ type ProgressProps = {
 
 type WorkTypeChoice = "project" | "service" | null;
 type HiringModeChoice = "team" | "individual" | null;
+type ScopeKnowledgeChoice = "known" | "unknown" | "none" | null;
 type SmartAssistantEditableField =
   | "title"
   | "overview"
@@ -3597,6 +3598,7 @@ type ProjectInfoProps = {
   onSelectedWorkTypeChange?: (value: WorkTypeChoice) => void;
   selectedHiringMode?: HiringModeChoice;
   onSelectedHiringModeChange?: (value: HiringModeChoice) => void;
+  onScopeKnowledgeChange?: (value: ScopeKnowledgeChoice) => void;
   onNoScopeFlowChange?: (value: boolean) => void;
   onExistingContractFlowChange?: (value: boolean) => void;
   onExistingContractSelectionChange?: (value: string | null) => void;
@@ -3608,6 +3610,7 @@ const ProjectInfo = ({
   onSelectedWorkTypeChange,
   selectedHiringMode,
   onSelectedHiringModeChange,
+  onScopeKnowledgeChange,
   onNoScopeFlowChange,
   onExistingContractFlowChange,
   onExistingContractSelectionChange,
@@ -4237,6 +4240,7 @@ const ProjectInfo = ({
                       onExistingContractFlowChange?.(nextChoice === "existing");
                       if (nextChoice === "existing") {
                         setScopeChoice(null);
+                        onScopeKnowledgeChange?.(null);
                         onNoScopeFlowChange?.(false);
                         setHiringModeChoice(null);
                         setWorkTypeChoice("service");
@@ -4463,6 +4467,7 @@ const ProjectInfo = ({
                                 | "unknown"
                                 | "none";
                               setScopeChoice(nextScopeChoice);
+                              onScopeKnowledgeChange?.(nextScopeChoice);
                               onNoScopeFlowChange?.(nextScopeChoice === "none");
                               if (nextScopeChoice === "none") {
                                 setWorkTypeChoice(null);
@@ -8762,9 +8767,11 @@ const DescribeProjectStep = ({
   setProgress,
   workType,
   jobListingId,
+  scopeKnowledgeChoice,
 }: ProgressProps & {
   workType?: WorkTypeChoice;
   jobListingId?: string | null;
+  scopeKnowledgeChoice?: ScopeKnowledgeChoice;
 }) => {
   const { toggleValidation } = useStepContext();
   const { toast } = useToast();
@@ -9397,7 +9404,9 @@ const DescribeProjectStep = ({
                 <Label className={descriptionLabelClassName}>
                   {isService
                     ? "What kind of ongoing help do you need?"
-                    : "What do you want to accomplish with this project?"}
+                    : scopeKnowledgeChoice === "known"
+                      ? "What are you building?"
+                      : "What do you want to accomplish with this project?"}
                 </Label>
                 <span className={descriptionCounterClassName}>
                   {description.length}/100
@@ -16045,7 +16054,11 @@ function PublishProject({
 }: {
   projectInfo?: React.ReactElement<ProjectInfoProps>;
   media?: React.ReactElement<
-    ProgressProps & { workType?: WorkTypeChoice; jobListingId?: string | null }
+    ProgressProps & {
+      workType?: WorkTypeChoice;
+      jobListingId?: string | null;
+      scopeKnowledgeChoice?: ScopeKnowledgeChoice;
+    }
   >;
   projectScope?: React.ReactElement<ProgressProps>;
   teamRoles?: React.ReactElement<ProgressProps>;
@@ -16124,6 +16137,8 @@ function PublishProject({
     useState<WorkTypeChoice>(null);
   const [selectedHiringMode, setSelectedHiringMode] =
     useState<HiringModeChoice>(null);
+  const [scopeKnowledgeChoice, setScopeKnowledgeChoice] =
+    useState<ScopeKnowledgeChoice>(null);
   const [isExistingContractFlow, setIsExistingContractFlow] = useState(false);
   const [isNoScopeFlow, setIsNoScopeFlow] = useState(false);
   const [selectedExistingContractId, setSelectedExistingContractId] = useState<
@@ -17116,6 +17131,7 @@ function PublishProject({
                               onSelectedWorkTypeChange: setSelectedWorkType,
                               selectedHiringMode,
                               onSelectedHiringModeChange: setSelectedHiringMode,
+                              onScopeKnowledgeChange: setScopeKnowledgeChoice,
                               onNoScopeFlowChange: setIsNoScopeFlow,
                               onExistingContractFlowChange:
                                 setIsExistingContractFlow,
@@ -17139,6 +17155,7 @@ function PublishProject({
                             setProgress: setMediaProgress,
                             workType: selectedWorkType,
                             jobListingId,
+                            scopeKnowledgeChoice,
                           })
                         ) : null}
                       </Step>
