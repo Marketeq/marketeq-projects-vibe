@@ -787,8 +787,7 @@ export default function FavoriteGroupDetailPage() {
               </h2>
             </DialogTitle>
             <p className="mt-1 text-sm text-gray-500">
-              It will be taken out of {groupName}. You can undo this right
-              after.
+              It will be taken out of {groupName}.
             </p>
           </div>
 
