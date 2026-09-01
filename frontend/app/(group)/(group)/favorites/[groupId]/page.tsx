@@ -39,7 +39,7 @@ import {
 import { ListingCard } from "@/components/listing-card"
 import { toast } from "@/components/ui/toast/use-toast"
 import { ToastAction } from "@/components/ui/toast/toast"
-import { NewGroupModal } from "@/app/(group)/favorites/page"
+import { NewGroupModal } from "@/app/(group)/(group)/favorites/page"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Grid, List, SortAs } from "@/components/icons"
 import { Money } from "@/components/money"
