@@ -102,7 +102,9 @@ const TableRow = ({ team, nextMilestone, projectName, status }: Project) => {
   return (
     <tr className="first:pt-3 last:pb-3">
       <td className="px-6 py-3.5 text-sm leading-5 font-semibold text-dark-blue-400 inline-block truncate">
-        {projectName}
+        <NextLink href="/my-contracts" className="hover:underline">
+          {projectName}
+        </NextLink>
       </td>
       <td className="px-6 py-2">
         <TooltipProvider>
