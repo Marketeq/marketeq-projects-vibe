@@ -9428,6 +9428,30 @@ const DescribeProjectStep = ({
                 className={descriptionTextareaClassName}
               />
             </div>
+
+            {!isService && scopeKnowledgeChoice === "known" ? (
+              <div className="space-y-3">
+                <div className="flex h-7 items-baseline justify-between gap-2">
+                  <Label className={descriptionLabelClassName}>
+                    What are the main tasks or deliverables?
+                  </Label>
+                  <span className={descriptionCounterClassName}>
+                    {deliverables.length}/100
+                  </span>
+                </div>
+                <Textarea
+                  maxLength={100}
+                  value={deliverables}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setDeliverables(value);
+                    updateDraftDetails({ deliverables: value.trim() });
+                  }}
+                  placeholder="UX design, front-end development, database setup"
+                  className={descriptionTextareaClassName}
+                />
+              </div>
+            ) : null}
           </div>
 
           {isService ? (
