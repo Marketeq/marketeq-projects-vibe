@@ -2946,7 +2946,7 @@ const BottomBar = ({
         <div className="flex w-[120px] justify-center">
           {currentStep > 0 ? (
             <Button
-              className="h-11 rounded-[44px] px-6"
+              className="h-11 rounded-[44px] px-6 text-lg leading-7 font-semibold text-black"
               disabled={!hasPreviousStep}
               variant="outlined"
               visual="gray"
@@ -2961,7 +2961,7 @@ const BottomBar = ({
           ) : null}
         </div>
 
-        <span className="w-[82px] text-center text-base font-semibold leading-6 text-gray-800">
+        <span className="w-[84px] whitespace-nowrap text-center text-base leading-6 font-semibold text-gray-800">
           Step {currentStep + 1} of 5
         </span>
 
