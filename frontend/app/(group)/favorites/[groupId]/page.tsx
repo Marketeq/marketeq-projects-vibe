@@ -39,8 +39,6 @@ import { ListingCard } from "@/components/listing-card"
 import { toast } from "@/components/ui/toast/use-toast"
 import { ToastAction } from "@/components/ui/toast/toast"
 import { NewGroupModal } from "@/app/(group)/favorites/page"
-import NextLink from "@/components/next-link"
-import { cn } from "@/utils/functions"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Grid, List, SortAs } from "@/components/icons"
 import { Money } from "@/components/money"
@@ -63,9 +61,16 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  IconButton,
   Input,
+  Label,
+  RadioGroup,
+  RadioGroupItem,
   ScrollArea,
   ScrollBar,
+  Tabs,
+  TabsList,
+  TabsTrigger,
 } from "@/components/ui"
 
 /** Tabs from the My Favorites header (Figma 13111-46360). */
@@ -159,9 +164,15 @@ const SortDropdown = ({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="focus-visible:outline-none shrink-0">
-          <SortAs className="size-4 lg:size-6 text-gray-500" />
-        </button>
+        <IconButton
+          className="shrink-0 text-gray-500"
+          variant="ghost"
+          visual="gray"
+          size="md"
+          aria-label="Sort"
+        >
+          <SortAs className="size-4 lg:size-6" />
+        </IconButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <ScrollArea
@@ -441,25 +452,20 @@ export default function FavoriteGroupDetailPage() {
               autoFocus
             />
           ) : (
-            <div className="flex items-start gap-x-4">
-              {FAVORITE_TABS.map((tab) => {
-                const isActive = tab === activeTabLabel
-                return (
-                  <NextLink
-                    key={tab}
-                    href={`/favorites?tab=${encodeURIComponent(tab)}`}
-                    className={cn(
-                      "flex items-center justify-center px-1 pb-[11px] pt-px text-sm font-semibold capitalize",
-                      isActive
-                        ? "border-b-2 border-primary-500 text-primary-500"
-                        : "text-gray-500 hover:text-dark-blue-400"
-                    )}
-                  >
+            <Tabs
+              value={activeTabLabel}
+              onValueChange={(tab) =>
+                router.push(`/favorites?tab=${encodeURIComponent(tab)}`)
+              }
+            >
+              <TabsList className="justify-start border-b-0 px-0">
+                {FAVORITE_TABS.map((tab) => (
+                  <TabsTrigger key={tab} value={tab}>
                     {tab}
-                  </NextLink>
-                )
-              })}
-            </div>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
           )}
         </div>
 
@@ -721,24 +727,21 @@ export default function FavoriteGroupDetailPage() {
                   You have no other groups to move this into.
                 </p>
               ) : (
-                groups.map((group) => (
-                  <button
-                    key={group.id}
-                    type="button"
-                    onClick={() => setMoveTargetId(group.id)}
-                    className={cn(
-                      "flex items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-300",
-                      moveTargetId === group.id
-                        ? "bg-primary-50 font-semibold text-primary-500"
-                        : "text-dark-blue-400 hover:bg-gray-50"
-                    )}
-                  >
-                    {group.name}
-                    {moveTargetId === group.id && (
-                      <Check className="size-4 shrink-0" />
-                    )}
-                  </button>
-                ))
+                <RadioGroup
+                  className="flex flex-col gap-y-1"
+                  value={moveTargetId}
+                  onValueChange={setMoveTargetId}
+                >
+                  {groups.map((group) => (
+                    <Label
+                      key={group.id}
+                      className="flex cursor-pointer items-center gap-x-3 rounded-lg px-3 py-2.5 text-sm text-dark-blue-400 hover:bg-gray-50"
+                    >
+                      <RadioGroupItem value={group.id} size="md" />
+                      {group.name}
+                    </Label>
+                  ))}
+                </RadioGroup>
               )}
             </div>
           </ScrollArea>
