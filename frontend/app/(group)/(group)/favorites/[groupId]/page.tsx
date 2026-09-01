@@ -37,6 +37,7 @@ import {
   favoriteGroupNameFromParam,
 } from "@/src/lib/listing-urls"
 import { ListingCard } from "@/components/listing-card"
+import { FAVORITE_TABS } from "@/src/lib/favorites-tabs"
 import { toast } from "@/components/ui/toast/use-toast"
 import { ToastAction } from "@/components/ui/toast/toast"
 import { NewGroupModal } from "@/app/(group)/(group)/favorites/page"
@@ -76,9 +77,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui"
-
-/** Tabs from the My Favorites header (Figma 13111-46360). */
-const FAVORITE_TABS = ["Projects", "Services", "Talent", "Teams", "Jobs"]
 
 const GRID_LAYOUT = "GRID"
 const LIST_LAYOUT = "LIST"

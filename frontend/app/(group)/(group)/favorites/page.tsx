@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { UserAPI } from "@/service/http/user"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { favoriteGroupUrl } from "@/src/lib/listing-urls"
+import { FAVORITE_TABS, isFavoriteTab } from "@/src/lib/favorites-tabs"
 import {
   type FavoriteGroup as FavGroup,
   type Favorite,
@@ -1134,10 +1135,9 @@ export default function FavoritesPage() {
   const initialTab = (() => {
     const requested = searchParams?.get("tab")
     if (!requested) return "Projects"
-    if (requested === "Talent") return "Talent Network"
-    return ["Projects", "Services", "Talent Network"].includes(requested)
-      ? requested
-      : "Projects"
+    // "Talent Network" was this tab's old label; keep old links working.
+    if (requested === "Talent Network") return "Talent"
+    return isFavoriteTab(requested) ? requested : "Projects"
   })()
   const [activeTab, setActiveTab] = useState(initialTab)
   const [projectGroups, setProjectGroups] = useState<FavGroup[]>([])
@@ -1349,7 +1349,7 @@ export default function FavoritesPage() {
       <Tabs
         className="mt-7 lg:mt-[19px]"
         value={activeTab}
-        onValueChange={setActiveTab}
+        onValueChange={(tab) => isFavoriteTab(tab) && setActiveTab(tab)}
       >
         <div className="border-b h-[60px] flex items-end justify-between border-gray-200">
           <div className="items-end inline-flex gap-x-3">
@@ -1363,28 +1363,24 @@ export default function FavoritesPage() {
             </Button>
 
             <TabsList className="flex justify-start border-b-0 px-0">
-              <TabsTrigger
-                className="xs:max-lg:text-xs xs:max-lg:leading-5"
-                value="Projects"
-              >
-                Projects{" "}
-                {projectGroups.flatMap((g) => g.favorites).length > 0 &&
-                  `(${projectGroups.flatMap((g) => g.favorites).length})`}
-              </TabsTrigger>
-              <TabsTrigger
-                className="xs:max-lg:text-xs xs:max-lg:leading-5"
-                value="Services"
-              >
-                Services{" "}
-                {serviceGroups.flatMap((g) => g.favorites).length > 0 &&
-                  `(${serviceGroups.flatMap((g) => g.favorites).length})`}
-              </TabsTrigger>
-              <TabsTrigger
-                className="xs:max-lg:text-xs xs:max-lg:leading-5"
-                value="Talent Network"
-              >
-                Talent Network
-              </TabsTrigger>
+              {FAVORITE_TABS.map((tab) => {
+                const count =
+                  tab === "Projects"
+                    ? projectGroups.flatMap((g) => g.favorites).length
+                    : tab === "Services"
+                      ? serviceGroups.flatMap((g) => g.favorites).length
+                      : 0
+                return (
+                  <TabsTrigger
+                    key={tab}
+                    className="xs:max-lg:text-xs xs:max-lg:leading-5"
+                    value={tab}
+                  >
+                    {tab}
+                    {count > 0 ? ` (${count})` : ""}
+                  </TabsTrigger>
+                )
+              })}
             </TabsList>
           </div>
 
@@ -1413,8 +1409,8 @@ export default function FavoritesPage() {
           </div>
         </div>
 
-        {/* Talent Network Tab */}
-        <TabsContent value="Talent Network">
+        {/* Talent Tab */}
+        <TabsContent value="Talent">
           <div className="pt-[14px] lg:pt-6">
             {sortedSampleGroups.length === 0 ? (
               <EmptyState
@@ -1566,6 +1562,37 @@ export default function FavoritesPage() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        {/* Teams Tab */}
+        <TabsContent value="Teams">
+          <div className="pt-[14px] lg:pt-6">
+            <EmptyState
+              icon={Users}
+              title="No favorite teams yet"
+              description="Save teams you want to work with again and they will show up here, grouped however you like."
+              action={
+                <NextLink href="/teams">
+                  <Button>Browse Teams</Button>
+                </NextLink>
+              }
+            />
+          </div>
+        </TabsContent>
+
+        {/* Jobs Tab */}
+        <TabsContent value="Jobs">
+          <div className="pt-[14px] lg:pt-6">
+            <EmptyState
+              title="No favorite jobs yet"
+              description="Save jobs you are interested in and they will show up here, grouped however you like."
+              action={
+                <NextLink href="/find-jobs">
+                  <Button>Browse Jobs</Button>
+                </NextLink>
+              }
+            />
+          </div>
         </TabsContent>
       </Tabs>
     </div>
