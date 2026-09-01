@@ -2393,7 +2393,7 @@ const BottomBar = ({
   selectedExistingContractId,
 }: {
   progressValue?: number;
-  onNextClick?: () => void;
+  onNextClick?: () => boolean | Promise<boolean>;
   workType?: WorkTypeChoice;
   jobListingId?: string | null;
   selectedHiringMode?: HiringModeChoice;
@@ -2973,16 +2973,20 @@ const BottomBar = ({
                 "h-11 w-32 rounded-[44px] px-6 py-2.5 text-lg leading-7 font-semibold",
                 !isValid && "opacity-50",
               )}
-              disabled={!isValid}
-              onClick={() => {
+              disabled={currentStep !== 0 && !isValid}
+              onClick={async () => {
                 if (isValid) {
-                  if (currentStep === 1) {
+                  if (currentStep === 0) {
+                    const canAdvance = await onNextClick?.();
+                    if (canAdvance === false) return;
+                    nextStep();
+                  } else if (currentStep === 1) {
                     setStep(2);
                   } else {
                     nextStep();
                   }
                 } else {
-                  onNextClick?.(); // show errors on the current step
+                  await onNextClick?.(); // show errors on the current step
                 }
               }}
             >
@@ -16254,6 +16258,7 @@ function PublishProject({
     steps,
     currentStep: initialStep,
   });
+  const { toast } = useToast();
 
   const stepperValue = useMemo(
     () => ({ nextStep, prevStep, setStep, toggleStepValidation }),
@@ -16372,15 +16377,12 @@ function PublishProject({
       }
 
       try {
-        if (isJobListingFlow) {
-          const response =
-            existingJobListingId && UUID_PATTERN.test(existingJobListingId)
-              ? await JobListingAPI.Get(existingJobListingId)
-              : await JobListingAPI.Create({
-                  contractType: "new",
-                  scopeKnowledge: "has_scope",
-                  workType: "project",
-                });
+        if (
+          isJobListingFlow &&
+          existingJobListingId &&
+          UUID_PATTERN.test(existingJobListingId)
+        ) {
+          const response = await JobListingAPI.Get(existingJobListingId);
 
           if (cancelled) return;
 
@@ -16593,6 +16595,11 @@ function PublishProject({
           ) {
             setStep(Math.min(1, totalSteps - 1));
           }
+          setIsDraftBootstrapping(false);
+          return;
+        }
+
+        if (isJobListingFlow) {
           setIsDraftBootstrapping(false);
           return;
         }
@@ -16980,10 +16987,7 @@ function PublishProject({
       return () => window.clearTimeout(timeout);
     }
 
-    if (isJobListingFlow) {
-      void ensureJobListingDraft();
-      return;
-    }
+    if (isJobListingFlow) return;
 
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return;
 
@@ -17210,12 +17214,18 @@ function PublishProject({
     }),
     [jobListingDraftDetails],
   );
+  const isJobListingRoute =
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/job-listing");
+
   //  Validate the current step when Next is clicked
   const validateCurrentStep = React.useCallback(async () => {
     if (currentStep === 0) {
-      const isStepValid = await projectInfoMethods.trigger(undefined, {
-        shouldFocus: true,
-      });
+      const isStepValid = isJobListingRoute
+        ? Boolean(stepsState[currentStep]?.isValid)
+        : await projectInfoMethods.trigger(undefined, {
+            shouldFocus: true,
+          });
 
       if (!isStepValid) {
         const firstInvalidTarget = PROJECT_INFO_VALIDATION_TARGETS.find(
@@ -17226,6 +17236,46 @@ function PublishProject({
         }
       }
 
+      const isNewContractWorkflow =
+        isJobListingRoute && !isExistingContractFlow;
+
+      if (isNewContractWorkflow && !jobListingId) {
+        try {
+          const response = await JobListingAPI.Create({
+            contractType: "new",
+            scopeKnowledge: getJobListingScopeKnowledge(
+              selectedWorkType,
+              isNoScopeFlow,
+            ),
+            workType: getJobListingWorkType(selectedWorkType),
+            hiringType: getJobListingHiringType(selectedHiringMode),
+          });
+
+          if (response.status !== 201) {
+            throw new Error("Unable to create job listing draft");
+          }
+
+          const listing = getResponsePayload(response);
+          const nextJobListingId = String(listing?.id ?? "");
+          if (!nextJobListingId) {
+            throw new Error("Unable to create job listing draft");
+          }
+
+          setJobListingId(nextJobListingId);
+          window.sessionStorage.setItem(
+            "marketeq-job-listing-id",
+            nextJobListingId,
+          );
+        } catch (error) {
+          console.error("Failed to create job listing draft", error);
+          toast({
+            title: "Unable to start the job listing. Please try again.",
+            variant: "destructive",
+          });
+          return false;
+        }
+      }
+
       return isStepValid;
     }
     if (currentStep === 1) {
@@ -17233,7 +17283,19 @@ function PublishProject({
     }
     // Step 3 uses its own schema checks
     return true;
-  }, [currentStep, projectInfoMethods, stepsState]);
+  }, [
+    currentStep,
+    isExistingContractFlow,
+    isJobListingRoute,
+    isNoScopeFlow,
+    jobListingId,
+    projectInfoMethods,
+    scopeKnowledgeChoice,
+    selectedHiringMode,
+    selectedWorkType,
+    stepsState,
+    toast,
+  ]);
 
   //  NEW: Track cumulative progress for all steps
   const [projectInfoProgress, setProjectInfoProgress] = useState(0);
@@ -17265,9 +17327,6 @@ function PublishProject({
     // this screen was built from.
     router.push("/my-jobs");
   }, [toggleIsSaveExitDialogOpen, router]);
-  const isJobListingRoute =
-    typeof window !== "undefined" &&
-    window.location.pathname.startsWith("/job-listing");
 
   return isProjectSubmitted ? (
     <div className="min-h-screen flex flex-col">
