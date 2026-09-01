@@ -4,7 +4,11 @@ import * as React from "react"
 import type { ToastActionElement, ToastProps } from "./toast"
 
 const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+// Time between a toast closing and being dropped from state. Long enough to
+// let the exit animation finish, short enough that the element is not left
+// sitting in the DOM. It was 1000000 (~17 minutes), which kept closed toasts
+// mounted and, with TOAST_LIMIT of 1, in the way of the next one.
+const TOAST_REMOVE_DELAY = 400
 
 type ToasterToast = ToastProps & {
   id: string

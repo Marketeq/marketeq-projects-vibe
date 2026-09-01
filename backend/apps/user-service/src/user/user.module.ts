@@ -15,10 +15,15 @@ import { ClientsModule, Transport } from "@nestjs/microservices";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { UserEventPublisher } from "./user-event.publisher";
 import { CmsBackfillService } from "./cms-backfill.service";
+import { TaxInfo } from "../tax-info/tax-info.entity";
+import { TaxInfoService } from "../tax-info/tax-info.service";
+import { TaxInfoController } from "../tax-info/tax-info.controller";
+import { TaxDocumentService } from "../tax-info/tax-document.service";
+import { TinEncryptionService } from "../tax-info/tin-encryption.service";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Skill]),
+    TypeOrmModule.forFeature([User, Skill, TaxInfo]),
     ClientsModule.registerAsync([
       {
         name: "RABBITMQ_CLIENT",
@@ -42,6 +47,9 @@ import { CmsBackfillService } from "./cms-backfill.service";
     R2Service,
     UserEventPublisher,
     CmsBackfillService,
+    TaxInfoService,
+    TaxDocumentService,
+    TinEncryptionService,
   ],
   controllers: [
     UserController,
@@ -49,6 +57,7 @@ import { CmsBackfillService } from "./cms-backfill.service";
     UserSyncController,
     UserSelfController,
     UserInternalController,
+    TaxInfoController,
   ],
   exports: [UserService],
 })

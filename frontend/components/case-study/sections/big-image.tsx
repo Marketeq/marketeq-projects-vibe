@@ -43,13 +43,26 @@ function BigImageEdit({
   const [imageRotation, setImageRotation] = useState<number>(
     (initialData?.imageRotation as number) ?? 0
   )
+  const [imageOffsetX, setImageOffsetX] = useState<number>(
+    (initialData?.imageOffsetX as number) ?? 50
+  )
+  const [imageOffsetY, setImageOffsetY] = useState<number>(
+    (initialData?.imageOffsetY as number) ?? 50
+  )
   const [isImageEditOpen, setIsImageEditOpen] = useState(false)
   const caption = useWatch({ control, name: "caption" })
 
   useEffect(() => {
-    onDataChange?.({ url: imageUrl ?? "", caption, imageZoom, imageRotation })
+    onDataChange?.({
+      url: imageUrl ?? "",
+      caption,
+      imageZoom,
+      imageRotation,
+      imageOffsetX,
+      imageOffsetY,
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageUrl, caption, imageZoom, imageRotation])
+  }, [imageUrl, caption, imageZoom, imageRotation, imageOffsetX, imageOffsetY])
 
   return (
     <form
@@ -71,6 +84,8 @@ function BigImageEdit({
                     setImageUrl(url)
                     setImageZoom(1)
                     setImageRotation(0)
+                    setImageOffsetX(50)
+                    setImageOffsetY(50)
                   })
                 }
               }}
@@ -82,7 +97,7 @@ function BigImageEdit({
                         src={dataUrl || imageUrl}
                         aria-label="Picture"
                         className="object-cover size-full rounded-lg"
-                        style={imageTransformStyle(imageZoom, imageRotation)}
+                        style={imageTransformStyle(imageZoom, imageRotation, imageOffsetX, imageOffsetY)}
                       />
                     </div>
                   ) : (
@@ -98,6 +113,8 @@ function BigImageEdit({
                       setImageUrl(undefined)
                       setImageZoom(1)
                       setImageRotation(0)
+                      setImageOffsetX(50)
+                      setImageOffsetY(50)
                     }}
                     onEdit={() => setIsImageEditOpen(true)}
                     enableEdit={!!dataUrl || !!imageUrl}
@@ -115,9 +132,15 @@ function BigImageEdit({
           title="Edit Image"
           initialZoom={imageZoom}
           initialRotation={imageRotation}
-          onSave={({ zoom, rotation }) => {
+          initialOffsetX={imageOffsetX}
+          initialOffsetY={imageOffsetY}
+          aspectRatio={1140 / 498.2}
+          objectFit="cover"
+          onSave={({ zoom, rotation, offsetX, offsetY }) => {
             setImageZoom(zoom)
             setImageRotation(rotation)
+            setImageOffsetX(offsetX)
+            setImageOffsetY(offsetY)
           }}
         />
 
@@ -156,13 +179,13 @@ function BigImageView({
   const url = d.url
   if (typeof url !== "string" || !url) return null
   return (
-    <section className={cn("relative rounded-lg overflow-hidden", className)}>
+    <section className={cn("relative rounded-lg overflow-hidden h-[498.2px]", className)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={url}
         alt=""
-        className="w-full h-auto object-cover"
-        style={imageTransformStyle(d.imageZoom, d.imageRotation)}
+        className="absolute inset-0 h-full w-full object-cover"
+        style={imageTransformStyle(d.imageZoom, d.imageRotation, d.imageOffsetX, d.imageOffsetY)}
       />
       {typeof d.caption === "string" && d.caption ? (
         <div className="p-8 bg-[linear-gradient(180deg,rgba(48,108,254,0)_0%,rgba(48,108,254,.296)_100%)] absolute inset-x-0 bottom-0">

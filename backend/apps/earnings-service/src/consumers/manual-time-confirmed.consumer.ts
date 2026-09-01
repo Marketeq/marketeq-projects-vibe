@@ -1,8 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Controller, Logger } from '@nestjs/common';
 import { Ctx, MessagePattern, Payload, RmqContext } from '@nestjs/microservices';
 import { InternalSyncService } from '../internal/internal-sync.service';
 
-@Injectable()
+@Controller()
 export class ManualTimeConfirmedConsumer {
   private readonly logger = new Logger(ManualTimeConfirmedConsumer.name);
 

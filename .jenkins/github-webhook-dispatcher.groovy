@@ -26,7 +26,6 @@
 // Until a conversion happens, treat this file as DOCUMENTATION ONLY and keep it
 // in sync by hand.
 // =============================================================================
-
 pipeline {
     agent any
     options {
@@ -250,6 +249,9 @@ def dispatchVibe(event) {
         if (pr_head_sha?.trim()) {
             withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
                 results.each { ctx, state ->
+                    // branch-freshness posts its own precise description (how many commits
+                    // behind, which files overlap). Don't flatten that to a generic 'Passed'.
+                    if (ctx == 'Jenkins / Branch Freshness' && state == 'success') { return }
                     def desc = (state == 'success') ? 'Passed' : 'Failed'
                     sh """
                         curl -sf -X POST -H "Authorization: token \$GH_TOKEN" -H "Content-Type: application/json" \
@@ -302,6 +304,37 @@ def dispatchVibe(event) {
             booleanParam(name: 'DRY_RUN', value: false)
         ]
         echo "Deploy pipeline dispatched (staging-orchestrator)."
+
+        // Branch freshness decays when the BASE moves, not when the PR's head moves.
+        // Without this, every open PR keeps whatever green it earned at push time and
+        // silently goes stale (SOP 3.6 / 8.11). Re-evaluate them all on every push.
+        // Wrapped in try/catch: this is a best-effort re-check and must never fail the
+        // dispatcher, which is what actually routes deploys and post-merge audits.
+        try {
+            withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
+                def prList = sh(script: """
+                    curl -sf -H "Authorization: token \$GH_TOKEN" \
+                        "https://api.github.com/repos/${REPO}/pulls?state=open&base=${branch}&per_page=100" | \
+                        python3 -c "import json,sys; print(' '.join(str(p['number']) for p in json.load(sys.stdin)))"
+                """, returnStdout: true).trim()
+
+                if (prList) {
+                    def nums = prList.split(' ')
+                    echo "Re-checking branch freshness for ${nums.size()} open PR(s) against ${branch}"
+                    for (int i = 0; i < nums.size(); i++) {
+                        build job: 'branch-freshness', wait: false, parameters: [
+                            string(name: 'PR_NUMBER', value: nums[i]),
+                            string(name: 'BASE_REF', value: branch),
+                            string(name: 'HEAD_SHA', value: '')
+                        ]
+                    }
+                } else {
+                    echo "No open PRs targeting ${branch} -- nothing to re-check"
+                }
+            }
+        } catch (err) {
+            echo "WARNING: branch-freshness re-check dispatch failed: ${err.message}"
+        }
     }
     else {
         echo "Event '${event}' -- no dispatch rules, skipping."

@@ -18,7 +18,7 @@
 - transaction-service – ledger entries, Stripe webhooks, RabbitMQ events, 3 migrations, 62 .ts files
 - billing-service – Stripe checkout, QuickBooks, wire transfers, RabbitMQ, 15 .ts files
 - pricing-service – rate cards, fee calculation, FX rates, 30 .ts files
-- portfolio-service – media handling, Editor.js blocks, auth/access control, 20 .ts files
+- portfolio-service – media handling, legacy portfolio items, case-study builder (create/edit/publish/hide/delete, R2 media upload, RabbitMQ events) — frontend fully wired to the real API as of 2026-08-25 (was localStorage-only before); see services/portfolio-service.md
 - content-moderation-service – text/media filters, profanity detection, approval flow, 48 .ts files
 - search-service – Algolia indexing, filter config, autocomplete, 8 .ts files
 - suggestions-service – dynamic job title suggestions, RabbitMQ, 9 .ts files
