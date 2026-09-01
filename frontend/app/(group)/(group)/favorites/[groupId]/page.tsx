@@ -809,11 +809,13 @@ export default function FavoriteGroupDetailPage() {
           <div className="px-6 py-5">
             <DialogTitle asChild>
               <h2 className="text-lg font-semibold leading-7 text-dark-blue-400">
-                Remove this item?
+                Remove from {groupName}?
               </h2>
             </DialogTitle>
             <p className="mt-1 text-sm text-gray-500">
-              It will be taken out of {groupName}.
+              This stops it appearing in your {groupName} favorites. The
+              listing itself stays exactly where it is, and you can favorite it
+              again any time.
             </p>
           </div>
 
