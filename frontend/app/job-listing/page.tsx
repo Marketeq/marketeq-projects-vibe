@@ -9622,6 +9622,12 @@ const DescribeProjectStep = ({
                     inputMode="decimal"
                     pattern="^\d*(\.\d{0,2})?$"
                     value={budget}
+                    onFocus={() => {
+                      if (budget === "0.00") {
+                        setBudget("");
+                        updateDraftDetails({ budgetAmount: 0 });
+                      }
+                    }}
                     onChange={(event) => {
                       const value = event.target.value.replace(/[^0-9.]/g, "");
                       const [whole = "", fraction = ""] = value.split(".");
