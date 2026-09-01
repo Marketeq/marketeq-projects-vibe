@@ -98,7 +98,9 @@ function GalleryEdit({
                       className="object-cover size-full rounded-lg"
                       style={imageTransformStyle(
                         activeImage.imageZoom,
-                        activeImage.imageRotation
+                        activeImage.imageRotation,
+                        activeImage.imageOffsetX,
+                        activeImage.imageOffsetY
                       )}
                     />
                   </div>
@@ -127,13 +129,19 @@ function GalleryEdit({
             title="Edit Image"
             initialZoom={activeImage.imageZoom ?? 1}
             initialRotation={activeImage.imageRotation ?? 0}
-            onSave={({ zoom, rotation }) => {
+            initialOffsetX={activeImage.imageOffsetX ?? 50}
+            initialOffsetY={activeImage.imageOffsetY ?? 50}
+            aspectRatio={1140 / 498.2}
+            objectFit="cover"
+            onSave={({ zoom, rotation, offsetX, offsetY }) => {
               setImages((prev) => {
                 const next = [...prev]
                 next[active] = {
                   ...next[active],
                   imageZoom: zoom,
                   imageRotation: rotation,
+                  imageOffsetX: offsetX,
+                  imageOffsetY: offsetY,
                 }
                 return next
               })
@@ -171,7 +179,7 @@ function GalleryEdit({
                 src={image.url}
                 alt=""
                 className="size-full object-cover"
-                style={imageTransformStyle(image.imageZoom, image.imageRotation)}
+                style={imageTransformStyle(image.imageZoom, image.imageRotation, image.imageOffsetX, image.imageOffsetY)}
               />
             ) : null}
           </button>
@@ -211,11 +219,13 @@ function GalleryView({ data }: { data?: Record<string, unknown> }) {
 
   return (
     <section className="p-[50px] rounded-[10px] bg-gray-100">
-      <div className="relative h-[498px] max-h-[70vh] rounded-lg">
+      <div className="relative h-[498px] max-h-[70vh] rounded-lg overflow-hidden">
         <BlockImage
           url={activeImage.url}
           zoom={activeImage.imageZoom}
           rotation={activeImage.imageRotation}
+          offsetX={activeImage.imageOffsetX}
+          offsetY={activeImage.imageOffsetY}
           className="w-full h-full object-cover rounded-lg"
         />
         {caption ? (
@@ -241,7 +251,7 @@ function GalleryView({ data }: { data?: Record<string, unknown> }) {
                   src={image.url}
                   alt=""
                   className="size-full object-cover"
-                  style={imageTransformStyle(image.imageZoom, image.imageRotation)}
+                  style={imageTransformStyle(image.imageZoom, image.imageRotation, image.imageOffsetX, image.imageOffsetY)}
                 />
               ) : null}
             </button>

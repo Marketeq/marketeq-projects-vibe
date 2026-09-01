@@ -40,8 +40,16 @@ async function bootstrap() {
       const status = exception?.getStatus?.() || 500;
       const message = exception?.message || 'Internal server error';
 
-      // Never leak stack traces
-      logger.error(`Unhandled exception: ${message}`, exception?.stack);
+      // Only genuine server faults are unhandled exceptions. A 4xx is the
+      // client asking for something that isn't there (uptime probes hitting
+      // `HEAD /`, scanners, a stale path) and logging those at ERROR with a
+      // stack trace buried real 5xx faults in routine noise.
+      // Never leak stack traces.
+      if (status >= 500) {
+        logger.error(`Unhandled exception: ${message}`, exception?.stack);
+      } else {
+        logger.debug?.(`${status} ${message}`);
+      }
       response.status(status).json({
         errorCode: 'INTERNAL_ERROR',
         message: status >= 500 ? 'An unexpected error occurred' : message,

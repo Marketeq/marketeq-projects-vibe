@@ -87,15 +87,19 @@ export function BlockImage({
   className,
   zoom,
   rotation,
+  offsetX,
+  offsetY,
 }: {
   url?: unknown
   alt?: string
   className?: string
   zoom?: unknown
   rotation?: unknown
+  offsetX?: unknown
+  offsetY?: unknown
 }) {
   if (typeof url !== "string" || !url) return null
-  const style = imageTransformStyle(zoom, rotation)
+  const style = imageTransformStyle(zoom, rotation, offsetX, offsetY)
   // eslint-disable-next-line @next/next/no-img-element
   return (
     <img
@@ -108,22 +112,35 @@ export function BlockImage({
 }
 
 /**
- * CSS transform for a case-study image's saved zoom/rotation (see
+ * CSS transform for a case-study image's saved zoom/rotation/pan (see
  * lib/case-study-mapper.ts's ImageTransform) — shared by every section's
- * edit and view rendering so the two stay in sync. `transformOrigin: center`
- * keeps rotation/scale anchored regardless of the image's own aspect ratio.
+ * edit and view rendering so all three stay in sync.
+ *
+ * `offsetX`/`offsetY` (0-100, default 50/50 = centered) drive `objectPosition`
+ * rather than a pixel-based transform translate — percentages resolve
+ * correctly against whatever box size a given section actually renders the
+ * image into (the crop modal's fixed preview vs. this section's real box vs.
+ * a different section entirely), which a saved pixel offset can't do.
+ * `transformOrigin` is pinned to the same point so zoom scales around what
+ * the user framed, not always dead-center.
  */
 export function imageTransformStyle(
   zoom?: unknown,
-  rotation?: unknown
-): React.CSSProperties | undefined {
+  rotation?: unknown,
+  offsetX?: unknown,
+  offsetY?: unknown
+): React.CSSProperties {
   const zoomValue = typeof zoom === "number" && zoom > 0 ? zoom : 1
   const rotationValue = typeof rotation === "number" ? rotation : 0
-  if (zoomValue === 1 && rotationValue === 0) return undefined
-  return {
-    transform: `scale(${zoomValue}) rotate(${rotationValue}deg)`,
-    transformOrigin: "center",
+  const xValue = typeof offsetX === "number" ? Math.min(100, Math.max(0, offsetX)) : 50
+  const yValue = typeof offsetY === "number" ? Math.min(100, Math.max(0, offsetY)) : 50
+
+  const style: React.CSSProperties = { objectPosition: `${xValue}% ${yValue}%` }
+  if (zoomValue !== 1 || rotationValue !== 0) {
+    style.transform = `scale(${zoomValue}) rotate(${rotationValue}deg)`
+    style.transformOrigin = `${xValue}% ${yValue}%`
   }
+  return style
 }
 
 // ---------------------------------------------------------------------------

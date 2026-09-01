@@ -4,16 +4,14 @@ import React, { useEffect, useReducer, useRef, useState } from "react"
 import { Reorder, motion, useDragControls, useMotionValue } from "framer-motion"
 import { getId } from "@/utils/functions"
 import {
+  CaseStudyAPI,
   type CaseStudy,
   type CaseStudyStatus,
-  createCaseStudy,
-  getCaseStudy,
-  publishCaseStudy,
-  saveCaseStudy,
-} from "@/lib/hooks/use-case-study-store"
+} from "@/service/http/case-study"
 import {
   buildColumnsData,
   regionsToSchemaJson,
+  schemaJsonToRegions,
   type CaseStudyBlockType,
   type EditorRegion,
 } from "@/lib/case-study-mapper"
@@ -84,7 +82,7 @@ function reducer(state: State, action: Action): State {
       const idx = state.regions.findIndex((r) => r.id === action.payload)
       if (idx === -1) return state
       const original = state.regions[idx]
-      const copy: EditorRegion = { id: getId(), region: original.region }
+      const copy: EditorRegion = { id: getId(), region: original.region, data: original.data }
       const newRegions = [...state.regions]
       newRegions.splice(idx + 1, 0, copy)
       return { ...state, regions: newRegions }
@@ -120,6 +118,9 @@ function reducer(state: State, action: Action): State {
 const defaultValue: State = { regions: [] }
 
 const CANVAS_WIDTH = 1240
+// The talent-view preview popup (Figma "Frame 1948757393") is a fixed
+// 1340px frame — independent of the editor canvas width above.
+const PREVIEW_WIDTH = 1340
 const TITLE_MAX_LENGTH = 120
 
 // Grows a textarea to fit its content so title/description always show
@@ -289,38 +290,66 @@ export default function CaseStudyEditor({
     autoResizeTextarea(descriptionTextareaRef.current)
   }, [description])
 
-  // Create (new) or load (existing) the case study once on mount. Both are
-  // synchronous localStorage reads/writes — no network round trip, so
-  // nothing here can fail in a way that needs an error toast.
+  // Create (new) or load (existing) the case study once on mount, against
+  // the real backend. A load failure leaves the dialog open but empty
+  // (surfaced via toast); a create failure closes the editor outright since
+  // there's no id to attach any further edits to.
   useEffect(() => {
-    if (caseStudyId) {
-      const cs = getCaseStudy(caseStudyId)
-      if (cs) {
-        setId(cs.id)
-        setTitle(cs.title)
-        setDescription(cs.description)
-        setStatus(cs.status)
-        dispatch({ type: "hydrate", payload: cs.sections })
-      } else {
-        setId(caseStudyId)
+    let cancelled = false
+    ;(async () => {
+      try {
+        if (caseStudyId) {
+          const { data: cs } = await CaseStudyAPI.Get(caseStudyId)
+          if (cancelled) return
+          setId(cs.id)
+          setTitle(cs.title)
+          setDescription(cs.description ?? "")
+          setStatus(cs.status)
+          dispatch({
+            type: "hydrate",
+            payload: schemaJsonToRegions(cs.schemaJson, getId),
+          })
+        } else {
+          const { data: cs } = await CaseStudyAPI.Create({ title })
+          if (cancelled) return
+          setId(cs.id)
+        }
+        if (!cancelled) setIsReady(true)
+      } catch (err) {
+        if (cancelled) return
+        toast({
+          title: caseStudyId ? "Couldn't load case study" : "Couldn't create case study",
+          description: "Please try again.",
+        })
+        if (!caseStudyId) onClose?.()
       }
-    } else {
-      const cs = createCaseStudy(title)
-      setId(cs.id)
+    })()
+    return () => {
+      cancelled = true
     }
-    setIsReady(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const saveNow = () => {
+  const saveNow = async () => {
     if (!id) return
-    saveCaseStudy({ id, title, description, sections: state.regions })
-    setLastSavedAt(
-      new Date().toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
+    try {
+      await CaseStudyAPI.Update(id, {
+        title,
+        description,
+        schemaJson: regionsToSchemaJson(state.regions),
       })
-    )
+      setLastSavedAt(
+        new Date().toLocaleTimeString([], {
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      )
+    } catch (err) {
+      toast({
+        title: "Couldn't save changes",
+        description: "Your latest edits may not be saved. Please check your connection.",
+      })
+    }
   }
 
   // Debounced autosave whenever the title, description, or block content changes.
@@ -336,26 +365,30 @@ export default function CaseStudyEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, description, state.regions, isReady, id])
 
-  const handlePublish = (details: PublishDetails) => {
+  const handlePublish = async (details: PublishDetails) => {
     if (!id || isPublishing) return
     setIsPublishing(true)
     if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveCaseStudy({
-      id,
-      title: details.title,
-      description,
-      sections: state.regions,
-      coverImage: details.coverImage,
-      skills: details.skills,
-    })
-    const cs = publishCaseStudy(id)
-    setLastSavedAt(
-      new Date().toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
+    try {
+      await CaseStudyAPI.Update(id, {
+        title: details.title,
+        description,
+        schemaJson: regionsToSchemaJson(state.regions),
       })
-    )
-    if (cs) {
+      const { data: cs } = await CaseStudyAPI.Publish(id, {
+        coverImage: details.coverImage,
+        coverImageZoom: details.coverImageZoom,
+        coverImageRotation: details.coverImageRotation,
+        coverImageOffsetX: details.coverImageOffsetX,
+        coverImageOffsetY: details.coverImageOffsetY,
+        skills: details.skills,
+      })
+      setLastSavedAt(
+        new Date().toLocaleTimeString([], {
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      )
       setTitle(cs.title)
       setStatus(cs.status)
       setPublishDialogOpen(false)
@@ -364,8 +397,14 @@ export default function CaseStudyEditor({
         description: `"${cs.title}" is now visible on your profile.`,
       })
       onPublished?.(cs)
+    } catch (err) {
+      toast({
+        title: "Couldn't publish case study",
+        description: "Please try again.",
+      })
+    } finally {
+      setIsPublishing(false)
     }
-    setIsPublishing(false)
   }
 
   return (
@@ -501,7 +540,7 @@ export default function CaseStudyEditor({
 
       {isPreview ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6 md:p-10">
-          <div className="w-full max-h-[90vh] flex flex-col bg-white rounded-[10px] border border-gray-200 shadow-xl overflow-hidden" style={{ maxWidth: CANVAS_WIDTH - 100 }}>
+          <div className="w-full max-h-[90vh] flex flex-col bg-white rounded-[10px] border border-gray-200 shadow-xl overflow-hidden" style={{ maxWidth: PREVIEW_WIDTH }}>
             <EditorPreviewBar
               projectName={title || projectName}
               lastSavedAt={lastSavedAt}

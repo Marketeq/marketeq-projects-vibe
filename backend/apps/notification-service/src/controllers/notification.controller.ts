@@ -142,6 +142,20 @@ export class NotificationController {
     return this.service.sendTeamInvitationEmail(data);
   }
 
+  @EventPattern('notification.email.project_shared')
+  handleSharedProjectEmail(
+    @Payload()
+    data: {
+      to: string;
+      sharerName?: string;
+      projectTitle?: string;
+      projectUrl: string;
+      note?: string;
+    },
+  ) {
+    return this.service.sendSharedProjectEmail(data);
+  }
+
   @EventPattern('notification.email.invitation_accepted')
   handleInvitationAcceptedEmail(
     @Payload()

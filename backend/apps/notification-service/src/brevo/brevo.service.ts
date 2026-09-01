@@ -112,6 +112,90 @@ export class BrevoService {
     });
   }
 
+  async sendShareProjectEmail(
+    to: string,
+    params: {
+      sharerName?: string;
+      projectTitle?: string;
+      projectUrl: string;
+      note?: string;
+    },
+  ): Promise<void> {
+    const sharer = params.sharerName?.trim();
+    const projectTitle = params.projectTitle?.trim();
+    const note = params.note?.trim();
+    const subject = projectTitle
+      ? `${projectTitle} was shared with you – Marketeq`
+      : 'A project was shared with you – Marketeq';
+
+    await this.send({
+      to: [{ email: to }],
+      subject,
+      htmlContent: this.buildShareProjectHtml({
+        sharerName: sharer,
+        projectTitle,
+        projectUrl: params.projectUrl,
+        note,
+      }),
+      tags: ['share-project'],
+    });
+  }
+
+  private buildShareProjectHtml(params: {
+    sharerName?: string;
+    projectTitle?: string;
+    projectUrl: string;
+    note?: string;
+  }): string {
+    const sharer = params.sharerName
+      ? this.escapeHtml(params.sharerName)
+      : '';
+    const projectUrl = this.escapeAttribute(params.projectUrl);
+    const projectTitle = params.projectTitle
+      ? this.escapeHtml(params.projectTitle)
+      : 'a project';
+
+    const introHtml = sharer
+      ? `<p><strong>${sharer}</strong> shared <strong>${projectTitle}</strong> with you on Marketeq.</p>`
+      : `<p><strong>${projectTitle}</strong> has been shared with you on Marketeq.</p>`;
+
+    const noteHtml = params.note
+      ? `<p style="background:#F8F9FB;border-left:3px solid #316BFF;border-radius:4px;color:#515B6F;margin:20px 0;padding:12px 16px;">${this.escapeHtml(
+          params.note,
+        )}</p>`
+      : '';
+
+    return `<!doctype html>
+<html>
+  <body style="background:#ffffff;margin:0;padding:0;">
+    <main style="color:#25324B;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.45;margin:0 auto;max-width:640px;padding:40px 24px;">
+      <div style="color:#1D3B7A;font-size:20px;font-weight:700;margin-bottom:24px;">Marketeq</div>
+      <p>Hi there,</p>
+      ${introHtml}
+      <p>Take a look at the project and see if it's a good fit for you.</p>
+      ${noteHtml}
+      <p style="margin: 24px 0;"><a href="${projectUrl}" style="background:#316BFF;border-radius:6px;color:#ffffff;display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;line-height:20px;padding:12px 18px;text-decoration:none;">View project on Marketeq</a></p>
+      <p style="color:#515B6F;font-size:13px;">If the button doesn't work, copy and paste this link into your browser:<br /><a href="${projectUrl}" style="color:#316BFF;word-break:break-all;">${projectUrl}</a></p>
+      <p style="margin-top:28px;">Best regards,</p>
+      <p>The Marketeq Projects Team</p>
+    </main>
+  </body>
+</html>`;
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private escapeAttribute(value: string): string {
+    return this.escapeHtml(value).replace(/`/g, '&#96;');
+  }
+
   /** Sends a fully-rendered HTML document (branded templates) as-is. */
   async sendHtmlEmail(
     to: string,

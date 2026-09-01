@@ -64,6 +64,13 @@ const PUBLIC_PATTERNS = [
   /^\/v1\/recently-viewed\/recommended$/,
   /^\/v1\/homepage(?:\/.*)?$/,
   /^\/public\/talent(?:\/.*)?$/,
+  // Public case-study viewer (/case-studies/[slug]) — no Marketeq session
+  // exists for an anonymous visitor sharing/opening a published case study
+  // link. portfolio-service's CaseStudyController already leaves this one
+  // route unguarded; without this pattern the gateway 401s before the
+  // request ever gets there, the same way the talent/public entries above
+  // need their own allowlist entry regardless of the downstream guard.
+  /^\/case-studies\/public\/[^/]+$/,
   /^\/v1\/users\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
   // Stripe/Ramp call these directly — no Marketeq session exists to send.
   // Authenticity is verified downstream via each provider's own signature

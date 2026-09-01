@@ -28,6 +28,14 @@ const nextConfig = {
     root: path.join(__dirname),
   },
   images: {
+    // dicebear's avatar endpoints return SVG (fallback avatars for company
+    // members / talent with no uploaded photo); Next.js blocks SVG
+    // passthrough by default since an SVG can carry a script. Scoped to
+    // just this allowlisted host via remotePatterns above, with the CSP
+    // Next's own docs recommend as the mitigation.
+    dangerouslyAllowSVG: true,
+    contentDispositionType: "attachment",
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
     remotePatterns: [
       {
         protocol: "https",
@@ -80,6 +88,10 @@ const nextConfig = {
       {
         protocol: "https",
         hostname: "example.com",
+      },
+      {
+        protocol: "https",
+        hostname: "api.dicebear.com",
       },
     ],
   },

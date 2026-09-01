@@ -55,7 +55,6 @@ const clientOnlyAccountItems: SidebarItem[] = [
 const sharedAccountTail: SidebarItem[] = [
   { href: "/settings/privacy", label: "Privacy", icon: Shield01 },
   { href: "/settings/notifications", label: "Notifications", icon: Bell },
-  { href: "/settings/tax-info", label: "Tax Info", icon: File02 },
 ]
 
 const signInSecurityItems: SidebarItem[] = [
@@ -88,6 +87,12 @@ const integrationsItems: SidebarItem[] = [
   { href: "/settings/my-apps", label: "My Apps", icon: Grid01 },
 ]
 
+// Taxes are talent-only. Marketeq pays talent, so we collect their W-9 and
+// issue their 1099. Clients pay us; there is nothing to collect from them.
+const talentOnlyAccountItems: SidebarItem[] = [
+  { href: "/settings/tax-info", label: "Tax Info", icon: File02 },
+]
+
 const buildSections = (role: string | null): SidebarSection[] => {
   const isClient = role === "CLIENT" || role === "ADMIN"
 
@@ -95,6 +100,7 @@ const buildSections = (role: string | null): SidebarSection[] => {
     ...sharedAccountItems,
     ...(isClient ? clientOnlyAccountItems : []),
     ...sharedAccountTail,
+    ...(isClient ? [] : talentOnlyAccountItems),
   ]
 
   return [

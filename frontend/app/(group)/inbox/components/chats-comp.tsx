@@ -5912,7 +5912,19 @@ export function Chats({
             router.push(href)
             setSelectedNotificationOffer(null)
           }}
-          onMessage={() => setSelectedNotificationOffer(null)}
+          onMessage={() => {
+            const firstName =
+              selectedNotificationOfferData.senderDisplayName.split(/\s+/)[0]
+            setSelectedNotificationOffer(null)
+            setSelectedTab("Messages")
+            setTextareaValue(
+              `Hi ${firstName}! I wanted to check in and see if the ${selectedNotificationOfferData.role} role for the project ${selectedNotificationOfferData.offerTitle} is still available. If so, I’m still interested.`
+            )
+            lastTypedAtRef.current = Date.now()
+            userTypedRef.current = true
+            sendTyping(true)
+            requestAnimationFrame(() => composerRef.current?.focus())
+          }}
         />
       ) : null}
 

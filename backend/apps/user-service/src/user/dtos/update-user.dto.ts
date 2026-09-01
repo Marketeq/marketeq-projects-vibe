@@ -146,4 +146,10 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   })
   @Type(() => CustomAvailabilityDto)
   customAvailability?: CustomAvailabilityDto[] | null;
+
+  @ApiPropertyOptional({ example: 'TALENT', enum: ['TALENT', 'CLIENT'] })
+  @IsOptional()
+  @IsString()
+  activeRole?: string | null;
+
 }

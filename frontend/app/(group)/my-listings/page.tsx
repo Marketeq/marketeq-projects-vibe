@@ -5,13 +5,17 @@ import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import { ProjectAPI } from "@/service/http/project"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import {
+  MY_LISTING_STATUSES,
+  type MyListing,
+  type MyListingStatus,
+  type MyListingType,
   formatRelativeTime,
   statusToBadgeVisual,
   useMyListings,
 } from "@/src/lib/my-listings"
-import { ProjectAPI } from "@/service/http/project"
 import { cn } from "@/utils/functions"
 import {
   Archive,
@@ -28,6 +32,7 @@ import {
   Monitor,
   Pause,
   Plus,
+  RefreshCw,
   Search,
   Trash02,
   Users,
@@ -39,14 +44,23 @@ import { DropdownIcon } from "@/components/icons/dropdown-icon"
 import { Grid } from "@/components/icons/grid"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
+  Avatar,
+  AvatarFallback,
+  AvatarGroup,
+  AvatarImage,
   Badge,
   Button,
   Dialog,
   DialogContent,
   DropdownMenu,
+  DropdownMenuCheckItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   IconButton,
   Tabs,
@@ -70,6 +84,15 @@ const newListingOptions = [
   },
 ]
 
+// Filter options per the my-listings Figma ("Filter by" → Offer type / Status type).
+// Both lists come from the listing model itself, so a filter option can never
+// name a status or type the app doesn't actually produce.
+const OFFER_TYPE_OPTIONS: { value: MyListingType; label: string }[] = [
+  { value: "project", label: "Projects" },
+  { value: "service", label: "Services" },
+]
+const STATUS_OPTIONS = MY_LISTING_STATUSES
+
 export default function MyListingsPage() {
   const router = useRouter()
   const { user } = useAuth()
@@ -83,6 +106,18 @@ export default function MyListingsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState("All")
   const [sortBy, setSortBy] = useState<string>("recent")
+  const [typeFilters, setTypeFilters] = useState<MyListingType[]>([])
+  const [statusFilters, setStatusFilters] = useState<MyListingStatus[]>([])
+
+  const toggleFilter = <T,>(
+    value: T,
+    setter: React.Dispatch<React.SetStateAction<T[]>>
+  ) =>
+    setter((prev) =>
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
+    )
+
+  const activeFilterCount = typeFilters.length + statusFilters.length
 
   // Redirect clients to their dashboard — listings is a talent-only page
   useEffect(() => {
@@ -100,6 +135,12 @@ export default function MyListingsPage() {
       const q = searchQuery.toLowerCase()
       items = items.filter((l) => l.title.toLowerCase().includes(q))
     }
+    if (typeFilters.length) {
+      items = items.filter((l) => typeFilters.includes(l.type))
+    }
+    if (statusFilters.length) {
+      items = items.filter((l) => statusFilters.includes(l.status))
+    }
     // Sort
     const sorted = [...items]
     switch (sortBy) {
@@ -116,6 +157,13 @@ export default function MyListingsPage() {
       case "z-a":
         sorted.sort((a, b) => b.title.localeCompare(a.title))
         break
+      case "published":
+        sorted.sort((a, b) => {
+          const aT = a.datePublished ? new Date(a.datePublished).getTime() : 0
+          const bT = b.datePublished ? new Date(b.datePublished).getTime() : 0
+          return bT - aT
+        })
+        break
       case "recent":
       case "modified":
       default:
@@ -123,40 +171,48 @@ export default function MyListingsPage() {
         break
     }
     return sorted
-  }, [listings, activeTab, searchQuery, sortBy])
+  }, [listings, activeTab, searchQuery, sortBy, typeFilters, statusFilters])
 
   const goEdit = (id: string) => router.push(editProjectListingUrl(id))
 
-  const renderListingMenu = (id: string) => (
-    <DropdownMenuContent side="bottom" align="end" className="w-56">
-      <DropdownMenuItem onClick={() => goEdit(id)}>
-        <Edit3 className="h-4 w-4" /> Edit listing
-      </DropdownMenuItem>
-      <DropdownMenuItem>
-        <Users className="h-4 w-4" /> Manage members
-      </DropdownMenuItem>
-      <DropdownMenuItem>
-        <Pause className="h-4 w-4" /> Pause listing
-      </DropdownMenuItem>
-      <DropdownMenuItem>
-        <Archive className="h-4 w-4" /> Archive listing
-      </DropdownMenuItem>
-      <DropdownMenuItem>
-        <HelpCircle className="h-4 w-4" /> Ask a question
-      </DropdownMenuItem>
-      <DropdownMenuItem>
-        <LifeBuoy className="h-4 w-4" /> Get help
-      </DropdownMenuItem>
-      <DropdownMenuItem>
-        <ExternalLink className="h-4 w-4" /> View in marketplace
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem visual="destructive">
-        <Trash02 className="h-4 w-4" />
-        Delete listing
-      </DropdownMenuItem>
-    </DropdownMenuContent>
-  )
+  // Card ••• menu — matches the Figma Project/Service menus (owner variant;
+  // my-listings only surfaces listings the current user owns).
+  const renderListingMenu = (listing: MyListing) => {
+    const noun = listing.type === "service" ? "service" : "project"
+    return (
+      <DropdownMenuContent side="bottom" align="end" className="w-56">
+        <DropdownMenuItem>
+          <Users className="h-4 w-4" /> Manage members
+        </DropdownMenuItem>
+        {/* Routes to the full editor, so the label says Edit rather than
+            Rename — there is no inline-rename endpoint yet. */}
+        <DropdownMenuItem onClick={() => goEdit(listing.id)}>
+          <Edit3 className="h-4 w-4" /> Edit {noun}
+        </DropdownMenuItem>
+        <DropdownMenuItem>
+          <Pause className="h-4 w-4" /> Pause {noun}
+        </DropdownMenuItem>
+        <DropdownMenuItem>
+          <Archive className="h-4 w-4" /> Archive {noun}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem>
+          <HelpCircle className="h-4 w-4" /> Ask a question
+        </DropdownMenuItem>
+        <DropdownMenuItem>
+          <LifeBuoy className="h-4 w-4" /> Get help
+        </DropdownMenuItem>
+        <DropdownMenuItem>
+          <ExternalLink className="h-4 w-4" /> View in marketplace
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem visual="destructive">
+          <Trash02 className="h-4 w-4" />
+          Delete {noun}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    )
+  }
 
   return (
     <AuthenticatedRoute>
@@ -241,7 +297,9 @@ export default function MyListingsPage() {
                         visual="gray"
                         variant="ghost"
                       >
-                        Filters <FilterLines className="size-[15px]" />
+                        Filters
+                        {activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+                        <FilterLines className="size-[15px]" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
@@ -249,9 +307,68 @@ export default function MyListingsPage() {
                       align="end"
                       className="min-w-[11.25rem]"
                     >
-                      <DropdownMenuItem>All Listings</DropdownMenuItem>
-                      <DropdownMenuItem>Listing type</DropdownMenuItem>
-                      <DropdownMenuItem>Status type</DropdownMenuItem>
+                      <DropdownMenuLabel>Filter by</DropdownMenuLabel>
+                      <DropdownMenuItem
+                        onSelect={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setTypeFilters([])
+                          setStatusFilters([])
+                        }}
+                      >
+                        All Offers
+                      </DropdownMenuItem>
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger className="[&>svg]:hidden">
+                          Offer type
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="min-w-[11.25rem]">
+                          <DropdownMenuCheckItem
+                            checked={typeFilters.length === 0}
+                            onSelect={(e) => e.preventDefault()}
+                            onCheckedChange={() => setTypeFilters([])}
+                          >
+                            All Types
+                          </DropdownMenuCheckItem>
+                          {OFFER_TYPE_OPTIONS.map((o) => (
+                            <DropdownMenuCheckItem
+                              key={o.value}
+                              checked={typeFilters.includes(o.value)}
+                              onSelect={(e) => e.preventDefault()}
+                              onCheckedChange={() =>
+                                toggleFilter(o.value, setTypeFilters)
+                              }
+                            >
+                              {o.label}
+                            </DropdownMenuCheckItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger className="[&>svg]:hidden">
+                          Status type
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="min-w-[11.25rem]">
+                          <DropdownMenuCheckItem
+                            checked={statusFilters.length === 0}
+                            onSelect={(e) => e.preventDefault()}
+                            onCheckedChange={() => setStatusFilters([])}
+                          >
+                            All Statuses
+                          </DropdownMenuCheckItem>
+                          {STATUS_OPTIONS.map((s) => (
+                            <DropdownMenuCheckItem
+                              key={s}
+                              checked={statusFilters.includes(s)}
+                              onSelect={(e) => e.preventDefault()}
+                              onCheckedChange={() =>
+                                toggleFilter(s, setStatusFilters)
+                              }
+                            >
+                              {s}
+                            </DropdownMenuCheckItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
                     </DropdownMenuContent>
                   </DropdownMenu>
                   <DropdownMenu>
@@ -284,6 +401,9 @@ export default function MyListingsPage() {
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setSortBy("modified")}>
                         Last Modified{sortBy === "modified" ? " ✓" : ""}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy("published")}>
+                        Last Published{sortBy === "published" ? " ✓" : ""}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -323,28 +443,42 @@ export default function MyListingsPage() {
                         ? "No listings have been shared with you yet."
                         : searchQuery
                           ? "No listings match your search."
-                          : "You haven't created any listings yet."}
+                          : activeFilterCount > 0
+                            ? "No listings match your filters."
+                            : "You haven't created any listings yet."}
                     </p>
-                    {!searchQuery && activeTab !== "Shared" && (
+                    {activeFilterCount > 0 && activeTab !== "Shared" ? (
                       <Button
                         className="mt-4"
                         variant="outlined"
                         visual="gray"
-                        onClick={() => setShowNewListingDialog(true)}
+                        onClick={() => {
+                          setTypeFilters([])
+                          setStatusFilters([])
+                        }}
                       >
-                        <Plus className="size-[15px]" />
-                        Create your first listing
+                        Clear filters
                       </Button>
+                    ) : (
+                      !searchQuery &&
+                      activeTab !== "Shared" && (
+                        <Button
+                          className="mt-4"
+                          variant="outlined"
+                          visual="gray"
+                          onClick={() => setShowNewListingDialog(true)}
+                        >
+                          <Plus className="size-[15px]" />
+                          Create your first listing
+                        </Button>
+                      )
                     )}
                   </div>
                 ) : viewMode === "grid" ? (
                   <div className="grid grid-cols-4 gap-4 pt-[20px]">
                     {filteredListings.map((listing) => (
-                      <article
-                        key={listing.id}
-                        className="group rounded-xl bg-white shadow-sm border border-gray-200 overflow-hidden"
-                      >
-                        <div className="h-[170px] relative overflow-hidden bg-gray-100">
+                      <article key={listing.id} className="group">
+                        <div className="h-[170px] relative overflow-hidden rounded-xl bg-gray-100">
                           {listing.mediaUrl ? (
                             <Image
                               className="object-cover group-hover:scale-105 transition-transform duration-300"
@@ -391,33 +525,71 @@ export default function MyListingsPage() {
                                     </span>
                                   </IconButton>
                                 </DropdownMenuTrigger>
-                                {renderListingMenu(listing.id)}
+                                {renderListingMenu(listing)}
                               </DropdownMenu>
                             </div>
                             <span className="text-white text-sm font-medium tracking-wide">
                               View Details
                             </span>
                           </div>
-                          {/* Status indicator on image */}
-                          <div className="absolute top-2.5 left-2.5 opacity-100 group-hover:opacity-0 transition-opacity duration-300">
+                          {/* Service-type indicator on image */}
+                          {listing.type === "service" && (
+                            <div className="absolute top-2.5 left-2.5 opacity-100 group-hover:opacity-0 transition-opacity duration-300">
+                              <Badge
+                                size="md"
+                                className="gap-x-1 border-transparent bg-gray-900/80 text-white"
+                              >
+                                <RefreshCw className="size-3" />
+                                Service
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
+                        <div className="pt-3">
+                          <div className="flex items-start justify-between gap-x-2">
+                            <h2
+                              className="text-sm font-semibold text-dark-blue-400 line-clamp-2 hover:text-primary-500 cursor-pointer transition-colors duration-150"
+                              onClick={() => goEdit(listing.id)}
+                            >
+                              {listing.title || "Untitled Listing"}
+                            </h2>
+                            {listing.teamAvatars &&
+                              listing.teamAvatars.length > 0 && (
+                                <div className="shrink-0">
+                                  <AvatarGroup
+                                    max={3}
+                                    size="sm"
+                                    excess
+                                    excessClassName="border-gray-300 text-gray-500"
+                                  >
+                                    {listing.teamAvatars.map((src, i) => (
+                                      <Avatar
+                                        key={i}
+                                        size="sm"
+                                        className="border-2 border-white hover:ring-0 active:ring-0"
+                                      >
+                                        <AvatarImage
+                                          src={src}
+                                          alt="Team member"
+                                        />
+                                        <AvatarFallback />
+                                      </Avatar>
+                                    ))}
+                                  </AvatarGroup>
+                                </div>
+                              )}
+                          </div>
+                          <div className="mt-2 flex items-center gap-x-2">
                             <Badge
                               size="md"
                               visual={statusToBadgeVisual(listing.status)}
                             >
                               {listing.status}
                             </Badge>
+                            <p className="text-xs text-gray-400">
+                              Updated {formatRelativeTime(listing.updatedAt)}
+                            </p>
                           </div>
-                        </div>
-                        <div className="px-3.5 py-3">
-                          <h2
-                            className="text-sm font-semibold text-dark-blue-400 line-clamp-1 hover:text-primary-500 cursor-pointer transition-colors duration-150"
-                            onClick={() => goEdit(listing.id)}
-                          >
-                            {listing.title || "Untitled Listing"}
-                          </h2>
-                          <p className="text-xs text-gray-400 mt-1.5">
-                            Updated {formatRelativeTime(listing.updatedAt)}
-                          </p>
                         </div>
                       </article>
                     ))}
@@ -433,7 +605,7 @@ export default function MyListingsPage() {
                         </th>
                         <th className="text-left px-6 py-3 border-b border-gray-200">
                           <span className="text-xs leading-[18px] font-medium text-dark-blue-400">
-                            Type
+                            Team
                           </span>
                         </th>
                         <th className="text-left px-6 py-3 border-b border-gray-200">
@@ -457,14 +629,50 @@ export default function MyListingsPage() {
                           onClick={() => goEdit(listing.id)}
                         >
                           <td className="px-6 py-2">
-                            <span className="text-sm font-semibold text-dark-blue-400">
-                              {listing.title}
-                            </span>
+                            <div className="flex items-center gap-x-2">
+                              <span className="text-sm font-semibold text-dark-blue-400">
+                                {listing.title}
+                              </span>
+                              {/* The Type column was replaced by Team, so the
+                                  service marker moves next to the name here —
+                                  same badge the grid card uses. */}
+                              {listing.type === "service" && (
+                                <Badge
+                                  size="md"
+                                  visual="gray"
+                                  className="gap-x-1"
+                                >
+                                  <RefreshCw className="size-3" />
+                                  Service
+                                </Badge>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-2">
-                            <span className="text-sm leading-5 text-gray-500 capitalize">
-                              {listing.type}
-                            </span>
+                            {listing.teamAvatars &&
+                            listing.teamAvatars.length > 0 ? (
+                              <AvatarGroup
+                                max={3}
+                                size="sm"
+                                excess
+                                excessClassName="border-gray-300 text-gray-500"
+                              >
+                                {listing.teamAvatars.map((src, i) => (
+                                  <Avatar
+                                    key={i}
+                                    size="sm"
+                                    className="border-2 border-white hover:ring-0 active:ring-0"
+                                  >
+                                    <AvatarImage src={src} alt="Team member" />
+                                    <AvatarFallback />
+                                  </Avatar>
+                                ))}
+                              </AvatarGroup>
+                            ) : (
+                              <span className="text-sm leading-5 text-gray-400">
+                                —
+                              </span>
+                            )}
                           </td>
                           <td className="px-6 py-2">
                             <Badge
@@ -489,7 +697,7 @@ export default function MyListingsPage() {
                                   <DotsHorizontal className="size-[15px]" />
                                 </IconButton>
                               </DropdownMenuTrigger>
-                              {renderListingMenu(listing.id)}
+                              {renderListingMenu(listing)}
                             </DropdownMenu>
                           </td>
                         </tr>

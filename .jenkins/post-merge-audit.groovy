@@ -166,14 +166,14 @@ print('|'.join(failed) if failed else '')
 
                         echo "PR #\$PR_NUM merged with failing checks: \$FAILED_CHECKS"
 
-                        # ALERT ONLY -- post a comment. NEVER auto-revert.
+                        # REPORT ONLY -- post a comment. This pipeline never modifies code.
                         echo "\$FAILED_CHECKS" | tr '|' '\n' | sed 's/^/- /' > /tmp/failed_list.txt
                         python3 -c "
 import json
 failed = open('/tmp/failed_list.txt').read().strip()
 body = '## SOP Audit Warning\\\\n\\\\nThis PR was merged with failing checks:\\\\n' + failed.replace(chr(10), '\\\\n') + '\\\\n\\\\n'
 body += '**Action required:** Review whether these failures are legitimate.\\\\n'
-body += 'No auto-revert performed. Reverts require manual decision.\\\\n\\\\n'
+body += 'Fix forward: keep the code and open a follow-up PR.\\\\n\\\\n'
 body += 'Posted by Jenkins CI'
 print(json.dumps({'body': body}))
 " > pr_comment.json
@@ -181,7 +181,7 @@ print(json.dumps({'body': body}))
                             -d @pr_comment.json \
                             "https://api.github.com/repos/${env.REPO}/issues/\${PR_NUM}/comments" > /dev/null 2>&1 || true
 
-                        echo "Posted audit warning -- no auto-revert"
+                        echo "Posted audit warning -- report only"
                     """
                 }
             }
