@@ -18,7 +18,7 @@ import {
 } from "@/service/http/earnings"
 import { UserAPI } from "@/service/http/user"
 import { cn } from "@/utils/functions"
-import { useEarningsChannel } from "@/utils/useEarningsChannel"
+import { useEarningsChannel, EarningsRealtimeEvent } from "@/utils/useEarningsChannel"
 import { DashboardAmount } from "@/components/dashboard-amount"
 import {
   AlertCircle,
@@ -3280,10 +3280,19 @@ export const OverviewTab = ({
   // effects below (fallback-only now).
   const { isLive } = useEarningsChannel({
     // US-91: balance card + all four summary cards re-fetch immediately.
-    onBalanceUpdated: React.useCallback(() => {
+    // payout_completed is folded into this generic event (see
+    // EarningsEventsPublisher.eventNameFor on the backend — only reversal
+    // and payout_failed get their own named events) — Recent Activity needs
+    // its own re-fetch here too, or a completed payout only ever updates
+    // the balance card while staying "Processing" in the activity list
+    // until the next 60s poll.
+    onBalanceUpdated: React.useCallback((evt: EarningsRealtimeEvent) => {
       loadBalance()
       loadSummary()
-    }, [loadBalance, loadSummary]),
+      if (evt.mutationType === "payout_completed") {
+        loadRecentActivity()
+      }
+    }, [loadBalance, loadSummary, loadRecentActivity]),
     // US-92: re-fetch Recent Earnings immediately — the status-diff effect
     // below (which owns the exact toast copy) fires as soon as it sees the
     // entry flip to "failed", now within ~200ms instead of up to 60s.
