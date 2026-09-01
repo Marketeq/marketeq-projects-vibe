@@ -42,6 +42,12 @@ function PersonasEdit({
   const [imageRotation, setImageRotation] = useState<number>(
     (initialData?.imageRotation as number) ?? 0
   )
+  const [imageOffsetX, setImageOffsetX] = useState<number>(
+    (initialData?.imageOffsetX as number) ?? 50
+  )
+  const [imageOffsetY, setImageOffsetY] = useState<number>(
+    (initialData?.imageOffsetY as number) ?? 50
+  )
   const [isImageEditOpen, setIsImageEditOpen] = useState(false)
 
   useEffect(() => {
@@ -54,12 +60,14 @@ function PersonasEdit({
       imageUrl,
       imageZoom,
       imageRotation,
+      imageOffsetX,
+      imageOffsetY,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, role, about, goals, frustrations, imageUrl, imageZoom, imageRotation])
+  }, [name, role, about, goals, frustrations, imageUrl, imageZoom, imageRotation, imageOffsetX, imageOffsetY])
 
   return (
-    <div className="grid grid-cols-[493px_545px] border border-gray-200 rounded-lg  relative group">
+    <div className="grid grid-cols-[493fr_545fr] border border-gray-200 rounded-lg  relative group">
       <div className="group/column relative rounded-l-lg flex flex-col justify-end">
         <PictureEditor
           skipEditStep
@@ -77,7 +85,7 @@ function PersonasEdit({
                     src={dataUrl || imageUrl}
                     aria-label="Picture"
                     className="size-full object-cover rounded-l-lg"
-                    style={imageTransformStyle(imageZoom, imageRotation)}
+                    style={imageTransformStyle(imageZoom, imageRotation, imageOffsetX, imageOffsetY)}
                   />
                 </div>
               ) : null}
@@ -89,6 +97,8 @@ function PersonasEdit({
                   setImageUrl(undefined)
                   setImageZoom(1)
                   setImageRotation(0)
+                  setImageOffsetX(50)
+                  setImageOffsetY(50)
                 }}
                 onEdit={() => setIsImageEditOpen(true)}
                 enableEdit={!!dataUrl || !!imageUrl}
@@ -104,9 +114,15 @@ function PersonasEdit({
           title="Edit Image"
           initialZoom={imageZoom}
           initialRotation={imageRotation}
-          onSave={({ zoom, rotation }) => {
+          initialOffsetX={imageOffsetX}
+          initialOffsetY={imageOffsetY}
+          aspectRatio={493 / 430.9}
+          objectFit="cover"
+          onSave={({ zoom, rotation, offsetX, offsetY }) => {
             setImageZoom(zoom)
             setImageRotation(rotation)
+            setImageOffsetX(offsetX)
+            setImageOffsetY(offsetY)
           }}
         />
 
@@ -182,9 +198,16 @@ function PersonasEdit({
 function PersonasView({ data }: { data?: Record<string, unknown> }) {
   const d = data ?? {}
   return (
-    <section className="grid md:grid-cols-[493px_545px] border border-gray-200 rounded-lg overflow-hidden">
-      <div className="relative min-h-[300px]">
-        <BlockImage url={d.imageUrl} zoom={d.imageZoom} rotation={d.imageRotation} />
+    <section className="grid md:grid-cols-[493fr_545fr] border border-gray-200 rounded-lg overflow-hidden">
+      <div className="relative min-h-[300px] overflow-hidden">
+        <BlockImage
+          url={d.imageUrl}
+          zoom={d.imageZoom}
+          rotation={d.imageRotation}
+          offsetX={d.imageOffsetX}
+          offsetY={d.imageOffsetY}
+          className="absolute inset-0 h-full w-full rounded-none"
+        />
         <div className="bg-black/20 p-8 flex flex-col justify-end absolute inset-0">
           <Html
             html={d.nameHtml}

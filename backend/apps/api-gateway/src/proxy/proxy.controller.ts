@@ -20,6 +20,8 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   algolia: 'algolia',
   favorites: 'favorites',
   portfolio: 'portfolio',
+  'case-studies': 'portfolio',  // portfolio-service's case-study builder API
+  media: 'portfolio',           // portfolio-service's R2 presigned media upload/delete
   invitations: 'invitations',
   companies: 'users',           // company + roster CRUD lives in user-service
   moderation: 'moderation',

@@ -3,8 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { ClientProxy } from '@nestjs/microservices';
-import { Invitation, InvitationStatus } from '../entities/invitation.entity';
-import { CreateInvitationsDto, CreateInviteLinkDto, ListInvitationsDto, AcceptInvitationDto } from '../dto/invitation.dto';
+import { randomBytes } from 'crypto';
+import { Invitation, InvitationStatus, InvitationRole } from '../entities/invitation.entity';
+import { CreateInvitationsDto, CreateInviteLinkDto, ListInvitationsDto, AcceptInvitationDto, ShareProjectLinkDto } from '../dto/invitation.dto';
 import { generateInviteLinkToken, verifyInviteLinkToken } from '../auth/token.util';
 import {
   generateInviteSecret,
@@ -370,6 +371,52 @@ export class InvitationsService {
       results.push({ ...inv, alreadyInvited: false });
     }
     return results;
+  }
+
+  async shareProjectLink(
+    dto: ShareProjectLinkDto,
+    sharer: { id?: string; sub?: string; email?: string },
+  ) {
+    const sharerEmail = sharer?.email?.trim();
+    let sharerName = sharerEmail || undefined;
+    const sharerId = sharer?.id ?? sharer?.sub;
+    if (sharerId) {
+      try {
+        const summary = await this.userService.getUserSummary(sharerId);
+        const fullName = [summary.firstName, summary.lastName]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+        if (fullName) {
+          sharerName = sharerEmail ? `${fullName} (${sharerEmail})` : fullName;
+        }
+      } catch {
+        // fall back to email
+      }
+    }
+    const note = dto.message?.trim() || undefined;
+
+    const results: Array<{ email: string; sent: boolean }> = [];
+    for (const email of dto.emails) {
+      try {
+        this.rabbitmq.emit('notification.email.project_shared', {
+          to: email,
+          sharerName,
+          projectTitle: dto.projectTitle,
+          projectUrl: dto.projectUrl,
+          note,
+        });
+        this.logger.log(`[ShareProject] Link email queued: to=${email}`);
+        results.push({ email, sent: true });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `[ShareProject] Failed to queue link email: to=${email} error=${message}`,
+        );
+        results.push({ email, sent: false });
+      }
+    }
+    return { success: true, results };
   }
 
   /** notification.email.team_invitation, consumed by notification-service's

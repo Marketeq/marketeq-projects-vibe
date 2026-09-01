@@ -1,9 +1,9 @@
-import { getPublicPortfolioUrl } from "@/lib/runtime-urls"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import AxiosRequest from ".."
 
-const BASE = getPublicPortfolioUrl()
+const BASE = getPublicApiUrl()
 
-export type CaseStudyStatus = "draft" | "published" | "archived"
+export type CaseStudyStatus = "draft" | "published" | "hidden" | "archived"
 
 export interface CaseStudyBlock {
   type: string
@@ -19,6 +19,13 @@ export interface CaseStudy {
   schemaJson: { blocks: CaseStudyBlock[] } | null
   htmlPreview: string | null
   htmlPublished: string | null
+  description: string | null
+  coverImage: string | null
+  coverImageZoom: number
+  coverImageRotation: number
+  coverImageOffsetX: number
+  coverImageOffsetY: number
+  skills: string[]
   createdAt: string
   updatedAt: string
 }
@@ -41,13 +48,24 @@ export interface CreateCaseStudyPayload {
 
 export interface UpdateCaseStudyPayload {
   title?: string
+  description?: string
   schemaJson?: { blocks: CaseStudyBlock[] }
+}
+
+export interface PublishCaseStudyPayload {
+  coverImage?: string
+  coverImageZoom?: number
+  coverImageRotation?: number
+  coverImageOffsetX?: number
+  coverImageOffsetY?: number
+  skills?: string[]
 }
 
 export interface RequestUploadResult {
   uploadUrl: string
   publicUrl: string
   key: string
+  contentType: string
 }
 
 export const CaseStudyAPI = {
@@ -75,8 +93,17 @@ export const CaseStudyAPI = {
       { blockOrder }
     )
   },
-  Publish: (id: string) => {
-    return AxiosRequest.post<undefined>(`${BASE}/case-studies/${id}/publish`, undefined)
+  Publish: (id: string, details?: PublishCaseStudyPayload) => {
+    return AxiosRequest.post<PublishCaseStudyPayload | undefined>(
+      `${BASE}/case-studies/${id}/publish`,
+      details
+    )
+  },
+  SetVisibility: (id: string, status: Extract<CaseStudyStatus, "published" | "hidden">) => {
+    return AxiosRequest.patch<{ status: string }>(
+      `${BASE}/case-studies/${id}/visibility`,
+      { status }
+    )
   },
   Delete: (id: string) => {
     return AxiosRequest.del(`${BASE}/case-studies/${id}`)

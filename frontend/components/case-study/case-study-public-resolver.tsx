@@ -1,11 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import {
-  getCaseStudyBySlug,
-  type CaseStudy,
-} from "@/lib/hooks/use-case-study-store"
-import { regionsToSchemaJson } from "@/lib/case-study-mapper"
+import { CaseStudyAPI, type CaseStudy } from "@/service/http/case-study"
 import {
   DEMO_BREADCRUMB,
   DEMO_PRICING,
@@ -20,10 +16,8 @@ import {
 import { PublicViewPage } from "./public-view-page"
 
 /**
- * Client-side slug resolution for /case-studies/[slug]. Locally-published
- * case studies only exist in this browser's localStorage (see
- * lib/hooks/use-case-study-store.ts) — there's no backend record to fetch
- * server-side, so resolution has to happen after mount. The marketplace
+ * Client-side slug resolution for /case-studies/[slug], fetched from
+ * portfolio-service's public (unauthenticated) endpoint. The marketplace
  * chrome around the case study (pricing, team, similar projects, etc.) has
  * no backing data model yet, so it's always demo content regardless of
  * whether the case study itself resolves to a real one.
@@ -35,12 +29,18 @@ export function CaseStudyPublicResolver({ slug }: { slug: string }) {
   const [caseStudy, setCaseStudy] = useState<CaseStudy | null>(null)
 
   useEffect(() => {
-    const cs = getCaseStudyBySlug(slug)
-    if (cs && cs.status === "published") {
-      setCaseStudy(cs)
-      setStatus("found")
-    } else {
-      setStatus("not-found")
+    let cancelled = false
+    CaseStudyAPI.GetPublicBySlug(slug)
+      .then(({ data }) => {
+        if (cancelled) return
+        setCaseStudy(data)
+        setStatus("found")
+      })
+      .catch(() => {
+        if (!cancelled) setStatus("not-found")
+      })
+    return () => {
+      cancelled = true
     }
   }, [slug])
 
@@ -55,14 +55,13 @@ export function CaseStudyPublicResolver({ slug }: { slug: string }) {
           Case study not found
         </h1>
         <p className="mt-2 text-sm text-gray-500 max-w-sm">
-          This case study doesn&apos;t exist, or hasn&apos;t been published
-          yet on this device.
+          This case study doesn&apos;t exist, or hasn&apos;t been published.
         </p>
       </div>
     )
   }
 
-  const blocks = regionsToSchemaJson(caseStudy.sections).blocks
+  const blocks = caseStudy.schemaJson?.blocks ?? []
 
   return (
     <PublicViewPage
