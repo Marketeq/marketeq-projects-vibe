@@ -79,6 +79,27 @@ Internal padding of cards, panels, and content widgets.
 | `p-4` | 16px | Compact cards, modals, dialog content |
 | `p-3` | 12px | Tight widget padding (message input area, inline tools) |
 
+### Card Corners & Shadow (do not improvise these)
+
+Every card, panel and widget corner is **8px** — `rounded-lg`. Do not reach for
+`rounded-[8px]`, `rounded-md`, or any other arbitrary radius; `rounded-lg`
+already resolves to 8px and is the only class to use for a card corner.
+
+| Value | Pixels | When to use |
+|-------|--------|-------------|
+| `rounded-lg` | 8px | Every card, panel, widget and listing card |
+| `rounded-[6px]` | 6px | Media/thumbnail wells **inside** a card |
+| `rounded-full` | — | Avatars, pills, icon buttons |
+
+Card shadow is `shadow-xs` = `0px 1px 4px 0px rgba(0,0,0,0.03)`, defined in
+`tailwind.config.ts`. Use the class, not an inline `shadow-[...]` value.
+
+**When a child sits flush against a card edge** — a media panel down the left
+of a list card, a footer strip — give that child the matching corner
+(`rounded-l-lg`, `rounded-b-lg`). `overflow-hidden` on the parent alone leaves
+the child's own border cutting straight across the curve, which reads as a
+broken corner.
+
 ### Grid Gaps (Between Cards in Grids)
 
 | Value | Pixels | When to use |

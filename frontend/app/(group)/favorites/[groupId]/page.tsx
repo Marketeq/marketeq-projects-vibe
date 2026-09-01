@@ -383,22 +383,27 @@ export default function FavoriteGroupDetailPage() {
           )}
         </div>
 
-        <div className="flex items-center gap-x-3 self-start pt-2 lg:gap-x-6">
-          <div className="flex items-center gap-x-3 lg:gap-x-3.5">
-            <SortDropdown value={sortBy} onChange={setSortBy} />
+        <div className="flex items-center gap-x-3 self-start lg:gap-x-6">
+          <SortDropdown value={sortBy} onChange={setSortBy} />
 
             <ToggleGroupRoot
+              className="gap-x-0 overflow-hidden rounded-[5px] border-gray-200 bg-white p-0"
               value={value}
               onValueChange={(details) => setValue(details.value)}
             >
-              <ToggleGroupItem value={GRID_LAYOUT}>
-                <Grid className="size-4 lg:size-6" />
+              <ToggleGroupItem
+                className="size-10 rounded-none bg-gray-100 px-0 data-[state=on]:bg-white data-[state=on]:shadow-none"
+                value={GRID_LAYOUT}
+              >
+                <Grid className="size-[18px]" />
               </ToggleGroupItem>
-              <ToggleGroupItem value={LIST_LAYOUT}>
-                <List className="size-4 lg:size-6" />
+              <ToggleGroupItem
+                className="size-10 rounded-none bg-gray-100 px-0 data-[state=on]:bg-white data-[state=on]:shadow-none"
+                value={LIST_LAYOUT}
+              >
+                <List className="size-[18px]" />
               </ToggleGroupItem>
             </ToggleGroupRoot>
-          </div>
 
           <NewGroupModal
             onCreated={() => router.push("/favorites")}
