@@ -698,7 +698,7 @@ function ProjectListingCard({
   // duration/budget on one line with the rating pushed to the far right.
   if (layout === "list") {
     return (
-      <article className="flex w-full items-start overflow-hidden rounded-[8px] border border-[rgba(18,42,75,0.15)] bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,0.04)]">
+      <article className="flex w-full items-start overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
         <NextLink
           href={computedHref}
           className="relative w-[284px] shrink-0 self-stretch border-b border-black/15 bg-[#fbfbfb] focus-visible:outline-none"

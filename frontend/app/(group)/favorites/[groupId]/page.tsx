@@ -419,13 +419,15 @@ export default function FavoriteGroupDetailPage() {
           </p>
         </div>
 
-        <NextLink
-          href="/favorites"
-          className="inline-flex items-center gap-x-2 text-base font-semibold capitalize leading-6 text-gray-500 transition-colors duration-300 hover:text-dark-blue-400"
+        <Button
+          className="group px-0 text-base font-semibold capitalize leading-6 text-gray-500"
+          variant="link"
+          visual="gray"
+          onClick={() => router.push("/favorites")}
         >
-          <ArrowLeft className="size-[15px]" />
+          <ArrowLeft className="size-[15px] transition duration-300 group-hover:-translate-x-[4px]" />{" "}
           Back To Groups
-        </NextLink>
+        </Button>
       </div>
 
       {/* Content */}
