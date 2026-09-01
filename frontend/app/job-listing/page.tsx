@@ -9507,12 +9507,12 @@ const DescribeProjectStep = ({
                           Choose a File
                         </span>
                       </div>
-                      <p className="max-w-[838px] text-center text-sm leading-5 text-dark-blue-400">
+                      <p className="max-w-[408px] text-center text-xs leading-[15px] font-light text-gray-500">
                         Upload a scope document to help clients understand your
                         project details and allow us to generate accurate
                         suggestions.
                       </p>
-                      <p className="text-sm leading-5 text-gray-500">
+                      <p className="text-xs leading-[15px] text-gray-500">
                         Recommended Format: PDF or DOCX
                       </p>
                     </div>
@@ -9971,6 +9971,32 @@ const DescribeProjectStep = ({
                   })}
                 </RadioGroup>
               </div>
+
+              {scopeKnowledgeChoice === "known" ? (
+                <div className="space-y-3">
+                  <div className="flex h-7 items-baseline justify-between gap-2">
+                    <Label className={descriptionLabelClassName}>
+                      How will you know this project is successful?
+                    </Label>
+                    <span className={descriptionCounterClassName}>
+                      {successCriteria.length}/100
+                    </span>
+                  </div>
+                  <Textarea
+                    maxLength={100}
+                    value={successCriteria}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setSuccessCriteria(value);
+                      updateDraftDetails({
+                        successCriteria: value.trim(),
+                      });
+                    }}
+                    placeholder="Launch MVP by October, increase signups by 20%, working prototype demo"
+                    className={descriptionTextareaClassName}
+                  />
+                </div>
+              ) : null}
 
               {isService ? (
                 <div className="mt-5 space-y-2">
