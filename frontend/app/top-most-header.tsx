@@ -1686,6 +1686,8 @@ export const TopMostHeader = ({
   // homepage/category surfaces, so the primary header must coordinate with it.
   const hasSecondaryNav =
     HAS_SECONDARY_NAV.includes(pathname) ||
+    pathname === "/favorites" ||
+    pathname.startsWith("/favorites/") ||
     pathname.startsWith("/c/") ||
     pathname.startsWith("/project-details/") ||
     pathname.startsWith("/job-details/")
