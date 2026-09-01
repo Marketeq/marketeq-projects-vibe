@@ -8,7 +8,7 @@ import { InjectQueue }         from '@nestjs/bull';
 import { Queue }               from 'bull';
 import { createHash } from 'crypto';
 
-import { PayoutRequest, PayoutStatus, PayoutTrigger } from '../entities/payout-request.entity';
+import { PayoutRequest, PayoutStatus, PayoutTrigger, PayoutSpeed } from '../entities/payout-request.entity';
 import { DepositMethod, VerificationStatus, MethodType } from '../entities/deposit-method.entity';
 import { MagicLinkToken }     from '../entities/magic-link-token.entity';
 import { PayoutSchedule }     from '../entities/payout-schedule.entity';
@@ -261,6 +261,7 @@ export class PayoutService {
         status: PayoutStatus.PENDING_VERIFICATION,
         amountUsd: dto.amountUsd, feeUsd, netAmountUsd,
         currency: 'USD',
+        speed: dto.speed as PayoutSpeed,
       });
       (req as any).depositMethodId = dto.depositMethodId;
       await em.save(req);
@@ -723,8 +724,21 @@ export class PayoutService {
     if (TERMINAL.has(r.status)) return null;
     const methodType = r.depositMethod?.methodType;
     if (!methodType) return null;
-    const days = PayoutService.ARRIVAL_BUSINESS_DAYS[methodType] ?? 3;
     const from = r.processingAt ?? r.queuedAt ?? r.createdAt;
+
+    // Stripe's real Instant Payouts method (bank-payout-executor.service.ts)
+    // is the only rail this system actually requests as instant from the
+    // provider — matches the "15 minutes" promised at checkout. Every other
+    // method's executor has no instant code path regardless of what speed
+    // was selected, so estimating 15 minutes there would just repeat the
+    // exact mismatch this fixes: fee charged, no real speed change.
+    if (r.speed === PayoutSpeed.INSTANT && methodType === MethodType.BANK_STRIPE) {
+      const arrival = new Date(from);
+      arrival.setUTCMinutes(arrival.getUTCMinutes() + 30);
+      return arrival.toISOString();
+    }
+
+    const days = PayoutService.ARRIVAL_BUSINESS_DAYS[methodType] ?? 3;
     return this.addBusinessDays(from, days).toISOString();
   }
 

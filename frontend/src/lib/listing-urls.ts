@@ -67,3 +67,45 @@ export function teamDetailsUrl(id: string): string {
 export function editProjectListingUrl(draftId: string): string {
   return `/my-listings/${draftId}`
 }
+
+/**
+ * Favorites group page.
+ *
+ * The group name rides in the path so a shared link reads as
+ * `/favorites/development-403d883e-…` rather than a bare UUID, following the
+ * same slug-plus-id shape as `projectDetailsUrl`. The full id is kept intact
+ * so lookups still work, and `favoriteGroupIdFromParam` reverses it.
+ *
+ * `name` and `type` stay on the query string as display hints; the page falls
+ * back to the slug when they are missing, so a trimmed link still reads right.
+ */
+export function favoriteGroupUrl(
+  groupId: string,
+  groupName: string,
+  type: string
+): string {
+  const slug = groupName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+  const segment = slug ? `${slug}--${groupId}` : groupId
+  return `/favorites/${segment}?name=${encodeURIComponent(groupName)}&type=${type}`
+}
+
+/** The group id from a `{slug}--{id}` path segment, or the segment itself. */
+export function favoriteGroupIdFromParam(segment: string): string {
+  const marker = segment.lastIndexOf("--")
+  return marker === -1 ? segment : segment.slice(marker + 2)
+}
+
+/** The display name implied by a `{slug}--{id}` segment, when no name param. */
+export function favoriteGroupNameFromParam(segment: string): string {
+  const marker = segment.lastIndexOf("--")
+  if (marker <= 0) return ""
+  return segment
+    .slice(0, marker)
+    .split("-")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+}

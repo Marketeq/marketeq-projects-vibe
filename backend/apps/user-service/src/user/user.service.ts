@@ -243,6 +243,16 @@ export class UserService {
     return this.updateUser(id, { preferredCurrency: currency });
   }
 
+  /**
+   * Persist which role the account is acting as. Deliberately does NOT touch
+   * `role` or `userType`: those are profile labels other features authorise
+   * and route on, so overwriting them on a UI toggle would change behaviour
+   * well beyond the switcher.
+   */
+  async updateActiveRole(id: string, activeRole: string): Promise<User> {
+    return this.updateUser(id, { activeRole });
+  }
+
   async getPreferredCurrency(id: string): Promise<string | null> {
     const user = await this.userRepository.findOne({
       where: { id },

@@ -37,7 +37,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
           : false,
       }),
     }),
-    HttpModule.register({ timeout: 30000 }),
+    HttpModule.register({ timeout: 60000 }),
     HomepageModule,
     BlogModule,
     PassportModule,

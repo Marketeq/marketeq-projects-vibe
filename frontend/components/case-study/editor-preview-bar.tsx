@@ -9,7 +9,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui"
-import { CASE_STUDY_PUBLISH_ENABLED } from "@/lib/case-study-flags"
 
 /**
  * The secondary top bar shown above the in-editor client preview — mirrors
@@ -65,15 +64,13 @@ export function EditorPreviewBar({
             </Tooltip>
           </TooltipProvider>
 
-          {CASE_STUDY_PUBLISH_ENABLED && (
-            <Button
-              type="button"
-              onClick={onPublish}
-              className="h-auto px-[14px] py-2 text-xs font-semibold"
-            >
-              Publish
-            </Button>
-          )}
+          <Button
+            type="button"
+            onClick={onPublish}
+            className="h-auto px-[14px] py-2 text-xs font-semibold"
+          >
+            Publish
+          </Button>
         </div>
 
         <IconButton

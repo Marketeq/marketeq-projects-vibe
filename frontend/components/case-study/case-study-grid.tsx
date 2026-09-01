@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Image01, Upload } from "@blend-metrics/icons"
-import { useCaseStudyStore } from "@/lib/hooks/use-case-study-store"
+import { CaseStudyAPI, type CaseStudyStatus } from "@/service/http/case-study"
+import { firstCaseStudyImageUrl } from "@/lib/case-study-mapper"
 import { Button } from "@/components/ui"
-import { CaseStudyCard } from "./case-study-card"
+import { CaseStudyCard, type CaseStudySummary } from "./case-study-card"
 import { CreateCaseStudyModal } from "./create-case-study-modal"
 
 const COLUMNS = 3
@@ -41,9 +42,9 @@ const BlankCaseStudyCard = ({ onClick }: { onClick: () => void }) => (
 )
 
 /**
- * Portfolio-tab case study grid. Reads straight from the localStorage store
- * shared with the case study editor/dashboard (lib/hooks/use-case-study-store.ts)
- * — replaces the old hardcoded PortfolioCards section.
+ * Portfolio-tab case study grid. Backed by portfolio-service's real
+ * /case-studies API (via CaseStudyAPI) — replaces the old hardcoded
+ * PortfolioCards section and, before that, a localStorage-only store.
  *
  * `canCreate` gates the "Create a Case Study" tile and draft visibility:
  * pass true only when the viewer owns this profile and is in edit mode.
@@ -53,15 +54,70 @@ const BlankCaseStudyCard = ({ onClick }: { onClick: () => void }) => (
  */
 export function CaseStudyGrid({
   canCreate = true,
+  isClientView = false,
   onOpenEditor,
+  onOpenPreview,
 }: {
   canCreate?: boolean
+  /** Client-facing view — cards open the read-only preview instead of the editor, and lose their hover actions. */
+  isClientView?: boolean
   onOpenEditor: (caseStudyId: string) => void
+  onOpenPreview?: (caseStudyId: string) => void
 }) {
-  const { caseStudies, deleteCaseStudy, toggleCaseStudyVisibility } =
-    useCaseStudyStore()
+  const [caseStudies, setCaseStudies] = useState<CaseStudySummary[]>([])
   const [modalOpen, setModalOpen] = useState(false)
   const [isShowing, setIsShowing] = useState(false)
+
+  const refresh = useCallback(async () => {
+    try {
+      const { data } = await CaseStudyAPI.List({ status: "all" })
+      const items = (data?.items ?? []) as Array<{
+        id: string
+        title: string
+        status: CaseStudyStatus
+        coverImage: string | null
+        coverImageZoom?: number
+        coverImageRotation?: number
+        coverImageOffsetX?: number
+        coverImageOffsetY?: number
+        schemaJson: { blocks: { type: string; data: Record<string, unknown> }[] } | null
+      }>
+      setCaseStudies(
+        items.map((cs) => ({
+          id: cs.id,
+          title: cs.title,
+          status: cs.status,
+          thumbnail: cs.coverImage ?? firstCaseStudyImageUrl(cs.schemaJson?.blocks) ?? null,
+          // Only cs.coverImage carries a saved transform — the
+          // firstCaseStudyImageUrl fallback is a bare URL with no transform.
+          thumbnailZoom: cs.coverImage ? cs.coverImageZoom ?? 1 : 1,
+          thumbnailRotation: cs.coverImage ? cs.coverImageRotation ?? 0 : 0,
+          thumbnailOffsetX: cs.coverImage ? cs.coverImageOffsetX ?? 50 : 50,
+          thumbnailOffsetY: cs.coverImage ? cs.coverImageOffsetY ?? 50 : 50,
+        }))
+      )
+    } catch {
+      // Grid degrades to empty rather than throwing — a failed list fetch
+      // shouldn't take down the rest of the profile page.
+      setCaseStudies([])
+    }
+  }, [])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  const deleteCaseStudy = async (id: string) => {
+    await CaseStudyAPI.Delete(id)
+    refresh()
+  }
+
+  const toggleCaseStudyVisibility = async (id: string) => {
+    const cs = caseStudies.find((c) => c.id === id)
+    if (!cs || (cs.status !== "published" && cs.status !== "hidden")) return
+    await CaseStudyAPI.SetVisibility(id, cs.status === "hidden" ? "published" : "hidden")
+    refresh()
+  }
 
   const visible = canCreate
     ? caseStudies
@@ -106,9 +162,16 @@ export function CaseStudyGrid({
             <CaseStudyCard
               key={tile.cs.id}
               caseStudy={tile.cs}
-              onClick={() => onOpenEditor(tile.cs.id)}
-              onDelete={deleteCaseStudy}
-              onToggleVisibility={toggleCaseStudyVisibility}
+              onClick={() =>
+                isClientView
+                  ? onOpenPreview?.(tile.cs.id)
+                  : onOpenEditor(tile.cs.id)
+              }
+              onDelete={isClientView ? undefined : deleteCaseStudy}
+              onToggleVisibility={
+                isClientView ? undefined : toggleCaseStudyVisibility
+              }
+              readOnly={isClientView}
             />
           ) : (
             <BlankCaseStudyCard
@@ -139,6 +202,7 @@ export function CaseStudyGrid({
           onOpenChange={setModalOpen}
           onCreated={(id) => {
             setModalOpen(false)
+            refresh()
             onOpenEditor(id)
           }}
         />

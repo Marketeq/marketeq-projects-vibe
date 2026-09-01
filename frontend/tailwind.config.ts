@@ -11,6 +11,13 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      // `shadow-xs` was used by components/ui/card and elsewhere without ever
+      // being defined — Tailwind has no xs shadow by default, so those cards
+      // silently rendered with no shadow. This is the Shadow/xs token from
+      // the design files, and the value four components already inline.
+      boxShadow: {
+        xs: "0px 1px 4px 0px rgba(0,0,0,0.03)",
+      },
       colors: {
         primary: {
           25: "#F6F8FE",
@@ -142,7 +149,7 @@ const config: Config = {
         "5xl": "1920px",
       },
       fontFamily: {
-        sans: ["var(--font-noto-sans)", ...defaultTheme.fontFamily.sans],
+        sans: ["var(--font-inter)", ...defaultTheme.fontFamily.sans],
       },
       keyframes: {
         "accordion-down": {

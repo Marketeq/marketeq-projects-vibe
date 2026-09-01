@@ -79,6 +79,27 @@ Internal padding of cards, panels, and content widgets.
 | `p-4` | 16px | Compact cards, modals, dialog content |
 | `p-3` | 12px | Tight widget padding (message input area, inline tools) |
 
+### Card Corners & Shadow (do not improvise these)
+
+Every card, panel and widget corner is **8px** — `rounded-lg`. Do not reach for
+`rounded-[8px]`, `rounded-md`, or any other arbitrary radius; `rounded-lg`
+already resolves to 8px and is the only class to use for a card corner.
+
+| Value | Pixels | When to use |
+|-------|--------|-------------|
+| `rounded-lg` | 8px | Every card, panel, widget and listing card |
+| `rounded-[6px]` | 6px | Media/thumbnail wells **inside** a card |
+| `rounded-full` | — | Avatars, pills, icon buttons |
+
+Card shadow is `shadow-xs` = `0px 1px 4px 0px rgba(0,0,0,0.03)`, defined in
+`tailwind.config.ts`. Use the class, not an inline `shadow-[...]` value.
+
+**When a child sits flush against a card edge** — a media panel down the left
+of a list card, a footer strip — give that child the matching corner
+(`rounded-l-lg`, `rounded-b-lg`). `overflow-hidden` on the parent alone leaves
+the child's own border cutting straight across the curve, which reads as a
+broken corner.
+
 ### Grid Gaps (Between Cards in Grids)
 
 | Value | Pixels | When to use |
@@ -170,6 +191,33 @@ All base components live in `frontend/components/ui/` and are re-exported from t
 - **Key Props**: AccordionItem takes `value: string`; AccordionTrigger/AccordionContent are standard forwardRef divs
 - **Variants**: Built on Radix AccordionPrimitive
 - **Storybook**: `components/ui/accordion/`
+
+- **CANONICAL STYLE — this is the only accordion style. Do not build any other.**
+  - **The card owns the border, never the content.** Put
+    `rounded-lg border border-gray-200 bg-white` on `AccordionItem` (or on a
+    wrapper around the whole `Accordion`). `AccordionContent` carries NO border
+    of its own: it used to hardcode `border-x border-b rounded-b-lg`, which drew
+    a second line down the sides and along the bottom whenever the item was
+    already bordered. That double border is a bug, not a variant.
+  - **White cards.** `bg-white` on the item. Never `bg-gray-50` on a page whose
+    background is also `bg-gray-50` — the card disappears.
+  - **Rows are separated by a gap, not by shared edges.** Stack items with
+    `flex flex-col gap-y-3` on the `Accordion`.
+  - **The chevron turns over on open.** `AccordionTrigger` applies
+    `data-[state=open]:[&>svg]:rotate-180` with a 300ms transition to any direct
+    `svg` child, so a chevron placed directly in the trigger needs no extra
+    classes. If the icon is nested inside another element, add
+    `transition-transform duration-300 group-data-[state=open]/trigger:rotate-180`
+    to it yourself.
+  - **Trigger layout**: `flex w-full items-center justify-between gap-x-4
+    px-6 py-5 text-left text-base font-medium text-dark-blue-400`.
+  - **Content padding** comes from `innerClassName`, or pass your own padding on
+    the child. The default inner wrapper is `p-6`.
+  - **Reference implementation**: the FAQ section of
+    `components/settings-tax-info.tsx`.
+  - **Do not** collapse legal or certification text behind an accordion. A
+    collapsed panel lets someone consent without opening what they are
+    certifying to.
 
 ### Alert
 - **Import**: `import { Alert, AlertContent, AlertIcon, AlertTitle, AlertDescription, CloseButton } from "@/components/ui"`
@@ -588,6 +636,16 @@ All base components live in `frontend/components/ui/` and are re-exported from t
 - **Hook**: `import { useToast, toast } from "@/components/ui"` (from `use-toast` re-export)
 - **Key Props**: `id, title?, description?, action?`; toastVariants cva for styling
 - **Storybook**: `components/ui/toast/toast.stories.tsx` (Default, Success)
+- **CANONICAL USE — read before adding any toast**
+  - Toasts are for **success confirmations only**. Never toast an error or a
+    warning: surface those inline, next to the control that failed, starting
+    the message with "Please".
+  - Always pass `variant: "success"`. The `Toaster` picks the icon off the
+    variant: `success` renders the green `CheckCircle`, and **anything else
+    renders the grey `HelpCircle`**, which is the wrong icon for a confirmation.
+    Omitting the variant is the usual cause of a wrong toast icon.
+  - Correct: `toast({ title: "Tax information saved", variant: "success" })`
+  - Wrong: `toast({ title: "Could not save" })` — an error, and a grey icon.
 
 ### Toggle
 - **Import**: `import { Toggle } from "@/components/ui"`
