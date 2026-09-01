@@ -15,7 +15,10 @@ export function Toaster() {
   const { toasts } = useToast()
 
   return (
-    <ToastProvider duration={3000}>
+    // 5s is the common default and clears the 4-6s reading floor; a toast
+    // carrying an action gets 8s, since it has to be read, decided on and
+    // clicked. Material uses the same shape: ~4s plain, up to 10s actionable.
+    <ToastProvider duration={5000}>
       {toasts.map(function ({
         id,
         title,
@@ -25,7 +28,7 @@ export function Toaster() {
         ...props
       }) {
         return (
-          <Toast key={id} variant={variant} {...props}>
+          <Toast key={id} variant={variant} duration={action ? 8000 : undefined} {...props}>
             <div className="flex max-w-full items-start">
               {/* Icon */}
               {variant === "success" ? (
