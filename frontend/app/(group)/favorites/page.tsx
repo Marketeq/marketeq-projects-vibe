@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { UserAPI } from "@/service/http/user"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import { favoriteGroupUrl } from "@/src/lib/listing-urls"
 import {
   type FavoriteGroup as FavGroup,
   type Favorite,
@@ -114,7 +115,7 @@ const ProjectGroupCard = ({
   const available = group.favorites
     .map((f) => itemMeta[f.itemId]?.mediaUrl)
     .filter(Boolean) as string[]
-  const href = `/favorites/${group.id}?name=${encodeURIComponent(group.name)}&type=${itemType}`
+  const href = favoriteGroupUrl(group.id, group.name, itemType)
 
   return (
     <article
@@ -192,7 +193,7 @@ const ProjectGroupListCard = ({
   const available = group.favorites
     .map((f) => itemMeta[f.itemId]?.mediaUrl)
     .filter(Boolean) as string[]
-  const href = `/favorites/${group.id}?name=${encodeURIComponent(group.name)}&type=${itemType}`
+  const href = favoriteGroupUrl(group.id, group.name, itemType)
 
   return (
     <div
@@ -305,7 +306,7 @@ const TalentCard = ({
   // Rotation angles for circular layout: positions around the circle
   const avatarRotationAngles = [-135, -90, -45, 0]
   const savedRotationAngle = -180
-  const href = `/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=talent`
+  const href = favoriteGroupUrl(groupId, groupName, "talent")
 
   // Staggered entrance: same motion as before, but delay order is reversed so
   // the cascade starts from the lower slot and rises upward.
@@ -462,7 +463,7 @@ const TalentCardLandscapeRow = ({
         <div className="md:contents flex items-center justify-between">
           <div className="xs:max-md:flex xs:max-md:flex-col xs:max-md:gap-y-1 md:flex-auto md:pl-6 lg:pl-[25px] md:py-3 lg:py-[25px] md:last:pr-3 lg:last:pr-[25px]">
             <NextLink
-              href={`/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=talent`}
+              href={favoriteGroupUrl(groupId, groupName, "talent")}
               className="text-sm leading-[15.73px] lg:text-base font-bold inline-block lg:leading-[19.07px] text-dark-blue-400 hover:underline line-clamp-2"
             >
               {groupName}
@@ -597,7 +598,7 @@ const CardDropdown = ({
 
   const groupUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/favorites/${actions.groupId}?name=${encodeURIComponent(actions.groupName)}`
+      ? `${window.location.origin}${favoriteGroupUrl(actions.groupId, actions.groupName, "project")}`
       : ""
 
   return (
@@ -687,7 +688,7 @@ const InlineDropdown = ({
 
   const groupUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/favorites/${actions.groupId}?name=${encodeURIComponent(actions.groupName)}`
+      ? `${window.location.origin}${favoriteGroupUrl(actions.groupId, actions.groupName, "project")}`
       : ""
 
   return (

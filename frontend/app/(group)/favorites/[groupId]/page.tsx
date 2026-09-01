@@ -25,6 +25,10 @@ import {
   Trash2,
 } from "@blend-metrics/icons"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import {
+  favoriteGroupIdFromParam,
+  favoriteGroupNameFromParam,
+} from "@/src/lib/listing-urls"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Grid, List, SortAs } from "@/components/icons"
 import { Money } from "@/components/money"
@@ -366,8 +370,12 @@ export default function FavoriteGroupDetailPage() {
   const params = useParams()
   const searchParams = useSearchParams()
   const router = useRouter()
-  const groupId = params.groupId as string
-  const groupName = searchParams.get("name") || "Favorites"
+  const groupParam = params.groupId as string
+  const groupId = favoriteGroupIdFromParam(groupParam)
+  const groupName =
+    searchParams.get("name") ||
+    favoriteGroupNameFromParam(groupParam) ||
+    "Favorites"
   const groupType = searchParams.get("type") || "talent"
 
   const [value, setValue] = useState([GRID_LAYOUT])
@@ -518,22 +526,44 @@ export default function FavoriteGroupDetailPage() {
         </button>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400">
-            {groupName}
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {itemCount} saved{" "}
-            {isTalent
-              ? "talent"
-              : groupType === "service"
-                ? "services"
-                : "projects"}
-          </p>
+      <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400">
+        {groupName}
+      </h1>
+      <p className="text-sm text-gray-500 mt-1">
+        {itemCount} saved{" "}
+        {isTalent
+          ? "talent"
+          : groupType === "service"
+            ? "services"
+            : "projects"}
+      </p>
+
+      <div className="mt-7 lg:mt-[19px] border-b h-[60px] flex items-end justify-between border-gray-200">
+        <div className="items-end inline-flex gap-x-3 pb-2.5">
+          <Button
+            className="text-gray-500"
+            variant="ghost"
+            visual="gray"
+            size="md"
+            onClick={() => setShowSearch(!showSearch)}
+          >
+            <SearchMd className="size-[18px]" />
+          </Button>
+          {showSearch && (
+            <Input
+              className="h-9 w-[260px] text-sm"
+              placeholder={`Search ${isTalent ? "talent" : "projects"}...`}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+          )}
+          <span className="self-center text-xs text-gray-400">
+            {filteredCount} of {itemCount} shown
+          </span>
         </div>
 
-        <div className="flex items-center gap-x-3 lg:gap-x-3.5">
+        <div className="flex items-center gap-x-3 lg:gap-x-3.5 self-start pt-2">
           <SortDropdown value={sortBy} onChange={setSortBy} />
 
           <ToggleGroupRoot
@@ -548,31 +578,6 @@ export default function FavoriteGroupDetailPage() {
             </ToggleGroupItem>
           </ToggleGroupRoot>
         </div>
-      </div>
-
-      {/* Search bar */}
-      <div className="mt-4 border-b border-gray-200 pb-4 flex items-center gap-3">
-        <Button
-          className="text-gray-500"
-          variant="ghost"
-          visual="gray"
-          size="md"
-          onClick={() => setShowSearch(!showSearch)}
-        >
-          <SearchMd className="size-[18px]" />
-        </Button>
-        {showSearch && (
-          <Input
-            className="h-9 w-[260px] text-sm"
-            placeholder={`Search ${isTalent ? "talent" : "projects"}...`}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            autoFocus
-          />
-        )}
-        <span className="text-xs text-gray-400 ml-auto">
-          {filteredCount} of {itemCount} shown
-        </span>
       </div>
 
       {/* Content */}
