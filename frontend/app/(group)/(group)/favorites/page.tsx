@@ -213,7 +213,7 @@ const ProjectGroupListCard = ({
     >
       {/* The bar beside this is flex-auto, so without a floor here it squeezed
           this column and wrapped "Created Sep 2026" onto two lines. */}
-      <div className="py-3.5 lg:py-[16.5px] space-y-0.5 pl-5 md:w-[180px] md:shrink-0 lg:w-[200px]">
+      <div className="py-3.5 lg:py-[16.5px] space-y-0.5 pl-5 md:w-[124px] md:shrink-0 lg:w-[140px]">
         <h1 className="text-[11px] leading-[13.31px] lg:text-base lg:leading-[19.36px] font-bold text-dark-blue-400 line-clamp-2">
           {group.name}
         </h1>
