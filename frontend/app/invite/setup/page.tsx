@@ -611,7 +611,7 @@ function InviteSetup() {
                   <Input
                     id="firstName"
                     placeholder="John"
-                    className="font-[Inter] font-normal text-[16px] leading-6 tracking-normal text-gray-500 placeholder:text-gray-500"
+                    className="font-normal text-[16px] leading-6 tracking-normal text-gray-500 placeholder:text-gray-500"
                     {...register("firstName")}
                     isInvalid={hookFormHasError({ errors, name: "firstName" })}
                   />
@@ -629,7 +629,7 @@ function InviteSetup() {
                   <Input
                     id="lastName"
                     placeholder="Doe"
-                    className="font-[Inter] font-normal text-[16px] leading-6 tracking-normal text-gray-500 placeholder:text-gray-500"
+                    className="font-normal text-[16px] leading-6 tracking-normal text-gray-500 placeholder:text-gray-500"
                     {...register("lastName")}
                     isInvalid={hookFormHasError({ errors, name: "lastName" })}
                   />

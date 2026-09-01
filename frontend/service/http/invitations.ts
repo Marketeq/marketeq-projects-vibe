@@ -16,6 +16,32 @@ import AxiosRequest from ".."
 // The /v1 form is used going forward per the MyTeam epic doc.
 const INVITATIONS_BASE = "/v1/invitations"
 
+interface InvitationsAPIType {
+  createInvitations: (
+    dto: CreateInvitationDto
+  ) => ReturnType<typeof AxiosRequest.post<CreateInvitationDto>>
+  createInvitationLink: (
+    dto: CreateInvitationLinkDto
+  ) => ReturnType<typeof AxiosRequest.post<CreateInvitationLinkDto>>
+  listInvitations: (
+    params?: ListInvitationsParams
+  ) => ReturnType<typeof AxiosRequest.get>
+  getInvitation: (id: string) => ReturnType<typeof AxiosRequest.get>
+  resendInvitation: (
+    id: string
+  ) => ReturnType<typeof AxiosRequest.post<Record<string, never>>>
+  cancelInvitation: (id: string) => ReturnType<typeof AxiosRequest.del>
+  acceptInvitation: (
+    inviteToken: string
+  ) => ReturnType<typeof AxiosRequest.post<AcceptInvitationResponse>>
+  shareProjectLink: (dto: {
+    emails: string[]
+    projectUrl: string
+    projectTitle?: string
+    message?: string
+  }) => ReturnType<typeof AxiosRequest.post>
+}
+
 const unwrapList = (payload: unknown): InvitationListResponse => {
   if (payload && typeof payload === "object" && "data" in (payload as InvitationListResponse)) {
     const typed = payload as InvitationListResponse
@@ -89,5 +115,9 @@ export const InvitationsAPI = {
       token: inviteToken,
     })
     return res.data
+  },
+
+  shareProjectLink: (dto) => {
+    return AxiosRequest.post(`${INVITATIONS_BASE}/share-link`, dto)
   },
 }

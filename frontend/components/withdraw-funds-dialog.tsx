@@ -191,7 +191,7 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
   const [reserveUsd, setReserveUsd] = React.useState(0)
 
   const [amount, setAmount] = React.useState("")
-  const [speed, setSpeed] = React.useState<"standard" | "instant">("standard")
+  const [speed, setSpeed] = React.useState<"standard" | "instant" | null>(null)
   const [validation, setValidation] = React.useState<ValidateAmountResponse | null>(null)
   const [validationLoading, setValidationLoading] = React.useState(false)
   const [validationError, setValidationError] = React.useState("")
@@ -222,7 +222,7 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
   const resetAll = React.useCallback(() => {
     setStep("amount")
     setAmount("")
-    setSpeed("standard")
+    setSpeed(null)
     setValidation(null)
     setValidationError("")
     setMethodId(null)
@@ -361,8 +361,6 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
       if (!res.ok) throw new Error(data.message ?? "Failed to load payout methods")
       const verified = (data.methods ?? []).filter((m: DepositMethodSummary) => m.verificationStatus === "verified")
       setMethods(verified)
-      const def = verified.find((m: DepositMethodSummary) => m.isDefault)
-      if (def) setMethodId(def.id)
     } catch {
       setMethodsError("We couldn't load your payout methods. Please try again.")
     } finally {
@@ -422,14 +420,14 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
   React.useEffect(() => {
     if (!open) return
     const numeric = Number(amount)
-    if (!amount || isNaN(numeric) || numeric <= 0) { setValidation(null); setValidationError(""); return }
+    if (!amount || isNaN(numeric) || numeric <= 0 || !speed) { setValidation(null); setValidationError(""); return }
     const id = setTimeout(() => { revalidateAmount() }, 400)
     return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [amount, speed, open])
 
   const method = methods.find((m) => m.id === methodId) ?? null
-  const canContinueFromAmount = !!validation && validation.meetsMinimum && !validationLoading && !validationError
+  const canContinueFromAmount = !!validation && validation.meetsMinimum && !validationLoading && !validationError && !!speed
   const canContinueFromMethod = !!methodId
 
   const goToMethod = async () => {
@@ -445,7 +443,7 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
   }
 
   const submit = async () => {
-    if (!methodId || !validation) return
+    if (!methodId || !validation || !speed) return
     setSubmitting(true)
     setDeclineState(null)
     try {
@@ -694,7 +692,7 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
 
                 <div className="mt-6">
                   <label className="text-sm font-semibold text-dark-blue-400 block mb-2">Choose Deposit Speed</label>
-                  <RadioGroup value={speed} onValueChange={(v) => setSpeed(v as "standard" | "instant")} className="space-y-2.5">
+                  <RadioGroup value={speed ?? undefined} onValueChange={(v) => setSpeed(v as "standard" | "instant")} className="space-y-2.5">
                     <label
                       htmlFor="wf-speed-instant"
                       className={cn("flex items-center gap-x-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors",

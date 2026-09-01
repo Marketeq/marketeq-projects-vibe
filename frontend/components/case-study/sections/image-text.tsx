@@ -45,6 +45,12 @@ function ImageTextEdit({
   const [imageRotation, setImageRotation] = useState<number>(
     (initialData?.imageRotation as number) ?? 0
   )
+  const [imageOffsetX, setImageOffsetX] = useState<number>(
+    (initialData?.imageOffsetX as number) ?? 50
+  )
+  const [imageOffsetY, setImageOffsetY] = useState<number>(
+    (initialData?.imageOffsetY as number) ?? 50
+  )
   const [isImageEditOpen, setIsImageEditOpen] = useState(false)
   const title = useWatch({ control, name: "title" })
   const subTitle = useWatch({ control, name: "subTitle" })
@@ -56,9 +62,11 @@ function ImageTextEdit({
       imageUrl,
       imageZoom,
       imageRotation,
+      imageOffsetX,
+      imageOffsetY,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, subTitle, imageUrl, imageZoom, imageRotation])
+  }, [title, subTitle, imageUrl, imageZoom, imageRotation, imageOffsetX, imageOffsetY])
 
   return (
     <form
@@ -115,7 +123,7 @@ function ImageTextEdit({
                         src={dataUrl || imageUrl}
                         aria-label="Picture"
                         className="size-full object-contain rounded-lg"
-                        style={imageTransformStyle(imageZoom, imageRotation)}
+                        style={imageTransformStyle(imageZoom, imageRotation, imageOffsetX, imageOffsetY)}
                       />
                     </div>
                   ) : (
@@ -131,6 +139,8 @@ function ImageTextEdit({
                       setImageUrl(undefined)
                       setImageZoom(1)
                       setImageRotation(0)
+                      setImageOffsetX(50)
+                      setImageOffsetY(50)
                     }}
                     onEdit={() => setIsImageEditOpen(true)}
                     enableEdit={!!dataUrl || !!imageUrl}
@@ -148,9 +158,14 @@ function ImageTextEdit({
           title="Edit Image"
           initialZoom={imageZoom}
           initialRotation={imageRotation}
-          onSave={({ zoom, rotation }) => {
+          initialOffsetX={imageOffsetX}
+          initialOffsetY={imageOffsetY}
+          aspectRatio={494 / 375}
+          onSave={({ zoom, rotation, offsetX, offsetY }) => {
             setImageZoom(zoom)
             setImageRotation(rotation)
+            setImageOffsetX(offsetX)
+            setImageOffsetY(offsetY)
           }}
         />
       </div>
@@ -172,12 +187,16 @@ function ImageTextView({ data }: { data?: Record<string, unknown> }) {
           className="mt-5 text-2xl leading-[29px] font-light text-dark-blue-400"
         />
       </div>
-      <BlockImage
-        url={d.imageUrl}
-        zoom={d.imageZoom}
-        rotation={d.imageRotation}
-        className="aspect-[494/375]"
-      />
+      <div className="relative overflow-hidden rounded-lg aspect-[494/375]">
+        <BlockImage
+          url={d.imageUrl}
+          zoom={d.imageZoom}
+          rotation={d.imageRotation}
+          offsetX={d.imageOffsetX}
+          offsetY={d.imageOffsetY}
+          className="absolute inset-0 h-full w-full object-contain"
+        />
+      </div>
     </section>
   )
 }

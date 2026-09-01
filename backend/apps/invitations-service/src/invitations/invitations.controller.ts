@@ -2,7 +2,7 @@ import {
   Controller, Post, Get, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus, Req,
 } from '@nestjs/common';
 import { InvitationsService } from './invitations.service';
-import { CreateInvitationsDto, CreateInviteLinkDto, ListInvitationsDto, AcceptInvitationDto } from '../dto/invitation.dto';
+import { CreateInvitationsDto, CreateInviteLinkDto, ListInvitationsDto, AcceptInvitationDto, ShareProjectLinkDto } from '../dto/invitation.dto';
 import { GatewayAuthGuard } from '../guards/gateway-auth.guard';
 import { Public } from '../decorators/public.decorator';
 
@@ -64,5 +64,11 @@ export class InvitationsController {
   @Post('accept')
   accept(@Body() dto: AcceptInvitationDto, @Req() req: any) {
     return this.svc.accept(dto, req.user);
+  }
+
+  @Post('share-link')
+  @HttpCode(HttpStatus.OK)
+  shareLink(@Body() dto: ShareProjectLinkDto, @Req() req: any) {
+    return this.svc.shareProjectLink(dto, req.user);
   }
 }
