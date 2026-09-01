@@ -7,6 +7,7 @@ import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { favoriteGroupUrl } from "@/src/lib/listing-urls"
 import { FAVORITE_TABS, isFavoriteTab } from "@/src/lib/favorites-tabs"
 import { useFavoriteCounts } from "./favorites-counts"
+import { FavoriteGroupCardSkeleton } from "./favorites-skeletons"
 import {
   type FavoriteGroup as FavGroup,
   type Favorite,
@@ -1462,13 +1463,8 @@ export default function FavoritesPage() {
         <TabsContent value="Projects">
           {isLoading ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
-              {Array(8)
-                .fill(0)
-                .map((_, i) => (
-                  <div
-                    key={i}
-                    className="bg-white border rounded-lg h-[300px] animate-pulse"
-                  />
+              {Array.from({ length: 8 }).map((_, i) => (
+                  <FavoriteGroupCardSkeleton key={i} />
                 ))}
             </div>
           ) : projectGroups.length === 0 ? (
@@ -1515,13 +1511,8 @@ export default function FavoritesPage() {
         <TabsContent value="Services">
           {isLoading ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
-              {Array(8)
-                .fill(0)
-                .map((_, i) => (
-                  <div
-                    key={i}
-                    className="bg-white border rounded-lg h-[300px] animate-pulse"
-                  />
+              {Array.from({ length: 8 }).map((_, i) => (
+                  <FavoriteGroupCardSkeleton key={i} />
                 ))}
             </div>
           ) : serviceGroups.length === 0 ? (

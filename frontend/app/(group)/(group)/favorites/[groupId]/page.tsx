@@ -40,6 +40,10 @@ import { ListingCard } from "@/components/listing-card"
 import { useFavoriteCounts } from "@/app/(group)/(group)/favorites/favorites-counts"
 import { FAVORITE_TABS } from "@/src/lib/favorites-tabs"
 import { cascadeClasses } from "@/src/lib/cascade"
+import {
+  FavoriteCardSkeleton,
+  FavoriteListCardSkeleton,
+} from "@/app/(group)/(group)/favorites/favorites-skeletons"
 import { toast } from "@/components/ui/toast/use-toast"
 import { ToastAction } from "@/components/ui/toast/toast"
 import { NewGroupModal } from "@/app/(group)/(group)/favorites/page"
@@ -542,18 +546,21 @@ export default function FavoriteGroupDetailPage() {
       {/* Content */}
       <div className="mt-6">
         {isLoading ? (
-          <div
-            className={`grid ${isTalent ? "grid-cols-2 md:grid-cols-4" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"} gap-3 lg:gap-6`}
-          >
-            {Array(6)
-              .fill(0)
-              .map((_, i) => (
-                <div
-                  key={i}
-                  className="bg-white border rounded-lg h-[350px] animate-pulse"
-                />
+          getFirstItem(value) === LIST_LAYOUT ? (
+            <div className="grid gap-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <FavoriteListCardSkeleton key={i} />
               ))}
-          </div>
+            </div>
+          ) : (
+            <div
+              className={`grid ${isTalent ? "grid-cols-2 md:grid-cols-4" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"} gap-3 lg:gap-6`}
+            >
+              {Array.from({ length: 6 }).map((_, i) => (
+                <FavoriteCardSkeleton key={i} />
+              ))}
+            </div>
+          )
         ) : (
             isTalent ? sortedTalents.length === 0 : sortedProjects.length === 0
           ) ? (
