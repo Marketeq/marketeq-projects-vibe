@@ -5,7 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { UserAPI } from "@/service/http/user"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { favoriteGroupUrl } from "@/src/lib/listing-urls"
-import { FAVORITE_TABS, isFavoriteTab } from "@/src/lib/favorites-tabs"
+import {
+  FAVORITE_TABS,
+  type FavoriteTab,
+  isFavoriteTab,
+} from "@/src/lib/favorites-tabs"
 import { useFavoriteCounts } from "./favorites-counts"
 import { FavoriteGroupCardSkeleton } from "./favorites-skeletons"
 import {
@@ -1133,15 +1137,22 @@ function EmptyState({
 export default function FavoritesPage() {
   const [value, setValue] = useState([GRID_LAYOUT])
   const searchParams = useSearchParams()
-  // `?tab=` lets other screens (the group page tabs) land on a given list.
-  const initialTab = (() => {
+  const tabRouter = useRouter()
+  // `?tab=` is the source of truth for the selected tab, so the URL always
+  // shows the tab you are on, survives a reload, and can be shared or linked
+  // to from the group pages.
+  const activeTab: FavoriteTab = (() => {
     const requested = searchParams?.get("tab")
     if (!requested) return "Projects"
     // "Talent Network" was this tab's old label; keep old links working.
     if (requested === "Talent Network") return "Talent"
     return isFavoriteTab(requested) ? requested : "Projects"
   })()
-  const [activeTab, setActiveTab] = useState(initialTab)
+  const setActiveTab = (tab: FavoriteTab) => {
+    tabRouter.replace(`/favorites?tab=${encodeURIComponent(tab)}`, {
+      scroll: false,
+    })
+  }
   const [projectGroups, setProjectGroups] = useState<FavGroup[]>([])
   const [serviceGroups, setServiceGroups] = useState<FavGroup[]>([])
   const [talentFavorites, setTalentFavorites] = useState<Favorite[]>([])
