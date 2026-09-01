@@ -311,10 +311,12 @@ export default function FavoriteGroupDetailPage() {
     if (success && removed) {
       setFavorites((prev) => prev.filter((f) => f.id !== pendingRemoveId))
       toast({
+        variant: "success",
         title: "Item removed from this group",
         action: (
           <ToastAction
-            altText="Undo remove"
+            altText="Undo"
+            className="border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
             onClick={async () => {
               const restored = await addFavorite({
                 type: removed.type,
@@ -354,10 +356,12 @@ export default function FavoriteGroupDetailPage() {
       // It now lives in another group, so it leaves this list.
       setFavorites((prev) => prev.filter((f) => f.id !== favoriteId))
       toast({
+        variant: "success",
         title: `Moved to ${target?.name ?? "another group"}`,
         action: (
           <ToastAction
-            altText="Undo move"
+            altText="Undo"
+            className="border-0 bg-transparent px-0 text-success-500 underline hover:no-underline focus:outline-none"
             onClick={async () => {
               const back = await moveFavorite(favoriteId, { groupId })
               if (back && movedItem) setFavorites((prev) => [movedItem, ...prev])
