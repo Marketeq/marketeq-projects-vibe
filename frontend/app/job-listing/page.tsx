@@ -11132,82 +11132,198 @@ const NoScopeRoleInfoStep = ({
                 : "Describe role you need"}
             </h1>
 
-            <div className="mt-8">
-              <div className="flex items-center justify-between gap-x-4">
-                <Label className="text-base leading-6 font-semibold text-dark-blue-400">
+            <div
+              className={cn(
+                "mt-8",
+                isTeamMode && "flex w-[886px] flex-col gap-3",
+              )}
+            >
+              <div
+                className={cn(
+                  "flex justify-between gap-x-4",
+                  isTeamMode
+                    ? "h-7 items-baseline gap-2"
+                    : "items-center",
+                )}
+              >
+                <Label
+                  className={cn(
+                    "text-base leading-6 font-semibold text-dark-blue-400",
+                    isTeamMode &&
+                      "flex-1 text-lg leading-7 font-medium text-dark-blue-400",
+                  )}
+                >
                   {isTeamMode
                     ? "What do you want your team to work on?"
                     : "What do you want this person to work on?"}
                 </Label>
-                <span className="text-sm leading-5 text-gray-400">
+                <span
+                  className={cn(
+                    "text-sm leading-5 text-gray-400",
+                    isTeamMode && "font-normal",
+                  )}
+                >
                   67 / 100
                 </span>
               </div>
               <Textarea
-                className="mt-3 h-40 text-base"
+                className={cn(
+                  "mt-3 h-40 text-base",
+                  isTeamMode &&
+                    "mt-0 h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400",
+                )}
                 placeholder="Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
                 value={roleDescription}
                 onChange={(event) => setRoleDescription(event.target.value)}
               />
             </div>
 
-            <div className="mt-16 max-w-[320px]">
-              <Label className="text-base leading-6 font-semibold text-dark-blue-400">
+            <div
+              className={cn(
+                "mt-16 max-w-[320px]",
+                isTeamMode &&
+                  "flex w-[886px] max-w-none flex-col gap-4",
+              )}
+            >
+              <Label
+                className={cn(
+                  "text-base leading-6 font-semibold text-dark-blue-400",
+                  isTeamMode &&
+                    "text-lg leading-7 font-medium text-dark-blue-400",
+                )}
+              >
                 {isTeamMode
                   ? "How many people do you want to add to your team?"
                   : "How many people do you want to add?"}
               </Label>
-              <Label className="mt-6 block text-sm leading-5 font-semibold text-gray-500">
-                Amount
-              </Label>
-              <Input
-                className="mt-2"
-                inputMode="numeric"
-                value={headcount}
-                onChange={(event) => setHeadcount(event.target.value)}
-              />
-            </div>
-
-            <div className="mt-16">
-              <Label className="text-base leading-6 font-semibold text-dark-blue-400">
-                {isTeamMode
-                  ? "What's your estimated budget for this team?"
-                  : "What's your estimated budget for this role?"}
-              </Label>
-              <Label className="mt-6 block text-sm leading-5 font-semibold text-gray-500">
-                Amount
-              </Label>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <InputGroup className="w-[200px]">
-                  <InputLeftAddon>$</InputLeftAddon>
-                  <Input
-                    inputMode="decimal"
-                    value={budget}
-                    onChange={(event) => setBudget(event.target.value)}
-                  />
-                </InputGroup>
-                <Select
-                  value={budgetFrequency}
-                  onValueChange={(value) =>
-                    setBudgetFrequency(value as "per_week" | "per_month")
-                  }
+              <div
+                className={cn(
+                  isTeamMode && "flex w-[320px] flex-col gap-1.5",
+                )}
+              >
+                <Label
+                  className={cn(
+                    "mt-6 block text-sm leading-5 font-semibold text-gray-500",
+                    isTeamMode &&
+                      "mt-0 font-medium text-gray-500",
+                  )}
                 >
-                  <SelectTrigger className="h-12 w-[154px] px-3 text-sm leading-5 font-semibold text-dark-blue-400">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[
-                      { label: "per week", value: "per_week" },
-                      { label: "per month", value: "per_month" },
-                    ].map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  Amount
+                </Label>
+                <Input
+                  className={cn(
+                    "mt-2",
+                    isTeamMode &&
+                      "mt-0 h-11 w-[320px] rounded-[5px] border-gray-300 px-[14px] py-2.5 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs",
+                  )}
+                  inputMode="numeric"
+                  pattern={isTeamMode ? "[0-9]*" : undefined}
+                  value={headcount}
+                  onChange={(event) =>
+                    setHeadcount(
+                      isTeamMode
+                        ? event.target.value.replace(/[^0-9]/g, "")
+                        : event.target.value,
+                    )
+                  }
+                />
               </div>
             </div>
+
+            {isTeamMode ? (
+              <div className="mt-16 flex w-[886px] flex-col gap-4">
+                <Label className="text-lg leading-7 font-medium text-dark-blue-400">
+                  What&apos;s your estimated budget for this team?
+                </Label>
+                <div className="flex w-[320px] items-end gap-2">
+                  <div className="flex w-[176px] flex-col gap-1.5">
+                    <Label className="text-sm leading-5 font-medium text-gray-500">
+                      Amount
+                    </Label>
+                    <InputGroup fieldHeight="2.75rem" className="w-[176px]">
+                      <InputLeftElement
+                        className={cn(
+                          "text-[16px] leading-6 text-gray-400",
+                          budget !== "" && budget !== "0.00" &&
+                            "text-dark-blue-400",
+                        )}
+                      >
+                        $
+                      </InputLeftElement>
+                      <Input
+                        className={cn(
+                          "h-11 w-[176px] rounded-[5px] border-gray-300 px-[14px] py-2.5 pl-8 text-[16px] leading-6 font-normal text-gray-400 shadow-xs",
+                          budget !== "" && budget !== "0.00" &&
+                            "text-dark-blue-400",
+                        )}
+                        inputMode="decimal"
+                        value={budget}
+                        onChange={(event) => setBudget(event.target.value)}
+                      />
+                    </InputGroup>
+                  </div>
+                  <Select
+                    value={budgetFrequency}
+                    onValueChange={(value) =>
+                      setBudgetFrequency(value as "per_week" | "per_month")
+                    }
+                  >
+                    <SelectTrigger className="h-11 w-[136px] rounded-[5px] px-[14px] py-2.5 text-[16px] leading-6 font-normal text-dark-blue-400">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[
+                        { label: "per week", value: "per_week" },
+                        { label: "per month", value: "per_month" },
+                      ].map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-16">
+                <Label className="text-base leading-6 font-semibold text-dark-blue-400">
+                  What&apos;s your estimated budget for this role?
+                </Label>
+                <Label className="mt-6 block text-sm leading-5 font-semibold text-gray-500">
+                  Amount
+                </Label>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <InputGroup className="w-[200px]">
+                    <InputLeftAddon>$</InputLeftAddon>
+                    <Input
+                      inputMode="decimal"
+                      value={budget}
+                      onChange={(event) => setBudget(event.target.value)}
+                    />
+                  </InputGroup>
+                  <Select
+                    value={budgetFrequency}
+                    onValueChange={(value) =>
+                      setBudgetFrequency(value as "per_week" | "per_month")
+                    }
+                  >
+                    <SelectTrigger className="h-12 w-[154px] px-3 text-sm leading-5 font-semibold text-dark-blue-400">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[
+                        { label: "per week", value: "per_week" },
+                        { label: "per month", value: "per_month" },
+                      ].map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
 
             <div className="mt-16">
               <Label className="text-base leading-6 font-semibold text-dark-blue-400">
