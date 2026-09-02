@@ -11053,12 +11053,12 @@ const NoScopeRoleInfoStep = ({
   const isTeamMode = hiringMode !== "individual";
   const useNoScopeLayout = true;
   const [roleDescription, setRoleDescription] = useState("");
-  const [headcount, setHeadcount] = useState(isTeamMode ? "2" : "1");
-  const [budget, setBudget] = useState("500.00");
+  const [headcount, setHeadcount] = useState("");
+  const [budget, setBudget] = useState("");
   const [budgetFrequency, setBudgetFrequency] = useState<
     "per_week" | "per_month"
   >("per_week");
-  const [durationChoice, setDurationChoice] = useState("Other");
+  const [durationChoice, setDurationChoice] = useState("");
   const [customDuration, setCustomDuration] = useState("");
   const [customDurationUnit, setCustomDurationUnit] = useState("months");
   const hasValidDuration =
@@ -11328,8 +11328,51 @@ const NoScopeRoleInfoStep = ({
                             "text-dark-blue-400",
                         )}
                         inputMode="decimal"
+                        pattern="^\d*(\.\d{0,2})?$"
+                        placeholder="0.00"
                         value={budget}
-                        onChange={(event) => setBudget(event.target.value)}
+                        onFocus={() => {
+                          if (budget === "0.00") setBudget("");
+                        }}
+                        onChange={(event) => {
+                          const value = event.target.value.replace(/[^0-9.]/g, "");
+                          const [whole = "", fraction = ""] = value.split(".");
+                          setBudget(
+                            value.includes(".")
+                              ? `${whole}.${fraction.slice(0, 2)}`
+                              : whole,
+                          );
+                        }}
+                        onKeyDown={(event) => {
+                          const allowedKeys = [
+                            "Backspace",
+                            "Delete",
+                            "ArrowLeft",
+                            "ArrowRight",
+                            "Tab",
+                            "Home",
+                            "End",
+                          ];
+                          if (
+                            allowedKeys.includes(event.key) ||
+                            event.metaKey ||
+                            event.ctrlKey
+                          ) {
+                            return;
+                          }
+                          if (!/^[0-9.]$/.test(event.key)) {
+                            event.preventDefault();
+                            return;
+                          }
+                          if (event.key === "." && budget.includes(".")) {
+                            event.preventDefault();
+                          }
+                        }}
+                        onBlur={() => {
+                          const numericValue = Number(budget);
+                          if (!Number.isFinite(numericValue)) return;
+                          setBudget(numericValue.toFixed(2));
+                        }}
                       />
                     </InputGroup>
                   </div>
