@@ -66,142 +66,18 @@ interface TalentMember {
   name: string
   handle: string
   role: string
-  avatarSrc: string
-  rating: number
-  experience: string
-  country: string
-  localTime: string
-  rate: string
+  // Optional on purpose: these come straight off the user record and are
+  // simply absent for most accounts. Passing undefined lets TalentSearchCard
+  // apply its own documented defaults — the same ones every other page that
+  // uses this card gets — instead of this page inventing a different value
+  // per user and presenting it as that person's real data.
+  avatarSrc?: string
+  rating?: number
+  experience?: string
+  country?: string
+  localTime?: string
+  rate?: string
   skills: string[]
-}
-
-// Common female first names for gender inference
-const FEMALE_NAMES = new Set([
-  "mary",
-  "patricia",
-  "jennifer",
-  "linda",
-  "barbara",
-  "elizabeth",
-  "susan",
-  "jessica",
-  "sarah",
-  "karen",
-  "lisa",
-  "nancy",
-  "betty",
-  "margaret",
-  "sandra",
-  "ashley",
-  "dorothy",
-  "kimberly",
-  "emily",
-  "donna",
-  "michelle",
-  "carol",
-  "amanda",
-  "melissa",
-  "deborah",
-  "stephanie",
-  "rebecca",
-  "sharon",
-  "laura",
-  "cynthia",
-  "kathleen",
-  "amy",
-  "angela",
-  "shirley",
-  "anna",
-  "brenda",
-  "pamela",
-  "emma",
-  "nicole",
-  "helen",
-  "samantha",
-  "katherine",
-  "christine",
-  "debra",
-  "rachel",
-  "carolyn",
-  "janet",
-  "catherine",
-  "maria",
-  "heather",
-  "diane",
-  "ruth",
-  "julie",
-  "olivia",
-  "joyce",
-  "virginia",
-  "victoria",
-  "kelly",
-  "lauren",
-  "christina",
-  "joan",
-  "evelyn",
-  "judith",
-  "megan",
-  "andrea",
-  "cheryl",
-  "hannah",
-  "jacqueline",
-  "martha",
-  "gloria",
-  "teresa",
-  "ann",
-  "sara",
-  "madison",
-  "frances",
-  "kathryn",
-  "janice",
-  "jean",
-  "abigail",
-  "alice",
-  "judy",
-  "sophia",
-  "grace",
-  "denise",
-  "amber",
-  "doris",
-  "marilyn",
-  "danielle",
-  "beverly",
-  "isabella",
-  "theresa",
-  "diana",
-  "natalie",
-  "brittany",
-  "charlotte",
-  "marie",
-  "kayla",
-  "alexis",
-  "lori",
-  "alicia",
-  "jenny",
-  "nadia",
-  "priya",
-  "aisha",
-  "fatima",
-  "mei",
-  "yuki",
-  "sofia",
-  "elena",
-  "rosa",
-  "carmen",
-  "lucia",
-  "nina",
-  "tanya",
-  "svetlana",
-  "ingrid",
-  "bianca",
-  "valentina",
-  "ngozi",
-  "amara",
-  "zara",
-])
-
-function inferGender(firstName: string): "women" | "men" {
-  return FEMALE_NAMES.has(firstName.toLowerCase()) ? "women" : "men"
 }
 
 const SYSTEM_GENERATED_USERNAME_REGEX = /^user_[a-f0-9]{8,}$/i
@@ -244,35 +120,35 @@ function getReadableNameFromUser(u: any): string {
   return "Team Member"
 }
 
-function mapUserToTalent(u: any, index: number): TalentMember {
-  const firstName = u.firstName ?? ""
-  const lastName = u.lastName ?? ""
+function mapUserToTalent(u: any): TalentMember {
   const name = getReadableNameFromUser(u)
-  const rateMin = u.rateMin ? `$${Math.round(Number(u.rateMin))}` : "$50"
-  const rateMax = u.rateMax ? `$${Math.round(Number(u.rateMax))}` : "$100"
 
-  // Calculate years of experience from work history
-  let yearsExp = 3
+  // Only build a rate range when the record actually has one. A default
+  // range would read as this person's real published rate.
+  const rate =
+    u.rateMin && u.rateMax
+      ? `$${Math.round(Number(u.rateMin))} - $${Math.round(Number(u.rateMax))}`
+      : undefined
+
+  // Years of experience derived from real work history; left undefined when
+  // the user has none on file rather than assumed.
+  let experience: string | undefined
   if (u.experience?.length) {
     const earliest = u.experience.reduce((min: string, e: any) => {
       const d = e.startDate ?? e.start_date
       return d && d < min ? d : min
     }, new Date().toISOString())
-    yearsExp = Math.max(
+    const yearsExp = Math.max(
       1,
       Math.round(
         (Date.now() - new Date(earliest).getTime()) /
           (365.25 * 24 * 60 * 60 * 1000)
       )
     )
+    experience = `${yearsExp} years of experience`
   }
 
   const skills = (u.skills ?? []).map((s: any) => s.name).filter(Boolean)
-
-  // Assign gender-appropriate profile photo if none provided
-  const gender = inferGender(firstName || u.username || "")
-  const photoIndex = ((index * 7 + 13) % 90) + 1 // deterministic spread across 1-90
-  const fallbackAvatar = `https://randomuser.me/api/portraits/${gender}/${photoIndex}.jpg`
 
   return {
     id: u.id,
@@ -284,17 +160,18 @@ function mapUserToTalent(u: any, index: number): TalentMember {
         ? `@${u.username}`
         : "",
     role: u.role ?? u.industry ?? "Freelancer",
-    avatarSrc: u.avatarUrl || fallbackAvatar,
-    rating: 4.0 + Math.round(Math.random() * 10) / 10,
-    experience: `${yearsExp} years of experience`,
-    country: u.location ?? "United States",
-    localTime:
-      new Date().toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      }) + " local time",
-    rate: `${rateMin} - ${rateMax}`,
+    avatarSrc: u.avatarUrl || undefined,
+    // The user API exposes no rating, so there is nothing real to show. It
+    // used to be Math.random(), which rendered an invented star score next to
+    // a real freelancer's name and re-rolled it on every page load.
+    rating: undefined,
+    experience,
+    country: u.location ?? undefined,
+    // Deliberately omitted: the talent's timezone isn't in this payload, and
+    // the previous value was the *viewer's* clock labelled as theirs, which
+    // was wrong for everyone outside the viewer's timezone.
+    localTime: undefined,
+    rate,
     skills,
   }
 }
@@ -827,7 +704,7 @@ export default function BrowsingHistoryPage() {
     UserAPI.listUsers(20)
       .then((res) => {
         const users = Array.isArray(res?.data) ? res.data : []
-        setTalentMembers(users.map((u, i) => mapUserToTalent(u, i)))
+        setTalentMembers(users.map((u) => mapUserToTalent(u)))
       })
       .catch(() => {})
       .finally(() => setIsLoading(false))
