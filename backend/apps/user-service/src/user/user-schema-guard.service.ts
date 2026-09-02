@@ -7,14 +7,44 @@ export class UserSchemaGuardService implements OnModuleInit {
 
   constructor(private readonly dataSource: DataSource) {}
 
+  /**
+   * Best-effort DDL. This whole service is a boot-time repair pass, so a
+   * statement the database refuses must never take the service down with it:
+   * onModuleInit rejecting aborts Nest's bootstrap, the process exits, and the
+   * old container keeps serving until the next restart — at which point
+   * user-service simply does not come back.
+   *
+   * That is not hypothetical here. The managed database does not grant this
+   * role CREATE on every schema (favorites/notifications already need
+   * supabase_admin), and CREATE EXTENSION generally requires superuser. Those
+   * statements are the ones most likely to be refused, and the correct
+   * response is to log and carry on: the migrations own the real schema, this
+   * pass only patches drift.
+   */
+  private async tryDdl(sql: string, label: string): Promise<void> {
+    try {
+      await this.dataSource.query(sql);
+    } catch (err) {
+      this.logger.warn(
+        `Schema guard skipped ${label}: ${(err as Error).message}`,
+      );
+    }
+  }
+
   async onModuleInit(): Promise<void> {
     // Staging has experienced repeated drift between the current entity shape
     // and the long-lived shared database. A plain `findOne()` on the User
     // entity selects every mapped column, so a single missing column turns
     // `/user/me` into a 400 "Database error" even though auth itself works.
     // Keep boot resilient by ensuring the known entity-backed columns exist.
-    await this.dataSource.query(`CREATE SCHEMA IF NOT EXISTS "user_service"`);
-    await this.dataSource.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
+    await this.tryDdl(
+      `CREATE SCHEMA IF NOT EXISTS "user_service"`,
+      'CREATE SCHEMA user_service',
+    );
+    await this.tryDdl(
+      `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`,
+      'CREATE EXTENSION uuid-ossp',
+    );
 
     const columnRepairs = [
       `"username" character varying`,
@@ -59,8 +89,9 @@ export class UserSchemaGuardService implements OnModuleInit {
     ];
 
     for (const definition of columnRepairs) {
-      await this.dataSource.query(
+      await this.tryDdl(
         `ALTER TABLE IF EXISTS "user_service"."users" ADD COLUMN IF NOT EXISTS ${definition}`,
+        `users column ${definition}`,
       );
     }
 
@@ -161,7 +192,7 @@ export class UserSchemaGuardService implements OnModuleInit {
     ];
 
     for (const sql of tableRepairs) {
-      await this.dataSource.query(sql);
+      await this.tryDdl(sql, 'relation table create');
     }
 
     const relationColumnRepairs: Record<string, string[]> = {
@@ -240,8 +271,9 @@ export class UserSchemaGuardService implements OnModuleInit {
 
     for (const [table, definitions] of Object.entries(relationColumnRepairs)) {
       for (const definition of definitions) {
-        await this.dataSource.query(
+        await this.tryDdl(
           `ALTER TABLE IF EXISTS "user_service"."${table}" ADD COLUMN IF NOT EXISTS ${definition}`,
+          `${table} column ${definition}`,
         );
       }
     }
@@ -257,8 +289,9 @@ export class UserSchemaGuardService implements OnModuleInit {
     ];
 
     for (const table of indexedTables) {
-      await this.dataSource.query(
+      await this.tryDdl(
         `CREATE INDEX IF NOT EXISTS "IDX_user_service_${table}_userId" ON "user_service"."${table}" ("userId")`,
+        `${table} userId index`,
       );
     }
   }
