@@ -9405,6 +9405,9 @@ const DescribeProjectStep = ({
       : "w-[886px] space-y-3";
   const describeProjectGroupClassName =
     descriptionFieldVariant === "project" ? "mt-16 space-y-4" : "space-y-2";
+  const budgetQuestionClassName = isService
+    ? "w-[886px] flex flex-col gap-4"
+    : describeProjectGroupClassName;
   const describeProjectLabelRowClassName =
     descriptionFieldVariant === "project"
       ? "flex h-7 items-baseline justify-between gap-2"
@@ -9848,7 +9851,7 @@ const DescribeProjectStep = ({
             </>
           ) : null}
 
-          <div className={describeProjectGroupClassName}>
+          <div className={budgetQuestionClassName}>
             <Label className="text-[18px] leading-7 font-medium text-dark-blue-400">
               What&apos;s your estimated budget for this{" "}
               {isService ? "service" : "project"}?
@@ -9952,7 +9955,12 @@ const DescribeProjectStep = ({
                       className="h-11 w-full justify-between rounded-[5px] px-[14px] py-2.5 text-[16px] leading-6 font-normal text-dark-blue-400"
                     >
                       {budgetUnit}
-                      <ChevronDown className="size-4 text-gray-400" />
+                      <ChevronDown
+                        className={cn(
+                          "size-4 text-gray-400",
+                          isService && "size-5",
+                        )}
+                      />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="min-w-[136px]">
