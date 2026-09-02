@@ -1,13 +1,14 @@
 // src/main/index.ts
 // Electron main process entry point for the Marketeq Time Tracker.
-// Responsibilities (Phase 1):
+// Responsibilities:
 //   1. Enforce single-instance lock.
 //   2. Initialize logging.
 //   3. Initialize the local SQLite database and run migrations.
-//   4. Register the typed IPC handlers.
-//   5. Create the main BrowserWindow.
+//   4. Register typed IPC handlers (timer/capture/sync/auth/onboarding).
+//   5. Create the main BrowserWindow via the Phase 6 window manager,
+//      wire tray + notifications.
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
 import { ensureSingleInstance } from './lifecycle/single-instance';
 import { logger } from './logger';
@@ -17,6 +18,7 @@ import { registerIpcHandlers } from './ipc';
 import { createRepos } from './db/repos';
 import {
   createTimerService,
+  TIMER_CHANNELS,
   type TimerService,
 } from './services/timer/timer-service';
 import { createPermissionsService } from './services/permissions/permissions-service';
@@ -36,46 +38,23 @@ import { createRealtimeClient } from './services/sync/realtime-client';
 import { createEventBridge } from './services/sync/event-bridge';
 import { registerSyncIpcHandlers } from './services/sync/register-ipc';
 import { createAuthService } from './services/auth/auth-service';
+import type { AuthService } from './services/auth/auth-service';
 import { createFetchAuthHttpPort } from './services/auth/http-port';
 import { registerAuthIpc } from './services/auth/register-ipc';
 import { collectBroadcastTargets } from './ipc/timer';
-import { ipcMain } from 'electron';
+import {
+  createWindowManager,
+  resolveRendererPaths,
+  type WindowManager,
+} from './services/window/window-manager';
+import { createTrayService } from './services/tray/tray-service';
+import { createNotificationService } from './services/notifications/notification-service';
+import { createOnboardingService } from './services/onboarding/onboarding-service';
+import { registerOnboardingIpc } from './services/onboarding/register-ipc';
 
 const isDev = !app.isPackaged;
 
-async function createMainWindow(): Promise<BrowserWindow> {
-  const win = new BrowserWindow({
-    width: 480,
-    height: 720,
-    minWidth: 360,
-    minHeight: 540,
-    show: false,
-    title: 'Marketeq Time Tracker',
-    webPreferences: {
-      preload: path.join(__dirname, '..', 'preload', 'preload', 'index.js'),
-      contextIsolation: true,
-      sandbox: false,
-      nodeIntegration: false,
-    },
-  });
-
-  if (isDev && process.env.VITE_DEV_SERVER_URL) {
-    await win.loadURL(process.env.VITE_DEV_SERVER_URL);
-    win.webContents.openDevTools({ mode: 'detach' });
-  } else {
-    const rendererIndex = path.join(
-      __dirname,
-      '..',
-      '..',
-      'renderer',
-      'index.html',
-    );
-    await win.loadFile(rendererIndex);
-  }
-
-  win.once('ready-to-show', () => win.show());
-  return win;
-}
+let windowManager: WindowManager | null = null;
 
 async function bootstrap(): Promise<void> {
   ensureSingleInstance();
@@ -92,12 +71,18 @@ async function bootstrap(): Promise<void> {
   }
 
   // --- Phase 2: Timer service (9-state FSM) ----------------------------
+  let authService: AuthService | null = null;
   let timerService: TimerService | null = null;
   let detachIpcHandlers: (() => void) | null = null;
   try {
     const db = initDatabase();
     const repos = createRepos(db);
-    timerService = createTimerService({ db, repos, logger });
+    timerService = createTimerService({
+      db,
+      repos,
+      logger,
+      getUserId: () => authService?.getCurrentUser()?.id ?? null,
+    });
     // Restore any open session that was left behind by a previous crash.
     timerService.restoreFromDb();
     detachIpcHandlers = registerIpcHandlers({ timer: timerService });
@@ -113,7 +98,7 @@ async function bootstrap(): Promise<void> {
     const db = initDatabase();
     const repos = createRepos(db);
     const httpPort = createFetchAuthHttpPort({ logger });
-    const authService = createAuthService({
+    authService = createAuthService({
       logger,
       repos,
       http: httpPort,
@@ -286,7 +271,122 @@ async function bootstrap(): Promise<void> {
     logger.error({ err }, 'failed to initialize sync pipeline');
   }
 
-  app.on('before-quit', () => {
+  // --- Phase 6: window manager, onboarding, tray, notifications --------
+  let detachOnboardingIpc: (() => void) | null = null;
+  let trayService: ReturnType<typeof createTrayService> | null = null;
+  let detachTimerBus: (() => void) | null = null;
+  try {
+    const db = initDatabase();
+    const onboardingService = createOnboardingService({
+      db,
+      logger,
+      getUserId: () => authService?.getCurrentUser()?.id ?? null,
+    });
+
+    const { preloadPath, rendererIndexPath } = resolveRendererPaths(__dirname);
+    windowManager = createWindowManager({
+      logger,
+      isDev,
+      devServerUrl: process.env.VITE_DEV_SERVER_URL,
+      preloadPath,
+      rendererIndexPath,
+      getTimerState: () =>
+        timerService ? timerService.getCurrentState() : 'Idle',
+    });
+
+    detachOnboardingIpc = registerOnboardingIpc({
+      ipcMain,
+      logger,
+      service: onboardingService,
+      getBroadcastTargets: () => collectBroadcastTargets(),
+    });
+
+    const notificationService = createNotificationService({
+      logger,
+      windowManager,
+      getPrefs: () => onboardingService.getNotificationPrefs(),
+    });
+
+    // Resolve tray icon dir from packaged resources or dev tree.
+    const resourcesRoot = app.isPackaged
+      ? process.resourcesPath
+      : path.join(__dirname, '..', '..', 'resources');
+    const fallbackIcon = path.join(resourcesRoot, 'icon.png');
+
+    trayService = createTrayService({
+      logger,
+      iconsDir: resourcesRoot,
+      fallbackIcon,
+      windowManager,
+      onStartTimer: () => {
+        const selection = timerService?.resolveStartSelection();
+        if (!selection) return;
+        void timerService?.startTimer(selection);
+      },
+      onPauseTimer: async () => {
+        await timerService?.pauseTimer();
+      },
+      onResumeTimer: async () => {
+        await timerService?.resumeTimer();
+      },
+      onStopTimer: async () => {
+        await timerService?.stopTimer('user_stop');
+      },
+      onStartBreak: async (kind) => {
+        await timerService?.startBreak({ kind, durationSec: 15 * 60 });
+      },
+      onSyncNow: () => undefined,
+      onLogout: () => undefined,
+      onQuit: () => {
+        windowManager?.prepareToQuit();
+        app.quit();
+      },
+    });
+    trayService.start();
+
+    // Forward timer bus events into tray + notifications.
+    if (timerService) {
+      detachTimerBus = timerService.attachEventBus((evt) => {
+        try {
+          if (evt.channel === TIMER_CHANNELS.stateChanged) {
+            trayService?.setTimerState(evt.payload.state, evt.payload.elapsedSec);
+          } else if (evt.channel === TIMER_CHANNELS.tick) {
+            trayService?.setTimerState(evt.payload.state, evt.payload.elapsedSec);
+          } else if (evt.channel === TIMER_CHANNELS.workReminder) {
+            notificationService.workReminder(evt.payload.elapsedSec);
+          } else if (evt.channel === TIMER_CHANNELS.breakReminder) {
+            notificationService.breakReminder(evt.payload.elapsedSec);
+          } else if (evt.channel === TIMER_CHANNELS.breakExpiring) {
+            notificationService.breakExpiring(evt.payload.remainingSec);
+          } else if (evt.channel === TIMER_CHANNELS.breakExpired) {
+            notificationService.breakExpired();
+          } else if (evt.channel === TIMER_CHANNELS.idleResolutionNeeded) {
+            notificationService.idleDetected(evt.payload.seconds);
+          }
+        } catch (err) {
+          logger.warn({ err }, 'timer bus → tray/notifications failed');
+        }
+      });
+    }
+
+    logger.info('phase 6 window/tray/notifications/onboarding wired');
+  } catch (err) {
+    logger.error({ err }, 'failed to initialize phase 6 services');
+  }
+
+  app.on('before-quit', (evt) => {
+    // Confirm-before-quit when there's an active session.
+    if (windowManager && !windowManager.isQuitting()) {
+      evt.preventDefault();
+      void (async () => {
+        const ok = await windowManager!.confirmQuit();
+        if (!ok) return;
+        windowManager!.prepareToQuit();
+        app.quit();
+      })();
+      return;
+    }
+
     // Fire off the async sync shutdown but don't block the quit path —
     // Electron gives us ~2 s before force-killing anyway.
     if (stopSync) {
@@ -306,6 +406,22 @@ async function bootstrap(): Promise<void> {
       logger.warn({ err }, 'error while detaching auth ipc');
     }
     try {
+      detachOnboardingIpc?.();
+    } catch (err) {
+      logger.warn({ err }, 'error while detaching onboarding ipc');
+    }
+    try {
+      detachTimerBus?.();
+      trayService?.destroy();
+    } catch (err) {
+      logger.warn({ err }, 'error while stopping tray service');
+    }
+    try {
+      windowManager?.closeAll();
+    } catch (err) {
+      logger.warn({ err }, 'error while closing windows');
+    }
+    try {
       timerService?.dispatch({ type: 'APP_QUIT' }).catch(() => undefined);
       timerService?.dispose();
       detachIpcHandlers?.();
@@ -315,17 +431,23 @@ async function bootstrap(): Promise<void> {
   });
 
   await app.whenReady();
-  await createMainWindow();
+  if (windowManager) {
+    await windowManager.ensureMainWindow();
+  }
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      void createMainWindow();
+    if (windowManager) {
+      void windowManager.showMainWindow();
+    } else if (BrowserWindow.getAllWindows().length === 0) {
+      // Shouldn't happen, but keep a safety net.
     }
   });
 }
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // Phase 6: close-to-tray — keep the app alive so the tray menu remains
+  // accessible on both platforms. Users quit explicitly via tray → Quit
+  // or the File menu, which calls `windowManager.prepareToQuit()` first.
 });
 
 app.on('before-quit', () => {

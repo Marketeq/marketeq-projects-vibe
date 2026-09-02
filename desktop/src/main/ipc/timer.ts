@@ -8,10 +8,12 @@ import type { BrowserWindow, IpcMain, WebContents } from 'electron';
 import { IPC } from '../../shared/ipc-contracts';
 import type {
   IdleResolveArgs,
+  TimerContractOptionDTO,
   TimerBreakStartArgs,
   TimerSnapshotDTO,
   TimerStartArgs,
   TimerStopArgs,
+  TimerTaskOptionDTO,
 } from '../../shared/ipc-contracts';
 import type { TimerService } from '../services/timer/timer-service';
 import type { BreakKind, IdleResolution, SessionEndReason } from '../../shared/types';
@@ -54,6 +56,14 @@ export function registerTimerIpc(
   });
   ipcMain.handle(IPC.timerBreakEnd, async () => toDTO(await timer.endBreak()));
   ipcMain.handle(IPC.timerGetState, () => toDTO(timer.getSnapshot()));
+  ipcMain.handle(IPC.timerListContracts, (): TimerContractOptionDTO[] =>
+    timer.listStartContracts(),
+  );
+  ipcMain.handle(
+    IPC.timerListTasks,
+    (_evt, contractId: string): TimerTaskOptionDTO[] =>
+      timer.listStartTasks(contractId),
+  );
   ipcMain.handle(IPC.idleResolve, async (_evt, args: IdleResolveArgs) => {
     const resolution: IdleResolution = args.resolution;
     return toDTO(await timer.resolveIdle(resolution));
@@ -75,6 +85,8 @@ export function registerTimerIpc(
     ipcMain.removeHandler(IPC.timerBreakStart);
     ipcMain.removeHandler(IPC.timerBreakEnd);
     ipcMain.removeHandler(IPC.timerGetState);
+    ipcMain.removeHandler(IPC.timerListContracts);
+    ipcMain.removeHandler(IPC.timerListTasks);
     ipcMain.removeHandler(IPC.idleResolve);
   };
 }

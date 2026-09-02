@@ -32,10 +32,12 @@ import type {
   SyncProgressPayload,
   SyncStatusDTO,
   TimerBreakStartArgs,
+  TimerContractOptionDTO,
   TimerErrorPayload,
   TimerSnapshotDTO,
   TimerStartArgs,
   TimerStopArgs,
+  TimerTaskOptionDTO,
   TimerTickPayload,
 } from '../shared/ipc-contracts';
 import type { AppInfo, PingResult } from '../shared/types';
@@ -70,6 +72,10 @@ const dtt = {
       ipcRenderer.invoke(IPC.timerBreakEnd),
     getState: (): Promise<TimerSnapshotDTO> =>
       ipcRenderer.invoke(IPC.timerGetState),
+    listContracts: (): Promise<TimerContractOptionDTO[]> =>
+      ipcRenderer.invoke(IPC.timerListContracts),
+    listTasks: (contractId: string): Promise<TimerTaskOptionDTO[]> =>
+      ipcRenderer.invoke(IPC.timerListTasks, contractId),
     resolveIdle: (args: IdleResolveArgs): Promise<TimerSnapshotDTO> =>
       ipcRenderer.invoke(IPC.idleResolve, args),
 

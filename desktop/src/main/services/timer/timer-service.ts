@@ -168,6 +168,18 @@ export interface TimerServiceDeps {
   disableIdleDetector?: boolean;
 }
 
+export interface TimerContractOption {
+  id: string;
+  name: string;
+  clientName: string;
+}
+
+export interface TimerTaskOption {
+  id: string;
+  contractId: string;
+  name: string;
+}
+
 // -----------------------------------------------------------------------------
 // Factory
 // -----------------------------------------------------------------------------
@@ -669,6 +681,70 @@ export function createTimerService(deps: TimerServiceDeps) {
     return snapshot();
   }
 
+  function listStartContracts(): TimerContractOption[] {
+    return repos.contract.listActive().map((contract) => ({
+      id: contract.id,
+      name: contract.name,
+      clientName: contract.client_name,
+    }));
+  }
+
+  function listStartTasks(contractId: string): TimerTaskOption[] {
+    return repos.task.listForContract(contractId).map((task) => ({
+      id: task.id,
+      contractId: task.contract_id,
+      name: task.name,
+    }));
+  }
+
+  function resolveStartSelection(
+    preferred:
+      | null
+      | {
+          contractId: string;
+          taskId: string;
+        } = pickedContract,
+  ): { contractId: string; taskId: string } | null {
+    const preferredContractId = preferred?.contractId ?? null;
+    const preferredContract = preferredContractId
+      ? repos.contract.findById(preferredContractId)
+      : null;
+    const preferredTasks =
+      preferredContract?.status === 'active' && preferredContractId
+        ? listStartTasks(preferredContractId)
+        : [];
+
+    if (
+      preferredContract?.status === 'active' &&
+      preferredContractId &&
+      preferred?.taskId &&
+      preferredTasks.some((task) => task.id === preferred.taskId)
+    ) {
+      return {
+        contractId: preferredContractId,
+        taskId: preferred.taskId,
+      };
+    }
+
+    if (preferredContract?.status === 'active' && preferredTasks[0]) {
+      return {
+        contractId: preferredContract.id,
+        taskId: preferredTasks[0].id,
+      };
+    }
+
+    for (const contract of repos.contract.listActive()) {
+      const tasks = listStartTasks(contract.id);
+      if (!tasks[0]) continue;
+      return {
+        contractId: contract.id,
+        taskId: tasks[0].id,
+      };
+    }
+
+    return null;
+  }
+
   function attachEventBus(cb: (event: TimerBusEvent) => void): () => void {
     const listener = (evt: TimerBusEvent) => cb(evt);
     bus.on('event', listener);
@@ -747,6 +823,9 @@ export function createTimerService(deps: TimerServiceDeps) {
     // introspection
     getCurrentState,
     getSnapshot,
+    listStartContracts,
+    listStartTasks,
+    resolveStartSelection,
     // bus / lifecycle
     attachEventBus,
     restoreFromDb,

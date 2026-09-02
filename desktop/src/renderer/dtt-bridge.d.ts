@@ -35,10 +35,12 @@ import type {
   SyncProgressPayload,
   SyncStatusDTO,
   TimerBreakStartArgs,
+  TimerContractOptionDTO,
   TimerErrorPayload,
   TimerSnapshotDTO,
   TimerStartArgs,
   TimerStopArgs,
+  TimerTaskOptionDTO,
   TimerTickPayload,
 } from '../shared/ipc-contracts';
 import type { AppInfo, PingResult } from '../shared/types';
@@ -51,6 +53,8 @@ export interface DttTimerBridge {
   breakStart: (args: TimerBreakStartArgs) => Promise<TimerSnapshotDTO>;
   breakEnd: () => Promise<TimerSnapshotDTO>;
   getState: () => Promise<TimerSnapshotDTO>;
+  listContracts: () => Promise<TimerContractOptionDTO[]>;
+  listTasks: (contractId: string) => Promise<TimerTaskOptionDTO[]>;
   resolveIdle: (args: IdleResolveArgs) => Promise<TimerSnapshotDTO>;
   onStateChanged: (cb: (snap: TimerSnapshotDTO) => void) => () => void;
   onTick: (cb: (p: TimerTickPayload) => void) => () => void;

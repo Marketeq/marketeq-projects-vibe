@@ -60,6 +60,8 @@ export const IPC = {
   timerBreakStart: 'timer:break-start',
   timerBreakEnd: 'timer:break-end',
   timerGetState: 'timer:get-state',
+  timerListContracts: 'timer:list-contracts',
+  timerListTasks: 'timer:list-tasks',
   idleResolve: 'idle:resolve',
 
   // --- Phase 2 timer broadcast events (main → renderer) ---
@@ -211,6 +213,18 @@ export interface TimerStartArgs {
   contractId: string;
   taskId: string;
   description?: string;
+}
+
+export interface TimerContractOptionDTO {
+  id: string;
+  name: string;
+  clientName: string;
+}
+
+export interface TimerTaskOptionDTO {
+  id: string;
+  contractId: string;
+  name: string;
 }
 
 export interface TimerStopArgs {
