@@ -9697,15 +9697,16 @@ const DescribeProjectStep = ({
                 />
               </div>
 
-              <div className="mt-5 space-y-2">
-                <div className="space-y-1">
-                  <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-                    Do you have documentation or a brief to share? (Optional)
+              <div className="flex flex-col gap-6">
+                <div className="flex h-[52px] flex-col items-start gap-1">
+                  <Label className="text-[18px] leading-7 font-medium text-dark-blue-400">
+                    Do you have documentation or a brief to share?
+                    <span className="text-gray-400"> (Optional)</span>
                   </Label>
-                  <p className="text-xs leading-[18px] text-gray-500">
+                  <p className="text-sm leading-5 text-dark-blue-400">
                     If you&apos;ve already written a scope or have a doc with
-                    details, upload it here. It&apos;ll help us better match
-                    the team to your needs.
+                    details, upload it here. It&apos;ll help us better match the
+                    team to your needs.
                   </p>
                 </div>
                 {scopeFile ? (
@@ -9792,7 +9793,7 @@ const DescribeProjectStep = ({
                 ) : (
                   <label
                     className={cn(
-                      "flex h-[150px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center focus-within:ring-2 focus-within:ring-primary-500",
+                      "flex h-[341px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white px-6 py-[100px] text-center focus-within:ring-2 focus-within:ring-primary-500",
                       isScopeDropActive && "border-primary-500",
                     )}
                     onDragEnter={(event) => {
@@ -9822,23 +9823,25 @@ const DescribeProjectStep = ({
                         event.target.value = "";
                       }}
                     />
-                    <span className="inline-flex size-10 items-center justify-center rounded-full border-[6px] border-gray-50 bg-gray-100">
+                    <span className="inline-flex size-10 items-center justify-center rounded-[28px] border-[6px] border-gray-100 bg-white">
                       <UploadCloud className="size-5 text-gray-500" />
                     </span>
-                    <span className="mt-3 text-xs leading-5 text-gray-600">
-                      Drag and drop your service scope or{" "}
-                      <span className="font-semibold text-primary-500">
-                        Choose a file
-                      </span>
-                    </span>
-                    <span className="mt-1 max-w-[408px] text-xs leading-[14.52px] text-gray-500">
-                      Upload a scope document to help clients understand your
-                      service details and allow us to generate accurate
-                      suggestions.
-                    </span>
-                    <span className="mt-3 text-xs leading-[14.52px] text-gray-500">
-                      Recommended Format: PDF or DOCX
-                    </span>
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="flex items-start justify-center gap-1 text-xs leading-5 text-gray-600">
+                        Drag and drop your service scope or{" "}
+                        <span className="font-semibold text-primary-500 underline">
+                          Choose a file
+                        </span>
+                      </div>
+                      <p className="max-w-[408px] text-center text-xs leading-[15px] font-light text-gray-500">
+                        Upload a scope document to help clients understand your
+                        service details and allow us to generate accurate
+                        suggestions.
+                      </p>
+                      <p className="text-xs leading-[15px] text-gray-500">
+                        Recommended Format: PDF or DOCX
+                      </p>
+                    </div>
                   </label>
                 )}
               </div>
