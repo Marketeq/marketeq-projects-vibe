@@ -3128,10 +3128,7 @@ export default function SettingsPage() {
                             First Activity
                           </TableHead>
                           <TableHead className="whitespace-nowrap border-b border-gray-200 hover:text-gray-600">
-                            <span className="flex items-center gap-x-1">
-                              Device Name
-                              <Edit01 className="size-4 text-gray-400" />
-                            </span>
+                            Device Name
                           </TableHead>
                         </TableRow>
                       </TableHeader>
