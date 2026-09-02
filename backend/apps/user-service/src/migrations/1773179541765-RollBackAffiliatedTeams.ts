@@ -73,12 +73,12 @@ export class RollBackAffiliatedTeams1773179541765
         SELECT c.udt_name
         INTO created_type
         FROM information_schema.columns c
-        WHERE c.table_schema = 'public'
+        WHERE c.table_schema = current_schema()
           AND c.table_name = 'affiliated_teams'
           AND c.column_name = 'createdAt';
 
         IF created_type IS NULL THEN
-          ALTER TABLE "affiliated_teams" ADD COLUMN "createdAt" TIMESTAMP NOT NULL DEFAULT now();
+          ALTER TABLE "affiliated_teams" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP NOT NULL DEFAULT now();
         ELSIF created_type = 'timestamptz' THEN
           ALTER TABLE "affiliated_teams"
           ALTER COLUMN "createdAt" TYPE TIMESTAMP
@@ -103,12 +103,12 @@ export class RollBackAffiliatedTeams1773179541765
         SELECT c.udt_name
         INTO created_type
         FROM information_schema.columns c
-        WHERE c.table_schema = 'public'
+        WHERE c.table_schema = current_schema()
           AND c.table_name = 'affiliated_teams'
           AND c.column_name = 'createdAt';
 
         IF created_type IS NULL THEN
-          ALTER TABLE "affiliated_teams" ADD COLUMN "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now();
+          ALTER TABLE "affiliated_teams" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now();
         ELSIF created_type = 'timestamp' THEN
           ALTER TABLE "affiliated_teams"
           ALTER COLUMN "createdAt" TYPE TIMESTAMP WITH TIME ZONE
