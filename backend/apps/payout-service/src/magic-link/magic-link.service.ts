@@ -56,6 +56,39 @@ export class MagicLinkService {
     this.isProduction = this.config.get('NODE_ENV', 'development') === 'production';
   }
 
+  // One shared backend serves three different frontend origins at once
+  // (DEVOPS_SOP.md §3 — Vercel dev/staging/live all point at the same
+  // marketeq-backend.onrender.com), so a single static MAGIC_LINK_BASE_URL
+  // can only ever be right for one of them. Mirrors
+  // AuthService.resolveTrustedPasswordResetBase() exactly, same reasoning:
+  // the frontend that started the withdrawal tells us its own base URL
+  // (dto.redirectUrl) rather than us guessing from a header, and we only
+  // ever use it if its origin is on the FRONTEND_URL trusted list — never
+  // reflect an arbitrary client-supplied URL straight into the email, which
+  // would otherwise let it point the "confirm withdrawal" link anywhere.
+  // FRONTEND_URL is comma-separated (same convention as auth-service) since
+  // the one shared backend must trust all three frontend origins at once.
+  private resolveTrustedMagicLinkBase(requestedBase?: string): string {
+    if (!requestedBase) return this.baseUrl;
+
+    const trustedOrigins = (this.config.get<string>('FRONTEND_URL') ?? '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+      .map((value) => {
+        try { return new URL(value).origin; } catch { return undefined; }
+      })
+      .filter((value): value is string => !!value);
+
+    try {
+      const requestedUrl = new URL(requestedBase);
+      if (trustedOrigins.includes(requestedUrl.origin)) return requestedBase;
+    } catch {
+      // fall back to configured default below
+    }
+    return this.baseUrl;
+  }
+
   // The raw token is a bearer credential: it is the single factor that moves
   // a payout from PENDING_VERIFICATION to QUEUED. Logging the full URL is a
   // local-debugging affordance only — see the CRITICAL note at the top of
@@ -121,12 +154,14 @@ export class MagicLinkService {
     payout: PayoutRequest,
     rawToken: string,
     contractorEmail?: string,
+    redirectUrl?: string,
   ): Promise<void> {
-    const magicLinkUrl = `${this.baseUrl}?token=${rawToken}&id=${payout.id}`;
+    const baseUrl = this.resolveTrustedMagicLinkBase(redirectUrl);
+    const magicLinkUrl = `${baseUrl}?token=${rawToken}&id=${payout.id}`;
 
     this.logger.log(`[MAGIC_LINK] Email event for payout ${payout.id} (contractor: ${payout.contractorId})`);
     // CRITICAL: Do NOT log the raw token or full URL
-    this.logger.log(`[DEV] Verify URL: ${this.baseUrl}?token=***REDACTED***&id=${payout.id}`);
+    this.logger.log(`[DEV] Verify URL: ${baseUrl}?token=***REDACTED***&id=${payout.id}`);
 
     if (!contractorEmail) {
       this.logger.warn(`No contractor email available for payout ${payout.id} — magic link cannot be emailed.`);
@@ -296,6 +331,7 @@ export class MagicLinkService {
     contractorId: string,
     payoutRequestId: string,
     contractorEmail?: string,
+    redirectUrl?: string,
   ): Promise<{ resent: boolean; message: string }> {
     const payout = await this.payoutRepo.findOne({
       where: { id: payoutRequestId, contractorId, status: PayoutStatus.PENDING_VERIFICATION },
@@ -347,7 +383,7 @@ export class MagicLinkService {
 
     // Generate and publish new token
     const rawToken = await this.generateAndStore(payoutRequestId, contractorId);
-    await this.publishMagicLinkEvent(payout, rawToken, contractorEmail);
+    await this.publishMagicLinkEvent(payout, rawToken, contractorEmail, redirectUrl);
 
     return { resent: true, message: 'A new verification email has been sent.' };
   }
