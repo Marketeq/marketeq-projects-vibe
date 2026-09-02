@@ -10,6 +10,21 @@ export class UpdateCompanyDto {
   @IsCompanyName()
   name?: string;
 
+  /**
+   * The company website. `CreateCompanyDto` already accepts this, but update
+   * did not, so a website could be set at registration and never corrected
+   * afterwards — Settings > Company Info had no way to save the field.
+   *
+   * Validated as a plain string rather than `@IsUrl()` to match create, which
+   * stores whatever the register step collected; the Settings form supplies
+   * the `https://` prefix itself.
+   */
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  @MaxLength(255)
+  domain?: string;
+
   @ApiProperty({ required: false })
   @IsUrl()
   @IsOptional()

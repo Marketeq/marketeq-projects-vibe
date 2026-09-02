@@ -9,6 +9,7 @@ import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
 import { useRefreshUser } from "../hooks/use-refresh-user"
+import { useCompanyInfo } from "../hooks/use-company-info"
 import { AuthAPI } from "@/service/http/auth"
 import { ClientAPI } from "@/service/http/client"
 import { cn, convertToKbOrMb, getIsNotEmpty } from "@/utils/functions"
@@ -169,6 +170,11 @@ export default function SettingsPage() {
     [router]
   )
 
+  const {
+    company,
+    save: saveCompanyInfo,
+  } = useCompanyInfo(activeTab === "company-info")
+
   const toggleInviteWindow = useInviteWindowStore((s) => s.toggle)
   const invoiceExporters = useBillingExportStore((s) => s.exporters.invoices)
   const transactionExporters = useBillingExportStore((s) => s.exporters.transactions)
@@ -210,6 +216,7 @@ export default function SettingsPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
+  const [companyError, setCompanyError] = useState<string | null>(null)
   const [profileForm, setProfileForm] = useState({
     firstName: "",
     lastName: "",
@@ -264,6 +271,7 @@ export default function SettingsPage() {
 
   const [showLogoModal, setShowLogoModal] = useState(false)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
   const [isLogoRemoved, setIsLogoRemoved] = useState(false)
 
   const logoSrc = isLogoRemoved ? "" : logoPreview ?? ""
@@ -276,12 +284,14 @@ export default function SettingsPage() {
     reader.onloadend = () => {
       setIsLogoRemoved(false)
       setLogoPreview(reader.result as string)
+      setLogoFile(file)
     }
     reader.readAsDataURL(file)
   }, [])
 
   const onLogoRemove = useCallback(() => {
     setLogoPreview(null)
+    setLogoFile(null)
     setIsLogoRemoved(true)
   }, [])
 
@@ -750,10 +760,29 @@ export default function SettingsPage() {
 
   const isLogoDirty = logoPreview !== null || isLogoRemoved
 
+  // Saved values for the two fields that persist. The other six have no
+  // column anywhere, so their saved value is always empty.
+  const savedCompanyName = company?.name ?? ""
+  const savedCompanyWebsite = company?.domain ?? ""
+
+  useEffect(() => {
+    if (!company) return
+    setCompanyForm((prev) => ({
+      ...prev,
+      name: company.name ?? "",
+      website: company.domain ?? "",
+    }))
+  }, [company])
+
   const isCompanyDirty = useMemo(() => {
     if (isLogoDirty) return true
-    return Object.values(companyForm).some((value) => value !== "")
-  }, [companyForm, isLogoDirty])
+    // Compared against what was loaded rather than against empty, or the form
+    // would read as permanently dirty the moment a saved company loads.
+    if (companyForm.name !== savedCompanyName) return true
+    if (companyForm.website !== savedCompanyWebsite) return true
+    const { name: _name, website: _website, ...unbacked } = companyForm
+    return Object.values(unbacked).some((value) => value !== "")
+  }, [companyForm, isLogoDirty, savedCompanyName, savedCompanyWebsite])
 
   const [hasJustSavedCompany, setHasJustSavedCompany] = useState(false)
 
@@ -763,16 +792,39 @@ export default function SettingsPage() {
 
   const areCompanyActionsVisible = isCompanyDirty && !hasJustSavedCompany
 
-  const handleCompanySave = () => {
-    setSavedAlertMessage("Your company info has been saved")
-    setIsSavedAlertMounted(true)
-    setHasJustSavedCompany(true)
+  const handleCompanySave = async () => {
+    setCompanyError(null)
+    try {
+      await saveCompanyInfo(
+        { name: companyForm.name, website: companyForm.website },
+        logoFile
+      )
+      setLogoFile(null)
+      setSavedAlertMessage("Your company info has been saved")
+      setIsSavedAlertMounted(true)
+      setHasJustSavedCompany(true)
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.errors?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Something went wrong"
+      // Toasts confirm successes only; a failed save reports itself inline,
+      // matching how Personal Info reports one.
+      setCompanyError(
+        message.startsWith("Please") ? message : `Please try again. ${message}`
+      )
+    }
   }
 
   const handleCompanyCancel = () => {
+    setCompanyError(null)
     setCompanyForm({
-      name: "",
-      website: "",
+      // Restores what was saved rather than blanking the form. Clearing was
+      // harmless while nothing persisted; with a real record behind the panel
+      // it would look like Cancel had deleted the company details.
+      name: savedCompanyName,
+      website: savedCompanyWebsite,
       industry: "",
       businessType: "",
       companySize: "",
@@ -781,6 +833,7 @@ export default function SettingsPage() {
       timeZone: "",
     })
     setLogoPreview(null)
+    setLogoFile(null)
     setIsLogoRemoved(false)
   }
 
@@ -1756,6 +1809,12 @@ export default function SettingsPage() {
                           Save Changes
                         </Button>
                       </div>
+                    )}
+
+                    {companyError && (
+                      <p className="mt-3 text-xs font-medium text-error-500">
+                        {companyError}
+                      </p>
                     )}
                   </div>
                 </>
