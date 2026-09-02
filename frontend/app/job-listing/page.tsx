@@ -11325,14 +11325,28 @@ const NoScopeRoleInfoStep = ({
               </div>
             )}
 
-            <div className="mt-16">
-              <Label className="text-base leading-6 font-semibold text-dark-blue-400">
+            <div
+              className={cn(
+                "mt-16",
+                isTeamMode && "flex w-[886px] flex-col gap-4",
+              )}
+            >
+              <Label
+                className={cn(
+                  "text-base leading-6 font-semibold text-dark-blue-400",
+                  isTeamMode &&
+                    "text-lg leading-7 font-medium text-dark-blue-400",
+                )}
+              >
                 {isTeamMode
                   ? "How long do you expect to work with this team?"
                   : "How long do you expect to work with this person?"}
               </Label>
               <RadioGroup
-                className="mt-6 grid gap-4 md:grid-cols-2"
+                className={cn(
+                  "mt-6 grid gap-4 md:grid-cols-2",
+                  isTeamMode && "mt-0 w-[886px] gap-4",
+                )}
                 value={durationChoice}
                 onValueChange={setDurationChoice}
               >
@@ -11342,6 +11356,8 @@ const NoScopeRoleInfoStep = ({
                     value={option.label}
                     className={cn(
                       "flex min-h-[84px] items-start gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
+                      isTeamMode &&
+                        "h-[84px] w-[435px] min-h-0 gap-x-4 py-4 pr-6 pl-4",
                       durationChoice === option.label && "border-primary-500",
                     )}
                   >
@@ -11349,7 +11365,12 @@ const NoScopeRoleInfoStep = ({
                       <span className="block text-lg leading-7 font-semibold text-dark-blue-400">
                         {option.label}
                       </span>
-                      <span className="mt-1 block text-sm leading-5 text-gray-500">
+                      <span
+                        className={cn(
+                          "mt-1 block text-sm leading-5 text-gray-500",
+                          isTeamMode && "text-dark-blue-400",
+                        )}
+                      >
                         {option.description}
                       </span>
                     </span>
@@ -11368,6 +11389,8 @@ const NoScopeRoleInfoStep = ({
                   tabIndex={0}
                   className={cn(
                     "rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
+                    isTeamMode &&
+                      "flex h-[116px] w-[435px] flex-col justify-center gap-3 py-4 pr-6 pl-4",
                     durationChoice === "Other" && "border-primary-500",
                   )}
                   onClick={() => setDurationChoice("Other")}
@@ -11378,7 +11401,13 @@ const NoScopeRoleInfoStep = ({
                     }
                   }}
                 >
-                  <div className="flex items-start gap-x-4">
+                  <div
+                    className={cn(
+                      "flex items-start gap-x-4",
+                      isTeamMode &&
+                        "flex h-7 w-full items-center justify-between gap-2",
+                    )}
+                  >
                     <span className="min-w-0 flex-auto">
                       <span className="block text-lg leading-7 font-semibold text-dark-blue-400">
                         Other
@@ -11392,9 +11421,18 @@ const NoScopeRoleInfoStep = ({
                       )}
                     />
                   </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <div
+                    className={cn(
+                      "mt-4 flex flex-wrap gap-2",
+                      isTeamMode && "mt-0 h-11 w-[395px] flex-nowrap",
+                    )}
+                  >
                     <Input
-                      className="w-[180px]"
+                      className={cn(
+                        "w-[180px]",
+                        isTeamMode &&
+                          "h-11 w-[251px] rounded-[5px] px-[14px] py-2.5 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400",
+                      )}
                       placeholder="Enter duration"
                       value={customDuration}
                       onChange={(event) =>
@@ -11405,7 +11443,13 @@ const NoScopeRoleInfoStep = ({
                       value={customDurationUnit}
                       onValueChange={setCustomDurationUnit}
                     >
-                      <SelectTrigger className="h-12 w-[150px] px-3 text-sm leading-5 font-semibold text-dark-blue-400">
+                      <SelectTrigger
+                        className={cn(
+                          "h-12 w-[150px] px-3 text-sm leading-5 font-semibold text-dark-blue-400",
+                          isTeamMode &&
+                            "h-11 w-[136px] rounded-[5px] px-[14px] py-2.5 text-[16px] leading-6 font-normal text-dark-blue-400",
+                        )}
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
