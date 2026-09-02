@@ -3017,19 +3017,28 @@ const ProjectInfoTip = ({
   closeTrigger?: React.ReactNode;
   showArrow?: boolean;
   className?: string;
-  variant?: "scope" | "contract" | "describeProjectStep";
+  variant?:
+    | "scope"
+    | "contract"
+    | "describeProjectStep"
+    | "describeServiceStep";
 }) => {
   const isContractTip = variant === "contract";
   const isDescribeProjectStepTip = variant === "describeProjectStep";
+  const isDescribeServiceStepTip = variant === "describeServiceStep";
   return (
     <div
       className={cn(
-        isDescribeProjectStepTip
+        isDescribeProjectStepTip || isDescribeServiceStepTip
           ? "flex w-[322px] flex-col items-start gap-4 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
           : "flex w-[322px] flex-col items-start gap-y-4 p-5 rounded-lg bg-white border border-gray-200 relative shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]",
+        isDescribeServiceStepTip &&
+          "shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]",
         isContractTip
           ? "h-[288px]"
-          : isDescribeProjectStepTip
+          : isDescribeServiceStepTip
+            ? "h-80"
+            : isDescribeProjectStepTip
             ? "h-[260px]"
             : "h-[252px]",
         className,
@@ -3037,7 +3046,7 @@ const ProjectInfoTip = ({
     >
       {closeTrigger}
 
-      {isDescribeProjectStepTip ? (
+      {isDescribeProjectStepTip || isDescribeServiceStepTip ? (
         <>
           <div className="flex h-6 w-full items-center justify-between gap-x-2">
             <span className="flex h-6 flex-1 items-center text-base font-semibold leading-6 text-gray-400">
@@ -3047,16 +3056,27 @@ const ProjectInfoTip = ({
           </div>
           <div className="flex w-[282px] flex-col items-start gap-2">
             <span className="w-full text-[18px] font-semibold leading-7 text-dark-blue-400">
-              Give us a few details now to save time later:
+              {isDescribeServiceStepTip
+                ? "Help us understand your service needs"
+                : "Give us a few details now to save time later:"}
             </span>
             <ul className="w-full space-y-1">
-              {[
-                "What the project is about",
-                "What needs to be done",
-                "How it should be done",
-                "What the end result should look like",
-                "Any tools or skills that are important",
-              ].map((item) => (
+              {(isDescribeServiceStepTip
+                ? [
+                    "What kind of work should be done regularly",
+                    "How often help is needed (e.g. weekly, monthly)",
+                    "Any tools, platforms, or skills required",
+                    "What success looks like in this service",
+                    "Any existing systems or workflows to support",
+                  ]
+                : [
+                    "What the project is about",
+                    "What needs to be done",
+                    "How it should be done",
+                    "What the end result should look like",
+                    "Any tools or skills that are important",
+                  ]
+              ).map((item) => (
                 <li key={item} className="flex items-start gap-x-3">
                   <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
                   <span className="text-sm leading-5 text-dark-blue-400">
@@ -10266,7 +10286,7 @@ const DescribeProjectStep = ({
 
         <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start">
           <ProjectInfoTip
-            variant="describeProjectStep"
+            variant={isService ? "describeServiceStep" : "describeProjectStep"}
           />
         </div>
       </div>
