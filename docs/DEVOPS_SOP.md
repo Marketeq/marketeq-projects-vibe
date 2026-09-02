@@ -23,6 +23,29 @@
 
 **Regression fix flow:** QA finds bug on `staging` → developer creates `fix/*` branch from `staging` → PR targeting `staging` → merge → developer cherry-picks fix back to `dev-main` to keep branches in sync.
 
+### 1.1 Never push without updating the branch first
+
+**Absolute, and it applies to every push — including doc-only changes, one-line
+fixes, and the second and third push in the same session.**
+
+**A branch that is even one commit behind is stale. There is no acceptable
+number of commits to be behind other than zero.**
+
+```bash
+git fetch origin <branch>
+git rev-list --left-right --count origin/<branch>...HEAD   # left number MUST be 0
+```
+
+A non-zero left number means the branch is behind: merge `origin/<branch>` in
+and resolve before pushing. A push from a stale branch is how merged work
+silently disappears, and "I fetched earlier in the session" is not updating —
+the branch moves between pushes, and one that succeeds only because nobody else
+pushed in that window is luck, not process.
+
+This is also enforced mechanically by the `Jenkins / Branch Freshness` check,
+which blocks a PR that is behind its base and touches files changed on both
+sides. The check catches the dangerous subset; this rule covers all of it.
+
 **Never:**
 - Push directly to `dev-main`, `staging`, or `live` (all changes go through PRs or promotion scripts)
 - Force-push any of the protected branches
