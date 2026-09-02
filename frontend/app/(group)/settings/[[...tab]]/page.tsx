@@ -10,6 +10,7 @@ import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
 import { useRefreshUser } from "../hooks/use-refresh-user"
 import { useCompanyInfo } from "../hooks/use-company-info"
+import { useClientIp } from "../hooks/use-client-ip"
 import { AuthAPI } from "@/service/http/auth"
 import { ClientAPI } from "@/service/http/client"
 import { cn, convertToKbOrMb, getIsNotEmpty } from "@/utils/functions"
@@ -133,9 +134,6 @@ import {
   useToast,
 } from "@/components/ui"
 
-// The value shown in the design. There is no endpoint that reports the caller's
-// public IP, so this stays a constant until that wiring is done separately.
-const currentIpAddress = "11.12.122.122"
 
 // Cap on how many IPs one dialog can add before "Add More" greys out.
 const MAX_IP_ROWS = 10
@@ -189,6 +187,8 @@ export default function SettingsPage() {
     company,
     save: saveCompanyInfo,
   } = useCompanyInfo(activeTab === "company-info")
+
+  const { ip: currentIpAddress } = useClientIp(activeTab === "ip-restrictions")
 
   const toggleInviteWindow = useInviteWindowStore((s) => s.toggle)
   const invoiceExporters = useBillingExportStore((s) => s.exporters.invoices)
@@ -3301,7 +3301,7 @@ export default function SettingsPage() {
                             Your current IP address is:
                           </span>
                           <span className="text-sm font-bold text-gray-700">
-                            {currentIpAddress}
+                            {currentIpAddress ?? "—"}
                           </span>
                         </div>
                       </div>
