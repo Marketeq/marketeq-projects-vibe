@@ -9398,7 +9398,7 @@ const DescribeProjectStep = ({
   const describeProjectContentClassName =
     descriptionFieldVariant === "project"
       ? "mt-8 flex flex-col gap-16"
-      : "mt-4 space-y-2";
+      : "mt-8";
   const describeProjectQuestionClassName =
     descriptionFieldVariant === "project"
       ? "space-y-3"
@@ -9406,7 +9406,7 @@ const DescribeProjectStep = ({
   const describeProjectGroupClassName =
     descriptionFieldVariant === "project" ? "mt-16 space-y-4" : "space-y-2";
   const budgetQuestionClassName = isService
-    ? "w-[886px] flex flex-col gap-4"
+    ? "mt-16 w-[886px] flex flex-col gap-4"
     : describeProjectGroupClassName;
   const describeProjectLabelRowClassName =
     descriptionFieldVariant === "project"
@@ -9678,7 +9678,7 @@ const DescribeProjectStep = ({
 
           {isService ? (
             <>
-              <div className="w-[886px] space-y-3">
+              <div className="mt-16 w-[886px] space-y-3">
                 <div className="flex h-7 items-baseline justify-between gap-2">
                   <Label className="flex-1 text-lg leading-7 font-medium text-dark-blue-400">
                     What are the main tasks or deliverables?
@@ -9700,7 +9700,7 @@ const DescribeProjectStep = ({
                 />
               </div>
 
-              <div className="flex flex-col gap-6">
+              <div className="mt-16 flex flex-col gap-6">
                 <div className="flex h-[52px] flex-col items-start gap-1">
                   <Label className="text-[18px] leading-7 font-medium text-dark-blue-400">
                     Do you have documentation or a brief to share?
