@@ -18,6 +18,7 @@ import { ExecutionModule } from '../execution/execution.module';
 import { CardModule }      from '../card/card.module';
 import { BankModule }      from '../bank/bank.module';
 import { PaypalModule }    from '../paypal/paypal.module';
+import { PublishersModule } from '../publishers/publishers.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { PaypalModule }    from '../paypal/paypal.module';
     CardModule,
     BankModule,
     PaypalModule,
+    PublishersModule,
   ],
   controllers: [PayoutController],
   providers: [PayoutService, WithdrawalRateLimitService, PayoutQueueProcessor],
