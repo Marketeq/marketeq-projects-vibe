@@ -140,8 +140,23 @@ const currentIpAddress = "11.12.122.122"
 // Cap on how many IPs one dialog can add before "Add More" greys out.
 const MAX_IP_ROWS = 10
 
+// Current session first, then most recently active — the ordering
+// ActiveSessionsModal already uses. Shared so the initial load and the refetch
+// after a removal cannot drift apart, which is what made the list silently
+// reorder once a device was removed.
+const sortDeviceSessions = <T extends { isCurrent: boolean; lastActiveAt: string }>(
+  sessions: T[]
+): T[] =>
+  [...sessions].sort((a, b) => {
+    if (a.isCurrent) return -1
+    if (b.isCurrent) return 1
+    return (
+      new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
+    )
+  })
+
 export default function SettingsPage() {
-  const { user, setUser } = useAuth()
+  const { user, setUser, logoutHandler } = useAuth()
   const { toast } = useToast()
   const refreshUser = useRefreshUser()
   const router = useRouter()
@@ -423,17 +438,7 @@ export default function SettingsPage() {
     AuthAPI.GetSessions(currentSessionId)
       .then((res) => {
         if (res?.status === 200 && Array.isArray(res.data)) {
-          // Current session first, then most recently active — same ordering
-          // ActiveSessionsModal uses.
-          const sorted = [...res.data].sort((a, b) => {
-            if (a.isCurrent) return -1
-            if (b.isCurrent) return 1
-            return (
-              new Date(b.lastActiveAt).getTime() -
-              new Date(a.lastActiveAt).getTime()
-            )
-          })
-          setDeviceSessions(sorted)
+          setDeviceSessions(sortDeviceSessions(res.data))
         }
       })
       .catch(() => {
@@ -537,6 +542,9 @@ export default function SettingsPage() {
   const handleConfirmRemoveDevice = async () => {
     if (!deviceDetail) return
     const id = deviceDetail.id
+    // Revoking the session you are signed in with kills the token this page is
+    // using. Captured before the optimistic removal drops the record.
+    const isRemovingCurrentDevice = deviceDetail.isCurrent === true
 
     setIsRemoveDeviceOpen(false)
 
@@ -546,10 +554,20 @@ export default function SettingsPage() {
 
     await AuthAPI.RevokeSession(id).catch(() => {})
 
+    if (isRemovingCurrentDevice) {
+      // Sign out rather than refetching. auth-service rejects the revoked
+      // session (401) while user-service still honours the JWT (200), so
+      // carrying on leaves a half-signed-out app: some calls succeed, some
+      // fail, and nothing tells the user why. Signing out is also what the
+      // action means — it is the "sign me out of this device" path.
+      logoutHandler()
+      return
+    }
+
     AuthAPI.GetSessions(currentSessionId)
       .then((res) => {
         if (res?.status === 200 && Array.isArray(res.data)) {
-          setDeviceSessions(res.data)
+          setDeviceSessions(sortDeviceSessions(res.data))
         }
       })
       .catch(() => {})
