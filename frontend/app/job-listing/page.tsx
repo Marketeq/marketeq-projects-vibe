@@ -9716,14 +9716,24 @@ const DescribeProjectStep = ({
                   <div
                     className={cn(
                       "rounded-lg border border-gray-200 bg-white px-4 py-3",
+                      scopeUploadStatus === "complete" &&
+                        "box-border flex h-[72px] w-full items-center gap-1 rounded-lg border-2 border-dashed border-gray-300 p-4",
                       scopeUploadStatus === "error" &&
                         "border-error-300 bg-error-25",
                     )}
                   >
-                    <div className="flex items-start gap-x-3">
+                    <div
+                      className={cn(
+                        "flex items-start gap-x-3",
+                        scopeUploadStatus === "complete" &&
+                          "flex h-10 min-w-0 flex-1 items-center gap-4",
+                      )}
+                    >
                       <div
                         className={cn(
                           "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-[6px] border-gray-50 bg-gray-100 text-gray-500",
+                          scopeUploadStatus === "complete" &&
+                            "size-8 rounded-[28px] border-4 border-primary-25 bg-primary-50 text-primary-500",
                           scopeUploadStatus === "error" &&
                             "border-error-50 bg-error-100 text-error-500",
                         )}
@@ -9734,10 +9744,18 @@ const DescribeProjectStep = ({
                           <FileIcon className="size-5" />
                         )}
                       </div>
-                      <div className="min-w-0 flex-auto">
+                      <div
+                        className={cn(
+                          "min-w-0 flex-auto",
+                          scopeUploadStatus === "complete" &&
+                            "flex h-10 min-w-0 flex-1 flex-col gap-1",
+                        )}
+                      >
                         <p
                           className={cn(
                             "truncate text-xs leading-[18px] font-semibold text-dark-blue-400",
+                            scopeUploadStatus === "complete" &&
+                              "h-5 text-sm leading-5 font-medium text-gray-700",
                             scopeUploadStatus === "error" && "text-error-500",
                           )}
                         >
@@ -9746,14 +9764,22 @@ const DescribeProjectStep = ({
                         <p
                           className={cn(
                             "text-xs leading-[18px] text-gray-500",
+                            scopeUploadStatus === "complete" &&
+                              "h-5 text-sm leading-5 text-gray-600",
                             scopeUploadStatus === "error" && "text-error-500",
                           )}
                         >
-                          {convertToKbOrMb(scopeFile.size)}
+                          {convertToKbOrMb(
+                            details.briefSizeBytes ?? scopeFile.size,
+                          ).replace(/(\d)([A-Za-z])/, "$1 $2")}
                         </p>
                       </div>
                       <IconButton
-                        className="size-8 text-gray-500"
+                        className={cn(
+                          "size-8 text-gray-500",
+                          scopeUploadStatus === "complete" &&
+                            "size-9 shrink-0 rounded-lg p-2 text-gray-400",
+                        )}
                         type="button"
                         variant="ghost"
                         visual={scopeUploadStatus === "error" ? "error" : "gray"}
@@ -9799,6 +9825,15 @@ const DescribeProjectStep = ({
                       "flex h-[341px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white px-6 py-[100px] text-center focus-within:ring-2 focus-within:ring-primary-500",
                       isScopeDropActive && "border-primary-500",
                     )}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      const viewport = contentRef.current?.closest(
+                        "[data-radix-scroll-area-viewport]",
+                      ) as HTMLElement | null;
+                      scopeFilePickerScrollTopRef.current =
+                        viewport?.scrollTop ?? 0;
+                      scopeFileInputRef.current?.click();
+                    }}
                     onDragEnter={(event) => {
                       event.preventDefault();
                       setIsScopeDropActive(true);
@@ -9818,11 +9853,51 @@ const DescribeProjectStep = ({
                     }}
                   >
                     <input
+                      ref={scopeFileInputRef}
                       className="sr-only"
                       type="file"
                       accept=".pdf,.docx"
+                      onFocus={(event) => {
+                        event.currentTarget.blur();
+                        const viewport = contentRef.current?.closest(
+                          "[data-radix-scroll-area-viewport]",
+                        ) as HTMLElement | null;
+                        viewport?.scrollTo({
+                          top: scopeFilePickerScrollTopRef.current,
+                        });
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        scopeFilePickerSelectionRef.current = false;
+                        const viewport = contentRef.current?.closest(
+                          "[data-radix-scroll-area-viewport]",
+                        ) as HTMLElement | null;
+                        const handleWindowFocus = () => {
+                          if (scopeFilePickerSelectionRef.current) return;
+
+                          viewport?.scrollTo({
+                            top: scopeFilePickerScrollTopRef.current,
+                          });
+                        };
+                        window.addEventListener("focus", handleWindowFocus, {
+                          once: true,
+                        });
+                      }}
                       onChange={(event) => {
-                        acceptScopeFile(event.target.files?.[0]);
+                        const file = event.target.files?.[0];
+                        if (!file) {
+                          window.requestAnimationFrame(() => {
+                            const viewport = contentRef.current?.closest(
+                              "[data-radix-scroll-area-viewport]",
+                            ) as HTMLElement | null;
+                            viewport?.scrollTo({
+                              top: scopeFilePickerScrollTopRef.current,
+                            });
+                          });
+                          return;
+                        }
+                        scopeFilePickerSelectionRef.current = true;
+                        acceptScopeFile(file);
                         event.target.value = "";
                       }}
                     />
