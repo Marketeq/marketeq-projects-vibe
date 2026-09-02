@@ -8802,6 +8802,8 @@ const DescribeProjectStep = ({
   const { details, setDetails: setJobListingDraftDetails } =
     useJobListingDraftContext();
   const isService = workType === "service";
+  const isKnownServiceFlow =
+    isService && scopeKnowledgeChoice === "known";
   const effectiveJobListingId = useMemo(() => {
     if (jobListingId) return jobListingId;
     if (typeof window === "undefined") return null;
@@ -9029,7 +9031,7 @@ const DescribeProjectStep = ({
   const isValid =
     description.trim().length > 0 &&
     (isService
-      ? deliverables.trim().length > 0 &&
+      ? (isKnownServiceFlow ? deliverables.trim().length > 0 : true) &&
         hasValidBudget
       : deliverables.trim().length > 0 &&
         successCriteria.trim().length > 0 &&
@@ -9695,7 +9697,7 @@ const DescribeProjectStep = ({
             ) : null}
           </div>
 
-          {isService ? (
+          {isKnownServiceFlow ? (
             <>
               <div className="mt-16 w-[886px] space-y-3">
                 <div className="flex h-7 items-baseline justify-between gap-2">
