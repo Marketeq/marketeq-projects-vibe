@@ -5,6 +5,7 @@ import {
 import { ServiceAuthGuard }  from '../guards/service-auth.guard';
 import { BalanceService }    from '../balance/balance.service';
 import { EarningsService }   from '../earnings/earnings.service';
+import { HoldBalanceDto }    from '../balance/dto/hold-balance.dto';
 
 @Controller('internal/earnings')
 @UseGuards(ServiceAuthGuard)
@@ -43,9 +44,9 @@ export class InternalController {
   @HttpCode(200)
   async holdBalance(
     @Param('userId', ParseUUIDPipe) userId: string,
-    @Body('amountUsd') amountUsd: string,
+    @Body() body: HoldBalanceDto,
   ) {
-    const result = await this.balanceSvc.holdForPayout(userId, amountUsd);
+    const result = await this.balanceSvc.holdForPayout(userId, body.amountUsd);
     if (!result.ok) {
       throw new UnprocessableEntityException('Insufficient available balance to place hold.');
     }

@@ -476,15 +476,20 @@ export class PayoutService {
         }
       }
 
-      // QUEUED means the instant hold from verifyMagicLink() already debited
-      // available_balance — reuse the same restore path payout.failed
-      // consumers use, rather than duplicating that SQL here.
-      await this.publisher.publishPayoutFailed({
-        contractorId, payoutRequestId: request.id,
-        amount: request.amountUsd, currency: request.currency ?? 'USD',
-        methodType: 'CANCELLED', reason: 'Withdrawal cancelled by contractor.',
-        failedAt: new Date().toISOString(),
-      });
+      // A hold was only ever placed if this request went through magic-link
+      // verification (verifiedAt gets set there, right before holdBalance is
+      // called) — QUEUED alone isn't enough to infer that. Scheduled payouts
+      // (schedule-execution.cron.ts) are created directly at QUEUED and never
+      // hold, so refunding them unconditionally here would credit balance
+      // that was never debited. Only restore when verifiedAt is set.
+      if (request.verifiedAt) {
+        await this.publisher.publishPayoutFailed({
+          contractorId, payoutRequestId: request.id,
+          amount: request.amountUsd, currency: request.currency ?? 'USD',
+          methodType: 'CANCELLED', reason: 'Withdrawal cancelled by contractor.',
+          failedAt: new Date().toISOString(),
+        });
+      }
     }
 
     return { status: 'cancelled' };

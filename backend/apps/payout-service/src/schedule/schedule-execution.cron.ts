@@ -245,6 +245,14 @@ export class ScheduleExecutionCron {
     splitRole: 'primary' | 'secondary',
   ): Promise<{ status: string; payoutRequestId?: string }> {
     try {
+      // Created directly at QUEUED, never through holdBalance (see
+      // PayoutService.verifyMagicLink / MagicLinkService.verifyEmailToken) —
+      // safe today only because nothing ever calls enqueueForProcessing() for
+      // a SCHEDULED-trigger request, so these rows can never reach
+      // payout.completed. If scheduled execution is ever wired to the Bull
+      // queue, this must call EarningsClient.holdBalance() first, exactly
+      // like the two manual-withdrawal paths, or scheduled payouts will
+      // settle without ever debiting available_balance.
       const payout = await this.dataSource.transaction(async (em) => {
         const request = em.create(PayoutRequest, {
           contractorId: schedule.contractorId,

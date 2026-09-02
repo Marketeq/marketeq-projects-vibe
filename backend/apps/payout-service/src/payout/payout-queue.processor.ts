@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
-import { PayoutRequest } from '../entities/payout-request.entity';
+import { PayoutRequest, PayoutStatus } from '../entities/payout-request.entity';
 import { MethodType } from '../entities/deposit-method.entity';
 import { CryptoPayoutExecutorService } from '../execution/crypto-payout-executor.service';
 import { CardPayoutExecutorService } from '../card/card-payout-executor.service';
@@ -38,6 +38,20 @@ export class PayoutQueueProcessor {
     });
     if (!payout || !payout.depositMethod) {
       this.logger.error(`process-payout job for missing payout/method: ${payoutRequestId}`);
+      return;
+    }
+
+    // cancel() only removes waiting/delayed Bull jobs — a job already picked
+    // up (active) by this processor when cancel() ran isn't stoppable that
+    // way. Since cancel() also refunds the instant hold as soon as it flips
+    // status to CANCELLED, letting execution continue here would both pay
+    // the contractor out for real AND have already credited their balance
+    // back — a double payout. This fresh DB read closes that window: it
+    // can't catch a job that started executing before cancel() wrote
+    // CANCELLED, but it does catch the far more likely case of the job
+    // simply not having been dequeued yet.
+    if (payout.status === PayoutStatus.CANCELLED) {
+      this.logger.warn(`process-payout job for cancelled payout skipped: ${payoutRequestId}`);
       return;
     }
 

@@ -105,13 +105,20 @@ export class BalanceService {
   // The WHERE guard makes this atomic: two concurrent withdrawals can't both
   // read a stale "sufficient" balance and double-spend it.
   async holdForPayout(contractorId: string, amountUsd: string): Promise<{ ok: boolean; availableBalance?: string }> {
+    // HoldBalanceDto only validates numeric format, not sign — a negative
+    // amount would pass the WHERE guard below (available_balance >= a
+    // negative number is trivially true) and credit the balance instead of
+    // debiting it. Guarded here too, not just at the DTO, since this method
+    // isn't only reachable through the HTTP layer.
+    if (parseFloat(amountUsd) <= 0) return { ok: false };
+
     const snapBefore = await this.repo.findOne({ where: { contractorId } });
     const [rows]: [Array<{ available_balance: string }>, number] = await this.repo.manager.query(
       `UPDATE balance_snapshots
          SET available_balance = available_balance - $1::numeric,
              pending_hold_usd  = pending_hold_usd + $1::numeric,
              updated_at = NOW()
-       WHERE contractor_id = $2 AND available_balance >= $1::numeric
+       WHERE contractor_id = $2 AND available_balance >= $1::numeric AND $1::numeric > 0
        RETURNING available_balance`,
       [amountUsd, contractorId],
     );
