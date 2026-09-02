@@ -8,12 +8,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bull';
-import { PayoutRequest } from '../entities/payout-request.entity';
+import { PayoutRequest, PayoutStatus } from '../entities/payout-request.entity';
 import { MethodType } from '../entities/deposit-method.entity';
 import { CryptoPayoutExecutorService } from '../execution/crypto-payout-executor.service';
 import { CardPayoutExecutorService } from '../card/card-payout-executor.service';
 import { BankPayoutExecutorService } from '../bank/bank-payout-executor.service';
 import { PaypalPayoutExecutorService } from '../paypal/paypal-payout-executor.service';
+import { PayoutPublisher } from '../publishers/payout.publisher';
 
 @Processor({ name: 'payout-processing' })
 export class PayoutQueueProcessor {
@@ -26,6 +27,7 @@ export class PayoutQueueProcessor {
     private readonly cardExecutor: CardPayoutExecutorService,
     private readonly bankExecutor: BankPayoutExecutorService,
     private readonly paypalExecutor: PaypalPayoutExecutorService,
+    private readonly publisher: PayoutPublisher,
   ) {}
 
   @Process('process-payout')
@@ -41,6 +43,32 @@ export class PayoutQueueProcessor {
       return;
     }
 
+    // cancel() only removes waiting/delayed Bull jobs — a job already picked
+    // up (active) by this processor when cancel() ran isn't stoppable that
+    // way. Since cancel() also refunds the instant hold as soon as it flips
+    // status to CANCELLED, letting execution continue here would both pay
+    // the contractor out for real AND have already credited their balance
+    // back — a double payout. This fresh DB read closes that window: it
+    // can't catch a job that started executing before cancel() wrote
+    // CANCELLED, but it does catch the far more likely case of the job
+    // simply not having been dequeued yet.
+    if (payout.status === PayoutStatus.CANCELLED) {
+      this.logger.warn(`process-payout job for cancelled payout skipped: ${payoutRequestId}`);
+      return;
+    }
+
+    // Same reasoning one step further: the executors now publish
+    // payout.completed/payout.failed, and each of those events moves real
+    // money in earnings-service. Re-running an already-settled payout would
+    // emit a second terminal event for the same hold — crediting or debiting
+    // the contractor twice. Nothing enqueues a payout twice today, so this is
+    // belt-and-braces rather than a known path, but it is the cheap half of
+    // the trade.
+    if (payout.status === PayoutStatus.COMPLETED || payout.status === PayoutStatus.FAILED) {
+      this.logger.warn(`process-payout job for already-${payout.status} payout skipped: ${payoutRequestId}`);
+      return;
+    }
+
     switch (payout.depositMethod.methodType) {
       case MethodType.CRYPTO:
         return this.cryptoExecutor.executeCryptoPayout(payoutRequestId);
@@ -52,10 +80,39 @@ export class PayoutQueueProcessor {
       case MethodType.PAYPAL:
         return this.paypalExecutor.executePaypalPayout(payoutRequestId);
       default:
-        // WISE/PAYONEER/TEQ_COIN execution isn't built yet — leave the
-        // payout QUEUED rather than silently dropping the job, so it stays
-        // visible instead of vanishing.
-        this.logger.warn(`No executor for method type ${payout.depositMethod.methodType} — payout ${payoutRequestId} left unprocessed`);
+        // WISE/PAYONEER/TEQ_COIN execution isn't built yet. Leaving the
+        // request QUEUED kept it visible instead of vanishing, which was the
+        // right call while nothing had been debited yet — but the balance is
+        // now taken up-front at magic-link confirmation
+        // (BalanceService.holdForPayout), and these methods are reachable:
+        // AddMethodDto accepts them and addMethod() routes WISE/PAYONEER
+        // through the real OAuth verification flow. A payout parked here
+        // would hold the contractor's funds indefinitely with no executor
+        // that will ever release them. Fail it explicitly instead —
+        // payout.failed restores available_balance and the contractor gets an
+        // actionable error rather than a silent freeze.
+        return this.failUnsupportedMethod(payout);
     }
+  }
+
+  private async failUnsupportedMethod(payout: PayoutRequest): Promise<void> {
+    const reason = `Payouts to ${payout.depositMethod.methodType} are not available yet. Your funds have been returned to your available balance — please withdraw using another method.`;
+    this.logger.warn(`No executor for method type ${payout.depositMethod.methodType} — failing payout ${payout.id} and releasing its hold`);
+
+    await this.payoutRepo.update(payout.id, {
+      status: PayoutStatus.FAILED,
+      failedAt: new Date(),
+      failureReason: reason,
+    });
+
+    await this.publisher.publishPayoutFailed({
+      contractorId: payout.contractorId,
+      payoutRequestId: payout.id,
+      amount: payout.amountUsd,
+      currency: payout.currency ?? 'USD',
+      methodType: payout.depositMethod.methodType,
+      reason,
+      failedAt: new Date().toISOString(),
+    });
   }
 }

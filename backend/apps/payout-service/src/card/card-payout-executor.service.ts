@@ -10,6 +10,7 @@ import { PayoutRequest, PayoutStatus } from '../entities/payout-request.entity';
 import { DepositMethod, MethodType, VerificationStatus } from '../entities/deposit-method.entity';
 import { AuditService } from '../audit/audit.service';
 import { PayoutError } from '../common/errors/payout.error';
+import { PayoutPublisher } from '../publishers/payout.publisher';
 
 const CARD_BALANCE_CAP = 10_000; // $10,000 max balance
 
@@ -25,6 +26,7 @@ export class CardPayoutExecutorService {
     private readonly methodRepo: Repository<DepositMethod>,
     private readonly config: ConfigService,
     private readonly auditService: AuditService,
+    private readonly publisher: PayoutPublisher,
   ) {
     const key = this.config.get('STRIPE_SECRET_KEY', '');
     if (key && key !== 'sk_test_YOUR_TEST_KEY_HERE') {
@@ -132,6 +134,21 @@ export class CardPayoutExecutorService {
         metadata: { stripeTransactionId, amountCents },
       });
 
+      // Releases the instant hold placed at magic-link confirmation
+      // (BalanceService.holdForPayout) into total_paid_out_usd. This executor
+      // was the only one that never published a terminal event; without it a
+      // completed card payout leaves the amount stranded in pending_hold_usd
+      // forever. amountUsd (gross) — not netAmountUsd — is what was held, so
+      // it is what must be released, same as the crypto/bank executors.
+      await this.publisher.publishPayoutCompleted({
+        contractorId: payout.contractorId,
+        payoutRequestId,
+        amount: payout.amountUsd,
+        currency: 'USD',
+        methodType: 'MARKETEQ_DEBIT_CARD',
+        settledAt: new Date().toISOString(),
+      });
+
       this.logger.log(`Card payout completed: ${payoutRequestId} → $${amountUsd} to ••••${method.cardLast4}`);
 
     } catch (err: any) {
@@ -156,6 +173,22 @@ export class CardPayoutExecutorService {
       previousStatus: payout.status,
       newStatus: PayoutStatus.FAILED,
       metadata: { reason, errorCode },
+    });
+
+    // Restores available_balance. The balance is debited up-front now
+    // (BalanceService.holdForPayout at magic-link confirmation), so a card
+    // payout that fails — here or in any of the pre-flight branches above,
+    // all of which route through this method — must publish payout.failed or
+    // the contractor is left permanently short the amount with no payout to
+    // show for it. Every other executor already does this.
+    await this.publisher.publishPayoutFailed({
+      contractorId: payout.contractorId,
+      payoutRequestId: payout.id,
+      amount: payout.amountUsd,
+      currency: 'USD',
+      methodType: 'MARKETEQ_DEBIT_CARD',
+      reason,
+      failedAt: new Date().toISOString(),
     });
   }
 }
