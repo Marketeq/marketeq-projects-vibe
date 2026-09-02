@@ -10980,31 +10980,60 @@ const ExistingContractRoleInfoStep = ({ setProgress }: ProgressProps) => {
               />
             </div>
           </div>
-          <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
-            <div className="flex items-center gap-x-2">
-              <span className="text-base leading-normal font-semibold text-gray-400">
+          <div
+            className={cn(
+              "w-full shrink-0 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start",
+              isTeamMode &&
+                "box-border flex h-[300px] flex-col gap-4 min-[1180px]:w-[322px]",
+            )}
+          >
+            <div
+              className={cn(
+                "flex items-center gap-x-2",
+                isTeamMode && "h-6 w-full items-start justify-between gap-2",
+              )}
+            >
+              <span
+                className={cn(
+                  "text-base leading-normal font-semibold text-gray-400",
+                  isTeamMode && "h-6 flex-1 leading-6",
+                )}
+              >
                 Quick tip
               </span>
               <Lightbulb05 className="ml-auto size-5 shrink-0 text-gray-400" />
             </div>
-            <p className="mt-4 text-base leading-6 font-semibold text-dark-blue-400">
-              Give us a few details now to save time later:
-            </p>
-            <div className="mt-3 space-y-2">
-              {[
-                "What the role or job is about",
-                "Key responsibilities and tasks to be done",
-                "Specific skills, tools or technologies required",
-                "Desired outcomes or deliverables",
-                "Any deadlines or timing constraints",
-              ].map((item) => (
-                <div key={item} className="flex items-start gap-x-3">
-                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
-                  <span className="text-sm leading-5 text-dark-blue-400">
-                    {item}
-                  </span>
-                </div>
-              ))}
+            <div className={cn(isTeamMode && "flex h-[220px] flex-col gap-2")}>
+              <p
+                className={cn(
+                  "mt-4 text-base leading-6 font-semibold text-dark-blue-400",
+                  isTeamMode &&
+                    "mt-0 h-14 text-lg leading-7 font-semibold text-dark-blue-400",
+                )}
+              >
+                Give us a few details now to save time later:
+              </p>
+              <div
+                className={cn(
+                  "mt-3 space-y-2",
+                  isTeamMode && "mt-0 h-[156px]",
+                )}
+              >
+                {[
+                  "What the role or job is about",
+                  "Key responsibilities and tasks to be done",
+                  "Specific skills, tools or technologies required",
+                  "Desired outcomes or deliverables",
+                  "Any deadlines or timing constraints",
+                ].map((item) => (
+                  <div key={item} className="flex items-start gap-x-3">
+                    <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
+                    <span className="text-sm leading-5 text-dark-blue-400">
+                      {item}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -11031,14 +11060,27 @@ const NoScopeRoleInfoStep = ({
   const [durationChoice, setDurationChoice] = useState("Other");
   const [customDuration, setCustomDuration] = useState("");
   const [customDurationUnit, setCustomDurationUnit] = useState("months");
+  const hasValidDuration =
+    !isTeamMode ||
+    (durationChoice !== "Other" && durationChoice !== ""
+      ? true
+      : Number(customDuration) > 0);
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(
       Boolean(roleDescription.trim()) &&
         Boolean(headcount.trim()) &&
-        Boolean(budget.trim()),
+        Boolean(budget.trim()) &&
+        hasValidDuration,
     );
-  }, [roleDescription, headcount, budget]);
+  }, [
+    budget,
+    customDuration,
+    durationChoice,
+    headcount,
+    hasValidDuration,
+    roleDescription,
+  ]);
 
   useEffect(() => {
     setProgress?.(12);
@@ -11048,11 +11090,18 @@ const NoScopeRoleInfoStep = ({
     const trimmedDescription = roleDescription.trim();
     const parsedHeadcount = Math.max(1, Number.parseInt(headcount, 10) || 1);
     const parsedBudget = Number.parseFloat(budget);
+    const customDurationAmount = Number(customDuration) || 0;
     const durationMonths =
       durationChoice === "Other"
-        ? customDurationUnit === "weeks"
-          ? Math.max(1, Math.ceil((Number(customDuration) || 0) / 4))
-          : Number(customDuration) || undefined
+        ? customDurationUnit === "days"
+          ? Math.max(1, Math.ceil(customDurationAmount / 30))
+          : customDurationUnit === "weeks"
+            ? Math.max(1, Math.ceil(customDurationAmount / 4))
+            : customDurationUnit === "quarters"
+              ? customDurationAmount * 3 || undefined
+              : customDurationUnit === "years"
+                ? customDurationAmount * 12 || undefined
+                : customDurationAmount || undefined
         : Number.parseInt(durationChoice, 10) || undefined;
 
     setDetails((previous) => ({
@@ -11389,8 +11438,11 @@ const NoScopeRoleInfoStep = ({
                   tabIndex={0}
                   className={cn(
                     "rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
-                    isTeamMode &&
-                      "flex h-[116px] w-[435px] flex-col justify-center gap-3 py-4 pr-6 pl-4",
+                    isTeamMode && durationChoice === "Other"
+                      ? "flex h-[116px] w-[435px] flex-col justify-center gap-3 py-4 pr-6 pl-4"
+                      : isTeamMode
+                        ? "flex h-[84px] w-[435px] items-center gap-4 py-4 pr-6 pl-4"
+                        : undefined,
                     durationChoice === "Other" && "border-primary-500",
                   )}
                   onClick={() => setDurationChoice("Other")}
@@ -11404,8 +11456,11 @@ const NoScopeRoleInfoStep = ({
                   <div
                     className={cn(
                       "flex items-start gap-x-4",
-                      isTeamMode &&
-                        "flex h-7 w-full items-center justify-between gap-2",
+                      isTeamMode && durationChoice === "Other"
+                        ? "flex h-7 w-full items-center justify-between gap-2"
+                        : isTeamMode
+                          ? "flex h-[52px] w-[361px] items-center gap-4"
+                          : undefined,
                     )}
                   >
                     <span className="min-w-0 flex-auto">
@@ -11421,46 +11476,78 @@ const NoScopeRoleInfoStep = ({
                       )}
                     />
                   </div>
-                  <div
-                    className={cn(
-                      "mt-4 flex flex-wrap gap-2",
-                      isTeamMode && "mt-0 h-11 w-[395px] flex-nowrap",
-                    )}
-                  >
-                    <Input
+                  {(!isTeamMode || durationChoice === "Other") && (
+                    <div
                       className={cn(
-                        "w-[180px]",
-                        isTeamMode &&
-                          "h-11 w-[251px] rounded-[5px] px-[14px] py-2.5 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400",
+                        "mt-4 flex flex-wrap gap-2",
+                        isTeamMode && "mt-0 h-11 w-[395px] flex-nowrap",
                       )}
-                      placeholder="Enter duration"
-                      value={customDuration}
-                      onChange={(event) =>
-                        setCustomDuration(event.target.value)
-                      }
-                    />
-                    <Select
-                      value={customDurationUnit}
-                      onValueChange={setCustomDurationUnit}
                     >
-                      <SelectTrigger
+                      <Input
                         className={cn(
-                          "h-12 w-[150px] px-3 text-sm leading-5 font-semibold text-dark-blue-400",
+                          "w-[180px]",
                           isTeamMode &&
-                            "h-11 w-[136px] rounded-[5px] px-[14px] py-2.5 text-[16px] leading-6 font-normal text-dark-blue-400",
+                            "h-11 w-[251px] rounded-[5px] px-[14px] py-2.5 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400",
                         )}
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {["months", "weeks"].map((unit) => (
-                          <SelectItem key={unit} value={unit}>
-                            {unit === "weeks" ? "Weeks" : "Months"}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                        placeholder="Enter duration"
+                        value={customDuration}
+                        onChange={(event) =>
+                          setCustomDuration(event.target.value)
+                        }
+                      />
+                      {isTeamMode ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outlined"
+                              visual="gray"
+                              className="h-11 w-[136px] justify-between rounded-[5px] px-3.5 text-[16px] leading-6 font-normal text-dark-blue-400"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {customDurationUnit.charAt(0).toUpperCase() +
+                                customDurationUnit.slice(1)}
+                              <ChevronDown className="size-4 text-gray-500" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            align="start"
+                            className="h-[118px] w-[136px] min-w-0 overflow-y-scroll rounded-[5px] border-gray-100 bg-white p-0 shadow-[0px_4px_19px_rgba(0,0,0,0.04)] scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
+                          >
+                            {projectDurationUnits.map((unit) => (
+                              <DropdownMenuItem
+                                key={unit}
+                                className={cn(
+                                  "h-[34px] w-full shrink-0 px-3 py-2.5 text-[13px] leading-[13px] text-gray-500 hover:bg-gray-50 hover:text-gray-black focus:bg-gray-50 focus:text-gray-black",
+                                  unit === customDurationUnit &&
+                                    "bg-gray-50 text-gray-black",
+                                )}
+                                onSelect={() => setCustomDurationUnit(unit)}
+                              >
+                                {unit}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <Select
+                          value={customDurationUnit}
+                          onValueChange={setCustomDurationUnit}
+                        >
+                          <SelectTrigger className="h-12 w-[150px] px-3 text-sm leading-5 font-semibold text-dark-blue-400">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {["months", "weeks"].map((unit) => (
+                              <SelectItem key={unit} value={unit}>
+                                {unit === "weeks" ? "Weeks" : "Months"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  )}
                 </div>
               </RadioGroup>
             </div>
@@ -11471,7 +11558,7 @@ const NoScopeRoleInfoStep = ({
               <span className="text-base leading-normal font-semibold text-gray-400">
                 Quick tip
               </span>
-              <Lightbulb05 className="ml-auto size-5 shrink-0 text-gray-400" />
+              <Lightbulb03 className="ml-auto size-5 shrink-0 text-gray-400" />
             </div>
             <p className="mt-4 text-base leading-6 font-semibold text-dark-blue-400">
               Give us a few details now to save time later:
