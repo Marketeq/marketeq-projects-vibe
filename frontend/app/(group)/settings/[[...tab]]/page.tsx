@@ -8,6 +8,7 @@ import Cookies from "js-cookie"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
+import { useRefreshUser } from "../hooks/use-refresh-user"
 import { AuthAPI } from "@/service/http/auth"
 import { ClientAPI } from "@/service/http/client"
 import { cn, convertToKbOrMb, getIsNotEmpty } from "@/utils/functions"
@@ -141,6 +142,7 @@ const MAX_IP_ROWS = 10
 export default function SettingsPage() {
   const { user, setUser } = useAuth()
   const { toast } = useToast()
+  const refreshUser = useRefreshUser()
   const router = useRouter()
   const routeParams = useParams()
   const searchParams = useSearchParams()
@@ -598,9 +600,7 @@ export default function SettingsPage() {
   }
 
   const twoFactorNumbers = [
-    ...((user as any)?.twoFactorPhone
-      ? [(user as any).twoFactorPhone as string]
-      : []),
+    ...(user?.twoFactorPhone ? [user.twoFactorPhone] : []),
     ...addedTwoFactorNumbers,
   ]
   const [isMagicLinkSent, setIsMagicLinkSent] = useState(false)
@@ -702,14 +702,14 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (user) {
-      const rawTeam = (user as any).team ?? ""
-      const rawLang = (user as any).language ?? ""
+      const rawTeam = user.teamName ?? ""
+      const rawLang = user.language ?? ""
       setProfileForm({
         firstName: user.firstName ?? "",
         lastName: user.lastName ?? "",
         username: user.username ?? "",
-        phone: (user as any).phone ?? "",
-        jobTitle: (user as any).recentJobTitle ?? "",
+        phone: user.phone ?? "",
+        jobTitle: user.recentJobTitle ?? "",
         team: rawTeam ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
         languages: rawLang ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
       })
@@ -722,8 +722,8 @@ export default function SettingsPage() {
     if (isAvatarDirty) return true
     if (!user) return false
 
-    const rawTeam = (user as any).team ?? ""
-    const rawLang = (user as any).language ?? ""
+    const rawTeam = user.teamName ?? ""
+    const rawLang = user.language ?? ""
     const savedTeam = rawTeam
       ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean)
       : []
@@ -735,8 +735,8 @@ export default function SettingsPage() {
       profileForm.firstName !== (user.firstName ?? "") ||
       profileForm.lastName !== (user.lastName ?? "") ||
       profileForm.username !== (user.username ?? "") ||
-      profileForm.phone !== ((user as any).phone ?? "") ||
-      profileForm.jobTitle !== ((user as any).recentJobTitle ?? "") ||
+      profileForm.phone !== (user.phone ?? "") ||
+      profileForm.jobTitle !== (user.recentJobTitle ?? "") ||
       profileForm.team.join(",") !== savedTeam.join(",") ||
       profileForm.languages.join(",") !== savedLanguages.join(",")
     )
@@ -1072,6 +1072,7 @@ export default function SettingsPage() {
         phone: profileForm.phone,
         recentJobTitle: profileForm.jobTitle,
         language: profileForm.languages.join(", "),
+        teamName: profileForm.team.join(", "),
       }
       const response = await UserAPI.updateProfile(user.id, payload)
       const isSuccess =
@@ -1092,6 +1093,10 @@ export default function SettingsPage() {
         )
         setIsEditing(false)
         toast({ title: "Profile updated successfully", variant: "success" })
+        // The patch above only carries the three fields it names. Re-read so
+        // the rest of the app sees the phone, job title, team, languages and
+        // the avatar URL the upload returned.
+        await refreshUser()
       } else {
         throw new Error("Failed to update profile")
       }
@@ -1113,14 +1118,14 @@ export default function SettingsPage() {
   }
 
   const handleProfileCancel = () => {
-    const rawTeam = (user as any)?.team ?? ""
-    const rawLang = (user as any)?.language ?? ""
+    const rawTeam = user?.teamName ?? ""
+    const rawLang = user?.language ?? ""
     setProfileForm({
       firstName: user?.firstName ?? "",
       lastName: user?.lastName ?? "",
       username: user?.username ?? "",
-      phone: (user as any)?.phone ?? "",
-      jobTitle: (user as any)?.recentJobTitle ?? "",
+      phone: user?.phone ?? "",
+      jobTitle: user?.recentJobTitle ?? "",
       team: rawTeam ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
       languages: rawLang ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
     })
