@@ -1,6 +1,6 @@
 import { Injectable, Logger, HttpStatus } from '@nestjs/common';
 import { InjectRepository }    from '@nestjs/typeorm';
-import { Repository, Not, IsNull } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ConfigService }       from '@nestjs/config';
 import { DepositMethod, MethodType, VerificationStatus } from '../entities/deposit-method.entity';
 import { DepositMethodVerification } from '../entities/deposit-method-verification.entity';
@@ -416,10 +416,22 @@ export class StripeProvider {
       return `acct_mock_${contractorId.slice(0, 8)}`;
     }
 
-    const existing = await this.methodRepo.findOne({
-      where: { contractorId, stripeConnectAccountId: Not(IsNull()) } as any,
-      order: { createdAt: 'DESC' },
-    });
+    // Real Stripe Connect account IDs are always `acct_...`, never
+    // `acct_mock...`/`mock_acct_...`. A row can carry one of those
+    // placeholders if it was created by the dev-mode branch above (this.stripe
+    // unset/fake at the time — a stale key mid-restart, for instance).
+    // Filtering at the query level (not just checking the single most-recent
+    // row) means an older row's real account ID still gets found and reused
+    // — the actual intent of this method, one Connect account per contractor
+    // — instead of silently minting a second real Connect account once a
+    // mock row happens to be the newest.
+    const existing = await this.methodRepo
+      .createQueryBuilder('m')
+      .where('m.contractor_id = :contractorId', { contractorId })
+      .andWhere("m.stripe_connect_account_id LIKE 'acct\\_%' ESCAPE '\\'")
+      .andWhere("m.stripe_connect_account_id NOT LIKE 'acct\\_mock%' ESCAPE '\\'")
+      .orderBy('m.created_at', 'DESC')
+      .getOne();
     if (existing?.stripeConnectAccountId) return existing.stripeConnectAccountId;
 
     const account = await this.stripe.accounts.create({
