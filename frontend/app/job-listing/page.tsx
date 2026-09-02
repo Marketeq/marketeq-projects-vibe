@@ -2363,7 +2363,7 @@ const Header = ({ onSaveExit }: { onSaveExit?: () => void }) => {
         <h3 className="text-[24px] font-bold leading-8 text-dark-blue-400">
           Job Creation
         </h3>
-        <p className="text-sm leading-5 text-gray-500">
+        <p className="text-sm leading-5 text-dark-blue-400">
           We&apos;ll guide you through the steps to set up roles, add details,
           and get ready to hire.
         </p>
