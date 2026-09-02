@@ -93,6 +93,7 @@ import {
   Combobox,
   ComboboxButton,
   ComboboxInput,
+  ComboboxLabel,
   ComboboxOption,
   ComboboxOptions,
   ComboboxTrigger,
@@ -5662,10 +5663,10 @@ export const OverviewTab = ({
                                 if (country) selectCountry(country.code)
                               }}
                             >
-                              <ComboboxTrigger className="flex flex-col gap-y-1">
-                                <Label size="xs" className="text-gray-500">
-                                  Country
-                                </Label>
+                              <ComboboxLabel size="xs" className="text-gray-500">
+                                Country
+                              </ComboboxLabel>
+                              <ComboboxTrigger className="mt-1">
                                 <ComboboxInput
                                   className="pl-3 pr-8 py-2 text-sm"
                                   placeholder="Select country"
