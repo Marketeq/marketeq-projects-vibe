@@ -39,7 +39,7 @@ module.exports = {
     svc('api-gateway', 4000),
     svc('auth-service', 3001),
     { ...svc('user-service', 3002), node_args: '--max-old-space-size=1024' },
-    svc('listings-service', 3004, { LISTINGS_DATABASE_SYNCHRONIZE: 'false' }),
+    svc('listings-service', 3004, { LISTINGS_DATABASE_SYNCHRONIZE: 'true' }),
     svc('checkout-service', 3009),
     svcNested('messaging-service', 3005),
     svcNested('notification-service', 3006),
