@@ -283,6 +283,35 @@ scripts/convert-docs.sh                    # convert .docx → .md
 ```
 
 ## Git Workflow
+
+### 🛑 NEVER push without updating the branch first
+
+**This is absolute. It applies to every push, every time — including doc-only
+changes, one-line fixes, and the second and third push within a single session.**
+
+**A branch that is even one commit behind is stale. There is no acceptable
+number of commits to be behind other than zero.**
+
+Before every `git push`:
+
+```bash
+git fetch origin <branch>
+git rev-list --left-right --count origin/<branch>...HEAD   # left number MUST be 0
+```
+
+If the left number is not `0`, the branch is behind. Merge `origin/<branch>` in
+and resolve the conflicts **before** pushing. Never force-push past it.
+
+Why it matters: a push from a stale branch is how merged work silently
+disappears. "I fetched at the start of the session" is not updating — the branch
+can move between your first push and your next one, and a push that succeeds
+only because nobody else happened to push in that window is luck, not process.
+
+When resolving the resulting conflicts, follow the rule in `docs/CODE_REVIEW_SOP.md`:
+take the authoritative side wholesale rather than hand-blending two versions,
+then verify with `git diff <pre-merge-sha> -- <file>`.
+
+### Agent worktrees
 - Each agent works in its own worktree + branch: `agent/<service-name>`
 - After finishing: commit in worktree, then run `merge-agents.sh`
 - Branch naming: `agent/<service-name>`
