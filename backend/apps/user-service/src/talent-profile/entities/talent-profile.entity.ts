@@ -86,6 +86,21 @@ export class TalentProfile {
     description: string | null;
   }[];
 
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  avatarUrl: string | null;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  linkedinUrl: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  claimed: boolean;
+
+  @Column({ type: 'uuid', nullable: true })
+  claimedByUserId: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  about: string | null;
+
   @Column({ type: 'varchar', length: 20, default: 'active' })
   status: 'active' | 'inactive' | 'suspended';
 

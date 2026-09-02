@@ -699,7 +699,7 @@ function CarouselSectionView({
             return (
               <SwiperSlide
                 className="w-[355px]"
-                key={user.id}
+                key={`${section.id ?? idx}-${user.id}`}
               >
                 <ListingCard kind="talent" {...props} />
               </SwiperSlide>
@@ -731,7 +731,7 @@ function GridBlockBody({
         const rawCountry = props.country?.split(",").pop()?.trim() || props.country
         const country = COUNTRY_OFFICIAL_NAMES[rawCountry?.toUpperCase() ?? ""] ?? rawCountry
         return (
-          <div key={user.id}>
+          <div key={`grid-${user.id}-${idx}`}>
             <TalentCardCompact
               id={props.id}
               username={props.username}
@@ -817,7 +817,7 @@ function TabbedSectionView({
               value={t.slug}
               showUnderline={false}
               variant="unstyled"
-              className="inline-flex items-center justify-center h-8 rounded-full border border-gray-300 bg-white px-3.5 text-sm font-semibold text-gray-500 transition-colors hover:bg-gray-50 focus-visible:outline-none data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+              className="inline-flex items-center justify-center h-8 rounded-full border border-gray-300 bg-white px-3.5 text-sm font-semibold text-gray-500 transition-colors hover:bg-gray-50 focus-visible:outline-none data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
             >
               {talentifyText(t.label)}
             </TabsTrigger>

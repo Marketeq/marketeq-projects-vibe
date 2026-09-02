@@ -98,11 +98,12 @@ export function talentToCardProps(
           ...defaultSkills.filter((d) => !skillNames.includes(d)),
         ].slice(0, 12)
 
-  const role =
+  const rawRole =
     u.jobTitles?.find((j: any) => j?.isDefault || j?.saveAsDefault)?.jobTitle ||
     u.jobTitles?.[0]?.jobTitle ||
     u.recentJobTitle ||
-    "Marketing Technologist"
+    ""
+  const role = rawRole.length > 25 ? rawRole.substring(0, 22) + "..." : rawRole
 
   const rate =
     u.rateMin && u.rateMax
@@ -120,7 +121,11 @@ export function talentToCardProps(
     photo: u.avatarUrl || "/man.jpg",
     rate,
     experience: "5 years of experience",
-    country: u.location || "Australia",
+    country: (() => {
+      if (!u.location) return "Australia"
+      const parts = u.location.split(",").map((s) => s.trim())
+      return parts[parts.length - 1] || u.location
+    })(),
     localTime: "7:30pm local time",
     rating: 4.7,
     projects: 2,

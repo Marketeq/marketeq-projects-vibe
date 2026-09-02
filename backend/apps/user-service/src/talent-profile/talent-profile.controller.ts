@@ -23,7 +23,8 @@ export class TalentProfileController {
     'id', 'username', 'name', 'jobTitles', 'availability',
     'location', 'country', 'timezone', 'rate', 'overview', 'skills',
     'industryExpertise', 'languages', 'certifications', 'education',
-    'workExperience', 'portfolio', 'status', 'rating', 'reviewsCount',
+    'workExperience', 'portfolio', 'avatarUrl', 'linkedinUrl',
+    'claimed', 'about', 'status', 'rating', 'reviewsCount',
     'totalProjectsCompleted', 'repeatHireRate', 'responseTimeHours',
     'memberSince', 'createdAt', 'updatedAt',
   ];

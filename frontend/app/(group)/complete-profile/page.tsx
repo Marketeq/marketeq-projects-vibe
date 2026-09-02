@@ -335,7 +335,7 @@ function TalentDashboard() {
           <div className="max-w-[1042px] space-y-3 md:space-y-5 min-w-0">
             <Welcome onToggle={toggleIsOpen} />
 
-            <RecentListings />
+            {/* MVP: RecentListings hidden until listings feature is released */}
 
             <CreateYourOwnProject />
 

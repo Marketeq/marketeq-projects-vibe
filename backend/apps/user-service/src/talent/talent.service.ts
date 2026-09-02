@@ -162,12 +162,13 @@ export class TalentService {
    * without N+1 queries from the frontend). Excludes users with no avatar
    * so cards never fall back to the placeholder.
    */
-  async listTalentUsers(limit = 24): Promise<any[]> {
-    const users = await this.userRepository.find({
-      where: { userType: 'talent' },
-      take: limit,
-      order: { onboardedAt: 'DESC' },
-    });
+  async listTalentUsers(limit = 100): Promise<any[]> {
+    const users = await this.userRepository
+      .createQueryBuilder('u')
+      .where('u."userType" = :type', { type: 'talent' })
+      .orderBy('u."onboardedAt"', 'DESC', 'NULLS LAST')
+      .take(limit)
+      .getMany();
 
     if (users.length === 0) return [];
 

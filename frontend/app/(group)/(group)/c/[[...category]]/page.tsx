@@ -20,10 +20,11 @@ import {
   projectDetailsUrl,
   serviceDetailsUrl,
 } from "@/src/lib/listing-urls"
-import { parseCategoryParams } from "@/src/lib/urlHelpers"
+import { parseCategoryParams, buildProjectUrl, buildServiceUrl } from "@/src/lib/urlHelpers"
 import { projectSeeds } from "@/data/projects.seed"
 import { serviceSeeds } from "@/data/services.seed"
 import { talentSeeds } from "@/data/talent.seed"
+import { teamSeeds } from "@/data/teams.seed"
 import { fromLength } from "@/utils/functions"
 import {
   ArrowRight,
@@ -3692,7 +3693,6 @@ export default function Projects() {
                         ))}
                       </TabsList>
                       <Button
-                        asChild
                         variant="link"
                         visual="gray"
                         size="lg"

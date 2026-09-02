@@ -2369,6 +2369,7 @@ function Default() {
                 </LazySection>
                 )}
 
+                {/* MVP: My Offers section hidden until listings feature is released
                 {!isClientView && (
                 <LazySection minHeight={400}>
                   <div
@@ -2464,6 +2465,7 @@ function Default() {
                   </div>
                 </LazySection>
                 )}
+                */}
 
                 {showBackgroundSection && (
                 <LazySection minHeight={400}>

@@ -92,7 +92,8 @@ const buildTalentSections = (inboxBadge?: string): SidebarSection[] => [
     label: "Work",
     items: [
       { href: "/talent-dashboard", label: "Home", icon: Home03 },
-      { href: "/my-listings", label: "My Listings", icon: Search },
+      // MVP: My Listings hidden until listings feature is released
+      // { href: "/my-listings", label: "My Listings", icon: Search },
       { href: "/my-contracts", label: "My Contracts", icon: FileCheck02 },
       { href: "/my-jobs", label: "My Jobs", icon: Briefcase },
       { href: "/earnings", label: "Transactions", icon: CurrencyDollar },

@@ -1399,7 +1399,54 @@ export default function FavoritesPage() {
         {/* Talent Network Tab */}
         <TabsContent value="Talent Network">
           <div className="pt-[14px] lg:pt-6">
-            {sortedSampleGroups.length === 0 ? (
+            {isLoading ? (
+              getFirstItem(value) === GRID_LAYOUT ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-6">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden p-[35px] pb-[25px]"
+                    >
+                      <div className="flex justify-center items-center">
+                        <div className="relative size-[176px] rounded-full overflow-hidden bg-gray-100">
+                          <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                        </div>
+                      </div>
+                      <div className="mt-5 space-y-2">
+                        <div className="relative h-5 w-28 mx-auto rounded bg-gray-100 overflow-hidden">
+                          <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                        </div>
+                        <div className="relative h-3 w-20 mx-auto rounded bg-gray-100 overflow-hidden">
+                          <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                        </div>
+                        <div className="relative h-3 w-16 mx-auto rounded bg-gray-100 overflow-hidden">
+                          <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-y-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] p-6 flex items-center gap-x-4"
+                    >
+                      <div className="relative size-10 rounded-full bg-gray-100 shrink-0 overflow-hidden">
+                        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                      </div>
+                      <div className="relative h-4 w-32 rounded bg-gray-100 overflow-hidden">
+                        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                      </div>
+                      <div className="relative h-4 w-16 rounded bg-gray-100 ml-auto overflow-hidden">
+                        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : sortedSampleGroups.length === 0 ? (
               <EmptyState
                 icon={Users}
                 title="No favorite talent yet"
