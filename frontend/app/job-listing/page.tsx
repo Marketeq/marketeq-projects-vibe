@@ -11051,6 +11051,7 @@ const NoScopeRoleInfoStep = ({
   const { projectScopeMethods } = useProjectScopeContext();
   const [, setProjectScopeState] = projectScopeMethods;
   const isTeamMode = hiringMode !== "individual";
+  const useNoScopeLayout = true;
   const [roleDescription, setRoleDescription] = useState("");
   const [headcount, setHeadcount] = useState(isTeamMode ? "2" : "1");
   const [budget, setBudget] = useState("500.00");
@@ -11061,7 +11062,7 @@ const NoScopeRoleInfoStep = ({
   const [customDuration, setCustomDuration] = useState("");
   const [customDurationUnit, setCustomDurationUnit] = useState("months");
   const hasValidDuration =
-    !isTeamMode ||
+    !useNoScopeLayout ||
     (durationChoice !== "Other" && durationChoice !== ""
       ? true
       : Number(customDuration) > 0);
@@ -11069,7 +11070,7 @@ const NoScopeRoleInfoStep = ({
   useIsomorphicLayoutEffect(() => {
     toggleValidation(
       Boolean(roleDescription.trim()) &&
-        Boolean(headcount.trim()) &&
+        (!isTeamMode || Boolean(headcount.trim())) &&
         Boolean(budget.trim()) &&
         hasValidDuration,
     );
@@ -11147,24 +11148,43 @@ const NoScopeRoleInfoStep = ({
     setProjectScopeState,
   ]);
 
-  const durationOptions = [
-    {
-      label: "3 months",
-      description: "Short-term support, pilot run, or trial period",
-    },
-    {
-      label: "6 months",
-      description: "Feature rollouts, seasonal needs, or limited contracts",
-    },
-    {
-      label: "12 months",
-      description: "Long-term engagement or steady workload",
-    },
-    {
-      label: "24 months",
-      description: "Ongoing responsibilities or evolving team needs",
-    },
-  ];
+  const durationOptions = isTeamMode
+    ? [
+        {
+          label: "3 months",
+          description: "Short-term support, pilot run, or trial period",
+        },
+        {
+          label: "6 months",
+          description: "Feature rollouts, seasonal needs, or limited contracts",
+        },
+        {
+          label: "12 months",
+          description: "Long-term engagement or steady workload",
+        },
+        {
+          label: "24 months",
+          description: "Ongoing responsibilities or evolving team needs",
+        },
+      ]
+    : [
+        {
+          label: "3 months",
+          description: "Short-term contract, pilot work, or temp coverage",
+        },
+        {
+          label: "6 months",
+          description: "Seasonal support, rollout projects",
+        },
+        {
+          label: "12 months",
+          description: "Long-term hire or retainer",
+        },
+        {
+          label: "24 months",
+          description: "Ongoing support or continuous responsibilities",
+        },
+      ];
 
   return (
     <ScrollArea
@@ -11184,13 +11204,13 @@ const NoScopeRoleInfoStep = ({
             <div
               className={cn(
                 "mt-8",
-                isTeamMode && "flex w-[886px] flex-col gap-3",
+                useNoScopeLayout && "flex w-[886px] flex-col gap-3",
               )}
             >
               <div
                 className={cn(
                   "flex justify-between gap-x-4",
-                  isTeamMode
+                  useNoScopeLayout
                     ? "h-7 items-baseline gap-2"
                     : "items-center",
                 )}
@@ -11198,7 +11218,7 @@ const NoScopeRoleInfoStep = ({
                 <Label
                   className={cn(
                     "text-base leading-6 font-semibold text-dark-blue-400",
-                    isTeamMode &&
+                    useNoScopeLayout &&
                       "flex-1 text-lg leading-7 font-medium text-dark-blue-400",
                   )}
                 >
@@ -11209,7 +11229,7 @@ const NoScopeRoleInfoStep = ({
                 <span
                   className={cn(
                     "text-sm leading-5 text-gray-400",
-                    isTeamMode && "font-normal",
+                    useNoScopeLayout && "font-normal",
                   )}
                 >
                   67 / 100
@@ -11218,7 +11238,7 @@ const NoScopeRoleInfoStep = ({
               <Textarea
                 className={cn(
                   "mt-3 h-40 text-base",
-                  isTeamMode &&
+                  useNoScopeLayout &&
                     "mt-0 h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400",
                 )}
                 placeholder="Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
@@ -11227,17 +11247,18 @@ const NoScopeRoleInfoStep = ({
               />
             </div>
 
-            <div
-              className={cn(
-                "mt-16 max-w-[320px]",
-                isTeamMode &&
-                  "flex w-[886px] max-w-none flex-col gap-4",
-              )}
-            >
+            {isTeamMode ? (
+              <div
+                className={cn(
+                  "mt-16 max-w-[320px]",
+                  useNoScopeLayout &&
+                    "flex w-[886px] max-w-none flex-col gap-4",
+                )}
+              >
               <Label
                 className={cn(
                   "text-base leading-6 font-semibold text-dark-blue-400",
-                  isTeamMode &&
+                  useNoScopeLayout &&
                     "text-lg leading-7 font-medium text-dark-blue-400",
                 )}
               >
@@ -11247,13 +11268,13 @@ const NoScopeRoleInfoStep = ({
               </Label>
               <div
                 className={cn(
-                  isTeamMode && "flex w-[320px] flex-col gap-1.5",
+                  useNoScopeLayout && "flex w-[320px] flex-col gap-1.5",
                 )}
               >
                 <Label
                   className={cn(
                     "mt-6 block text-sm leading-5 font-semibold text-gray-500",
-                    isTeamMode &&
+                    useNoScopeLayout &&
                       "mt-0 font-medium text-gray-500",
                   )}
                 >
@@ -11262,27 +11283,28 @@ const NoScopeRoleInfoStep = ({
                 <Input
                   className={cn(
                     "mt-2",
-                    isTeamMode &&
+                    useNoScopeLayout &&
                       "mt-0 h-11 w-[320px] rounded-[5px] border-gray-300 px-[14px] py-2.5 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs",
                   )}
                   inputMode="numeric"
-                  pattern={isTeamMode ? "[0-9]*" : undefined}
+                  pattern={useNoScopeLayout ? "[0-9]*" : undefined}
                   value={headcount}
                   onChange={(event) =>
                     setHeadcount(
-                      isTeamMode
+                      useNoScopeLayout
                         ? event.target.value.replace(/[^0-9]/g, "")
                         : event.target.value,
                     )
                   }
                 />
               </div>
-            </div>
+              </div>
+            ) : null}
 
-            {isTeamMode ? (
+            {useNoScopeLayout ? (
               <div className="mt-16 flex w-[886px] flex-col gap-4">
                 <Label className="text-lg leading-7 font-medium text-dark-blue-400">
-                  What&apos;s your estimated budget for this team?
+                  What&apos;s your estimated budget for this {isTeamMode ? "team" : "role"}?
                 </Label>
                 <div className="flex w-[320px] items-end gap-2">
                   <div className="flex w-[176px] flex-col gap-1.5">
@@ -11377,13 +11399,13 @@ const NoScopeRoleInfoStep = ({
             <div
               className={cn(
                 "mt-16",
-                isTeamMode && "flex w-[886px] flex-col gap-4",
+                useNoScopeLayout && "flex w-[886px] flex-col gap-4",
               )}
             >
               <Label
                 className={cn(
                   "text-base leading-6 font-semibold text-dark-blue-400",
-                  isTeamMode &&
+                  useNoScopeLayout &&
                     "text-lg leading-7 font-medium text-dark-blue-400",
                 )}
               >
@@ -11394,7 +11416,7 @@ const NoScopeRoleInfoStep = ({
               <RadioGroup
                 className={cn(
                   "mt-6 grid gap-4 md:grid-cols-2",
-                  isTeamMode && "mt-0 w-[886px] gap-4",
+                  useNoScopeLayout && "mt-0 w-[886px] gap-4",
                 )}
                 value={durationChoice}
                 onValueChange={setDurationChoice}
@@ -11405,7 +11427,7 @@ const NoScopeRoleInfoStep = ({
                     value={option.label}
                     className={cn(
                       "flex min-h-[84px] items-start gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
-                      isTeamMode &&
+                      useNoScopeLayout &&
                         "h-[84px] w-[435px] min-h-0 gap-x-4 py-4 pr-6 pl-4",
                       durationChoice === option.label && "border-primary-500",
                     )}
@@ -11417,7 +11439,7 @@ const NoScopeRoleInfoStep = ({
                       <span
                         className={cn(
                           "mt-1 block text-sm leading-5 text-gray-500",
-                          isTeamMode && "text-dark-blue-400",
+                          useNoScopeLayout && "text-dark-blue-400",
                         )}
                       >
                         {option.description}
@@ -11438,9 +11460,9 @@ const NoScopeRoleInfoStep = ({
                   tabIndex={0}
                   className={cn(
                     "rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
-                    isTeamMode && durationChoice === "Other"
+                    useNoScopeLayout && durationChoice === "Other"
                       ? "flex h-[116px] w-[435px] flex-col justify-center gap-3 py-4 pr-6 pl-4"
-                      : isTeamMode
+                      : useNoScopeLayout
                         ? "flex h-[84px] w-[435px] items-center gap-4 py-4 pr-6 pl-4"
                         : undefined,
                     durationChoice === "Other" && "border-primary-500",
@@ -11456,9 +11478,9 @@ const NoScopeRoleInfoStep = ({
                   <div
                     className={cn(
                       "flex items-start gap-x-4",
-                      isTeamMode && durationChoice === "Other"
+                    useNoScopeLayout && durationChoice === "Other"
                         ? "flex h-7 w-full items-center justify-between gap-2"
-                        : isTeamMode
+                        : useNoScopeLayout
                           ? "flex h-[52px] w-[361px] items-center gap-4"
                           : undefined,
                     )}
@@ -11476,17 +11498,17 @@ const NoScopeRoleInfoStep = ({
                       )}
                     />
                   </div>
-                  {(!isTeamMode || durationChoice === "Other") && (
+                  {(!useNoScopeLayout || durationChoice === "Other") && (
                     <div
                       className={cn(
                         "mt-4 flex flex-wrap gap-2",
-                        isTeamMode && "mt-0 h-11 w-[395px] flex-nowrap",
+                        useNoScopeLayout && "mt-0 h-11 w-[395px] flex-nowrap",
                       )}
                     >
                       <Input
                         className={cn(
                           "w-[180px]",
-                          isTeamMode &&
+                          useNoScopeLayout &&
                             "h-11 w-[251px] rounded-[5px] px-[14px] py-2.5 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400",
                         )}
                         placeholder="Enter duration"
@@ -11495,7 +11517,7 @@ const NoScopeRoleInfoStep = ({
                           setCustomDuration(event.target.value)
                         }
                       />
-                      {isTeamMode ? (
+                      {useNoScopeLayout ? (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
