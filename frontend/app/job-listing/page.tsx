@@ -9382,22 +9382,33 @@ const DescribeProjectStep = ({
     descriptionFieldVariant === "project"
       ? "h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
       : "h-20 text-sm";
+  const firstQuestionLabelClassName = isService
+    ? "flex-1 text-lg leading-7 font-medium text-dark-blue-400"
+    : descriptionLabelClassName;
+  const firstQuestionCounterClassName = isService
+    ? "text-sm leading-5 font-normal text-gray-400"
+    : descriptionCounterClassName;
+  const firstQuestionTextareaClassName = isService
+    ? "h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
+    : descriptionTextareaClassName;
   const describeProjectContainerClassName =
     descriptionFieldVariant === "project"
       ? "min-w-0 flex-auto max-w-[886px]"
-      : "min-w-0 flex-auto min-[1024px]:max-w-[720px]";
+      : "min-w-0 flex-auto min-[1024px]:max-w-[886px]";
   const describeProjectContentClassName =
     descriptionFieldVariant === "project"
       ? "mt-8 flex flex-col gap-16"
       : "mt-4 space-y-2";
   const describeProjectQuestionClassName =
-    descriptionFieldVariant === "project" ? "space-y-3" : "space-y-2";
+    descriptionFieldVariant === "project"
+      ? "space-y-3"
+      : "w-[886px] space-y-3";
   const describeProjectGroupClassName =
     descriptionFieldVariant === "project" ? "mt-16 space-y-4" : "space-y-2";
   const describeProjectLabelRowClassName =
     descriptionFieldVariant === "project"
       ? "flex h-7 items-baseline justify-between gap-2"
-      : "flex items-baseline justify-between gap-2";
+      : "flex h-7 items-baseline justify-between gap-2";
 
   return (
     <ScrollArea
@@ -9410,21 +9421,26 @@ const DescribeProjectStep = ({
         className="flex flex-col gap-y-8 px-5 pb-[100px] pt-6 md:px-10 min-[1024px]:flex-row min-[1024px]:gap-8 min-[1024px]:px-[100px] min-[1024px]:py-[50px]"
       >
         <div className={describeProjectContainerClassName}>
-          <h1 className="text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
+          <h1
+            className={cn(
+              "text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400",
+              isService && "h-11 w-[886px]",
+            )}
+          >
             {isService ? "Describe your service" : "Describe your project"}
           </h1>
 
           <div className={describeProjectContentClassName}>
             <div className={describeProjectQuestionClassName}>
               <div className={describeProjectLabelRowClassName}>
-                <Label className={descriptionLabelClassName}>
+                <Label className={firstQuestionLabelClassName}>
                   {isService
                     ? "What kind of ongoing help do you need?"
                     : scopeKnowledgeChoice === "known"
                       ? "What are you building?"
                       : "What do you want to accomplish with this project?"}
                 </Label>
-                <span className={descriptionCounterClassName}>
+                <span className={firstQuestionCounterClassName}>
                   {description.length}/100
                 </span>
               </div>
@@ -9441,7 +9457,7 @@ const DescribeProjectStep = ({
                     ? "I need ongoing design and development support for my e-commerce store..."
                     : "I need help building a new website for my e-commerce store..."
                 }
-                className={descriptionTextareaClassName}
+                className={firstQuestionTextareaClassName}
               />
             </div>
 
