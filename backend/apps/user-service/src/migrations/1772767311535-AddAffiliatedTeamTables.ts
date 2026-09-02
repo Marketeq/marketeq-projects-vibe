@@ -81,12 +81,12 @@ export class AddAffiliatedTeamTables1772767311535
         SELECT c.udt_name
         INTO skills_type
         FROM information_schema.columns c
-        WHERE c.table_schema = 'public'
+        WHERE c.table_schema = current_schema()
           AND c.table_name = 'experiences'
           AND c.column_name = 'skills';
 
         IF skills_type IS NULL THEN
-          ALTER TABLE "experiences" ADD COLUMN "skills" text[];
+          ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "skills" text[];
         ELSIF skills_type IN ('text', 'varchar', 'bpchar') THEN
           ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "skills_tmp" text[];
           EXECUTE 'UPDATE "experiences" SET "skills_tmp" = CASE WHEN "skills" IS NULL OR btrim("skills"::text) = '''' THEN NULL ELSE ARRAY["skills"::text] END';
@@ -117,12 +117,12 @@ export class AddAffiliatedTeamTables1772767311535
         SELECT c.udt_name
         INTO description_type
         FROM information_schema.columns c
-        WHERE c.table_schema = 'public'
+        WHERE c.table_schema = current_schema()
           AND c.table_name = 'experiences'
           AND c.column_name = 'description';
 
         IF description_type IS NULL THEN
-          ALTER TABLE "experiences" ADD COLUMN "description" character varying;
+          ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "description" character varying;
         ELSIF description_type NOT IN ('varchar', 'bpchar') THEN
           ALTER TABLE "experiences"
           ALTER COLUMN "description" TYPE character varying
@@ -132,12 +132,12 @@ export class AddAffiliatedTeamTables1772767311535
         SELECT c.udt_name
         INTO location_type
         FROM information_schema.columns c
-        WHERE c.table_schema = 'public'
+        WHERE c.table_schema = current_schema()
           AND c.table_name = 'experiences'
           AND c.column_name = 'location';
 
         IF location_type IS NULL THEN
-          ALTER TABLE "experiences" ADD COLUMN "location" text;
+          ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "location" text;
         ELSIF location_type <> 'text' THEN
           ALTER TABLE "experiences"
           ALTER COLUMN "location" TYPE text
@@ -147,12 +147,12 @@ export class AddAffiliatedTeamTables1772767311535
         SELECT c.udt_name
         INTO start_type
         FROM information_schema.columns c
-        WHERE c.table_schema = 'public'
+        WHERE c.table_schema = current_schema()
           AND c.table_name = 'experiences'
           AND c.column_name = 'startDate';
 
         IF start_type IS NULL THEN
-          ALTER TABLE "experiences" ADD COLUMN "startDate" date;
+          ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "startDate" date;
         ELSIF start_type IN ('timestamp', 'timestamptz') THEN
           ALTER TABLE "experiences"
           ALTER COLUMN "startDate" TYPE date
@@ -163,12 +163,12 @@ export class AddAffiliatedTeamTables1772767311535
         SELECT c.udt_name
         INTO end_type
         FROM information_schema.columns c
-        WHERE c.table_schema = 'public'
+        WHERE c.table_schema = current_schema()
           AND c.table_name = 'experiences'
           AND c.column_name = 'endDate';
 
         IF end_type IS NULL THEN
-          ALTER TABLE "experiences" ADD COLUMN "endDate" date;
+          ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "endDate" date;
         ELSIF end_type IN ('timestamp', 'timestamptz') THEN
           ALTER TABLE "experiences"
           ALTER COLUMN "endDate" TYPE date
@@ -178,12 +178,12 @@ export class AddAffiliatedTeamTables1772767311535
         SELECT c.udt_name
         INTO created_type
         FROM information_schema.columns c
-        WHERE c.table_schema = 'public'
+        WHERE c.table_schema = current_schema()
           AND c.table_name = 'experiences'
           AND c.column_name = 'createdAt';
 
         IF created_type IS NULL THEN
-          ALTER TABLE "experiences" ADD COLUMN "createdAt" TIMESTAMP NOT NULL DEFAULT now();
+          ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP NOT NULL DEFAULT now();
         ELSIF created_type = 'timestamptz' THEN
           ALTER TABLE "experiences"
           ALTER COLUMN "createdAt" TYPE TIMESTAMP
@@ -196,12 +196,12 @@ export class AddAffiliatedTeamTables1772767311535
         SELECT c.udt_name
         INTO updated_type
         FROM information_schema.columns c
-        WHERE c.table_schema = 'public'
+        WHERE c.table_schema = current_schema()
           AND c.table_name = 'experiences'
           AND c.column_name = 'updatedAt';
 
         IF updated_type IS NULL THEN
-          ALTER TABLE "experiences" ADD COLUMN "updatedAt" TIMESTAMP NOT NULL DEFAULT now();
+          ALTER TABLE "experiences" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP NOT NULL DEFAULT now();
         ELSIF updated_type = 'timestamptz' THEN
           ALTER TABLE "experiences"
           ALTER COLUMN "updatedAt" TYPE TIMESTAMP
@@ -249,12 +249,12 @@ export class AddAffiliatedTeamTables1772767311535
         SELECT c.udt_name
         INTO timezone_type
         FROM information_schema.columns c
-        WHERE c.table_schema = 'public'
+        WHERE c.table_schema = current_schema()
           AND c.table_name = 'users'
           AND c.column_name = 'timezone';
 
         IF timezone_type IS NULL THEN
-          ALTER TABLE "users" ADD COLUMN "timezone" character varying;
+          ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "timezone" character varying;
         ELSIF timezone_type <> 'varchar' THEN
           ALTER TABLE "users"
           ALTER COLUMN "timezone" TYPE character varying
