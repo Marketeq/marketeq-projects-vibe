@@ -702,8 +702,6 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (user) {
-      // No column backs the department field yet — see the save handler.
-      const rawTeam = ""
       const rawLang = user.language ?? ""
       setProfileForm({
         firstName: user.firstName ?? "",
@@ -711,7 +709,8 @@ export default function SettingsPage() {
         username: user.username ?? "",
         phone: user.phone ?? "",
         jobTitle: user.recentJobTitle ?? "",
-        team: rawTeam ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+        // No column backs the department field yet — see handleProfileSave.
+        team: [],
         languages: rawLang ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
       })
     }
@@ -723,11 +722,9 @@ export default function SettingsPage() {
     if (isAvatarDirty) return true
     if (!user) return false
 
-    const rawTeam = ""
     const rawLang = user.language ?? ""
-    const savedTeam = rawTeam
-      ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean)
-      : []
+    // Nothing persists the department, so a saved value can never exist.
+    const savedTeam: string[] = []
     const savedLanguages = rawLang
       ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean)
       : []
@@ -1123,7 +1120,6 @@ export default function SettingsPage() {
   }
 
   const handleProfileCancel = () => {
-    const rawTeam = ""
     const rawLang = user?.language ?? ""
     setProfileForm({
       firstName: user?.firstName ?? "",
@@ -1131,7 +1127,7 @@ export default function SettingsPage() {
       username: user?.username ?? "",
       phone: user?.phone ?? "",
       jobTitle: user?.recentJobTitle ?? "",
-      team: rawTeam ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+      team: [],
       languages: rawLang ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
     })
     setAvatarPreview(null)
