@@ -132,11 +132,25 @@ export class ScreenshotsService {
       `UPDATE time_tracking.screenshots
        SET is_deleted = true, deleted_at = $3, deletion_reason = $4
        WHERE id = $1 AND user_id = $2 AND is_deleted = false
-       RETURNING id`,
+       RETURNING id, contract_id, task_id, captured_at`,
       [id, userId, now, reason],
     );
 
-    if (Array.isArray(updated) && updated.length > 0) {
+    // TypeORM returns an UPDATE ... RETURNING result as [rows[], affectedCount],
+    // so the row is at updated[0][0]. (A plain SELECT returns rows[] directly.)
+    const updatedRows = Array.isArray(updated?.[0])
+      ? updated[0]
+      : (Array.isArray(updated) ? updated : []);
+    if (updatedRows.length > 0) {
+      const row = updatedRows[0];
+      if (row.contract_id && row.captured_at) {
+        this.earningsSync.syncScreenshot({
+          userId,
+          contractId: row.contract_id,
+          taskId: row.task_id ?? null,
+          capturedAt: new Date(row.captured_at),
+        });
+      }
       return { id, isDeleted: true };
     }
 
@@ -401,7 +415,16 @@ export class ScreenshotsService {
     screenshot.blurredAt = new Date();
     screenshot.reviewStatus = settings?.autoApproveBlur || role === 'admin' ? 'approved' : 'pending';
 
-    return this.repo.save(screenshot);
+    const saved = await this.repo.save(screenshot);
+    if (saved.contractId && saved.capturedAt) {
+      this.earningsSync.syncScreenshot({
+        userId: saved.userId,
+        contractId: saved.contractId,
+        taskId: saved.taskId,
+        capturedAt: saved.capturedAt,
+      });
+    }
+    return saved;
   }
 
   async unblur(id: string, userId: string): Promise<Screenshot> {
@@ -410,7 +433,16 @@ export class ScreenshotsService {
     if (screenshot.userId !== userId) throw new ForbiddenException('Access denied');
     screenshot.isBlurred = false;
     screenshot.blurredAt = null as any;
-    return this.repo.save(screenshot);
+    const saved = await this.repo.save(screenshot);
+    if (saved.contractId && saved.capturedAt) {
+      this.earningsSync.syncScreenshot({
+        userId: saved.userId,
+        contractId: saved.contractId,
+        taskId: saved.taskId,
+        capturedAt: saved.capturedAt,
+      });
+    }
+    return saved;
   }
 
   // ── Moderation: Flag ───────────────────────────────────────────────

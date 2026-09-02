@@ -55,7 +55,7 @@ export class InternalSyncService {
           `INSERT INTO contract_label_cache
              (contract_id, contractor_id, client_id, project_id,
               contract_title, project_name, client_display_name, status, activated_at)
-           VALUES ($1::text, $2::uuid, NULL,
+           VALUES ($1::uuid, $2::uuid, '00000000-0000-0000-0000-000000000000',
               NULL, $1, $1, 'Unknown Client', 'active', now() - interval '30 days')
            ON CONFLICT (contract_id) DO NOTHING
            RETURNING contract_id`,
@@ -68,7 +68,7 @@ export class InternalSyncService {
           `INSERT INTO contract_label_cache
              (contract_id, contractor_id, client_id, project_id,
               contract_title, project_name, client_display_name, status, activated_at)
-           VALUES ($1::text, $2::uuid, NULL,
+           VALUES ($1::uuid, $2::uuid, '00000000-0000-0000-0000-000000000000',
               NULL, $1, $1, 'Unknown Client', 'active', now() - interval '30 days')
            ON CONFLICT (contract_id) DO NOTHING
            RETURNING contract_id`,
@@ -96,11 +96,11 @@ export class InternalSyncService {
            avg_keyboard_pct, avg_mouse_pct, idempotency_key,
            contract_ref, task_ref, task_name
          ) VALUES (
-           gen_random_uuid(), $1::uuid, $2::text, NULL, NULL,
+           gen_random_uuid(), $1::uuid, $2::uuid, NULL, NULL,
            'screenshot', $3, $4, $5, 'USD', 1.0, $5,
            'confirmed',
-           $6::timestamp AT TIME ZONE 'America/Chicago',
-           $7::timestamp AT TIME ZONE 'America/Chicago',
+           $6::timestamptz,
+           $7::timestamptz,
            $8, $9, $10, $11, $12, $13, $14
          )
          ON CONFLICT (idempotency_key) DO UPDATE SET
@@ -169,7 +169,7 @@ export class InternalSyncService {
           `INSERT INTO contract_label_cache
              (contract_id, contractor_id, client_id, project_id,
               contract_title, project_name, client_display_name, status, activated_at)
-           VALUES ($1::text, $2::uuid, NULL,
+           VALUES ($1::uuid, $2::uuid, '00000000-0000-0000-0000-000000000000',
               NULL, $1, $1, 'Unknown Client', 'active', now() - interval '30 days')
            ON CONFLICT (contract_id) DO NOTHING
            RETURNING contract_id`,
@@ -196,7 +196,7 @@ export class InternalSyncService {
            avg_keyboard_pct, avg_mouse_pct, idempotency_key,
            contract_ref, task_ref, task_name
          ) VALUES (
-           gen_random_uuid(), $1::uuid, $2::text, NULL, NULL,
+           gen_random_uuid(), $1::uuid, $2::uuid, NULL, NULL,
            'manual', $3, $4, $5, 'USD', 1.0, $5,
            'confirmed',
            $6::timestamptz, $7::timestamptz,
