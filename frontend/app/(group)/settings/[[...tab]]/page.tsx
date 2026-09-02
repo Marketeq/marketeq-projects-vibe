@@ -702,7 +702,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (user) {
-      const rawTeam = user.teamName ?? ""
+      // No column backs the department field yet — see the save handler.
+      const rawTeam = ""
       const rawLang = user.language ?? ""
       setProfileForm({
         firstName: user.firstName ?? "",
@@ -722,7 +723,7 @@ export default function SettingsPage() {
     if (isAvatarDirty) return true
     if (!user) return false
 
-    const rawTeam = user.teamName ?? ""
+    const rawTeam = ""
     const rawLang = user.language ?? ""
     const savedTeam = rawTeam
       ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean)
@@ -1072,7 +1073,11 @@ export default function SettingsPage() {
         phone: profileForm.phone,
         recentJobTitle: profileForm.jobTitle,
         language: profileForm.languages.join(", "),
-        teamName: profileForm.team.join(", "),
+        // NOT teamName — that column holds the client's *company name*
+        // (complete-client-profile writes `teamName: companyName`, and the
+        // entity says so). This field is "What team do you work on?", a
+        // department. Sending it here would overwrite Company Info. The
+        // department has no column yet, so it stays unsubmitted.
       }
       const response = await UserAPI.updateProfile(user.id, payload)
       const isSuccess =
@@ -1118,7 +1123,7 @@ export default function SettingsPage() {
   }
 
   const handleProfileCancel = () => {
-    const rawTeam = user?.teamName ?? ""
+    const rawTeam = ""
     const rawLang = user?.language ?? ""
     setProfileForm({
       firstName: user?.firstName ?? "",
