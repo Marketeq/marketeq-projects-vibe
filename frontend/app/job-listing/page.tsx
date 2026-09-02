@@ -9030,8 +9030,7 @@ const DescribeProjectStep = ({
     description.trim().length > 0 &&
     (isService
       ? deliverables.trim().length > 0 &&
-        successCriteria.trim().length > 0 &&
-        Number(budget.replace(/,/g, "")) >= 0
+        hasValidBudget
       : deliverables.trim().length > 0 &&
         successCriteria.trim().length > 0 &&
         hasValidBudget &&
