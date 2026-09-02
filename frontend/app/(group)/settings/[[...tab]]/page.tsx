@@ -274,7 +274,7 @@ export default function SettingsPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [isLogoRemoved, setIsLogoRemoved] = useState(false)
 
-  const logoSrc = isLogoRemoved ? "" : logoPreview ?? ""
+  const logoSrc = isLogoRemoved ? "" : logoPreview ?? company?.logoUrl ?? ""
 
   const onLogoDropAccepted = useCallback((files: File[]) => {
     const file = files[0]
@@ -774,15 +774,34 @@ export default function SettingsPage() {
     }))
   }, [company])
 
+  // The six fields with no column still need Save and Cancel to behave, so
+  // their "saved" state is whatever they held at the last save. Without this
+  // they could never match a saved value and the actions would never retire.
+  const [savedCompanyExtras, setSavedCompanyExtras] = useState({
+    industry: "",
+    businessType: "",
+    companySize: "",
+    annualRevenue: "",
+    phone: "",
+    timeZone: "",
+  })
+
   const isCompanyDirty = useMemo(() => {
     if (isLogoDirty) return true
     // Compared against what was loaded rather than against empty, or the form
     // would read as permanently dirty the moment a saved company loads.
     if (companyForm.name !== savedCompanyName) return true
     if (companyForm.website !== savedCompanyWebsite) return true
-    const { name: _name, website: _website, ...unbacked } = companyForm
-    return Object.values(unbacked).some((value) => value !== "")
-  }, [companyForm, isLogoDirty, savedCompanyName, savedCompanyWebsite])
+    return (
+      Object.keys(savedCompanyExtras) as (keyof typeof savedCompanyExtras)[]
+    ).some((key) => companyForm[key] !== savedCompanyExtras[key])
+  }, [
+    companyForm,
+    isLogoDirty,
+    savedCompanyName,
+    savedCompanyWebsite,
+    savedCompanyExtras,
+  ])
 
   const [hasJustSavedCompany, setHasJustSavedCompany] = useState(false)
 
@@ -800,6 +819,19 @@ export default function SettingsPage() {
         logoFile
       )
       setLogoFile(null)
+      // The upload is now the saved logo, so the pending preview retires and
+      // logoSrc falls through to company.logoUrl. Leaving it set would keep
+      // isLogoDirty true and the actions would never hide.
+      setLogoPreview(null)
+      setIsLogoRemoved(false)
+      setSavedCompanyExtras({
+        industry: companyForm.industry,
+        businessType: companyForm.businessType,
+        companySize: companyForm.companySize,
+        annualRevenue: companyForm.annualRevenue,
+        phone: companyForm.phone,
+        timeZone: companyForm.timeZone,
+      })
       setSavedAlertMessage("Your company info has been saved")
       setIsSavedAlertMounted(true)
       setHasJustSavedCompany(true)
@@ -825,12 +857,7 @@ export default function SettingsPage() {
       // it would look like Cancel had deleted the company details.
       name: savedCompanyName,
       website: savedCompanyWebsite,
-      industry: "",
-      businessType: "",
-      companySize: "",
-      annualRevenue: "",
-      phone: "",
-      timeZone: "",
+      ...savedCompanyExtras,
     })
     setLogoPreview(null)
     setLogoFile(null)
