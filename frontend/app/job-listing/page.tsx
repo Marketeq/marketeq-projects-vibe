@@ -9675,12 +9675,12 @@ const DescribeProjectStep = ({
 
           {isService ? (
             <>
-              <div className="mt-5 space-y-2">
-                <div className="flex items-center justify-between gap-x-4">
-                  <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
+              <div className="w-[886px] space-y-3">
+                <div className="flex h-7 items-baseline justify-between gap-2">
+                  <Label className="flex-1 text-lg leading-7 font-medium text-dark-blue-400">
                     What are the main tasks or deliverables?
                   </Label>
-                  <span className="text-xs leading-[18px] text-gray-500">
+                  <span className="text-sm leading-5 font-normal text-gray-400">
                     {deliverables.length}/100
                   </span>
                 </div>
@@ -9693,7 +9693,7 @@ const DescribeProjectStep = ({
                     updateDraftDetails({ deliverables: value.trim() });
                   }}
                   placeholder="UX design, front-end development, database setup"
-                  className="h-20 text-sm"
+                  className="h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
                 />
               </div>
 
