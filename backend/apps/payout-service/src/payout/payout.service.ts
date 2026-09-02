@@ -8,9 +8,10 @@ import { InjectQueue }         from '@nestjs/bull';
 import { Queue }               from 'bull';
 import { createHash } from 'crypto';
 
-import { PayoutRequest, PayoutStatus, PayoutTrigger } from '../entities/payout-request.entity';
+import { PayoutRequest, PayoutStatus, PayoutTrigger, PayoutSpeed } from '../entities/payout-request.entity';
 import { DepositMethod, VerificationStatus, MethodType } from '../entities/deposit-method.entity';
 import { MagicLinkToken }     from '../entities/magic-link-token.entity';
+import { PayoutSchedule }     from '../entities/payout-schedule.entity';
 import { EarningsClient }     from '../common/earnings.client';
 import { KycClient }          from '../common/kyc.client';
 import { AuditService }       from '../audit/audit.service';
@@ -21,6 +22,7 @@ import { PayoutError }        from '../common/errors/payout.error';
 import { ValidateAmountDto, ValidateAmountResponseDto } from './dto/validate-amount.dto';
 import { InitiatePayoutDto, InitiatePayoutResponseDto } from './dto/initiate-payout.dto';
 import { VerifyResponseDto }  from './dto/verify-response.dto';
+import { PayoutPublisher }    from '../publishers/payout.publisher';
 
 const INSTANT_FEE = '1.75';
 
@@ -36,6 +38,8 @@ export class PayoutService {
     private readonly methodRepo: Repository<DepositMethod>,
     @InjectRepository(MagicLinkToken)
     private readonly mlTokenRepo: Repository<MagicLinkToken>,
+    @InjectRepository(PayoutSchedule)
+    private readonly scheduleRepo: Repository<PayoutSchedule>,
     private readonly dataSource: DataSource,
     private readonly config: ConfigService,
     private readonly earningsClient: EarningsClient,
@@ -44,6 +48,7 @@ export class PayoutService {
     private readonly magicLinkService: MagicLinkService,
     private readonly rateLimitService: WithdrawalRateLimitService,
     private readonly kycGateService: KycGateService,
+    private readonly publisher: PayoutPublisher,
     @InjectQueue('payout-processing') private readonly queue: Queue,
   ) {
     this.payoutMinimum = parseFloat(this.config.get('PAYOUT_MINIMUM_USD', '50'));
@@ -120,6 +125,8 @@ export class PayoutService {
         HttpStatus.BAD_REQUEST, 'ERR_INSUFFICIENT_BALANCE', { availableBalanceUsd: available.toFixed(2) });
     }
 
+    await this.checkReserveBalance(contractorId, amount, available, dto.ignoreReserve);
+
     const instantFee = parseFloat(INSTANT_FEE);
     const standardNet = amount;
     const instantNet = amount - instantFee;
@@ -165,7 +172,7 @@ export class PayoutService {
   }
 
   // ─── Step 4: Initiate ─────────────────────────────────────────
-  async initiate(contractorId: string, dto: InitiatePayoutDto): Promise<InitiatePayoutResponseDto> {
+  async initiate(contractorId: string, dto: InitiatePayoutDto, contractorEmail?: string): Promise<InitiatePayoutResponseDto> {
     // PS-19 §3.1: Idempotency check
     const existing = await this.payoutRepo.findOne({ where: { idempotencyKey: dto.idempotencyKey } });
     if (existing) return { ...this.toInitiateResponse(existing), replayed: true };
@@ -188,6 +195,8 @@ export class PayoutService {
         HttpStatus.BAD_REQUEST, 'ERR_INSUFFICIENT_BALANCE',
         { availableBalanceUsd: balance ? parseFloat(balance.availableBalance).toFixed(2) : undefined });
     }
+
+    await this.checkReserveBalance(contractorId, requestedAmount, parseFloat(balance.availableBalance), dto.ignoreReserve);
 
     // PS-19 §3.4: KYC check at initiation — kept consistent with checkGate() so a
     // contractor who passes the pre-flight gate can't still be blocked here (or
@@ -254,6 +263,7 @@ export class PayoutService {
         status: PayoutStatus.PENDING_VERIFICATION,
         amountUsd: dto.amountUsd, feeUsd, netAmountUsd,
         currency: 'USD',
+        speed: dto.speed as PayoutSpeed,
       });
       (req as any).depositMethodId = dto.depositMethodId;
       await em.save(req);
@@ -270,11 +280,11 @@ export class PayoutService {
 
     const rawToken = await this.magicLinkService.generateAndStore(request.id, contractorId);
     const expiresAt = new Date(Date.now() + this.magicLinkService.getTtlMs());
-    this.magicLinkService.publishMagicLinkEvent(request, rawToken).catch(err =>
+    this.magicLinkService.publishMagicLinkEvent(request, rawToken, contractorEmail).catch(err =>
       this.logger.error('Magic link send failed', err.message),
     );
 
-    return this.toInitiateResponseFull(request, expiresAt);
+    return this.toInitiateResponseFull(request, expiresAt, contractorEmail);
   }
 
   // ─── PS-19 §3.3: Execution-time balance re-check ─────────────
@@ -348,6 +358,37 @@ export class PayoutService {
 
     if (request.status !== PayoutStatus.PENDING_VERIFICATION) {
       return { payoutRequestId: request.id, status: request.status };
+    }
+
+    // Instant hold: debit available_balance the moment the withdrawal is
+    // confirmed, rather than waiting for the provider's completion webhook
+    // (which can take minutes to days). Placed before the QUEUED transaction
+    // commits below so a hold failure (insufficient balance, race with
+    // another concurrent withdrawal) fails the request instead of leaving a
+    // QUEUED payout with no funds actually reserved for it.
+    const held = await this.earningsClient.holdBalance(request.contractorId, request.amountUsd);
+    if (!held) {
+      await this.dataSource.transaction(async (em) => {
+        await em.update(MagicLinkToken, mlToken.id, { isUsed: true, usedAt: new Date() });
+        await em.update(PayoutRequest, request.id, {
+          status: PayoutStatus.FAILED,
+          failureReason: 'Your available balance is insufficient for this withdrawal.',
+          failedAt: new Date(),
+        });
+        await this.auditService.log({
+          contractorId: request.contractorId,
+          payoutRequestId: request.id,
+          actorType: 'contractor', actorId: request.contractorId,
+          action: 'withdrawal.hold_failed',
+          previousStatus: PayoutStatus.PENDING_VERIFICATION,
+          newStatus: PayoutStatus.FAILED,
+        });
+      });
+      return {
+        payoutRequestId: request.id,
+        status: PayoutStatus.FAILED,
+        message: 'Your available balance is insufficient for this withdrawal.',
+      };
     }
 
     await this.dataSource.transaction(async (em) => {
@@ -434,30 +475,189 @@ export class PayoutService {
           break;
         }
       }
+
+      // A hold was only ever placed if this request went through magic-link
+      // verification (verifiedAt gets set there, right before holdBalance is
+      // called) — QUEUED alone isn't enough to infer that. Scheduled payouts
+      // (schedule-execution.cron.ts) are created directly at QUEUED and never
+      // hold, so refunding them unconditionally here would credit balance
+      // that was never debited. Only restore when verifiedAt is set.
+      if (request.verifiedAt) {
+        await this.publisher.publishPayoutFailed({
+          contractorId, payoutRequestId: request.id,
+          amount: request.amountUsd, currency: request.currency ?? 'USD',
+          methodType: 'CANCELLED', reason: 'Withdrawal cancelled by contractor.',
+          failedAt: new Date().toISOString(),
+        });
+      }
     }
 
     return { status: 'cancelled' };
   }
 
+  // ─── Figma "Total Payouts This Month" stat card ────────────────
+  // Sums completed payouts by completedAt within the current calendar month
+  // (UTC), plus the prior month for the "+X% from last month" comparison —
+  // mirrors the pattern earnings-service uses for its own summary cards.
+  async getMonthlySummary(contractorId: string) {
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const lastMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+
+    const sumBetween = async (from: Date, to: Date) => {
+      const row = await this.payoutRepo.createQueryBuilder('p')
+        .select('COALESCE(SUM(p.netAmountUsd), 0)', 'total')
+        .where('p.contractorId = :contractorId', { contractorId })
+        .andWhere('p.status = :status', { status: PayoutStatus.COMPLETED })
+        .andWhere('p.completedAt >= :from', { from })
+        .andWhere('p.completedAt < :to', { to })
+        .getRawOne();
+      return parseFloat(row?.total ?? '0');
+    };
+
+    const thisMonthTotal = await sumBetween(monthStart, now);
+    const lastMonthTotal = await sumBetween(lastMonthStart, monthStart);
+
+    let changePercent: number | null = null;
+    if (lastMonthTotal > 0) {
+      changePercent = Math.round(((thisMonthTotal - lastMonthTotal) / lastMonthTotal) * 1000) / 10;
+    }
+
+    // Figma "Lifetime Payouts" card's "Since <date>" sublabel — the earliest
+    // completed payout, i.e. the start of this contractor's real payout history.
+    const sinceRow = await this.payoutRepo.createQueryBuilder('p')
+      .select('MIN(p.completedAt)', 'since')
+      .where('p.contractorId = :contractorId', { contractorId })
+      .andWhere('p.status = :status', { status: PayoutStatus.COMPLETED })
+      .getRawOne();
+
+    // Figma "Next Payout" card's blue status label (e.g. "Processing...") —
+    // reflects whatever payout request is actually in flight right now, not a
+    // fabricated value. Null when nothing has been initiated for the next cycle yet.
+    const NON_TERMINAL = [
+      PayoutStatus.PENDING_VERIFICATION, PayoutStatus.AWAITING_EDD,
+      PayoutStatus.QUEUED, PayoutStatus.PROCESSING,
+    ];
+    const inFlight = await this.payoutRepo.createQueryBuilder('p')
+      .leftJoinAndSelect('p.depositMethod', 'dm')
+      .where('p.contractorId = :contractorId', { contractorId })
+      .andWhere('p.status IN (:...statuses)', { statuses: NON_TERMINAL })
+      .orderBy('p.createdAt', 'DESC')
+      .getOne();
+
+    return {
+      thisMonthTotalUsd: thisMonthTotal.toFixed(2),
+      lastMonthTotalUsd: lastMonthTotal.toFixed(2),
+      changePercent,
+      changeDirection: changePercent === null ? 'unchanged' : changePercent > 0 ? 'up' : changePercent < 0 ? 'down' : 'unchanged',
+      sinceDate: sinceRow?.since ? new Date(sinceRow.since).toISOString() : null,
+      nextPayoutStatus: inFlight?.status ?? null,
+      // "Where Is My Deposit?" toast (Payouts page header) — real ETA for
+      // whatever payout is actually in flight, instead of a static disclaimer.
+      nextPayoutEstimatedArrival: inFlight ? this.estimateArrival(inFlight) : null,
+      nextPayoutAmountUsd: inFlight ? parseFloat(inFlight.netAmountUsd).toFixed(2) : null,
+    };
+  }
+
+  private parsePayoutDateParam(value?: string): Date | null {
+    if (!value) return null;
+    const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    if (day) {
+      return new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])));
+    }
+    const d = new Date(value);
+    return Number.isFinite(d.getTime()) ? d : null;
+  }
+
+  // Figma "All Time" date-range filter — resolves against p.createdAt (the
+  // "Initiated on" column), same field the table itself is sorted by.
+  private resolvePayoutDateRange(
+    dateRange?: string, fromIso?: string, toIso?: string,
+  ): { from: Date | null; to: Date | null } {
+    if (dateRange === 'custom' || ((!dateRange || dateRange === 'custom') && (fromIso || toIso))) {
+      const from = this.parsePayoutDateParam(fromIso);
+      const toStart = this.parsePayoutDateParam(toIso);
+      const to = toStart
+        ? new Date(Date.UTC(toStart.getUTCFullYear(), toStart.getUTCMonth(), toStart.getUTCDate() + 1))
+        : null;
+      return { from, to };
+    }
+    if (!dateRange || dateRange === 'all_time') return { from: null, to: null };
+    const now = new Date();
+    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    switch (dateRange) {
+      case 'today':
+        return { from: todayStart, to: null };
+      case 'yesterday': {
+        const y = new Date(todayStart); y.setUTCDate(y.getUTCDate() - 1);
+        return { from: y, to: todayStart };
+      }
+      case 'this_week': {
+        const s = new Date(todayStart); s.setUTCDate(s.getUTCDate() - ((s.getUTCDay() + 6) % 7));
+        return { from: s, to: null };
+      }
+      case 'last_week': {
+        const s = new Date(todayStart); s.setUTCDate(s.getUTCDate() - ((s.getUTCDay() + 6) % 7));
+        const lastStart = new Date(s); lastStart.setUTCDate(lastStart.getUTCDate() - 7);
+        return { from: lastStart, to: s };
+      }
+      case 'this_month':
+        return { from: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)), to: null };
+      case 'last_month': {
+        const lastStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+        const thisStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        return { from: lastStart, to: thisStart };
+      }
+      case 'this_year':
+        return { from: new Date(Date.UTC(now.getUTCFullYear(), 0, 1)), to: null };
+      case 'last_year': {
+        const lastStart = new Date(Date.UTC(now.getUTCFullYear() - 1, 0, 1));
+        const thisStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+        return { from: lastStart, to: thisStart };
+      }
+      default:
+        return { from: null, to: null };
+    }
+  }
+
   // ─── US-27: GET /v1/payouts — paginated history list ──────────
-  async listPayouts(contractorId: string, page: number, pageSize: number, status?: string) {
+  async listPayouts(
+    contractorId: string, page: number, pageSize: number, status?: string, search?: string,
+    dateRange?: string, depositMethodId?: string, fromIso?: string, toIso?: string,
+  ) {
     const clampedSize = Math.min(Math.max(pageSize, 1), 50);
     const clampedPage = Math.max(page, 1);
 
+    const qb = this.payoutRepo.createQueryBuilder('p')
+      .leftJoinAndSelect('p.depositMethod', 'dm')
+      .where('p.contractorId = :contractorId', { contractorId });
+
     // SCR-16: status filter — only accept real enum values, silently ignore
     // anything else rather than erroring on an unrecognised query param.
-    const where: any = { contractorId };
     if (status && Object.values(PayoutStatus).includes(status as PayoutStatus)) {
-      where.status = status as PayoutStatus;
+      qb.andWhere('p.status = :status', { status });
     }
 
-    const [rows, totalCount] = await this.payoutRepo.findAndCount({
-      where,
-      relations: ['depositMethod'],
-      order: { createdAt: 'DESC' },
-      skip: (clampedPage - 1) * clampedSize,
-      take: clampedSize,
-    });
+    const { from, to } = this.resolvePayoutDateRange(dateRange, fromIso, toIso);
+    if (from) qb.andWhere('p.createdAt >= :from', { from });
+    if (to) qb.andWhere('p.createdAt < :to', { to });
+
+    // Figma "All Accounts" filter — restrict to a single deposit method.
+    if (depositMethodId) qb.andWhere('p.depositMethodId = :depositMethodId', { depositMethodId });
+
+    // Figma "Find transactions" search on the Payouts tab — matches against
+    // the external account label (e.g. "Chase Bank"), same field toHistoryItem
+    // exposes as methodLabel.
+    if (search && search.trim().length >= 2) {
+      qb.andWhere('(LOWER(dm.displayLabel) LIKE :term OR LOWER(dm.nickname) LIKE :term)',
+        { term: `%${search.trim().toLowerCase()}%` });
+    }
+
+    const [rows, totalCount] = await qb
+      .orderBy('p.createdAt', 'DESC')
+      .skip((clampedPage - 1) * clampedSize)
+      .take(clampedSize)
+      .getManyAndCount();
 
     return {
       payouts: rows.map(r => this.toHistoryItem(r)),
@@ -466,6 +666,51 @@ export class PayoutService {
       totalCount,
       hasMore: clampedPage * clampedSize < totalCount,
     };
+  }
+
+  // ─── Export — reuses the exact same filters as listPayouts, just
+  // unpaginated and capped, so the export can never disagree with what the
+  // Payouts table shows for the same filter selection. ──────────────────
+  private static readonly EXPORT_ROW_LIMIT = 10000;
+
+  async exportPayouts(
+    contractorId: string, format: 'csv' | 'pdf', status?: string, search?: string,
+    dateRange?: string, depositMethodId?: string, contractorName?: string,
+    fromIso?: string, toIso?: string,
+  ): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
+    const qb = this.payoutRepo.createQueryBuilder('p')
+      .leftJoinAndSelect('p.depositMethod', 'dm')
+      .where('p.contractorId = :contractorId', { contractorId });
+
+    if (status && Object.values(PayoutStatus).includes(status as PayoutStatus)) {
+      qb.andWhere('p.status = :status', { status });
+    }
+    const { from, to } = this.resolvePayoutDateRange(dateRange, fromIso, toIso);
+    if (from) qb.andWhere('p.createdAt >= :from', { from });
+    if (to) qb.andWhere('p.createdAt < :to', { to });
+    if (depositMethodId) qb.andWhere('p.depositMethodId = :depositMethodId', { depositMethodId });
+    if (search && search.trim().length >= 2) {
+      qb.andWhere('(LOWER(dm.displayLabel) LIKE :term OR LOWER(dm.nickname) LIKE :term)',
+        { term: `%${search.trim().toLowerCase()}%` });
+    }
+
+    const rows = await qb.orderBy('p.createdAt', 'DESC')
+      .take(PayoutService.EXPORT_ROW_LIMIT)
+      .getMany();
+
+    const exportRows = rows.map(r => this.toHistoryItem(r));
+    const exportedAt = new Date();
+    const filename = `payouts-${exportedAt.toISOString().slice(0, 10)}.${format}`;
+
+    let buffer: Buffer;
+    if (format === 'pdf') {
+      const { buildPayoutPdf } = await import('../export/pdf.builder');
+      buffer = await buildPayoutPdf({ rows: exportRows, contractorName, exportedAt });
+    } else {
+      const { buildPayoutCsv } = await import('../export/csv.builder');
+      buffer = buildPayoutCsv({ rows: exportRows, contractorName, exportedAt });
+    }
+    return { buffer, filename, contentType: format === 'pdf' ? 'application/pdf' : 'text/csv' };
   }
 
   // ─── US-28: GET /v1/payouts/:id — full detail ──────────────────
@@ -496,12 +741,66 @@ export class PayoutService {
     };
   }
 
+  // Rail-typical settlement windows, in business days, used only to project
+  // an "Est. Arrival" for payouts still in flight — never shown once a payout
+  // reaches a terminal state (completed/failed/cancelled use their real timestamp
+  // or nothing, per AC-28.04's "never fabricate data" rule).
+  private static readonly ARRIVAL_BUSINESS_DAYS: Partial<Record<MethodType, number>> = {
+    [MethodType.CRYPTO]: 0,
+    [MethodType.TEQ_COIN]: 0,
+    [MethodType.MARKETEQ_DEBIT_CARD]: 1,
+    [MethodType.BANK_STRIPE]: 2,
+    [MethodType.PAYPAL]: 1,
+    [MethodType.WISE]: 2,
+    [MethodType.PAYONEER]: 2,
+    [MethodType.BANK_MANUAL]: 3,
+  };
+
+  private addBusinessDays(from: Date, days: number): Date {
+    const d = new Date(from);
+    let remaining = days;
+    while (remaining > 0) {
+      d.setUTCDate(d.getUTCDate() + 1);
+      const dow = d.getUTCDay();
+      if (dow !== 0 && dow !== 6) remaining--;
+    }
+    return d;
+  }
+
+  private estimateArrival(r: PayoutRequest): string | null {
+    const TERMINAL = new Set([PayoutStatus.COMPLETED, PayoutStatus.FAILED, PayoutStatus.CANCELLED]);
+    if (TERMINAL.has(r.status)) return null;
+    const methodType = r.depositMethod?.methodType;
+    if (!methodType) return null;
+    const from = r.processingAt ?? r.queuedAt ?? r.createdAt;
+
+    // Stripe's real Instant Payouts method (bank-payout-executor.service.ts)
+    // is the only rail this system actually requests as instant from the
+    // provider — matches the "15 minutes" promised at checkout. Every other
+    // method's executor has no instant code path regardless of what speed
+    // was selected, so estimating 15 minutes there would just repeat the
+    // exact mismatch this fixes: fee charged, no real speed change.
+    if (r.speed === PayoutSpeed.INSTANT && methodType === MethodType.BANK_STRIPE) {
+      const arrival = new Date(from);
+      arrival.setUTCMinutes(arrival.getUTCMinutes() + 30);
+      return arrival.toISOString();
+    }
+
+    const days = PayoutService.ARRIVAL_BUSINESS_DAYS[methodType] ?? 3;
+    return this.addBusinessDays(from, days).toISOString();
+  }
+
   private toHistoryItem(r: PayoutRequest) {
     return {
       id: r.id,
-      amountUsd: r.amountUsd,
-      feeUsd: r.feeUsd,
-      netAmountUsd: r.netAmountUsd,
+      // amount_usd/fee_usd/net_amount_usd are numeric(18,8) columns — pg
+      // returns them as full-precision strings (e.g. "650.00000000"). Every
+      // other money value shown to the contractor is rounded to 2dp
+      // (validateAmount/initiate already do this); this read path was the
+      // one place that didn't.
+      amountUsd: parseFloat(r.amountUsd).toFixed(2),
+      feeUsd: parseFloat(r.feeUsd).toFixed(2),
+      netAmountUsd: parseFloat(r.netAmountUsd).toFixed(2),
       currency: r.currency,
       status: r.status,
       trigger: r.trigger,
@@ -510,6 +809,7 @@ export class PayoutService {
       methodLabel: r.depositMethod?.displayLabel ?? r.depositMethod?.nickname ?? null,
       createdAt: r.createdAt.toISOString(),
       settledAt: r.completedAt?.toISOString() ?? null,
+      estimatedArrivalAt: this.estimateArrival(r),
     };
   }
 
@@ -518,31 +818,62 @@ export class PayoutService {
     return {
       payoutRequestId: request.id,
       status: request.status,
-      amountUsd: request.amountUsd,
-      feeUsd: request.feeUsd,
-      netAmountUsd: request.netAmountUsd,
+      amountUsd: parseFloat(request.amountUsd).toFixed(2),
+      feeUsd: parseFloat(request.feeUsd).toFixed(2),
+      netAmountUsd: parseFloat(request.netAmountUsd).toFixed(2),
       magicLinkSentTo: '',
       magicLinkExpiresAt: '',
       message: 'A verification link has been sent to your email.',
     };
   }
 
-  private toInitiateResponseFull(request: PayoutRequest, expiresAt: Date): InitiatePayoutResponseDto {
+  private toInitiateResponseFull(request: PayoutRequest, expiresAt: Date, contractorEmail?: string): InitiatePayoutResponseDto {
     return {
       payoutRequestId: request.id,
       status: request.status,
-      amountUsd: request.amountUsd,
-      feeUsd: request.feeUsd,
-      netAmountUsd: request.netAmountUsd,
-      magicLinkSentTo: this.maskEmail(request.contractorId),
+      amountUsd: parseFloat(request.amountUsd).toFixed(2),
+      feeUsd: parseFloat(request.feeUsd).toFixed(2),
+      netAmountUsd: parseFloat(request.netAmountUsd).toFixed(2),
+      // Was masking contractorId (a UUID, never contains "@") instead of the
+      // contractor's actual email — always rendered as the maskEmail()
+      // fallback "***" on the "Check your email" screen. The real address is
+      // already on the JWT (decoded in JwtAuthGuard as req.user.email), no
+      // extra service call needed — just wasn't threaded through here.
+      magicLinkSentTo: this.maskEmail(contractorEmail ?? ''),
       magicLinkExpiresAt: expiresAt.toISOString(),
       message: 'A verification link has been sent to your email. Please click the link to confirm your withdrawal.',
     };
   }
 
   private maskEmail(email: string): string {
-    if (!email || !email.includes('@')) return '***';
+    if (!email || !email.includes('@')) return 'your email';
     const [local, domain] = email.split('@');
     return `${local[0]}***@${domain}`;
+  }
+
+  // Figma "Your withdrawal was declined — reserve balance is too low": an
+  // ad-hoc withdrawal previously had no reserve awareness at all (reserveUsd
+  // on payout_schedules only applied to the scheduled-payout engine's own
+  // calculatePayoutAmount() in schedule.service.ts). A contractor could
+  // withdraw their entire available balance manually, silently defeating the
+  // reserve they configured. This enforces the same floor for ad-hoc
+  // withdrawals, with an explicit, one-time bypass (ignoreReserve) rather
+  // than a hard, unrecoverable block — matches the Figma copy ("You can
+  // either ignore the reserve balance for this transfer, or edit the
+  // reserve amount in your payout settings").
+  private async checkReserveBalance(
+    contractorId: string, amount: number, availableBalance: number, ignoreReserve?: boolean,
+  ): Promise<void> {
+    if (ignoreReserve) return;
+    const schedule = await this.scheduleRepo.findOne({ where: { contractorId } });
+    const reserve = schedule ? parseFloat(schedule.reserveUsd) : 0;
+    if (reserve <= 0) return;
+    if (availableBalance - reserve < amount) {
+      throw new PayoutError(
+        'Your reserve balance is too low for this withdrawal.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_RESERVE_BALANCE_TOO_LOW',
+        { reserveUsd: reserve.toFixed(2), availableBalanceUsd: availableBalance.toFixed(2) },
+      );
+    }
   }
 }

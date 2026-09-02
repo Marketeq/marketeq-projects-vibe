@@ -22,6 +22,11 @@ export enum PayoutTrigger {
   SCHEDULED = 'scheduled',
 }
 
+export enum PayoutSpeed {
+  STANDARD = 'standard',
+  INSTANT  = 'instant',
+}
+
 @Entity('payout_requests')
 @Index(['contractorId', 'createdAt'])
 export class PayoutRequest {
@@ -40,6 +45,12 @@ export class PayoutRequest {
   @Column({ type: 'enum', enum: PayoutStatus, default: PayoutStatus.PENDING_VERIFICATION })
   status: PayoutStatus;
 
+  // 006_payout_request_speed.sql — a plain text column with a CHECK
+  // constraint, not a native Postgres enum type (unlike trigger/status
+  // above), so `type: 'varchar'` here rather than `type: 'enum'`.
+  @Column({ type: 'varchar', default: PayoutSpeed.STANDARD })
+  speed: PayoutSpeed;
+
   // --- Amounts ---
   @Column({ name: 'amount_usd', type: 'numeric', precision: 18, scale: 8 })
   amountUsd: string;
@@ -54,10 +65,15 @@ export class PayoutRequest {
   currency: string;
 
   // --- Provider response ---
-  @Column({ name: 'provider_reference', nullable: true, type: 'varchar' })
+  // `text`, not `varchar`, to match the actual column (001_initial_schema.sql)
+  // and because Ramp payouts store a full widget URL (~200-300 chars) here.
+  @Column({ name: 'provider_reference', nullable: true, type: 'text' })
   providerReference: string | null;
 
-  @Column({ name: 'provider_status', nullable: true, type: 'varchar' })
+  // Raw, provider-specific status string (e.g. 'pending', 'awaiting_manual_completion',
+  // 'settled') — informational only. The payout's actual state machine runs on
+  // the `status` column (PayoutStatus) above; nothing should switch on this field.
+  @Column({ name: 'provider_status', nullable: true, type: 'text' })
   providerStatus: string | null;
 
   @Column({ name: 'provider_response', type: 'jsonb', nullable: true })

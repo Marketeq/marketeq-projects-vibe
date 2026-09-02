@@ -57,11 +57,21 @@ interface AvatarGroupProps
   max?: number
   excessClassName?: string
   excess?: boolean
+  reverse?: boolean
 }
 
 const AvatarGroup = React.forwardRef<HTMLDivElement, AvatarGroupProps>(
   (
-    { className, children, max = 5, size, excessClassName, excess, ...props },
+    {
+      className,
+      children,
+      max = 5,
+      size,
+      excessClassName,
+      excess,
+      reverse = true,
+      ...props
+    },
     ref
   ) => {
     const validChildren = getValidChildren(children)
@@ -71,7 +81,9 @@ const AvatarGroup = React.forwardRef<HTMLDivElement, AvatarGroupProps>(
 
     const childrenWithinMax =
       max != null ? validChildren.slice(0, max) : validChildren
-    const reversedChildren = childrenWithinMax.reverse()
+    const reversedChildren = reverse
+      ? [...childrenWithinMax].reverse()
+      : childrenWithinMax
 
     return (
       <div

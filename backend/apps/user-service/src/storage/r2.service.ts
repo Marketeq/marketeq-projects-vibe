@@ -1,6 +1,7 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -24,6 +25,32 @@ export class R2Service {
       if (value) return value;
     }
     return undefined;
+  }
+
+  isConfigured(): boolean {
+    const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
+    const accessKeyId = this.getEnv(
+      'CLOUDFLARE_R2_ACCESS_KEY_ID',
+      'CLOUDFLARE_R2_ACCESS_KEY',
+      'R2_ACCESS_KEY_ID',
+    );
+    const secretAccessKey = this.getEnv(
+      'CLOUDFLARE_R2_SECRET_ACCESS_KEY',
+      'CLOUDFLARE_R2_SECRET_KEY',
+      'R2_SECRET_ACCESS_KEY',
+    );
+    const accountId = this.getEnv(
+      'CLOUDFLARE_ACCOUNT_ID',
+      'CLOUDFLARE_R2_ACCOUNT_ID',
+      'R2_ACCOUNT_ID',
+    );
+    const endpoint =
+      this.getEnv('CLOUDFLARE_R2_ENDPOINT', 'R2_ENDPOINT') ??
+      (accountId
+        ? `https://${accountId}.r2.cloudflarestorage.com`
+        : undefined);
+
+    return Boolean(bucket && accessKeyId && secretAccessKey && endpoint);
   }
 
   async uploadAvatar(
@@ -62,6 +89,94 @@ export class R2Service {
       : undefined;
 
     return { key, url };
+  }
+
+  /**
+   * Upload a buffer as a PUBLIC, long-lived CDN object and return its public
+   * URL. Added in 8f6d8c47 as a second `uploadBuffer` overload-by-accident,
+   * which made this file stop compiling (TS2393). Kept here under a distinct
+   * name rather than deleted: the capability is real and differs from
+   * uploadBuffer below, which is deliberately private/no-cache because it
+   * backs resume documents served via short-lived presigned URLs. Merging the
+   * two would have silently made private resumes publicly cacheable for a year.
+   */
+  async uploadPublicBuffer(
+    key: string,
+    buffer: Buffer,
+    contentType: string,
+  ): Promise<{ key: string; url?: string }> {
+    const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
+    if (!bucket) {
+      throw new InternalServerErrorException(
+        'CLOUDFLARE_R2_BUCKET is required to upload files',
+      );
+    }
+
+    const client = this.getClient();
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        CacheControl: 'public, max-age=31536000',
+      }),
+    );
+
+    return { key, url: this.getPublicUrl(key) };
+  }
+
+  getPublicUrl(key: string): string {
+    const publicBaseUrl = this.getEnv(
+      'CLOUDFLARE_R2_PUBLIC_URL',
+      'CLOUDFLARE_PUBLIC_URL',
+      'R2_PUBLIC_URL',
+    );
+    if (!publicBaseUrl) return key;
+    return `${publicBaseUrl.replace(/\/$/, '')}/${key}`;
+  }
+
+  /**
+   * Upload an already-buffered object at a caller-chosen key.
+   *
+   * Unlike uploadAvatar, the caller owns the key and no public CacheControl
+   * is set — this backs private documents (resumes), which are served through
+   * short-lived presigned URLs via getReadUrl rather than the public CDN.
+   */
+  async uploadBuffer(
+    key: string,
+    body: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
+    if (!bucket) {
+      throw new InternalServerErrorException(
+        'CLOUDFLARE_R2_BUCKET is required to upload objects',
+      );
+    }
+
+    await this.getClient().send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
+  }
+
+  /** Delete an object by key. Used when a stored document is superseded. */
+  async deleteObject(key: string): Promise<void> {
+    const bucket = this.getEnv('CLOUDFLARE_R2_BUCKET', 'R2_BUCKET');
+    if (!bucket) {
+      throw new InternalServerErrorException(
+        'CLOUDFLARE_R2_BUCKET is required to delete objects',
+      );
+    }
+
+    await this.getClient().send(
+      new DeleteObjectCommand({ Bucket: bucket, Key: key }),
+    );
   }
 
   /**

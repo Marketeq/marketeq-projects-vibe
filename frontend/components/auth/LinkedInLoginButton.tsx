@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { usePathname, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import {
   mergeDashboardUserFields,
   resolveDashboardRoute,
@@ -12,12 +12,19 @@ import { UserAPI } from "@/service/http/user"
 import { LinkedInDefault } from "@blend-metrics/icons/social"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
+import type { User } from "@/types/user"
+import { getOAuthErrorMessage } from "@/utils/auth-errors"
 
-const LinkedInLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
+const LinkedInLogin = ({
+  onSuccess,
+  mode = "sign-in",
+}: { onSuccess?: (user: User) => void; mode?: "sign-in" | "sign-up" } = {}) => {
   const hasLoggedInRef = useRef(false)
+  const popupRef = useRef<Window | null>(null)
+  const popupPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const router = useRouter()
-  const pathName = usePathname()
+  const redirectUrl = process.env.NEXT_PUBLIC_LINKEDIN_OAUTH_REDIRECT || ""
 
   const { setUser } = useAuth()
   const { toast } = useToast()
@@ -29,11 +36,17 @@ const LinkedInLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
     return popupWindowURL.searchParams.get("code")
   }, [])
 
+  const stopPopupPoll = useCallback(() => {
+    if (popupPollRef.current) {
+      clearInterval(popupPollRef.current)
+      popupPollRef.current = null
+    }
+  }, [])
+
   const handleLoginWithLinkedIn = () => {
     if (typeof window === "undefined") return
 
     const clientId = process.env.NEXT_PUBLIC_LINKEDIN_CLIENT_ID || ""
-    const redirectUrl = `${window.location.origin}${pathName}`
 
     const params = new URLSearchParams({
       response_type: "code",
@@ -41,23 +54,39 @@ const LinkedInLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
       redirect_uri: redirectUrl,
       state: "1234",
       scope: "openid profile email",
+      // Force the LinkedIn login / account chooser instead of silently reusing
+      // the browser's existing LinkedIn session after a Marketeq logout.
+      prompt: "login",
     })
 
     const authUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`
 
-    window.open(
+    hasLoggedInRef.current = false
+    popupRef.current = window.open(
       authUrl,
       "Linkedin",
-      "menubar=no,location=no,resizable=no,scrollbars=no,status=no,width=550,height=730"
+      "menubar=no,location=no,resizable=yes,scrollbars=yes,status=no,width=550,height=730"
     )
+
+    stopPopupPoll()
+    popupPollRef.current = setInterval(() => {
+      if (popupRef.current?.closed) {
+        stopPopupPoll()
+        if (!hasLoggedInRef.current) {
+          toast({
+            title: "LinkedIn sign-in was cancelled or failed. Please try again.",
+            variant: "destructive",
+          })
+        }
+      }
+    }, 500)
   }
 
   const handleLoginWithLinkedInApi = useCallback(
     (code: string) => {
       if (!hasLoggedInRef.current) {
         hasLoggedInRef.current = true
-
-        const redirectUrl = `${window?.location?.origin}${pathName}`
+        stopPopupPoll()
 
         setIsLoading(true)
 
@@ -92,26 +121,24 @@ const LinkedInLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
                 })
               }
               if (onSuccess) {
-                onSuccess()
+                onSuccess(nextUser as User)
               } else {
-                router.push(resolveDashboardRoute(nextUser as any))
+                router.replace(resolveDashboardRoute(nextUser as any))
               }
             }
           })
           .catch((error) => {
-            if (error?.response?.data?.errors?.message) {
-              toast({
-                title: error?.response?.data?.errors?.message,
-                variant: "destructive",
-              })
-            }
+            toast({
+              title: getOAuthErrorMessage(error),
+              variant: "destructive",
+            })
           })
           .finally(() => {
             setIsLoading(false)
           })
       }
     },
-    [pathName, router, setUser, toast]
+    [redirectUrl, router, setUser, toast, stopPopupPoll]
   )
 
   const handlePostMessage = useCallback(
@@ -135,8 +162,9 @@ const LinkedInLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
 
     return () => {
       window.removeEventListener("message", handlePostMessage)
+      stopPopupPoll()
     }
-  }, [getCodeFromWindowURL, handlePostMessage])
+  }, [getCodeFromWindowURL, handlePostMessage, stopPopupPoll])
 
   return (
     <>
@@ -159,8 +187,7 @@ const LinkedInLogin = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
           />
         ) : (
           <>
-            <LinkedInDefault className="size-5 md:size-6" /> Sign in with
-            Linkedin
+            <LinkedInDefault className="size-5 md:size-6" /> {mode === "sign-up" ? "Sign up with LinkedIn" : "Sign in with LinkedIn"}
           </>
         )}
       </Button>

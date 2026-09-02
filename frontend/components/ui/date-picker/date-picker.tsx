@@ -4,7 +4,7 @@ import * as React from "react"
 import { preventDefault } from "@/utils/dom-utils"
 import { cn } from "@/utils/functions"
 import { useControllableState, useToggle } from "@/utils/hooks"
-import { CalendarPlus01 } from "@blend-metrics/icons"
+import { Calendar as CalendarLineIcon, ChevronDown } from "@blend-metrics/icons"
 import { format } from "date-fns"
 import {
   Button,
@@ -20,7 +20,7 @@ const DatePicker = ({
   onValueChange,
   placeholder,
   inputClassName,
-  indicator = <CalendarPlus01 className="h-5 w-5 text-gray-700" />,
+  indicator = <CalendarLineIcon className="h-5 w-5 text-gray-700" />,
 }: {
   value?: Date
   onValueChange?: (value: Date) => void
@@ -32,13 +32,10 @@ const DatePicker = ({
     value,
     onChange: onValueChange,
   })
-  const [state, setState] = React.useState<Date>(new Date())
   const [isOpen, { toggle, off }] = useToggle()
 
-  const onApply = () => {
-    if (state) {
-      setDate(state)
-    }
+  const onSelect = (value: Date) => {
+    setDate(value)
     off()
   }
 
@@ -53,15 +50,18 @@ const DatePicker = ({
           size="md"
           variant="outlined"
           visual="gray"
+          rightIcon={<ChevronDown className="h-4 w-4 text-gray-500 shrink-0" />}
         >
-          {indicator}
-          {date ? (
-            format(date, "LLL d, yyyy")
-          ) : (
-            <span className="text-gray-500">
-              {placeholder ? placeholder : "Select a date"}
-            </span>
-          )}
+          <span className="inline-flex items-center gap-x-2">
+            {indicator}
+            {date ? (
+              format(date, "LLL d, yyyy")
+            ) : (
+              <span className="text-gray-500">
+                {placeholder ? placeholder : "Select a date"}
+              </span>
+            )}
+          </span>
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -77,15 +77,9 @@ const DatePicker = ({
         >
           <Calendar
             className="shadow-none border-none"
-            value={state}
-            onValueChange={setState}
+            value={date}
+            onValueChange={onSelect}
           />
-          <div className="grid grid-cols-2 gap-x-3 border-t border-gray-200 p-4">
-            <Button variant="outlined" visual="gray" onClick={off}>
-              Cancel
-            </Button>
-            <Button onClick={onApply}>Apply</Button>
-          </div>
         </ScrollArea>
       </PopoverContent>
     </Popover>

@@ -11,9 +11,7 @@ import { UserAPI } from "@/service/http/user"
 import {
   ArrowRight,
   Bank,
-  Check,
   CheckCircle,
-  Edit03,
   PhoneCall,
   Printer,
   Users03,
@@ -26,6 +24,12 @@ import {
   getExperienceLabel,
   offerRates,
 } from "@/components/hire-me-button"
+import {
+  ApplePay1,
+  GPay1,
+  Klarna,
+  WireTransfer,
+} from "@/components/icons/payment-icons"
 import NextImage from "@/components/next-image"
 import {
   Avatar,
@@ -79,6 +83,7 @@ type InstallmentPaymentMethodType =
   | "BANK_ACCOUNT"
   | "APPLE_PAY"
   | "GOOGLE_PAY"
+  | "KLARNA"
   | "WIRE_TRANSFER"
 
 type InstallmentPaymentMethod = {
@@ -95,13 +100,31 @@ type InstallmentPaymentMethod = {
 type PaymentPageSnapshot = {
   pay: "AT_ONCE" | "IN_INSTALLMENTS"
   selectedTalentPaymentPlanId: string
+  useBalance?: boolean
+  customAmount?: string
   savedInstallmentPaymentMethods: InstallmentPaymentMethod[]
   fullPaymentMethods: InstallmentPaymentMethod[]
   hasSplitFullPayment: boolean
   showFullPaymentMethods: boolean
+  isAutoSplitEnabled?: boolean
+  splitPaymentAllocations?: Record<string, string>
   firstInstallmentMethods: InstallmentPaymentMethod[]
   secondInstallmentMethods: InstallmentPaymentMethod[]
   isWireTransfer: boolean
+  giftCards?: AppliedGiftCard[]
+}
+
+type AppliedGiftCard = {
+  code: string
+  amount: number
+}
+
+type ReviewPaymentRow = {
+  id: string
+  method: InstallmentPaymentMethod
+  amount: number
+  label: string
+  showBillingAddress?: boolean
 }
 
 const formatter = new Intl.NumberFormat("en-US", {
@@ -111,12 +134,98 @@ const formatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 })
 
+const parseCurrencyAmount = (value?: string | null) => {
+  if (!value) return undefined
+  const numericValue = Number(value.replace(/[^0-9.-]/g, ""))
+  return Number.isFinite(numericValue) ? numericValue : undefined
+}
+
 const safeDecodeSlug = (value: string): string => {
   try {
     return decodeURIComponent(value)
   } catch {
     return value
   }
+}
+
+const getCardBrandLabel = (method: InstallmentPaymentMethod) => {
+  const source = `${method.title} ${method.subtitle}`.toLowerCase()
+
+  if (source.includes("amex") || source.includes("american express")) {
+    return "AMEX"
+  }
+
+  if (source.includes("visa")) return "Visa"
+
+  return method.title || "Credit card"
+}
+
+const getPaymentMethodLast4 = (method: InstallmentPaymentMethod) =>
+  method.cardNumber?.slice(-4) ||
+  method.accountNumber?.slice(-4) ||
+  method.subtitle.match(/\*+(\d{4})/)?.[1] ||
+  null
+
+const getPaymentMethodTitle = (method: InstallmentPaymentMethod) => {
+  if (method.method === "CREDIT_DEBIT_CARD") {
+    const last4 = getPaymentMethodLast4(method)
+    return `${getCardBrandLabel(method)} ${
+      method.title.toLowerCase().includes("debit")
+        ? "debit card"
+        : "credit card"
+    }${last4 ? ` ending in *${last4}` : ""}`
+  }
+
+  if (method.method === "BANK_ACCOUNT") {
+    const last4 = getPaymentMethodLast4(method)
+    const accountType = method.accountType || "checking"
+    return `${method.title} ${accountType.toLowerCase()}${
+      last4 ? ` ending in *${last4}` : ""
+    }`
+  }
+
+  if (method.method === "WIRE_TRANSFER") return "Wire transfer"
+  if (method.method === "GOOGLE_PAY") return "Google Pay"
+  if (method.method === "APPLE_PAY") return "Apple Pay"
+  if (method.method === "KLARNA") return "Klarna"
+
+  return method.title
+}
+
+const PaymentMethodIcon = ({
+  method,
+}: {
+  method: InstallmentPaymentMethod
+}) => {
+  if (method.method === "BANK_ACCOUNT") {
+    return (
+      <div className="inline-flex h-[31px] w-[46.5px] shrink-0 items-center justify-center rounded-[4px] border border-gray-200 bg-white text-gray-500">
+        <Bank className="size-4" />
+      </div>
+    )
+  }
+
+  if (method.method === "GOOGLE_PAY") {
+    return <GPay1 className="h-[31px] w-[46.5px] shrink-0" />
+  }
+
+  if (method.method === "APPLE_PAY") {
+    return <ApplePay1 className="h-[31px] w-[46.5px] shrink-0" />
+  }
+
+  if (method.method === "KLARNA") {
+    return <Klarna className="h-[31px] w-[46.5px] shrink-0" />
+  }
+
+  if (method.method === "WIRE_TRANSFER") {
+    return <WireTransfer className="h-[31px] w-[46.5px] shrink-0" />
+  }
+
+  return getCardBrandLabel(method).toLowerCase().includes("amex") ? (
+    <Amex className="h-[30px] w-[45px] shrink-0" />
+  ) : (
+    <Visa className="h-[30px] w-[45px] shrink-0" />
+  )
 }
 
 export default function ConfirmationPage() {
@@ -133,8 +242,9 @@ export default function ConfirmationPage() {
   )
   const [paymentSnapshot, setPaymentSnapshot] =
     React.useState<PaymentPageSnapshot | null>(null)
+  const [hasHydratedPaymentState, setHasHydratedPaymentState] =
+    React.useState(false)
   const [selectedAddOnIds, setSelectedAddOnIds] = React.useState<string[]>([])
-
   React.useEffect(() => {
     if (!isTalentCheckout) return
 
@@ -161,18 +271,21 @@ export default function ConfirmationPage() {
   }, [decodedSlug, isTalentCheckout])
 
   React.useEffect(() => {
-    if (!isTalentCheckout || typeof window === "undefined") return
+    if (typeof window === "undefined") return
 
     const paymentStateStorageKey = `checkout-payment-state:${basePath}:${decodedSlug}`
 
     try {
       const rawSnapshot = window.sessionStorage.getItem(paymentStateStorageKey)
-      if (!rawSnapshot) return
-      setPaymentSnapshot(JSON.parse(rawSnapshot) as PaymentPageSnapshot)
+      if (rawSnapshot) {
+        setPaymentSnapshot(JSON.parse(rawSnapshot) as PaymentPageSnapshot)
+      }
     } catch {
       window.sessionStorage.removeItem(paymentStateStorageKey)
+    } finally {
+      setHasHydratedPaymentState(true)
     }
-  }, [basePath, decodedSlug, isTalentCheckout])
+  }, [basePath, decodedSlug])
 
   React.useEffect(() => {
     if (!isTalentCheckout || typeof window === "undefined") return
@@ -192,6 +305,128 @@ export default function ConfirmationPage() {
     }
   }, [basePath, decodedSlug, isTalentCheckout])
 
+  const projectCost = 94_000
+  const estimatedProjectTax = 0
+  const fullAmount = projectCost + estimatedProjectTax
+  const projectDurationMonths = 8
+  const installmentAmount = fullAmount / projectDurationMonths
+  const paymentPlan = paymentSnapshot?.pay || "AT_ONCE"
+  const amountDueBeforeCredits =
+    paymentPlan === "IN_INSTALLMENTS" ? installmentAmount : fullAmount
+  const balanceAmountParam = parseCurrencyAmount(searchParams.get("balance"))
+  const availableBalance =
+    balanceAmountParam === undefined ? 4000 : Math.max(balanceAmountParam, 0)
+  const customBalanceAmount = parseCurrencyAmount(paymentSnapshot?.customAmount)
+  const appliedBalanceAmount =
+    paymentSnapshot?.useBalance === false
+      ? 0
+      : paymentSnapshot?.customAmount && customBalanceAmount !== undefined
+        ? Math.min(
+            customBalanceAmount,
+            availableBalance,
+            amountDueBeforeCredits
+          )
+        : Math.min(availableBalance, amountDueBeforeCredits)
+  const giftCards = paymentSnapshot?.giftCards || []
+  const totalGiftCardAmount = giftCards.reduce(
+    (total, giftCard) => total + giftCard.amount,
+    0
+  )
+  const totalDueToday = Math.max(
+    amountDueBeforeCredits - appliedBalanceAmount - totalGiftCardAmount,
+    0
+  )
+  const fullPaymentMethods = paymentSnapshot?.fullPaymentMethods || []
+  const firstInstallmentMethods = paymentSnapshot?.firstInstallmentMethods || []
+  const secondInstallmentMethods =
+    paymentSnapshot?.secondInstallmentMethods || []
+  const initialInstallmentRows: ReviewPaymentRow[] =
+    firstInstallmentMethods.map((method) => ({
+      id: method.id,
+      method,
+      amount: totalDueToday,
+      label: "Payment Amount",
+      showBillingAddress: false,
+    }))
+  const recurringInstallmentRows: ReviewPaymentRow[] =
+    secondInstallmentMethods.map((method) => ({
+      id: method.id,
+      method,
+      amount: installmentAmount,
+      label: "Monthly Payment Amount",
+      showBillingAddress: false,
+    }))
+  const orderReference = "C01-12345-6789"
+  const orderDateLabel = "November 5th, 2025 at 11:11 PM EST"
+  const confirmationEmail = "jack2024@gmail.com"
+  const downloadInvoice = React.useCallback(
+    (invoiceText: string) => {
+      const blob = new Blob([invoiceText], {
+        type: "text/plain;charset=utf-8",
+      })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = `marketeq-invoice-${orderReference}.txt`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    },
+    [orderReference]
+  )
+
+  const formatInvoicePaymentLine = (row: ReviewPaymentRow) =>
+    `${getPaymentMethodTitle(row.method)} - ${row.label}: ${formatter.format(
+      row.amount
+    )}`
+
+  const renderProjectPaymentRow = (
+    row: ReviewPaymentRow,
+    options?: { isLast?: boolean }
+  ) => (
+    <div
+      key={row.id}
+      className={
+        options?.isLast
+          ? "grid grid-cols-2"
+          : "grid grid-cols-2 border-b border-gray-200"
+      }
+    >
+      <div className="flex items-start gap-x-3 py-4">
+        <PaymentMethodIcon method={row.method} />
+        <div className="flex-auto space-y-1">
+          <h2 className="text-sm font-semibold text-dark-blue-400">
+            {getPaymentMethodTitle(row.method)}
+          </h2>
+          {row.method.method === "CREDIT_DEBIT_CARD" ? (
+            <p className="text-xs font-light text-dark-blue-400">
+              Expires: 09/2027
+            </p>
+          ) : null}
+          <p className="text-xs font-light text-dark-blue-400">
+            {row.label}:{" "}
+            <span className="font-semibold">
+              {formatter.format(row.amount)}
+            </span>
+          </p>
+        </div>
+      </div>
+      {row.showBillingAddress ? (
+        <div className="px-3 py-4">
+          <div className="space-y-1">
+            <h2 className="text-sm font-semibold text-dark-blue-400">
+              Billing Address
+            </h2>
+            <p className="text-xs font-light text-dark-blue-400">
+              2125 Chestnut Street, San Francisco, CA 94123
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div />
+      )}
+    </div>
+  )
+
   if (isTalentCheckout) {
     const selectedRateValue = searchParams.get("rate") || "web-development"
     const selectedSchedule = searchParams.get("schedule") || "full-time"
@@ -200,7 +435,13 @@ export default function ConfirmationPage() {
       offerRates.find((rate) => rate.value === selectedRateValue) ||
       offerRates.find((rate) => rate.value === "web-development") ||
       offerRates[0]
-    const hourlyRate = Number(selectedRate?.price.replace(/[^0-9.]/g, "") || 0)
+    // See checkout/[slug]/page.tsx — a custom rate has no offerRates tile,
+    // so it travels as its own param and wins over the tile price here.
+    const customRateParam = Number(searchParams.get("customRate"))
+    const hourlyRate =
+      Number.isFinite(customRateParam) && customRateParam > 0
+        ? customRateParam
+        : Number(selectedRate?.price.replace(/[^0-9.]/g, "") || 0)
     const estimatedTaxHourly = hourlyRate * 0.07
     const totalHourlyRate = hourlyRate + estimatedTaxHourly
     const weeklyAmountBase = Math.round(totalHourlyRate * 40)
@@ -243,20 +484,7 @@ export default function ConfirmationPage() {
         ? "Up to 30 hrs/week"
         : "Over 30 hrs/week"
     const paymentMode = paymentSnapshot?.pay || "AT_ONCE"
-    const billingAddress = "2125 Chestnut Street, San Francisco, CA 94123"
-    const fullPaymentMethods =
-      paymentSnapshot?.fullPaymentMethods &&
-      paymentSnapshot.fullPaymentMethods.length > 0
-        ? paymentSnapshot.fullPaymentMethods
-        : [
-            {
-              id: "amex-1234",
-              method: "CREDIT_DEBIT_CARD" as const,
-              title: "American Express",
-              subtitle: "Credit ****1234",
-              cardNumber: "3782123412341234",
-            },
-          ]
+    const fullPaymentMethods = paymentSnapshot?.fullPaymentMethods || []
     const initialPaymentMethods = paymentSnapshot?.firstInstallmentMethods || []
     const recurringPaymentMethods =
       paymentSnapshot?.secondInstallmentMethods || []
@@ -270,7 +498,9 @@ export default function ConfirmationPage() {
             </div>
           ),
           title: method.title || "Bank of America",
-          subtitle: `${method.accountType || "Checking"} ending in *${method.accountNumber?.slice(-4) || "1234"}`,
+          subtitle: method.accountNumber?.slice(-4)
+            ? `${method.accountType || "Checking"} ending in *${method.accountNumber.slice(-4)}`
+            : method.accountType || "Checking",
           meta: null as string | null,
         }
       }
@@ -313,7 +543,9 @@ export default function ConfirmationPage() {
         ) : (
           <Visa className="h-[30px] w-[45px] shrink-0" />
         ),
-        title: `${isAmex ? "AMEX" : "Visa"} ${isAmex ? "credit" : "debit"} card ending in *${method.cardNumber?.slice(-4) || "1234"}`,
+        title: `${isAmex ? "AMEX" : "Visa"} ${
+          isAmex ? "credit" : "debit"
+        } card${method.cardNumber?.slice(-4) ? ` ending in *${method.cardNumber.slice(-4)}` : ""}`,
         subtitle: null as string | null,
         meta: "Expires: 09/2027",
       }
@@ -322,7 +554,7 @@ export default function ConfirmationPage() {
     const renderSummaryRow = (
       method: InstallmentPaymentMethod,
       amountLabel: string,
-      showBillingAddress = true,
+      _showBillingAddress = false,
       key?: string
     ) => {
       const identity = renderPaymentMethodIdentity(method)
@@ -346,29 +578,14 @@ export default function ConfirmationPage() {
             </div>
           </div>
 
-          <div className="border-b border-gray-200 py-4 px-3">
-            {showBillingAddress ? (
-              <div className="space-y-1">
-                <h2 className="text-sm font-semibold text-dark-blue-400">
-                  Billing Address
-                </h2>
-                <p className="text-xs font-light text-dark-blue-400">
-                  {billingAddress}
-                </p>
-              </div>
-            ) : null}
-          </div>
+          <div className="border-b border-gray-200 px-3 py-4" />
         </div>
       )
     }
 
     return (
       <div className="bg-gray-50 pt-[64px]">
-        <CheckoutNavigation
-          currentStep={3}
-          showSteps={false}
-          logoHref="/client-dashboard"
-        />
+        <CheckoutNavigation currentStep={3} showSteps={false} logoHref="" />
 
         <div className="px-[150px] py-[36px]">
           <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
@@ -747,7 +964,88 @@ export default function ConfirmationPage() {
                   ) : null}
 
                   <div className="grid mt-2.5">
-                    <Button className="border-2 border-primary-500 bg-transparent text-primary-500 hover:bg-primary-500 hover:text-white">
+                    <Button
+                      className="border-2 border-primary-500 bg-transparent text-primary-500 hover:bg-primary-500 hover:text-white"
+                      onClick={() => {
+                        const paymentLines =
+                          paymentMode === "AT_ONCE"
+                            ? fullPaymentMethods.map(
+                                (method) =>
+                                  `${renderPaymentMethodIdentity(method).title} - Payment Amount: ${
+                                    paymentSnapshot?.hasSplitFullPayment &&
+                                    fullPaymentMethods.length > 1
+                                      ? formatter.format(
+                                          Math.round(
+                                            fullDueToday /
+                                              fullPaymentMethods.length
+                                          )
+                                        )
+                                      : formattedFullDueToday
+                                  }`
+                              )
+                            : [
+                                ...initialPaymentMethods.map(
+                                  (method) =>
+                                    `${renderPaymentMethodIdentity(method).title} - Initial Payment: ${formatter.format(
+                                      Math.round(
+                                        (recurringPlanAmount * 2) /
+                                          Math.max(
+                                            initialPaymentMethods.length,
+                                            1
+                                          )
+                                      )
+                                    )}`
+                                ),
+                                ...(recurringPaymentMethods.length > 0
+                                  ? recurringPaymentMethods
+                                  : fullPaymentMethods
+                                ).map(
+                                  (method) =>
+                                    `${renderPaymentMethodIdentity(method).title} - ${selectedRecurringPlan.label} Payment: ${formatter.format(
+                                      Math.round(
+                                        recurringPlanAmount /
+                                          Math.max(
+                                            recurringPaymentMethods.length > 0
+                                              ? recurringPaymentMethods.length
+                                              : fullPaymentMethods.length,
+                                            1
+                                          )
+                                      )
+                                    )}`
+                                ),
+                              ]
+
+                        downloadInvoice(
+                          [
+                            "Marketeq Invoice",
+                            `Order ID: ${orderReference}`,
+                            `Order Date: ${orderDateLabel}`,
+                            `Email: ${confirmationEmail}`,
+                            "",
+                            "Payment Details",
+                            `Estimated Total Team Cost: ${formatter.format(
+                              estimatedJobCost
+                            )}`,
+                            hasProjectManagerAddOn
+                              ? `Estimated Add-on Cost: ${formatter.format(
+                                  addOnTotal
+                                )}`
+                              : "",
+                            "Estimated tax *: $0.00",
+                            `Due today: ${
+                              paymentMode === "AT_ONCE"
+                                ? formattedFullDueToday
+                                : formattedInitialOneTimeAmount
+                            }`,
+                            "",
+                            "Payment Methods",
+                            ...paymentLines,
+                          ]
+                            .filter(Boolean)
+                            .join("\n")
+                        )
+                      }}
+                    >
                       <Printer className="size-[15px]" />
                       Print Invoice
                     </Button>
@@ -786,79 +1084,96 @@ export default function ConfirmationPage() {
     )
   }
 
+  const isInstallmentPlan = paymentPlan === "IN_INSTALLMENTS"
+  const designedInitialPaymentRows: ReviewPaymentRow[] =
+    initialInstallmentRows.length > 0
+      ? initialInstallmentRows
+      : []
+  const designedRecurringPaymentRows: ReviewPaymentRow[] =
+    recurringInstallmentRows.length > 0
+      ? recurringInstallmentRows
+      : []
+
   return (
-    <div className="bg-gray-50 pt-[64px]">
-      <CheckoutNavigation
-        currentStep={3}
-        showSteps={false}
-        logoHref="/client-dashboard"
-      />
+    <div className="bg-gray-50 pt-[64px]" aria-busy={!hasHydratedPaymentState}>
+      <CheckoutNavigation currentStep={3} showSteps={false} logoHref="" />
 
       <div className="px-[150px] py-[50px]">
-        <div className="p-8 pr-[60px] rounded-lg flex items-start gap-x-5 border bg-white border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-          <div className="size-12 border-[8px] text-success-500 border-success-50 bg-success-100 rounded-full shrink-0 inline-flex items-center justify-center">
-            <CheckCircle className="size-6" />
-          </div>
+        <div className="rounded-lg border border-gray-200 bg-white p-8 pr-[60px] shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+          <div className="flex items-start justify-between gap-x-8">
+            <div className="flex min-w-0 flex-auto items-start gap-x-5">
+              <div className="size-12 inline-flex shrink-0 items-center justify-center rounded-full border-[8px] border-success-50 bg-success-100 text-success-500">
+                <CheckCircle className="size-6" />
+              </div>
 
-          <div className="flex-auto">
-            <h1 className="text-[28px] font-bold text-success-600 leading-none">
-              Thank you for launching your project with Marketeq!
-            </h1>
+              <div className="min-w-0 flex-auto">
+                <h1 className="text-[28px] font-bold leading-none text-success-600">
+                  Thank you for launching your project with Marketeq!
+                </h1>
 
-            <div className="mt-5 flex items-center gap-x-2">
-              <p className="text-base text-dark-blue-400">
-                A copy of your invoice and order details has been sent to{" "}
-                <span className="font-semibold">jack2024@gmail.com</span>
-              </p>
+                <div className="mt-5 flex flex-wrap items-center gap-x-2">
+                  <p className="text-base text-dark-blue-400">
+                    A copy of your invoice and order details has been sent to{" "}
+                    <span className="font-semibold">{confirmationEmail}</span>
+                  </p>
+                  <Button className="underline" variant="link" visual="gray">
+                    Change Email
+                  </Button>
+                </div>
 
-              <Button className="underline" variant="link" visual="gray">
-                Change Email
-              </Button>
+                <div className="mt-3 flex flex-wrap items-center gap-x-3">
+                  <span className="text-base text-gray-500">
+                    Your Order ID: {orderReference}
+                  </span>
+                  <span className="inline-block h-[17px] w-0.5 shrink-0 bg-gray-200" />
+                  <span className="text-base text-gray-500">
+                    Order Date: {orderDateLabel}
+                  </span>
+                </div>
+
+                <div className="mt-5 text-base text-dark-blue-400">
+                  Need to make changes to your order? View{" "}
+                  <Button
+                    className="underline"
+                    variant="link"
+                    onClick={() =>
+                      router.push(
+                        `${basePath}/${slug}/confirmation?${searchParams.toString()}`
+                      )
+                    }
+                  >
+                    Order Details
+                  </Button>{" "}
+                  or{" "}
+                  <Button className="underline" variant="link">
+                    Contact Us
+                  </Button>
+                </div>
+              </div>
             </div>
 
-            <div className="mt-3 flex items-center gap-x-3">
-              <span className="text-base text-gray-500">
-                Your Order ID: C01-12345-6789
-              </span>
-              <span className="inline-block h-[17px] w-0.5 bg-gray-200 shrink-0" />
-              <span className="text-base text-gray-500">
-                Order Date: November 5th, 2025 at 11:11 PM EST
-              </span>
-            </div>
-
-            <div className="mt-5">
-              <h3 className="Need to make changes to your order? View Order Details or Contact Us">
-                Need to make changes to your order? View{" "}
-                <Button
-                  className="underline"
-                  variant="link"
-                  onClick={() => router.push(`${basePath}/${slug}`)}
-                >
-                  Order Details
-                </Button>{" "}
-                or{" "}
-                <Button className="underline" variant="link">
-                  Contact Us
-                </Button>
-              </h3>
-            </div>
+            <Button
+              variant="outlined"
+              visual="gray"
+              size="lg"
+              onClick={() => router.push("/client-dashboard")}
+            >
+              Continue Browsing <ArrowRight className="size-[15px]" />
+            </Button>
           </div>
         </div>
-        <div className="flex gap-x-8 mt-6">
+
+        <div className="mt-6 flex gap-x-8">
           <div className="flex-auto">
             <div className="rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <div className="py-5 px-6 border-b flex items-center justify-between border-gray-200">
+              <div className="border-b border-gray-200 px-6 py-5">
                 <h1 className="text-lg font-semibold text-dark-blue-400">
                   Project Details
                 </h1>
-
-                <Button variant="link" visual="primary">
-                  <Edit03 className="size-[15px]" />
-                  Edit
-                </Button>
               </div>
-              <div className="p-5 flex gap-x-5">
-                <div className="relative flex-none w-[181px] bg-white border border-[#DFDFDF] rounded-md overflow-hidden">
+
+              <div className="flex gap-x-5 p-5">
+                <div className="relative w-[181px] flex-none overflow-hidden rounded-md border border-[#DFDFDF] bg-white">
                   <NextImage
                     className="object-cover"
                     src="/dashboard.png"
@@ -875,59 +1190,62 @@ export default function ConfirmationPage() {
 
                   <div className="mt-1.5 inline-flex gap-x-2">
                     <Users03 className="size-[15px] shrink-0" />
-                    <span className="text-xs leading-5 font-semibold text-dark-blue-400">
+                    <span className="text-xs font-semibold leading-5 text-dark-blue-400">
                       8 team members
                     </span>
                   </div>
 
-                  <div className="mt-1.5 leading-5 text-[13px] text-dark-blue-400">
+                  <div className="mt-1.5 text-[13px] leading-5 text-dark-blue-400">
                     January 2024 - August 2024
                   </div>
                 </div>
               </div>
-              <div className="p-6">
+
+              <div className="border-t border-gray-200 p-6">
                 <h1 className="text-base font-semibold text-dark-blue-400">
                   Set up your introductory call
                 </h1>
                 <p className="mt-1 text-sm font-light text-dark-blue-400">
-                  Set up your introductory call
+                  Connect with team leaders to align on project details and next
+                  steps
                 </p>
 
-                <article className="py-6 flex items-center justify-between">
-                  <div className="flex gap-x-3 items-center">
+                <article className="flex items-center justify-between py-6">
+                  <div className="flex items-center gap-x-3">
                     <Avatar size="md" className="shrink-0">
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
+                      <AvatarImage src="/man.jpg" alt="John Villago" />
+                      <AvatarFallback>J</AvatarFallback>
                     </Avatar>
 
                     <div>
                       <h1 className="text-sm font-semibold text-dark-blue-400">
-                        Jack Smith
+                        John Villago
                       </h1>
                       <p className="text-xs font-light text-dark-blue-400">
-                        Project Manager
+                        Account Manager
                       </p>
                     </div>
                   </div>
 
                   <CalBookingButton
-                    className="text-primary-500 bg-primary-50 hover:bg-primary-500 hover:text-white"
+                    className="bg-primary-50 text-primary-500 hover:bg-primary-500 hover:text-white"
                     visual="primary"
                   >
                     <PhoneCall className="size-[15px]" />
                     Schedule Call
                   </CalBookingButton>
                 </article>
-                <article className="border-t border-gray-200 py-6 flex items-center justify-between">
-                  <div className="flex gap-x-3 items-center">
+
+                <article className="flex items-center justify-between border-t border-gray-200 py-6">
+                  <div className="flex items-center gap-x-3">
                     <Avatar size="md" className="shrink-0">
-                      <AvatarImage src="/man.jpg" alt="Man" />
-                      <AvatarFallback>M</AvatarFallback>
+                      <AvatarImage src="/man.jpg" alt="Larah Varghese" />
+                      <AvatarFallback>L</AvatarFallback>
                     </Avatar>
 
                     <div>
                       <h1 className="text-sm font-semibold text-dark-blue-400">
-                        Jack Smith
+                        Larah Varghese
                       </h1>
                       <p className="text-xs font-light text-dark-blue-400">
                         Project Manager
@@ -936,7 +1254,7 @@ export default function ConfirmationPage() {
                   </div>
 
                   <CalBookingButton
-                    className="text-primary-500 bg-primary-50 hover:bg-primary-500 hover:text-white"
+                    className="bg-primary-50 text-primary-500 hover:bg-primary-500 hover:text-white"
                     visual="primary"
                   >
                     <PhoneCall className="size-[15px]" />
@@ -946,190 +1264,197 @@ export default function ConfirmationPage() {
               </div>
             </div>
 
-            <div className="rounded-lg mt-8 border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <div className="py-5 px-6 border-b  border-gray-200">
+            <div className="mt-8 rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+              <div className="border-b border-gray-200 px-6 py-5">
                 <h1 className="text-lg font-semibold text-dark-blue-400">
                   Payment Methods
                 </h1>
                 <p className="mt-1.5 text-sm font-light text-dark-blue-400">
                   The following payment methods will be billed for the total
-                  amount of <span className="font-bold">$90,000</span>
+                  amount of{" "}
+                  <span className="font-bold">
+                    {formatter.format(totalDueToday)}
+                  </span>
                 </p>
                 <p className="mt-1.5 text-sm font-light text-dark-blue-400">
                   You will see a charge on your bank statement from{" "}
                   <span className="font-bold">Marketeq</span>
                 </p>
               </div>
+
               <div className="p-6">
-                <div className="grid grid-cols-2">
-                  <div className="border-b flex col-span-2 items-start gap-x-3 border-gray-200 py-4">
-                    <div className="inline-flex items-center rounded-[4px] shrink-0 bg-white border border-gray-[#DADADA] text-gray-500 justify-center w-[46.5px] h-[31px]">
-                      <Bank className="size-4" />
-                    </div>
-                    <div className="flex-auto space-y-1">
-                      <h2 className="text-sm font-semibold text-dark-blue-400">
-                        AMEX credit card ending in *1234
-                      </h2>
-
-                      <p className="text-xs font-light text-dark-blue-400">
-                        Payment Amount:{" "}
-                        <span className="font-semibold">$4,000</span>
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-6">
+                <div>
                   <h1 className="text-lg font-semibold text-dark-blue-400">
-                    Recurring Payments
+                    Initial One-Time Payment
                   </h1>
-                  <p className="mt-1.5 text-sm font-light text-dark-blue-400">
-                    Your following payment methods will be debited on{" "}
-                    <span className="font-bold">1st of every</span> month for
-                    the amount referenced below until the{" "}
-                    <span className="font-bold">
-                      completion of your project.
-                    </span>
-                  </p>
+                  <div className="mt-2">
+                    {designedInitialPaymentRows.map((row, index, rows) =>
+                      renderProjectPaymentRow(row, {
+                        isLast: index === rows.length - 1,
+                      })
+                    )}
+                  </div>
 
-                  <div className="grid grid-cols-2">
-                    <div className="border-b flex items-start gap-x-3 border-gray-200 py-4">
-                      <Amex className="h-[30px] w-[45px] shrink-0" />
-                      <div className="flex-auto space-y-1">
-                        <h2 className="text-sm font-semibold text-dark-blue-400">
-                          AMEX credit card ending in *1234
-                        </h2>
-                        <p className="text-xs font-light text-dark-blue-400">
-                          Expires: 09/2027
-                        </p>
-                        <p className="text-xs font-light text-dark-blue-400">
-                          Payment Amount:{" "}
-                          <span className="font-semibold">$4,000</span>
-                        </p>
-                      </div>
-                    </div>
+                  <div className="mt-6">
+                    <h1 className="text-lg font-semibold text-dark-blue-400">
+                      Recurring Payments
+                    </h1>
+                    <p className="mt-1.5 text-sm font-light text-dark-blue-400">
+                      Your following payment methods will be debited on{" "}
+                      <span className="font-bold">1st of every month</span> for
+                      the amount referenced below until the{" "}
+                      <span className="font-bold">
+                        completion of your project.
+                      </span>
+                    </p>
 
-                    <div className="border-b border-gray-200 py-4 px-3">
-                      <div className="space-y-1">
-                        <h2 className="text-sm font-semibold text-dark-blue-400">
-                          Billing Address
-                        </h2>
-                        <p className="text-xs font-light text-dark-blue-400">
-                          2125 Chestnut Street, San Francisco, CA 94123
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-x-3 py-4">
-                      <Visa className="h-[30px] w-[45px] shrink-0" />
-                      <div className="flex-auto space-y-1">
-                        <h2 className="text-sm font-semibold text-dark-blue-400">
-                          AMEX credit card ending in *1234
-                        </h2>
-                        <p className="text-xs font-light text-dark-blue-400">
-                          Expires: 09/2027
-                        </p>
-                        <p className="text-xs font-light text-dark-blue-400">
-                          Payment Amount:{" "}
-                          <span className="font-semibold">$4,000</span>
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="py-4 px-3">
-                      <div className="space-y-1">
-                        <h2 className="text-sm font-semibold text-dark-blue-400">
-                          Billing Address
-                        </h2>
-                        <p className="text-xs font-light text-dark-blue-400">
-                          2125 Chestnut Street, San Francisco, CA 94123
-                        </p>
-                      </div>
+                    <div className="mt-2">
+                      {designedRecurringPaymentRows.map((row, index, rows) =>
+                        renderProjectPaymentRow(row, {
+                          isLast: index === rows.length - 1,
+                        })
+                      )}
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-lg p-6 pr-8 flex items-start gap-x-2 mt-8 border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+            <div className="mt-8 flex items-start gap-x-2 rounded-lg border border-gray-200 bg-white p-6 pr-8 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
               <div className="flex-auto space-y-2">
-                <h1 className="text-2xl text-dark-blue-400 font-bold">
+                <h1 className="text-2xl font-bold text-dark-blue-400">
                   Kickoff your project
                 </h1>
                 <p className="text-base font-light text-dark-blue-400">
                   Here&apos;s some things you can do to get your project going
-                  in the right direction.{" "}
+                  in the right direction.
                 </p>
               </div>
               <Button
                 onClick={() => router.push(`${basePath}/${slug}/next-steps`)}
               >
-                Next Step <ArrowRight className="size-[15px]" />
+                Next Steps <ArrowRight className="size-[15px]" />
               </Button>
             </div>
           </div>
+
           <div className="w-[305px] shrink-0">
-            <div className="w-[305px] shrink-0 p-5 rounded-lg bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <div className="border-b pb-4 border-gray-200">
-                <h1 className="text-base leading-none font-semibold text-dark-blue-400">
-                  Price Details
+            <div className="w-[305px] shrink-0 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+              <div className="border-b border-gray-200 pb-4">
+                <h1 className="text-base font-semibold leading-none text-dark-blue-400">
+                  Payment Details
                 </h1>
               </div>
 
               <div className="mt-5">
-                <div className="mt-4 space-y-2">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                    <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
                       Project cost
                     </span>
-                    <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                      $94,000
+                    <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
+                      {formatter.format(projectCost)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                    <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
                       Estimated tax *
                     </span>
-                    <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                      $94,000
+                    <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
+                      {estimatedProjectTax === 0
+                        ? "$0.00"
+                        : formatter.format(estimatedProjectTax)}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                      Balance applied
-                    </span>
-                    <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                      - $4,000
-                    </span>
-                  </div>
+                  {appliedBalanceAmount > 0 ? (
+                    <div className="flex items-center justify-between">
+                      <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
+                        Balance applied
+                      </span>
+                      <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
+                        - {formatter.format(appliedBalanceAmount)}
+                      </span>
+                    </div>
+                  ) : null}
+                  {totalGiftCardAmount > 0 ? (
+                    <div className="flex items-center justify-between">
+                      <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
+                        Gift card applied
+                      </span>
+                      <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
+                        - {formatter.format(totalGiftCardAmount)}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
 
-                <div className="flex mt-4 items-center justify-between">
+                <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-4">
                   <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
                     Total
                   </h1>
                   <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
-                    $90,000
+                    {formatter.format(totalDueToday)}
                   </h1>
                 </div>
               </div>
 
-              <div className="mt-2">
-                <div className="mt-5 rounded-[4px] p-2 bg-primary-25 flex items-center justify-between">
-                  <span className="text-[10px] text-dark-blue-400">
-                    Your monthly payments start from
-                  </span>
-                  <span className="text-[10px] font-medium text-dark-blue-400">
-                    Jan 1st, 2025
-                  </span>
-                </div>
+              <div className="mt-5 flex items-center justify-between rounded-[4px] bg-primary-25 p-2">
+                <span className="text-[10px] text-dark-blue-400">
+                  Your monthly payments start from
+                </span>
+                <span className="text-[10px] font-medium text-dark-blue-400">
+                  Jan 1st, 2025
+                </span>
+              </div>
 
-                <div className="grid mt-2.5">
-                  <Button className="border-2 border-primary-500 bg-transparent text-primary-500 hover:bg-primary-500 hover:text-white">
-                    <Printer className="size-[15px]" />
-                    Print Invoice
-                  </Button>
-                </div>
+              <div className="mt-4 grid">
+                <Button
+                  className="border-2 border-primary-500 bg-transparent text-primary-500 hover:bg-primary-500 hover:text-white"
+                  onClick={() =>
+                    downloadInvoice(
+                      [
+                        "Marketeq Invoice",
+                        `Order ID: ${orderReference}`,
+                        `Order Date: ${orderDateLabel}`,
+                        `Email: ${confirmationEmail}`,
+                        "",
+                        "Payment Details",
+                        `Project cost: ${formatter.format(projectCost)}`,
+                        `Estimated tax *: ${
+                          estimatedProjectTax === 0
+                            ? "$0.00"
+                            : formatter.format(estimatedProjectTax)
+                        }`,
+                        appliedBalanceAmount > 0
+                          ? `Balance applied: - ${formatter.format(
+                              appliedBalanceAmount
+                            )}`
+                          : "",
+                        totalGiftCardAmount > 0
+                          ? `Gift card applied: - ${formatter.format(
+                              totalGiftCardAmount
+                            )}`
+                          : "",
+                        `Total: ${formatter.format(totalDueToday)}`,
+                        "",
+                        "Initial One-Time Payment",
+                        ...designedInitialPaymentRows.map(
+                          formatInvoicePaymentLine
+                        ),
+                        "",
+                        "Recurring Payments",
+                        ...designedRecurringPaymentRows.map(
+                          formatInvoicePaymentLine
+                        ),
+                      ]
+                        .filter(Boolean)
+                        .join("\n")
+                    )
+                  }
+                >
+                  <Printer className="size-[15px]" />
+                  Print Invoice
+                </Button>
               </div>
             </div>
           </div>

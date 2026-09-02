@@ -238,6 +238,7 @@ export class PublishController {
         req.user.sub,
         projectId,
         body?.questions ?? [],
+        req.headers.authorization,
       );
     } catch (error) {
       console.log('err', error);
@@ -317,7 +318,7 @@ export class PublishController {
     const featuredVideoFile =
       files?.featuredVideo?.[0] ?? files?.videoUrl?.[0];
 
-    if (!featuredImageFile && !dto.featuredImage) {
+    if (!featuredImageFile && !dto.featuredImage && dto.clearFeatured !== 'true') {
       throw new BadRequestException('Featured image is required.');
     }
 

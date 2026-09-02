@@ -7,7 +7,6 @@ import { UserPreference } from './entities/user-preference.entity';
 import { NotificationService } from './services/notification.service';
 import { NotificationController } from './controllers/notification.controller';
 import { AblyNotificationsService } from './ably/ably-notifications.service';
-import { SendgridService } from './sendgrid/sendgrid.service';
 import { BrevoService } from './brevo/brevo.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
@@ -44,7 +43,7 @@ function resolveDatabaseSsl(config: ConfigService) {
         url: config.get<string>('DATABASE_URL'),
         schema: config.get<string>('DATABASE_SCHEMA') || 'public',
         entities: [Notification, UserPreference],
-        synchronize: config.get('NODE_ENV') !== 'production',
+        synchronize: false,
         migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         ssl: resolveDatabaseSsl(config),
@@ -56,7 +55,6 @@ function resolveDatabaseSsl(config: ConfigService) {
   providers: [
     NotificationService,
     AblyNotificationsService,
-    SendgridService,
     BrevoService,
     {
       provide: APP_GUARD,

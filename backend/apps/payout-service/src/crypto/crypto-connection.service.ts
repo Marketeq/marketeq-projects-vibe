@@ -33,7 +33,27 @@ export class CryptoConnectionService {
     private readonly providerValidator: ProviderValidationService,
     private readonly auditService: AuditService,
   ) {
-    this.redis = new Redis(this.config.get<string>('REDIS_URL', 'redis://localhost:6379'));
+    // Same options as earnings-service CacheService. Without them a bare
+    // `new Redis(url)` retries forever and, with no 'error' listener attached,
+    // ioredis logs an unhandled error event per attempt — which is what floods
+    // the logs when REDIS_URL is unset and this falls back to localhost.
+    // enableOfflineQueue:false also makes wcsession reads/writes reject fast
+    // instead of queueing against a connection that will never come up.
+    this.redis = new Redis(this.config.get<string>('REDIS_URL', 'redis://localhost:6379'), {
+      connectTimeout:     parseInt(this.config.get('REDIS_CONNECT_TIMEOUT_MS', '2000'), 10),
+      commandTimeout:     parseInt(this.config.get('REDIS_COMMAND_TIMEOUT_MS', '500'), 10),
+      lazyConnect:        true,
+      enableOfflineQueue: false,
+      retryStrategy(times) {
+        if (times > 10) return null;
+        return Math.min(times * 200, 30_000);
+      },
+    });
+
+    this.redis.on('error', (err) => {
+      this.logger.warn(`Redis unavailable — WalletConnect sessions cannot be stored: ${err.message}`);
+    });
+
     const keyHex = this.config.get('CRYPTO_ADDRESS_ENCRYPTION_KEY', '');
     this.encryptionKey = keyHex.length === 64 ? Buffer.from(keyHex, 'hex') : crypto.randomBytes(32);
     this.wcSessionTtl = parseInt(this.config.get('WALLETCONNECT_SESSION_TTL_SECONDS', '300'), 10);
@@ -198,8 +218,16 @@ export class CryptoConnectionService {
     // 3. Encrypt address (PS-10 §8 — AES-256-GCM)
     const encrypted = this.encrypt(normalized);
 
-    // 4. Get conversion display (PS-10 §9)
-    const conversion = await this.conversionSvc.getDisplayRate(dto.token, 'USD');
+    // 4. Get conversion display (PS-10 §9). Transak connections get the
+    // real, fee-inclusive quote from Transak's own Get Price API rather
+    // than the generic provider-agnostic market rate every other provider
+    // uses — falls back to the generic rate if Transak's API is
+    // unavailable so a wallet connection never fails just because a
+    // display-only quote call did.
+    const conversion = dto.cryptoProvider === CryptoProvider.TRANSAK
+      ? (await this.conversionSvc.getTransakDisplayRate(dto.token, dto.network))
+          ?? await this.conversionSvc.getDisplayRate(dto.token, 'USD')
+      : await this.conversionSvc.getDisplayRate(dto.token, 'USD');
 
     // 5. Save — VERIFIED immediately (no micro-deposits for crypto)
     const method = await this.methodRepo.save({

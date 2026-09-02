@@ -2,11 +2,13 @@ import 'reflect-metadata';
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
 import { PortfolioItem } from './entities/portfolio-item.entity';
+import { CaseStudy } from './entities/case-study.entity';
+import { CaseStudyBlock } from './entities/case-study-block.entity';
 
 export default new DataSource({
   type: 'postgres',
   url: process.env.DATABASE_URL,
   synchronize: false,
-  entities: [PortfolioItem],
+  entities: [PortfolioItem, CaseStudy, CaseStudyBlock],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
 });

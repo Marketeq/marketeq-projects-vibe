@@ -1,15 +1,26 @@
-import { Controller, Post, Put, Get, Param, Body, Headers, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Put, Get, Param, Body, Req, Headers, ForbiddenException } from '@nestjs/common';
+import { Request } from 'express';
 import { ContractsService } from '../services/contracts.service';
+import { GroupsService } from '../services/groups.service';
+import { TalentNetworkService } from '../services/talent-network.service';
 import { EndContractDto } from '../dtos/end-contract.dto';
 import { AcceptRejectDto } from '../dtos/accept-reject.dto';
+import { LogHireInitiatedDto } from '../dtos/log-hire-initiated.dto';
+import { ContractGroupSummaryDto } from '../dtos/contract-group-summary.dto';
+import { TalentNetworkDto } from '../dtos/talent-network.dto';
+import { CreateContractDto } from '../dtos/create-contract.dto';
 import { ConfigService } from '@nestjs/config';
 import { Public } from '../decorators/public.decorator';
+import { AuditLoggerService } from '../services/audit-logger.service';
 
 @Controller('contracts')
 export class ContractsController {
   constructor(
     private readonly contractsService: ContractsService,
+    private readonly groupsService: GroupsService,
+    private readonly talentNetworkService: TalentNetworkService,
     private readonly configService: ConfigService,
+    private readonly auditLoggerService: AuditLoggerService,
   ) {}
 
   private validateInternalToken(token: string | undefined) {
@@ -17,6 +28,21 @@ export class ContractsController {
     if (!expected || token !== expected) {
       throw new ForbiddenException('Invalid internal token');
     }
+  }
+
+  // FR-11: audit entry for Hire Me flow initiation. Declared as a literal
+  // route ahead of the :id-parameterised routes below — Nest/path-to-regexp
+  // wouldn't actually collide with them (different segment counts/methods),
+  // but this removes any doubt.
+  @Post('audit/hire-initiated')
+  async logHireInitiated(
+    @Req() req: Request & { user: { sub: string; role: string } },
+    @Body() dto: LogHireInitiatedDto,
+  ) {
+    await this.auditLoggerService.log(req.user, 'HIRE_FLOW_INITIATED', {
+      talentId: dto.talentId,
+    });
+    return { ok: true };
   }
 
   // End a single contract
@@ -31,9 +57,67 @@ export class ContractsController {
     return this.contractsService.respondToOffer(id, dto);
   }
 
-  // List contracts for a client
+  // FR-1: the authenticated client's own contract groups, for the Hire Me
+  // modal's "existing contracts" list. Identity from req.user only, never
+  // a path param. Moved here from GroupsController's `contract-groups`
+  // prefix, which api-gateway's SERVICE_PREFIX_MAP never routed — `contracts`
+  // is mapped, so this is reachable through the gateway. Two static
+  // segments, same shape as `audit/hire-initiated` above: it can't collide
+  // with `:id`, `client/:clientId`, or `talent/:talentId` regardless of
+  // declaration order, since none of those share both the literal first
+  // segment and the segment count.
+  @Get('groups/mine')
+  async getMyGroups(
+    @Req() req: Request & { user: { sub: string } },
+  ): Promise<ContractGroupSummaryDto[]> {
+    return this.groupsService.getGroupsForClient(req.user.sub);
+  }
+
+  // T2-13: attach a talent to an EXISTING group — see groupsService.addMember
+  // for the ownership/duplicate rules. Three segments (literal "groups",
+  // param, literal "members"), so it can't collide with `groups/mine` (two
+  // segments, GET) or `:id/cms-sync` (two segments, param-first) regardless
+  // of declaration order.
+  @Post('groups/:id/members')
+  async addGroupMember(
+    @Param('id') id: string,
+    @Body() dto: CreateContractDto,
+    @Req() req: Request & { user: { sub: string; role: string } },
+  ) {
+    const contract = await this.groupsService.addMember(id, dto, req.user.sub);
+    await this.auditLoggerService.log(req.user, 'CONTRACT_MEMBER_ADDED', {
+      contractId: contract.id,
+      groupId: id,
+    });
+    return contract;
+  }
+
+  // The signed-in client's Talent Network: active, pending and past talent,
+  // derived from contracts (there is no Talent Network table). Identity from
+  // req.user only, never a path param, same as `groups/mine` above.
+  //
+  // Declared ahead of `@Get(':id')`: both are one-segment GETs, so with the
+  // reverse order Nest would match `:id` first and this route would never
+  // fire.
+  @Get('talent-network')
+  async getTalentNetwork(
+    @Req() req: Request & { user: { sub: string } },
+  ): Promise<TalentNetworkDto> {
+    return this.talentNetworkService.getTalentNetwork(req.user.sub);
+  }
+
+  // List contracts for a client. clientId still comes from the path (kept
+  // for the existing callers, who all already pass their own id), but it
+  // must match the caller's own identity — this route had no ownership
+  // check at all before T2-1.
   @Get('client/:clientId')
-  async getClientContracts(@Param('clientId') clientId: string) {
+  async getClientContracts(
+    @Param('clientId') clientId: string,
+    @Req() req: Request & { user: { sub: string } },
+  ) {
+    if (clientId !== req.user.sub) {
+      throw new ForbiddenException('You may only view your own contracts');
+    }
     return this.contractsService.getContractsByClient(clientId);
   }
 

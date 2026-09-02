@@ -13,7 +13,12 @@ import {
 import React from "react"
 // import ReactPlayer from "react-player"
 import dynamic from "next/dynamic"
-import { useParams, useRouter } from "next/navigation"
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import options from "@/public/mock/options.json"
 import {
@@ -62,6 +67,7 @@ import {
   ChevronsDown,
   ChevronsUp,
   Clock,
+  RefreshCcw05,
   Copy,
   Edit03,
   Eye,
@@ -112,7 +118,12 @@ import {
   AddRoleDialog,
   countryFromLocation,
   estimateScopeBudgetCents,
+  PHASE_TYPE_TITLE,
+  PhaseHeaderMeta,
   RolePicker,
+  type PhaseType,
+  type RecurrenceSchedule,
+  type ScopeType,
   type TeamMember,
 } from "@/components/scope-builder"
 import { TeamsAPI } from "@/service/http/teams"
@@ -473,59 +484,55 @@ const buildProjectDraftPayload = (projectInfo: ProjectInfoFormValues) => {
   }
 }
 
+// Draft autosave payload. Drafts are allowed to be partial, so we send every
+// phase and every row (with fallbacks) rather than dropping incomplete ones —
+// otherwise editing a not-yet-complete task/phase produces an unchanged payload
+// and the autosave never fires. Publish-time validation is enforced separately.
 const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
   (phases ?? [])
+    // Skip the blank starter phase ({}), but keep anything the user has begun
+    // filling in (a name, a phase type, or at least one row).
+    .filter(
+      (phase) =>
+        !!phase?.phaseName?.trim() ||
+        !!phase?.phaseType ||
+        (phase?.rows?.length ?? 0) > 0
+    )
     .map((phase, phaseIndex) => {
-      const phaseName = phase?.phaseName?.trim()
-      const rows = (phase?.rows ?? [])
-        .map((row) => {
-          const taskName = row?.task?.trim()
-          const role = row?.role?.trim()
-          const locationValue = row?.location?.trim()
-          const experienceLevel = row?.experience?.trim()
-          const durationValue = row?.duration?.value
-          const durationType = row?.duration?.type
-
-          if (
-            !taskName ||
-            !role ||
-            !locationValue ||
-            !experienceLevel ||
-            durationValue === undefined ||
-            !durationType
-          ) {
-            return null
-          }
-
-          return {
-            taskName,
-            role,
-            location: [locationValue],
-            experience: [experienceLevel],
-            experienceLevel,
-            duration: `${durationValue} ${durationType}`,
-            assigneeUserId:
-              row?.assigneeUserId ?? row?.assignedMember?.id ?? null,
-            phaseId: "temporary-required-string",
-          }
-        })
-        .filter((row): row is NonNullable<typeof row> => Boolean(row))
-
-      if (!phaseName || rows.length === 0) {
-        return null
-      }
-
+    const phaseName = phase?.phaseName?.trim() || `Phase ${phaseIndex + 1}`
+    const rows = (phase?.rows ?? []).map((row) => {
+      const durationValue = row?.duration?.value
+      const durationType = row?.duration?.type
+      const experienceLevel = row?.experience?.trim() ?? ""
       return {
-        name: phaseName,
-        stageName: `Stage ${phaseIndex + 1}`,
-        startDay: 1,
-        endDay: 8,
-        order: phaseIndex + 1,
-        projectId,
-        tasks: rows,
+        taskName: row?.task?.trim() ?? "",
+        role: row?.role?.trim() ?? "",
+        location: [row?.location?.trim() ?? ""].filter(Boolean),
+        experience: [experienceLevel].filter(Boolean),
+        experienceLevel,
+        duration:
+          durationValue !== undefined && durationType
+            ? `${durationValue} ${durationType}`
+            : "1 days",
+        assigneeUserId:
+          row?.assigneeUserId ?? row?.assignedMember?.id ?? null,
+        phaseId: "temporary-required-string",
       }
     })
-    .filter((phase): phase is NonNullable<typeof phase> => Boolean(phase))
+
+    return {
+      name: phaseName,
+      stageName: `Stage ${phaseIndex + 1}`,
+      startDay: 1,
+      endDay: 8,
+      order: phaseIndex + 1,
+      projectId,
+      phaseType: phase?.phaseType ?? undefined,
+      recurrenceSchedule: phase?.recurrenceSchedule ?? undefined,
+      recurrenceCount: phase?.recurrenceCount ?? undefined,
+      tasks: rows,
+    }
+  })
 const Empty = ({
   outcome,
   draftId,
@@ -740,7 +747,7 @@ const PROJECT_TYPE_OPTIONS = [
   "Game",
 ] as const
 
-const DURATION_TYPE = ["days", "weeks", "hours"] as const
+const DURATION_TYPE = ["hours", "days", "weeks", "months"] as const
 
 const formatDurationUnit = (
   value: number,
@@ -749,6 +756,7 @@ const formatDurationUnit = (
   if (value === 1) {
     if (type === "days") return "day"
     if (type === "weeks") return "week"
+    if (type === "months") return "month"
     return "hour"
   }
 
@@ -760,6 +768,7 @@ const durationToDays = (
   type: (typeof DURATION_TYPE)[number]
 ) => {
   if (type === "weeks") return value * 7
+  if (type === "months") return value * 30
   if (type === "hours") return Math.max(1, Math.ceil(value / 24))
   return value
 }
@@ -824,7 +833,23 @@ const pickFromProjectScopeSchema = (
 
 const projectScopeSchema = pickFromProjectScopeSchema()
 
-const Sidebar = () => {
+const Sidebar = ({
+  hasFaqs = false,
+  hasRecentQuestions = false,
+  faqError = false,
+  faqModerationHasError = false,
+  projectInfoModerationHasError = false,
+  publishAttempted = false,
+  questionsStarted = false,
+}: {
+  hasFaqs?: boolean
+  hasRecentQuestions?: boolean
+  faqError?: boolean
+  faqModerationHasError?: boolean
+  projectInfoModerationHasError?: boolean
+  publishAttempted?: boolean
+  questionsStarted?: boolean
+}) => {
   const { currentStep, stepsState } = useStepRootContext()
   const { setStep } = useStepperContext()
   const projectInfoMethods: UseFormReturn<ProjectInfoFormValues> =
@@ -841,6 +866,7 @@ const Sidebar = () => {
         (p.phaseName?.trim?.() ?? "").length > 0 ||
         (Array.isArray(p.rows) && p.rows.length > 0)
     )
+  const projectInfoValues = useWatch({ control: projectInfoMethods.control })
   const hasProjectInfoFieldError = useCallback(
     (name: (typeof meta)["Project Info"][number]["name"]) => {
       // Each sidebar sub-item maps to a tab grouping
@@ -870,6 +896,38 @@ const Sidebar = () => {
     },
     [projectInfoMethods.formState.errors]
   )
+  const hasProjectInfoFieldValue = useCallback(
+    (name: (typeof meta)["Project Info"][number]["name"]) => {
+      const v = projectInfoValues ?? {}
+      if (name === "title") {
+        return (
+          Boolean(v.title?.trim()) &&
+          Boolean(
+            v.category?.some(
+              (c) =>
+                Boolean(c?.category?.trim()) &&
+                Boolean(c?.subCategories?.length)
+            )
+          )
+        )
+      }
+      if (name === "shortDescription") {
+        return (
+          Boolean(v.shortDescription?.trim()) &&
+          getRichTextCharacterCount(v.fullDescription ?? "") > 0
+        )
+      }
+      if (name === "tags") {
+        return (
+          Boolean(v.tags?.length) &&
+          Boolean(v.skills?.length) &&
+          Boolean(v.industry?.length)
+        )
+      }
+      return false
+    },
+    [projectInfoValues]
+  )
   const hasMediaFieldError = useCallback(
     (name: (typeof meta)["Media"][number]["name"]) =>
       hookFormHasError({
@@ -878,62 +936,114 @@ const Sidebar = () => {
       }),
     [mediaMethods.formState.errors]
   )
+  const mediaValues = useWatch({ control: mediaMethods.control })
+  const hasMediaFieldValue = useCallback(
+    (name: (typeof meta)["Media"][number]["name"]) => {
+      const v = mediaValues ?? {}
+      if (name === "featuredImages") return Boolean(v.featuredImages?.length)
+      if (name === "additionalImages")
+        return Boolean(v.additionalImages?.flat().length)
+      if (name === "featuredVideo") return Boolean(v.featuredVideo?.trim())
+      return false
+    },
+    [mediaValues]
+  )
+
+  const stepHasStarted = (index: number): boolean => {
+    if (index === 0)
+      return Boolean(
+        projectInfoValues.title?.trim() ||
+          projectInfoValues.shortDescription?.trim() ||
+          projectInfoValues.fullDescription?.trim() ||
+          projectInfoValues.category?.some((c) => c?.category?.trim()) ||
+          projectInfoValues.tags?.length ||
+          projectInfoValues.skills?.length ||
+          projectInfoValues.industry?.length
+      )
+    if (index === 1)
+      return Boolean(
+        mediaValues.featuredImages?.length ||
+          mediaValues.additionalImages?.flat().length ||
+          mediaValues.featuredVideo?.trim()
+      )
+    if (index === 2) return hasStartedScope
+    if (index === 4) return questionsStarted
+    return false
+  }
 
   return (
-    <div className="sticky top-0 py-6 px-[15px] flex h-screen flex-col shrink-0 gap-y-5 overflow-y-auto xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
+    <div className="sticky top-0 py-6 px-6 flex h-screen flex-col shrink-0 overflow-y-auto xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
+      <div className="mb-8">
+        <Logo3 className="h-[19px] w-auto" />
+      </div>
       {stepsState.map(({ label, isValid }, index) => {
         const isActive = currentStep === index
+        const isLast = index === stepsState.length - 1
+        const hasError =
+          (publishAttempted && !isValid) ||
+          (label === "Questions" && faqModerationHasError) ||
+          (label === "Project Info" && projectInfoModerationHasError)
+        const showErrorBadge = hasError
+        const showWarningBadge =
+          !hasError && !isValid && !isActive && stepHasStarted(index)
         return (
-          <TooltipProvider key={index}>
-            <Tooltip>
-              <div className="flex flex-col">
-                <TooltipTrigger asChild>
-                  <button
-                    className="group flex items-center justify-between focus-visible:outline-none hover:bg-gray-100 rounded-md px-3 py-2"
-                    data-ui-state={
-                      isActive ? "active" : isValid ? "complete" : undefined
-                    }
-                    onClick={() => setStep(index)}
-                  >
-                    <span className="flex items-center gap-x-3">
-                      <span className="text-sm leading-[16.94px] font-semibold size-[25px] rounded-full shrink-0 inline-flex justify-center items-center text-white group-data-[ui-state=active]:border-2 group-data-[ui-state=active]:text-primary-500 group-data-[ui-state=active]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=undefined]:bg-gray-300">
-                        {index + 1}
-                      </span>
-                      <span className="text-dark-blue-400 text-sm leading-[16.94px] font-semibold">
-                        {label}
-                      </span>
-                    </span>
-                  </button>
-                </TooltipTrigger>
-
-                <TooltipContent className="max-w-[138px]">
-                  {isActive
-                    ? "Opened"
+          <div key={index} className="relative pb-6 last:pb-0">
+            {!isLast && (
+              <span
+                aria-hidden
+                className="absolute left-3 top-7 bottom-0 border-l-2 border-dashed border-gray-300"
+              />
+            )}
+            <button
+              type="button"
+              className="group relative z-[1] flex w-full items-center gap-x-3 focus-visible:outline-none"
+              data-ui-state={
+                hasError
+                  ? "error"
+                  : isActive
+                    ? "active"
                     : isValid
-                      ? "Click to open"
-                      : "Click to open"}
-                </TooltipContent>
+                      ? "complete"
+                      : undefined
+              }
+              onClick={() => setStep(index)}
+            >
+              <span className="size-6 shrink-0 rounded-full inline-flex justify-center items-center border-2 border-gray-300 bg-gray-50 group-data-[ui-state=complete]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=active]:border-primary-500 group-data-[ui-state=error]:border-error-500">
+                {hasError ? (
+                  <Plus className="size-3.5 text-error-500" />
+                ) : isActive ? (
+                  <span className="size-2 rounded-full bg-primary-500" />
+                ) : isValid ? (
+                  <Check className="size-3.5 text-white" />
+                ) : (
+                  <Plus className="size-3.5 text-gray-400" />
+                )}
+              </span>
+              <span className="text-dark-blue-400 text-sm leading-[16.94px] font-semibold group-data-[ui-state=error]:text-error-500">
+                {label}
+              </span>
 
-                <div
-                  className="pl-[25px] overflow-hidden"
-                  style={{
-                    maxHeight: isActive ? "500px" : "0px",
-                    opacity: isActive ? 1 : 0,
-                    transition:
-                      "max-height 400ms cubic-bezier(0.4, 0, 0.2, 1), opacity 350ms cubic-bezier(0.4, 0, 0.2, 1) 50ms",
-                  }}
-                >
+              {(showErrorBadge || showWarningBadge) && (
+                <AlertCircle
+                  className={cn(
+                    "size-[18px] shrink-0 ml-auto",
+                    showErrorBadge ? "text-error-500" : "text-warning-500"
+                  )}
+                />
+              )}
+            </button>
+
+            {isActive && (
+              <div className="mt-1 pl-9">
                   {label === "Project Info" &&
                     meta[label].map((field, i) => {
-                      const isDirty = Boolean(
-                        projectInfoMethods.formState.dirtyFields[field.name]
-                      )
                       const hasError = hasProjectInfoFieldError(field.name)
-                      const shouldShowStatus = hasError || isDirty
+                      const hasValue = hasProjectInfoFieldValue(field.name)
+                      const shouldShowStatus = hasError || hasValue
 
                       return (
                         <div
-                          className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                          className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
                           <span className="text-sm leading-6 text-gray-500">
@@ -953,15 +1063,30 @@ const Sidebar = () => {
                     })}
                   {label === "Media" &&
                     meta[label].map((field, i) => {
-                      const isDirty = Boolean(
-                        mediaMethods.formState.dirtyFields[field.name]
-                      )
-                      const hasError = hasMediaFieldError(field.name)
-                      const shouldShowStatus = hasError || isDirty
+                      const isAdditional = field.name === "additionalImages"
+                      const mv = mediaValues ?? {}
+                      const additionalCount = (mv.additionalImages ?? [])
+                        .flat()
+                        .filter((it) => it?.meta && it?.progress === 100).length
+                      const requiredAdditional = mv.featuredVideo?.trim()
+                        ? 2
+                        : 3
+                      const additionalStarted =
+                        additionalCount > 0 ||
+                        Boolean(mv.featuredImages?.length) ||
+                        Boolean(mv.featuredVideo?.trim())
+                      const hasError = isAdditional
+                        ? additionalStarted &&
+                          additionalCount < requiredAdditional
+                        : hasMediaFieldError(field.name)
+                      const hasValue = isAdditional
+                        ? additionalCount >= requiredAdditional
+                        : hasMediaFieldValue(field.name)
+                      const shouldShowStatus = hasError || hasValue
 
                       return (
                         <div
-                          className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                          className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
                           <span className="text-sm leading-6 text-gray-500">
@@ -982,7 +1107,7 @@ const Sidebar = () => {
                   {label === "Project Scope" &&
                     meta[label].map((field, i) => (
                       <div
-                        className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
+                        className="py-1.5 flex items-center justify-between pr-3"
                         key={i}
                       >
                         {field.label === "Task Name" ? (
@@ -1030,20 +1155,38 @@ const Sidebar = () => {
                       </div>
                     ))}
                   {label === "Questions" &&
-                    meta[label].map((field, i) => (
-                      <div
-                        className="py-1.5 flex items-center justify-between pl-[25px] pr-3"
-                        key={i}
-                      >
-                        <span className="text-sm leading-6 text-gray-500">
-                          {field.label}
-                        </span>
-                      </div>
-                    ))}
-                </div>
+                    meta[label].map((field, i) => {
+                      const hasValue =
+                        field.name === "faqs"
+                          ? hasFaqs
+                          : field.name === "recentQuestions"
+                            ? hasRecentQuestions
+                            : false
+                      const hasError =
+                        field.name === "faqs" &&
+                        (faqError || faqModerationHasError)
+                      return (
+                        <div
+                          className="py-1.5 flex items-center justify-between pr-3"
+                          key={i}
+                        >
+                          <span className="text-sm leading-6 text-gray-500">
+                            {field.label}
+                          </span>
+
+                          {hasError ? (
+                            <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
+                          ) : hasValue ? (
+                            <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                              <Check className="size-3 text-white" />
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })}
               </div>
-            </Tooltip>
-          </TooltipProvider>
+            )}
+          </div>
         )
       })}
     </div>
@@ -1346,71 +1489,10 @@ const BottomBar = ({
 
       // 4. Replace the saved project scope before publish
       if (projectId) {
-        const publishPhases = (phases ?? [])
-          .map((phase, phaseIndex) => {
-            const phaseName = phase?.phaseName?.trim()
-            const rows = (phase?.rows ?? [])
-              .map((row) => {
-                const taskName = row?.task?.trim()
-                const role = row?.role?.trim()
-                const locationValue = row?.location?.trim()
-                const experienceLevel = row?.experience?.trim()
-                const durationValue = row?.duration?.value
-                const durationType = row?.duration?.type
-
-                if (
-                  !taskName ||
-                  !role ||
-                  !locationValue ||
-                  !experienceLevel ||
-                  durationValue === undefined ||
-                  !durationType
-                ) {
-                  return null
-                }
-
-                return {
-                  taskName,
-                  role,
-                  location: [locationValue],
-                  experience: [experienceLevel],
-                  experienceLevel,
-                  duration: `${durationValue} ${formatDurationUnit(
-                    durationValue,
-                    durationType
-                  )}`,
-                  phaseId: "temporary-required-string",
-                }
-              })
-              .filter((row): row is NonNullable<typeof row> => Boolean(row))
-
-            if (!phaseName || rows.length === 0) {
-              return null
-            }
-
-            const { startDay, endDay } = getPhaseDayRange(
-              phases ?? [],
-              phaseIndex
-            )
-            if (typeof endDay !== "number") {
-              return null
-            }
-
-            return {
-              name: phaseName,
-              stageName: `Stage ${phaseIndex + 1}`,
-              startDay,
-              endDay,
-              order: phaseIndex + 1,
-              projectId: String(projectId),
-              tasks: rows,
-            }
-          })
-          .filter((phase): phase is NonNullable<typeof phase> => Boolean(phase))
-
-        for (const phasePayload of publishPhases) {
-          await ProjectAPI.CreatePhase(phasePayload)
-        }
+        await ProjectAPI.ReplaceProjectScope(
+          String(projectId),
+          buildScopeDraftPayload(String(projectId), phases ?? [])
+        )
       }
 
       if (projectId) {
@@ -1663,8 +1745,8 @@ const projectInfoSchema = z.object({
     .max(5, "Please do not enter more than 5 industry(s)"),
   shortDescription: z
     .string()
-    .min(50, "Please enter at least 50 character(s)")
-    .max(300, "Please do not enter more than 300 character(s)"),
+    .min(350, "Please enter at least 350 character(s)")
+    .max(450, "Please do not enter more than 450 character(s)"),
   fullDescription: z.string().superRefine((value, ctx) => {
     const contentLength = getRichTextCharacterCount(value)
 
@@ -1696,9 +1778,9 @@ const projectInfoSchema = z.object({
     .max(10, "Please do not enter/select more than 10 tag(s)"),
   skills: z
     .array(z.string(), {
-      required_error: "Please enter/select at least 1 skill(s)",
+      required_error: "Please add at least three skills",
     })
-    .min(1, "Please enter/select at least 1 skill(s)")
+    .min(3, "Please add at least three skills")
     .max(10, "Please do not enter/select more than 10 tag(s)"),
   projectType: z.string().default("Website"),
 })
@@ -1760,11 +1842,11 @@ const scrollToPublishField = (targetId: string) => {
 }
 
 const TITLE_MAX_LENGTH = 120
-const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const SHORT_DESCRIPTION_MAX_LENGTH = 450
 const FULL_DESCRIPTION_MAX_LENGTH = 5000
 const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
 const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 300 character(s)"
+  "Please do not enter more than 450 character(s)"
 const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
   "Please do not enter more than 5,000 character(s)"
 
@@ -1875,6 +1957,81 @@ const findSuggestedSubCategory = (node?: CategoryTreeNode): string | null => {
   return firstDescendant?.name ?? null
 }
 
+const SUGGESTION_STOPWORDS = new Set([
+  "the","and","for","with","your","our","that","this","from","into","over",
+  "you","are","was","will","can","get","all","new","use","per","via",
+])
+
+const tokenizeForSuggestion = (text: string): string[] =>
+  text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 3 && !SUGGESTION_STOPWORDS.has(token))
+
+const scoreCandidateAgainstTitle = (
+  titleTokens: string[],
+  candidateText: string
+): number => {
+  const candidateTokens = tokenizeForSuggestion(candidateText)
+  let score = 0
+  for (const candidateToken of candidateTokens) {
+    for (const titleToken of titleTokens) {
+      if (candidateToken === titleToken) {
+        score += 2
+        break
+      }
+      if (
+        candidateToken.length >= 4 &&
+        titleToken.length >= 4 &&
+        (candidateToken.includes(titleToken) ||
+          titleToken.includes(candidateToken))
+      ) {
+        score += 1
+        break
+      }
+    }
+  }
+  return score
+}
+
+const suggestionsFromText = (
+  text: string,
+  nodes: CategoryTreeNode[]
+): SuggestedCategoryOption[] => {
+  const tokens = tokenizeForSuggestion(text)
+  if (!tokens.length || !nodes.length) return []
+
+  const scored: Array<SuggestedCategoryOption & { score: number }> = []
+  for (const categoryNode of nodes) {
+    if (!isActiveCategoryNode(categoryNode) || !categoryNode.name) continue
+    const subs = (categoryNode.children ?? []).filter(isActiveCategoryNode)
+    for (const sub of subs) {
+      if (!sub.name || sub.name === categoryNode.name) continue
+      const score = scoreCandidateAgainstTitle(
+        tokens,
+        `${categoryNode.name} ${sub.name}`
+      )
+      if (score > 0) {
+        scored.push({
+          category: categoryNode.name,
+          subCategory: sub.name,
+          score,
+        })
+      }
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score)
+  const seenCategories = new Set<string>()
+  const result: SuggestedCategoryOption[] = []
+  for (const item of scored) {
+    if (seenCategories.has(item.category)) continue
+    seenCategories.add(item.category)
+    result.push({ category: item.category, subCategory: item.subCategory })
+  }
+  return result
+}
+
 const indexCategoryTreeByName = (nodes: CategoryTreeNode[]) => {
   const index = new Map<string, CategoryTreeNode>()
 
@@ -1928,7 +2085,10 @@ const ProjectInfo = ({
   )
   const [tagOptions, setTagOptions] = useState<string[]>(FALLBACK_TAG_OPTIONS)
   const [skills, setSkills] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
-  const [suggestedSkillOptions] = useState<string[]>(FALLBACK_SKILL_OPTIONS)
+  const [suggestedSkillOptions, setSuggestedSkillOptions] =
+    useState<string[]>(FALLBACK_SKILL_OPTIONS)
+  const skillsSuggestRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const skillsRequestRef = useRef(0)
   const categoryRequestRef = useRef(0)
   const categoryDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -1945,6 +2105,42 @@ const ProjectInfo = ({
   useIsomorphicLayoutEffect(() => {
     toggleValidation(isProjectInfoValid)
   }, [isProjectInfoValid])
+
+  useEffect(() => {
+    const description =
+      plainTextFromRichTextHtml(projectInfoValues.fullDescription ?? "").trim() ||
+      (projectInfoValues.shortDescription ?? "").trim()
+    const category = projectInfoValues.category?.[0]?.category?.trim() || undefined
+    const tags = projectInfoValues.tags ?? []
+    if (!description && !category && tags.length === 0) return
+    if (skillsSuggestRef.current) clearTimeout(skillsSuggestRef.current)
+    skillsSuggestRef.current = setTimeout(async () => {
+      const requestId = ++skillsRequestRef.current
+      try {
+        const res = await ProjectAPI.SuggestSkills({ description, category, tags })
+        if (requestId !== skillsRequestRef.current) return
+        const nextSkills = Array.isArray(res?.data?.skills)
+          ? (res.data.skills as string[])
+          : []
+        if (nextSkills.length > 0) {
+          setSuggestedSkillOptions(
+            Array.from(new Set([...nextSkills, ...FALLBACK_SKILL_OPTIONS]))
+          )
+        }
+      } catch {
+        // keep fallback options
+      }
+    }, 700)
+    return () => {
+      if (skillsSuggestRef.current) clearTimeout(skillsSuggestRef.current)
+    }
+  }, [
+    projectInfoValues.fullDescription,
+    projectInfoValues.shortDescription,
+    projectInfoValues.category,
+    projectInfoValues.tags,
+  ])
+
   const categoryValues = useWatch({
     control: methods.control,
     name: "category",
@@ -2223,10 +2419,13 @@ const ProjectInfo = ({
         const nextCategoryOptions = getUniqueOptions(
           selectableCategories.map((node) => node.name)
         )
-        const nextSuggested = selectableCategories
+        const nextSuggested = nodes
+          .filter(isActiveCategoryNode)
           .map((node) => {
-            const subCategory = findSuggestedSubCategory(node)
-            return subCategory ? { category: node.name, subCategory } : null
+            const sub = (node.children ?? []).filter(isActiveCategoryNode)[0]
+            return sub?.name && node.name
+              ? { category: node.name, subCategory: sub.name }
+              : null
           })
           .filter((value): value is SuggestedCategoryOption => value !== null)
 
@@ -2317,17 +2516,35 @@ const ProjectInfo = ({
       ),
     [categoryValues]
   )
-  const suggestedForDisplay = useMemo(
-    () =>
-      suggested
-        .filter(
-          ({ category, subCategory }) =>
-            !selectedCategoryNames.has(category) &&
-            !selectedSuggestedPairs.has(`${category}::${subCategory}`)
-        )
-        .slice(0, 3),
-    [selectedCategoryNames, selectedSuggestedPairs, suggested]
-  )
+  const derivedSuggestions = useMemo(() => {
+    const enteredNames = (Array.isArray(categoryValues) ? categoryValues : [])
+      .map((item) => item?.category?.trim())
+      .filter((name): name is string => Boolean(name))
+      .join(" ")
+    return suggestionsFromText(
+      `${projectType} ${enteredNames}`.trim(),
+      categoryTree
+    )
+  }, [projectType, categoryValues, categoryTree])
+  const suggestedForDisplay = useMemo(() => {
+    const seenCategories = new Set(selectedCategoryNames)
+    const result: SuggestedCategoryOption[] = []
+    for (const item of [...derivedSuggestions, ...suggested]) {
+      if (item.category === item.subCategory) continue
+      if (seenCategories.has(item.category)) continue
+      if (selectedSuggestedPairs.has(`${item.category}::${item.subCategory}`))
+        continue
+      seenCategories.add(item.category)
+      result.push(item)
+      if (result.length >= 3) break
+    }
+    return result
+  }, [
+    derivedSuggestions,
+    suggested,
+    selectedCategoryNames,
+    selectedSuggestedPairs,
+  ])
 
   return (
     <form className="contents" onSubmit={methods.handleSubmit(onSubmit)}>
@@ -2499,7 +2716,11 @@ const ProjectInfo = ({
                       >
                         {({ value }) => (
                           <span className="truncate block">
-                            {value || "Select Type"}
+                            {(PROJECT_TYPE_OPTIONS as readonly string[]).includes(
+                              value
+                            )
+                              ? value
+                              : "Select Type"}
                           </span>
                         )}
                       </ListboxButton>
@@ -2585,7 +2806,7 @@ const ProjectInfo = ({
                       <Controller
                         name="category.0.subCategories"
                         control={methods.control}
-                        render={({ field: { onChange, ...field } }) => (
+                        render={({ field: { onChange, ...field }, fieldState }) => (
                           <TagsInputRoot
                             onValueChange={handleSubCategoryChange(
                               "category.0.subCategories",
@@ -2597,7 +2818,14 @@ const ProjectInfo = ({
                             <TagsInputContext>
                               {(tagsInput) => (
                                 <>
-                                  <TagsInputControl className="relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] border border-gray-300 px-[14px] py-[10px] m-0">
+                                  <TagsInputControl
+                                    className={cn(
+                                      "relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] border px-[14px] py-[10px] m-0",
+                                      fieldState.error
+                                        ? "border-error-300"
+                                        : "border-gray-300"
+                                    )}
+                                  >
                                     {tagsInput.value.map((value, index) => (
                                       <TagsInputItem
                                         key={index}
@@ -2627,6 +2855,7 @@ const ProjectInfo = ({
                                       }
                                       options={subCategoryOptions}
                                       allowCreateOption
+                                      portalDropdown
                                       className="flex-1 min-w-[100px] "
                                       onInputValueChange={(value) => {
                                         fetchCategoriesAutocomplete(0, value)
@@ -2717,7 +2946,7 @@ const ProjectInfo = ({
                       <Controller
                         name="category.1.subCategories"
                         control={methods.control}
-                        render={({ field: { onChange, ...field } }) => (
+                        render={({ field: { onChange, ...field }, fieldState }) => (
                           <TagsInputRoot
                             onValueChange={handleSubCategoryChange(
                               "category.1.subCategories",
@@ -2730,9 +2959,12 @@ const ProjectInfo = ({
                               {(tagsInput) => (
                                 <>
                                   <TagsInputControl
-                                    className="relative pr-[28px] flex flex-wrap !justify-start
-                               !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] 
-                               border border-gray-300 px-[14px] py-[10px] m-0"
+                                    className={cn(
+                                      "relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] border px-[14px] py-[10px] m-0",
+                                      fieldState.error
+                                        ? "border-error-300"
+                                        : "border-gray-300"
+                                    )}
                                   >
                                     {tagsInput.value.map((value, index) => (
                                       <TagsInputItem
@@ -2763,6 +2995,7 @@ const ProjectInfo = ({
                                           : "Add Sub-Category(s)"
                                       }
                                       allowCreateOption
+                                      portalDropdown
                                       className="flex-1 min-w-[100px]"
                                       onInputValueChange={(value) => {
                                         fetchCategoriesAutocomplete(1, value)
@@ -2854,7 +3087,7 @@ const ProjectInfo = ({
                       <Controller
                         name="category.2.subCategories"
                         control={methods.control}
-                        render={({ field: { onChange, ...field } }) => (
+                        render={({ field: { onChange, ...field }, fieldState }) => (
                           <TagsInputRoot
                             onValueChange={handleSubCategoryChange(
                               "category.2.subCategories",
@@ -2867,9 +3100,12 @@ const ProjectInfo = ({
                               {(tagsInput) => (
                                 <>
                                   <TagsInputControl
-                                    className="relative pr-[28px] flex flex-wrap !justify-start
-                               !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] 
-                               border border-gray-300 px-[14px] py-[10px] m-0"
+                                    className={cn(
+                                      "relative pr-[28px] flex flex-wrap !justify-start !items-start !text-left  w-full max-w-[679px] h-auto rounded-[5px] border px-[14px] py-[10px] m-0",
+                                      fieldState.error
+                                        ? "border-error-300"
+                                        : "border-gray-300"
+                                    )}
                                   >
                                     {tagsInput.value.map((value, index) => (
                                       <TagsInputItem
@@ -2900,6 +3136,7 @@ const ProjectInfo = ({
                                           : "Add Sub-Category(s)"
                                       }
                                       allowCreateOption
+                                      portalDropdown
                                       className="flex-1 min-w-[100px]"
                                       onInputValueChange={(value) => {
                                         fetchCategoriesAutocomplete(2, value)
@@ -3191,8 +3428,8 @@ const ProjectInfo = ({
                             })
                             return
                           }
-                          methods.clearErrors("tags")
                           onChange(details.value)
+                          void methods.trigger("tags")
                         }}
                         {...field}
                         className="space-y-1.5"
@@ -3245,6 +3482,7 @@ const ProjectInfo = ({
                                   options={tagOptions}
                                   placeholder="Add Tags"
                                   allowCreateOption
+                                  portalDropdown
                                   onInputValueChange={(value) => {
                                     fetchTypeAutocomplete(
                                       "search_keywords",
@@ -3290,8 +3528,8 @@ const ProjectInfo = ({
                             })
                             return
                           }
-                          methods.clearErrors("skills")
                           onChange(details.value)
+                          void methods.trigger("skills")
                         }}
                         {...field}
                         className="space-y-1.5"
@@ -3344,6 +3582,7 @@ const ProjectInfo = ({
                                   options={skills}
                                   placeholder="Add Skills"
                                   allowCreateOption
+                                  portalDropdown
                                   onInputValueChange={(value) => {
                                     fetchTypeAutocomplete(
                                       "skills",
@@ -3432,8 +3671,8 @@ const ProjectInfo = ({
                             })
                             return
                           }
-                          methods.clearErrors("industry")
                           onChange(details.value)
+                          void methods.trigger("industry")
                         }}
                         {...field}
                         className="space-y-1.5"
@@ -3485,6 +3724,7 @@ const ProjectInfo = ({
                                   options={industryOptions}
                                   placeholder="Add Industries"
                                   allowCreateOption
+                                  portalDropdown
                                   onInputValueChange={(value) => {
                                     fetchTypeAutocomplete(
                                       "industries",
@@ -3651,7 +3891,7 @@ const mediaFormSchema = z
     (data) => data.featuredImages.every((value) => value.progress === 100),
     {
       message: "Please let the images get uploaded to the server",
-      path: ["featuredImage"],
+      path: ["featuredImages"],
     }
   )
   .refine(
@@ -3668,9 +3908,23 @@ const mediaFormSchema = z
             )
             .optional()
         )
-        .safeParse(data.additionalImages),
+        .safeParse(data.additionalImages).success,
     {
       message: "Please let the images get uploaded to the server",
+      path: ["additionalImages"],
+    }
+  )
+  .refine(
+    (data) => {
+      const additionalCount = (data.additionalImages ?? [])
+        .flat()
+        .filter((item) => item?.meta && item.progress === 100).length
+      const hasVideo = Boolean(data.featuredVideo?.trim())
+      return additionalCount >= (hasVideo ? 2 : 3)
+    },
+    {
+      message:
+        "Add at least 3 additional images, or a featured video and 2 images, to publish.",
       path: ["additionalImages"],
     }
   )
@@ -3747,6 +4001,18 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
   const featuredImage = useWatch({ control, name: "featuredImages" })
   const additionalImages = useWatch({ control, name: "additionalImages" })
   const featuredVideo = useWatch({ control, name: "featuredVideo" })
+
+  const additionalUploadedCount = (additionalImages ?? [])
+    .flat()
+    .filter((item) => item?.meta && item?.progress === 100).length
+  const hasFeaturedVideo = Boolean(featuredVideo?.trim())
+  const mediaStarted = Boolean(
+    (Array.isArray(featuredImage) && featuredImage.length > 0) ||
+      additionalUploadedCount > 0 ||
+      hasFeaturedVideo
+  )
+  const showMediaCountError =
+    mediaStarted && additionalUploadedCount < (hasFeaturedVideo ? 2 : 3)
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(isMediaValid)
@@ -3905,7 +4171,7 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                     className="transition-colors duration-300"
                     size="lg"
                     icon
-                    value={value}
+                    value={value ?? []}
                     onValueChange={(value) => {
                       ref.current.forEach((cb) => cb())
                       ref.current.clear()
@@ -4025,6 +4291,13 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                   <ErrorMessage size="sm">{message}</ErrorMessage>
                 )}
               />
+
+              {showMediaCountError && !errors.additionalImages?.root && (
+                <ErrorMessage size="sm">
+                  Add at least 3 additional images, or a featured video and 2
+                  images, to publish.
+                </ErrorMessage>
+              )}
             </div>
 
             <div
@@ -4265,13 +4538,18 @@ const PhaseNameDialog = ({
   open,
   defaultName,
   placeholder = "Enter Phase Name",
+  showPhaseType = false,
+  disabledTypes = [],
 }: {
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  onAddPhaseName: (phaseName: string) => void
+  onAddPhaseName: (phaseName: string, phaseType?: PhaseType) => void
   defaultName?: string
   placeholder?: string
+  showPhaseType?: boolean
+  disabledTypes?: PhaseType[]
 }) => {
+  const [phaseType, setPhaseType] = useState<PhaseType | undefined>(undefined)
   const [isOpen, toggleIsOpen] = useControllableState({
     defaultValue: false,
     value: open,
@@ -4292,12 +4570,15 @@ const PhaseNameDialog = ({
   useEffect(() => {
     if (isOpen) {
       reset({ name: defaultName ?? "" })
+      setPhaseType(undefined)
     }
   }, [isOpen, defaultName, reset])
 
   const onSubmit: SubmitHandler<PhaseNameFormValues> = (values) => {
     const { name } = values
-    onAddPhaseName(name)
+    // Services require a phase type before the phase can be created.
+    if (showPhaseType && !phaseType) return
+    onAddPhaseName(name, showPhaseType ? phaseType : undefined)
 
     toggleIsOpen(false)
   }
@@ -4322,7 +4603,14 @@ const PhaseNameDialog = ({
                 id="phase-name"
                 className="text-gray-900"
                 placeholder={placeholder}
-                {...register("name")}
+                {...register("name", {
+                  onChange: (e) => {
+                    const v = e.target.value
+                    if (v && v[0] !== v[0].toUpperCase()) {
+                      e.target.value = v.charAt(0).toUpperCase() + v.slice(1)
+                    }
+                  },
+                })}
                 isInvalid={hookFormHasError({ errors, name: "name" })}
               />
               <HookFormErrorMessage
@@ -4331,6 +4619,41 @@ const PhaseNameDialog = ({
                 render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
               />
             </div>
+
+            {showPhaseType && (
+              <div className="space-y-1.5 mt-4">
+                <Label size="sm" className="text-dark-blue-400">
+                  Phase Type
+                </Label>
+                <Listbox value={phaseType} onChange={setPhaseType}>
+                  <ListboxButton placeholder="Select phase type">
+                    {({ value }) => (
+                      <span className="text-gray-black">
+                        {PHASE_TYPE_TITLE[value as PhaseType]}
+                      </span>
+                    )}
+                  </ListboxButton>
+                  <ListboxOptions>
+                    <ListboxOption
+                      value="setup"
+                      disabled={disabledTypes.includes("setup")}
+                    >
+                      Setup
+                    </ListboxOption>
+                    <ListboxOption value="recurring">Recurring</ListboxOption>
+                    <ListboxOption
+                      value="ongoing"
+                      disabled={disabledTypes.includes("ongoing")}
+                    >
+                      Ongoing
+                    </ListboxOption>
+                  </ListboxOptions>
+                </Listbox>
+                <p className="text-xs font-light text-gray-500">
+                  Helps organize tasks by timing and frequency
+                </p>
+              </div>
+            )}
 
             <DialogFooter className="mt-8 grid gap-x-3">
               <DialogClose asChild>
@@ -4922,6 +5245,9 @@ type PhaseRow = Prettify<
 interface Phase {
   phaseName?: string
   rows?: PhaseRow[]
+  phaseType?: PhaseType
+  recurrenceSchedule?: RecurrenceSchedule
+  recurrenceCount?: number
 }
 
 const getPhaseDurationInDays = (phase?: Phase) => {
@@ -5498,8 +5824,12 @@ const ProjectScope = ({
 }: {
   setProgress?: (val: number) => void
 }) => {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
   const lastUndo = useRef<null | (() => void)>(null)
+  const handledCheckoutActionRef = useRef(false)
   const [taskDialogState, setTaskDialogState] = useState<TaskDialogState>({
     editingPhaseIndex: null,
     open: false,
@@ -5562,13 +5892,36 @@ const ProjectScope = ({
     setTaskSearchDialogOpen,
     teamMemberIds,
     pricingBudgetCents,
+    scopeType,
+    setScopeType,
+    draftProjectId,
   } = useProjectScopeContext()
+  const isService = scopeType === "service"
+
+  const handleScopeTypeChange = (type: ScopeType) => {
+    if (type === scopeType) return
+    setScopeType(type)
+    if (draftProjectId) {
+      ProjectAPI.UpdateProjectDraft(draftProjectId, {
+        listingType: type,
+      }).catch(() => {})
+    }
+    toast({
+      variant: "success",
+      title: type === "service" ? "Switched to Service" : "Switched to Project",
+    })
+  }
+  // Scope assignees must be members ON this project (Chris 07-28) — the owner
+  // (self) plus added members — never the whole roster.
+  const scopeOwnerId = getCurrentUser()?.id
   const projectTeam = useMemo(
     () =>
-      teamMemberIds.length > 0
-        ? scopeTeam.filter((m) => teamMemberIds.includes(m.id))
-        : scopeTeam,
-    [scopeTeam, teamMemberIds]
+      scopeTeam.filter(
+        (m) =>
+          String(m.id) === String(scopeOwnerId) ||
+          teamMemberIds.includes(m.id)
+      ),
+    [scopeTeam, teamMemberIds, scopeOwnerId]
   )
   const { toggleValidation } = useStepContext()
 
@@ -5675,6 +6028,26 @@ const ProjectScope = ({
     [phases]
   )
 
+  useEffect(() => {
+    if (handledCheckoutActionRef.current) return
+    if (searchParams.get("checkoutAction") !== "add-task") return
+    if (phases.length < 1) return
+
+    handledCheckoutActionRef.current = true
+    setAccordionState((current) =>
+      current.includes("item-0") ? current : [...current, "item-0"]
+    )
+    handleOpenTaskDialog(0)
+
+    const nextSearchParams = new URLSearchParams(searchParams.toString())
+    nextSearchParams.delete("checkoutStep")
+    nextSearchParams.delete("checkoutAction")
+    const nextQuery = nextSearchParams.toString()
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+      scroll: false,
+    })
+  }, [handleOpenTaskDialog, pathname, phases.length, router, searchParams])
+
   const handleRowsChange = useCallback(
     (phaseIndex: number, rows: PhaseRow[]) => {
       setPhases((prev) =>
@@ -5720,7 +6093,11 @@ const ProjectScope = ({
   )
 
   const onAddPhaseName = useCallback(
-    (phaseName: string) => {
+    (rawPhaseName: string, phaseType?: PhaseType) => {
+      const trimmedName = rawPhaseName.trim()
+      const phaseName = trimmedName
+        ? trimmedName.charAt(0).toUpperCase() + trimmedName.slice(1)
+        : trimmedName
       const { action, editingPhaseIndex, addTo } = phaseDialogState
 
       if (action === "EDIT" && typeof editingPhaseIndex === "number") {
@@ -5771,14 +6148,40 @@ const ProjectScope = ({
           editingPhaseIndex >= 0 &&
           editingPhaseIndex < next.length
 
-        insertedPhaseIndex =
-          addTo === "start" && hasTargetPhase
-            ? editingPhaseIndex
-            : addTo === "below" && hasTargetPhase
-              ? editingPhaseIndex + 1
-              : next.length
+        if (phaseType) {
+          // Service ordering: Setup first, Ongoing last, Recurring before Ongoing.
+          const ongoingIdx = next.findIndex((p) => p.phaseType === "ongoing")
+          insertedPhaseIndex =
+            phaseType === "setup"
+              ? 0
+              : phaseType === "ongoing"
+                ? next.length
+                : ongoingIdx >= 0
+                  ? ongoingIdx
+                  : next.length
+        } else {
+          insertedPhaseIndex =
+            addTo === "start" && hasTargetPhase
+              ? editingPhaseIndex
+              : addTo === "below" && hasTargetPhase
+                ? editingPhaseIndex + 1
+                : next.length
+        }
 
-        next.splice(insertedPhaseIndex, 0, { phaseName })
+        next.splice(
+          insertedPhaseIndex,
+          0,
+          phaseType === "recurring"
+            ? {
+                phaseName,
+                phaseType,
+                recurrenceSchedule: "monthly",
+                recurrenceCount: 1,
+              }
+            : phaseType
+              ? { phaseName, phaseType }
+              : { phaseName }
+        )
         return next
       })
 
@@ -5814,6 +6217,19 @@ const ProjectScope = ({
       })
     },
     [phaseDialogState, setPhases, toast]
+  )
+
+  const updatePhaseRecurrence = useCallback(
+    (index: number, schedule: RecurrenceSchedule, count: number) => {
+      setPhases((prev) =>
+        prev.map((p, i) =>
+          i === index
+            ? { ...p, recurrenceSchedule: schedule, recurrenceCount: count }
+            : p
+        )
+      )
+    },
+    [setPhases]
   )
 
   const onAddTask = useCallback(
@@ -6041,7 +6457,7 @@ const ProjectScope = ({
   type DurationFormValues = {
     duration: {
       value: number
-      type: "days" | "weeks" | "hours"
+      type: "hours" | "days" | "weeks" | "months"
     }
   }
 
@@ -6250,7 +6666,7 @@ const ProjectScope = ({
                   </span>
                   <div className="mt-2">
                     <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                      {durationLabel}
+                      {isService ? "Ongoing" : durationLabel}
                     </span>
                   </div>
                 </div>
@@ -6260,10 +6676,54 @@ const ProjectScope = ({
 
             <div className="flex md:flex-row flex-col gap-y-6 md:gap-y-0 md:items-center justify-between">
               <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
-                Project Scope
+                {isService ? "Service" : "Project"} Scope
               </h1>
 
               <div className="flex items-center md:gap-x-3">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outlined" visual="gray">
+                      <RefreshCcw05 className="size-[15px]" />
+                      {isService ? "Service" : "Project"}
+                      <ChevronDown className="size-[15px]" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[280px]">
+                    <DropdownMenuItem
+                      className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      onClick={() => handleScopeTypeChange("project")}
+                    >
+                      <div className="flex items-center gap-x-2 w-full">
+                        {!isService && (
+                          <Check className="size-4 text-primary-500 shrink-0" />
+                        )}
+                        <span className="font-semibold text-sm text-gray-900">
+                          Project{!isService ? " (current)" : ""}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 ml-6">
+                        One-time job with a defined duration
+                      </span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      onClick={() => handleScopeTypeChange("service")}
+                    >
+                      <div className="flex items-center gap-x-2 w-full">
+                        {isService && (
+                          <Check className="size-4 text-primary-500 shrink-0" />
+                        )}
+                        <span className="font-semibold text-sm text-gray-900">
+                          Service{isService ? " (current)" : ""}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 ml-6">
+                        Recurring work with consistent needs
+                      </span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                 <div className="flex items-center">
                   <Button
                     className="border-r-0 rounded-r-none"
@@ -6313,14 +6773,16 @@ const ProjectScope = ({
                     <AccordionItem value={`item-${index}`} asChild>
                       <div className="rounded-lg border border-gray-200 shadow-sm">
                         <div className="mb-3 flex items-start gap-x-4 px-3 pt-3">
-                          <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
-                            <div className="inline-flex items-center gap-x-3.5">
+                          <div className="flex flex-auto min-w-0 gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
+                            <div className="inline-flex items-center gap-x-3.5 min-w-0">
                               <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
                                 <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                               </AccordionTrigger>
 
                               <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                Phase {numberToWord(index)}{" "}
+                                {isService && phases[index]?.phaseType
+                                  ? PHASE_TYPE_TITLE[phases[index].phaseType!]
+                                  : `Phase ${numberToWord(index)}`}{" "}
                                 <button
                                   type="button"
                                   className="font-light hover:underline focus-visible:outline-none"
@@ -6336,14 +6798,18 @@ const ProjectScope = ({
                               </span>
                             </div>
 
-                            <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:w-[118px] md:pl-0">
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                {getPhaseDayRangeLabel(phases, index)}
-                              </span>
+                            <div className="inline-flex items-center justify-start gap-x-2 pl-10 md:pl-0 shrink-0">
+                              <PhaseHeaderMeta
+                                phases={phases}
+                                index={index}
+                                onRecurrenceChange={(schedule, count) =>
+                                  updatePhaseRecurrence(index, schedule, count)
+                                }
+                              />
                             </div>
                           </div>
 
-                          <div className="flex gap-x-4 items-center">
+                          <div className="flex gap-x-4 items-center shrink-0">
                             <MoreDropdown
                               onSwapPhases={(to) => handleSwapPhases(index, to)}
                               openPhaseDialog={() =>
@@ -6404,15 +6870,17 @@ const ProjectScope = ({
                     <AccordionItem value={`item-${index}`} asChild>
                       <div className="rounded-lg border border-gray-200 shadow-sm">
                         <div className="mb-3 flex items-start gap-x-4 px-3 pt-3">
-                          <div className="flex flex-auto gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
-                            <div className="inline-flex items-center gap-x-3.5">
+                          <div className="flex flex-auto min-w-0 gap-y-2 md:flex-row md:justify-between md:items-center flex-col">
+                            <div className="inline-flex items-center gap-x-3.5 min-w-0">
                               <AccordionTrigger className="focus-visible:outline-none size-8 inline-flex items-center justify-center">
                                 <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                               </AccordionTrigger>
 
                               <div className="inline-flex md:flex-row gap-x-1.5 flex-col md:items-center gap-y-3 md:gap-x-5">
                                 <span className="text-base md:text-[18px] font-semibold md:font-light leading-7 text-gray-900">
-                                  Phase {numberToWord(index)}
+                                  {isService && phases[index]?.phaseType
+                                    ? PHASE_TYPE_TITLE[phases[index].phaseType!]
+                                    : `Phase ${numberToWord(index)}`}
                                 </span>{" "}
                                 {phaseName ? (
                                   <button
@@ -6445,21 +6913,29 @@ const ProjectScope = ({
                                   </button>
                                 )}
                                 <div className="inline-block md:hidden">
-                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    {getPhaseDayRangeLabel(phases, index)}
-                                  </span>
+                                  <PhaseHeaderMeta
+                                    phases={phases}
+                                    index={index}
+                                    onRecurrenceChange={(schedule, count) =>
+                                      updatePhaseRecurrence(index, schedule, count)
+                                    }
+                                  />
                                 </div>
                               </div>
                             </div>
 
-                            <div className="hidden items-center justify-start gap-x-2 pl-10 md:inline-flex md:w-[118px] md:pl-0">
-                              <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                {getPhaseDayRangeLabel(phases, index)}
-                              </span>
+                            <div className="hidden items-center justify-start gap-x-2 pl-10 md:inline-flex md:pl-0 shrink-0">
+                              <PhaseHeaderMeta
+                                phases={phases}
+                                index={index}
+                                onRecurrenceChange={(schedule, count) =>
+                                  updatePhaseRecurrence(index, schedule, count)
+                                }
+                              />
                             </div>
                           </div>
 
-                          <div className="flex gap-x-4 items-center">
+                          <div className="flex gap-x-4 items-center shrink-0">
                             <MoreDropdown
                               onSwapPhases={(to) => handleSwapPhases(index, to)}
                               openPhaseDialog={() =>
@@ -6545,6 +7021,12 @@ const ProjectScope = ({
               open={phaseDialogState.open}
               onAddPhaseName={onAddPhaseName}
               defaultName={currentPhaseName}
+              showPhaseType={
+                isService && phaseDialogState.action !== "EDIT"
+              }
+              disabledTypes={phases
+                .map((p) => p.phaseType)
+                .filter((t): t is PhaseType => !!t)}
               placeholder={
                 phaseDialogState.action === "EDIT"
                   ? "Edit Phase name"
@@ -6641,6 +7123,8 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   setTeamMemberIds: React.Dispatch<React.SetStateAction<string[]>>
   draftProjectId: string | null
   pricingBudgetCents: number
+  scopeType: ScopeType
+  setScopeType: React.Dispatch<React.SetStateAction<ScopeType>>
 }>({
   displayName: "MediaProvider",
   errorMessage: `useMediaContext returned is 'undefined'. Seems you forgot to wrap the components in "<MediaPopover />"`,
@@ -7376,6 +7860,36 @@ type RecentQuestion = {
   answeredByRole?: string | null
   assignedToUserId?: string | null
   hidden?: boolean
+  moderationFailed?: boolean
+}
+
+function HideToggle({
+  hidden,
+  moderationFailed,
+  onToggle,
+}: {
+  hidden: boolean
+  moderationFailed?: boolean
+  onToggle: (value: boolean) => void
+}) {
+  if (moderationFailed) {
+    return (
+      <TooltipProvider delayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Switch checked={hidden} disabled />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            This question can&apos;t be made visible because it didn&apos;t pass
+            content moderation.
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+  return <Switch checked={hidden} onCheckedChange={(v) => onToggle(!!v)} />
 }
 
 const SortableFaqItem = ({
@@ -7515,11 +8029,22 @@ const Questions = ({
   faqs,
   setFaqs,
   draftProjectId,
+  onRecentQuestionsChange,
+  publishAttempted = false,
+  moderationError = null,
 }: {
   faqs: WizardFaq[]
   setFaqs: React.Dispatch<React.SetStateAction<WizardFaq[]>>
   draftProjectId: string | null
+  onRecentQuestionsChange?: (hasQuestions: boolean) => void
+  publishAttempted?: boolean
+  moderationError?: string | null
 }) => {
+  const completedFaqCount = faqs.filter(
+    (faq) => faq.q.trim() && faq.a.trim()
+  ).length
+  const showFaqError =
+    completedFaqCount < 3 && (publishAttempted || faqs.length > 0)
   const [questionsTab, setQuestionsTab] = useState("FAQs")
   const [recentQTab, setRecentQTab] = useState("all")
   const [openFaqId, setOpenFaqId] = useState<string | null>(null)
@@ -7564,9 +8089,33 @@ const Questions = ({
   }, [draftProjectId])
 
   useEffect(() => {
+    onRecentQuestionsChange?.(questions.length > 0)
+  }, [questions, onRecentQuestionsChange])
+
+  useEffect(() => {
     if (!questionsHydrated.current || !draftProjectId) return
     const t = setTimeout(() => {
-      ProjectAPI.SaveProjectQuestions(draftProjectId, questions).catch(() => {})
+      ProjectAPI.SaveProjectQuestions(draftProjectId, questions)
+        .then((res) => {
+          const saved = res?.data
+          if (!Array.isArray(saved)) return
+          const byId = new Map(
+            saved.map((s: RecentQuestion, i: number) => [s.id ?? `rq-${i}`, s])
+          )
+          setQuestions((prev) => {
+            let changed = false
+            const next = prev.map((q) => {
+              const s = q.id ? byId.get(q.id) : undefined
+              if (s && !!s.moderationFailed !== !!q.moderationFailed) {
+                changed = true
+                return { ...q, moderationFailed: s.moderationFailed }
+              }
+              return q
+            })
+            return changed ? next : prev
+          })
+        })
+        .catch(() => {})
     }, 600)
     return () => clearTimeout(t)
   }, [questions, draftProjectId])
@@ -7783,6 +8332,18 @@ const Questions = ({
                 </Button>
               </div>
 
+              {showFaqError && (
+                <ErrorMessage size="sm" className="mt-2">
+                  Please add at least 3 FAQs before publishing.
+                </ErrorMessage>
+              )}
+
+              {moderationError && (
+                <ErrorMessage size="sm" className="mt-2">
+                  {`FAQ content did not meet community guidelines. ${moderationError}`}
+                </ErrorMessage>
+              )}
+
               <Dialog open={aiOpen} onOpenChange={setAiOpen}>
                 <DialogContent className="max-w-[640px] p-0 gap-0">
                   <div className="px-6 pt-6 pb-4 border-b border-gray-200 flex items-start justify-between">
@@ -7930,29 +8491,41 @@ const Questions = ({
                 modifiers={[restrictToVerticalAxis]}
                 onDragEnd={handleDragEnd}
               >
-                <SortableContext
-                  items={faqs.map((f) => f.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <Accordion
-                    type="single"
-                    collapsible
-                    className="mt-4 space-y-3"
-                    value={openFaqId ?? ""}
-                    onValueChange={(val) => setOpenFaqId(val || null)}
+                {faqs.length === 0 ? (
+                  <div className="mt-4 rounded-lg border-2 border-gray-200 bg-gray-25 p-6">
+                    <h3 className="text-base font-semibold text-dark-blue-400">
+                      No FAQs Yet
+                    </h3>
+                    <p className="mt-1 text-sm font-light text-dark-blue-400">
+                      Add a frequently asked question, or generate suggestions
+                      with AI, to help visitors understand your project.
+                    </p>
+                  </div>
+                ) : (
+                  <SortableContext
+                    items={faqs.map((f) => f.id)}
+                    strategy={verticalListSortingStrategy}
                   >
-                    {faqs.map((faq, idx) => (
-                      <SortableFaqItem
-                        key={faq.id}
-                        id={faq.id}
-                        faq={faq}
-                        index={idx}
-                        onChange={handleFaqChange}
-                        onDelete={handleDeleteFaq}
-                      />
-                    ))}
-                  </Accordion>
-                </SortableContext>
+                    <Accordion
+                      type="single"
+                      collapsible
+                      className="mt-4 space-y-3"
+                      value={openFaqId ?? ""}
+                      onValueChange={(val) => setOpenFaqId(val || null)}
+                    >
+                      {faqs.map((faq, idx) => (
+                        <SortableFaqItem
+                          key={faq.id}
+                          id={faq.id}
+                          faq={faq}
+                          index={idx}
+                          onChange={handleFaqChange}
+                          onDelete={handleDeleteFaq}
+                        />
+                      ))}
+                    </Accordion>
+                  </SortableContext>
+                )}
               </DndContext>
             </RadixTabs.Content>
 
@@ -8098,10 +8671,11 @@ const Questions = ({
                                 {(q.answer ?? "").length}/300
                               </p>
                               <div className="mt-3 flex items-center gap-2">
-                                <Switch
-                                  checked={!!q.hidden}
-                                  onCheckedChange={(v) =>
-                                    updateQuestion(q.id, { hidden: !!v })
+                                <HideToggle
+                                  hidden={!!q.hidden}
+                                  moderationFailed={q.moderationFailed}
+                                  onToggle={(v) =>
+                                    updateQuestion(q.id, { hidden: v })
                                   }
                                 />
                                 <span className="text-xs text-gray-500">
@@ -8158,10 +8732,11 @@ const Questions = ({
                                 </Button>
                               </div>
                               <div className="mt-3 ml-6 flex items-center gap-2">
-                                <Switch
-                                  checked={!!q.hidden}
-                                  onCheckedChange={(v) =>
-                                    updateQuestion(q.id, { hidden: !!v })
+                                <HideToggle
+                                  hidden={!!q.hidden}
+                                  moderationFailed={q.moderationFailed}
+                                  onToggle={(v) =>
+                                    updateQuestion(q.id, { hidden: v })
                                   }
                                 />
                                 <span className="text-xs text-gray-500">
@@ -8217,6 +8792,26 @@ function PublishProject({
   } = useStepper({
     steps,
   })
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const { toast } = useToast()
+  const handledCheckoutStepRef = useRef(false)
+
+  useEffect(() => {
+    if (handledCheckoutStepRef.current) return
+    if (searchParams.get("checkoutStep") !== "scope") return
+
+    handledCheckoutStepRef.current = true
+    setStep(2)
+
+    const nextSearchParams = new URLSearchParams(searchParams.toString())
+    nextSearchParams.delete("checkoutStep")
+    const nextQuery = nextSearchParams.toString()
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+      scroll: false,
+    })
+  }, [pathname, router, searchParams, setStep])
 
   const stepperValue = useMemo(
     () => ({ nextStep, prevStep, setStep, toggleStepValidation }),
@@ -8233,7 +8828,6 @@ function PublishProject({
     [currentStep, hasNextStep, hasPreviousStep, totalSteps, stepsState]
   )
   const [isSaveExitDialogOpen, toggleIsSaveExitDialogOpen] = useToggle(false)
-  const router = useRouter()
   const projectInfoMethods = useForm<ProjectInfoFormValues>({
     resolver: zodResolver(projectInfoSchema),
     defaultValues: {
@@ -8254,6 +8848,8 @@ function PublishProject({
   const mediaMethods = useForm<MediaFormValues>({
     resolver: zodResolver(mediaFormSchema),
     defaultValues: {
+      featuredImages: [],
+      additionalImages: [],
       featuredVideo: "",
       hiddenImages: [],
     },
@@ -8266,17 +8862,83 @@ function PublishProject({
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
   const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
   const [pricingBudgetCents, setPricingBudgetCents] = useState(0)
+  const [scopeType, setScopeType] = useState<ScopeType>("project")
   const [isPublishing, setIsPublishing] = useState(false)
+  const [publishAttempted, setPublishAttempted] = useState(false)
 
   const handlePublish = async () => {
     if (!draftProjectId || isPublishing) return
+    setPublishAttempted(true)
+    setFaqModerationError(null)
+    setProjectInfoModerationError(null)
+    if (firstInvalidStep !== null) {
+      setStep(firstInvalidStep)
+      if (firstInvalidStep === 0) await projectInfoMethods.trigger()
+      else if (firstInvalidStep === 1) await mediaMethods.trigger()
+      toast({
+        title: "Please complete all required sections before publishing.",
+        variant: "destructive",
+      })
+      return
+    }
     setIsPublishing(true)
     try {
       await ProjectAPI.PublishProject(draftProjectId)
       setIsProjectSubmitted(true)
       router.push("/my-listings")
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to publish project", error)
+      const errorMessage =
+        error?.response?.data?.reason ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Unable to publish project"
+      const errorType = classifyPublishError({
+        message: errorMessage,
+        statusCode: error?.response?.status,
+        status: error?.response?.data?.status,
+      })
+
+      const field = error?.response?.data?.field
+      const projectInfoFields = [
+        "title",
+        "category",
+        "industry",
+        "shortDescription",
+        "fullDescription",
+        "tags",
+        "skills",
+      ]
+      if (field && projectInfoFields.includes(field)) {
+        projectInfoMethods.setError(field as any, { message: errorMessage })
+        setProjectInfoModerationError(errorMessage)
+        setStep(0)
+      } else if (field === "faqs") {
+        setFaqModerationError(errorMessage)
+        setStep(4)
+      } else if (errorType === "video_rejection") {
+        mediaMethods.setError("featuredVideo", { message: errorMessage })
+        setStep(1)
+      } else if (errorType === "image_rejection") {
+        mediaMethods.setError("featuredImages", { message: errorMessage })
+        setStep(1)
+      } else if (errorType === "content_rejection") {
+        projectInfoMethods.setError("fullDescription", { message: errorMessage })
+        setProjectInfoModerationError(errorMessage)
+        setStep(0)
+      }
+
+      toast({
+        title:
+          errorType === "video_rejection"
+            ? `Project rejected: video violated moderation policy. ${errorMessage}`
+            : errorType === "image_rejection"
+              ? `Project rejected: image violated moderation policy. ${errorMessage}`
+              : errorType === "content_rejection"
+                ? `Project rejected: content did not meet community guidelines. ${errorMessage}`
+                : errorMessage,
+        variant: "destructive",
+      })
     } finally {
       setIsPublishing(false)
     }
@@ -8284,6 +8946,13 @@ function PublishProject({
   const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [faqs, setFaqs] = useState<WizardFaq[]>([])
+  const [faqModerationError, setFaqModerationError] = useState<string | null>(
+    null
+  )
+  const [projectInfoModerationError, setProjectInfoModerationError] = useState<
+    string | null
+  >(null)
+  const [hasRecentQuestions, setHasRecentQuestions] = useState(false)
   const persistedMediaRef = useRef<{
     featuredImage?: string
     additionalImages?: string[]
@@ -8302,7 +8971,78 @@ function PublishProject({
 
   useEffect(() => {
     faqsRef.current = faqs
+    setFaqModerationError(null)
   }, [faqs])
+
+  const projectInfoModerationWatch = useWatch({
+    control: projectInfoMethods.control,
+  })
+  useEffect(() => {
+    setProjectInfoModerationError(null)
+  }, [projectInfoModerationWatch])
+
+  // Sidebar step ticks: each step's form only mounts when it's the active step,
+  // so validate every step here (always mounted) — an existing/edited project
+  // shows completed steps immediately, and Team/Questions can tick too.
+  // Criteria: Project Info / Media / Project Scope pass their schema; Team has
+  // at least one member; Questions has at least one FAQ.
+  const [scopePhases] = projectScopeMethods
+  const lastStepValidRef = useRef<Record<number, boolean>>({})
+  const setStepValid = useCallback(
+    (index: number, valid: boolean) => {
+      if (lastStepValidRef.current[index] === valid) return
+      lastStepValidRef.current[index] = valid
+      toggleStepValidation(index)(valid)
+    },
+    [toggleStepValidation]
+  )
+  // useWatch re-computes on every value change — including the async reset() on
+  // load — so ticks reflect the loaded project immediately (no user edit needed).
+  const projectInfoWatch = useWatch({ control: projectInfoMethods.control })
+  const mediaWatch = useWatch({ control: mediaMethods.control })
+  const completedFaqCount = faqs.filter(
+    (faq) => faq.q.trim() && faq.a.trim()
+  ).length
+  useEffect(() => {
+    setStepValid(
+      0,
+      projectInfoSchema.safeParse(projectInfoMethods.getValues()).success
+    )
+  }, [projectInfoWatch, projectInfoMethods, setStepValid])
+  useEffect(() => {
+    setStepValid(
+      1,
+      mediaFormSchema.safeParse(mediaMethods.getValues()).success
+    )
+  }, [mediaWatch, mediaMethods, setStepValid])
+  useEffect(() => {
+    setStepValid(2, projectScopeSchema.safeParse(scopePhases))
+  }, [scopePhases, setStepValid])
+  useEffect(() => {
+    setStepValid(3, teamMemberIds.length > 0)
+  }, [teamMemberIds, setStepValid])
+  useEffect(() => {
+    setStepValid(4, completedFaqCount >= 3)
+  }, [completedFaqCount, setStepValid])
+
+  const firstInvalidStep = useMemo(() => {
+    const validity: Record<number, boolean> = {
+      0: projectInfoSchema.safeParse(projectInfoMethods.getValues()).success,
+      1: mediaFormSchema.safeParse(mediaMethods.getValues()).success,
+      2: projectScopeSchema.safeParse(scopePhases),
+      3: teamMemberIds.length > 0,
+      4: completedFaqCount >= 3,
+    }
+    return [0, 1, 2, 3, 4].find((index) => !validity[index]) ?? null
+  }, [
+    projectInfoWatch,
+    mediaWatch,
+    scopePhases,
+    teamMemberIds,
+    completedFaqCount,
+    projectInfoMethods,
+    mediaMethods,
+  ])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -8366,6 +9106,16 @@ function PublishProject({
             : []
         )
         setPricingBudgetCents(Number(draft?.budgetUsdCents) || 0)
+        const draftIsService =
+          draft?.listingType === "service" ||
+          (Array.isArray(draft?.scope) &&
+            draft.scope.some(
+              (p: any) =>
+                p?.phaseType === "setup" ||
+                p?.phaseType === "recurring" ||
+                p?.phaseType === "ongoing"
+            ))
+        setScopeType(draftIsService ? "service" : "project")
 
         const rawCategorySelections = Array.isArray(draft?.categorySelections)
           ? draft.categorySelections
@@ -8402,6 +9152,7 @@ function PublishProject({
           skills: Array.isArray(draft?.skills) ? draft.skills : [],
           projectType: draft?.projectType ?? draft?.listingType ?? "Website",
         })
+        if (draft?.title) void projectInfoMethods.trigger()
         lastDraftPayloadRef.current = JSON.stringify(
           buildProjectDraftPayload({
             title: draft?.title ?? "",
@@ -8491,6 +9242,9 @@ function PublishProject({
         const scope = Array.isArray(draft?.scope)
           ? draft.scope.map((phase: any) => ({
               phaseName: phase?.name ?? "",
+              phaseType: phase?.phaseType ?? undefined,
+              recurrenceSchedule: phase?.recurrenceSchedule ?? undefined,
+              recurrenceCount: phase?.recurrenceCount ?? undefined,
               rows: Array.isArray(phase?.task)
                 ? phase.task.map((task: any) => {
                     const durationRaw = String(task?.duration ?? "").trim()
@@ -8736,17 +9490,32 @@ function PublishProject({
       })
 
       if (signature === lastMediaPayloadRef.current) return
-      if (!featuredMeta) return
 
+      const isClearingFeatured =
+        !featuredMeta && !!persistedMediaRef.current?.featuredImage
+      if (!featuredMeta && !isClearingFeatured) return
+
+      const prevMediaSignature = lastMediaPayloadRef.current
       lastMediaPayloadRef.current = signature
 
       const formData = new FormData()
       formData.append("projectId", draftProjectId)
 
-      const hasFeatured = await appendFeaturedImageField(formData, featuredMeta)
-      if (!hasFeatured) return
+      if (isClearingFeatured) {
+        formData.append("clearFeatured", "true")
+      } else {
+        const hasFeatured = await appendFeaturedImageField(
+          formData,
+          featuredMeta
+        )
+        if (!hasFeatured) {
+          lastMediaPayloadRef.current = prevMediaSignature
+          return
+        }
+      }
 
       await appendAdditionalImageFields(formData, additionalMeta)
+      formData.append("replaceAdditional", "true")
 
       for (const url of hiddenImages) {
         formData.append("hiddenImages", url)
@@ -8813,8 +9582,34 @@ function PublishProject({
           hiddenImages: resetValues.hiddenImages ?? [],
         })
         setLastSavedAt(new Date())
-      } catch (error) {
+      } catch (error: any) {
         console.error("Failed to save project media draft", error)
+        const status = error?.response?.status
+        if (!status || status >= 500) {
+          lastMediaPayloadRef.current = prevMediaSignature
+        } else {
+          const errorMessage =
+            error?.response?.data?.reason ||
+            error?.response?.data?.message ||
+            error?.message ||
+            "Failed to save media. Please try again."
+          const errorType = classifyPublishError({
+            message: errorMessage,
+            statusCode: status,
+            status: error?.response?.data?.status,
+          })
+          toast({
+            title:
+              errorType === "video_rejection"
+                ? `Media rejected: video violated moderation policy. ${errorMessage}`
+                : errorType === "image_rejection"
+                  ? `Media rejected: image violated moderation policy. ${errorMessage}`
+                  : errorType === "content_rejection"
+                    ? `Media rejected: content did not meet community guidelines. ${errorMessage}`
+                    : errorMessage,
+            variant: "destructive",
+          })
+        }
       }
     }
 
@@ -8838,6 +9633,8 @@ function PublishProject({
       setTeamMemberIds,
       draftProjectId,
       pricingBudgetCents,
+      scopeType,
+      setScopeType,
     }),
     [
       projectScopeMethods,
@@ -8851,6 +9648,8 @@ function PublishProject({
       setTeamMemberIds,
       draftProjectId,
       pricingBudgetCents,
+      scopeType,
+      setScopeType,
     ]
   )
   //  Validate the current step when Next is clicked
@@ -8930,10 +9729,29 @@ function PublishProject({
           <ProjectInfoProvider value={projectInfoMethods}>
             <MediaProvider value={mediaMethods}>
               <ProjectScopeProvider value={projectScopeValue}>
-                <Sidebar />
+                <Sidebar
+                  hasFaqs={completedFaqCount >= 3}
+                  hasRecentQuestions={hasRecentQuestions}
+                  faqError={
+                    completedFaqCount < 3 &&
+                    (publishAttempted || faqs.length > 0)
+                  }
+                  faqModerationHasError={Boolean(faqModerationError)}
+                  projectInfoModerationHasError={Boolean(
+                    projectInfoModerationError
+                  )}
+                  publishAttempted={publishAttempted}
+                  questionsStarted={faqs.length > 0}
+                />
                 <div className="flex-auto bg-white min-w-0 overflow-x-hidden">
                   <Header
-                    onClose={() => router.back()}
+                    onClose={() => {
+                      if (window.history.length > 1) {
+                        router.back()
+                      } else {
+                        router.push("/my-listings")
+                      }
+                    }}
                     slug={slug}
                     lastSavedAt={lastSavedAt}
                     onPublish={handlePublish}
@@ -8982,6 +9800,9 @@ function PublishProject({
                           faqs={faqs}
                           setFaqs={setFaqs}
                           draftProjectId={draftProjectId}
+                          onRecentQuestionsChange={setHasRecentQuestions}
+                          publishAttempted={publishAttempted}
+                          moderationError={faqModerationError}
                         />
                       </Step>
                     </StepControl>
@@ -8999,10 +9820,19 @@ function PublishProject({
 
 export default function PublishRootProject() {
   const params = useParams<{ slug: string }>()
+  const router = useRouter()
+  const pathname = usePathname()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    if (!isAuthLoading && !user) {
+      router.replace(`/sign-in?redirect=${encodeURIComponent(pathname)}`)
+    }
+  }, [isAuthLoading, user, router, pathname])
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -9011,6 +9841,10 @@ export default function PublishRootProject() {
   }, [])
 
   if (!mounted) {
+    return null
+  }
+
+  if (!isAuthLoading && !user) {
     return null
   }
 

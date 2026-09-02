@@ -195,7 +195,7 @@ export const Dropzone = ({
   const [hasValidationError, toggleHasValidationError] = useToggle(false)
 
   useMount(() => {
-    const controlled = value !== undefined
+    const controlled = value !== undefined && value.length > 0
     if (controlled) {
       toggleIsDragAccept(true)
     }
@@ -519,7 +519,7 @@ export const Dropzone = ({
                 )}
 
                 <div className="flex justify-center items-center gap-x-1">
-                  <span className="text-xs leading-5 text-gray-600">
+                  <span className="text-sm leading-5 text-gray-600">
                     Drag and drop a cover image or
                   </span>
                   <Button size="md" variant="link" onClick={open} type="button">
@@ -694,7 +694,7 @@ export const SquareShapeDropzone = ({
   const [hasValidationError, toggleHasValidationError] = useToggle(false)
 
   useMount(() => {
-    const controlled = value !== undefined
+    const controlled = value !== undefined && value.length > 0
     if (controlled) {
       toggleIsDragAccept(true)
     }

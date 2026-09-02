@@ -14,7 +14,6 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
     if (isLoading) return
 
     if (!user) {
-      didOpenModal.current = true
       setPendingRedirect(pathname || "/")
       openAuthModal("sign-in")
       return
@@ -25,10 +24,20 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
     }
 
     const targetRoute = resolveDashboardRoute(user)
-    const isOnboardingRoute = pathname?.includes("onboarding")
+    const isOnboardingRoute = pathname?.startsWith("/onboarding")
 
     if (targetRoute.includes("onboarding")) {
-      if (pathname !== targetRoute) {
+      // A generic "/onboarding" target means no role has been committed to
+      // the backend yet — the role picker and either role's onboarding form
+      // are all valid pages at this stage. Only a role-specific target
+      // (set once the onboarding form itself submits) should force an exact
+      // route match, so a talent user who wanders onto /onboarding/client
+      // still gets bounced to /onboarding/talent.
+      const isGenericFallback = targetRoute === "/onboarding"
+      const shouldRedirect = isGenericFallback
+        ? !isOnboardingRoute
+        : pathname !== targetRoute
+      if (shouldRedirect) {
         router.push(targetRoute)
         return
       }
@@ -47,6 +56,16 @@ const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     routeCheck()
   }, [user, isLoading, pathname])
+
+  // Only arm the "closed without logging in" check once the modal has
+  // actually committed as open — prevents a same-tick race where this
+  // effect reads a stale authModalOpen=false right after routeCheck
+  // requests the modal to open, which would fire router.back() instantly.
+  useEffect(() => {
+    if (authModalOpen && !user && !isLoading) {
+      didOpenModal.current = true
+    }
+  }, [authModalOpen, user, isLoading])
 
   // If user closed the modal without logging in, go back to previous page
   useEffect(() => {

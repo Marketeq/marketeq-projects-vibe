@@ -290,7 +290,7 @@ of Service regarding held funds.
 for engineers. How each regulation is enforced in code and process:
 NACHA ACH rules for bank transfers, Stripe payout compliance
 requirements, FinCEN BSA \$10,000 single-transaction threshold
-implementation, IRS 1099 \$600 YTD threshold hold logic, OFAC screening
+implementation, IRS 1099-K reporting threshold hold logic (NOT $600 --- see TS-01), OFAC screening
 on every payout attempt, jurisdiction-specific payout timing laws,
 W-9/W-8BEN collection requirements, crypto payout regulatory
 classification by jurisdiction.
@@ -418,7 +418,7 @@ language, scope boundaries, glossary, link index to all child documents.
 
 **CC-08 --- Compliance & Regulatory Reference (Engineering Version)** 🆕
 Written for engineers. How each regulation is implemented in code:
-FinCEN BSA \$10K threshold logic, IRS 1099 \$600 threshold hold, OFAC
+FinCEN BSA \$10K threshold logic, IRS 1099-K reporting threshold hold (NOT $600 --- see TS-01), OFAC
 screening integration, NACHA ACH rules, Stripe Financial Connections
 compliance scope, W-9/W-8BEN collection, jurisdiction-specific payout
 timing rules.

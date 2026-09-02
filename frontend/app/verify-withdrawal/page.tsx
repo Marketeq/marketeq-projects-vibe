@@ -14,7 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { MarketeqLogo } from "@/components/icons/marketeq-logo"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { Button } from "@/components/ui"
-import { Check, X } from "@blend-metrics/icons"
+import { Bank, Check, X } from "@blend-metrics/icons"
 
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 
@@ -26,7 +26,7 @@ const PAYOUT_SERVICE_URL = `${getPublicApiUrl()}/v1`
 
 type VerifyState =
   | { kind: "loading" }
-  | { kind: "success"; message: string; amountUsd?: string; netAmountUsd?: string; currency?: string; methodLabel?: string | null }
+  | { kind: "success"; message: string; payoutRequestId?: string; amountUsd?: string; netAmountUsd?: string; feeUsd?: string; currency?: string; methodLabel?: string | null }
   | { kind: "expired" }
   | { kind: "used" }
   | { kind: "invalid" }
@@ -115,9 +115,26 @@ function VerifyWithdrawal() {
           setState({
             kind: "success",
             message: data.message ?? "Your withdrawal has been confirmed and is being processed.",
-            amountUsd: data.amountUsd, netAmountUsd: data.netAmountUsd, currency: data.currency,
+            payoutRequestId: data.payoutRequestId,
+            amountUsd: data.amountUsd, netAmountUsd: data.netAmountUsd, feeUsd: data.feeUsd, currency: data.currency,
             methodLabel: data.methodLabel,
           })
+          // Notify any open Withdraw Funds modal on another tab in this browser
+          // so it flips to the confirmed/success state immediately.
+          const verifiedId = data.payoutRequestId ?? id
+          if (verifiedId) {
+            try {
+              const channel = new BroadcastChannel("marketeq:withdrawal-verified")
+              channel.postMessage({ payoutRequestId: verifiedId })
+              channel.close()
+            } catch { /* ignore */ }
+            try {
+              localStorage.setItem(
+                "marketeq:withdrawal-verified",
+                JSON.stringify({ payoutRequestId: verifiedId, at: Date.now() })
+              )
+            } catch { /* ignore */ }
+          }
           return
         }
         // AC-21.04: no matter which error, the underlying payout request is
@@ -175,27 +192,41 @@ function VerifyWithdrawal() {
               <div className="mx-auto size-14 rounded-full bg-success-100 flex items-center justify-center">
                 <Check className="size-7 text-success-600" />
               </div>
-              <h1 className="mt-5 text-2xl font-bold text-dark-blue-400 leading-none">Withdrawal Confirmed</h1>
-              <p className="mt-3 text-sm font-light text-gray-500">{state.message}</p>
-              {/* AC-20.01: amount + destination method shown on the success screen */}
-              {(state.amountUsd || state.methodLabel) && (
-                <dl className="mt-5 divide-y divide-gray-200 border border-gray-200 rounded-lg text-left">
-                  {state.amountUsd && (
-                    <div className="flex items-center justify-between px-4 py-3">
-                      <dt className="text-xs font-medium text-gray-500">Amount</dt>
-                      <dd className="text-sm font-semibold text-dark-blue-400">${state.netAmountUsd ?? state.amountUsd} {state.currency ?? "USD"}</dd>
-                    </div>
-                  )}
-                  {state.methodLabel && (
-                    <div className="flex items-center justify-between px-4 py-3">
-                      <dt className="text-xs font-medium text-gray-500">Sending to</dt>
-                      <dd className="text-sm font-semibold text-dark-blue-400">{state.methodLabel}</dd>
-                    </div>
-                  )}
-                </dl>
+              <h1 className="mt-5 text-2xl font-bold text-dark-blue-400 leading-none">Success!</h1>
+              {/* AC-20.01: amount + destination method shown on the success screen.
+                  feeUsd > 0 implies instant speed — speed itself isn't persisted,
+                  only used transiently to compute feeUsd at initiate() time. */}
+              <p className="mt-3 text-sm font-semibold text-dark-blue-400">
+                {state.amountUsd
+                  ? `Your $${state.netAmountUsd ?? state.amountUsd} withdrawal has been processed.`
+                  : state.message}
+              </p>
+
+              {(state.methodLabel || state.payoutRequestId) && (
+                <div className="mt-5 rounded-lg border border-gray-200 p-4 text-left flex items-start gap-x-3">
+                  <div className="size-9 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center shrink-0">
+                    <Bank className="size-4 text-dark-blue-400" />
+                  </div>
+                  <div className="min-w-0">
+                    {state.methodLabel && (
+                      <div className="text-sm font-bold text-dark-blue-400 break-words">{state.methodLabel}</div>
+                    )}
+                    {state.feeUsd != null && (
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {parseFloat(state.feeUsd) > 0 ? `$${state.feeUsd} fee · ETA about 15 minutes` : "No fee · ETA 1–2 business days"}
+                      </div>
+                    )}
+                    {state.payoutRequestId && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        Transaction ID <span className="font-mono font-semibold text-dark-blue-400 underline underline-offset-2">{state.payoutRequestId}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
+
               <div className="mt-8">
-                <Button onClick={() => router.push("/earnings?tab=payouts")}>View Payout History</Button>
+                <Button className="w-full" onClick={() => router.push("/earnings?tab=payouts")}>Return to Dashboard</Button>
               </div>
             </>
           )}

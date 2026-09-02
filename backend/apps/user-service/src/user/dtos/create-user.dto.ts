@@ -99,6 +99,11 @@ export class CreateUserDto {
   @IsString()
   timezone?: string;
 
+  @ApiPropertyOptional({ example: 'EUR', description: 'ES-06 region-based currency override' })
+  @IsOptional()
+  @IsString()
+  preferredCurrency?: string | null;
+
   @ApiPropertyOptional({ example : 'Full-time'})
   @IsOptional()
   @IsString()
@@ -152,6 +157,21 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   businessGoals?: string;
+
+  @ApiPropertyOptional({ example: 'Acme Construction' })
+  @IsOptional()
+  @IsString()
+  teamName?: string;
+
+  @ApiPropertyOptional({ example: 'acme.com' })
+  @IsOptional()
+  @IsString()
+  companyWebsite?: string;
+
+  @ApiPropertyOptional({ example: ['Collaboration', 'Transparency'] })
+  @IsOptional()
+  @IsArray()
+  workplaceValues?: string[];
 
   @ApiPropertyOptional({ example: 2 })
   @IsOptional()

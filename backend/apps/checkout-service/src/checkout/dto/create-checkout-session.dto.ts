@@ -8,7 +8,7 @@ import {
   IsPositive,
   IsString,
   Min,
-} from 'class-validator';
+} from "class-validator";
 
 export class CreateCheckoutSessionDto {
   @IsUUID()
@@ -19,13 +19,14 @@ export class CreateCheckoutSessionDto {
   @IsOptional()
   contractId?: string;
 
-  @IsEnum(['card', 'ach', 'wire'])
+  @IsEnum(['card', 'ach', 'wire', 'klarna'])
   @IsNotEmpty()
-  paymentMethod: 'card' | 'ach' | 'wire';
+  paymentMethod: 'card' | 'ach' | 'wire' | 'klarna';
 
   @IsOptional()
   @IsEnum(['full', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'])
-  installmentPlanOption?: 'full' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
+  installmentPlanOption?:
+    'full' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
 
   @IsOptional()
   @IsBoolean()
@@ -52,4 +53,12 @@ export class CreateCheckoutSessionDto {
   @IsNumber()
   @IsPositive()
   amount: number;
+
+  @IsOptional()
+  @IsString()
+  successUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  cancelUrl?: string;
 }

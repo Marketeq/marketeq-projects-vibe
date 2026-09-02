@@ -97,6 +97,12 @@ export class Project {
   @Column({ nullable: true })
   deliveryTime?: string;
 
+  // Generated column (see AddProjectTeamSizeDerived migration): distinct
+  // `roleName` count across scope[].tasks[]. Read-only — Postgres rejects any
+  // write to it, so insert/update must stay false.
+  @Column({ nullable: true, type: 'int', insert: false, update: false })
+  teamSize?: number;
+
   @Column({ nullable: true, type: 'int' })
   durationMonths?: number;
 
@@ -144,6 +150,7 @@ export class Project {
     answeredByRole?: string | null;
     assignedToUserId?: string | null;
     hidden?: boolean;
+    moderationFailed?: boolean;
   }>;
 
   @Column('jsonb', { default: [] })

@@ -51,6 +51,17 @@ export class UserSyncController {
     return this.userService.getInternalSummary(id);
   }
 
+  @ApiOperation({ summary: 'Get preferred display currency (ES-06, internal)' })
+  @Get(':id/currency-profile')
+  async getCurrencyProfile(
+    @Headers('x-internal-token') token: string | undefined,
+    @Param('id') id: string,
+  ) {
+    this.validateInternalToken(token);
+    const preferredCurrency = await this.userService.getPreferredCurrency(id);
+    return { preferredCurrency };
+  }
+
   @ApiOperation({ summary: 'Get internal user summary by email' })
   @Get('summary-by-email')
   getUserSummaryByEmail(

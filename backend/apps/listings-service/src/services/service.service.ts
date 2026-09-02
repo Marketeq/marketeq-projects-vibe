@@ -1,11 +1,13 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ClientProxy } from '@nestjs/microservices';
 import { Service } from './entities/service.entity';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { ListingStatus } from '../shared/enums/listing.enum';
 import { slugify } from '../shared/utils/slugify';
+import { UserProfileClient } from '../shared/user-profile/user-profile.client';
 
 @Injectable()
 export class ServicesService {
@@ -14,6 +16,9 @@ export class ServicesService {
   constructor(
     @InjectRepository(Service)
     private readonly repo: Repository<Service>,
+    @Inject('ALGOLIA_CLIENT')
+    private readonly algoliaClient: ClientProxy,
+    private readonly userProfileClient: UserProfileClient,
   ) {}
 
   findAll(status = ListingStatus.Published) {
@@ -29,7 +34,17 @@ export class ServicesService {
   async findBySlug(slug: string) {
     const item = await this.repo.findOne({ where: { slug, listingType: 'service' } });
     if (!item) throw new NotFoundException('Service not found');
-    return item;
+    if (item.status !== ListingStatus.Published && !item.publishedSnapshot) {
+      throw new NotFoundException('Service not found');
+    }
+    if (item.publishedSnapshot) {
+      Object.assign(item, item.publishedSnapshot);
+    }
+    const team = await this.userProfileClient.hydrateTeam(
+      item.teamMemberIds,
+      item.userId,
+    );
+    return { ...item, team };
   }
 
   async seedFromN8n(dto: Record<string, any>) {
@@ -70,6 +85,7 @@ export class ServicesService {
 
     const saved = await this.repo.save(item);
     this.logger.log(`Seeded service ${saved.id} from n8n`);
+    this.emitAlgoliaUpsert(saved);
     return { ...saved, _contentType: 'service' };
   }
 
@@ -118,12 +134,15 @@ export class ServicesService {
     });
     const saved = await this.repo.save(item);
     this.logger.log(`Created service ${saved.id} by user ${userId}`);
+    this.emitAlgoliaUpsert(saved);
     return saved;
   }
 
   async update(id: string, dto: UpdateServiceDto) {
     await this.findOne(id);
     await this.repo.update(id, dto);
+    const updated = await this.repo.findOne({ where: { id } });
+    if (updated) this.emitAlgoliaUpsert(updated);
     return this.findOne(id);
   }
 
@@ -131,6 +150,8 @@ export class ServicesService {
     await this.findOne(id);
     await this.repo.update(id, { status: ListingStatus.Published });
     this.logger.log(`Published service ${id}`);
+    const published = await this.repo.findOne({ where: { id } });
+    if (published) this.emitAlgoliaUpsert(published);
     return this.findOne(id);
   }
 
@@ -144,5 +165,31 @@ export class ServicesService {
     await this.findOne(id);
     await this.repo.delete(id);
     this.logger.log(`Deleted service ${id}`);
+    this.algoliaClient.emit<void>('listing.deleted', { id }).subscribe({
+      error: (err: Error) =>
+        this.logger.warn(`Failed to emit listing.deleted for ${id}: ${err.message}`),
+    });
+  }
+
+  private emitAlgoliaUpsert(service: Service): void {
+    const payload = {
+      id: String(service.id),
+      title: service.title,
+      description: service.shortDescription ?? service.description?.substring(0, 500) ?? null,
+      category: service.category ?? service.categories?.[0] ?? null,
+      categories: service.categories ?? [],
+      skills: service.skills ?? [],
+      tags: service.tags ?? [],
+      industries: service.industry ?? [],
+      priceMin: service.priceMin != null ? Number(service.priceMin) : null,
+      priceMax: service.priceMax != null ? Number(service.priceMax) : null,
+      status: service.status,
+      slug: service.slug,
+    };
+    const event = service.status === ListingStatus.Published ? 'listing.updated' : 'listing.created';
+    this.algoliaClient.emit<void>(event, payload).subscribe({
+      error: (err: Error) =>
+        this.logger.warn(`Failed to emit ${event} for ${service.id}: ${err.message}`),
+    });
   }
 }

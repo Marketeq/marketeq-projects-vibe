@@ -102,7 +102,7 @@ export default function All() {
               </div>
             </div>
             <div className="mt-6 grid grid-cols-5 gap-[15px]">
-              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer hover:shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300">
+              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer transition duration-300">
                 <div className="size-[35px] rounded-lg bg-gray-200" />
 
                 <div className="mt-5">
@@ -114,7 +114,7 @@ export default function All() {
                   </p>
                 </div>
               </article>
-              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer hover:shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300">
+              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer transition duration-300">
                 <div className="size-[35px] rounded-lg bg-gray-200" />
 
                 <div className="mt-5">
@@ -126,7 +126,7 @@ export default function All() {
                   </p>
                 </div>
               </article>
-              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer hover:shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300">
+              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer transition duration-300">
                 <div className="size-[35px] rounded-lg bg-gray-200" />
 
                 <div className="mt-5">
@@ -138,7 +138,7 @@ export default function All() {
                   </p>
                 </div>
               </article>
-              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer hover:shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300">
+              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer transition duration-300">
                 <div className="size-[35px] rounded-lg bg-gray-200" />
 
                 <div className="mt-5">
@@ -150,7 +150,7 @@ export default function All() {
                   </p>
                 </div>
               </article>
-              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer hover:shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300">
+              <article className="border border-gray-200 bg-white rounded-lg p-5 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] hover:ring-1 hover:ring-gray-200 cursor-pointer transition duration-300">
                 <div className="size-[35px] rounded-lg bg-gray-200" />
 
                 <div className="mt-5">

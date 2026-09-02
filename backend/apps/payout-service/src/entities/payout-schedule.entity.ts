@@ -36,6 +36,15 @@ export class PayoutSchedule {
   @Column({ name: 'custom_interval_days', type: 'smallint', nullable: true })
   customIntervalDays: number | null;
 
+  // US-72: optional window for a custom schedule — e.g. pause payouts during
+  // a planned absence without disabling the schedule outright. Both null by
+  // default (no window restriction, matches existing behavior).
+  @Column({ name: 'start_date', type: 'timestamptz', nullable: true })
+  startDate: Date | null;
+
+  @Column({ name: 'end_date', type: 'timestamptz', nullable: true })
+  endDate: Date | null;
+
   @Column({ name: 'threshold_usd', type: 'numeric', precision: 18, scale: 8, default: '50' })
   thresholdUsd: string;
 

@@ -5,7 +5,6 @@ import { cn } from "@/utils/functions"
 import { useControllableState, useDeferredValue } from "@/utils/hooks"
 import { Check, ChevronDown, SearchMd } from "@blend-metrics/icons"
 import { type DialogProps } from "@radix-ui/react-dialog"
-import axios from "axios"
 import { Command as CommandPrimitive } from "cmdk"
 import { useAsync } from "react-use"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -251,15 +250,6 @@ export function OwnCombobox({
   )
 }
 
-const instance = axios.create({
-  baseURL: "https://restcountries.com/v3.1",
-})
-
-const getCountries = async <TData,>(url: string) => {
-  const { data } = await instance.get<TData>(url)
-  return data
-}
-
 export interface Country {
   flags: Flags
   name: Name
@@ -307,14 +297,51 @@ const POPULAR_COUNTRIES = [
 
 const popularSet = new Set(POPULAR_COUNTRIES)
 
+const FALLBACK_COUNTRY_CODES: Array<{ common: string; cca2: string }> = [
+  { common: 'United States', cca2: 'US' },
+  { common: 'United Kingdom', cca2: 'GB' },
+  { common: 'Canada', cca2: 'CA' },
+  { common: 'India', cca2: 'IN' },
+  { common: 'Germany', cca2: 'DE' },
+  { common: 'Australia', cca2: 'AU' },
+  { common: 'Brazil', cca2: 'BR' },
+  { common: 'Philippines', cca2: 'PH' },
+  { common: 'Ukraine', cca2: 'UA' },
+  { common: 'Poland', cca2: 'PL' },
+  { common: 'Pakistan', cca2: 'PK' },
+]
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  USA: 'United States',
+  US: 'United States',
+  UK: 'United Kingdom',
+}
+
+const FALLBACK_COUNTRIES: Country[] = FALLBACK_COUNTRY_CODES.map(
+  ({ common, cca2 }) => ({
+    cca2,
+    flags: {
+      png: `https://flagcdn.com/36x27/${cca2.toLowerCase()}.png`,
+      svg: `https://flagcdn.com/${cca2.toLowerCase()}.svg`,
+      alt: common,
+    },
+    name: {
+      common,
+      official: common,
+      nativeName: {},
+    },
+  })
+)
+
 // Cache fetched countries so we don't re-fetch on every mount.
 export let countriesCache: Country[] | null = null
 
 /** Get flag image URL for a country name (requires countries to be loaded) */
 export function getFlagUrlByName(countryName: string): string | null {
-  if (!countriesCache) return null
-  const country = countriesCache.find(
-    (c) => c.name.common.toLowerCase() === countryName.toLowerCase()
+  const normalizedCountryName = COUNTRY_ALIASES[countryName] ?? countryName
+  const country = (countriesCache ?? FALLBACK_COUNTRIES).find(
+    (c) =>
+      c.name.common.toLowerCase() === normalizedCountryName.toLowerCase()
   )
   if (!country) return null
   return getFlagUrl(country)
@@ -379,6 +406,18 @@ const COUNTRY_CODES: Record<string, string> = {
   Greece: "gr",
 }
 
+const STATIC_COUNTRIES: Country[] = Object.entries(COUNTRY_CODES).map(
+  ([name, code]) => ({
+    name: { common: name, official: name, nativeName: {} },
+    cca2: code.toUpperCase(),
+    flags: {
+      png: `https://flagcdn.com/w320/${code}.png`,
+      svg: `https://flagcdn.com/${code}.svg`,
+      alt: name,
+    },
+  })
+)
+
 /**
  * Flag URL for a country name that works without the countries API loaded,
  * using a static flag CDN. Falls back to the loaded-countries lookup.
@@ -424,20 +463,26 @@ export const CountriesCombobox = ({
   placeholder,
   triggerClassName,
   defaultValue,
+  contentClassName,
+  contentSideOffset,
+  disabled,
 }: {
   value?: string
   onValueChange?: (country: string) => void
   placeholder?: string
   triggerClassName?: string
   defaultValue?: string
+  /** Matches the disabled prop every other form control exposes. */
+  disabled?: boolean
+  /** Override the popover width. Defaults to the 202px chip popover. */
+  contentClassName?: string
+  /** Gap between trigger and popover. Defaults to the PopoverContent 8px. */
+  contentSideOffset?: number
 }) => {
   const data = useAsync(async () => {
     if (countriesCache) return countriesCache
-    const result = await getCountries<Country[]>(
-      "/all?fields=id,name,flags,cca2"
-    )
-    countriesCache = result
-    return result
+    countriesCache = STATIC_COUNTRIES
+    return countriesCache
   }, [])
 
   const [open, setOpen] = React.useState(false)
@@ -452,14 +497,16 @@ export const CountriesCombobox = ({
     if (!open) setSearchQuery("")
   }, [open])
 
-  const selectedCountry = data.value?.find(
-    (country) => country.name.common === state
+  const countries = data.value?.length ? data.value : FALLBACK_COUNTRIES
+  const normalizedState = state ? COUNTRY_ALIASES[state] ?? state : state
+
+  const selectedCountry = countries.find(
+    (country) => country.name.common === normalizedState
   )
 
   const sorted = React.useMemo(() => {
-    if (!data.value) return { popular: [], rest: [] }
-    return sortCountries(data.value)
-  }, [data.value])
+    return sortCountries(countries)
+  }, [countries])
 
   const listRef = React.useRef<HTMLDivElement>(null)
   const isSearching = searchQuery.trim().length > 0
@@ -506,8 +553,9 @@ export const CountriesCombobox = ({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
+          disabled={disabled}
           className={cn(
-            "bg-gray-100 focus-visible:outline-none pr-2 p-[5px] border border-gray-300 border-dashed rounded-[5px] inline-flex items-center gap-x-1.5",
+            "bg-gray-100 focus-visible:outline-none pr-2 p-[5px] border border-gray-300 border-dashed rounded-[5px] inline-flex items-center gap-x-1.5 disabled:cursor-not-allowed disabled:opacity-50",
             triggerClassName
           )}
         >
@@ -553,7 +601,13 @@ export const CountriesCombobox = ({
           <ChevronDown className="group-data-[state=open]:inline-block hidden size-[18px] shrink-0 text-gray-500" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[202px] pb-2 px-0 pt-0 z-50 bg-white border-gray-100 rounded-lg border shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
+      <PopoverContent
+        sideOffset={contentSideOffset}
+        className={cn(
+          "w-[202px] pb-2 px-0 pt-0 z-50 bg-white border-gray-100 rounded-lg border shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]",
+          contentClassName
+        )}
+      >
         <Command>
           <CommandInput
             placeholder="Search"

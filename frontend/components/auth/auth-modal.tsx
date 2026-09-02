@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   mergeDashboardUserFields,
@@ -141,8 +141,8 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
 
       <div className="mt-5">
         <div className="grid gap-y-3">
-          <GoogleLoginButton onSuccess={() => { closeAuthModal(); onClose(); if (pendingRedirect) { router.push(pendingRedirect); setPendingRedirect(null); } }} />
-          <LinkedInLoginButton onSuccess={() => { closeAuthModal(); onClose(); if (pendingRedirect) { router.push(pendingRedirect); setPendingRedirect(null); } }} />
+          <GoogleLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
+          <LinkedInLoginButton onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
         </div>
 
         <div className="mt-5 flex gap-x-[9px] items-center">
@@ -165,7 +165,7 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
             <Input
               placeholder="you@email.com"
               {...register("email")}
-              isInvalid={hookFormHasError(errors, "email")}
+              isInvalid={hookFormHasError({ errors, name: "email" })}
             />
             <HookFormErrorMessage
               errors={errors}
@@ -181,7 +181,7 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
                 type={isVisible ? "text" : "password"}
                 placeholder="enter your password"
                 {...register("password")}
-                isInvalid={hookFormHasError(errors, "password")}
+                isInvalid={hookFormHasError({ errors, name: "password" })}
               />
               <InputRightElement>
                 <button type="button" onClick={toggleIsVisible} className="focus:outline-none">
@@ -206,15 +206,22 @@ function SignInForm({ onSwitchToSignUp, onClose }: { onSwitchToSignUp: () => voi
                 control={control}
                 name="rememberMe"
                 render={({ field }) => (
-                  <Checkbox
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
+                  <>
+                    <Checkbox
+                      id="rememberMe"
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                    <Label
+                      htmlFor="rememberMe"
+                      className="font-normal text-gray-400 cursor-pointer"
+                      size="sm"
+                    >
+                      Keep me signed in
+                    </Label>
+                  </>
                 )}
               />
-              <Label className="font-normal text-gray-400" size="sm">
-                Keep me signed in
-              </Label>
             </div>
             <Button
               className="underline"
@@ -283,6 +290,11 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
           closeAuthModal()
           onClose()
           setShowSecuritySettings(true)
+          // Mirror app/sign-up/page.tsx: a brand-new signup must go through
+          // onboarding (role selection etc.), not be left on whatever page
+          // the popup happened to be opened from.
+          router.push(pendingRedirect ?? "/onboarding")
+          setPendingRedirect(null)
           reset()
         } else {
           setFormError("Something went wrong. Please try again.")
@@ -324,8 +336,8 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
 
       <div className="mt-5">
         <div className="grid gap-y-3">
-          <GoogleLoginButton onSuccess={() => { closeAuthModal(); onClose(); if (pendingRedirect) { router.push(pendingRedirect); setPendingRedirect(null); } }} />
-          <LinkedInLoginButton onSuccess={() => { closeAuthModal(); onClose(); if (pendingRedirect) { router.push(pendingRedirect); setPendingRedirect(null); } }} />
+          <GoogleLoginButton mode="sign-up" onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
+          <LinkedInLoginButton mode="sign-up" onSuccess={(user) => { closeAuthModal(); onClose(); router.push(pendingRedirect ?? resolveDashboardRoute(user)); setPendingRedirect(null); }} />
         </div>
 
         <div className="mt-5 flex gap-x-[9px] items-center">
@@ -348,7 +360,7 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
             <Input
               placeholder="you@email.com"
               {...register("email")}
-              isInvalid={hookFormHasError(errors, "email")}
+              isInvalid={hookFormHasError({ errors, name: "email" })}
             />
             <HookFormErrorMessage
               errors={errors}
@@ -362,16 +374,23 @@ function SignUpForm({ onSwitchToSignIn, onClose }: { onSwitchToSignIn: () => voi
               control={control}
               name="agreesToTermsPrivacyPolicy"
               render={({ field }) => (
-                <Checkbox
-                  checked={field.value}
-                  onCheckedChange={field.onChange}
-                  className="mt-0.5"
-                />
+                <>
+                  <Checkbox
+                    id="agreesToTerms"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    className="mt-0.5"
+                  />
+                  <Label
+                    htmlFor="agreesToTerms"
+                    className="font-normal text-gray-400 leading-5 cursor-pointer"
+                    size="sm"
+                  >
+                    I agree to Marketeq's Terms of Use and Privacy Policy
+                  </Label>
+                </>
               )}
             />
-            <Label className="font-normal text-gray-400 leading-5" size="sm">
-              I agree to Marketeq's Terms of Use and Privacy Policy
-            </Label>
           </div>
           <HookFormErrorMessage
             errors={errors}
@@ -428,14 +447,16 @@ export function AuthModal({
 }) {
   const [view, setView] = useState<"sign-in" | "sign-up">(defaultView)
 
-  // Reset view when modal opens
-  const handleOpenChange = (isOpen: boolean) => {
-    if (isOpen) setView(defaultView)
-    onOpenChange(isOpen)
-  }
+  // Reset view whenever the modal opens with a (possibly new) default. A
+  // plain onOpenChange handler only fires on Radix-internal close events
+  // (Escape, overlay click), not when a parent flips `open` externally —
+  // so the reset has to live here instead.
+  useEffect(() => {
+    if (open) setView(defaultView)
+  }, [open, defaultView])
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[408px]">
         {view === "sign-in" ? (
           <SignInForm onSwitchToSignUp={() => setView("sign-up")} onClose={() => onOpenChange(false)} />

@@ -9,6 +9,7 @@ import { OffersController } from './offers.controller';
 import { OffersService } from './offers.service';
 import { RolesGuard } from '../guards/roles.guard';
 import { OfferPartyGuard } from '../guards/offer-party.guard';
+import { ListingOwnerGuard } from '../guards/listing-owner.guard';
 import { OfferActionGuard } from './guards/offer-action.guard';
 import { IdempotencyInterceptor } from '../interceptors/idempotency.interceptor';
 import { OutboxModule } from '../outbox/outbox.module';
@@ -25,6 +26,7 @@ import { OfferHistoryModule } from '../offer-history/offer-history.module';
     OffersService,
     RolesGuard,
     OfferPartyGuard,
+    ListingOwnerGuard,
     OfferActionGuard,
     IdempotencyInterceptor,
   ],

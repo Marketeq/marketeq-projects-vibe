@@ -1,7 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
-export type PaymentMethod = 'card' | 'ach' | 'wire';
-export type PaymentStatus = 'pending' | 'success' | 'failed' | 'cancelled' | 'refunded';
+export type PaymentMethod = 'card' | 'ach' | 'wire' | 'klarna';
+export type PaymentStatus =
+  'pending' | 'success' | 'failed' | 'cancelled' | 'refunded';
 export type InstallmentPlan = 'full' | 'monthly' | 'biweekly';
 
 @Entity('checkout_sessions')
@@ -27,13 +34,25 @@ export class CheckoutSession {
   @Column({ nullable: true })
   stripeSubscriptionId: string;
 
-  @Column({ type: 'enum', enum: ['card', 'ach', 'wire'], default: 'card' })
+  @Column({
+    type: 'enum',
+    enum: ['card', 'ach', 'wire', 'klarna'],
+    default: 'card',
+  })
   paymentMethod: PaymentMethod;
 
-  @Column({ type: 'enum', enum: ['pending', 'success', 'failed', 'cancelled', 'refunded'], default: 'pending' })
+  @Column({
+    type: 'enum',
+    enum: ['pending', 'success', 'failed', 'cancelled', 'refunded'],
+    default: 'pending',
+  })
   status: PaymentStatus;
 
-  @Column({ type: 'enum', enum: ['full', 'monthly', 'biweekly'], default: 'full' })
+  @Column({
+    type: 'enum',
+    enum: ['full', 'monthly', 'biweekly'],
+    default: 'full',
+  })
   installmentPlan: InstallmentPlan;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })

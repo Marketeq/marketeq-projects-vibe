@@ -9,7 +9,8 @@ import { AppModule } from '../src/app.module';
 import { OfferStatus } from '../src/offers/enums/offer-status.enum';
 import { ContractType } from '../src/offers/enums/contract-type.enum';
 import { CounterOfferStatus } from '../src/counter-offers/enums/counter-offer-status.enum';
-import { SEED_USERS, SEED_LISTINGS, SEED_OFFERS, SEED_COUNTER_OFFERS } from './constants/seed-ids';
+import { OFFER_EVENTS } from '../src/messaging/events/offer-events';
+import { SEED_USERS, SEED_LISTINGS, SEED_OFFERS, SEED_COUNTER_OFFERS, SEED_HISTORY } from './constants/seed-ids';
 
 const ALLOWED_ENVS = ['development', 'test', 'local'];
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
@@ -80,9 +81,148 @@ async function seed(): Promise<void> {
     { id: SEED_COUNTER_OFFERS.ROUND_1, offer_id: SEED_OFFERS.CO_MULTI_ROUND, submitted_by: 'CLIENT', submitted_by_id: SEED_USERS.CLIENT_A, status: CounterOfferStatus.SUPERSEDED, rate: 125, currency_code: 'USD', duration_months: 12, work_schedule: fullTime, start_date: futureDate(30), message: '$125 is our budget for this role.', expires_at: nowMinusDays(5), superseded_at: nowMinusDays(5) },
   ]);
 
+  console.log('[seed] Inserting offer history...');
+  // Every row below carries the SAME key set (id, offer_id,
+  // counter_offer_id, event_type, actor, actor_id, terms, created_at),
+  // including explicit nulls where a field doesn't apply — insert()'s
+  // column list is derived from row 0 only, so a later row with an extra
+  // key that row 0 lacks would have that value silently dropped from the
+  // INSERT rather than persisted (confirmed against SEED_OFFERS.ACCEPTED's
+  // accepted_at/SEED_OFFERS.DECLINED's declined_at, which are NULL in the
+  // DB today for exactly this reason — a pre-existing gap in this insert()
+  // helper, not something this change fixes, just one this change avoids
+  // tripping over).
+  //
+  // terms is a JS object per row (not pre-stringified) — insert()'s own
+  // serialization (`typeof v === 'object' -> JSON.stringify(v)`) handles
+  // the whole nested object, workSchedule included, in one pass.
+  //
+  // event_type values are the real OFFER_EVENTS constants used at the
+  // matching outbox-write call sites in offers.service.ts /
+  // counter-offers.service.ts. Note: counter-offers.service.ts's
+  // create()/accept()/decline()/withdraw()/expireCO() and offers.service.ts's
+  // expire() only ever write to outbox, never to offer_history — only
+  // edit()/COUNTER_EDITED does. So OFFER_EVENTS.COUNTERED and
+  // OFFER_EVENTS.EXPIRED below use real, correct constants, but a live
+  // counter-offer submission or offer expiry would NOT actually produce a
+  // history row like this today. Flagged as a finding, not fixed here —
+  // out of scope for seeding test data the frontend can render against.
+  const coMultiRoundStartDate = futureDate(30);
+  const acceptedStartDate = futureDate(7);
+  const declinedStartDate = futureDate(14);
+  const expiredStartDate = futureDate(30);
+
+  await insert('offer_history', [
+    // --- CO_MULTI_ROUND: created, then three countered rounds ---
+    {
+      id: SEED_HISTORY.CO_MULTI_ROUND_CREATED,
+      offer_id: SEED_OFFERS.CO_MULTI_ROUND,
+      counter_offer_id: null,
+      event_type: OFFER_EVENTS.CREATED,
+      actor: 'CLIENT',
+      actor_id: SEED_USERS.CLIENT_A,
+      terms: { rate: 120, currencyCode: 'USD', durationMonths: 12, workSchedule: { type: 'FULL_TIME' }, startDate: coMultiRoundStartDate, message: 'This is a senior role with significant ownership.' },
+      created_at: nowMinusDays(7),
+    },
+    {
+      id: SEED_HISTORY.CO_MULTI_ROUND_COUNTERED_1,
+      offer_id: SEED_OFFERS.CO_MULTI_ROUND,
+      counter_offer_id: SEED_COUNTER_OFFERS.ROUND_1,
+      event_type: OFFER_EVENTS.COUNTERED,
+      actor: 'CLIENT',
+      actor_id: SEED_USERS.CLIENT_A,
+      terms: { rate: 125, currencyCode: 'USD', durationMonths: 12, workSchedule: { type: 'FULL_TIME' }, startDate: coMultiRoundStartDate, message: '$125 is our budget for this role.' },
+      created_at: nowMinusDays(6),
+    },
+    {
+      id: SEED_HISTORY.CO_MULTI_ROUND_COUNTERED_2,
+      offer_id: SEED_OFFERS.CO_MULTI_ROUND,
+      counter_offer_id: SEED_COUNTER_OFFERS.ROUND_2,
+      event_type: OFFER_EVENTS.COUNTERED,
+      actor: 'TALENT',
+      actor_id: SEED_USERS.TALENT_X,
+      terms: { rate: 145, currencyCode: 'USD', durationMonths: 12, workSchedule: { type: 'FULL_TIME' }, startDate: coMultiRoundStartDate, message: '$145/hr is my rate for this seniority.' },
+      created_at: nowMinusDays(5),
+    },
+    {
+      id: SEED_HISTORY.CO_MULTI_ROUND_COUNTERED_3,
+      offer_id: SEED_OFFERS.CO_MULTI_ROUND,
+      counter_offer_id: SEED_COUNTER_OFFERS.ROUND_3,
+      event_type: OFFER_EVENTS.COUNTERED,
+      actor: 'CLIENT',
+      actor_id: SEED_USERS.CLIENT_A,
+      terms: { rate: 135, currencyCode: 'USD', durationMonths: 12, workSchedule: { type: 'FULL_TIME' }, startDate: coMultiRoundStartDate, message: 'Final offer: $135/hr.' },
+      created_at: nowMinusDays(2),
+    },
+    // --- ACCEPTED: created, then accepted (TALENT) ---
+    {
+      id: SEED_HISTORY.ACCEPTED_CREATED,
+      offer_id: SEED_OFFERS.ACCEPTED,
+      counter_offer_id: null,
+      event_type: OFFER_EVENTS.CREATED,
+      actor: 'CLIENT',
+      actor_id: SEED_USERS.CLIENT_B,
+      terms: { rate: 120, currencyCode: 'USD', durationMonths: 3, workSchedule: { type: 'CUSTOM', hoursPerWeek: 30 }, startDate: acceptedStartDate, message: null },
+      created_at: nowMinusDays(5),
+    },
+    {
+      id: SEED_HISTORY.ACCEPTED_ACCEPTED,
+      offer_id: SEED_OFFERS.ACCEPTED,
+      counter_offer_id: null,
+      event_type: OFFER_EVENTS.ACCEPTED,
+      actor: 'TALENT',
+      actor_id: SEED_USERS.TALENT_Y,
+      terms: { rate: 120, currencyCode: 'USD', durationMonths: 3, workSchedule: { type: 'CUSTOM', hoursPerWeek: 30 }, startDate: acceptedStartDate, message: null },
+      created_at: nowMinusDays(2),
+    },
+    // --- DECLINED: created, then declined (TALENT) ---
+    {
+      id: SEED_HISTORY.DECLINED_CREATED,
+      offer_id: SEED_OFFERS.DECLINED,
+      counter_offer_id: null,
+      event_type: OFFER_EVENTS.CREATED,
+      actor: 'CLIENT',
+      actor_id: SEED_USERS.CLIENT_A,
+      terms: { rate: 85, currencyCode: 'USD', durationMonths: 12, workSchedule: { type: 'FULL_TIME' }, startDate: declinedStartDate, message: null },
+      created_at: nowMinusDays(3),
+    },
+    {
+      id: SEED_HISTORY.DECLINED_DECLINED,
+      offer_id: SEED_OFFERS.DECLINED,
+      counter_offer_id: null,
+      event_type: OFFER_EVENTS.DECLINED,
+      actor: 'TALENT',
+      actor_id: SEED_USERS.TALENT_Z,
+      terms: { rate: 85, currencyCode: 'USD', durationMonths: 12, workSchedule: { type: 'FULL_TIME' }, startDate: declinedStartDate, message: null },
+      created_at: nowMinusDays(1),
+    },
+    // --- EXPIRED: created (CLIENT), then expired (SYSTEM, actor_id null) ---
+    {
+      id: SEED_HISTORY.EXPIRED_CREATED,
+      offer_id: SEED_OFFERS.EXPIRED,
+      counter_offer_id: null,
+      event_type: OFFER_EVENTS.CREATED,
+      actor: 'CLIENT',
+      actor_id: SEED_USERS.CLIENT_B,
+      terms: { rate: 90, currencyCode: 'USD', durationMonths: 3, workSchedule: { type: 'CUSTOM', hoursPerWeek: 30 }, startDate: expiredStartDate, message: null },
+      created_at: nowMinusDays(13),
+    },
+    {
+      id: SEED_HISTORY.EXPIRED_EXPIRED,
+      offer_id: SEED_OFFERS.EXPIRED,
+      counter_offer_id: null,
+      event_type: OFFER_EVENTS.EXPIRED,
+      actor: 'SYSTEM',
+      actor_id: null,
+      terms: { rate: 90, currencyCode: 'USD', durationMonths: 3, workSchedule: { type: 'CUSTOM', hoursPerWeek: 30 }, startDate: expiredStartDate, message: null },
+      created_at: nowMinusDays(10),
+    },
+  ]);
+
   console.log('[seed] Seed complete.');
   console.log(`[seed] Offers: ${Object.keys(SEED_OFFERS).length}`);
   console.log(`[seed] Counter offers: 4`);
+  console.log(`[seed] History events: 10`);
   await app.close();
 }
 

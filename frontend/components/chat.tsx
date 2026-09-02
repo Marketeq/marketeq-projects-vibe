@@ -25,7 +25,7 @@ import { useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import {
   Avatar,
-  AvatarFallbackIcon,
+  AvatarFallback,
   AvatarImage,
   Badge,
   Button,
@@ -211,7 +211,17 @@ export const UserDetail = ({
               "User"
             }
           />
-          <AvatarFallbackIcon />
+          <AvatarFallback>
+            {conversation.isGroup
+              ? (conversation.group?.name?.[0] ?? "G").toUpperCase()
+              : (
+                  conversation.participantName ||
+                  conversation.participantUsername ||
+                  "Unknown"
+                )
+                  .charAt(0)
+                  .toUpperCase()}
+          </AvatarFallback>
         </Avatar>
         <div
           onClick={(e) => e.stopPropagation()}
@@ -415,7 +425,7 @@ export const UserDetail = ({
                         {() => (
                           <Favorite
                             onClick={(e) => e.stopPropagation()}
-                            className="fill-transparent transition duration-300 size-[22px] text-dark-blue-400/50 hover:text-dark-blue-400/50"
+                            className="fill-transparent transition-colors duration-300 ease-out size-[22px] text-dark-blue-400/50 hover:text-dark-blue-400 data-[state=on]:text-warning-300 data-[state=on]:fill-warning-300 data-[state=on]:hover:text-warning-300 data-[state=on]:hover:fill-warning-300"
                             starClassName="size-[18px]"
                           />
                         )}
@@ -443,7 +453,7 @@ export const UserDetail = ({
                   {() => (
                     <Favorite
                       onClick={(e) => e.stopPropagation()}
-                      className="fill-transparent transition duration-300 size-[22px] text-dark-blue-400/50 hover:text-dark-blue-400/50"
+                      className="fill-transparent transition-colors duration-300 ease-out size-[22px] text-dark-blue-400/50 hover:text-dark-blue-400 data-[state=on]:text-warning-300 data-[state=on]:fill-warning-300 data-[state=on]:hover:text-warning-300 data-[state=on]:hover:fill-warning-300"
                       starClassName="size-[18px]"
                     />
                   )}
@@ -463,6 +473,7 @@ export const Chat = ({
   className,
   onClick,
   pinned: pinnedProp,
+  onPinnedChange,
   starred,
   onStarredChange,
   onMarkUnread,
@@ -475,7 +486,10 @@ export const Chat = ({
   const { showPinnedIcon } = useChatsContext()
   const [localPinned, setLocalPinned] = useState(false)
   const isPinned = pinnedProp ?? localPinned
-  const setIsPinned = (v: boolean) => setLocalPinned(v)
+  const setIsPinned = (v: boolean) => {
+    setLocalPinned(v)
+    onPinnedChange?.(v)
+  }
 
   const detailProps = {
     pinned: isPinned,

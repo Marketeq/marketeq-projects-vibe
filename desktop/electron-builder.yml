@@ -93,8 +93,8 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Marketeq Time Tracker
-  installerIcon: resources/icon.png
-  uninstallerIcon: resources/icon.png
+  installerIcon: resources/icon.ico
+  uninstallerIcon: resources/icon.ico
   artifactName: 'Marketeq-Setup-win-${arch}.${ext}'
   include: resources/installer.nsh
 

@@ -15,16 +15,55 @@ import { getPublicApiUrl } from "@/lib/runtime-urls"
 export interface TalentUser {
   id: string
   username?: string
+  name?: string
   firstName?: string
   lastName?: string
   avatarUrl?: string
   userType?: string
+  availability?: string | null
   location?: string
+  country?: string
+  rate?: number | null
   rateMin?: number | null
   rateMax?: number | null
-  jobTitles?: Array<{ jobTitle?: string; isDefault?: boolean; saveAsDefault?: boolean }>
+  jobTitles?: Array<
+    | {
+        jobTitle?: string
+        title?: string
+        isDefault?: boolean
+        saveAsDefault?: boolean
+      }
+    | string
+  >
   recentJobTitle?: string | null
-  skills?: Array<{ name: string }>
+  skills?: Array<{ name?: string } | string>
+  overview?: Record<string, any> | null
+  rating?: number | null
+  reviewsCount?: number | null
+  totalProjectsCompleted?: number | null
+  aiMatchScore?: number
+  aiMatchedSkills?: string[]
+  aiReason?: string
+}
+
+export interface TalentRecommendationRequest {
+  roleTitle: string
+  workType?: string
+  description?: string
+  deliverables?: string
+  successCriteria?: string
+  skills?: string[]
+  locations?: string[]
+  experienceLevels?: string[]
+  workSchedules?: string[]
+  hourlyRate?: string
+  limit?: number
+}
+
+export interface TalentRecommendationResponse {
+  aiStatus: "OK" | "AI_UNAVAILABLE" | "NO_TALENT"
+  recommendations: TalentUser[]
+  message?: string
 }
 
 let cache: Promise<TalentUser[]> | null = null
@@ -33,6 +72,24 @@ function fetchTalentUsers(): Promise<TalentUser[]> {
   if (cache) return cache
   const apiBase = getPublicApiUrl() || "http://localhost:4000"
   cache = (async () => {
+    try {
+      const publicRes = await fetch(`${apiBase}/public/talent?limit=100`)
+      if (publicRes.ok) {
+        const publicData = await publicRes.json()
+        const publicTalents = Array.isArray(publicData?.data)
+          ? publicData.data
+          : Array.isArray(publicData)
+            ? publicData
+            : []
+
+        if (publicTalents.length > 0) {
+          return publicTalents as TalentUser[]
+        }
+      }
+    } catch {
+      // Fall through to the older browse endpoint below.
+    }
+
     try {
       const res = await fetch(`${apiBase}/talent/users`)
       if (!res.ok) return []
@@ -89,7 +146,9 @@ export function talentToCardProps(
     "Design Systems",
     "Interaction Design",
   ]
-  const skillNames = (u.skills ?? []).map((s) => s.name).filter(Boolean)
+  const skillNames = (u.skills ?? [])
+    .map((s) => (typeof s === "string" ? s : s?.name))
+    .filter(Boolean) as string[]
   const skills =
     skillNames.length >= 6
       ? skillNames
@@ -98,32 +157,50 @@ export function talentToCardProps(
           ...defaultSkills.filter((d) => !skillNames.includes(d)),
         ].slice(0, 12)
 
+  const jobTitleLabels = (u.jobTitles ?? [])
+    .map((jobTitle: any) =>
+      typeof jobTitle === "string"
+        ? jobTitle
+        : jobTitle?.jobTitle || jobTitle?.title || jobTitle?.headline || ""
+    )
+    .filter(Boolean)
   const role =
-    u.jobTitles?.find((j: any) => j?.isDefault || j?.saveAsDefault)?.jobTitle ||
-    u.jobTitles?.[0]?.jobTitle ||
+    (u.jobTitles ?? []).find(
+      (
+        j
+      ): j is {
+        jobTitle?: string
+        title?: string
+        isDefault?: boolean
+        saveAsDefault?: boolean
+      } => typeof j !== "string" && Boolean(j?.isDefault || j?.saveAsDefault)
+    )?.jobTitle ||
+    jobTitleLabels[0] ||
     u.recentJobTitle ||
     "Marketing Technologist"
 
-  const rate =
-    u.rateMin && u.rateMax
+  const rate = u.rate
+    ? `$${u.rate}`
+    : u.rateMin && u.rateMax
       ? `$${u.rateMin} - $${u.rateMax}`
       : u.rateMin
         ? `$${u.rateMin}`
         : "$85 - $120"
+  const [firstNameFallback] = (u.name ?? "").trim().split(/\s+/)
 
   return {
     id: u.id,
     username: u.username ?? "",
-    name: u.firstName ?? "Talent",
+    name: u.firstName ?? firstNameFallback ?? "Talent",
     handle: u.username ? `@${u.username}` : "@talent",
     role,
     photo: u.avatarUrl || "/man.jpg",
     rate,
     experience: "5 years of experience",
-    country: u.location || "Australia",
+    country: u.country || u.location || "Australia",
     localTime: "7:30pm local time",
-    rating: 4.7,
-    projects: 2,
+    rating: u.rating ?? 4.7,
+    projects: u.totalProjectsCompleted ?? u.reviewsCount ?? 2,
     // Tag every 5th talent in a list as an "All Star" so the badge still
     // renders without DB-side support — purely visual until the field exists.
     allStars: idx % 5 === 0,
@@ -149,4 +226,91 @@ export function useTalentUsers(): {
     }
   }, [])
   return { talents, isLoading }
+}
+
+export function useRecommendedTalentUsers(
+  request: TalentRecommendationRequest | null
+): {
+  talents: TalentUser[]
+  aiStatus: TalentRecommendationResponse["aiStatus"] | "IDLE" | "ERROR"
+  message: string
+  isLoading: boolean
+} {
+  const [talents, setTalents] = useState<TalentUser[]>([])
+  const [aiStatus, setAiStatus] = useState<
+    TalentRecommendationResponse["aiStatus"] | "IDLE" | "ERROR"
+  >("IDLE")
+  const [message, setMessage] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const requestKey = JSON.stringify(request)
+  const [loadedRequestKey, setLoadedRequestKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!request) {
+      setTalents([])
+      setAiStatus("IDLE")
+      setMessage("")
+      setIsLoading(false)
+      setLoadedRequestKey(null)
+      return
+    }
+
+    let cancelled = false
+    const apiBase = getPublicApiUrl() || "http://localhost:4000"
+
+    setTalents([])
+    setAiStatus("IDLE")
+    setMessage("")
+    setIsLoading(true)
+    fetch(`${apiBase}/public/talent/recommendations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Unable to load AI talent recommendations.")
+        }
+
+        return (await response.json()) as TalentRecommendationResponse
+      })
+      .then((data) => {
+        if (cancelled) return
+        setTalents(
+          Array.isArray(data.recommendations) ? data.recommendations : []
+        )
+        setAiStatus(data.aiStatus)
+        setMessage(data.message ?? "")
+        setLoadedRequestKey(requestKey)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setTalents([])
+        setAiStatus("ERROR")
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to load AI talent recommendations."
+        )
+        setLoadedRequestKey(requestKey)
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [requestKey])
+
+  const hasFreshRecommendations = loadedRequestKey === requestKey
+
+  return {
+    talents: hasFreshRecommendations ? talents : [],
+    aiStatus,
+    message,
+    isLoading: isLoading || Boolean(request && !hasFreshRecommendations),
+  }
 }

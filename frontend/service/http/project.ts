@@ -122,6 +122,14 @@ export const ProjectAPI = {
       { question }
     )
   },
+  SuggestSkills: (input: {
+    description?: string
+    category?: string
+    tags?: string[]
+    scopeTaskTitles?: string[]
+  }) => {
+    return AxiosRequest.post(`${LISTINGS_BASE}/publish/suggest-skills`, input)
+  },
   ReplaceProjectScope: (
     projectId: string,
     scope: Array<{
@@ -239,5 +247,10 @@ export const ProjectAPI = {
     const params = new URLSearchParams({ limit: String(limit) })
     if (skills.length) params.set("skills", skills.join(","))
     return AxiosRequest.get(`${LISTINGS_BASE}/v1/projects/recommended?${params}`)
+  },
+  GetSuggestedQuestions: (projectId: string) => {
+    return AxiosRequest.get(
+      `${LISTINGS_BASE}/v1/projects/${projectId}/suggested-questions`
+    )
   },
 }

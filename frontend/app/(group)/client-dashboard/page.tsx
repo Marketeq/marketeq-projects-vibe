@@ -1,11 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { ROLE } from "@/types/user"
 import { UserAPI } from "@/service/http/user"
+import { getClientContracts } from "@/src/lib/api/contracts"
+import type { ContractStatus as ApiContractStatus } from "@/src/lib/api/contracts"
 import { cn } from "@/utils/functions"
 import {
   ArrowRight,
@@ -15,9 +17,11 @@ import {
   ChevronRight,
   Clock,
   Download,
+  Bank,
   Edit03,
+  Phone,
+  UserCircle,
   MapPin,
-  MoreHorizontal,
   Plus,
   Share06,
   Star,
@@ -29,6 +33,12 @@ import { useToggle } from "react-use"
 import { DashboardFooter } from "@/components/dashboard-footer"
 import NextLink from "@/components/next-link"
 import SecuritySettingsStepper from "@/components/security-settings"
+import { PhoneVerificationDialog } from "@/components/phone-verification-dialog"
+import { ClientStatusDialog } from "@/app/(group)/complete-client-profile/page"
+import {
+  BillingPaymentMethodsContent,
+  type BillingPaymentMethodsContentHandle,
+} from "@/app/(group)/payments/page"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   Accordion,
@@ -55,6 +65,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  CircularProgress,
 } from "@/components/ui"
 
 type DashboardProfile = {
@@ -64,6 +75,7 @@ type DashboardProfile = {
   lastName?: string | null
   username?: string | null
   avatarUrl?: string | null
+  phone?: string | null
   bio?: string | null
   overview?: string | null
   location?: string | null
@@ -83,13 +95,36 @@ interface Project {
   team: { image: string; alternativeText: string }[]
   status: string
   nextMilestone: string
+  /** Contract id and group, for the contract details link. */
+  contractId?: string
+  groupName?: string
 }
 
-const TableRow = ({ team, nextMilestone, projectName, status }: Project) => {
+const TableRow = ({
+  team,
+  nextMilestone,
+  projectName,
+  status,
+  contractId,
+  groupName,
+}: Project) => {
+  // Same target My Contracts uses for a contract title.
+  const detailsHref = contractId
+    ? `/active-project/${contractId}?title=${encodeURIComponent(
+        projectName
+      )}&group=${encodeURIComponent(groupName ?? projectName)}`
+    : "/my-contracts"
+
   return (
     <tr className="first:pt-3 last:pb-3">
-      <td className="px-6 py-3.5 text-sm leading-5 font-semibold text-dark-blue-400 inline-block truncate">
-        {projectName}
+      <td className="max-w-[260px] px-6 py-3.5 text-sm leading-5 font-semibold text-dark-blue-400">
+        <NextLink
+          href={detailsHref}
+          className="block truncate hover:underline"
+          title={projectName}
+        >
+          {projectName}
+        </NextLink>
       </td>
       <td className="px-6 py-2">
         <TooltipProvider>
@@ -140,34 +175,206 @@ const TableRow = ({ team, nextMilestone, projectName, status }: Project) => {
         </TooltipProvider>
       </td>
       <td className="px-6 py-[13px] items-center">
-        {status === "In Progress" ? (
+        {status === "In Progress" || status === "Active" ? (
           <Badge visual="success">{status}</Badge>
         ) : (
           <Badge visual="gray">{status}</Badge>
         )}
       </td>
       <td className="pl-6 pr-8 py-3.5">
-        <div className="gap-x-14 flex items-center justify-between">
-          <span className="text-sm whitespace-nowrap leading-5 text-gray-500">
-            {nextMilestone}
-          </span>
-          <Button
-            className="h-auto px-1.5 py-1 text-dark-blue-400"
-            visual="gray"
-            variant="ghost"
-          >
-            <MoreHorizontal className="size-[15px]" />
-          </Button>
-        </div>
+        <span className="text-sm whitespace-nowrap leading-5 text-gray-500">
+          {nextMilestone}
+        </span>
       </td>
     </tr>
   )
 }
 
+/**
+ * Recent Contracts data.
+ *
+ * Reads the same `getClientContracts` endpoint the My Contracts page uses, so
+ * the dashboard and that page agree. Talent names/avatars are resolved from
+ * the user profile because a contract only carries `talentId`. Nothing is
+ * invented: an unresolved talent falls back to the avatar initial, never to a
+ * placeholder name or photo.
+ */
+const RECENT_CONTRACTS_LIMIT = 5
+
+const CONTRACT_STATUS_LABEL: Record<ApiContractStatus, string> = {
+  ACTIVE: "Active",
+  PENDING: "Pending",
+  ENDED: "Ended",
+  CANCELED: "Canceled",
+  DISPUTED: "Disputed",
+}
+
+/**
+ * Mirrors the seed My Contracts falls back to when the contracts service
+ * returns nothing, so the dashboard and that page show the same contracts
+ * instead of the dashboard sitting empty beside a populated list.
+ */
+const SAMPLE_RECENT_CONTRACTS: Project[] = [
+  {
+    projectName:
+      "Redesigning and Optimizing Website for Enhanced User Experience.",
+    contractId: "c1",
+    groupName: "Website Redesign",
+    team: [
+      { image: "/man.jpg", alternativeText: "Sarah Chen" },
+      { image: "/images/avatar-1.png", alternativeText: "Alex Rivera" },
+      { image: "/images/avatar-2.png", alternativeText: "Jordan Lee" },
+      { image: "/man.jpg", alternativeText: "Chris Patel" },
+      { image: "/images/avatar-1.png", alternativeText: "Dana Kim" },
+      { image: "/images/avatar-2.png", alternativeText: "Nina Torres" },
+      { image: "/man.jpg", alternativeText: "Leo Park" },
+      { image: "/images/avatar-1.png", alternativeText: "Mia Johnson" },
+    ],
+    status: "Active",
+    nextMilestone: "$85/hr",
+  },
+  {
+    projectName: "Frontend Developer for Mobile App",
+    contractId: "c2",
+    groupName: "Website Redesign",
+    team: [{ image: "/man.jpg", alternativeText: "Alex Rivera" }],
+    status: "Active",
+    nextMilestone: "$95/hr",
+  },
+  {
+    projectName: "QA Engineer for Mobile App",
+    contractId: "c3",
+    groupName: "Website Redesign",
+    team: [{ image: "/man.jpg", alternativeText: "Jordan Lee" }],
+    status: "Pending",
+    nextMilestone: "$70/hr",
+  },
+  {
+    projectName:
+      "Redesigning and Optimizing Website for Enhanced User Experience.",
+    contractId: "c4",
+    groupName: "Website Services",
+    team: [
+      { image: "/man.jpg", alternativeText: "Chris Patel" },
+      { image: "/images/avatar-1.png", alternativeText: "Dana Kim" },
+      { image: "/images/avatar-2.png", alternativeText: "Sarah Chen" },
+      { image: "/man.jpg", alternativeText: "Alex Rivera" },
+      { image: "/images/avatar-1.png", alternativeText: "Jordan Lee" },
+      { image: "/images/avatar-2.png", alternativeText: "Nina Torres" },
+      { image: "/man.jpg", alternativeText: "Leo Park" },
+      { image: "/images/avatar-1.png", alternativeText: "Mia Johnson" },
+    ],
+    status: "Active",
+    nextMilestone: "$1,200/mo",
+  },
+  {
+    projectName: "Content Writer for SEO",
+    contractId: "c5",
+    groupName: "Website Services",
+    team: [{ image: "/man.jpg", alternativeText: "Dana Kim" }],
+    status: "Active",
+    nextMilestone: "$50/hr",
+  },
+]
+
+const useRecentContracts = (): Project[] => {
+  const { user } = useAuth()
+  const [rows, setRows] = useState<Project[]>(SAMPLE_RECENT_CONTRACTS)
+
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const contracts = await getClientContracts(user.id)
+        if (cancelled || !contracts.length) return
+
+        const recent = [...contracts]
+          .sort(
+            (a, b) =>
+              new Date(b.updatedAt ?? b.createdAt).getTime() -
+              new Date(a.updatedAt ?? a.createdAt).getTime()
+          )
+          .slice(0, RECENT_CONTRACTS_LIMIT)
+
+        // A contract carries one talent; the team is everyone contracted
+        // under the same group, which is what My Contracts shows per group.
+        const byGroup = new Map<string, string[]>()
+        for (const c of contracts) {
+          if (!c.talentId) continue
+          const members = byGroup.get(c.groupId) ?? []
+          if (!members.includes(c.talentId)) members.push(c.talentId)
+          byGroup.set(c.groupId, members)
+        }
+
+        // One lookup per distinct talent, not per contract.
+        const talentIds = Array.from(
+          new Set(
+            recent.flatMap(
+              (c) => byGroup.get(c.groupId) ?? [c.talentId].filter(Boolean)
+            )
+          )
+        )
+        const talents = new Map<string, { name: string; avatar: string }>()
+        await Promise.all(
+          talentIds.map(async (id) => {
+            try {
+              const res = await UserAPI.getProfile(id)
+              const p = res?.data
+              if (!p) return
+              const name =
+                [p.firstName, p.lastName].filter(Boolean).join(" ") ||
+                p.username ||
+                ""
+              if (name || p.avatarUrl) {
+                talents.set(id, { name, avatar: p.avatarUrl ?? "" })
+              }
+            } catch {
+              // Leave the talent unresolved; the row still renders.
+            }
+          })
+        )
+
+        if (cancelled) return
+        setRows(
+          recent.map((c) => {
+            const members = byGroup.get(c.groupId) ?? [c.talentId]
+            return {
+              projectName: c.title,
+              contractId: c.id,
+              groupName: c.title,
+              team: members.filter(Boolean).map((id) => {
+                const talent = talents.get(id)
+                return {
+                  image: talent?.avatar ?? "",
+                  alternativeText: talent?.name || "Team member",
+                }
+              }),
+              status: CONTRACT_STATUS_LABEL[c.status] ?? "Active",
+              nextMilestone: c.rate ? `$${c.rate}/hr` : "",
+            }
+          })
+        )
+      } catch {
+        // Contracts service unavailable — keep the seed, same as My Contracts.
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
+
+  return rows
+}
+
 const Table = () => {
+  const contracts = useRecentContracts()
+
   return (
     <>
-      <div className="overflow-x-auto scrollbar-none">
+      <div className="overflow-x-hidden">
         <table className="table-auto border-collapse w-full">
           <thead>
             <tr>
@@ -175,7 +382,7 @@ const Table = () => {
                 Contract Name
               </th>
               <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
-                Talent
+                Team
               </th>
               <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
                 Status
@@ -187,14 +394,20 @@ const Table = () => {
           </thead>
 
           <tbody>
-            <tr>
-              <td
-                colSpan={4}
-                className="px-6 py-10 text-center text-sm text-gray-400"
-              >
-                No contracts yet.
-              </td>
-            </tr>
+            {contracts.length ? (
+              contracts.map((contract, index) => (
+                <TableRow key={index} {...contract} />
+              ))
+            ) : (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="px-6 py-10 text-center text-sm text-gray-400"
+                >
+                  No contracts yet.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -225,13 +438,13 @@ const Welcome = ({
           </h1>
 
           <div className="flex items-center gap-x-3">
-            <NextLink href="/publish-project">
+            <NextLink href="/job-listing">
               <Button
                 className="text-dark-blue-400 bg-white xs:max-md:hidden"
                 variant="outlined"
                 visual="gray"
               >
-                <Plus className="size-3.5" /> Create a Project
+                <Plus className="size-3.5" /> Post a Job
               </Button>
             </NextLink>
             <Button
@@ -245,13 +458,13 @@ const Welcome = ({
           </div>
         </div>
 
-        <NextLink href="/publish-project" className="md:hidden">
+        <NextLink href="/job-listing" className="md:hidden">
           <Button
             className="text-dark-blue-400 bg-white"
             variant="outlined"
             visual="gray"
           >
-            <Plus className="size-3.5" /> Create a Project
+            <Plus className="size-3.5" /> Post a Job
           </Button>
         </NextLink>
       </div>
@@ -413,7 +626,7 @@ const RecentActivity = ({
 
   return (
     <Tabs defaultValue="Next Steps">
-      <TabsList className="w-full border-b-0">
+      <TabsList className="w-full justify-start border-b-0">
         <TabsTrigger value="Next Steps">
           Next Steps
           <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
@@ -527,16 +740,22 @@ const RecentActivity = ({
   )
 }
 
-const RightDrawer = ({ profile }: { profile?: DashboardProfile | null }) => {
+const RightDrawer = ({
+  profile,
+  ...handlers
+}: { profile?: DashboardProfile | null } & ProfileCtaHandlers) => {
   return (
     <>
-      <RightSidebarUpPart profile={profile} />
+      <RightSidebarUpPart profile={profile} {...handlers} />
       <RightSidebarDownPart />
     </>
   )
 }
 
-const Content = ({ profile }: { profile?: DashboardProfile | null }) => {
+const Content = ({
+  profile,
+  ...handlers
+}: { profile?: DashboardProfile | null } & ProfileCtaHandlers) => {
   const [isOpen, toggleIsOpen] = useToggle(false)
   return (
     <div className="flex-auto pt-3.5 px-3.5 md:pt-6 md:px-6 min-[1024px]:px-8 min-[1200px]:pl-[248px] min-[1024px]:pt-8 min-[1200px]:pr-[50px]">
@@ -547,7 +766,7 @@ const Content = ({ profile }: { profile?: DashboardProfile | null }) => {
           <RecentProjects />
         </div>
 
-        <RightSidebar profile={profile} />
+        <RightSidebar profile={profile} {...handlers} />
 
         <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
           <DialogContent
@@ -582,7 +801,7 @@ const Content = ({ profile }: { profile?: DashboardProfile | null }) => {
               className="w-full h-[calc(theme(size.full)-theme(size.12))]"
               scrollBar={<ScrollBar className="w-4 p-1" />}
             >
-              <RightDrawer profile={profile} />
+              <RightDrawer profile={profile} {...handlers} />
             </ScrollArea>
           </DialogContent>
         </Dialog>
@@ -607,13 +826,24 @@ const rightSidebarUpPartVariants = cva(
   }
 )
 
+type ProfileCtaHandlers = {
+  onCompleteProfile?: () => void
+  onVerifyPhone?: () => void
+  onVerifyPaymentMethod?: () => void
+}
+
 const RightSidebarUpPart = ({
   className,
   variant,
   profile,
-}: { className?: string; profile?: DashboardProfile | null } & VariantProps<
-  typeof rightSidebarUpPartVariants
->) => {
+  onCompleteProfile,
+  onVerifyPhone,
+  onVerifyPaymentMethod,
+}: {
+  className?: string
+  profile?: DashboardProfile | null
+} & ProfileCtaHandlers &
+  VariantProps<typeof rightSidebarUpPartVariants>) => {
   const { user } = useAuth()
   const displayUser = profile || user
   const fullName =
@@ -633,6 +863,22 @@ const RightSidebarUpPart = ({
     ? profile.lookingToWorkWith
     : []
   const rating = profile?.clientSuccessRating ?? null
+
+  // Profile completion drives the card CTA: below 100 it reads
+  // "Complete My Profile" and shows the progress ring; at 100 it becomes
+  // "Edit My Profile" and the ring is hidden.
+  const completionChecks = [
+    Boolean(displayUser?.avatarUrl),
+    Boolean(fullName),
+    Boolean(username),
+    Boolean(jobTitle),
+    Boolean(location),
+    Boolean(bio),
+    interests.length > 0,
+  ]
+  const profileCompletion = Math.round(
+    (completionChecks.filter(Boolean).length / completionChecks.length) * 100
+  )
   const memberSince = displayUser?.createdAt
     ? new Date(displayUser.createdAt).toLocaleDateString("en-US", {
         month: "short",
@@ -672,23 +918,76 @@ const RightSidebarUpPart = ({
             {fullName}
           </h1>
           {username && (
-            <p className="text-[13px] text-center leading-[15.73px] text-dark-blue-400">
+            <NextLink
+              href={
+                displayUser?.username
+                  ? `/client-profile?username=${encodeURIComponent(displayUser.username)}`
+                  : "/client-profile"
+              }
+              className="block text-[13px] text-center leading-[15.73px] text-dark-blue-400 transition-colors duration-300 hover:text-primary-500 hover:underline"
+            >
               {username}
-            </p>
+            </NextLink>
           )}
         </div>
 
         <div className="mt-5">
-          <NextLink href="/complete-profile">
-            <Button
-              className="w-full text-dark-blue-400 rounded-full"
-              size="md"
-              variant="outlined"
-            >
-              <Edit03 className="size-[15px]" /> Edit Profile
-            </Button>
-          </NextLink>
+          <Button
+            className="w-full gap-2 rounded-[4px] border-2 border-primary-500 text-primary-500 transition-colors duration-300 hover:bg-primary-500 hover:text-white"
+            size="md"
+            variant="outlined"
+            onClick={onCompleteProfile}
+          >
+            {profileCompletion === 100 ? (
+              <>
+                <Edit03 className="size-[15px]" /> Edit My Profile
+              </>
+            ) : (
+              <>
+                <UserCircle className="size-[15px]" /> Complete My Profile
+              </>
+            )}
+          </Button>
         </div>
+
+        {profileCompletion < 100 && (
+          <div className="mt-5 flex flex-col gap-3">
+            <div className="flex items-start gap-4">
+              <div className="relative size-[50px] shrink-0">
+                <CircularProgress
+                  className="absolute inset-0 text-primary-500"
+                  size={50}
+                  strokeWidth={5}
+                  value={profileCompletion}
+                />
+                <span className="absolute inset-0 flex items-center justify-center text-[11px] font-medium text-gray-700">
+                  {profileCompletion}%
+                </span>
+              </div>
+              <p className="flex-1 text-[13px] font-light text-dark-blue-400">
+                Companies with completed profiles are 3 times more likely to
+                attract top talent.
+              </p>
+            </div>
+
+            <div className="flex flex-col items-start gap-2">
+              <Button
+                className="gap-2 text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30 transition-colors duration-300 hover:text-primary-600 hover:decoration-primary-600"
+                variant="link"
+                onClick={onVerifyPhone}
+              >
+                <Phone className="size-[15px]" /> Verify Phone Number
+              </Button>
+              <Button
+                className="gap-2 text-[11px] font-semibold leading-6 text-primary-500 underline decoration-primary-500/30 transition-colors duration-300 hover:text-primary-600 hover:decoration-primary-600"
+                variant="link"
+                onClick={onVerifyPaymentMethod}
+              >
+                <Bank className="size-[15px]" /> Verify Payment Method
+              </Button>
+            </div>
+          </div>
+        )}
 
         <div className="mt-5 flex flex-col gap-y-2">
           {jobTitle && (
@@ -710,33 +1009,18 @@ const RightSidebarUpPart = ({
         </div>
       </div>
 
-      {(bio || interests.length > 0) && (
-        <div className="py-5 border-b border-gray-200">
-          {bio && (
-            <>
-              <h1 className="text-sm leading-[16.94px] font-bold text-dark-blue-400">
-                About
-              </h1>
-              <p className="mt-3 text-[13px] leading-[15.73px] text-dark-blue-400 line-clamp-2">
-                {bio}
-              </p>
-            </>
-          )}
-
-          {interests.length > 0 && (
-            <div className={bio ? "mt-5" : ""}>
-              <h1 className="text-sm leading-[16.94px] font-bold text-dark-blue-400">
-                My Interests
-              </h1>
-              <div className="flex flex-wrap mt-3 gap-2">
-                {interests.map((interest) => (
-                  <Badge key={interest} size="md" visual="gray">
-                    {interest}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
+      {interests.length > 0 && (
+        <div className="py-5">
+          <h1 className="text-sm leading-[16.94px] font-bold text-dark-blue-400">
+            My Interests
+          </h1>
+          <div className="flex flex-wrap mt-3 gap-2">
+            {interests.map((interest) => (
+              <Badge key={interest} size="md" visual="gray">
+                {interest}
+              </Badge>
+            ))}
+          </div>
         </div>
       )}
 
@@ -819,7 +1103,7 @@ const RightSidebarDownPart = ({
 
       <div className="mt-3">
         <Tabs defaultValue="Transactions">
-          <TabsList className="justify-center flex">
+          <TabsList className="justify-start flex">
             <TabsTrigger value="Transactions">Transactions</TabsTrigger>
             <TabsTrigger value="Invoices">
               Invoices
@@ -860,10 +1144,13 @@ const RightSidebarDownPart = ({
   )
 }
 
-const RightSidebar = ({ profile }: { profile?: DashboardProfile | null }) => {
+const RightSidebar = ({
+  profile,
+  ...handlers
+}: { profile?: DashboardProfile | null } & ProfileCtaHandlers) => {
   return (
     <div className="w-[322px] shrink-0 min-[1440px]:block hidden">
-      <RightSidebarUpPart variant="secondary" profile={profile} />
+      <RightSidebarUpPart variant="secondary" profile={profile} {...handlers} />
       <RightSidebarDownPart variant="secondary" />
     </div>
   )
@@ -878,6 +1165,26 @@ export default function ClientDashboard() {
   const router = useRouter()
   const [showSecurityModal, setShowSecurityModal] = useState(false)
   const [profile, setProfile] = useState<DashboardProfile | null>(null)
+  const [showCompleteProfile, setShowCompleteProfile] = useState(false)
+  const [showPhoneVerification, setShowPhoneVerification] = useState(false)
+
+  const handleCompleteProfile = useCallback(() => {
+    setShowCompleteProfile(true)
+  }, [])
+
+  const handleVerifyPhone = useCallback(() => {
+    setShowPhoneVerification(true)
+  }, [])
+
+  // Opens the billing add-payment-method dialog in place. The flow is mounted
+  // here in dialogs-only mode so the dashboard stays put behind it rather than
+  // navigating to billing, and the dialogs are the same ones billing uses.
+  const paymentMethodsRef = useRef<BillingPaymentMethodsContentHandle | null>(
+    null
+  )
+  const handleVerifyPaymentMethod = useCallback(() => {
+    paymentMethodsRef.current?.openAddPaymentMethodDialog()
+  }, [])
 
   const fetchProfile = useCallback(async (userId: string) => {
     try {
@@ -928,7 +1235,28 @@ export default function ClientDashboard() {
       )}
       <AuthenticatedRoute>
         <LeftSidebar forceRole="CLIENT" />
-        <Content profile={profile} />
+        <Content
+          profile={profile}
+          onCompleteProfile={handleCompleteProfile}
+          onVerifyPhone={handleVerifyPhone}
+          onVerifyPaymentMethod={handleVerifyPaymentMethod}
+        />
+
+        <ClientStatusDialog
+          open={showCompleteProfile}
+          onOpenChange={setShowCompleteProfile}
+        />
+
+        <BillingPaymentMethodsContent ref={paymentMethodsRef} dialogsOnly />
+
+        <PhoneVerificationDialog
+          open={showPhoneVerification}
+          onOpenChange={setShowPhoneVerification}
+          defaultPhone={profile?.phone ?? user?.phone ?? ""}
+          onVerified={() => {
+            if (user?.id) fetchProfile(user.id)
+          }}
+        />
       </AuthenticatedRoute>
     </>
   )

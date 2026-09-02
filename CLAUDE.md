@@ -28,14 +28,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **PR gate checks (posted as GitHub commit statuses):**
 1. `Jenkins / SOP Check` — mechanical SOP checker (secrets, junk files, off-limits login/profile files, env template branch mismatch, hardcoded login values, entity without migration, oversized PRs, `@ts-ignore` without justification). Blocks the PR on any violation.
-2. `Jenkins / AI Breakage Detector` — Claude Sonnet 4.6 regression detector. Reads the diff + callers of every changed symbol and specifically hunts for silent overwrites of working code.
-3. `Jenkins / Secret Scan` — gitleaks secret scanning on every PR.
-4. `Jenkins / Login Gate` — blocks PRs touching login/auth files unless repo owner approves.
-5. `Jenkins / Code Review` — AI code review on every PR to protected branches.
-6. `.github/CODEOWNERS` — directory-scoped ownership, auto-requests the right reviewers on every PR.
+2. `Jenkins / Deep Regression Check` — Claude Sonnet 4.6 deep regression detector. Reads full before/after files, traces import chains, checks API contracts, verifies data flows against REGRESSION_MANIFEST.json. BLOCKs PRs with critical regressions.
+3. `Jenkins / Branch Freshness` — blocks stale PRs. Detects when a branch is behind the base and has conflicting files (same file changed in both). Prevents regressions from merging outdated branches that silently overwrite newer code.
+4. `Jenkins / Secret Scan` — gitleaks secret scanning on every PR.
+5. `Jenkins / Login Gate` — blocks PRs touching login/auth files unless repo owner approves.
+6. `Jenkins / Code Review` — AI code review on every PR to protected branches.
+7. `.github/CODEOWNERS` — directory-scoped ownership, auto-requests the right reviewers on every PR.
 
 **Post-merge enforcement (triggered on push to protected branches):**
-7. `post-merge-audit` — auto-reverts merges that bypassed SOP checks.
+7. `post-merge-audit` — opens an urgent issue (assigned to @CTorres9800) for merges that bypassed SOP checks, and publicly flags the bypass. **Report only: it never modifies code.** No workflow, script, button, or agent may remove a developer's merged code. A failing check is fixed forward. See `CODE_REVIEW_SOP.md` §1.1 and §1.9.
 8. `login-violation-alert` — opens issues when login files are merged without owner approval.
 
 **Post-deploy automation:**
@@ -56,6 +57,10 @@ Marketeq is a freelance marketplace platform (similar to Upwork/Fiverr) built wi
 
 ### Backend (run from `backend/`)
 ```bash
+# IMPORTANT: RabbitMQ must be running BEFORE starting services.
+# Without it, services show "online" in PM2 but fail on every request.
+lsof -i :5672 || rabbitmq-server -detached  # ensure RabbitMQ is up first
+
 # Start all services via PM2 (local dev)
 npm run dev
 
@@ -63,6 +68,13 @@ npm run dev
 npm run dev:stop
 npm run dev:status
 npm run dev:logs
+
+# MANDATORY: After starting services, health-check the actual endpoints.
+# PM2 "online" does NOT mean the service is healthy. Always verify:
+curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/health  # api-gateway
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/health  # auth-service
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3002/health  # user-service
+# All must return 200. If any returns 000, check RabbitMQ and PM2 error logs.
 
 # Build all services (run from backend/ root — npm run build:all is broken on this monorepo)
 for svc in apps/*/src/main.ts; do npx nest build "$(echo $svc | cut -d'/' -f2)"; done
@@ -215,6 +227,38 @@ CMS events use a fan-out exchange (`cms.events`); each consumer binds its own du
 - **Auth**: JWT + Passport (Google, LinkedIn OAuth); cookies `access_token` / `refresh_token` / `session_id`
 - **Deployment**: Render (backend), Vercel (frontend)
 
+## Frontend Design System (ABSOLUTE LAW — ZERO EXCEPTIONS)
+
+**`frontend/COMPONENTS.md` is the ONLY source of allowed UI components. Every component in it comes from Storybook. Storybook is the single source of truth for all UI.**
+
+### What you MUST do:
+- **READ `frontend/COMPONENTS.md` before writing ANY frontend UI** — every time, no shortcuts
+- **ONLY use components listed in `frontend/COMPONENTS.md`** — base UI, shared modules, and page layouts
+- **Import components exactly as they are** — from `@/components/ui`, `@/components/*.tsx`, or `@/stories/*.stories.tsx`
+- **Match Storybook page layouts exactly** when building pages — Storybook stories are the layout source of truth
+- **Run `npm run storybook`** to see how components look and behave before using them
+
+### What you MUST NEVER do:
+- **NEVER create custom UI components** — no new component files, no inline UI component functions, no wrappers, no abstractions
+- **NEVER modify Storybook components** — `frontend/components/ui/`, `frontend/components/*.tsx`, and `frontend/stories/` are READ-ONLY. You import as-is, never edit
+- **NEVER touch the view applicants screen** — `frontend/app/(group)/job-screening/page.tsx` is FROZEN (locked 2026-08-26). Covers the applicant list and cards, filters and sorting, status handling, empty states, and every string. No refactors, no cleanup, no restyling. The ONLY permitted change is backend wiring that alters no class name, element, timing, or string. Anything else requires explicit @CTorres9800 approval.
+- **NEVER touch billing** — the entire `frontend/app/(group)/billing/` tree is FROZEN (locked 2026-08-26). This covers `page.tsx`, `transactions/`, `invoices/`, `my-plans/`, and `payment-methods/`. Money-facing screens: layout, table columns and ordering, status badges, currency and date formatting, empty states, filters, pagination, and every string. No refactors, no cleanup, no restyling, no "improving" the copy. The ONLY permitted change is backend wiring that alters no class name, element, timing, or string. Anything else requires explicit @CTorres9800 approval.
+- **NEVER touch the onboarding flow** — the entire `frontend/app/(group)/onboarding/` tree is FROZEN (locked 2026-08-26), enforced directory-wide: new files added under that path are frozen too, so a new file is not a way around it. This covers `page.tsx` (role picker), `talent/page.tsx`, and `client/page.tsx`, and everything in them: the five talent steps and their order, the step registry and numbering, the resume upload step and its reading modal (skeletons, shimmer, extraction feed, summary rows, Done button, error states and their copy), the autofill mapping from parse result into `stepData`, the avatar empty state (initials for a known name, icon otherwise), and every validation guard and error message. No refactors, no cleanup, no restyling, no re-timing of animations, no "improving" the copy. Every value was set deliberately. The ONLY permitted change is backend wiring that alters no class name, element, timing, or string. Anything else requires explicit @CTorres9800 approval.
+- **NEVER touch the active project task screen** — `frontend/app/(group)/active-project/[id]/page.tsx` is FROZEN (locked 2026-08-22). This covers the task tables, pinned section bars and column headers, the bulk-select bar, the create/edit task dialog, the checklist, the attachments views, and the components defined in that file (`AssigneePicker`, `TaskStatusMenu`, `TaskDueDatePicker`, `SortableTaskRow`, `StickySectionBar`). No refactors, no cleanup, no restyling, no spacing tweaks. Every value in it was set deliberately, **including every transition and animation** (section collapse, folder row slide, row reveal, drag states, toast/tooltip timing) — do not retime or remove them. The ONLY permitted change is backend wiring: replacing seeded data with API calls and hooking up no-op handlers, without altering any class name, element, or transition. Anything else requires explicit @CTorres9800 approval
+- **NEVER touch the Taxes screens** — `frontend/components/settings-tax-info.tsx` and `backend/apps/user-service/src/tax-info/` are FROZEN (locked 2026-08-29), the backend enforced directory-wide. These produce real IRS documents from real taxpayer data. Covers the W-9/W-8BEN certification text and its US/non-US switching, every validation rule and message, the read-only today-only signing date, the completeness rules gating submission, TIN encryption and last-4 masking, the verified IRS PDF field maps, and the guards that refuse to emit an incomplete form or a Copy A. The field maps were derived by rendering the official forms; a plausible-looking edit writes a value into the wrong box on a government form and nothing fails. The ONLY permitted change is backend wiring that alters no class name, element, timing, string, or PDF field mapping. Anything else requires explicit @CTorres9800 approval.
+- **NEVER modify the page or component you were sent to look at** — when you are told to check another page, screen, or component (to copy it, to match a width, spacing, colour, animation, or behaviour, or just to see how it works), that source is READ-ONLY for that task. Read it, take what you need, apply it where the work belongs, and leave the source byte-for-byte unchanged. This holds whether you were told to "copy", "check", "look at", "match", or "see how X does it", and it holds even when the source looks wrong, inconsistent, or improvable — a drive-by "fix" there is an unrequested change to a working screen. If the source genuinely needs a change, say so and let @CTorres9800 decide; do not make it. Applies to every engineer and every agent working in this repo.
+- **NEVER use raw HTML elements** (`<input>`, `<textarea>`, `<select>`, `<button>`, `<label>`, `<dialog>`) when a design system component exists
+- **NEVER use arbitrary Tailwind values** (e.g., `text-[13.5px]`) when a standard Tailwind class exists
+- **NEVER build UI that is not composed from components in `frontend/COMPONENTS.md`**
+
+### If a component you need does not exist in COMPONENTS.md:
+1. Stop. Do not build it.
+2. Ask the user what component to use.
+3. The user will either point you to an existing component you missed, or approve a new addition to Storybook (which is their decision, not yours).
+
+### Violation = Automatic Rejection
+Any code that creates custom UI components, modifies Storybook source, or uses elements not in COMPONENTS.md is automatically rejected.
+
 ## Code Standards (non-negotiable)
 - TypeScript strict mode everywhere
 - All DTOs must use `class-validator` decorators
@@ -239,6 +283,35 @@ scripts/convert-docs.sh                    # convert .docx → .md
 ```
 
 ## Git Workflow
+
+### 🛑 NEVER push without updating the branch first
+
+**This is absolute. It applies to every push, every time — including doc-only
+changes, one-line fixes, and the second and third push within a single session.**
+
+**A branch that is even one commit behind is stale. There is no acceptable
+number of commits to be behind other than zero.**
+
+Before every `git push`:
+
+```bash
+git fetch origin <branch>
+git rev-list --left-right --count origin/<branch>...HEAD   # left number MUST be 0
+```
+
+If the left number is not `0`, the branch is behind. Merge `origin/<branch>` in
+and resolve the conflicts **before** pushing. Never force-push past it.
+
+Why it matters: a push from a stale branch is how merged work silently
+disappears. "I fetched at the start of the session" is not updating — the branch
+can move between your first push and your next one, and a push that succeeds
+only because nobody else happened to push in that window is luck, not process.
+
+When resolving the resulting conflicts, follow the rule in `docs/CODE_REVIEW_SOP.md`:
+take the authoritative side wholesale rather than hand-blending two versions,
+then verify with `git diff <pre-merge-sha> -- <file>`.
+
+### Agent worktrees
 - Each agent works in its own worktree + branch: `agent/<service-name>`
 - After finishing: commit in worktree, then run `merge-agents.sh`
 - Branch naming: `agent/<service-name>`

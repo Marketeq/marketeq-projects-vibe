@@ -6,6 +6,8 @@ import { BalanceSnapshot }               from '../entities/balance-snapshot.enti
 import { BalanceResponseDto }            from './dto/balance-response.dto';
 import { CacheService, BalanceCacheEntry } from '../cache/cache.service';
 import { CurrencyService }               from '../currency/currency.service';
+import { EarningsPublisher }             from '../publishers/earnings.publisher';
+import { randomUUID }                    from 'crypto';
 
 @Injectable()
 export class BalanceService {
@@ -17,6 +19,7 @@ export class BalanceService {
     private readonly repo: Repository<BalanceSnapshot>,
     private readonly cache: CacheService,
     private readonly currency: CurrencyService,
+    private readonly publisher: EarningsPublisher,
   ) {}
 
   // ─── Endpoint: Create Balance ───────────────────────────────
@@ -81,6 +84,10 @@ export class BalanceService {
     dto.totalEarnedUsd          = entry.totalEarnedUsd;
     dto.totalPaidOutUsd         = entry.totalPaidOutUsd;
     dto.displayLabel            = display.stale ? this.DISPLAY_LABEL_STALE : this.DISPLAY_LABEL;
+    // US-08: an explicit boolean the frontend can key off directly, rather than
+    // string-matching displayLabel — currency.service.ts already computes this
+    // per-conversion, it just wasn't surfaced on the DTO before.
+    dto.stale                   = display.stale;
     dto.lastUpdatedAt           = entry.updatedAt;
     dto.cachedAt                = (entry as BalanceCacheEntry).cachedAt ?? new Date().toISOString();
     return dto;
@@ -88,6 +95,46 @@ export class BalanceService {
 
   async getBalanceRaw(contractorId: string): Promise<BalanceSnapshot | null> {
     return this.repo.findOne({ where: { contractorId } });
+  }
+
+  // ─── Instant withdrawal hold ─────────────────────────────────
+  // Called synchronously from payout-service the moment a withdrawal is
+  // confirmed (magic-link verified, about to be queued for execution) — the
+  // whole point is the contractor's available balance drops immediately,
+  // rather than waiting minutes/hours for the provider's completion webhook.
+  // The WHERE guard makes this atomic: two concurrent withdrawals can't both
+  // read a stale "sufficient" balance and double-spend it.
+  async holdForPayout(contractorId: string, amountUsd: string): Promise<{ ok: boolean; availableBalance?: string }> {
+    // HoldBalanceDto only validates numeric format, not sign — a negative
+    // amount would pass the WHERE guard below (available_balance >= a
+    // negative number is trivially true) and credit the balance instead of
+    // debiting it. Guarded here too, not just at the DTO, since this method
+    // isn't only reachable through the HTTP layer.
+    if (parseFloat(amountUsd) <= 0) return { ok: false };
+
+    const snapBefore = await this.repo.findOne({ where: { contractorId } });
+    const [rows]: [Array<{ available_balance: string }>, number] = await this.repo.manager.query(
+      `UPDATE balance_snapshots
+         SET available_balance = available_balance - $1::numeric,
+             pending_hold_usd  = pending_hold_usd + $1::numeric,
+             updated_at = NOW()
+       WHERE contractor_id = $2 AND available_balance >= $1::numeric AND $1::numeric > 0
+       RETURNING available_balance`,
+      [amountUsd, contractorId],
+    );
+    if (rows.length === 0) return { ok: false };
+    await this.cache.invalidateBalance(contractorId);
+
+    const snapAfter = await this.repo.findOne({ where: { contractorId } });
+    await this.publisher.publishBalanceUpdated({
+      contractorId, availableBalance: rows[0].available_balance,
+      previousBalance: snapBefore?.availableBalance ?? '0.00', delta: `-${amountUsd}`,
+      mutationType: 'payout_hold', sourceEventId: randomUUID(), sourceRoutingKey: 'internal.balance.hold',
+      displayCurrency: snapAfter?.displayCurrency ?? 'USD', localCurrency: snapAfter?.localCurrency ?? 'USD',
+      mutationAt: new Date().toISOString(),
+    });
+
+    return { ok: true, availableBalance: rows[0].available_balance };
   }
 
 }

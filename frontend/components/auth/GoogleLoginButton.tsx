@@ -13,8 +13,16 @@ import { GoogleDefault } from "@blend-metrics/icons/social"
 import { useGoogleLogin } from "@react-oauth/google"
 import { Button, useToast } from "@/components/ui"
 import { Spinner } from "../ui/spinner/spinner"
+import type { User } from "@/types/user"
+import { getOAuthErrorMessage } from "@/utils/auth-errors"
 
-const GoogleLoginButtonInner = ({ onSuccess }: { onSuccess?: () => void }) => {
+const GoogleLoginButtonInner = ({
+  onSuccess,
+  mode = "sign-in",
+}: {
+  onSuccess?: (user: User) => void
+  mode?: "sign-in" | "sign-up"
+}) => {
   const router = useRouter()
 
   const { setUser } = useAuth()
@@ -24,6 +32,9 @@ const GoogleLoginButtonInner = ({ onSuccess }: { onSuccess?: () => void }) => {
 
   const handleLoginWithGoogle = useGoogleLogin({
     scope: "openid email profile",
+    // Force the Google account chooser instead of silently reusing the last
+    // signed-in Google account after a Marketeq logout.
+    prompt: "select_account",
     onSuccess: (tokenResponse) => {
       const accessToken = tokenResponse?.access_token
 
@@ -59,26 +70,26 @@ const GoogleLoginButtonInner = ({ onSuccess }: { onSuccess?: () => void }) => {
               })
             }
             if (onSuccess) {
-              onSuccess()
+              onSuccess(nextUser as User)
             } else {
-              router.push(resolveDashboardRoute(nextUser as any))
+              router.replace(resolveDashboardRoute(nextUser as any))
             }
           }
         })
         .catch((error) => {
-          const msg =
-            error?.response?.data?.message ??
-            error?.response?.data?.errors?.message ??
-            error?.message ??
-            "Login failed"
           toast({
-            title: msg,
+            title: getOAuthErrorMessage(error),
             variant: "destructive",
           })
         })
         .finally(() => setIsLoading(false))
     },
-    onError: () => {},
+    onError: () => {
+      toast({
+        title: "Google sign-in was cancelled or failed. Please try again.",
+        variant: "destructive",
+      })
+    },
   })
 
   return (
@@ -99,14 +110,17 @@ const GoogleLoginButtonInner = ({ onSuccess }: { onSuccess?: () => void }) => {
         />
       ) : (
         <>
-          <GoogleDefault className="size-5 md:size-6" /> Sign in with Google
+          <GoogleDefault className="size-5 md:size-6" /> {mode === "sign-up" ? "Sign up with Google" : "Sign in with Google"}
         </>
       )}
     </Button>
   )
 }
 
-const GoogleLoginButton = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
+const GoogleLoginButton = ({
+  onSuccess,
+  mode = "sign-in",
+}: { onSuccess?: (user: User) => void; mode?: "sign-in" | "sign-up" } = {}) => {
   if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) {
     return (
       <Button
@@ -117,12 +131,12 @@ const GoogleLoginButton = ({ onSuccess }: { onSuccess?: () => void } = {}) => {
         disabled
         title="Google sign-in is not configured"
       >
-        <GoogleDefault className="size-5 md:size-6" /> Sign in with Google
+        <GoogleDefault className="size-5 md:size-6" /> {mode === "sign-up" ? "Sign up with Google" : "Sign in with Google"}
       </Button>
     )
   }
 
-  return <GoogleLoginButtonInner onSuccess={onSuccess} />
+  return <GoogleLoginButtonInner onSuccess={onSuccess} mode={mode} />
 }
 
 export default GoogleLoginButton

@@ -99,7 +99,8 @@ import {
 import { VscCode } from "react-icons/vsc"
 import { FiFigma } from "react-icons/fi"
 import { FaChrome, FaSlack, FaGithub, FaGoogle, FaTerminal, FaApple, FaSafari } from "react-icons/fa"
-import { createManualTime } from "@/service/http/manual-time"
+import { getManualTime } from "@/service/http/manual-time"
+import { AddManualTimeDialog } from "@/components/add-manual-time-dialog"
 import { createContractTask, getTasksForContract } from "@/service/http/tasks"
 import React from "react"
 
@@ -854,160 +855,6 @@ function TimeBlockCard({
 }
 
 // ─── Add Manual Time Dialog ─────────────────────────────────────────────
-
-function AddManualTimeDialog({
-  open,
-  onOpenChange,
-  onSaved,
-  contracts,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onSaved?: () => void
-  contracts?: Array<{ id: string; title: string }>
-}) {
-  const { toast } = useToast()
-  const [date, setDate] = useState("")
-  const [startTime, setStartTime] = useState("")
-  const [endTime, setEndTime] = useState("")
-  const [contract, setContract] = useState("")
-  const [task, setTask] = useState("")
-  const [notes, setNotes] = useState("")
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Add Manual Time</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4 py-2">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-dark-blue-400">
-              Date
-            </label>
-            <Input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              placeholder="Select Date"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-dark-blue-400">
-                Start Time
-              </label>
-              <Input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                placeholder="Enter start time"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-dark-blue-400">
-                End Time
-              </label>
-              <Input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                placeholder="Enter end time"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-dark-blue-400">
-              Contract
-            </label>
-            <Select value={contract} onValueChange={setContract}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Contract" />
-              </SelectTrigger>
-              <SelectContent>
-                {(contracts || []).map(c => (
-                  <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-dark-blue-400">
-              Task
-            </label>
-            <Select value={task} onValueChange={setTask}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select Task" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="editing">Editing Layouts</SelectItem>
-                <SelectItem value="logo">Creating logo</SelectItem>
-                <SelectItem value="wireframes">Wireframing</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-dark-blue-400">
-              Notes
-            </label>
-            <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Tell us what you worked on"
-              rows={3}
-            />
-          </div>
-
-          <p className="text-xs text-gray-400 flex items-center gap-1.5">
-            <HelpCircle className="size-3.5 flex-none" />
-            Manual time will appear in your timeline without screenshots and may
-            be subject to review or approval.
-          </p>
-        </div>
-
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outlined" visual="gray">
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button
-            disabled={!date || !startTime || !endTime || !contract}
-            onClick={async () => {
-              try {
-                const startISO = new Date(`${date}T${startTime}:00`).toISOString()
-                const endISO = new Date(`${date}T${endTime}:00`).toISOString()
-                if (new Date(endISO) <= new Date(startISO)) {
-                  toast({ title: "Invalid time", description: "End time must be after start time.", variant: "destructive" })
-                  return
-                }
-                await createManualTime({
-                  startTime: startISO,
-                  endTime: endISO,
-                  projectId: contract,
-                  taskId: task || undefined,
-                  notes: notes || undefined,
-                })
-                onOpenChange(false)
-                toast({ title: "Manual time added", description: `${startTime} – ${endTime}` })
-                onSaved?.()
-              } catch {
-                toast({ title: "Failed to add manual time", variant: "destructive" })
-              }
-            }}
-          >
-            Save
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
 
 // ─── Transfer Time Dialog (US-TT-013 + US-TT-021 Confirmation) ────────────
 function TransferTimeDialog({
@@ -3052,6 +2899,32 @@ export default function TimeTrackingPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [totalTime, setTotalTime] = useState("03:24")
   const [screenshotCount, setScreenshotCount] = useState(0)
+  // US-86: "+ Manual time" was hardcoded to a fixed "0:23hr" regardless of
+  // what the contractor actually logged — fabricated, never wired to
+  // GET /manual-time. Sums real entries within the currently applied
+  // date range (falls back to all entries when no range is set).
+  const [manualTimeLabel, setManualTimeLabel] = useState<string | null>(null)
+  const fetchManualTime = useCallback(async () => {
+    try {
+      const entries = await getManualTime()
+      const inRange = entries.filter((e) => {
+        if (dateFrom && e.startTime < dateFrom) return false
+        if (dateTo && e.startTime > dateTo) return false
+        return true
+      })
+      const totalMin = inRange.reduce((sum, e) => {
+        const mins = (new Date(e.endTime).getTime() - new Date(e.startTime).getTime()) / 60_000
+        return sum + Math.max(0, mins)
+      }, 0)
+      const hrs = Math.floor(totalMin / 60)
+      const mins = Math.round(totalMin % 60)
+      setManualTimeLabel(`${hrs}:${mins.toString().padStart(2, "0")}hr`)
+    } catch {
+      setManualTimeLabel(null)
+    }
+  }, [dateFrom, dateTo])
+
+  useEffect(() => { fetchManualTime() }, [fetchManualTime])
 
   // Fetch user time/display preferences from backend
   useEffect(() => {
@@ -3332,10 +3205,23 @@ export default function TimeTrackingPage() {
               <h1 className="text-xl font-bold text-dark-blue-400">
                 Total time <span className="text-2xl">{totalTime}</span>
               </h1>
-              <span className="text-sm text-gray-400">
-                + Manual time{" "}
-                <span className="font-bold text-primary-500">0:23hr</span>
-              </span>
+              {manualTimeLabel && (
+                <span className="text-sm text-gray-400">
+                  + Manual time{" "}
+                  <span className="font-bold text-primary-500">{manualTimeLabel}</span>
+                </span>
+              )}
+              {/* US-89: only shown when a single contract is selected — with
+                  "all" selected, contracts can have different rates, and
+                  picking one to display (or averaging) would be a guess. */}
+              {contractFilter !== "all" && realContracts.find((c) => c.id === contractFilter) && (
+                <span className="text-sm text-gray-400">
+                  Rate{" "}
+                  <span className="font-bold text-primary-500">
+                    ${realContracts.find((c) => c.id === contractFilter)!.rate}/hr
+                  </span>
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {!isClient && (
@@ -3685,8 +3571,7 @@ export default function TimeTrackingPage() {
       <AddManualTimeDialog
         open={showManualTimeDialog}
         onOpenChange={setShowManualTimeDialog}
-        onSaved={fetchScreenshots}
-        contracts={realContracts.map(c => ({ id: c.id, title: c.title }))}
+        onSaved={() => { fetchScreenshots(); fetchManualTime() }}
       />
 
       <TransferTimeDialog

@@ -18,6 +18,7 @@ import { BillingClient } from './services/billing.client';
 import { ReviewsClient } from './services/reviews.client';
 import { NotificationsClient } from './services/notifications.client';
 import { AuditLoggerService } from './services/audit-logger.service';
+import { TalentNetworkService } from './services/talent-network.service';
 
 // Import your entities
 import { Contract } from './entities/contract.entity';
@@ -36,7 +37,7 @@ import { JwtAuthGuard } from './middleware/jwt-auth.guard';
         type: 'postgres' as const,
         url: config.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
-        synchronize: config.get<string>('CONTRACTS_DATABASE_SYNCHRONIZE') === 'true',
+        synchronize: false,
         ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true'
           ? { rejectUnauthorized: false }
           : false,
@@ -61,6 +62,7 @@ import { JwtAuthGuard } from './middleware/jwt-auth.guard';
     ReviewsClient,
     NotificationsClient,
     AuditLoggerService,
+    TalentNetworkService,
     // Global JWT guard
     {
       provide: APP_GUARD,

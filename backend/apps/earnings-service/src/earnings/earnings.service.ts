@@ -18,6 +18,42 @@ export class EarningsService {
     private readonly currencySvc: CurrencyService,
   ) {}
 
+  // ─── Filter options: distinct projects/clients for this contractor ────
+  // Sourced from contract_label_cache directly (one row per contract this
+  // contractor has ever had), not from earnings rows — so the "All
+  // Projects"/"All Clients" filter dropdowns show the contractor's full
+  // project/client history regardless of the earnings table's current
+  // date-range filter, instead of only whatever happens to be on the
+  // currently-loaded page of (possibly date-filtered, possibly empty)
+  // earnings results.
+  async getFilterOptions(contractorId: string): Promise<{
+    projects: { id: string; name: string; handle: string | null }[]
+    clients: { id: string; label: string; handle: string | null }[]
+  }> {
+    const rows = await this.labelRepo.find({ where: { contractorId } });
+    const toHandle = (name: string | null) =>
+      name ? '@' + name.toLowerCase().replace(/[^a-z0-9]+/g, '') : null;
+    const projectMap = new Map<string, { name: string; handle: string | null }>();
+    const clientMap = new Map<string, { label: string; handle: string | null }>();
+    for (const r of rows) {
+      const handle = toHandle(r.clientDisplayName);
+      if (r.projectId && r.projectName) {
+        projectMap.set(r.projectId, { name: r.projectName, handle });
+      }
+      if (r.clientId && r.clientDisplayName) {
+        clientMap.set(r.clientId, { label: r.clientDisplayName, handle });
+      }
+    }
+    return {
+      projects: [...projectMap.entries()]
+        .map(([id, v]) => ({ id, name: v.name, handle: v.handle }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      clients: [...clientMap.entries()]
+        .map(([id, v]) => ({ id, label: v.label, handle: v.handle }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    };
+  }
+
   // ─── Endpoint 2: Earnings History ─────────────────────────────
   async getEarnings(contractorId: string, q: EarningsQueryDto, displayCurrency = 'USD') {
     const { startDate, endDate } = this.resolveDateRange(q);
@@ -37,10 +73,11 @@ export class EarningsService {
       qb.andWhere('ec.entryType = :et', { et: dbType });
     }
     if (q.status === 'failed') qb.andWhere('ec.status = :rev', { rev: 'reversed' });
+    if (q.status === 'paid') qb.andWhere('ec.status = :pd', { pd: 'paid' });
     if (q.search && q.search.length >= 2) {
       const term = `%${q.search.toLowerCase()}%`;
       qb.leftJoin(ContractLabelCache,'clcs','clcs.contractId = ec.contractId')
-        .andWhere('(LOWER(clcs.projectName) LIKE :t OR LOWER(clcs.clientDisplayName) LIKE :t)',{ t: term });
+        .andWhere('(LOWER(clcs.projectName) LIKE :t OR LOWER(clcs.clientDisplayName) LIKE :t OR LOWER(ec.taskName) LIKE :t)',{ t: term });
     } else if (q.search && q.search.length < 2) {
       throw new BadRequestException('Search term must be at least 2 characters');
     }
@@ -76,19 +113,39 @@ export class EarningsService {
         rawQb.andWhere('ec.entry_type = :et', { et: dbType });
       }
       if (q.status === 'failed') rawQb.andWhere('ec.status = :rev', { rev: 'reversed' });
+      if (q.status === 'paid') rawQb.andWhere('ec.status = :pd', { pd: 'paid' });
+      if (q.search && q.search.length >= 2) {
+        const term = `%${q.search.toLowerCase()}%`;
+        rawQb.leftJoin(ContractLabelCache,'clcs','clcs.contract_id = ec.contract_id')
+          .andWhere('(LOWER(clcs.project_name) LIKE :t OR LOWER(clcs.client_display_name) LIKE :t OR LOWER(ec.task_name) LIKE :t)',{ t: term });
+      } else if (q.search && q.search.length < 2) {
+        throw new BadRequestException('Search term must be at least 2 characters');
+      }
       rawQb.groupBy(truncFn).addGroupBy('ec.contract_id').addGroupBy('ec.status').addGroupBy('ec.entry_type')
-        .orderBy('period', 'DESC')
+        .orderBy('period', sortOrder.toUpperCase() as 'ASC' | 'DESC')
         .offset((page-1)*limit).limit(limit);
 
       const rawRows = await rawQb.getRawMany();
 
       // Count distinct groups
       const countQb = this.earningsRepo.createQueryBuilder('ec')
-        .select(`COUNT(DISTINCT (${truncFn}, ec.contract_id))`, 'cnt')
+        .select(`COUNT(DISTINCT (${truncFn}, ec.contract_id, ec.status, ec.entry_type))`, 'cnt')
         .where('ec.contractor_id = :cid', { cid: contractorId });
       if (startDate) countQb.andWhere('ec.work_start_at >= :s', { s: startDate });
       if (endDate) countQb.andWhere('ec.work_start_at <= :e', { e: endDate + 'T23:59:59Z' });
       if (q.status !== 'failed') countQb.andWhere('ec.status != :rev', { rev: 'reversed' });
+      if (q.status === 'failed') countQb.andWhere('ec.status = :rev', { rev: 'reversed' });
+      if (q.status === 'paid') countQb.andWhere('ec.status = :pd', { pd: 'paid' });
+      if (q.projectId) countQb.andWhere('ec.project_id = :pid', { pid: q.projectId });
+      if (q.entryType) {
+        const dbType = q.entryType === 'automated' ? 'screenshot' : 'manual';
+        countQb.andWhere('ec.entry_type = :et', { et: dbType });
+      }
+      if (q.search && q.search.length >= 2) {
+        const term = `%${q.search.toLowerCase()}%`;
+        countQb.leftJoin(ContractLabelCache,'clcs','clcs.contract_id = ec.contract_id')
+          .andWhere('(LOWER(clcs.project_name) LIKE :t OR LOWER(clcs.client_display_name) LIKE :t OR LOWER(ec.task_name) LIKE :t)',{ t: term });
+      }
       const countResult = await countQb.getRawOne();
       const total = parseInt(countResult?.cnt ?? '0', 10);
 
@@ -102,11 +159,11 @@ export class EarningsService {
         const net = parseFloat(r.totalNet ?? '0');
         const periodStart = new Date(r.periodStart);
         return {
-          id: `${r.period}-${r.contractId}`,
+          id: `${r.period}-${r.contractId}-${r.status}-${r.entryType}`,
           date: null,
           weekRange: view === 'weekly' ? this.fmtWeek(periodStart) : null,
           month: view === 'monthly' ? this.fmtMonth(periodStart) : null,
-          project: lbl ? { id: lbl.projectId, name: lbl.projectName, clientHandle: '@' + lbl.clientDisplayName } : null,
+          project: lbl ? { id: lbl.projectId, name: lbl.projectName, clientId: lbl.clientId, clientHandle: '@' + lbl.clientDisplayName } : null,
           task: null,
           startTime: null, endTime: null,
           durationMinutes: mins,
@@ -221,9 +278,12 @@ export class EarningsService {
     const feeRaw = parseFloat(row.feeAmount);
     const feePercent = grossRaw > 0 ? ((feeRaw / grossRaw) * 100).toFixed(1) : '0.0';
     const feeLabel = `Marketeq Service Fee (${feePercent}%)`;
+    // Display-only rounding — row.fxRateToUsd itself stays full-precision
+    // (8 decimals) for the actual gross/fee/net conversions above.
+    const fxRateDisplay = parseFloat(row.fxRateToUsd).toFixed(2);
     const fxPair = row.currency === 'USD'
-      ? `1 USD = ${row.fxRateToUsd} USD (rate locked at contract creation)`
-      : `1 ${row.currency} = ${row.fxRateToUsd} USD (rate locked at contract creation)`;
+      ? `1 USD = ${fxRateDisplay} USD (rate locked at contract creation)`
+      : `1 ${row.currency} = ${fxRateDisplay} USD (rate locked at contract creation)`;
 
     return {
       id: row.id, transactionId: row.transactionId, contractorId: row.contractorId,
@@ -276,7 +336,7 @@ export class EarningsService {
       .select('COALESCE(SUM(CAST(ec.netAmountUsd AS numeric)), 0)', 'ytd')
       .addSelect('MAX(ec.createdAt)', 'lastEarning')
       .where('ec.contractorId = :uid', { uid: userId })
-      .andWhere('ec.status = :s', { s: 'confirmed' })
+      .andWhere('ec.status != :rev', { rev: 'reversed' })
       .andWhere('ec.workStartAt >= :from', { from })
       .andWhere('ec.workStartAt <= :to', { to })
       .getRawOne();
@@ -325,7 +385,7 @@ export class EarningsService {
     const feeRow = await this.earningsRepo.createQueryBuilder('ec')
       .select('ec.grossAmount', 'gross').addSelect('ec.feeAmount', 'fee')
       .where('ec.contractorId = :id', { id: contractorId })
-      .andWhere('ec.status = :s', { s: 'confirmed' })
+      .andWhere('ec.status != :rev', { rev: 'reversed' })
       .orderBy('ec.workStartAt', 'DESC').limit(1).getRawOne();
     return feeRow && parseFloat(feeRow.gross) > 0
       ? ((parseFloat(feeRow.fee) / parseFloat(feeRow.gross)) * 100).toFixed(1) : '20.0';
@@ -361,7 +421,7 @@ export class EarningsService {
       .select('COALESCE(SUM(ec.netAmountUsd),0)','totalUsd')
       .addSelect('COALESCE(SUM(ec.durationMinutes),0)','durationMinutes')
       .where('ec.contractorId = :cid',{cid:contractorId})
-      .andWhere('ec.status = :status',{status:'confirmed'});
+      .andWhere('ec.status != :rev',{rev:'reversed'});
     if (from) qb.andWhere('ec.workStartAt >= :from',{from});
     if (to) qb.andWhere('ec.workStartAt < :to',{to});
     const r = await qb.getRawOne();
@@ -401,7 +461,7 @@ export class EarningsService {
       id:row.id, date:view==='daily'?this.fmtDate(row.workStartAt):null,
       weekRange:view==='weekly'?this.fmtWeek(row.workStartAt):null,
       month:view==='monthly'?this.fmtMonth(row.workStartAt):null,
-      project:lbl?{id:row.projectId,name:lbl.projectName,clientHandle:'@'+lbl.clientDisplayName}:null,
+      project:lbl?{id:row.projectId,name:lbl.projectName,clientId:lbl.clientId,clientHandle:'@'+lbl.clientDisplayName}:null,
       task:view==='daily'?{id:row.taskId,name:(row as any).taskName||null}:null,
       startTime:view==='daily'?this.fmtTime(row.workStartAt):null,
       endTime:view==='daily'?this.fmtTime(row.workEndAt):null,

@@ -1,7 +1,15 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useAuth } from "@/contexts/auth"
 import {
   Check,
   ChevronDown,
@@ -11,6 +19,13 @@ import {
   X,
 } from "@blend-metrics/icons"
 import StepIndicator from "@/components/ui/step-indicator/step-indicator"
+import { JobListingAPI } from "@/service/http/job-listing"
+import {
+  type TalentUser,
+  talentToCardProps,
+  useRecommendedTalentUsers,
+} from "@/src/lib/api/talent-users"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import {
   Avatar,
   AvatarFallback,
@@ -32,94 +47,121 @@ import {
   SearchFieldButton,
   SearchFieldInput,
   Switch,
+  useToast,
 } from "@/components/ui"
 
-const candidates = [
-  {
-    id: "dheeraj-1",
-    name: "Dheeraj",
-    handle: "@dheerajnagdali",
-    title: "Full Stack Developer",
-    experience: "10 years of experience",
-    location: "USA",
-    level: "Senior",
-    hourlyRate: "$85",
-    skillsMatch: "12 matching skills",
-    availability: "Available 40 hrs/week",
-    avatar: "/man.jpg",
-    skills: [
-      "Visual Design",
-      "Tailwind CSS",
-      "Next.js",
-      "Blockchain",
-      "Blockchain",
-      "Blockchain",
-    ],
-  },
-  {
-    id: "dheeraj-2",
-    name: "Dheeraj",
-    handle: "@dheerajnagdali",
-    title: "Full Stack Developer",
-    experience: "10 years of experience",
-    location: "USA",
-    level: "Senior",
-    hourlyRate: "$85",
-    skillsMatch: "12 matching skills",
-    availability: "Available 40 hrs/week",
-    avatar: "/man.jpg",
-    skills: [
-      "Visual Design",
-      "Tailwind CSS",
-      "Next.js",
-      "Blockchain",
-      "Blockchain",
-      "Blockchain",
-    ],
-  },
-  {
-    id: "dheeraj-3",
-    name: "Dheeraj",
-    handle: "@dheerajnagdali",
-    title: "Full Stack Developer",
-    experience: "10 years of experience",
-    location: "USA",
-    level: "Senior",
-    hourlyRate: "$85",
-    skillsMatch: "12 matching skills",
-    availability: "Available 40 hrs/week",
-    avatar: "/man.jpg",
-    skills: [
-      "Visual Design",
-      "Tailwind CSS",
-      "Next.js",
-      "Blockchain",
-      "Blockchain",
-      "Blockchain",
-    ],
-  },
-  {
-    id: "dheeraj-4",
-    name: "Dheeraj",
-    handle: "@dheerajnagdali",
-    title: "Full Stack Developer",
-    experience: "10 years of experience",
-    location: "USA",
-    level: "Senior",
-    hourlyRate: "$85",
-    skillsMatch: "12 matching skills",
-    availability: "Available 40 hrs/week",
-    avatar: "/man.jpg",
-    skills: [
-      "Visual Design",
-      "Tailwind CSS",
-      "Next.js",
-      "Blockchain",
-      "Blockchain",
-      "Blockchain",
-    ],
-  },
-]
+type TeamRoleOption = {
+  id: string
+  label: string
+  state: string
+}
+const INVITE_VISIBLE_SKILL_COUNT = 3
+
+const normalizeRoleId = (role: string) =>
+  role
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+
+const normalizeRateFilter = (rate: string) => rate.replace(/[–—]/g, "-")
+
+const getUniqueStrings = (values: unknown[]) => {
+  const seen = new Set<string>()
+
+  return values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => {
+      if (!value || seen.has(value.toLowerCase())) return false
+      seen.add(value.toLowerCase())
+      return true
+    })
+}
+
+const getNonEmptyString = (value: unknown) =>
+  typeof value === "string" ? value.trim() : ""
+
+const getTalentSkillNames = (skills: TalentUser["skills"] = []) =>
+  skills
+    .map((skill) =>
+      typeof skill === "string" ? skill : getNonEmptyString(skill?.name)
+    )
+    .filter(Boolean)
+
+const getRolesFromListing = (listing: any) => {
+  const roleValues = [
+    ...(Array.isArray(listing?.teamMemberRows)
+      ? listing.teamMemberRows.map(
+          (row: any) => row?.role || row?.roleTitle || row?.title
+        )
+      : []),
+    ...(Array.isArray(listing?.roles)
+      ? listing.roles.map(
+          (row: any) => row?.role || row?.roleTitle || row?.title || row?.name
+        )
+      : []),
+    ...(Array.isArray(listing?.roleDescriptions)
+      ? listing.roleDescriptions.map(
+          (row: any) => row?.role || row?.roleTitle || row?.title || row?.name
+        )
+      : []),
+    ...(Array.isArray(listing?.phases)
+      ? listing.phases.flatMap((phase: any) =>
+          Array.isArray(phase?.tasks)
+            ? phase.tasks.map((task: any) => task?.roleTitle || task?.role)
+            : []
+        )
+      : []),
+  ]
+
+  return getUniqueStrings(roleValues)
+}
+
+const getSkillsFromListing = (listing: any) =>
+  getUniqueStrings([
+    ...(Array.isArray(listing?.tools) ? listing.tools : []),
+    ...(Array.isArray(listing?.technologies) ? listing.technologies : []),
+    ...(Array.isArray(listing?.roleDescriptions)
+      ? listing.roleDescriptions.flatMap((description: any) =>
+          Array.isArray(description?.skills) ? description.skills : []
+        )
+      : []),
+  ])
+type InviteFilterSet = {
+  locations: string[]
+  experiences: string[]
+  schedules: string[]
+  rate: string
+}
+
+const emptyInviteFilterSet: InviteFilterSet = {
+  locations: [],
+  experiences: [],
+  schedules: [],
+  rate: "",
+}
+
+const hasInviteFilterSetValues = (filterSet: InviteFilterSet) =>
+  filterSet.locations.length > 0 ||
+  filterSet.experiences.length > 0 ||
+  filterSet.schedules.length > 0 ||
+  Boolean(filterSet.rate)
+type InviteTalentCandidate = {
+  id: string
+  name: string
+  handle: string
+  title: string
+  experience: string
+  location: string
+  level?: string
+  hourlyRate: string
+  skillsMatch: string
+  availability?: string
+  avatar: string
+  skills: string[]
+  rating: number
+  projects: number
+  match: number
+}
 
 const teamRoles = [
   {
@@ -168,10 +210,36 @@ const rateOptions = [
   "$50–70/hr",
 ]
 
+export function InviteTalentFlow(_props: {
+  embedded?: boolean
+  jobListingId?: string
+}) {
+  return <InviteTalentPage />
+}
+
 export default function InviteTalentPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const routeJobListingId =
+    searchParams.get("jobListingId") || searchParams.get("projectId")
+  const jobListingId = routeJobListingId
+  const roleRowId = searchParams.get("roleRowId") || undefined
+  const [roleOptions, setRoleOptions] = useState<TeamRoleOption[]>([])
+  const [listingLoadError, setListingLoadError] = useState("")
+  const [listingSkills, setListingSkills] = useState<string[]>([])
+  const [listingContext, setListingContext] = useState({
+    workType: "",
+    description: "",
+    deliverables: "",
+    successCriteria: "",
+  })
+  const [hasLoadedListingContext, setHasLoadedListingContext] =
+    useState(!jobListingId)
+
   const [showFilters, setShowFilters] = useState(true)
-  const [roleFilter, setRoleFilter] = useState("Product Designer")
+  const [roleFilter, setRoleFilter] = useState("")
   const [isRoleOpen, setIsRoleOpen] = useState(false)
   const [isLocationOpen, setIsLocationOpen] = useState(false)
   const [isExperienceOpen, setIsExperienceOpen] = useState(false)
@@ -182,20 +250,301 @@ export default function InviteTalentPage() {
   const [selectedExperiences, setSelectedExperiences] = useState<string[]>([])
   const [selectedSchedules, setSelectedSchedules] = useState<string[]>([])
   const [selectedRate, setSelectedRate] = useState("")
-  const [rankedCandidates] = useState(() => {
-    // Randomize match once per page load, then sort highest -> lowest.
-    const randomized = candidates.map((candidate) => ({
-      ...candidate,
-      match: Math.floor(Math.random() * (98 - 62 + 1)) + 62, // 62..98
-    }))
-    randomized.sort((a, b) => b.match - a.match)
-    return randomized
-  })
+  const [inviteSuccessMessage, setInviteSuccessMessage] = useState("")
+  const [inviteBalance, setInviteBalance] = useState(0)
+  const [appliedFilterSet, setAppliedFilterSet] =
+    useState<InviteFilterSet>(emptyInviteFilterSet)
+  const [applyToAllRoles, setApplyToAllRoles] = useState(false)
+  const [roleFilterSets, setRoleFilterSets] = useState<
+    Record<string, InviteFilterSet>
+  >({})
 
-  const filteredRoleCount = useMemo(
-    () => teamRoles.filter((role) => role.completed).length,
-    []
+  const [isLoadingListing, setIsLoadingListing] = useState(false)
+
+  const [isSendingInvites, setIsSendingInvites] = useState(false)
+
+  const allRoleTitles = useMemo(
+    () => roleOptions.map((role) => role.label).filter(Boolean),
+    [roleOptions]
   )
+  const recommendationRoleTitle =
+    applyToAllRoles && allRoleTitles.length > 0
+      ? allRoleTitles.join(", ")
+      : roleFilter
+  const roleSelectorLabel = applyToAllRoles
+    ? "All Roles"
+    : roleFilter || "Select role"
+  const inviteRolePayload = applyToAllRoles
+    ? {
+        roleRowId: undefined,
+        roleTitle: undefined,
+      }
+    : {
+        roleRowId,
+        roleTitle: roleFilter,
+      }
+  const recommendationRequest = useMemo(
+    () =>
+      // Gating this on a role meant the page sat on an empty state whenever it
+      // was opened without a job listing, or with a listing that has no saved
+      // roles. The role is a filter, not a precondition: an empty one asks for
+      // unfiltered recommendations, which is what the screen should show.
+      hasLoadedListingContext
+        ? {
+            roleTitle: recommendationRoleTitle,
+            workType: listingContext.workType,
+            description: listingContext.description,
+            deliverables: listingContext.deliverables,
+            successCriteria: listingContext.successCriteria,
+            skills: listingSkills,
+            locations: appliedFilterSet.locations,
+            experienceLevels: appliedFilterSet.experiences,
+            workSchedules: appliedFilterSet.schedules,
+            hourlyRate: normalizeRateFilter(appliedFilterSet.rate),
+            limit: 30,
+          }
+        : null,
+    [
+      hasLoadedListingContext,
+      listingContext,
+      listingSkills,
+      recommendationRoleTitle,
+      appliedFilterSet,
+    ]
+  )
+  const {
+    talents,
+    aiStatus: recommendationStatus,
+    message: recommendationMessage,
+    isLoading: isLoadingTalents,
+  } = useRecommendedTalentUsers(recommendationRequest)
+  const rankedCandidates = useMemo(() => {
+    return talents
+      .map((talent, index) => {
+        const card = talentToCardProps(talent, index)
+        const profileSkills = getTalentSkillNames(talent.skills)
+        const rawSkills = getUniqueStrings([
+          ...(Array.isArray(talent.aiMatchedSkills)
+            ? talent.aiMatchedSkills
+            : []),
+          ...profileSkills,
+        ])
+        const exactRate = Number(talent.rate)
+        const minRate = Number(talent.rateMin)
+        const maxRate = Number(talent.rateMax)
+        const rate =
+          Number.isFinite(exactRate) && exactRate > 0
+            ? `$${exactRate}`
+            : Number.isFinite(minRate) &&
+                minRate > 0 &&
+                Number.isFinite(maxRate) &&
+                maxRate > 0
+              ? `$${minRate} - $${maxRate}`
+              : Number.isFinite(minRate) && minRate > 0
+                ? `$${minRate}`
+                : ""
+        const yearsValue = talent.overview?.yearsOfExperience
+        const yearsOfExperience = Number(yearsValue)
+        const hasYearsOfExperience =
+          yearsValue !== null &&
+          yearsValue !== undefined &&
+          yearsValue !== "" &&
+          Number.isFinite(yearsOfExperience)
+        const experience = hasYearsOfExperience
+          ? `${yearsOfExperience} year${yearsOfExperience === 1 ? "" : "s"} of experience`
+          : ""
+        const level =
+          getNonEmptyString(talent.overview?.experienceLevel) ||
+          (hasYearsOfExperience
+            ? yearsOfExperience >= 10
+              ? "Guru"
+              : yearsOfExperience >= 5
+                ? "Senior"
+                : yearsOfExperience >= 3
+                  ? "Medior"
+                  : yearsOfExperience >= 2
+                    ? "Junior"
+                    : "Student"
+            : undefined)
+        const availability =
+          getNonEmptyString(talent.overview?.workSchedule) ||
+          getNonEmptyString(talent.availability)
+        const location =
+          getNonEmptyString(talent.country) ||
+          getNonEmptyString(talent.location)
+        const rating = Number(talent.rating)
+        const projects = Number(
+          talent.totalProjectsCompleted ?? talent.reviewsCount ?? 0
+        )
+
+        return {
+          id: card.id,
+          name: card.name,
+          handle: card.handle,
+          title:
+            card.role && card.role !== "Marketing Technologist"
+              ? card.role
+              : roleFilter || card.role,
+          experience,
+          location,
+          level,
+          hourlyRate: rate,
+          skillsMatch: `${rawSkills.length} Matching Skills`,
+          availability,
+          avatar: card.photo === "/man.jpg" ? "" : card.photo,
+          skills: rawSkills.slice(0, INVITE_VISIBLE_SKILL_COUNT + 5),
+          rating: Number.isFinite(rating) ? rating : 0,
+          projects: Number.isFinite(projects) ? projects : 0,
+          match: talent.aiMatchScore ?? 0,
+        }
+      })
+      .filter((candidate) => candidate.match > 0)
+      .sort((a, b) => b.match - a.match)
+      .slice(0, 30)
+  }, [roleFilter, talents])
+  const visibleCandidates = rankedCandidates
+  const hasAnyInvites = inviteBalance > 0
+  const shouldPromptForMoreInvites = inviteBalance < 30
+  const inviteCandidateIds = visibleCandidates
+    .slice(0, 30)
+    .map((candidate) => candidate.id)
+  const selectedInviteCount = inviteCandidateIds.length
+  const hasInsufficientInviteBalance =
+    hasAnyInvites && selectedInviteCount > inviteBalance
+  const sendInviteButtonLabel = `Send ${selectedInviteCount} Invite${
+    selectedInviteCount === 1 ? "" : "s"
+  }`
+
+  const currentFilterSet = useMemo<InviteFilterSet>(
+    () => ({
+      locations: selectedLocations,
+      experiences: selectedExperiences,
+      schedules: selectedSchedules,
+      rate: selectedRate,
+    }),
+    [selectedExperiences, selectedLocations, selectedRate, selectedSchedules]
+  )
+
+  useEffect(() => {
+    if (roleFilter) return
+
+    applyFilterSet(emptyInviteFilterSet)
+    setAppliedFilterSet(emptyInviteFilterSet)
+  }, [roleFilter])
+
+  useEffect(() => {
+    if (!jobListingId) {
+      return
+    }
+
+    let isMounted = true
+
+    const loadJobListing = async () => {
+      try {
+        setIsLoadingListing(true)
+        setListingLoadError("")
+        setHasLoadedListingContext(false)
+        const response = await JobListingAPI.Get(jobListingId)
+        if (!isMounted) return
+
+        const listing = response?.data
+        const listingRoles = getRolesFromListing(listing)
+
+        setInviteBalance(Number(listing?.inviteBalance ?? 0))
+        setListingSkills(getSkillsFromListing(listing))
+        setListingContext({
+          workType: listing?.workType ?? "",
+          description: listing?.description ?? "",
+          deliverables: listing?.deliverables ?? "",
+          successCriteria: listing?.successCriteria ?? "",
+        })
+        if (listingRoles.length > 0) {
+          setRoleOptions(
+            listingRoles.map((role) => ({
+              id: normalizeRoleId(role),
+              label: role,
+              state: "Unfiltered",
+            }))
+          )
+          setRoleFilter((current) =>
+            listingRoles.some((role) => role === current)
+              ? current
+              : listingRoles[0]
+          )
+        } else {
+          setRoleOptions([])
+          setRoleFilter("")
+          setListingLoadError(
+            "This job listing does not have saved roles yet. Add roles in the scope step before inviting talent."
+          )
+        }
+        setHasLoadedListingContext(true)
+      } catch (error: any) {
+        if (!isMounted) return
+
+        setRoleOptions([])
+        setRoleFilter("")
+        setListingSkills([])
+        setListingContext({
+          workType: "",
+          description: "",
+          deliverables: "",
+          successCriteria: "",
+        })
+        setListingLoadError(
+          error?.response?.status === 404
+            ? "This job listing could not be found. Go back to My Jobs and open a saved draft or published job."
+            : error?.response?.data?.message ||
+                error?.message ||
+                "Unable to load this job listing."
+        )
+        setHasLoadedListingContext(true)
+        toast({
+          title:
+            error?.response?.data?.message ||
+            error?.message ||
+            "Unable to load invite balance for this job.",
+          variant: "destructive",
+        })
+      } finally {
+        if (isMounted) {
+          setIsLoadingListing(false)
+        }
+      }
+    }
+
+    void loadJobListing()
+
+    return () => {
+      isMounted = false
+    }
+  }, [jobListingId, toast])
+
+  const activeFilterCount =
+    appliedFilterSet.locations.length +
+    appliedFilterSet.experiences.length +
+    appliedFilterSet.schedules.length +
+    (appliedFilterSet.rate ? 1 : 0)
+  const filteredRoleCount = applyToAllRoles
+    ? roleOptions.length
+    : roleOptions.filter((role) =>
+        hasInviteFilterSetValues(
+          roleFilterSets[role.id] ?? emptyInviteFilterSet
+        )
+      ).length
+  const roleProgressValue =
+    roleOptions.length > 0 ? (filteredRoleCount / roleOptions.length) * 100 : 0
+  const displayedTeamRoles = roleOptions.map((role) => {
+    const completed =
+      applyToAllRoles ||
+      hasInviteFilterSetValues(roleFilterSets[role.id] ?? emptyInviteFilterSet)
+
+    return {
+      ...role,
+      completed,
+      state: completed ? "Filtered" : role.state,
+    }
+  })
   const filteredLocations = useMemo(
     () =>
       locationOptions.filter((option) =>
@@ -207,7 +556,7 @@ export default function InviteTalentPage() {
   const toggleMultiValue = (
     value: string,
     current: string[],
-    setter: React.Dispatch<React.SetStateAction<string[]>>
+    setter: Dispatch<SetStateAction<string[]>>
   ) => {
     setter((prev) =>
       prev.includes(value)
@@ -215,7 +564,142 @@ export default function InviteTalentPage() {
         : [...prev, value]
     )
   }
+  const applyFilterSet = (filterSet: InviteFilterSet) => {
+    setSelectedLocations(filterSet.locations)
+    setSelectedExperiences(filterSet.experiences)
+    setSelectedSchedules(filterSet.schedules)
+    setSelectedRate(filterSet.rate)
+  }
+  const handleFilterPopoverOpenChange =
+    (setter: Dispatch<SetStateAction<boolean>>) => (open: boolean) => {
+      setter(open)
+      if (!open) {
+        applyFilterSet(appliedFilterSet)
+      }
+    }
+  const persistCurrentRoleFilters = (filterSet = currentFilterSet) => {
+    if (!roleFilter) return
 
+    setRoleFilterSets((current) => ({
+      ...current,
+      [normalizeRoleId(roleFilter)]: filterSet,
+    }))
+  }
+  const handleRoleChange = (role: TeamRoleOption) => {
+    if (applyToAllRoles) {
+      setIsRoleOpen(false)
+      return
+    }
+
+    setRoleFilter(role.label)
+    const nextFilterSet = roleFilterSets[role.id] ?? emptyInviteFilterSet
+    applyFilterSet(nextFilterSet)
+    setAppliedFilterSet(nextFilterSet)
+    setIsRoleOpen(false)
+  }
+  const applyCurrentFiltersToAllRoles = (filterSet = currentFilterSet) => {
+    setRoleFilterSets((current) => {
+      const next = { ...current }
+      roleOptions.forEach((role) => {
+        next[role.id] = filterSet
+      })
+      return next
+    })
+  }
+  const commitCurrentFilters = () => {
+    if (applyToAllRoles) {
+      applyCurrentFiltersToAllRoles()
+      setAppliedFilterSet(currentFilterSet)
+      return
+    }
+
+    persistCurrentRoleFilters()
+    setAppliedFilterSet(currentFilterSet)
+  }
+  const handleApplyToAllRolesChange = (checked: boolean) => {
+    setApplyToAllRoles(checked)
+    if (checked) {
+      applyCurrentFiltersToAllRoles()
+      setAppliedFilterSet(currentFilterSet)
+      setIsRoleOpen(false)
+      return
+    }
+
+    if (roleFilter) {
+      const activeRoleId = normalizeRoleId(roleFilter)
+      const activeRoleFilterSet =
+        roleFilterSets[activeRoleId] ?? currentFilterSet
+
+      setRoleFilterSets({ [activeRoleId]: activeRoleFilterSet })
+      applyFilterSet(activeRoleFilterSet)
+      setAppliedFilterSet(activeRoleFilterSet)
+    } else {
+      setRoleFilterSets({})
+      setAppliedFilterSet(emptyInviteFilterSet)
+    }
+  }
+
+  const handleSendInvites = async () => {
+    if (!hasAnyInvites) {
+      toast({
+        title: "You are out of invites.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (inviteCandidateIds.length === 0) {
+      toast({
+        title: "No AI-recommended talent profiles are available to invite.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (inviteCandidateIds.length > inviteBalance) {
+      toast({
+        title: "You do not have enough invites for this selection.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!jobListingId) {
+      toast({
+        title: "Open this page from a published job before sending invites.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setIsSendingInvites(true)
+      await JobListingAPI.SendInvites(jobListingId, {
+        talentUserIds: inviteCandidateIds,
+        ...inviteRolePayload,
+      })
+      setInviteBalance((current) =>
+        Math.max(0, current - inviteCandidateIds.length)
+      )
+      setInviteSuccessMessage(
+        `${inviteCandidateIds.length} invitation${
+          inviteCandidateIds.length === 1 ? "" : "s"
+        } ${inviteCandidateIds.length === 1 ? "was" : "were"} sent successfully`
+      )
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Unable to send invites right now"
+
+      toast({
+        title: message,
+        variant: "destructive",
+      })
+    } finally {
+      setIsSendingInvites(false)
+    }
+  }
   return (
     <div className="h-screen bg-gray-25">
       <div className="flex h-screen flex-col bg-gray-25">
@@ -252,8 +736,9 @@ export default function InviteTalentPage() {
             <div className="flex items-center justify-between gap-4 border-b border-gray-200 pb-6">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[14px] leading-normal">
                 <span className="font-medium text-dark-blue-400">
-                  We found 30 available profiles that match your project
-                  requirements
+                  {isLoadingTalents || isLoadingListing
+                    ? "Loading available profiles that match your project requirements"
+                    : `We found ${rankedCandidates.length} available profiles that match your project requirements`}
                 </span>
                 <button
                   type="button"
@@ -292,28 +777,26 @@ export default function InviteTalentPage() {
                               size="sm"
                               className="h-7 rounded-[6px] border-gray-200 bg-gray-100 px-[5px] py-[6px]"
                             >
-                              {roleFilter}
+                              {roleFilter || "Select role"}
                               <ChevronDown className="ml-[6px] size-4" />
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="isolate z-[100] w-[180px] rounded-[8px] border-gray-200 bg-white p-2 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
                             <div className="space-y-1">
-                              {[
-                                "Product Designer",
-                                "Full Stack Developer",
-                                "Backend Engineer",
-                              ].map((role) => (
-                                <button
-                                  key={role}
+                              {roleOptions.map((role) => (
+                                <Button
+                                  key={role.id}
                                   type="button"
-                                  className="flex w-full rounded-[6px] px-2 py-2 text-left text-[14px] font-medium text-dark-blue-400 hover:bg-gray-50"
+                                  variant="ghost"
+                                  visual="gray"
+                                  className="h-auto w-full justify-start rounded-[6px] px-2 py-2 text-left text-[14px] font-medium text-dark-blue-400 hover:bg-gray-50"
                                   onClick={() => {
-                                    setRoleFilter(role)
+                                    handleRoleChange(role)
                                     setIsRoleOpen(false)
                                   }}
                                 >
-                                  {role}
-                                </button>
+                                  {role.label}
+                                </Button>
                               ))}
                             </div>
                           </PopoverContent>
@@ -617,14 +1100,16 @@ export default function InviteTalentPage() {
                           <span className="mt-2 text-[11px] font-medium leading-normal text-dark-blue-400">
                             {candidate.match}% match
                           </span>
-                          <span className="mt-1 inline-flex items-end gap-0.5 text-dark-blue-400">
-                            <span className="text-[20px] font-bold leading-none">
-                              {candidate.hourlyRate}
+                          {candidate.hourlyRate ? (
+                            <span className="mt-1 inline-flex items-end gap-0.5 text-dark-blue-400">
+                              <span className="text-[20px] font-bold leading-none">
+                                {candidate.hourlyRate}
+                              </span>
+                              <span className="text-[14px] font-light leading-none">
+                                /hr
+                              </span>
                             </span>
-                            <span className="text-[14px] font-light leading-none">
-                              /hr
-                            </span>
-                          </span>
+                          ) : null}
                         </div>
 
                         <div className="min-w-0">
@@ -637,12 +1122,16 @@ export default function InviteTalentPage() {
                             </span>
                           </div>
 
-                          <div className="mt-2 text-[14px] font-semibold leading-normal text-dark-blue-400">
-                            {candidate.title}
-                          </div>
-                          <div className="mt-1 text-[14px] font-light leading-normal text-gray-500">
-                            {candidate.experience}
-                          </div>
+                          {candidate.title ? (
+                            <div className="mt-2 text-[14px] font-semibold leading-normal text-dark-blue-400">
+                              {candidate.title}
+                            </div>
+                          ) : null}
+                          {candidate.experience ? (
+                            <div className="mt-1 text-[14px] font-light leading-normal text-gray-500">
+                              {candidate.experience}
+                            </div>
+                          ) : null}
 
                           <div className="mt-4 flex flex-wrap gap-2">
                             <Badge
@@ -651,30 +1140,36 @@ export default function InviteTalentPage() {
                             >
                               Top Match
                             </Badge>
-                            <Badge
-                              visual="gray"
-                              className="rounded-[5px] border border-gray-200 bg-white px-2 py-[5px]"
-                            >
-                              {candidate.availability}
-                            </Badge>
+                            {candidate.availability ? (
+                              <Badge
+                                visual="gray"
+                                className="rounded-[5px] border border-gray-200 bg-white px-2 py-[5px]"
+                              >
+                                {candidate.availability}
+                              </Badge>
+                            ) : null}
                           </div>
                         </div>
                       </div>
 
                       <div className="flex shrink-0 items-center gap-2 pt-1">
-                        <Badge
-                          visual="gray"
-                          className="border border-gray-200 bg-white"
-                        >
-                          <span className="text-[14px]">🇺🇸</span>
-                          {candidate.location}
-                        </Badge>
-                        <Badge
-                          visual="gray"
-                          className="border border-gray-200 bg-white"
-                        >
-                          {candidate.level}
-                        </Badge>
+                        {candidate.location ? (
+                          <Badge
+                            visual="gray"
+                            className="border border-gray-200 bg-white"
+                          >
+                            <span className="text-[14px]">🇺🇸</span>
+                            {candidate.location}
+                          </Badge>
+                        ) : null}
+                        {candidate.level ? (
+                          <Badge
+                            visual="gray"
+                            className="border border-gray-200 bg-white"
+                          >
+                            {candidate.level}
+                          </Badge>
+                        ) : null}
                       </div>
                     </div>
 
@@ -695,9 +1190,11 @@ export default function InviteTalentPage() {
                             {skill}
                           </Badge>
                         ))}
-                        <span className="shrink-0 whitespace-nowrap text-[14px] font-semibold leading-normal text-dark-blue-400">
-                          + 9 more...
-                        </span>
+                        {candidate.skills.length > 6 ? (
+                          <span className="shrink-0 whitespace-nowrap text-[14px] font-semibold leading-normal text-dark-blue-400">
+                            + {candidate.skills.length - 6} more...
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -720,17 +1217,21 @@ export default function InviteTalentPage() {
 
                 <div className="mt-6">
                   <div className="text-[14px] font-medium leading-normal text-gray-500">
-                    {filteredRoleCount}/{teamRoles.length} Roles have been
-                    filtered
+                    {filteredRoleCount}/{displayedTeamRoles.length} Roles have
+                    been filtered
                   </div>
                   <Progress
                     className="mt-3 h-2 bg-transparent"
-                    value={(filteredRoleCount / teamRoles.length) * 100}
+                    value={
+                      displayedTeamRoles.length
+                        ? (filteredRoleCount / displayedTeamRoles.length) * 100
+                        : 0
+                    }
                   />
                 </div>
 
                 <div className="mt-7">
-                  {teamRoles.map((role) => (
+                  {displayedTeamRoles.map((role) => (
                     <div
                       key={role.id}
                       className="flex items-center justify-between gap-3 border-t border-gray-200 py-4 first:border-t-0 first:pt-0 last:pb-0"
@@ -781,12 +1282,19 @@ export default function InviteTalentPage() {
               <Button
                 variant="ghost"
                 visual="gray"
-                onClick={() => router.push("/checkout/demo")}
+                onClick={() => router.push("/projects")}
               >
                 Skip & Continue
               </Button>
-              <Button onClick={() => router.push("/checkout/demo")}>
-                Send 30 invites
+              <Button
+                onClick={handleSendInvites}
+                disabled={
+                  isLoadingListing || isSendingInvites || !rankedCandidates.length
+                }
+                loading={isSendingInvites}
+                loadingIcon={<Spinner size={16} strokeWidth={2} />}
+              >
+                {sendInviteButtonLabel}
                 <Send01 className="size-4" />
               </Button>
             </div>

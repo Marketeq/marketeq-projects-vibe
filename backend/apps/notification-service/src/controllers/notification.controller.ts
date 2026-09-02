@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
   Param,
   Patch,
   Post,
@@ -19,6 +20,8 @@ import { Public } from '../guards/jwt-auth.guard';
 
 @Controller('v1/notifications')
 export class NotificationController {
+  private readonly logger = new Logger(NotificationController.name);
+
   constructor(
     private readonly service: NotificationService,
     private readonly brevoService: BrevoService,
@@ -131,9 +134,58 @@ export class NotificationController {
       role: string;
       acceptUrl: string;
       inviterEmail?: string;
+      inviterName?: string;
+      inviterAvatarUrl?: string;
       note?: string;
     },
   ) {
     return this.service.sendTeamInvitationEmail(data);
+  }
+
+  @EventPattern('notification.email.project_shared')
+  handleSharedProjectEmail(
+    @Payload()
+    data: {
+      to: string;
+      sharerName?: string;
+      projectTitle?: string;
+      projectUrl: string;
+      note?: string;
+    },
+  ) {
+    return this.service.sendSharedProjectEmail(data);
+  }
+
+  @EventPattern('notification.email.invitation_accepted')
+  handleInvitationAcceptedEmail(
+    @Payload()
+    data: {
+      to: string;
+      companyName: string;
+      companyLogoUrl?: string;
+      memberCount?: number;
+      inviteeName?: string;
+      inviteeEmail: string;
+      inviteMoreUrl: string;
+      launchUrl: string;
+    },
+  ) {
+    return this.service.sendInvitationAcceptedEmail(data);
+  }
+
+  @EventPattern('invitation.created')
+  handleInvitationCreated(
+    @Payload()
+    data: { eventName: string; timestamp: string; data: { invitationId: string; teamId: string; companyId?: string; invitedEmail: string; role: string } },
+  ) {
+    this.logger.log(`invitation.created received: invitationId=${data.data?.invitationId} invitedEmail=${data.data?.invitedEmail}`);
+  }
+
+  @EventPattern('invitation.resent')
+  handleInvitationResent(
+    @Payload()
+    data: { eventName: string; timestamp: string; data: { invitationId: string; teamId: string; companyId?: string; invitedEmail: string } },
+  ) {
+    this.logger.log(`invitation.resent received: invitationId=${data.data?.invitationId} invitedEmail=${data.data?.invitedEmail}`);
   }
 }

@@ -68,6 +68,24 @@ export class CreateMediaDto {
   replaceHidden?: string;
 
   @ApiProperty({
+    description:
+      "Set to 'true' to treat additionalImages as the authoritative list, allowing removals (including clearing to empty) instead of merging",
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  replaceAdditional?: string;
+
+  @ApiProperty({
+    description:
+      "Set to 'true' to clear the featured image during draft editing (required only at publish)",
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  clearFeatured?: string;
+
+  @ApiProperty({
     description: 'Featured YouTube or video URL',
     example: 'https://www.youtube.com/watch?v=abc123',
     required: false,

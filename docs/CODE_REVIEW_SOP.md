@@ -23,6 +23,9 @@ These rules override everything else in this SOP. If a PR violates any of them, 
 - **Additive merges only** when syncing from the original `marketeq-projects-nestjs` repo. Never replace vibe code.
 - When in doubt, read the full existing file before accepting any diff against it.
 
+**The standard for any change to existing code: better is fine, worse is not.**
+This is a floor, not a bar to clear. A rewrite may improve the code freely and needs no justification for being an improvement — you are not asked to judge whether it is *enough* better, and you lack the design file and ticket to make that call anyway (§1.10). The only question is whether anything got **worse than the previous version**: a behavior, branch, guard, null check, error path, or edge case that the old code had and the new code does not. Nothing lost → fine, ship it. Something lost → not fine, regardless of how much cleaner the rest is. Run the coverage test in §15 to decide, and never substitute a general impression of quality for it.
+
 ### 1.2 Read ALL code before approving any change
 - Read every line of every file the PR touches, not just the diff hunks.
 - Understand how the touched code is used elsewhere in the repo before signing off.
@@ -46,35 +49,80 @@ If a PR modifies any of the above, the author must confirm **in writing in the P
 
 Without all four confirmations, block the PR.
 
-### 1.4 Login files are FROZEN — four-point confirmation required
-Once local login works against a fresh `.env.local` copied from `frontend/.env.local.example`, **no PR changes the login path without explicit CTO sign-off**. Per the repo-wide rule: *if login works locally, it should not be broken on dev, staging, or anywhere else*. The only way this is possible is if the code is environment-agnostic and reads every value from `process.env.*` — which is the invariant `docs/DEVOPS_SOP.md` §6 owns.
+### 1.4 Login files are PERMANENTLY LOCKED — CTO ONLY, NO EXCEPTIONS
 
-**Review-side rules this SOP enforces:**
+**ABSOLUTE HARD BLOCK: Nobody is allowed to change login/auth files. Ever. Period.**
 
-- **Frozen files** (any change to any of these triggers the four-point confirmation below):
-  - `frontend/app/top-most-header.tsx` — the single master navigation bar component. No replacements, no duplicates, no deletions. The shadow and gap-free layout between primary and secondary nav is intentional and must never be reverted.
-  - `frontend/components/navigation/marketplace-secondary-nav.tsx` — part of the master nav bar unit. The negative margin overlap and shadow placement are intentional fixes. Never overwrite.
-  - `frontend/components/auth/auth-modal.tsx` — the auth modal for in-marketplace login/signup. Marketplace login MUST use this modal, never redirect to `/sign-in`. See §1.4.1.
-  - `frontend/hoc/AuthenticatedRoute.tsx` — opens auth modal for unauthenticated users. Must call `openAuthModal()`, never `router.push("/sign-in")`. See §1.4.1.
-  - `frontend/app/sign-in/**`, `frontend/app/sign-up/**`
-  - `frontend/contexts/auth.tsx`
-  - `frontend/src/lib/api/auth.ts`
-  - `frontend/middleware.ts`
-  - `backend/apps/auth-service/**`
-  - `backend/libs/shared/src/guards/**`, `backend/libs/shared/src/decorators/**`
-  - Any of the six frozen env templates: `frontend/.env.{local,staging,production}.example`, `backend/.env.{local,staging,production}.example`
+Login is working. Every single login regression in this repo's history happened because someone opened a ticket, touched login files, and broke everything. This will never happen again. The login files listed below are permanently locked. No developer, no contractor, no agent, no ticket, no feature request overrides this rule. Only the CTO (@CTorres9800) may modify these files, and only by pushing directly or approving a PR with an explicit review.
 
-- **Four-point local confirmation** — required verbatim in the PR description of any PR to `dev-main` touching any frozen file:
-  1. `local dev login on the frontend still works against a fresh .env`
-  2. `backend JWT signing, verification, and guards are unchanged`
-  3. `manual QA was performed locally with a client account and a talent account`
-  4. `no credentials, keys, or secrets are committed in this PR`
+**If a PR touches ANY of these files and the author is not @CTorres9800, the PR is BLOCKED. No four-point confirmation makes it OK. No justification makes it OK. The PR does not merge.**
 
-- Staging and production templates have their own four-point confirmations (see `docs/DEVOPS_SOP.md` §5.1) and must target the matching branch (`staging` or `live-mvp`).
+**Permanently locked files:**
 
-- **No hardcoded env values** in login code. Block any PR that adds a literal `*.onrender.com` URL, a literal `sameSite:` / `secure:` flag, a literal CORS origin string, or a literal JWT secret inside the frozen files. All values come from `process.env.*`.
+- `frontend/app/top-most-header.tsx` — the single master navigation bar component. No replacements, no duplicates, no deletions. The shadow and gap-free layout between primary and secondary nav is intentional and must never be reverted.
+- `frontend/components/navigation/marketplace-secondary-nav.tsx` — part of the master nav bar unit. The negative margin overlap and shadow placement are intentional fixes. Never overwrite.
+- `frontend/components/auth/auth-modal.tsx` — the auth modal for in-marketplace login/signup. Marketplace login MUST use this modal, never redirect to `/sign-in`. See §1.4.1.
+- `frontend/hoc/AuthenticatedRoute.tsx` — opens auth modal for unauthenticated users. Must call `openAuthModal()`, never `router.push("/sign-in")`. See §1.4.1.
+- `frontend/hoc/UnauthenticatedRoute.tsx`
+- `frontend/app/sign-in/**`, `frontend/app/sign-up/**`
+- `frontend/app/forgot-password/**`, `frontend/app/reset-password/**`
+- `frontend/contexts/auth.tsx`
+- `frontend/service/http/auth.ts`
+- `frontend/src/lib/api/auth.ts`
+- `frontend/middleware.ts`
+- `frontend/components/auth/**` (all auth components)
+- `backend/apps/auth-service/**`
+- `backend/apps/user-service/src/guards/**`
+- `backend/apps/api-gateway/src/proxy/proxy.service.ts`
+- `backend/libs/shared/src/guards/**`, `backend/libs/shared/src/decorators/**`
+- Any of the six frozen env templates: `frontend/.env.{local,staging,production}.example`, `backend/.env.{local,staging,production}.example`
+**Granting a temporary unlock.** Frozen files are locked for everyone except @CTorres9800. When someone genuinely needs to touch one, @CTorres9800 adds the `frozen-unlock` label to that specific PR. Labelling requires write access, so a contributor cannot grant it to themselves, and it applies to that PR only — it is not a standing exemption and does not carry to the next one. The SOP check then reports the unlock instead of blocking, and reviewers are expected to scrutinise those diffs as closely as the original work: no refactors, no restyling, no copy changes beyond what was approved.
 
-- GitHub Actions `sop-check` workflow auto-labels frozen-file PRs `login-touched`, posts a LOGIN TOUCHED sticky comment, and auto-requests @CTorres9800.
+- `frontend/app/(group)/job-screening/page.tsx` — the view applicants screen. Locked 2026-08-26.
+  - **Frozen specifically:** the applicant list and cards, filters and sorting, status handling, empty states, layout and spacing, and every user-facing string.
+  - **The only permitted change:** backend wiring that alters no class name, element, timing, or string.
+  - Anything else requires explicit @CTorres9800 approval.
+
+- `frontend/app/(group)/billing/**` — the entire billing tree. Locked 2026-08-26. Covers `page.tsx`, `transactions/`, `invoices/`, `my-plans/`, and `payment-methods/`.
+  - **Frozen specifically:** layout, table columns and their order, status badges, currency and date formatting, empty states, filters, pagination, and every user-facing string. These screens show people money; a cosmetic change that misstates an amount, a currency, or a status is a financial defect, not a styling one.
+  - **The only permitted change:** backend wiring that alters no class name, element, timing, or string.
+  - Anything else requires explicit @CTorres9800 approval.
+
+- `frontend/app/(group)/onboarding/**` — the entire onboarding flow. Locked 2026-08-26, enforced **directory-wide**. Covers the role picker (`page.tsx`), `talent/page.tsx`, `client/page.tsx`, and **every other file under that path, including files that do not exist yet**. Adding a new file inside the onboarding tree does not route around the freeze — the SOP check matches the directory, not a list of filenames. Rebuilt end to end in one session after a long period of accumulated defects; every value in it was set deliberately.
+  - **Frozen specifically:** the five talent steps and their order, the step registry and numbering, the resume upload step and its reading modal (skeleton shimmer, extraction feed, summary rows and counts, Done button, all six error states and their exact copy), the autofill mapping from parse result into `stepData`, the avatar empty state (initials when a name is known, icon otherwise), every validation guard and error message, and all animation timings.
+  - **The only permitted change:** backend wiring that alters no class name, element, timing, or string.
+  - Anything else requires explicit @CTorres9800 approval.
+- **The Taxes screens** — `frontend/components/settings-tax-info.tsx` and `backend/apps/user-service/src/tax-info/**`, the latter enforced **directory-wide**. Locked 2026-08-29. These produce real IRS documents from real taxpayer data; a cosmetic change that alters a certification string, a validation rule, or a PDF field mapping is a tax defect, not a styling one.
+  - **Frozen specifically:** the W-9 and W-8BEN certification text and its US/non-US switching, every validation rule and error message, the read-only today-only signing date, the completeness rules that decide when a form may be submitted, the TIN encryption and the last-4 masking, the verified IRS PDF field maps, the guards that refuse to produce an incomplete form or a Copy A, and every user-facing string on the screen.
+  - **Why the field maps matter:** they were derived by filling the official IRS forms and rendering the output, not by inference. A plausible-looking edit to a field name silently writes a value into the wrong box on a government form, and nothing fails.
+  - **The only permitted change:** backend wiring that alters no class name, element, timing, string, or PDF field mapping.
+  - Anything else requires explicit @CTorres9800 approval.
+
+- **The login and account sign-up surface** — locked, enforced directory-wide, no exceptions. Covers `frontend/app/sign-in/**`, `frontend/app/sign-up/**`, `frontend/app/forgot-password/**`, `frontend/app/reset-password/**`, `frontend/components/auth/**`, `frontend/contexts/auth.tsx`, `frontend/service/http/auth.ts`, `frontend/src/lib/api/auth.ts`, `frontend/hoc/AuthenticatedRoute.tsx`, `frontend/hoc/UnauthenticatedRoute.tsx`, and `backend/apps/auth-service/**`.
+  - These were previously covered by CODEOWNERS only, which auto-requests review but cannot block on the free org plan. They are now in the SOP check's frozen list, so a PR touching them fails mechanically.
+  - **Frozen specifically:** every field, label, placeholder, button, validation rule and message, social-login button and its ordering, redirect target, session and cookie handling, and every user-facing string.
+  - Nobody but @CTorres9800 may touch these. No tickets, no exceptions. Close login tickets rather than assigning them.
+
+
+- `frontend/app/(group)/active-project/[id]/page.tsx` — the active project task screen. Locked 2026-08-22. Covers the task tables, pinned section bars and column headers, the bulk-select bar, the create/edit task dialog, the checklist, the attachments views, and the components defined in this file (`AssigneePicker`, `TaskStatusMenu`, `TaskDueDatePicker`, `SortableTaskRow`, `StickySectionBar`). Every spacing, sticky offset, hover shade, and border position in this screen was set deliberately after extensive correction. No refactors, no cleanup, no restyling. Surgical edits only, and only with explicit @CTorres9800 approval.
+  - **Frozen specifically:** all markup, layout, spacing, hover states, borders, sticky offsets, and **transitions/animations** (section collapse slides, folder row slide, row reveal, drag states, toast and tooltip timing). Do not retime, replace, or remove any transition.
+  - **The only permitted change:** wiring these components to backend APIs — swapping the seeded arrays for real data, adding fetch/mutation calls, and hooking up handlers that are currently no-ops. Data wiring must not alter a single class name, element, or transition.
+
+**Enforcement layers (all active, all blocking):**
+
+1. **`.github/CODEOWNERS`** — requires @CTorres9800 review on all login/auth file paths
+2. **Login Gate workflow** (`.github/workflows/login-gate.yml`) — CI hard-blocks any PR to `dev-main`, `staging`, or `live` that touches login files unless @CTorres9800 is the author or has submitted an Approved review
+3. **Jenkins SOP Check** — auto-labels `login-touched`, posts sticky comment, auto-requests @CTorres9800
+4. **Post-merge audit** — opens an urgent issue for merges that bypassed the login gate. Report only; it never modifies code.
+5. **Login violation alert** — opens issues when login files are merged without owner approval
+6. **This SOP** — any Claude Code agent reviewing a PR MUST block it if login files are touched by anyone other than @CTorres9800
+
+**What to do if someone creates a login-related ticket:**
+- Close the ticket. Login is not open for changes.
+- If there is a genuine login bug, only @CTorres9800 diagnoses and fixes it.
+- If a feature requires auth changes, only @CTorres9800 implements the auth portion.
+
+**No hardcoded env values** in login code. Block any PR that adds a literal `*.onrender.com` URL, a literal `sameSite:` / `secure:` flag, a literal CORS origin string, or a literal JWT secret inside the locked files. All values come from `process.env.*`.
 
 **The bidirectional invariant (said plainly, because this is the real pain):**
 
@@ -82,9 +130,9 @@ Once local login works against a fresh `.env.local` copied from `frontend/.env.l
 > If login works on Vercel dev / staging / live, a PR must not break login locally.
 > "Fixing" login in one environment by hardcoding a value that only works there is **the bug**, not the fix.
 
-Every login regression in this repo's history has been a violation of this invariant: someone changed a hardcoded cookie flag, or a hardcoded backend URL, or a hardcoded CORS origin, in one environment to make that environment work — and silently broke the others. The only code that satisfies the invariant is code that reads every environment-specific value from `process.env.*` and has **zero** literals for URLs, cookie flags, CORS origins, or JWT material in the frozen files. This is what the GitHub Actions `sop-check` workflow blocks, in both directions, on every PR.
+Every login regression in this repo's history has been a violation of this invariant: someone changed a hardcoded cookie flag, or a hardcoded backend URL, or a hardcoded CORS origin, in one environment to make that environment work -- and silently broke the others. The only code that satisfies the invariant is code that reads every environment-specific value from `process.env.*` and has **zero** literals for URLs, cookie flags, CORS origins, or JWT material in the locked files.
 
-**Everything else about the login/env topology — Render wiring, Vercel deploy gating, env template ownership, branch-to-template mapping — lives in `docs/DEVOPS_SOP.md`. Do not duplicate those rules here.**
+**Everything else about the login/env topology -- Render wiring, Vercel deploy gating, env template ownership, branch-to-template mapping -- lives in `docs/DEVOPS_SOP.md`. Do not duplicate those rules here.**
 
 ### 1.4.1 Auth modal login flow is FROZEN — block any PR that changes it
 
@@ -124,6 +172,50 @@ The marketplace uses a **dual login flow** that must never be changed:
 ### 1.8 Always verify before declaring done
 - "Merged" means: squash-merge landed on `dev-main`, branch deleted, and a sanity check that `dev-main` still builds.
 - Do not tell the user a PR is merged until `gh pr view N --json state,mergedAt` returns `"MERGED"`.
+
+### 1.9 Only the author or the CTO may authorize deleting the author's work
+Deleting good code is a worse outcome than shipping a bug. A bug gets fixed; deleted work gets rebuilt from scratch, or silently never comes back.
+
+- **Code the PR ADDED is not reviewable for removal.** It is the developer's deliberate new work. A reviewer may ask what it is for. A reviewer may not recommend removing it, and no approval of such a recommendation is valid from anyone other than its author.
+- **A reviewer's approval is not authority.** "Go ahead and make the fixes" from a code-review engineer, a DevOps engineer, or an agent does NOT authorize deleting a feature. Only the author of the code, or @CTorres9800, can authorize that. Anyone reviewing without the design file, the ticket, and the spec is not in a position to consent to a deletion on the author's behalf.
+- **Nothing may remove a developer's merged code** — no workflow, script, button, or agent, automatically or by a single click. A failing check, a bad merge, or an SOP bypass is fixed **forward**: keep the code, open a follow-up, fix it (§1.1). The post-merge audit reports; it never modifies code. See §9.9.
+- **Findings that turn on intent go to the author, not to a gatekeeper.** The author knows why the code is that way; a third party is guessing, and a guess with merge rights deletes things.
+
+### 1.11 Automation never changes a developer's code
+
+No Jenkins pipeline, GitHub workflow, script, bot, or agent may **destroy** work a developer wrote. The test is not whether automation touched the branch — it is whether anything the author wrote could be lost.
+
+**Allowed — non-destructive, safe to automate:**
+- **Bringing a stale branch current with a merge commit.** `gh pr update-branch <N>` (no flag) adds a merge commit on top. Every existing commit survives, nothing is force-pushed, no history is rewritten. Automate this freely.
+
+**Forbidden — destructive:**
+- **`--rebase`, `git rebase`, or any force-push on the author's branch.** These rewrite the author's commits. The content may survive, but their history does not, and a force-push can drop work pushed between the read and the write.
+- **Auto-resolving a conflict.** Choosing a side deletes the other side's work, and nothing in the result shows what went missing.
+- **Auto-fixes or auto-formatting** pushed to their branch.
+- **Reverts** (§1.1).
+
+**On conflicts, automation checks which side is better. It does not choose, and it does not edit.** A non-destructive update stops when it hits a conflict, which is correct — that is where a human is genuinely needed. Analyse in a local scratch merge that is thrown away (§3.6), run the per-hunk test in §5.1 to see whether either side would lose behaviour, and **report the finding to the author**. The author resolves their own conflict, better informed than they were before.
+
+The reason is simple: a pipeline has no design file, no ticket, and no spec, so it cannot know which side of a conflict was intended. A pipeline that edits code it cannot judge will eventually delete work that was there on purpose, and the developer gets blamed for a deletion they did not make.
+
+### 1.12 A page you were sent to look at is READ-ONLY
+
+When you are pointed at another page, screen, or component — to copy it, to match a width, spacing, colour, animation, or behaviour, or just to see how it works — **that source is read-only for that task**. Read it, take what you need, apply it where the work actually belongs, and leave the source byte-for-byte unchanged.
+
+This holds for every phrasing of the instruction: "copy the X from Y", "check how Y does it", "look at Y", "match Y's width", "see Y for reference". The destination changes. The reference does not.
+
+It holds **even when the source looks wrong**. Inconsistent spacing, a stale class, a value you would have written differently, an obvious cleanup — none of these are yours to fix on the way past. The screen works today, and an unrequested edit to a working screen is exactly the kind of change nobody asked for and nobody reviews carefully, because the PR is titled after the destination.
+
+**Reviewers:** if a PR's stated purpose is a change to page A, and the diff also touches page B where B is the thing being copied or measured, block it and ask why B changed. The answer is almost always "I tidied it while I was in there."
+
+If the source genuinely needs a change, say so in the PR or to the CTO and let them decide. Do not make it.
+
+### 1.10 Every blocking rule needs evidence behind it
+A rule that blocks a PR must be traceable to something factual: a named surviving caller, a failing check, a contract in `REGRESSION_MANIFEST.json`, or a specific incident in §8. Strictness with no evidence behind it produces false blocks, and false blocks cost the developer real work.
+
+- If a threshold is stated as a number, the number needs a reason. Otherwise use the decidable form (`>= 1 behind` is decidable; `> 5 behind` is a guess about how much drift is tolerable).
+- "When in doubt, block" applies to **evidence you have not yet gathered** — an unread caller, an unrun check. It does not license blocking on a hunch. If you cannot name what would confirm the finding, it is not a finding.
+- Prefer a question to the author over a block whenever the answer depends on intent rather than on code.
 
 ---
 
@@ -188,7 +280,21 @@ Run every PR through this checklist in order. A single "❌ fail" blocks the mer
 
 ### ✅ 3.6 Merge-conflict status and branch freshness
 - [ ] `mergeable: MERGEABLE` in `gh pr view`. If `CONFLICTING`, the PR cannot merge — see §5.
-- [ ] **Branch MUST be up to date with its base before merge.** Check with: `git rev-list --count origin/<base>..origin/<head>` and `git rev-list --count origin/<head>..origin/<base>`. If the branch is more than 5 commits behind, **block the PR and require a rebase**. Do NOT use `--admin` to bypass this.
+- [ ] **Branch must be at zero commits behind its base before merge.** Check, do not fix:
+  ```bash
+  gh api repos/Marketeq/marketeq-projects-vibe/compare/<base>...<head> --jq '.behind_by'
+  ```
+  **If `behind_by` >= 1, block and tell the author to update their branch.** Do NOT use `--admin` to bypass this.
+- [ ] **Bring it current non-destructively, or not at all (§1.11).** `gh pr update-branch <NUMBER>` with **no flag** is a merge commit: every author commit survives, nothing is force-pushed. That is safe to run automatically. **Never pass `--rebase`** and never force-push — those rewrite the author's commits. If the update stops on a conflict, that is correct: report it, do not resolve it.
+- [ ] **Review a current tree, produced locally and thrown away.** To analyse a stale branch, merge the base into it in a scratch checkout, read the result, then discard it:
+  ```bash
+  git fetch origin <base>
+  git checkout -B scratch-review origin/<head>
+  git merge --no-commit --no-ff origin/<base>   # local only, never pushed
+  # ... analyse, note conflicts ...
+  git merge --abort && git branch -D scratch-review
+  ```
+  This gives you a current view without touching anything the author owns. Conflicts found this way are **reported** to the author, never resolved on their behalf.
 - [ ] **NEVER merge a stale branch.** A squash merge from a stale branch silently overwrites any changes made to the same files on the base branch since the branch point. This has caused code loss in this repo. See §8.11.
 
 ### ✅ 3.7 Memory & performance
@@ -217,7 +323,7 @@ After the checklist, apply this matrix:
 When a PR has **mixed quality** (some good code, some violations), **never close the entire PR**. Instead:
 
 1. **Cherry-pick the good code** — manually apply usable changes (backend logic, data wiring, API endpoints, bug fixes) to `dev-main`
-2. **Reject only the specific violations** — layout deletions, security issues, off-limits changes
+2. **Reject only the specific violations** — security issues, off-limits/frozen-file changes, and layout changes that meet the manifest's scope (a data-wiring or content PR altering structure on a `layout_frozen_patterns` file). A layout change in a fix, polish, or feature PR is the developer's call and is **not** a violation: you do not have the design file and cannot tell a deliberate layout fix from collateral. Ask the author instead of rejecting.
 3. **Close the PR** with a comment listing exactly what was merged and what was rejected, with line references
 
 Code takes time and money to write. Closing an entire PR because of one bad file wastes all the good work in it. Always extract value before closing.
@@ -233,14 +339,32 @@ A branch cannot merge when any of these are true:
 - The `Scan for committed secrets` gitleaks check is ❌
 - Any required CODEOWNER review is missing (see §9)
 
-**Do not rebase or force-push someone else's branch to resolve conflicts unless the user explicitly asks you to.** Instead, post a block comment (§7) with the exact rebase command the author should run:
+**The reviewer may bring the branch current non-destructively (`gh pr update-branch`, no flag), but never rebases, force-pushes, or resolves the author's conflicts (§1.11).** Conflicts are the author's to resolve. Your job is to analyse them in a local scratch merge (§3.6), determine per hunk whether either side would lose behaviour, and **report what you found** so the author can resolve it with that information in hand.
+
+Post a block comment (§7) with what each conflicting hunk contains, which side holds what, and the commands the author should run. Apply §5.1's per-hunk test when analysing, not when editing:
 
 ```bash
 git fetch origin dev-main
 git rebase origin/dev-main
-# resolve conflicts
+# resolve conflicts one at a time — see §5.1
 git push --force-with-lease
 ```
+
+### 5.1 Resolving conflicts — one at a time, preserving the engineer's work
+
+A merge conflict is where code silently disappears in this repo. Never resolve one in bulk. **`git checkout --ours` / `--theirs` across a file, "accept all incoming", and re-running a generator over the whole file are all forbidden.** Each is a way of deleting one side's work without reading it.
+
+Work **one conflict hunk at a time**. For each hunk, both sides are real work by a real person. Before writing the resolution, answer both:
+
+1. **Does either side break a feature?** Run the coverage test (§15) in both directions: list every behavior on the branch side and find it on the base side, then list every behavior on the base side and find it on the branch side. Anything present on one side and missing from the resolution is a deleted feature. The resolution must carry **both** sides' behaviors unless they genuinely contradict.
+2. **If the two sides genuinely contradict, is the surviving side worse than what it replaces?** Better is fine and needs no defense (§1.1). Worse is not, no matter how much cleaner it reads. One side wins only when it loses nothing the other had, or when the author states the reason it should. "It came later," "it's cleaner," and "it's what the base has" are not reasons. Record the reason in the PR comment.
+
+Defaults when the answer is not clear from the code:
+- **Preserve the engineer's work.** Ambiguity resolves toward keeping code, never toward dropping it.
+- **Ask the author.** They know why their side is written that way; you are guessing (§1.9).
+- **Never resolve a conflict by deleting either side to make it go away.** That is the single most expensive mistake available here — the conflict is visible, the deletion is not.
+
+After resolving, state in the PR comment which hunks conflicted, what each side did, and what the resolution kept. If a conflict was resolved by dropping something, it must be named explicitly and approved by the author or @CTorres9800.
 
 ---
 
@@ -251,15 +375,24 @@ Once the checklist passes and the PR is `MERGEABLE`, **verify the branch is up t
 ```bash
 # Check how far behind the branch is
 gh api repos/Marketeq/marketeq-projects-vibe/compare/<base>...<head> --jq '.behind_by'
-# If behind_by > 0, the branch MUST be updated before merging
-gh pr update-branch <NUMBER>  # or ask the author to rebase
+# If behind_by >= 1, bring it current non-destructively (merge commit):
+gh pr update-branch <NUMBER>     # NO --rebase, ever. See SS1.11.
+# Every author commit survives; nothing is force-pushed.
+# If it stops on a conflict, report the conflict -- do not resolve it.
 ```
 
 Only after the branch is up to date, merge with:
 
 ```bash
+# Full merge (all code in the PR is being merged):
 gh pr merge <NUMBER> --squash --delete-branch
+
+# Cherry-pick or partial merge (only some commits/changes taken):
+gh pr merge <NUMBER> --squash
+# Do NOT use --delete-branch — the source branch may still have unmerged work
 ```
+
+**Branch deletion rule:** Only delete a branch when merging ALL of its code. If you are cherry-picking, partially merging, or not taking every change from the branch, keep the original branch intact.
 
 **Never:**
 - `--admin` (bypasses checks) — **HARD BLOCK, no exceptions unless CTO explicitly types "use --admin"**
@@ -267,6 +400,7 @@ gh pr merge <NUMBER> --squash --delete-branch
 - `--rebase` without user approval
 - Skip `--delete-branch` — stale branches accumulate
 - Merge a branch that is behind the base — **this causes silent code loss** (see §8.11)
+- Delete a branch that still has unmerged work
 
 **After merging, verify:**
 
@@ -283,7 +417,7 @@ git fetch origin dev-main
 # Optional: quick sanity checkout of dev-main and look for obvious build breakage
 ```
 
-Branches are only deleted by `gh pr merge --delete-branch`. **Do not manually `git push origin --delete` remote branches** unless the user explicitly tells you to.
+Branches are only deleted when ALL code from the branch has been merged. If a cherry-pick or partial merge was done, the branch must be kept. **Do not manually `git push origin --delete` remote branches** unless the user explicitly tells you to.
 
 ---
 
@@ -442,8 +576,8 @@ This prevents developers from accidentally staging key material. It does not sto
   - Embedded PEM private-key headers in any added file
   - Root-level `package.json` / `package-lock.json` / `yarn.lock`
   - Off-limits profile files touched without the four-point confirmation (§1.3)
-  - Off-limits login files touched without the four-point login confirmation (§1.4)
-  - Any hardcoded URL, cookie flag, CORS origin, or JWT secret inside a frozen login file — bidirectional (§1.4)
+  - Login/auth files touched by anyone other than @CTorres9800 — ABSOLUTE BLOCK, no exceptions (§1.4)
+  - Any hardcoded URL, cookie flag, CORS origin, or JWT secret inside a locked login file — bidirectional (§1.4)
   - TypeORM entity changes without a matching migration
   - Env template branch mismatches — `*.local.example` only on `dev-main`, `*.staging.example` only on `staging`, `*.production.example` only on `live-mvp` (see `docs/DEVOPS_SOP.md` §5.2)
   - Junk files (`.DS_Store`, `dist/`, `build/`, `node_modules/`, `.next/`)
@@ -452,7 +586,7 @@ This prevents developers from accidentally staging key material. It does not sto
   - Oversized PRs (>2000 lines) without `[EPIC]` prefix
   - New `@ts-ignore` without a `-- justification` comment
   - **Stale branches:** PR branch is more than 5 commits behind the base branch — blocks with "Rebase required" message
-- **Login sentinel:** if any login-frozen file is touched, the workflow also auto-labels the PR `login-touched`, auto-requests @CTorres9800 as a reviewer, and posts a sticky 🚨 LOGIN TOUCHED comment regardless of confirmation status. See §1.4.
+- **Login sentinel:** if any locked login file is touched, the workflow auto-labels `login-touched`, auto-requests @CTorres9800, and posts a sticky comment. If the PR author is not @CTorres9800, the PR is HARD BLOCKED — no confirmation or justification overrides this. See §1.4.
 
 ### 9.7 AI Breakage Detector — **ENFORCED (blocking)**
 - **Workflow:** GitHub Actions `ai-breakage-check`
@@ -472,17 +606,18 @@ This prevents developers from accidentally staging key material. It does not sto
 - **File:** `.github/CODEOWNERS`
 - **Behavior:** every PR automatically requests review from the owner(s) of every directory it touches. Critical paths (sign-in, auth, profile, onboarding, publish-project, top-header, render.yaml, env files) route to @CTorres9800 **and** @Marketeq/code-review. Everything else routes to @Marketeq/code-review. Review is advisory by default (free org plan limitation) but mandatory by SOP convention.
 
-### 9.9 Post-Merge SOP Audit + Auto-Revert — **ENFORCED (post-hoc, binding)**
+### 9.9 Post-Merge SOP Audit — **ENFORCED (post-hoc, reporting only)**
 - **Workflow:** GitHub Actions `post-merge-audit` (+ Jenkins safety net)
 - **Triggers:** `push` event on `dev-main`, `staging`, `live-mvp` (i.e., fires the moment a merge lands)
-- **Behavior:** this is the keystone enforcement on the free plan. Since GitHub won't technically block a merge despite a red check, this workflow catches the bypass **after the merge** and undoes it automatically.
+- **Behavior:** this workflow makes a bypass **visible**. It reports; it never undoes. See §1.1 and §1.9.
   1. Finds the PR associated with the push
   2. Reads the status of every required check (`Enforce Code Review SOP`, `Regression risk analysis`, `Scan for committed secrets`) via `gh pr view --json statusCheckRollup`
-  3. If any required check is `FAILURE`, `CANCELLED`, `TIMED_OUT`, or missing → automatically creates a revert branch, pushes it, and opens an `[SOP AUTO-REVERT]` PR assigned to @CTorres9800
+  3. If any required check is `FAILURE`, `CANCELLED`, `TIMED_OUT`, or missing → opens an urgent issue assigned to @CTorres9800 naming the PR, the failing check, and the merge author
   4. Posts a sticky 🚨 `MERGED DESPITE FAILING SOP CHECKS` comment on the original PR, naming the merge author publicly
   5. Also detects forced pushes (`github.event.forced == true`) and opens an urgent issue assigned to CTO
   6. Also detects direct pushes with no associated PR and opens an urgent issue assigned to CTO
-- **Why it works:** a developer can technically click Merge despite a red check on the free plan. This workflow makes that merge survive only for ~60–120 seconds before it is auto-reverted, publicly called out, and handed to the CTO to decide. Merging around the rules becomes a visible, auditable, reversible event rather than a silent bypass.
+- **REPORT ONLY. This workflow never modifies code, and must never be changed to.** Nothing else in this repo may either — no workflow, no script, no button, no DevOps engineer, no agent. A failing check means the work needs a **forward fix**, not deletion. The remedy is always: keep the code, open a follow-up, fix it forward (§1.1).
+- **Why reporting is enough:** a developer can technically click Merge despite a red check on the free plan. Within ~60–120 seconds the bypass is publicly named and assigned to the CTO. That makes it visible and auditable, which is the goal. Deleting the work to punish a process violation destroys the feature along with the violation (§1.1).
 
 ### 9.10 Repo-level merge settings — **ENFORCED (server-side)**
 Applied via `gh api -X PATCH repos/Marketeq/marketeq-projects-vibe`:
@@ -503,7 +638,7 @@ The following require GitHub Team or higher and are therefore unavailable today:
 - Required code-owner reviews enforced by GitHub itself
 - Required conversation resolution enforced by GitHub itself
 
-**We do not upgrade.** Instead, all of the above are enforced post-hoc by §9.9 (auto-revert) and by the reviewer discipline codified in this SOP. Merging despite a failing check is technically possible but immediately reverted, publicly flagged, and assigned to the CTO for follow-up.
+**We do not upgrade.** Instead, all of the above are enforced post-hoc by §9.9 (reporting) and by the reviewer discipline codified in this SOP. Merging despite a failing check is technically possible but is immediately flagged publicly and assigned to the CTO for a forward fix.
 
 ---
 
@@ -552,8 +687,11 @@ branch if it passes every one of the following checks:
    (5) Standards — no new any types, no @ts-ignore without a reason,
        NestJS exceptions for errors, correct useEffect deps, correct
        Next.js route group placement.
-   (6) Branch freshness — MERGEABLE and not >5 commits behind base.
-       If behind, block and require rebase. NEVER use --admin to bypass.
+   (6) Branch freshness — MERGEABLE and zero commits behind base.
+       Check behind_by. If >= 1, run `gh pr update-branch <N>` with NO
+       flag (merge commit, non-destructive). NEVER pass --rebase and
+       never force-push (SS1.11). If it stops on a conflict, report the
+       conflict; do not resolve it. NEVER use --admin.
    (7) Memory/perf — no infinite loops, unbounded queries, heap risks.
 
 6. Confirm the gitleaks "Scan for committed secrets" check is passing.
@@ -564,6 +702,8 @@ branch if it passes every one of the following checks:
 
 If every check passes, merge with:
   gh pr merge <N> --squash --delete-branch
+  # Only use --delete-branch when merging ALL code from the branch.
+  # For cherry-picks or partial merges, omit --delete-branch.
 
 Then verify with:
   gh pr view <N> --json state,mergedAt,mergeCommit
@@ -594,6 +734,26 @@ Hard rules that override everything else:
 - New features must never break existing working features. If you
   cannot prove this by reading the callers, block the PR and ask for
   more tests.
+
+Scope limits on what you may report (see §1.9 and §1.10):
+- You may only report on code that existed BEFORE this PR. Code this
+  PR added is the developer's deliberate new work. Ask what it is for;
+  never recommend removing it.
+- Every finding must quote the two conflicting lines, or the
+  code-vs-interface mismatch. No citation, no finding.
+- Before reporting a missing guard, validator, or handler, grep for a
+  global/framework-level equivalent (APP_GUARD, middleware,
+  interceptor, base class). Absence at the decorator is not absence.
+- Do not report on naming, casing, style, copy, product scope, layout
+  outside the manifest's scope, or performance you have not measured.
+  Each of these needs the design file, the ticket, or a benchmark, and
+  you have none of them.
+- For rewritten pre-existing code, run the coverage test: list every
+  behavior of the old code and name the new line providing it, or mark
+  it MISSING. Report only MISSING. If nothing is missing, stay silent —
+  whether the rewrite is better is the developer's call, not yours.
+- A false finding costs the developer real work and risks deleting good
+  code. That is worse than a missed bug. When you cannot cite it, drop it.
 ```
 
 ---
@@ -635,8 +795,10 @@ gh pr diff <N> > /tmp/pr<N>.diff
 # Check CI status
 gh pr checks <N>
 
-# Merge (the only approved form)
+# Merge (full merge — all code taken, delete branch)
 gh pr merge <N> --squash --delete-branch
+# Merge (partial/cherry-pick — keep branch for remaining work)
+gh pr merge <N> --squash
 
 # Verify merge
 gh pr view <N> --json state,mergedAt,mergeCommit
@@ -662,7 +824,7 @@ The #1 recurring bug class in this repo (SOP §8.9) is **silent regressions from
 
 3. **Directory-scoped CODEOWNERS (`CODEOWNERS`)** — auto-requests review from the domain expert for the touched directory. Login changes always route to @CTorres9800. Profile changes always route to @CTorres9800. This ensures the person who last fixed a bug in that area sees the PR before it merges.
 
-4. **Post-Merge SOP Audit (GitHub Actions `post-merge-audit` + Jenkins safety net)** — the safety net. Even if a bypass makes it past layers 1–3 (e.g., reviewer clicks Merge despite red checks), this workflow detects the bypass within ~60 seconds and opens an auto-revert PR assigned to the CTO.
+4. **Post-Merge SOP Audit (GitHub Actions `post-merge-audit` + Jenkins safety net)** — the safety net. Even if a bypass makes it past layers 1–3 (e.g., reviewer clicks Merge despite red checks), this workflow detects the bypass within ~60 seconds and opens an urgent issue assigned to the CTO. Report only — the remedy is a forward fix.
 
 **Follow-up layer (separate PR, tracked in the EPIC enforcement PR description):**
 
@@ -689,12 +851,24 @@ Analyze the diff against the caller snippets and answer these questions explicit
 2. Does this PR remove, rename, or inline any exported symbol that callers still reference?
 3. Does this PR rewrite any file that currently contains a fix, guard, null check, error handler, or early return — and does the rewrite preserve that logic verbatim?
 4. Does this PR touch profile loading logic? If yes, does the PR description contain the four-point confirmation from SOP §1.3?
-5. Does this PR touch authentication or local dev login? If yes, does the PR description contain the four-point login confirmation from SOP §1.4?
+5. Does this PR touch authentication or local dev login? If yes, is the PR author @CTorres9800? If not, BLOCK immediately — login files are permanently locked per SOP §1.4. No exceptions.
 6. Does this PR touch onboarding? If yes, does it preserve every existing form validation, error state, and field?
-7. Are there any CSS/Tailwind class changes that could visually break shared components?
+7. Skip layout and CSS entirely. You cannot tell whether a style change is better or worse — you do not have the design file, the mockup, or the ticket, and nothing in the diff distinguishes a deliberate design update from collateral damage. NEVER report a CSS class, spacing, grid, colour, or structural style change as a regression. Frozen-file protection is handled mechanically by the SOP check, not by the reviewer.
 8. Does the PR change any shared utility function? If yes, read every caller before approving.
 
-Respond with Verdict (SAFE / RISKY / BLOCK), Regression Risks Found (list), What I Could Not Verify, and Reviewer Action Required. Be paranoid. Prefer false positives over false negatives.
+SCOPE LIMITS — these bound every answer above:
+- You may only report on code that existed BEFORE this PR. Code this PR ADDED is the developer's deliberate new work; you have no standing to judge it and must never recommend removing it.
+- Report a finding ONLY when you can quote the two specific lines that conflict, or the code-vs-interface mismatch. No citation, no finding.
+- Before reporting a missing guard, validator, or handler, grep for a global or framework-level equivalent (APP_GUARD, middleware, interceptor, base class). Absence at the decorator is not absence.
+- Never report on: naming, casing, style, copy, product scope ("this isn't persisted yet"), or performance you have not measured. These require the design file, the ticket, or a benchmark. You have none of them.
+
+THE COVERAGE TEST — this is the regression test, and it replaces any judgment about code quality:
+For each hunk that removes or rewrites pre-existing code, list every behavior of the OLD code (each branch, null check, guard, catch, early return, edge case, side effect). For each one, name the line in the NEW code that provides it, or mark it MISSING. Report ONLY the MISSING ones.
+- Nothing missing -> stay SILENT. The rewrite may be better or worse; that is the developer's call, not yours, and you lack the context to make it.
+- Something missing -> BLOCK, naming the specific lost behavior. "The new code is cleaner" is not a defense for dropped functionality.
+
+Respond with Verdict (SAFE / BLOCK), Lost Behaviors Found (list, each with old line + new line + what is missing), and What I Could Not Verify.
+Do NOT prefer false positives. A false finding costs the developer real work and risks deleting good code, which is worse than a missed bug. If you cannot cite it, do not report it.
 ```
 
 Primary prompt source: GitHub Actions `.github/workflows/ai-breakage-check.yml`. Jenkins duplicate: `/var/jenkins_home/pipelines/jenkins_pipeline_ai_breakage.groovy`.
@@ -710,3 +884,7 @@ Primary prompt source: GitHub Actions `.github/workflows/ai-breakage-check.yml`.
 | 2026-05-22 | CI/CD split: PR gate checks on GitHub Actions, post-merge on both GitHub Actions + Jenkins, post-deploy on Jenkins only. All workflow/pipeline references updated accordingly. |
 | 2026-07-08 | Added §4.1 Selective Merge rule: never close entire PRs with mixed quality. Cherry-pick good code, reject only specific violations. |
 | 2026-07-09 | Added §8.11 stale branch code loss bug. Hardened §3.6 to require branches up to date before merge (max 5 commits behind). Hard-blocked `--admin` flag. Added staleness check to `sop-check.yml` workflow. Updated §6 merge procedure to require `gh pr update-branch` before merge. Updated review prompt §10 accordingly. |
+| 2026-08-31 | **Automation may not DESTROY a developer's work (new §1.11).** The line is destructive vs non-destructive, not touched vs untouched. Allowed: auto-updating a stale branch with `gh pr update-branch` (no flag) — a merge commit, every author commit survives, no force-push. Forbidden: `--rebase` and any force-push (rewrites their commits), auto-resolving conflicts (deletes one side), auto-fixes pushed to their branch, and reverts. On a conflict the update stops, which is correct: automation determines which side is better and REPORTS it (§5, §5.1); the author resolves. Supersedes the 2026-08-28 `--rebase` instruction. |
+| 2026-08-28 | **The standard for changes to existing code: better is fine, worse is not.** Stated in §1.1 as a floor rather than a bar — a rewrite needs no justification for being an improvement; it is rejected only when a behavior, guard, null check, error path, or edge case present in the previous version is missing from the new one. Decided by the §15 coverage test, never by a general impression of quality. Added §5.1: conflicts are resolved one hunk at a time, coverage-tested in both directions, defaulting to preserving the engineer's work; blanket `--ours`/`--theirs` forbidden. Standing authorization for `gh pr update-branch --rebase`. |
+| 2026-08-28 | **Less opinionated, more factual.** Added §1.9 (only the author or CTO may authorize deleting the author's work; a reviewer's approval is not authority; no single-action deletion of merged work) and §1.10 (every blocking rule needs evidence). Hardened §3.6: branch is auto-rebased with `gh pr update-branch --rebase` before review and before merge, block at >=1 behind instead of >5. Scoped §4.1 so layout changes are only a violation inside the manifest's "when wiring data" scope. **Removed all revert machinery:** §9.9 is now reporting-only (opens an urgent issue, never creates a revert branch or revert PR), matching §1.1 fix-forward. We do not revert; reverting means deleting somebody's work. Added scope limits and the coverage test to the §10 and §15 prompts; removed "Be paranoid / prefer false positives" from §15. |
+| 2026-08-11 | **ABSOLUTE LOGIN LOCKDOWN.** §1.4 upgraded from "four-point confirmation required" to "CTO ONLY, NO EXCEPTIONS." Login files are permanently locked. No developer, contractor, or agent may touch them. Only @CTorres9800 may modify login/auth files. Login Gate workflow expanded to cover dev-main, staging, and live branches. All review prompts updated to hard-block login PRs from non-CTO authors. |

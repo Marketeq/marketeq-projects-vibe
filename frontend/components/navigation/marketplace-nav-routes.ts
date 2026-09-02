@@ -16,6 +16,8 @@ export const MARKETPLACE_SECONDARY_NAV_PATHS = [
 
 export const hasMarketplaceSecondaryNav = (pathname: string) =>
   MARKETPLACE_SECONDARY_NAV_PATHS.includes(pathname) ||
+  pathname === "/favorites" ||
+  pathname.startsWith("/favorites/") ||
   pathname.startsWith("/c/") ||
   pathname.startsWith("/project-details/") ||
   pathname.startsWith("/job-details/")

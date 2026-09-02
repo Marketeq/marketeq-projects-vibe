@@ -66,6 +66,10 @@ const SERVICES = [
   { name: 'wallet-service',             port: '3030', dir: 'apps/wallet-service',             maxOldSpaceMb: 48 },
   { name: 'wire-review-service',        port: '3031', dir: 'apps/wire-review-service',        maxOldSpaceMb: 48 },
   { name: 'legal-service',              port: '3032', dir: 'apps/legal-service',              maxOldSpaceMb: 96 },
+  // 3033, not the 3028 used in ecosystem.config.js: this file assigns 3028 to
+  // payout-service, so 3028 here would collide (and did — user-service's
+  // resume upload was POSTing to payout-service).
+  { name: 'resume-parsing-service',     port: '3033', dir: 'apps/resume-parsing-service',     maxOldSpaceMb: 96 },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway', maxOldSpaceMb: 96 };
@@ -105,6 +109,9 @@ const gatewayEnv = {
   WALLET_SERVICE_URL:             'http://localhost:3030',
   WIRE_REVIEW_SERVICE_URL:        'http://localhost:3031',
   LEGAL_SERVICE_URL:              'http://localhost:3032',
+  // Consumed by user-service resume.service.ts, which otherwise falls back to
+  // its hardcoded http://localhost:3028 default — payout-service in this file.
+  RESUME_PARSING_SERVICE_URL:     'http://localhost:3033',
 };
 
 // svc.portKey allows services that read a non-standard env var for their port
@@ -275,10 +282,49 @@ function startHealthServer() {
   });
 }
 
+/**
+ * Runs run-migrations.js as a child process so its ~21 DataSource connections
+ * are reclaimed when it exits instead of sitting in the launcher's heap.
+ *
+ * Defaults to reporting drift, which is why the report is not awaited: it must
+ * never delay a boot. Only an explicit MIGRATE_MODE=apply is awaited, so that
+ * schema changes land before any service starts serving against them.
+ */
+function runMigrationStep() {
+  return new Promise((resolve) => {
+    const child = spawn(
+      'node',
+      ['--max-old-space-size=128', path.join(__dirname, 'run-migrations.js')],
+      { env: process.env, stdio: 'inherit' },
+    );
+    child.on('exit', (code) => resolve(code ?? 0));
+    child.on('error', (err) => {
+      console.error(`[boot] migration step failed to spawn: ${err.message}`);
+      resolve(0);
+    });
+  });
+}
+
 async function bootstrapAll() {
   console.log('[boot] Launching all services in single container...');
   console.log(`[boot] Gateway will listen on port ${GATEWAY_PORT}`);
   console.log(`[boot] Starting ${SERVICES.length} microservices + gateway`);
+
+  const migrateMode = (process.env.MIGRATE_MODE || 'report').toLowerCase();
+  const migrationStep = runMigrationStep();
+  if (migrateMode === 'apply') {
+    const code = await migrationStep;
+    if (code !== 0) {
+      // Deliberately not fatal: §3.0.2 of the DevOps SOP forbids taking the
+      // backend down, and a failed migration still leaves services that can
+      // serve every unaffected route. The non-zero exit is logged loudly above
+      // so the staging-services-monitor surfaces it.
+      console.error(
+        '[boot] MIGRATIONS FAILED — booting anyway per zero-downtime rule. ' +
+          'Schema may be inconsistent; investigate before the next deploy.',
+      );
+    }
+  }
 
   launchService(GATEWAY, gatewayEnv, true);
 

@@ -36,16 +36,14 @@ interface TalentProfileSavedEvent {
   country: string | null;
   timezone: string | null;
   rate: number | null;
-  rateMin: number | null;
-  rateMax: number | null;
   overview: unknown | null;
   skills: string[];
   industryExpertise: string[];
   languages: { language: string; fluency: string }[];
   certifications: { title: string; organization: string; dateAwarded: string | null }[];
   education: { institution: string; degree: string; graduationYear: number | null }[];
-  workExperience: { role: string; company: string; startDate: string | null; endDate: string | null; description: string | null }[];
-  portfolio: { title: string; url: string | null; thumbnailId: number | null; description: string | null }[];
+  workExperience: { role: string; company: string; startDate: string | null; endDate: string | null; description: string | null; skills?: string[] }[];
+  portfolio: { title: string; url: string | null; thumbnailId: number | null; thumbnailUrl?: string | null; description: string | null }[];
   status: 'active' | 'inactive' | 'suspended';
 }
 
@@ -53,6 +51,59 @@ interface TalentProfileDeletedEvent {
   event: 'talent-profile.deleted';
   id: string;
   username: string;
+}
+
+interface BlogPostSavedEvent {
+  event: 'blog-post.saved';
+  id: string;
+  sourceId: string;
+  slug: string;
+  title: string;
+  body: unknown;
+  authorId: string | number | null;
+  coverImageUrl: string | null;
+  status: string;
+  publishedAt: string | null;
+}
+
+interface CategoryPageSavedEvent {
+  event: 'category-page.saved';
+  id: string;
+  sourceId: string;
+  categoryId: string | null;
+  path: string;
+  displayTitle: string;
+  level: string | null;
+  heroBanner: { title: string | null; subtitle: string | null; imageUrl: string | null } | null;
+  intro: unknown;
+  faq: unknown[];
+  featured: boolean;
+}
+
+interface ProjectStaticContentSavedEvent {
+  event: 'project-static-content.saved';
+  id: string;
+  sourceId: string;
+  slug: string;
+  heading: string;
+  guaranteeItems: unknown[];
+  highlightedNotice: unknown;
+  policy: unknown;
+  howItWorks: unknown;
+}
+
+interface TestimonialSavedEvent {
+  event: 'testimonial.saved';
+  id: string;
+  sourceId: string;
+  authorName: string;
+  authorTitle: string | null;
+  authorCompany: string | null;
+  avatarUrl: string | null;
+  quote: string;
+  rating: number | null;
+  featured: boolean;
+  status: string;
 }
 
 interface ProjectSavedEvent {
@@ -260,6 +311,26 @@ export class CmsEventPublisher {
   async publishHomepageBannerSaved(event: Omit<HomepageBannerSavedEvent, 'event'>): Promise<void> {
     const payload: HomepageBannerSavedEvent = { event: 'homepage-banner.saved', ...event };
     await this.publishWithRetry('homepage-banner.saved', payload);
+  }
+
+  async publishBlogPostSaved(event: Omit<BlogPostSavedEvent, 'event'>): Promise<void> {
+    const payload: BlogPostSavedEvent = { event: 'blog-post.saved', ...event };
+    await this.publishWithRetry('blog-post.saved', payload);
+  }
+
+  async publishCategoryPageSaved(event: Omit<CategoryPageSavedEvent, 'event'>): Promise<void> {
+    const payload: CategoryPageSavedEvent = { event: 'category-page.saved', ...event };
+    await this.publishWithRetry('category-page.saved', payload);
+  }
+
+  async publishProjectStaticContentSaved(event: Omit<ProjectStaticContentSavedEvent, 'event'>): Promise<void> {
+    const payload: ProjectStaticContentSavedEvent = { event: 'project-static-content.saved', ...event };
+    await this.publishWithRetry('project-static-content.saved', payload);
+  }
+
+  async publishTestimonialSaved(event: Omit<TestimonialSavedEvent, 'event'>): Promise<void> {
+    const payload: TestimonialSavedEvent = { event: 'testimonial.saved', ...event };
+    await this.publishWithRetry('testimonial.saved', payload);
   }
 
   /** Publish any event with a custom routing key. Used by collection hooks. */

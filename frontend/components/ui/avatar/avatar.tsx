@@ -18,6 +18,7 @@ const avatarVariants = cva(
         lg: "h-12 w-12",
         xl: "h-14 w-14",
         "2xl": "h-16 w-16",
+        "3xl": "h-24 w-24",
       },
     },
     defaultVariants: {
@@ -37,6 +38,7 @@ const badgeVariants = cva(
         lg: "h-[15px] w-[15px]",
         xl: "h-[17px] w-[17px]",
         "2xl": "h-[19px] w-[19px]",
+        "3xl": "h-[22px] w-[22px]",
       },
     },
     defaultVariants: {
@@ -54,6 +56,7 @@ const avatarFallbackIconVariants = cva("text-primary-500", {
       lg: "h-7 w-7",
       xl: "h-8 w-8",
       "2xl": "h-8 w-8",
+      "3xl": "h-10 w-10",
     },
   },
   defaultVariants: {
@@ -72,13 +75,14 @@ const avatarFallbackVariants = cva(
         lg: "text-lg",
         xl: "text-xl leading-[30px]",
         "2xl": "text-2xl",
+        "3xl": "text-3xl",
       },
     },
   }
 )
 
 const [AvatarProvider, useAvatarContext] = createContext<{
-  size?: "xs" | "sm" | "md" | "lg" | "xl" | "2xl" | null
+  size?: "xs" | "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | null
 }>({
   displayName: "AvatarProvider",
   errorMessage: `useAvatarContext returned is 'undefined'. Seems you forgot to wrap the components in "<Avatar />"`,

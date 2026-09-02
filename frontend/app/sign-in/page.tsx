@@ -10,7 +10,11 @@ import {
 import UnauthenticatedRoute from "@/hoc/UnauthenticatedRoute"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
-import { containsOneLowerCaseLetter, hookFormHasError } from "@/utils/functions"
+import {
+  capitalizeWords,
+  containsOneLowerCaseLetter,
+  hookFormHasError,
+} from "@/utils/functions"
 import { Eye, EyeOff } from "@blend-metrics/icons"
 import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -33,6 +37,12 @@ import {
   Label,
   useToast,
 } from "@/components/ui"
+import { InviteBanner } from "@/components/invite-banner"
+import {
+  readInviteContextForAuthPage,
+  readInviteTokenForAuthPage,
+} from "@/lib/invite-link"
+import { useInvitationPreview } from "@/src/hooks/useInvitations"
 
 const signInSchema = z.object({
   email: z
@@ -110,6 +120,32 @@ export default function SignIn() {
       ? redirectTarget
       : "/"
 
+  // The token/company/inviter context rides inside `redirect`, not as its own
+  // param. See lib/invite-link.ts.
+  const inviteToken = readInviteTokenForAuthPage(searchParams)
+  const inviteContext = readInviteContextForAuthPage(searchParams)
+  const { data: invitePreview } = useInvitationPreview(inviteToken)
+  // Don't advertise a canceled/expired invite; the preview call is the source
+  // of truth (the email link carries only ?token=) and the URL context params
+  // are the fallback for invite-dialog links that predate the preview endpoint.
+  const showInviteBanner = !invitePreview || invitePreview.status === "pending"
+  // Names on the invite banner are title-cased for display whatever casing they
+  // were stored in, matching the team cards and the invite emails. The handle
+  // is left alone, since it is an identifier, not a name.
+  const inviterName = capitalizeWords(
+    invitePreview?.inviterName ?? inviteContext.inviter
+  )
+  const inviterHandle =
+    invitePreview?.inviterUsername ?? inviteContext.inviterHandle
+  const inviteDestination = capitalizeWords(
+    invitePreview?.companyName ?? inviteContext.company
+  )
+
+  const signInRedirectQuery = searchParams.toString()
+  const signUpHref = signInRedirectQuery
+    ? `/sign-up?${signInRedirectQuery}`
+    : "/sign-up"
+
   const {
     register,
     formState: { errors },
@@ -157,7 +193,7 @@ export default function SignIn() {
         const destination = redirectTarget
           ? nextRoute
           : resolveDashboardRoute(nextUser)
-        router.push(destination)
+        router.replace(destination)
         reset()
       } else {
         toast({ title: "Invalid response from server", variant: "destructive" })
@@ -230,7 +266,7 @@ export default function SignIn() {
           const destination = redirectTarget
             ? nextRoute
             : resolveDashboardRoute(nextUser)
-          router.push(destination)
+          router.replace(destination)
           reset()
         }
       })
@@ -243,7 +279,7 @@ export default function SignIn() {
   }
 
   return (
-    <UnauthenticatedRoute>
+    <UnauthenticatedRoute redirectTo={redirectTarget ? nextRoute : undefined}>
       <div className="flex min-h-screen bg-white">
         <div className="relative hidden lg:flex overflow-hidden flex-col justify-between p-[75px] w-[480px] bg-dark-blue-500 shrink-0">
           <div>
@@ -268,7 +304,7 @@ export default function SignIn() {
             </p>
 
             <div className="inline-block relative">
-              <NextLink href="/sign-up">
+              <NextLink href={signUpHref}>
               <Button
                 className="text-white hover:bg-white/10 border-white/20"
                 visual="gray"
@@ -437,6 +473,14 @@ export default function SignIn() {
             </div>
           ) : (
             <div className="max-w-[560px]">
+              {showInviteBanner && (
+                <InviteBanner
+                  className="mb-6"
+                  inviterName={inviterName}
+                  inviterHandle={inviterHandle}
+                  destination={inviteDestination}
+                />
+              )}
               <h1 className="md:text-left text-center text-2xl leading-9 font-semibold text-dark-blue-400">
                 Welcome Changemakers!
               </h1>
@@ -445,9 +489,17 @@ export default function SignIn() {
               </p>
 
               <div className="grid md:grid-cols-2 mt-10 md:mt-[50px] gap-3 items-center">
-                <GoogleLoginButton />
+                <GoogleLoginButton
+                  onSuccess={(user) =>
+                    router.replace(redirectTarget ? nextRoute : resolveDashboardRoute(user))
+                  }
+                />
 
-                <LinkedInLoginButton />
+                <LinkedInLoginButton
+                  onSuccess={(user) =>
+                    router.replace(redirectTarget ? nextRoute : resolveDashboardRoute(user))
+                  }
+                />
               </div>
 
               <div className="flex gap-x-[9px] mt-6 items-center">
@@ -588,7 +640,7 @@ export default function SignIn() {
                     Don't have an account?
                   </span>
                   <NextLink
-                    href="/sign-up"
+                    href={signUpHref}
                     className="underline font-normal text-blue-500 text-sm leading-6"
                   >
                     Sign up

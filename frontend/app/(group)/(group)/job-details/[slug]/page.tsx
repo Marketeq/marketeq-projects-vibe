@@ -277,7 +277,7 @@ type UploadedSignatureFile = {
   dataUrl: string
 }
 
-type ReviewErrorState = "unavailable"
+type ReviewErrorState = "unavailable" | "voided"
 
 type SignErrorState =
   | "unavailable"
@@ -1040,9 +1040,12 @@ export default function JobDetailsPage({
                   <h1 className="text-[32px] font-bold leading-tight text-dark-blue-400">
                     {job.title}
                   </h1>
-                  <p className="mt-2 text-[28px] font-light leading-tight text-dark-blue-400">
+                  <NextLink
+                    href={`/project-details/${slug}`}
+                    className="mt-2 block text-[28px] font-light leading-tight text-dark-blue-400 hover:underline"
+                  >
                     {subtitle}
-                  </p>
+                  </NextLink>
 
                   <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-gray-500">
                     <span>{metaLeadLabel}</span>
@@ -1511,7 +1514,7 @@ export default function JobDetailsPage({
                     </span>
                   </span>
                   <NextLink
-                    href="/checkout/demo"
+                    href={`/checkout/${slug}`}
                     className="shrink-0 whitespace-nowrap text-[12px] font-medium leading-6 text-primary-500 hover:underline"
                   >
                     View Details

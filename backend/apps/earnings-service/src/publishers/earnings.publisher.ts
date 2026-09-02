@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/commo
 import { ConfigService }  from '@nestjs/config';
 import * as amqp          from 'amqplib';
 import { randomUUID }     from 'crypto';
+import { EarningsEventsPublisher } from './earnings-events.publisher';
 
 const EXCHANGE = 'marketeq.events';
 
@@ -11,7 +12,10 @@ export class EarningsPublisher implements OnModuleInit, OnModuleDestroy {
   private connection: any;
   private channel:    any;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly realtimeEvents: EarningsEventsPublisher,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     const url = this.config.get<string>('RABBITMQ_URL');
@@ -60,6 +64,11 @@ export class EarningsPublisher implements OnModuleInit, OnModuleDestroy {
   async publishBalanceUpdated(payload: BalanceUpdatedPayload): Promise<void> {
     await this.publish('earnings.balance.updated', payload);
     this.logger.log(`earnings.balance.updated published for ${payload.contractorId}`);
+    // US-91–94: same mutation, pushed live to the contractor's own Ably
+    // channel. Every caller of publishBalanceUpdated (credit/debit/reversal/
+    // payout_completed/payout_failed) gets real-time fan-out for free — no
+    // need to touch the four RabbitMQ consumers individually.
+    await this.realtimeEvents.publishRealtimeBalanceUpdate(payload);
   }
 
   async publishThresholdReached(payload: ThresholdReachedPayload): Promise<void> {
@@ -76,7 +85,7 @@ export interface BalanceUpdatedPayload {
   availableBalance:   string;
   previousBalance:    string;
   delta:              string;
-  mutationType:       'credit' | 'debit' | 'reversal' | 'payout_completed' | 'payout_failed';
+  mutationType:       'credit' | 'debit' | 'reversal' | 'payout_completed' | 'payout_failed' | 'payout_hold';
   sourceEventId:      string;
   sourceRoutingKey:   string;
   displayCurrency:    string;

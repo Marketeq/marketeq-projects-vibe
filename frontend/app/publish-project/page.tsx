@@ -653,7 +653,7 @@ const plainTextFromRichTextHtml = (value: string) => {
 const getRichTextCharacterCount = (value: string) =>
   plainTextFromRichTextHtml(value).length
 
-const DURATION_TYPE = ["days", "weeks", "hours"] as const
+const DURATION_TYPE = ["hours", "days", "weeks", "months"] as const
 
 const formatDurationUnit = (
   value: number,
@@ -662,6 +662,7 @@ const formatDurationUnit = (
   if (value === 1) {
     if (type === "days") return "day"
     if (type === "weeks") return "week"
+    if (type === "months") return "month"
     return "hour"
   }
 
@@ -673,6 +674,7 @@ const durationToDays = (
   type: (typeof DURATION_TYPE)[number]
 ) => {
   if (type === "weeks") return value * 7
+  if (type === "months") return value * 30
   if (type === "hours") return Math.max(1, Math.ceil(value / 24))
   return value
 }
@@ -1544,8 +1546,8 @@ const projectInfoSchema = z.object({
     .max(5, "Please do not enter more than 5 industry(s)"),
   shortDescription: z
     .string()
-    .min(50, "Please enter at least 50 character(s)")
-    .max(300, "Please do not enter more than 300 character(s)"),
+    .min(350, "Please enter at least 350 character(s)")
+    .max(450, "Please do not enter more than 450 character(s)"),
   fullDescription: z.string().superRefine((value, ctx) => {
     const contentLength = getRichTextCharacterCount(value)
 
@@ -1640,11 +1642,11 @@ const scrollToPublishField = (targetId: string) => {
 }
 
 const TITLE_MAX_LENGTH = 120
-const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const SHORT_DESCRIPTION_MAX_LENGTH = 450
 const FULL_DESCRIPTION_MAX_LENGTH = 5000
 const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
 const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 300 character(s)"
+  "Please do not enter more than 450 character(s)"
 const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
   "Please do not enter more than 5,000 character(s)"
 
@@ -5563,7 +5565,7 @@ const ProjectScope = ({
   type DurationFormValues = {
     duration: {
       value: number
-      type: "days" | "weeks" | "hours"
+      type: "hours" | "days" | "weeks" | "months"
     }
   }
 

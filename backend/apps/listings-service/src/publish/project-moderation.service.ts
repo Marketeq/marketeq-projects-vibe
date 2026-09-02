@@ -1,7 +1,6 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
-import FormData = require('form-data');
 
 type ModerationStatus = 'approved' | 'rejected' | 'pending_review';
 
@@ -121,6 +120,53 @@ export class ProjectModerationService {
     return undefined;
   }
 
+  async moderateImageUrl(
+    projectId: string,
+    imageUrl: string,
+    authToken?: string,
+  ): Promise<ProjectModerationResult> {
+    try {
+      const imageResponse = await this.httpService.axiosRef.post(
+        `${this.moderationBaseUrl}/api/moderate/media`,
+        {
+          contentId: projectId,
+          mediaType: 'image',
+          mediaUrl: imageUrl,
+        },
+        this.authConfig(authToken),
+      );
+      const imageStatus = imageResponse?.data?.status;
+      if (imageStatus === 'rejected') {
+        // Prefer 'reason' from the moderation service, fallback to 'message', then generic
+        const reasonParts = [
+          imageResponse?.data?.reason,
+          imageResponse?.data?.debug?.rejectCode
+            ? `code=${imageResponse.data.debug.rejectCode}`
+            : undefined,
+          imageResponse?.data?.debug?.step
+            ? `step=${imageResponse.data.debug.step}`
+            : undefined,
+          imageResponse?.data?.message,
+        ].filter(Boolean);
+        const reason = reasonParts.join(' | ') || 'Image rejected by moderation';
+        return { status: 'rejected', reason };
+      }
+      if (imageStatus === 'pending_review') {
+        return {
+          status: 'pending_review',
+          reason:
+            imageResponse?.data?.reason ||
+            imageResponse?.data?.message ||
+            'Image moderation is pending review',
+        };
+      }
+      return { status: 'approved' };
+    } catch (err) {
+      this.logger.error(`Image moderation failed for project ${projectId}:`, err);
+      throw new ModerationUnavailableError('Image moderation failed');
+    }
+  }
+
   async moderateProject(
     projectId: string,
     input: ProjectModerationInput,
@@ -128,47 +174,13 @@ export class ProjectModerationService {
   ): Promise<ProjectModerationResult> {
     // 1. Moderate image if imageUrl is provided
     if (input.imageUrl) {
-      try {
-        const imageResponse = await this.httpService.axiosRef.post(
-          `${this.moderationBaseUrl}/api/moderate/media`,
-          {
-            contentId: projectId,
-            mediaType: 'image',
-            mediaUrl: input.imageUrl,
-          },
-          this.authConfig(authToken),
-        );
-        const imageStatus = imageResponse?.data?.status;
-        if (imageStatus === 'rejected') {
-          // Prefer 'reason' from the moderation service, fallback to 'message', then generic
-          const reasonParts = [
-            imageResponse?.data?.reason,
-            imageResponse?.data?.debug?.rejectCode
-              ? `code=${imageResponse.data.debug.rejectCode}`
-              : undefined,
-            imageResponse?.data?.debug?.step
-              ? `step=${imageResponse.data.debug.step}`
-              : undefined,
-            imageResponse?.data?.message,
-          ].filter(Boolean);
-          const reason = reasonParts.join(' | ') || 'Image rejected by moderation';
-          return {
-            status: 'rejected',
-            reason,
-          };
-        }
-        if (imageStatus === 'pending_review') {
-          return {
-            status: 'pending_review',
-            reason:
-              imageResponse?.data?.reason ||
-              imageResponse?.data?.message ||
-              'Image moderation is pending review',
-          };
-        }
-      } catch (err) {
-        this.logger.error(`Image moderation failed for project ${projectId}:`, err);
-        throw new ModerationUnavailableError('Image moderation failed');
+      const imageResult = await this.moderateImageUrl(
+        projectId,
+        input.imageUrl,
+        authToken,
+      );
+      if (imageResult.status !== 'approved') {
+        return imageResult;
       }
     }
 
@@ -268,185 +280,37 @@ export class ProjectModerationService {
     }
   }
 
-  async moderateUploadedImage(
-    projectId: string,
-    file: Express.Multer.File,
-  ): Promise<ProjectModerationResult> {
-    const form = new FormData();
-    form.append('contentId', projectId);
-    form.append('file', file.buffer, {
-      filename: file.originalname || 'upload-image',
-      contentType: file.mimetype,
-      knownLength: file.size,
-    });
-
+  async moderateText(
+    text: string,
+    contentId: string,
+    authToken?: string,
+  ): Promise<'approved' | 'rejected' | 'pending_review'> {
+    if (!text?.trim()) return 'approved';
     try {
       const response = await this.httpService.axiosRef.post(
-        `${this.moderationBaseUrl}/api/moderate/upload`,
-        form,
+        `${this.moderationBaseUrl}/api/moderate/content`,
         {
-          timeout: this.moderationTimeoutMs,
-          headers: form.getHeaders(),
-          maxBodyLength: Infinity,
-          maxContentLength: Infinity,
+          contentId,
+          title: text.slice(0, 150),
+          content: text,
+          category: '',
+          subcategory: '',
+          categories: [],
+          tags: [],
         },
+        this.authConfig(authToken),
       );
-
       const status = response?.data?.status;
-      if (
-        status !== 'approved' &&
-        status !== 'rejected' &&
-        status !== 'pending_review'
-      ) {
-        throw new ModerationInvalidResponseError(
-          `Unexpected upload moderation status "${String(status)}"`,
-        );
-      }
-
-      return {
-        status,
-        reason:
-          typeof response?.data?.reason === 'string'
-            ? response.data.reason
-            : undefined,
-      };
+      return status === 'rejected' || status === 'pending_review'
+        ? status
+        : 'approved';
     } catch (error) {
-      if (error instanceof ModerationInvalidResponseError) {
-        throw error;
-      }
-
-      if (axios.isAxiosError(error)) {
-        const statusCode = error.response?.status;
-        const responseStatus = error.response?.data?.status;
-
-        if (
-          statusCode === 422 &&
-          (responseStatus === 'rejected' || responseStatus === 'pending_review')
-        ) {
-          return {
-            status: responseStatus,
-            reason:
-              typeof error.response?.data?.reason === 'string'
-                ? error.response.data.reason
-                : undefined,
-          };
-        }
-
-        const isConnectivityError =
-          !error.response ||
-          error.code === 'ECONNABORTED' ||
-          error.code === 'ECONNREFUSED' ||
-          error.code === 'ENOTFOUND' ||
-          error.code === 'EHOSTUNREACH' ||
-          error.code === 'ETIMEDOUT';
-
-        if (isConnectivityError || (statusCode != null && statusCode >= 500)) {
-          throw new ModerationUnavailableError(
-            'Image upload moderation unavailable',
-          );
-        }
-
-        throw new ModerationInvalidResponseError(
-          statusCode != null
-            ? `Image upload moderation failed with status ${statusCode}`
-            : 'Image upload moderation request failed',
-        );
-      }
-
-      throw new ModerationInvalidResponseError(
-        'Image upload moderation request failed unexpectedly',
+      this.logger.warn(
+        `Text moderation unavailable for ${contentId}: ${
+          error instanceof Error ? error.message : error
+        }`,
       );
-    }
-  }
-
-  async moderateUploadedVideo(
-    projectId: string,
-    file: Express.Multer.File,
-  ): Promise<ProjectModerationResult> {
-    const form = new FormData();
-    form.append('contentId', projectId);
-    form.append('file', file.buffer, {
-      filename: file.originalname || 'upload-video',
-      contentType: file.mimetype,
-      knownLength: file.size,
-    });
-
-    try {
-      const response = await this.httpService.axiosRef.post(
-        `${this.moderationBaseUrl}/api/moderate/upload`,
-        form,
-        {
-          timeout: this.videoModerationTimeoutMs,
-          headers: form.getHeaders(),
-          maxBodyLength: Infinity,
-          maxContentLength: Infinity,
-        },
-      );
-
-      const status = response?.data?.status;
-      if (
-        status !== 'approved' &&
-        status !== 'rejected' &&
-        status !== 'pending_review'
-      ) {
-        throw new ModerationInvalidResponseError(
-          `Unexpected video upload moderation status "${String(status)}"`,
-        );
-      }
-
-      return {
-        status,
-        reason:
-          typeof response?.data?.reason === 'string'
-            ? response.data.reason
-            : undefined,
-      };
-    } catch (error) {
-      if (error instanceof ModerationInvalidResponseError) {
-        throw error;
-      }
-
-      if (axios.isAxiosError(error)) {
-        const statusCode = error.response?.status;
-        const responseStatus = error.response?.data?.status;
-
-        if (
-          statusCode === 422 &&
-          (responseStatus === 'rejected' || responseStatus === 'pending_review')
-        ) {
-          return {
-            status: responseStatus,
-            reason:
-              typeof error.response?.data?.reason === 'string'
-                ? error.response.data.reason
-                : undefined,
-          };
-        }
-
-        const isConnectivityError =
-          !error.response ||
-          error.code === 'ECONNABORTED' ||
-          error.code === 'ECONNREFUSED' ||
-          error.code === 'ENOTFOUND' ||
-          error.code === 'EHOSTUNREACH' ||
-          error.code === 'ETIMEDOUT';
-
-        if (isConnectivityError || (statusCode != null && statusCode >= 500)) {
-          throw new ModerationUnavailableError(
-            'Video upload moderation unavailable',
-          );
-        }
-
-        throw new ModerationInvalidResponseError(
-          statusCode != null
-            ? `Video upload moderation failed with status ${statusCode}`
-            : 'Video upload moderation request failed',
-        );
-      }
-
-      throw new ModerationInvalidResponseError(
-        'Video upload moderation request failed unexpectedly',
-      );
+      return 'approved';
     }
   }
 

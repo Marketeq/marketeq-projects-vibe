@@ -1,0 +1,116 @@
+name: Branch Freshness Gate
+
+# HARD RULE: A branch CANNOT be merged if it is even ONE commit behind the base branch.
+# This prevents regressions from stale branches silently overwriting newer code.
+# There are ZERO exceptions to this rule.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [dev-main, staging, live]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  freshness:
+    name: Branch Must Be Up-to-Date
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if branch is behind base
+        id: check
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          git fetch origin "$BASE_REF" --quiet
+          git fetch origin "$HEAD_REF" --quiet
+
+          BEHIND_COUNT=$(git rev-list --count "HEAD..origin/$BASE_REF" 2>/dev/null || echo 0)
+
+          echo "Branch: $HEAD_REF"
+          echo "Base: $BASE_REF"
+          echo "Commits behind base: $BEHIND_COUNT"
+
+          if [ "$BEHIND_COUNT" -gt 0 ]; then
+            echo ""
+            echo "=========================================="
+            echo "BLOCKED: Branch is $BEHIND_COUNT commit(s) behind $BASE_REF"
+            echo "=========================================="
+            echo ""
+            echo "You MUST update your branch before merging."
+            echo "Run:"
+            echo "  git fetch origin $BASE_REF"
+            echo "  git rebase origin/$BASE_REF"
+            echo "  git push --force-with-lease"
+            echo ""
+            echo "This rule exists to prevent regressions. No exceptions."
+            echo ""
+            echo "behind=$BEHIND_COUNT" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "Branch is up-to-date with $BASE_REF"
+          echo "behind=0" >> "$GITHUB_OUTPUT"
+
+      - name: Post PR comment on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const baseRef = context.payload.pull_request.base.ref;
+            const headRef = context.payload.pull_request.head.ref;
+            const marker = '<!-- branch-freshness-gate -->';
+
+            const body = `## Branch Freshness Gate: BLOCKED
+
+            **\`${headRef}\` is behind \`${baseRef}\` and CANNOT be merged.**
+
+            This is a hard rule with zero exceptions. Merging a stale branch causes regressions by silently overwriting newer code on the base branch.
+
+            **To fix:**
+            \`\`\`bash
+            git fetch origin ${baseRef}
+            git rebase origin/${baseRef}
+            git push --force-with-lease
+            \`\`\`
+
+            Once your branch is fully up-to-date (zero commits behind), this check will pass automatically.
+
+            ${marker}`;
+
+            // Find and update existing comment, or create new one
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 100,
+            });
+
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body,
+              });
+            }

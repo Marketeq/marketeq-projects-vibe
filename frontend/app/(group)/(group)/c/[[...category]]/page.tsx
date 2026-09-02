@@ -51,7 +51,13 @@ import {
   SwiperPrevTrigger,
   SwiperRoot,
 } from "@/components/swiper"
-import { Tabs, TabsContent } from "@/components/ui"
+import {
+  Tabs,
+  TabsContent,
+  contentTransition,
+  contentVariants,
+} from "@/components/ui"
+import { motion } from "framer-motion"
 import {
   Accordion,
   AccordionItem,
@@ -251,6 +257,13 @@ const marketplaceTalentTabs = [
   "Top-Rated",
 ]
 
+// --- Temporary imports To allow For code to complie after the force push to main ---.
+import { projectSeeds } from "@/data/projects.seed"
+import { serviceSeeds } from "@/data/services.seed"
+// --- end temporary imports ---
+
+// Still referenced by the "Browse by Type" section (talent/subcat scope,
+// not this branch) — restored until that section converts.
 const projectCardMocks = projectSeeds
 
 const serviceCardMocks = serviceSeeds
@@ -265,24 +278,6 @@ function scopeSeedItems<T extends { categorySlugs?: string[] }>(
   }
 
   return items
-}
-
-const narrowProjectSearch = {
-  industries: [
-    "Agriculture",
-    "Oil & Gas",
-    "Manufacturing",
-    "Construction",
-    "Utilities",
-    "Retail & Wholesale",
-    "Transportation",
-    "Finance & Banking",
-    "Real Estate",
-    "Healthcare",
-  ],
-  budgets: ["$500 - $1,000", "$1,000 - $5,000", "$5,000 - $10,000", "$10,000+"],
-  lengths: ["1-2 weeks", "2-4 weeks", "1-3 months", "3+ months"],
-  teamSizes: ["1 person", "2-5 people", "6-10 people", "10+ people"],
 }
 
 const browseSkillMocks = [
@@ -302,127 +297,6 @@ const browseSkillMocks = [
   "Azure",
   "Infrastructure as Code",
 ]
-
-const topTalentMock = talentSeeds
-
-function TopTalentCard({ talent }: { talent: (typeof topTalentMock)[number] }) {
-  const profileHref = `/talent-profile?username=${encodeURIComponent(talent.username)}`
-
-  return (
-    <article className="relative flex min-h-[448px] cursor-pointer flex-col overflow-hidden rounded-lg border border-gray-200 bg-white text-dark-blue-400 shadow-[0px_1px_2px_0px_rgba(16,24,40,.04)]">
-      <NextLink
-        href={profileHref}
-        aria-label={`View ${talent.username} profile`}
-        className="absolute inset-0 z-[1] rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#306CFE]"
-      />
-      <div className="relative mx-5 mt-5 h-[150px] overflow-hidden rounded-md bg-gray-100">
-        <NextImage
-          src={talent.photo}
-          alt={`${talent.username} profile`}
-          fill
-          sizes="(min-width: 1280px) 25vw, (min-width: 768px) 50vw, 100vw"
-          className={`object-cover ${talent.status === "away" ? "grayscale" : ""}`}
-        />
-        <div className="absolute left-4 top-4 z-10 inline-flex h-7 items-center gap-1.5 rounded bg-black/55 px-2.5 text-xs font-bold text-white">
-          <Star className="size-3.5 fill-none text-white" />
-          All Stars
-        </div>
-        <FavoriteRoot>
-          {({ pressed }) => (
-            <TooltipProvider delayDuration={75}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="absolute right-4 top-4 z-20 inline-block">
-                    <Favorite
-                      className="size-7 text-white hover:text-white data-[state=on]:text-[#306CFE]"
-                      starClassName="size-7 stroke-[2]"
-                    />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {pressed ? (
-                    <span className="inline-flex items-center gap-x-1">
-                      <Check className="size-[15px] shrink-0 text-green-500" />
-                      Saved
-                    </span>
-                  ) : (
-                    "Save to favorites"
-                  )}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </FavoriteRoot>
-      </div>
-
-      <div
-        className={`absolute left-5 top-[151px] z-20 flex size-9 items-center justify-center rounded-full border-4 border-white text-white ${
-          talent.status === "away" ? "bg-[#FDB022]" : "bg-[#12B76A]"
-        }`}
-      >
-        {talent.status === "away" ? (
-          <Clock className="size-4" />
-        ) : (
-          <Check className="size-4" />
-        )}
-      </div>
-
-      <div className="px-5 pb-5 pt-4">
-        <p className="text-lg font-bold leading-none text-dark-blue-400">
-          {talent.rate}
-          <span className="text-sm font-medium">/hr</span>
-        </p>
-        <div className="mt-5">
-          <h2 className="text-base font-bold leading-5 text-dark-blue-400">
-            {talent.username}{" "}
-            <span className="font-normal text-gray-400">{talent.handle}</span>
-          </h2>
-          <p className="text-base font-bold leading-5 text-dark-blue-400">
-            {talent.role}
-          </p>
-          <p className="mt-3 text-sm leading-5 text-[#66739A]">
-            {talent.experience}
-          </p>
-        </div>
-
-        <div className="mt-5 flex items-center gap-2 text-xs font-semibold leading-4 text-[#667085]">
-          <MarkerPin02 className="size-4 text-[#667085]" />
-          <span>{talent.location}</span>
-        </div>
-
-        <div className="mt-5 flex h-[30px] items-center">
-          <div className="flex h-full items-center gap-1 rounded-l bg-[#F8FAFF] px-2">
-            {fromLength(5).map((_, idx) => (
-              <Star
-                key={idx}
-                className="size-[15px] fill-[#306CFE] text-[#306CFE]"
-              />
-            ))}
-            <span className="ml-1 text-sm font-bold leading-none text-dark-blue-400">
-              {talent.rating}
-            </span>
-          </div>
-          <div className="flex h-full items-center bg-white px-4 text-sm font-bold leading-none text-dark-blue-400">
-            {talent.projects}
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-auto border-t border-gray-200 bg-gray-50 px-4 py-4">
-        <div className="flex flex-wrap gap-x-3 gap-y-2 text-xs font-bold leading-5 text-gray-400">
-          {talent.skills.map((skill, idx) => (
-            <span
-              key={`${skill}-${idx}`}
-              className={skill === "More..." ? "ml-auto text-gray-600" : ""}
-            >
-              {skill}
-            </span>
-          ))}
-        </div>
-      </div>
-    </article>
-  )
-}
 
 const CATEGORY_TAXONOMY: Record<string, CategoryMeta> = {
   research: {
@@ -2739,6 +2613,63 @@ function getCategoryMeta(slug: string): CategoryMeta {
     subcategories: [],
   }
 }
+type FavoriteEntityType = "project" | "service" | "team" | "talent"
+
+const favoriteKey = (type: FavoriteEntityType, itemId: string) =>
+  `${type}:${itemId}`
+
+/**
+ * Shared favorite-toggle control used by every card's `favoriteSlot`.
+ * Centralizes the FavoriteRoot/Tooltip/Favorite markup.
+ */
+function FavoriteButton({
+  itemId,
+  type,
+  favoritedItems,
+  onToggle,
+}: {
+  itemId?: string | null
+  type: FavoriteEntityType
+  favoritedItems: Set<string>
+  onToggle: (
+    itemId: string,
+    type: FavoriteEntityType,
+    pressed: boolean
+  ) => void
+}) {
+  const id = itemId ? String(itemId) : undefined
+  const key = id ? favoriteKey(type, id) : undefined
+  return (
+    <FavoriteRoot
+      value={key ? favoritedItems.has(key) : false}
+      onValueChange={
+        id ? (pressed: boolean) => onToggle(id, type, pressed) : undefined
+      }
+    >
+      {({ pressed }) => (
+        <TooltipProvider delayDuration={75}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-block">
+                <Favorite />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {pressed ? (
+                <span className="inline-flex items-center gap-x-1">
+                  <Check className="size-[15px] shrink-0 text-green-500" />
+                  Saved
+                </span>
+              ) : (
+                "Save to favorites"
+              )}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+    </FavoriteRoot>
+  )
+}
 
 // Interface for project items
 interface ProjectItem extends BlockItem {
@@ -3000,32 +2931,19 @@ export default function Projects() {
   const currentCategorySlugs = [l1Meta.slug, l2Meta?.slug, l3Meta?.slug].filter(
     (slug): slug is string => Boolean(slug)
   )
-  const recommendedProjectSeeds = scopeSeedItems(
-    projectCardMocks,
-    currentCategorySlugs
-  )
-  const recommendedServiceSeeds = scopeSeedItems(
-    serviceCardMocks,
-    currentCategorySlugs
-  )
-  const recommendedTeamSeeds = scopeSeedItems(teamSeeds, currentCategorySlugs)
-  const recommendedTalentSeeds = scopeSeedItems(
-    topTalentMock,
-    currentCategorySlugs
-  )
 
-  /** Build a link to the kind-specific listing page at the current depth.
-   *  Category-scoped URLs stay canonical as /c/{path}/{kind}. The root
-   *  browse sentinel is not a real category path, so it keeps the top-level
-   *  entity URL.
-   */
+  /** Build a link to the kind-specific listing page at the current depth. */
   const listingHref = (
     kind: "projects" | "services" | "teams" | "talent" | "all"
   ) => {
-    if (rootBrowseMode) return kind === "all" ? "/c" : `/${kind}`
     if (kind === "all") return `/c/${currentCategoryPath}`
-    return `/c/${currentCategoryPath}/${kind}`
+    // Original: return `/c/${currentCategoryPath}/${kind}`
+    return `/${kind}/${currentCategoryPath}`
   }
+
+  /** "Explore more" CTA target: search page filtered by kind + current topic. */
+  const exploreMoreHref = (kind: "projects" | "services" | "teams" | "talent") =>
+    `/search?category=${kind}&q=${encodeURIComponent(l1Meta.name)}`
 
   // Call hooks unconditionally to satisfy React rules
   const l1Query = useCategoryPageL1(
@@ -3057,6 +2975,241 @@ export default function Projects() {
   const { data: pageData, isLoading } = activeQuery as {
     data: any
     isLoading: boolean
+  }
+  const browseSkills = useMemo(() => {
+    const relatedSkills = pageData?.suggestions?.relatedSkills
+    if (!Array.isArray(relatedSkills)) return []
+    return relatedSkills
+      .map((skill: any) => {
+        const name = typeof skill === "string" ? skill : skill?.name
+        if (!name) return null
+        const slug =
+          typeof skill === "object" && skill?.slug
+            ? skill.slug
+            : name
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/(^-|-$)/g, "")
+        return { name, slug }
+      })
+      .filter((skill: any): skill is { name: string; slug: string } =>
+        Boolean(skill)
+      )
+  }, [pageData])
+
+  const serviceItems =
+    listingsServices.length > 0 ? listingsServices : []
+
+  const talentItems =
+    talentUsers.length > 0 ? talentUsers : []
+
+  const projectItems =
+    listingsProjects.length > 0 ? listingsProjects : displayedProjects
+
+  const teamItems = useMemo(
+    () => projectItems.filter((p) => p.team).map((p) => p.team),
+    [projectItems]
+  )
+
+  const getListingTypeName = (item: any): string | null => {
+    const raw =
+      item?.projectType ??
+      item?.project_type ??
+      item?.serviceType ??
+      item?.service_type ??
+      item?.typeName ??
+      item?.type_name ??
+      item?.type
+
+    if (typeof raw !== "string") return null
+
+    const value = raw.trim()
+    if (!value || ["project", "service", "team", "talent"].includes(value.toLowerCase())) {
+      return null
+    }
+
+    return value
+  }
+
+  const getBrowseTypeOptions = (items: any[]) => {
+    const counts = new Map<string, number>()
+
+    for (const item of items) {
+      const name = getListingTypeName(item)
+      if (!name) continue
+      counts.set(name, (counts.get(name) ?? 0) + 1)
+    }
+
+    return Array.from(counts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .slice(0, 24)
+  }
+
+  const browseTypeGroups = useMemo(
+    () =>
+      [
+        {
+          label: "Projects",
+          value: "Projects",
+          options: getBrowseTypeOptions(projectItems),
+        },
+        {
+          label: "Services",
+          value: "Services",
+          options: getBrowseTypeOptions(serviceItems),
+        },
+      ].filter((group) => group.options.length > 0),
+    [projectItems, serviceItems]
+  )
+
+  const getListingCollaborators = (item: any): string[] => {
+    const candidates =
+      item?.teamAvatars ??
+      item?.teamMembers ??
+      item?.collaborators ??
+      item?.assignedUsers ??
+      item?.providers ??
+      []
+
+    if (!Array.isArray(candidates)) return []
+
+    return candidates
+      .map((member: any) =>
+        typeof member === "string"
+          ? member
+          : member?.avatarUrl ??
+            member?.avatar_url ??
+            member?.avatar ??
+            member?.photo ??
+            member?.image ??
+            member?.profileImageUrl
+      )
+      .filter((avatarUrl: any): avatarUrl is string => Boolean(avatarUrl))
+      .slice(0, 4)
+  }
+
+  // Popular/Top-Rated/Featured/Newest/Trending/Bestsellers/In-Demand below are
+  // simple client-side sorts on whatever fields the API happens to return —
+  // not the real weighted/time-windowed ranking spec (backend engagement
+  // scores, review-count thresholds, admin-curated Featured flag, profile
+  // completeness for Newest talent, etc.). Revisit once that's implemented.
+  const getComparableDate = (item: any) =>
+    new Date(
+      item?.createdAt ??
+        item?.publishedAt ??
+        item?.updatedAt ??
+        item?.created_at ??
+        item?.published_at ??
+        item?.updated_at ??
+        0
+    ).getTime() || 0
+
+  const getComparableRating = (item: any) =>
+    Number(item?.rating ?? item?.averageRating ?? item?.avgRating ?? 0)
+
+  const getComparablePopularity = (item: any) =>
+    Number(
+      item?.reviewCount ??
+        item?.reviews ??
+        item?.projectCount ??
+        item?.projects ??
+        item?.favoriteCount ??
+        item?.favoritesCount ??
+        0
+    )
+
+  const getComparableSales = (item: any) =>
+    Number(
+      item?.salesCount ??
+        item?.ordersCount ??
+        item?.completedOrders ??
+        item?.completedProjects ??
+        item?.purchases ??
+        0
+    )
+
+  const getCarouselItemsForTab = <T,>(items: T[], tab: string): T[] => {
+    const sorted = [...items]
+
+    switch (tab) {
+      case "Featured": {
+        const featured = sorted.filter((item: any) => item?.featured)
+        return featured.length > 0 ? featured : sorted
+      }
+      case "Newest":
+        return sorted.sort(
+          (a: any, b: any) => getComparableDate(b) - getComparableDate(a)
+        )
+      case "Most Popular":
+      case "Trending":
+        return sorted.sort(
+          (a: any, b: any) =>
+            getComparablePopularity(b) - getComparablePopularity(a)
+        )
+      case "Top-Rated":
+        return sorted.sort(
+          (a: any, b: any) => getComparableRating(b) - getComparableRating(a)
+        )
+      case "Best-Sellers":
+      case "Bestsellers":
+        return sorted.sort(
+          (a: any, b: any) => getComparableSales(b) - getComparableSales(a)
+        )
+      default:
+        return sorted
+    }
+  }
+
+  const getItemCategoryValues = (item: any): string[] => {
+    const rawValues = [
+      item?.category,
+      item?.categoryName,
+      item?.categorySlug,
+      item?.subcategory,
+      item?.subcategoryName,
+      item?.subcategorySlug,
+      item?.l2Slug,
+      item?.l3Slug,
+      ...(Array.isArray(item?.categories) ? item.categories : []),
+      ...(Array.isArray(item?.categorySlugs) ? item.categorySlugs : []),
+      ...(Array.isArray(item?.tags) ? item.tags : []),
+      ...(Array.isArray(item?.skills) ? item.skills : []),
+    ]
+
+    return rawValues
+      .map((value: any) =>
+        typeof value === "string"
+          ? value
+          : value?.slug ?? value?.name ?? value?.title ?? ""
+      )
+      .filter(Boolean)
+      .map((value: string) => value.toLowerCase())
+  }
+
+  const getCarouselItemsForCategoryTab = <T,>(
+    items: T[],
+    sub: { name?: string; slug?: string },
+    rankingTab = "Top-Rated"
+  ): T[] => {
+    if (!sub?.name || sub.name === "All") {
+      return getCarouselItemsForTab(items, rankingTab)
+    }
+
+    const needles = [sub.slug, sub.name]
+      .filter(Boolean)
+      .map((value) => String(value).toLowerCase())
+
+    const filtered = items.filter((item: any) => {
+      const values = getItemCategoryValues(item)
+      return needles.some((needle) =>
+        values.some((value) => value === needle || value.includes(needle))
+      )
+    })
+
+    return getCarouselItemsForTab(
+      filtered.length > 0 ? filtered : [],
+      rankingTab
+    )
   }
 
   // Subcategories: static taxonomy is the curated source of truth.
@@ -3120,8 +3273,17 @@ export default function Projects() {
   useEffect(() => {
     async function loadFavorites() {
       const favorites = await getAllFavorites()
-      const itemIds = new Set(favorites.map((fav) => fav.itemId))
-      setFavoritedItems(itemIds)
+      // Transition shim: seed both the legacy plain-itemId key and the new
+      // composite favoriteKey, so widgets not yet converted to the shared
+      // FavoriteButton (still checking favoritedItems.has(itemId) inline)
+      // keep showing correct state alongside converted ones. Remove the
+      // itemId writes here once every entity type is converted.
+      const keys = new Set<string>()
+      for (const fav of favorites) {
+        keys.add(fav.itemId)
+        keys.add(favoriteKey(fav.type as FavoriteEntityType, fav.itemId))
+      }
+      setFavoritedItems(keys)
     }
 
     loadFavorites()
@@ -3134,21 +3296,41 @@ export default function Projects() {
     newPressed: boolean
   ) => {
     // Optimistic update — toggle immediately, persist in background
+    const key = favoriteKey(type, itemId)
+
     if (newPressed) {
       setFavoritedItems((prev) => {
         const next = new Set(prev)
-        next.add(itemId)
+        next.add(itemId) // transition shim — see loadFavorites
+        next.add(key)
         return next
       })
-      await addFavorite({ type, itemId })
+      const favorite = await addFavorite({ type, itemId })
+      if (!favorite) {
+        setFavoritedItems((prev) => {
+          const next = new Set(prev)
+          next.delete(itemId)
+          next.delete(key)
+          return next
+        })
+      }
     } else {
       setFavoritedItems((prev) => {
         const next = new Set(prev)
         next.delete(itemId)
+        next.delete(key)
         return next
       })
-      const fav = await findFavoriteByItemId(itemId)
-      if (fav) await removeFavorite(fav.id)
+      const fav = await findFavoriteByTypeAndItemId(type as FavoriteType, itemId)
+      const removed = fav ? await removeFavorite(fav.id) : true
+      if (!removed) {
+        setFavoritedItems((prev) => {
+          const next = new Set(prev)
+          next.add(itemId)
+          next.add(key)
+          return next
+        })
+      }
     }
   }
 
@@ -3371,7 +3553,7 @@ export default function Projects() {
                 }}
               >
                 <div
-                  className={`grid gap-[15px] ${l2 ? "grid-rows-1" : "grid-rows-2"} grid-flow-col`}
+                  className={`grid items-start gap-[15px] ${l2 ? "grid-rows-1" : "grid-rows-2"} grid-flow-col`}
                   style={{ gridAutoColumns: "calc((100% - 60px) / 5)" }}
                 >
                   {subcategories.length > 0 ? (
@@ -3405,7 +3587,7 @@ export default function Projects() {
                               <h1 className="text-base leading-none font-semibold text-dark-blue-400 transition duration-300">
                                 {subcat.name}
                               </h1>
-                              <p className="text-[13px] leading-[1.4] font-light text-dark-blue-400 mt-1 line-clamp-3">
+                              <p className="text-[13px] leading-[1.4] font-light text-dark-blue-400 mt-1 line-clamp-2">
                                 {subcat.description ||
                                   `Explore ${subcat.name} category`}
                               </p>
@@ -3459,184 +3641,282 @@ export default function Projects() {
                     variant="link"
                     visual="gray"
                     size="lg"
-                    className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                    className="h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
                   >
-                    <NextLink href={listingHref("projects")}>
+                    <NextLink href={exploreMoreHref("projects")}>
                       Explore More Projects
                     </NextLink>
                   </Button>
                 </div>
 
                 <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-                  {fromLength(8).map((idx) => {
-                    const project =
-                      listingsProjects.length > 0
-                        ? listingsProjects[idx % listingsProjects.length]
-                        : null
-                    const mock = projectCardMocks[idx % projectCardMocks.length]
-
-                    return (
-                      <ListingCard
-                        key={project?.id ?? `l3-top-project-${idx}`}
-                        kind="project"
-                        id={project?.id ?? `l3-top-project-${idx}`}
-                        title={project?.title || mock.title}
-                        description={
-                          project?.description?.slice(0, 120) ||
-                          mock.description
-                        }
-                        mediaUrl={
-                          project?.mediaUrls?.[0] ||
-                          project?.coverImage ||
-                          mock.mediaUrl
-                        }
-                        budget={project?.budget ? `$${Number(project.budget).toLocaleString()} budget` : mock.budget}
-                        duration={project?.duration ? `Starting from ${project.duration}` : mock.duration}
-                        rating={4.9}
-                        reviewCount={5}
-                        href={
-                          project
-                            ? buildProjectUrl(
-                                currentCategoryPath,
-                                project.slug,
-                                project.id
-                              )
-                            : buildProjectUrl(
-                                currentCategoryPath,
-                                mock.slug,
-                                mock.id
-                              )
-                        }
-                        collaborators={(talentUsers.length > 0
-                          ? talentUsers.slice(0, 6)
-                          : Array(6).fill("/woman.jpg")
-                        ).map(
-                          (u: any) =>
-                            (typeof u === "string" ? u : u?.avatarUrl) ||
-                            "/woman.jpg"
-                        )}
-                        favoriteSlot={
-                          <FavoriteRoot>
-                            {({ pressed }) => (
-                              <TooltipProvider delayDuration={75}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="inline-block">
-                                      <Favorite />
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    {pressed ? (
-                                      <span className="inline-flex items-center gap-x-1">
-                                        <Check className="size-[15px] shrink-0 text-green-500" />
-                                        Saved
-                                      </span>
-                                    ) : (
-                                      "Save to favorites"
-                                    )}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </FavoriteRoot>
-                        }
-                      />
+                  {getCarouselItemsForTab(
+                    listingsProjects.length > 0
+                      ? listingsProjects
+                      : displayedProjects,
+                    activeTopProjectsTab
+                  )
+                    .filter(
+                      (project: any) =>
+                        project?.mediaUrls?.[0] &&
+                        project?.title &&
+                        (project.budget ??
+                          project.scopeTotal?.budget ??
+                          project.price)
                     )
-                  })}
+                    .slice(0, 8)
+                    .map((project: any, idx: number) => {
+                      return (
+                        <motion.div
+                          key={`${activeTopProjectsTab}-${project.id ?? idx}`}
+                          initial="enter"
+                          animate="ideal"
+                          variants={contentVariants}
+                          transition={contentTransition}
+                        >
+                          <ListingCard
+                            kind="project"
+                            id={project.id ?? `l3-top-project-${idx}`}
+                            title={project.title}
+                            description={project?.shortDescription}
+                            mediaUrl={project?.mediaUrls?.[0]}
+                            duration={
+                              project.duration
+                                ? `Starting from ${project.duration}`
+                                : ""
+                            }
+                            rating={Number(project.rating) || undefined}
+                            reviewCount={project.reviewCount}
+                            href={
+                              project.slug && project.id
+                                ? projectDetailsUrl(project.slug, project.id)
+                                : listingHref("projects")
+                            }
+                            budget={String(
+                              project.budget ??
+                                project.scopeTotal?.budget ??
+                                project.price ??
+                                ""
+                            )}
+                            collaborators={getListingCollaborators(project)}
+                            favoriteSlot={
+                              <FavoriteButton
+                                itemId={project?.id}
+                                type="project"
+                                favoritedItems={favoritedItems}
+                                onToggle={handleFavoriteToggle}
+                              />
+                            }
+                          />
+                        </motion.div>
+                      )
+                    })}
                 </div>
               </div>
-
-              <div className="mt-[50px]">
-                <Tabs defaultValue="Industry">
-                  <div className="flex items-center justify-between">
-                    <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                      Narrow Your Project Search
-                    </h1>
-                    <Button
-                      variant="link"
+            <div className="mt-[50px]">
+              <Tabs defaultValue="Industry">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  Narrow Your {sectionLabel} Search
+                </h1>
+                <div className="mt-6 flex justify-between items-center">
+                  <TabsList className="flex items-center gap-x-3">
+                  <Badge
+                    variant="circular"
+                    visual="gray"
+                    size="lg"
+                    className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
+                    asChild
+                  >
+                    <TabsTrigger value="Industry">Industry</TabsTrigger>
+                  </Badge> 
+                    <Badge
+                      variant="circular"
                       visual="gray"
                       size="lg"
-                      className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                      className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
+                      asChild
                     >
-                      Advanced Filters
-                    </Button>
-                  </div>
-                  <TabsList className="mt-6 flex flex-wrap items-center gap-3">
-                    {["Industry", "Budget", "Project Length", "Team Size"].map(
-                      (tab) => (
-                        <Badge
-                          key={tab}
-                          variant="circular"
-                          visual="gray"
-                          size="lg"
-                          className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                          asChild
-                        >
-                          <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                        </Badge>
-                      )
-                    )}
+                      <TabsTrigger value="Budget">Budget</TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Project Length">
+                        Project Length
+                      </TabsTrigger>
+                    </Badge>
+                    <Badge
+                      variant="circular"
+                      visual="gray"
+                      size="lg"
+                      className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
+                      asChild
+                    >
+                      <TabsTrigger value="Team Size">Team Size</TabsTrigger>
+                    </Badge>
                   </TabsList>
-                  <div className="mt-6">
-                    <TabsContent
-                      value="Industry"
-                      className="grid grid-cols-2 gap-4 md:grid-cols-4"
-                    >
-                      {narrowProjectSearch.industries.map((item) => (
-                        <NextLink
-                          key={item}
-                          href={`/search?category=${l1Meta.slug}&industry=${encodeURIComponent(item)}`}
-                        >
-                          <article className="flex h-[52px] items-center justify-center rounded-lg border border-gray-200 bg-white p-4 text-center text-sm font-semibold text-dark-blue-400 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] transition duration-300 hover:border-gray-300 hover:ring-1 hover:ring-gray-300">
-                            {item}
-                          </article>
-                        </NextLink>
-                      ))}
-                    </TabsContent>
-                    <TabsContent
-                      value="Budget"
-                      className="grid grid-cols-2 gap-4 md:grid-cols-4"
-                    >
-                      {narrowProjectSearch.budgets.map((item) => (
-                        <article
-                          key={item}
-                          className="flex h-[52px] items-center justify-center rounded-lg border border-gray-200 bg-white p-4 text-center text-sm font-semibold text-dark-blue-400 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
-                        >
-                          {item}
+
+                  <Button
+                    asChild
+                    size="lg"
+                    variant="link"
+                    visual="gray"
+                    className="hover:text-dark-blue-400"
+                  >
+                    <NextLink href={`/search?category=${l1Meta.slug}`}>
+                      Advanced Filters
+                      <ArrowRight className="size-[15px]" />
+                    </NextLink>
+                  </Button>
+                </div>
+
+                <div className="mt-6">
+                  {/*
+                  Each tab corresponds to an Algolia facet on the projects index.
+                  Spec: /docs/md/Search Service/ ✅ Finalized Filter Fields table for project search.md
+                        /docs/md/Search Service/📄 search-config.ts — Filters Only (projects).md
+                  - Project Type    → project_type (string facet)
+                  - Industry        → industry (string facet)
+                  - Budget          → budget_range (numberRange → budget_min/budget_max)
+                  - Project Length  → project_duration_range (enum — exact values)
+                  - Team Size       → team_size_range (enum — exact values)
+                  Each tile links to /search with the filter pre-applied and scoped to the current category.
+                */}
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Project Type"
+                  >
+                    {[
+                      "Web App",
+                      "Mobile App",
+                      "Desktop App",
+                      "SaaS Platform",
+                      "API / Backend",
+                      "E-commerce Store",
+                      "Landing Page",
+                      "Chrome Extension",
+                      "CLI Tool",
+                      "Game",
+                    ].map((projectType) => (
+                      <NextLink
+                        key={projectType}
+                        href={`/search?category=${l1Meta.slug}&project_type=${encodeURIComponent(projectType)}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {projectType}
                         </article>
-                      ))}
-                    </TabsContent>
-                    <TabsContent
-                      value="Project Length"
-                      className="grid grid-cols-2 gap-4 md:grid-cols-4"
-                    >
-                      {narrowProjectSearch.lengths.map((item) => (
-                          <article
-                            key={item}
-                            className="flex h-[52px] items-center justify-center rounded-lg border border-gray-200 bg-white p-4 text-center text-sm font-semibold text-dark-blue-400 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
-                          >
-                            {item}
-                          </article>
-                        )
-                      )}
-                    </TabsContent>
-                    <TabsContent
-                      value="Team Size"
-                      className="grid grid-cols-2 gap-4 md:grid-cols-4"
-                    >
-                      {narrowProjectSearch.teamSizes.map((item) => (
-                          <article
-                            key={item}
-                            className="flex h-[52px] items-center justify-center rounded-lg border border-gray-200 bg-white p-4 text-center text-sm font-semibold text-dark-blue-400 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]"
-                          >
-                            {item}
-                          </article>
-                        )
-                      )}
-                    </TabsContent>
-                  </div>
-                </Tabs>
-              </div>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Industry"
+                  >
+                    {[
+                      "Agriculture",
+                      "Oil & Gas",
+                      "Manufacturing",
+                      "Construction",
+                      "Utilities",
+                      "Retail & Wholesale",
+                      "Transportation",
+                      "Finance & Banking",
+                      "Real Estate",
+                      "Healthcare",
+                    ].map((industry) => (
+                      <NextLink
+                        key={industry}
+                        href={`/search?category=${l1Meta.slug}&industry=${encodeURIComponent(industry)}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {industry}
+                        </article>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Budget"
+                  >
+                    {[
+                      { label: "Under $5k", min: 0, max: 5000 },
+                      { label: "$5k – $15k", min: 5000, max: 15000 },
+                      { label: "$15k – $50k", min: 15000, max: 50000 },
+                      { label: "$50k – $100k", min: 50000, max: 100000 },
+                      { label: "$100k – $250k", min: 100000, max: 250000 },
+                      { label: "$250k – $500k", min: 250000, max: 500000 },
+                      { label: "$500k – $1M", min: 500000, max: 1000000 },
+                      { label: "$1M+", min: 1000000, max: null as number | null },
+
+
+                    ].map((b) => (
+                      <NextLink
+                        key={b.label}
+                        href={`/search?category=${l1Meta.slug}&budget_min=${b.min}${b.max != null ? `&budget_max=${b.max}` : ""}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {b.label}
+                        </article>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Project Length"
+                  >
+                    {[
+                      "1 - 3 months",
+                      "3 - 6 months",
+                      "6 - 12 months",
+                      "12 - 18 months",
+                      "18 - 24 months",
+                      "24+ months",
+                    ].map((duration) => (
+                      <NextLink
+                        key={duration}
+                        href={`/search?category=${l1Meta.slug}&project_duration_range=${encodeURIComponent(duration)}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {duration}
+                        </article>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                  <TabsContent
+                    className="grid grid-cols-5 gap-[15px]"
+                    value="Team Size"
+                  >
+                    {[
+                      "1 - 2 members",
+                      "2 - 5 members",
+                      "5 - 10 members",
+                      "10 - 15 members",
+                      "15 - 20 members",
+                      "20+ members",
+                    ].map((size) => (
+                      <NextLink
+                        key={size}
+                        href={`/search?category=${l1Meta.slug}&team_size_range=${encodeURIComponent(size)}`}
+                        className="focus-visible:outline-none"
+                      >
+                        <article className="cursor-pointer transition duration-300 h-[62px] bg-white text-base leading-none font-semibold text-dark-blue-400 rounded-lg p-5 border border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] text-center hover:ring-1 hover:ring-gray-300 hover:border-gray-300 flex items-center justify-center">
+                          {size}
+                        </article>
+                      </NextLink>
+                    ))}
+                  </TabsContent>
+                </div>
+              </Tabs>
+            </div>
+          
 
               <div className="relative mt-[50px] h-[298px] overflow-hidden rounded-lg p-[50px]">
                 <NextImage
@@ -3652,36 +3932,166 @@ export default function Projects() {
                       Fueling the Future of Research
                     </h1>
                     <p className="mt-2 text-xl font-light leading-none text-white">
-                      Discover research experts and projects tailored to your goals.
+                      Discover research experts and projects tailored to your
+                      goals.
                     </p>
                     <Button
                       asChild
                       className="mt-[50px] rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 text-dark-blue-400 hover:text-dark-blue-400"
                       size="lg"
                     >
-                      <NextLink href={listingHref("projects")}>
+                      <NextLink href={exploreMoreHref("projects")}>
                         Explore Research <ArrowRight className="size-[15px]" />
                       </NextLink>
                     </Button>
                   </div>
                 </div>
               </div>
-            {isL3AllPage && (
+              {l3 && pageKind === "show-all" && (
+                <div className="mt-[50px]">
+                  <Tabs defaultValue="Featured">
+                    <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                      Top {currentName} Services
+                    </h1>
+                    <SwiperRoot>
+                      <div className="mt-6 flex items-center justify-between">
+                        <TabsList className="flex items-center gap-x-3">
+                          {marketplaceTabs.map((tab) => (
+                            <Badge
+                              key={tab}
+                              variant="circular"
+                              visual="gray"
+                              size="lg"
+                              className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
+                              asChild
+                            >
+                              <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                            </Badge>
+                          ))}
+                        </TabsList>
+                        <div className="flex items-center gap-x-8">
+                          <Button
+                            asChild
+                            variant="link"
+                            visual="gray"
+                            size="lg"
+                            className="h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
+                          >
+                            <NextLink href={exploreMoreHref("services")}>
+                              Explore More Services
+                            </NextLink>
+                          </Button>
+                          <div className="flex items-center gap-x-3">
+                            <SwiperPrevTrigger asChild>
+                              <IconButton
+                                className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
+                                visual="gray"
+                                variant="outlined"
+                              >
+                                <ChevronLeft className="size-[18px]" />
+                              </IconButton>
+                            </SwiperPrevTrigger>
+                            <SwiperNextTrigger asChild>
+                              <IconButton
+                                className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
+                                visual="gray"
+                                variant="outlined"
+                              >
+                                <ChevronRight className="size-[18px]" />
+                              </IconButton>
+                            </SwiperNextTrigger>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-6">
+                        {marketplaceTabs.map((tabValue) => (
+                          <TabsContent key={tabValue} value={tabValue}>
+                            <SwiperContent
+                              slidesPerView="auto"
+                              spaceBetween={20}
+                            >
+                              {getCarouselItemsForTab(serviceItems, tabValue)
+                                .filter(
+                                  (service: any) =>
+                                    service?.mediaUrls?.[0] &&
+                                    service?.title &&
+                                    (service.priceMin ??
+                                      service.budget ??
+                                      service.price)
+                                )
+                                .slice(0, 8)
+                                .map((service: any, idx: number) => {
+                                  return (
+                                    <SwiperSlide
+                                      className="h-auto w-[355px]"
+                                      key={service.id ?? `l3-service-${idx}`}
+                                    >
+                                      <ListingCard
+                                        kind="service"
+                                        id={service.id ?? `l3-service-${idx}`}
+                                        title={service.title}
+                                        description={service?.shortDescription}
+                                        mediaUrl={service?.mediaUrls?.[0]}
+                                        duration={
+                                          service.duration
+                                            ? `Starting from ${service.duration}`
+                                            : ""
+                                        }
+                                        budget={String(
+                                          service.priceMin ??
+                                            service.budget ??
+                                            service.price ??
+                                            ""
+                                        )}
+                                        rating={Number(service.rating) || undefined}
+                                        reviewCount={service.reviewCount}
+                                        href={
+                                          service.slug && service.id
+                                            ? serviceDetailsUrl(service.slug, service.id)
+                                            : listingHref("services")
+                                        }
+                                        collaborators={getListingCollaborators(service)}
+                                        favoriteSlot={
+                                          <FavoriteButton
+                                            itemId={service.id}
+                                            type="service"
+                                            favoritedItems={favoritedItems}
+                                            onToggle={handleFavoriteToggle}
+                                          />
+                                        }
+                                      />
+                                    </SwiperSlide>
+                                  )
+                                })}
+                            </SwiperContent>
+                          </TabsContent>
+                        ))}
+                      </div>
+                    </SwiperRoot>
+                  </Tabs>
+                </div>
+              )}
+
+              {/* Teams feature temporarily hidden from category pages. */}
+              {/* Original: <div className="mt-[50px]"> */}
+              {false && (
               <div className="mt-[50px]">
                 <Tabs defaultValue="Featured">
                   <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                    Top {currentName} Services
+                    {l3Meta
+                      ? `${l2Meta?.name ?? currentName} Teams`
+                      : `${currentName} Teams`}
                   </h1>
                   <SwiperRoot>
                     <div className="mt-6 flex items-center justify-between">
                       <TabsList className="flex items-center gap-x-3">
-                        {marketplaceTabs.map((tab) => (
+                        {marketplaceTalentTabs.map((tab) => (
                           <Badge
                             key={tab}
                             variant="circular"
                             visual="gray"
                             size="lg"
-                            className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                            className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
                             asChild
                           >
                             <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -3693,86 +4103,36 @@ export default function Projects() {
                         variant="link"
                         visual="gray"
                         size="lg"
-                        className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                        className="h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
                       >
-                        Explore More Teams
+                        <NextLink href={exploreMoreHref("teams")}>Explore More Teams</NextLink>
                       </Button>
                     </div>
                     <div className="mt-6">
-                      {marketplaceTabs.map((tabValue) => (
+                      {marketplaceTalentTabs.map((tabValue) => (
                         <TabsContent key={tabValue} value={tabValue}>
                           <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                            {fromLength(8).map((idx) => {
-                              const service =
-                                listingsServices.length > 0
-                                  ? listingsServices[idx % listingsServices.length]
-                                  : null
-                              const mock =
-                                serviceCardMocks[idx % serviceCardMocks.length]
-                              return (
+                            {getCarouselItemsForTab(teamItems, tabValue).map(
+                              (team: any) => (
                                 <SwiperSlide
                                   className="w-[355px]"
-                                  key={service?.id ?? `l3-service-${idx}`}
+                                  key={`l3-team-${team.id}`}
                                 >
                                   <ListingCard
-                                    kind="service"
-                                    id={service?.id ?? `l3-service-${idx}`}
-                                    title={
-                                      service?.title ||
-                                      mock.title
-                                    }
-                                    description={
-                                      service?.description?.slice(0, 120) ||
-                                      mock.description
-                                    }
-                                    mediaUrl={
-                                      service?.mediaUrls?.[0] ||
-                                      service?.coverImage ||
-                                      mock.mediaUrl
-                                    }
-                                    budget={
-                                      service?.priceMin
-                                        ? `$${Number(service.priceMin).toLocaleString()}/month`
-                                        : mock.budget
-                                    }
-                                    rating={4.9}
-                                    reviewCount={5}
-                                    href={
-                                      service
-                                        ? buildServiceUrl(
-                                            currentCategoryPath,
-                                            service.slug,
-                                            service.id
-                                          )
-                                        : buildServiceUrl(
-                                            currentCategoryPath,
-                                            mock.slug,
-                                            mock.id
-                                          )
-                                    }
-                                    collaborators={Array(6).fill("/woman.jpg")}
+                                    kind="team"
+                                    {...team}
                                     favoriteSlot={
-                                      <FavoriteRoot>
-                                        {({ pressed }) => (
-                                          <TooltipProvider delayDuration={75}>
-                                            <Tooltip>
-                                              <TooltipTrigger asChild>
-                                                <span className="inline-block">
-                                                  <Favorite />
-                                                </span>
-                                              </TooltipTrigger>
-                                              <TooltipContent>
-                                                {pressed ? "Saved" : "Save to favorites"}
-                                              </TooltipContent>
-                                            </Tooltip>
-                                          </TooltipProvider>
-                                        )}
-                                      </FavoriteRoot>
+                                      <FavoriteButton
+                                        itemId={team.id}
+                                        type="team"
+                                        favoritedItems={favoritedItems}
+                                        onToggle={handleFavoriteToggle}
+                                      />
                                     }
                                   />
                                 </SwiperSlide>
                               )
-                            })}
+                            )}
                           </SwiperContent>
                         </TabsContent>
                       ))}
@@ -3781,76 +4141,6 @@ export default function Projects() {
                 </Tabs>
               </div>
               )}
-
-              <div className="mt-[50px]">
-                <Tabs defaultValue="Featured">
-                  <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                    {l3Meta ? `${l2Meta?.name ?? currentName} Teams` : `${currentName} Teams`}
-                  </h1>
-                  <SwiperRoot>
-                    <div className="mt-6 flex items-center justify-between">
-                      <TabsList className="flex items-center gap-x-3">
-                        {marketplaceTalentTabs.map(
-                          (tab) => (
-                            <Badge
-                              key={tab}
-                              variant="circular"
-                              visual="gray"
-                              size="lg"
-                              className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                              asChild
-                            >
-                              <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                            </Badge>
-                          )
-                        )}
-                      </TabsList>
-                      <Button
-                        variant="link"
-                        visual="gray"
-                        size="lg"
-                        className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
-                      >
-                        Explore More Teams
-                      </Button>
-                    </div>
-                    <div className="mt-6">
-                      {marketplaceTalentTabs.map(
-                        (tabValue) => (
-                          <TabsContent key={tabValue} value={tabValue}>
-                            <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                              {teamSeeds.map((team) => (
-                                <SwiperSlide
-                                  className="w-[355px]"
-                                  key={`l3-team-${team.id}`}
-                                >
-                                  <ListingCard
-                                    kind="team"
-                                    id={team.id}
-                                    name={team.name}
-                                    handle={team.handle}
-                                    tagline={team.tagline}
-                                    experience={team.experience}
-                                    rate={team.rate}
-                                    locations={team.location}
-                                    rating={team.rating}
-                                    projectCount={team.completedProjects}
-                                    skills={team.skills}
-                                    memberAvatars={team.memberAvatars}
-                                    previousClientLogos={team.previousClientLogos}
-                                    favoriteSlot={<FavoriteRoot>{() => <Favorite />}</FavoriteRoot>}
-                                  />
-                                </SwiperSlide>
-                              ))}
-                            </SwiperContent>
-                          </TabsContent>
-                        )
-                      )}
-                    </div>
-                  </SwiperRoot>
-                </Tabs>
-              </div>
-
               <div className="mt-[50px]">
                 <Tabs defaultValue="Featured">
                   <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
@@ -3865,32 +4155,66 @@ export default function Projects() {
                             variant="circular"
                             visual="gray"
                             size="lg"
-                            className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                            className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
                             asChild
                           >
                             <TabsTrigger value={tab}>{tab}</TabsTrigger>
                           </Badge>
                         ))}
                       </TabsList>
-                      <Button
-                        variant="link"
-                        visual="gray"
-                        size="lg"
-                        className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
-                      >
-                        Explore More Talent
-                      </Button>
+                      <div className="flex items-center gap-x-8">
+                        <Button
+                          asChild
+                          variant="link"
+                          visual="gray"
+                          size="lg"
+                          className="h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
+                        >
+                          <NextLink href={exploreMoreHref("talent")}>Explore More Talent</NextLink>
+                        </Button>
+                        <div className="flex items-center gap-x-3">
+                          <SwiperPrevTrigger asChild>
+                            <IconButton
+                              className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
+                              visual="gray"
+                              variant="outlined"
+                            >
+                              <ChevronLeft className="size-[18px]" />
+                            </IconButton>
+                          </SwiperPrevTrigger>
+                          <SwiperNextTrigger asChild>
+                            <IconButton
+                              className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
+                              visual="gray"
+                              variant="outlined"
+                            >
+                              <ChevronRight className="size-[18px]" />
+                            </IconButton>
+                          </SwiperNextTrigger>
+                        </div>
+                      </div>
                     </div>
                     <div className="mt-6">
                       {marketplaceTalentTabs.map((tabValue) => (
                         <TabsContent key={tabValue} value={tabValue}>
                           <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                            {topTalentMock.map((talent) => (
+                            {getCarouselItemsForTab(talentUsers, tabValue).map((talent: any, idx: number) => (
                               <SwiperSlide
                                 className="w-[355px]"
                                 key={`l3-star-${tabValue}-${talent.id}`}
                               >
-                                <TopTalentCard talent={talent} />
+                                <ListingCard
+                                  kind="talent"
+                                  {...talentToCardProps(talent, idx)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={talent.id}
+                                      type="talent"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
+                                />
                               </SwiperSlide>
                             ))}
                           </SwiperContent>
@@ -3936,14 +4260,15 @@ export default function Projects() {
                 <SwiperRoot>
                   <div className="mt-6 flex justify-between items-center">
                     <TabsList className="flex items-center gap-x-3">
-                      {["Projects", "Services", "Teams", "Talent"].map(
+                      {/* Original: {["Projects", "Services", "Teams", "Talent"].map( */}
+                      {["Projects", "Services", "Talent"].map(
                         (tab) => (
                           <Badge
                             key={tab}
                             variant="circular"
                             visual="gray"
                             size="lg"
-                            className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                            className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
                             asChild
                           >
                             <TabsTrigger value={tab}>{tab}</TabsTrigger>
@@ -3955,7 +4280,7 @@ export default function Projects() {
                     <div className="flex items-center gap-x-3">
                       <SwiperPrevTrigger asChild>
                         <IconButton
-                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
                           visual="gray"
                           variant="outlined"
                         >
@@ -3964,7 +4289,7 @@ export default function Projects() {
                       </SwiperPrevTrigger>
                       <SwiperNextTrigger asChild>
                         <IconButton
-                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
                           visual="gray"
                           variant="outlined"
                         >
@@ -3980,223 +4305,72 @@ export default function Projects() {
                       value="Projects"
                     >
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {(listingsProjects.length > 0
-                          ? listingsProjects.slice(0, 8)
-                          : recommendedProjectSeeds
-                        ).map((item: any, idx: number) => {
-                          const project = listingsProjects.length > 0 ? item : null
-                          const mock =
-                            listingsProjects.length > 0
-                              ? recommendedProjectSeeds[
-                                  idx % recommendedProjectSeeds.length
-                                ]
-                              : item
-                          const key = project?.id ?? idx
-                          return (
-                            <SwiperSlide className="w-[355px]" key={key}>
-                              <ListingCard
-                                kind="project"
-                                id={project?.id ?? `mock-${idx}`}
-                                title={
-                                  project?.title ||
-                                  mock.title
-                                }
-                                description={
-                                  project?.summary ||
-                                  project?.description?.slice(0, 120) ||
-                                  mock.description
-                                }
-                                mediaUrl={
-                                  project?.mediaUrls?.[0] ||
-                                  project?.coverImage ||
-                                  project?.thumbnail ||
-                                  mock.mediaUrl
-                                }
-                                budget={project?.budget ? `$${Number(project.budget).toLocaleString()} budget` : project?.scopeTotal?.budget ? `$${Number(project.scopeTotal.budget).toLocaleString()} budget` : mock.budget}
-                                rating={Number(project?.rating) || 4.9}
-                                reviewCount={project?.reviewCount || 5}
-                                href={
-                                  project
-                                    ? buildProjectUrl(
-                                        currentCategoryPath,
-                                        project.slug,
-                                        project.id
-                                      )
-                                    : buildProjectUrl(
-                                        currentCategoryPath,
-                                        mock.slug,
-                                        mock.id
-                                      )
-                                }
-                                avatarsSlot={
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <AvatarGroup
-                                          max={5}
-                                          size="sm"
-                                          excess
-                                          excessClassName="border-gray-300 text-gray-500"
-                                        >
-                                          {fromLength(6).map((k) => (
-                                            <Avatar
-                                              key={k}
-                                              size="sm"
-                                              className="border-2 border-white hover:ring-0 active:ring-0"
-                                            >
-                                              <AvatarImage
-                                                src="/woman.jpg"
-                                                alt="Woman"
-                                              />
-                                              <AvatarFallback>W</AvatarFallback>
-                                            </Avatar>
-                                          ))}
-                                        </AvatarGroup>
-                                      </TooltipTrigger>
-                                      <TooltipContent
-                                        className="p-0 max-w-[262px]"
-                                        size="md"
-                                      >
-                                        <ScrollArea
-                                          className="h-[192px] p-3"
-                                          scrollBar={
-                                            <ScrollBar
-                                              className="w-4 p-1"
-                                              thumbClassName="bg-white/20"
-                                            />
-                                          }
-                                        >
-                                          <div className="space-y-3 pr-5">
-                                            {fromLength(4).map((k) => (
-                                              <div
-                                                key={k}
-                                                className="flex items-center gap-x-[18px]"
-                                              >
-                                                <div className="flex items-center gap-x-2 flex-auto">
-                                                  <Avatar>
-                                                    <AvatarImage
-                                                      src="/woman.jpg"
-                                                      alt="Woman"
-                                                    />
-                                                    <AvatarFallback>
-                                                      W
-                                                    </AvatarFallback>
-                                                  </Avatar>
-                                                  <div className="flex flex-col flex-auto">
-                                                    <div className="flex items-center gap-x-0.5">
-                                                      <span className="text-xs leading-5 font-semibold text-white">
-                                                        Sevil
-                                                      </span>
-                                                      <span className="text-[10px] leading-none font-light text-white">
-                                                        @designsuperstar23
-                                                      </span>
-                                                    </div>
-                                                    <span className="text-[10px] font-light text-white">
-                                                      Full-stack Developer
-                                                    </span>
-                                                  </div>
-                                                </div>
-                                                <span className="text-sm font-semibold text-white leading-5">
-                                                  $75{" "}
-                                                  <span className="text-[10px] font-light leading-5">
-                                                    /hr
-                                                  </span>
-                                                </span>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        </ScrollArea>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                }
-                                favoriteSlot={
-                                  <FavoriteRoot
-                                    value={
-                                      project
-                                        ? favoritedItems.has(String(project.id))
-                                        : false
-                                    }
-                                    onValueChange={
-                                      project
-                                        ? async (pressed) => {
-                                            if (pressed) {
-                                              setFavoritedItems((prev) => {
-                                                const next = new Set(prev)
-                                                next.add(String(project.id))
-                                                return next
-                                              })
-                                              const result = await addFavorite({
-                                                type: "project",
-                                                itemId: String(project.id),
-                                              })
-                                              if (!result)
-                                                setFavoritedItems((prev) => {
-                                                  const next = new Set(prev)
-                                                  next.delete(
-                                                    String(project.id)
-                                                  )
-                                                  return next
-                                                })
-                                            } else {
-                                              setFavoritedItems((prev) => {
-                                                const next = new Set(prev)
-                                                next.delete(String(project.id))
-                                                return next
-                                              })
-                                              const fav =
-                                                await findFavoriteByItemId(
-                                                  String(project.id)
-                                                )
-                                              if (fav) {
-                                                const ok = await removeFavorite(
-                                                  fav.id
-                                                )
-                                                if (!ok)
-                                                  setFavoritedItems((prev) => {
-                                                    const next = new Set(prev)
-                                                    next.add(String(project.id))
-                                                    return next
-                                                  })
-                                              }
-                                            }
-                                          }
-                                        : undefined
-                                    }
-                                  >
-                                    {({ pressed }) => (
-                                      <TooltipProvider delayDuration={75}>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <span className="inline-block">
-                                              <Favorite />
-                                            </span>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            {pressed ? (
-                                              <span className="inline-flex items-center gap-x-1">
-                                                <Check className="size-[15px] shrink-0 text-green-500" />
-                                                Saved
-                                              </span>
-                                            ) : (
-                                              "Save to favorites"
-                                            )}
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
-                                    )}
-                                  </FavoriteRoot>
-                                }
-                              />
-                            </SwiperSlide>
+                        {getCarouselItemsForTab(
+                          listingsProjects.length > 0
+                            ? listingsProjects
+                            : displayedProjects,
+                          "Featured"
+                        )
+                          .filter(
+                            (project: any) =>
+                              project?.mediaUrls?.[0] &&
+                              project?.title &&
+                              (project.budget ??
+                                project.scopeTotal?.budget ??
+                                project.price)
                           )
-                        })}
+                          .slice(0, 8)
+                          .map((project: any, idx: number) => {
+                            const key = project?.id ?? idx
+                            return (
+                              <SwiperSlide
+                                className="h-auto w-[355px]"
+                                key={key}
+                              >
+                                <ListingCard
+                                  kind="project"
+                                  id={project.id ?? `project-${idx}`}
+                                  title={project.title}
+                                  description={project?.shortDescription}
+                                  mediaUrl={project?.mediaUrls?.[0]}
+                                  duration={
+                                    project.duration
+                                      ? `Starting from ${project.duration}`
+                                      : ""
+                                  }
+                                  budget={String(
+                                    project.budget ??
+                                      project.scopeTotal?.budget ??
+                                      project.price ??
+                                      ""
+                                  )}
+                                  rating={Number(project.rating) || undefined}
+                                  reviewCount={project.reviewCount}
+                                  href={
+                                    project.slug && project.id
+                                      ? projectDetailsUrl(project.slug, project.id)
+                                      : listingHref("projects")
+                                  }
+                                  // Original: avatarsSlot={hardcoded /woman.jpg tooltip avatar group}
+                                  collaborators={getListingCollaborators(project)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={project?.id}
+                                      type="project"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
+                                />
+                              </SwiperSlide>
+                            )
+                          })}
                         <SwiperSlide className="w-[355px] h-auto">
                           <NextLink
                             href={listingHref("projects")}
                             className="block h-full"
                           >
-                            <Card className="h-full min-h-[300px] border-none flex flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
+                            <Card className="h-full min-h-[300px] border-none flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
                               <h1 className="text-[28px] font-bold leading-[1.2] text-white">
                                 More Projects in {currentName}
                               </h1>
@@ -4214,96 +4388,57 @@ export default function Projects() {
                       value="Services"
                     >
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {(listingsServices.length > 0
-                          ? listingsServices.slice(0, 8)
-                          : recommendedServiceSeeds
-                        ).map((item: any, idx: number) => {
-                          const service =
-                            listingsServices.length > 0 ? item : null
-                          const mock =
-                            listingsServices.length > 0
-                              ? recommendedServiceSeeds[
-                                  idx % recommendedServiceSeeds.length
-                                ]
-                              : item
-                          const key = service?.id ?? idx
-                          return (
-                            <SwiperSlide className="w-[355px]" key={key}>
-                              <ListingCard
-                                kind="service"
-                                id={service?.id ?? `mock-${idx}`}
-                                title={service?.title || mock.title}
-                                description={
-                                  service?.description?.slice(0, 120) ||
-                                  mock.description
-                                }
-                                mediaUrl={service?.mediaUrls?.[0] || mock.mediaUrl}
-                                budget={
-                                  service?.priceMin
-                                    ? `$${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}/month`
-                                    : mock.budget
-                                }
-                                rating={4.9}
-                                reviewCount={5}
-                                href={
-                                  service
-                                    ? buildServiceUrl(
-                                        currentCategoryPath,
-                                        service.slug,
-                                        service.id
-                                      )
-                                    : buildServiceUrl(
-                                        currentCategoryPath,
-                                        mock.slug,
-                                        mock.id
-                                      )
-                                }
-                                collaborators={(talentUsers.length > 0
-                                  ? talentUsers.slice(0, 4)
-                                  : []
-                                ).map((u: any) => u?.avatarUrl || "/woman.jpg")}
-                                favoriteSlot={
-                                  service ? (
-                                    <FavoriteRoot
-                                      value={favoritedItems.has(
-                                        String(service.id)
-                                      )}
-                                      onValueChange={(pressed) =>
-                                        handleFavoriteToggle(
-                                          String(service.id),
-                                          "service",
-                                          pressed
-                                        )
-                                      }
-                                    >
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  ) : null
-                                }
-                              />
-                            </SwiperSlide>
+                        {getCarouselItemsForTab(serviceItems, "Featured")
+                          .filter(
+                            (service: any) =>
+                              service?.mediaUrls?.[0] &&
+                              service?.title &&
+                              (service.priceMin ??
+                                service.budget ??
+                                service.price)
                           )
-                        })}
+                          .slice(0, 8)
+                          .map((service: any, idx: number) => {
+                            const key = service.id ?? idx
+                            return (
+                              <SwiperSlide className="w-[355px]" key={key}>
+                                <ListingCard
+                                  kind="service"
+                                  id={service.id ?? `service-${idx}`}
+                                  title={service.title}
+                                  description={service?.shortDescription}
+                                  mediaUrl={service?.mediaUrls?.[0]}
+                                  duration={
+                                    service.duration
+                                      ? `Starting from ${service.duration}`
+                                      : ""
+                                  }
+                                  budget={String(
+                                    service.priceMin ??
+                                      service.budget ??
+                                      service.price ??
+                                      ""
+                                  )}
+                                  rating={Number(service.rating) || undefined}
+                                  reviewCount={service.reviewCount}
+                                  href={
+                                    service.slug && service.id
+                                      ? serviceDetailsUrl(service.slug, service.id)
+                                      : listingHref("services")
+                                  }
+                                  collaborators={getListingCollaborators(service)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={service.id}
+                                      type="service"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
+                                />
+                              </SwiperSlide>
+                            )
+                          })}
                         <SwiperSlide className="w-[355px] h-auto">
                           <NextLink
                             href={listingHref("services")}
@@ -4322,54 +4457,28 @@ export default function Projects() {
                       </SwiperContent>
                     </TabsContent>
 
+                    {/* Original: <TabsContent className="gap-5 flex items-center" value="Teams"> */}
+                    {false && (
                     <TabsContent
                       className="gap-5 flex items-center"
                       value="Teams"
                     >
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {recommendedTeamSeeds.map((team) => (
+                        {teamItems.map((team: any) => (
                           <SwiperSlide
                             className="w-[355px]"
                             key={`recommended-team-${team.id}`}
                           >
                             <ListingCard
                               kind="team"
-                              id={team.id}
-                              name={team.name}
-                              handle={team.handle}
-                              tagline={team.tagline}
-                              experience={team.experience}
-                              rate={team.rate}
-                              locations={team.location}
-                              rating={team.rating}
-                              projectCount={team.completedProjects}
-                              skills={team.skills}
-                              memberAvatars={team.memberAvatars}
-                              previousClientLogos={team.previousClientLogos}
+                              {...team}
                               favoriteSlot={
-                                <FavoriteRoot>
-                                  {({ pressed }) => (
-                                    <TooltipProvider delayDuration={75}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <span className="inline-block">
-                                            <Favorite />
-                                          </span>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          {pressed ? (
-                                            <span className="inline-flex items-center gap-x-1">
-                                              <Check className="size-[15px] shrink-0 text-green-500" />
-                                              Saved
-                                            </span>
-                                          ) : (
-                                            "Save to favorites"
-                                          )}
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  )}
-                                </FavoriteRoot>
+                                <FavoriteButton
+                                  itemId={team.id}
+                                  type="team"
+                                  favoritedItems={favoritedItems}
+                                  onToggle={handleFavoriteToggle}
+                                />
                               }
                             />
                           </SwiperSlide>
@@ -4391,56 +4500,38 @@ export default function Projects() {
                         </SwiperSlide>
                       </SwiperContent>
                     </TabsContent>
+                    )}
 
                     <TabsContent
                       className="gap-5 flex items-center"
                       value="Talent"
                     >
                       <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {talentUsers.length > 0
-                          ? talentUsers
-                              .slice(0, 8)
-                              .map((u: TalentUser, idx: number) => (
-                            <SwiperSlide className="w-[355px]" key={u.id}>
-                              <ListingCard
-                                kind="talent"
-                                {...talentToCardProps(u, idx)}
-                              />
-                            </SwiperSlide>
-                              ))
-                          : recommendedTalentSeeds.map((talent) => (
-                              <SwiperSlide
-                                className="w-[355px]"
-                                key={`recommended-talent-${talent.id}`}
-                              >
-                                <ListingCard
-                                  kind="talent"
-                                  id={talent.id}
-                                  username={talent.username}
-                                  name={talent.username}
-                                  handle={talent.handle}
-                                  role={talent.role}
-                                  photo={talent.photo}
-                                  rate={talent.rate}
-                                  experience={talent.experience}
-                                  country={talent.location}
-                                  rating={Number(talent.rating)}
-                                  projects={Number.parseInt(
-                                    talent.projects,
-                                    10
-                                  )}
-                                  allStars
-                                  skills={talent.skills}
-                                  href={`/talent-profile?username=${encodeURIComponent(talent.username)}`}
+                        {getCarouselItemsForTab(talentUsers, "Featured").slice(0, 8).map((u: TalentUser, idx: number) => (
+                          <SwiperSlide
+                            className="h-auto w-[355px]"
+                            key={u.id}
+                          >
+                            <ListingCard
+                              kind="talent"
+                              {...talentToCardProps(u, idx)}
+                              favoriteSlot={
+                                <FavoriteButton
+                                  itemId={u.id}
+                                  type="talent"
+                                  favoritedItems={favoritedItems}
+                                  onToggle={handleFavoriteToggle}
                                 />
-                              </SwiperSlide>
-                            ))}
+                              }
+                            />
+                          </SwiperSlide>
+                        ))}
                         <SwiperSlide className="w-[355px] h-auto">
                           <NextLink
                             href={listingHref("talent")}
                             className="block h-full"
                           >
-                            <Card className="h-full min-h-[300px] border-none flex flex-col justify-end items-start px-6 py-[50px] bg-gray-700 shadow-none hover:ring-0">
+                            <Card className="h-full min-h-[300px] border-none flex flex-col ] bg-gray-700 items-start px-6 py-[50px] justify-end">
                               <h1 className="text-[28px] font-bold leading-[1.2] text-white">
                                 More Talent in {currentName}
                               </h1>
@@ -4517,7 +4608,7 @@ export default function Projects() {
                       <TabsContent key={sub.name} value={sub.name}>
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
-                            <article className="py-[50px] h-full min-h-[440px] rounded-lg bg-error-700 flex flex-col items-start justify-end px-6" style={{ backgroundColor: "#DC6803" }}>
+                            <article className="py-[50px] h-full rounded-lg bg-error-700 flex flex-col items-start justify-end px-6" style={{ backgroundColor: "#DC6803" }}>
                               <h1 className="text-[28px] font-bold leading-none text-white">
                                 {sub.name} Projects
                               </h1>
@@ -4525,150 +4616,80 @@ export default function Projects() {
                                 Discover high-quality {sub.name.toLowerCase()}{" "}
                                 projects ready to launch.
                               </p>
-                              <Button
-                                className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-warning-800 hover:bg-white text-warning-700 mt-8"
-                                size="lg"
-                              >
-                                Explore More{" "}
-                                <ArrowRight className="size-[15px]" />
-                              </Button>
+                              <div className="mt-8 flex flex-col gap-y-3">
+                                <Button
+                                  asChild
+                                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 px-6 h-12 text-base font-semibold"
+                                  style={{ color: "#DC6803" }}
+                                  size="lg"
+                                >
+                                  <NextLink href={exploreMoreHref("projects")}>
+                                    Explore More{" "}
+                                    <ArrowRight className="size-[15px] ml-2" />
+                                  </NextLink>
+                                </Button>
+                              </div>
                             </article>
                           </SwiperSlide>
-                          {fromLength(8).map((idx) => {
-                            // Cycle through real listings so every card links to a real project detail page.
-                            const project =
-                              listingsProjects.length > 0
-                                ? listingsProjects[
-                                    idx % listingsProjects.length
-                                  ]
-                                : null
-                            const mock = projectCardMocks[idx % projectCardMocks.length]
-                            const href = project
-                              ? buildProjectUrl(
-                                  currentCategoryPath,
-                                  project.slug,
-                                  project.id
-                                )
-                              : buildProjectUrl(
-                                  currentCategoryPath,
-                                  mock.slug,
-                                  mock.id
-                                )
-                            return (
-                              <SwiperSlide
-                                key={project?.id ?? idx}
-                                className="w-[355px]"
-                              >
-                                <NextLink
-                                  href={href}
-                                  className="block focus-visible:outline-none"
-                                >
-                                  <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                    <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                                      <NextImage
-                                        className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                        src={
-                                          project?.mediaUrls?.[0] ||
-                                          mock.mediaUrl
-                                        }
-                                        alt={project?.title || mock.title}
-                                        fill
-                                        sizes="33vw"
-                                      />
-                                    </div>
-                                    <div className="mt-3 flex items-start gap-x-3">
-                                      <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">
-                                        {project?.title ||
-                                          mock.title}
-                                      </span>
-                                      <div className="inline-flex items-center gap-x-1">
-                                        <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                        <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                          4.9{" "}
-                                          <span className="font-extralight">
-                                            (5)
-                                          </span>
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                      {project?.description?.slice(0, 140) ||
-                                        mock.description}
-                                    </p>
-                                    <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                        <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                          Starting from{" "}
-                                          {project?.duration || mock.duration.replace("Starting from ", "")}
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <Money className="size-[18px] shrink-0 text-primary-500" />
-                                        <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                          {project?.budget
-                                            ? `$${Number(
-                                                project.budget
-                                              ).toLocaleString()} budget`
-                                            : mock.budget}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <div className="mt-5 flex items-end justify-between">
-                                      <AvatarGroup
-                                        max={5}
-                                        size="sm"
-                                        excess
-                                        excessClassName="border-gray-300 text-gray-500"
-                                      >
-                                        {(talentUsers.length > 0
-                                          ? talentUsers.slice(0, 6)
-                                          : fromLength(6)
-                                        ).map((u: any, k: number) => (
-                                          <Avatar
-                                            key={u?.id ?? k}
-                                            size="sm"
-                                            className="border-2 border-white hover:ring-0 active:ring-0"
-                                          >
-                                            <AvatarImage
-                                              src={u?.avatarUrl || "/woman.jpg"}
-                                              alt={u?.firstName || "Team"}
-                                            />
-                                            <AvatarFallback>
-                                              {u?.firstName?.[0] || "T"}
-                                            </AvatarFallback>
-                                          </Avatar>
-                                        ))}
-                                      </AvatarGroup>
-                                      <FavoriteRoot>
-                                        {({ pressed }) => (
-                                          <TooltipProvider delayDuration={75}>
-                                            <Tooltip>
-                                              <TooltipTrigger asChild>
-                                                <span className="inline-block">
-                                                  <Favorite />
-                                                </span>
-                                              </TooltipTrigger>
-                                              <TooltipContent>
-                                                {pressed ? (
-                                                  <span className="inline-flex items-center gap-x-1">
-                                                    <Check className="size-[15px] shrink-0 text-green-500" />
-                                                    Saved
-                                                  </span>
-                                                ) : (
-                                                  "Save to favorites"
-                                                )}
-                                              </TooltipContent>
-                                            </Tooltip>
-                                          </TooltipProvider>
-                                        )}
-                                      </FavoriteRoot>
-                                    </div>
-                                  </article>
-                                </NextLink>
-                              </SwiperSlide>
+                          {getCarouselItemsForCategoryTab(
+                            listingsProjects.length > 0
+                              ? listingsProjects
+                              : displayedProjects,
+                            sub,
+                            "Top-Rated"
+                          )
+                            .filter(
+                              (project: any) =>
+                                project?.mediaUrls?.[0] &&
+                                project?.title &&
+                                (project.budget ??
+                                  project.scopeTotal?.budget ??
+                                  project.price)
                             )
-                          })}
+                            .slice(0, 8)
+                            .map((project: any, idx: number) => {
+                              return (
+                                <SwiperSlide
+                                  key={project.id ?? idx}
+                                  className="h-auto w-[355px]"
+                                >
+                                  <ListingCard
+                                    kind="project"
+                                    id={project.id ?? `project-${idx}`}
+                                    title={project.title}
+                                    description={project?.shortDescription}
+                                    mediaUrl={project?.mediaUrls?.[0]}
+                                    duration={
+                                      project.duration
+                                        ? `Starting from ${project.duration}`
+                                        : ""
+                                    }
+                                    rating={Number(project.rating) || undefined}
+                                    reviewCount={project.reviewCount}
+                                    href={
+                                      project.slug && project.id
+                                        ? projectDetailsUrl(project.slug, project.id)
+                                        : listingHref("projects")
+                                    }
+                                    budget={String(
+                                      project.budget ??
+                                        project.scopeTotal?.budget ??
+                                        project.price ??
+                                        ""
+                                    )}
+                                    collaborators={getListingCollaborators(project)}
+                                    favoriteSlot={
+                                      <FavoriteButton
+                                        itemId={project.id}
+                                        type="project"
+                                        favoritedItems={favoritedItems}
+                                        onToggle={handleFavoriteToggle}
+                                      />
+                                    }
+                                  />
+                                </SwiperSlide>
+                              )
+                            })}
                         </SwiperContent>
                       </TabsContent>
                     ))}
@@ -4682,7 +4703,9 @@ export default function Projects() {
               and on the kind-filtered /teams page, where it serves as the
               primary "Top Software Development Teams" section from the L1
               Teams design. */}
-          {isL1OrL2AllPage && (
+
+          {/* Teams feature temporarily hidden from category pages. */}
+          {false && (
             <div className="mt-[50px]">
               <Tabs defaultValue="Featured">
                 <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
@@ -4712,17 +4735,18 @@ export default function Projects() {
                     </TabsList>
                     <div className="flex items-center gap-x-8">
                       <Button
+                        asChild
                         variant="link"
                         visual="gray"
                         size="lg"
-                        className="underline hover:text-dark-blue-400"
+                        className="h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
                       >
-                        Explore More Teams
+                        <NextLink href={exploreMoreHref("teams")}>Explore More Teams</NextLink>
                       </Button>
                       <div className="flex items-center gap-x-3">
                         <SwiperPrevTrigger asChild>
                           <IconButton
-                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
                             visual="gray"
                             variant="outlined"
                           >
@@ -4869,9 +4893,7 @@ export default function Projects() {
             </div>
           )}
 
-
-
-          {pageKind === "projects" && (
+          {/* {pageKind === "projects" && (
             <div className="mt-[50px]">
               <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
                 Top {currentName} Projects
@@ -4921,116 +4943,67 @@ export default function Projects() {
 
               <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
                 {(() => {
-                  const baseItems =
+                  const shiftedProjectItems = getCarouselItemsForTab(
                     listingsProjects.length > 0
-                      ? listingsProjects.slice(0, 8)
-                      : fromLength(8)
-                  const tabShiftMap: Record<string, number> = {
-                    Featured: 0,
-                    Newest: 1,
-                    "Most Popular": 2,
-                    Trending: 3,
-                    "Top-Rated": 4,
-                    Bestsellers: 5,
-                  }
-                  const shift = tabShiftMap[activeTopProjectsTab] ?? 0
-                  const projectItems =
-                    baseItems.length > 0
-                      ? baseItems.slice(shift).concat(baseItems.slice(0, shift))
-                      : baseItems
-
-                  return projectItems.map((item: any, idx: number) => {
-                    const project = listingsProjects.length > 0 ? item : null
-                    const mock = projectCardMocks[idx % projectCardMocks.length]
-
-                    return (
-                      <ListingCard
-                        key={project?.id ?? `top-project-${idx}`}
-                        kind="project"
-                        id={project?.id ?? `top-project-${idx}`}
-                      title={project?.title || mock.title}
-                      description={
-                        project?.description?.slice(0, 120) ||
-                        mock.description
-                      }
-                        mediaUrl={
-                          project?.mediaUrls?.[0] ||
-                          project?.coverImage ||
-                          mock.mediaUrl
-                        }
-                      budget={project?.budget ? `$${Number(project.budget).toLocaleString()} budget` : mock.budget}
-                      duration={project?.duration ? `Starting from ${project.duration}` : mock.duration}
-                        rating={4.9}
-                        reviewCount={5}
-                        href={
-                          project
-                            ? buildProjectUrl(
-                                currentCategoryPath,
-                                project.slug,
-                                project.id
-                              )
-                            : buildProjectUrl(
-                                currentCategoryPath,
-                                mock.slug,
-                                mock.id
-                              )
-                        }
-                        collaborators={(talentUsers.length > 0
-                          ? talentUsers.slice(0, 6)
-                          : Array(6).fill("/woman.jpg")
-                        ).map(
-                          (u: any) =>
-                            (typeof u === "string" ? u : u?.avatarUrl) ||
-                            "/woman.jpg"
-                        )}
-                        favoriteSlot={
-                          <FavoriteRoot
-                            value={
-                              project
-                                ? favoritedItems.has(String(project.id))
-                                : undefined
-                            }
-                            onValueChange={
-                              project
-                                ? (pressed) =>
-                                    handleFavoriteToggle(
-                                      String(project.id),
-                                      "project",
-                                      pressed
-                                    )
-                                : undefined
-                            }
-                          >
-                            {({ pressed }) => (
-                              <TooltipProvider delayDuration={75}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="inline-block">
-                                      <Favorite />
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    {pressed ? (
-                                      <span className="inline-flex items-center gap-x-1">
-                                        <Check className="size-[15px] shrink-0 text-green-500" />
-                                        Saved
-                                      </span>
-                                    ) : (
-                                      "Save to favorites"
-                                    )}
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </FavoriteRoot>
-                        }
-                      />
+                      ? listingsProjects
+                      : displayedProjects,
+                    activeTopProjectsTab
+                  )
+                    .filter(
+                      (project: any) =>
+                        project?.mediaUrls?.[0] &&
+                        project?.title &&
+                        (project.budget ??
+                          project.scopeTotal?.budget ??
+                          project.price)
                     )
-                  })
+                    .slice(0, 8)
+
+                  return shiftedProjectItems.map(
+                    (project: any, idx: number) => {
+                      return (
+                        <ListingCard
+                          key={project.id ?? `top-project-${idx}`}
+                          kind="project"
+                          id={project.id ?? `top-project-${idx}`}
+                          title={project.title}
+                          description={project?.shortDescription}
+                          mediaUrl={project?.mediaUrls?.[0]}
+                          duration={
+                            project.duration
+                              ? `Starting from ${project.duration}`
+                              : ""
+                          }
+                          rating={Number(project.rating) || undefined}
+                          reviewCount={project.reviewCount}
+                          href={
+                            project.slug && project.id
+                              ? projectDetailsUrl(project.slug, project.id)
+                              : listingHref("projects")
+                          }
+                          budget={String(
+                            project.budget ??
+                              project.scopeTotal?.budget ??
+                              project.price ??
+                              ""
+                          )}
+                          collaborators={getListingCollaborators(project)}
+                          favoriteSlot={
+                            <FavoriteButton
+                              itemId={project.id}
+                              type="project"
+                              favoritedItems={favoritedItems}
+                              onToggle={handleFavoriteToggle}
+                            />
+                          }
+                        />
+                      )
+                    }
+                  )
                 })()}
               </div>
             </div>
-          )}
+          )} */}
 
           {pageKind === "services" && (
             <div className="mt-[50px]">
@@ -5068,125 +5041,71 @@ export default function Projects() {
                 </div>
 
                 <Button
+                  asChild
                   variant="link"
                   visual="gray"
                   size="lg"
-                  className="h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                  className="h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
                 >
-                  Explore More Services
+                  <NextLink href={exploreMoreHref("services")}>Explore More Services</NextLink>
                 </Button>
               </div>
 
               <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-                {(() => {
-                  const baseItems =
-                    listingsServices.length > 0
-                      ? listingsServices.slice(0, 8)
-                      : fromLength(8)
-                  const tabShiftMap: Record<string, number> = {
-                    Featured: 0,
-                    Newest: 1,
-                    "Most Popular": 2,
-                    Trending: 3,
-                    "Top-Rated": 4,
-                    Bestsellers: 5,
-                  }
-                  const shift = tabShiftMap[activeTopServicesTab] ?? 0
-                  const serviceItems =
-                    baseItems.length > 0
-                      ? baseItems
-                          .slice(shift)
-                          .concat(baseItems.slice(0, shift))
-                      : baseItems
-
-                  return serviceItems.map((item: any, idx: number) => {
-                  const service = listingsServices.length > 0 ? item : null
-                  const mock = serviceCardMocks[idx % serviceCardMocks.length]
-
-                  return (
-                    <ListingCard
-                      key={service?.id ?? `top-service-${idx}`}
-                      kind="service"
-                      id={service?.id ?? `top-service-${idx}`}
-                      title={service?.title || mock.title}
-                      description={
-                        service?.description?.slice(0, 120) ||
-                        mock.description
-                      }
-                      mediaUrl={service?.mediaUrls?.[0] || mock.mediaUrl}
-                      budget={
-                        service?.priceMin
-                          ? `$${Number(service.priceMin).toLocaleString()}/month`
-                          : mock.budget
-                      }
-                      rating={4.9}
-                      reviewCount={5}
-                      href={
-                        service
-                          ? buildServiceUrl(
-                              currentCategoryPath,
-                              service.slug,
-                              service.id
-                            )
-                          : buildServiceUrl(
-                              currentCategoryPath,
-                              mock.slug,
-                              mock.id
-                            )
-                      }
-                      collaborators={(talentUsers.length > 0
-                        ? talentUsers.slice(0, 6)
-                        : Array(6).fill("/woman.jpg")
-                      ).map(
-                        (u: any) =>
-                          (typeof u === "string" ? u : u?.avatarUrl) ||
-                          "/woman.jpg"
-                      )}
-                      favoriteSlot={
-                        <FavoriteRoot
-                          value={
-                            service
-                              ? favoritedItems.has(String(service.id))
-                              : undefined
-                          }
-                          onValueChange={
-                            service
-                              ? (pressed) =>
-                                  handleFavoriteToggle(
-                                    String(service.id),
-                                    "service",
-                                    pressed
-                                  )
-                              : undefined
-                          }
-                        >
-                          {({ pressed }) => (
-                            <TooltipProvider delayDuration={75}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-block">
-                                    <Favorite />
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {pressed ? (
-                                    <span className="inline-flex items-center gap-x-1">
-                                      <Check className="size-[15px] shrink-0 text-green-500" />
-                                      Saved
-                                    </span>
-                                  ) : (
-                                    "Save to favorites"
-                                  )}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </FavoriteRoot>
-                      }
-                    />
+                {getCarouselItemsForTab(serviceItems, activeTopServicesTab)
+                  .filter(
+                    (service: any) =>
+                      service?.mediaUrls?.[0] &&
+                      service?.title &&
+                      (service.priceMin ?? service.budget ?? service.price)
                   )
-                  })
-                })()}
+                  .slice(0, 8)
+                  .map((service: any, idx: number) => {
+                    return (
+                      <motion.div
+                        key={`${activeTopServicesTab}-${service.id ?? idx}`}
+                        initial="enter"
+                        animate="ideal"
+                        variants={contentVariants}
+                        transition={contentTransition}
+                      >
+                        <ListingCard
+                          kind="service"
+                          id={service.id ?? `top-service-${idx}`}
+                          title={service.title}
+                          description={service?.shortDescription}
+                          mediaUrl={service?.mediaUrls?.[0]}
+                          duration={
+                            service.duration
+                              ? `Starting from ${service.duration}`
+                              : ""
+                          }
+                          budget={String(
+                            service.priceMin ??
+                              service.budget ??
+                              service.price ??
+                              ""
+                          )}
+                          rating={Number(service.rating) || undefined}
+                          reviewCount={service.reviewCount}
+                          href={
+                            service.slug && service.id
+                              ? serviceDetailsUrl(service.slug, service.id)
+                              : listingHref("services")
+                          }
+                          collaborators={getListingCollaborators(service)}
+                          favoriteSlot={
+                            <FavoriteButton
+                              itemId={service.id ?? `top-service-${idx}`}
+                              type="service"
+                              favoritedItems={favoritedItems}
+                              onToggle={handleFavoriteToggle}
+                            />
+                          }
+                        />
+                      </motion.div>
+                    )
+                  })}
               </div>
             </div>
           )}
@@ -5201,44 +5120,57 @@ export default function Projects() {
                     </h1>
                     <TabsList className="mt-6 flex flex-wrap items-center gap-3">
                       {marketplaceTalentTabs.map((tab) => (
-                        <TabsTrigger
+                        <Badge
                           key={tab}
-                          value={tab}
-                          className="flex h-8 items-center rounded-full border border-gray-300 bg-white px-3.5 text-sm font-medium text-gray-500 transition-colors data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
+                          asChild
                         >
-                          {tab}
-                        </TabsTrigger>
+                          <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                        </Badge>
                       ))}
                     </TabsList>
                   </div>
 
                   <Button
+                    asChild
                     variant="link"
                     visual="gray"
                     size="lg"
-                    className="mt-[58px] h-auto p-0 text-base font-bold text-gray-500 underline hover:text-dark-blue-400"
+                    className="mt-[58px] h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
                   >
-                    Explore More Talent
+                    <NextLink href={exploreMoreHref("talent")}>Explore More Talent</NextLink>
                   </Button>
                 </div>
 
                 <div className="mt-7">
                   {marketplaceTalentTabs.map((tabValue) => (
-                <TabsContent
-                  key={tabValue}
-                  value={tabValue}
-                  className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4"
-                >
-                  {Array.from({ length: 8 }, (_, idx) => topTalentMock[idx % topTalentMock.length]).map(
-                    (talent, idx) => (
-                      <TopTalentCard
-                        key={`${tabValue}-${talent.id}-${idx}`}
-                        talent={talent}
-                      />
-                    )
-                  )}
-                </TabsContent>                  
-              ))}
+                    <TabsContent
+                      key={tabValue}
+                      value={tabValue}
+                      className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4"
+                    >
+                      {getCarouselItemsForTab(talentUsers, tabValue)
+                        .slice(0, 8)
+                        .map((talent: any, idx: number) => (
+                        <ListingCard
+                          key={`${tabValue}-${talent.id}-${idx}`}
+                          kind="talent"
+                          {...talentToCardProps(talent, idx)}
+                          favoriteSlot={
+                            <FavoriteButton
+                              itemId={talent.id}
+                              type="talent"
+                              favoritedItems={favoritedItems}
+                              onToggle={handleFavoriteToggle}
+                            />
+                          }
+                        />
+                      ))}
+                    </TabsContent>
+                  ))}
                 </div>
               </Tabs>
             </div>
@@ -5432,7 +5364,7 @@ export default function Projects() {
                                           <span className="text-[10px] leading-none font-medium text-dark-blue-400">
                                             {isServiceTab ? "Service" : "DevOps"}
                                           </span>
-                                          <h1 className="mt-1 text-base leading-none font-semibold text-dark-blue-400">
+                                          <h1 className="mt-1 line-clamp-2 min-h-[32px] text-base leading-none font-semibold text-dark-blue-400">
                                             {name}
                                           </h1>
                                         </div>
@@ -5605,7 +5537,7 @@ export default function Projects() {
                           </div>
                         </div>
 
-                        <p className="mt-3 line-clamp-3 text-sm leading-[1.4] font-extralight text-dark-blue-400">
+                        <p className="mt-3 line-clamp-3 min-h-[59px] text-sm leading-[1.4] font-extralight text-dark-blue-400">
                           Brief Description of the project. Lorem ipsum dolor
                           sit amet, consectetur adipiscing elit, sed do eiusmod
                           tempor incididunt.
@@ -5861,183 +5793,148 @@ export default function Projects() {
                 </TabsContent>
               </div>
             </Tabs>
-          </div> */}
+          </div> 
 
           {/* Top {Category} Projects — Swiper with filter tabs */}
-          {isL1OrL2AllPage && (
-          <div className="mt-[50px]">
-            <Tabs defaultValue="Featured">
-              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Top {currentName} Projects
-              </h1>
-              <SwiperRoot>
-                <div className="mt-6 flex justify-between items-center">
-                  <TabsList className="flex items-center gap-x-3">
+          {(l1 || l2) && !l3 && (
+            <div className="mt-[50px]">
+              <Tabs defaultValue="Featured">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  Top {currentName} Projects
+                </h1>
+                <SwiperRoot>
+                  <div className="mt-6 flex justify-between items-center">
+                    <TabsList className="flex items-center gap-x-3">
+                      {[
+                        "Featured",
+                        "Newest",
+                        "Most Popular",
+                        "Trending",
+                        "Top-Rated",
+                      ].map((tab) => (
+                        <Badge
+                          key={tab}
+                          variant="circular"
+                          visual="gray"
+                          size="lg"
+                          className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
+                          asChild
+                        >
+                          <TabsTrigger value={tab}>{tab}</TabsTrigger>
+                        </Badge>
+                      ))}
+                    </TabsList>
+                    <div className="flex items-center gap-x-8">
+                      <Button
+                        asChild
+                        variant="link"
+                        visual="gray"
+                        size="lg"
+                        className="h-auto p-0 text-base text-gray-500 underline hover:text-dark-blue-400"
+                      >
+                        <NextLink href={exploreMoreHref("projects")}>Explore More Projects</NextLink>
+                      </Button>
+                      <div className="flex items-center gap-x-3">
+                        <SwiperPrevTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronLeft className="size-[18px]" />
+                          </IconButton>
+                        </SwiperPrevTrigger>
+                        <SwiperNextTrigger asChild>
+                          <IconButton
+                            className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-[opacity,border-width] duration-150 data-[state=active]:opacity-100 data-[state=active]:hover:border-2"
+                            visual="gray"
+                            variant="outlined"
+                          >
+                            <ChevronRight className="size-[18px]" />
+                          </IconButton>
+                        </SwiperNextTrigger>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-6">
                     {[
                       "Featured",
                       "Newest",
                       "Most Popular",
                       "Trending",
                       "Top-Rated",
-                    ].map((tab) => (
-                      <Badge
-                        key={tab}
-                        variant="circular"
-                        visual="gray"
-                        size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                        asChild
-                      >
-                        <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                      </Badge>
-                    ))}
-                  </TabsList>
-                  <div className="flex items-center gap-x-8">
-                    <Button
-                      variant="link"
-                      visual="gray"
-                      size="lg"
-                      className="underline hover:text-dark-blue-400"
-                    >
-                      Explore More Projects
-                    </Button>
-                    <div className="flex items-center gap-x-3">
-                      <SwiperPrevTrigger asChild>
-                        <IconButton
-                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                          visual="gray"
-                          variant="outlined"
-                        >
-                          <ChevronLeft className="size-[18px]" />
-                        </IconButton>
-                      </SwiperPrevTrigger>
-                      <SwiperNextTrigger asChild>
-                        <IconButton
-                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                          visual="gray"
-                          variant="outlined"
-                        >
-                          <ChevronRight className="size-[18px]" />
-                        </IconButton>
-                      </SwiperNextTrigger>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-6">
-                  {[
-                    "Featured",
-                    "Newest",
-                    "Most Popular",
-                    "Trending",
-                    "Top-Rated",
-                  ].map((tabValue) => (
-                    <TabsContent key={tabValue} value={tabValue}>
-                      <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {(listingsProjects.length > 0
-                          ? listingsProjects.slice(0, 8)
-                          : fromLength(8)
-                        ).map((item: any, idx: number) => {
-                          const project =
-                            listingsProjects.length > 0 ? item : null
-                          const mock = projectCardMocks[idx % projectCardMocks.length]
-                          return (
-                            <SwiperSlide
-                              className="w-[355px]"
-                              key={project?.id ?? idx}
-                            >
-                              <ListingCard
-                                kind="project"
-                                id={project?.id ?? `mock-${idx}`}
-                                title={
-                                  project?.title ||
-                                  mock.title
-                                }
-                                description={
-                                  project?.description?.slice(0, 120) ||
-                                  mock.description
-                                }
-                                mediaUrl={
-                                  project?.mediaUrls?.[0] || mock.mediaUrl
-                                }
-                        budget={project?.budget ? `$${Number(project.budget).toLocaleString()} budget` : mock.budget}
-                        duration={project?.duration ? `Starting from ${project.duration}` : mock.duration}
-                                rating={4.9}
-                                reviewCount={5}
-                                href={
-                                  project
-                                    ? buildProjectUrl(
-                                        currentCategoryPath,
-                                        project.slug,
-                                        project.id
-                                      )
-                                    : buildProjectUrl(
-                                        currentCategoryPath,
-                                        mock.slug,
-                                        mock.id
-                                      )
-                                }
-                                collaborators={(talentUsers.length > 0
-                                  ? talentUsers.slice(0, 6)
-                                  : Array(6).fill("/woman.jpg")
-                                ).map(
-                                  (u: any) =>
-                                    (typeof u === "string"
-                                      ? u
-                                      : u?.avatarUrl) || "/woman.jpg"
-                                )}
-                                favoriteSlot={
-                                  project ? (
-                                    <FavoriteRoot
-                                      value={favoritedItems.has(
-                                        String(project.id)
-                                      )}
-                                      onValueChange={(pressed) =>
-                                        handleFavoriteToggle(
-                                          String(project.id),
-                                          "project",
-                                          pressed
-                                        )
-                                      }
-                                    >
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  ) : null
-                                }
-                              />
-                            </SwiperSlide>
+                    ].map((tabValue) => (
+                      <TabsContent key={tabValue} value={tabValue}>
+                        <SwiperContent slidesPerView="auto" spaceBetween={20}>
+                          {getCarouselItemsForTab(
+                            listingsProjects.length > 0
+                              ? listingsProjects
+                              : displayedProjects,
+                            tabValue
                           )
-                        })}
-                      </SwiperContent>
-                    </TabsContent>
-                  ))}
-                </div>
-              </SwiperRoot>
-            </Tabs>
-          </div>
+                            .filter(
+                              (project: any) =>
+                                project?.mediaUrls?.[0] &&
+                                project?.title &&
+                                (project.budget ??
+                                  project.scopeTotal?.budget ??
+                                  project.price)
+                            )
+                            .slice(0, 8)
+                            .map((project: any, idx: number) => {
+                              return (
+                                <SwiperSlide
+                                  className="w-[355px]"
+                                  key={project.id ?? idx}
+                                >
+                                  <ListingCard
+                                    kind="project"
+                                    id={project.id ?? `project-${idx}`}
+                                    title={project.title}
+                                    description={project?.shortDescription}
+                                    mediaUrl={project?.mediaUrls?.[0]}
+                                    duration={
+                                      project.duration
+                                        ? `Starting from ${project.duration}`
+                                        : ""
+                                    }
+                                    rating={Number(project.rating) || undefined}
+                                    reviewCount={project.reviewCount}
+                                    href={
+                                      project.slug && project.id
+                                        ? projectDetailsUrl(project.slug, project.id)
+                                        : listingHref("projects")
+                                    }
+                                    budget={String(
+                                      project.budget ??
+                                        project.scopeTotal?.budget ??
+                                        project.price ??
+                                        ""
+                                    )}
+                                    collaborators={getListingCollaborators(project)}
+                                    favoriteSlot={
+                                      <FavoriteButton
+                                        itemId={project.id}
+                                        type="project"
+                                        favoritedItems={favoritedItems}
+                                        onToggle={handleFavoriteToggle}
+                                      />
+                                    }
+                                  />
+                                </SwiperSlide>
+                              )
+                            })}
+                        </SwiperContent>
+                      </TabsContent>
+                    ))}
+                  </div>
+                </SwiperRoot>
+              </Tabs>
+            </div>
           )}
 
           {/* Top {Category} Services — Swiper with filter tabs */}
-          {isL1AllPage && (
+          {l1 && !l2 && !l3 && pageKind === "show-all" && (
             <div className="mt-[50px]">
               <Tabs defaultValue="Featured">
                 <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
@@ -6112,107 +6009,59 @@ export default function Projects() {
                     ].map((tabValue) => (
                       <TabsContent key={tabValue} value={tabValue}>
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                          {(listingsServices.length > 0
-                            ? listingsServices.slice(0, 8)
-                            : fromLength(8)
-                          ).map((item: any, idx: number) => {
-                            const service =
-                              listingsServices.length > 0 ? item : null
-                            const mock =
-                              serviceCardMocks[idx % serviceCardMocks.length]
-
-                            return (
-                              <SwiperSlide
-                                className="w-[355px]"
-                                key={service?.id ?? `${tabValue}-${idx}`}
-                              >
-                                <ListingCard
-                                  kind="service"
-                                  id={service?.id ?? `top-service-${idx}`}
-                                  title={service?.title || mock.title}
-                                  description={
-                                    service?.description?.slice(0, 120) ||
-                                    mock.description
-                                  }
-                                  mediaUrl={
-                                    service?.mediaUrls?.[0] || mock.mediaUrl
-                                  }
-                                  budget={
-                                    service?.priceMin
-                                      ? `$${Number(service.priceMin).toLocaleString()}/month`
-                                      : mock.budget
-                                  }
-                                  rating={4.9}
-                                  reviewCount={5}
-                                  href={
-                                    service
-                                      ? buildServiceUrl(
-                                          currentCategoryPath,
-                                          service.slug,
-                                          service.id
-                                        )
-                                      : buildServiceUrl(
-                                          currentCategoryPath,
-                                          mock.slug,
-                                          mock.id
-                                        )
-                                  }
-                                  collaborators={(talentUsers.length > 0
-                                    ? talentUsers.slice(0, 6)
-                                    : Array(6).fill("/woman.jpg")
-                                  ).map(
-                                    (u: any) =>
-                                      (typeof u === "string"
-                                        ? u
-                                        : u?.avatarUrl) || "/woman.jpg"
-                                  )}
-                                  favoriteSlot={
-                                    <FavoriteRoot
-                                      value={
-                                        service
-                                          ? favoritedItems.has(
-                                              String(service.id)
-                                            )
-                                          : undefined
-                                      }
-                                      onValueChange={
-                                        service
-                                          ? (pressed) =>
-                                              handleFavoriteToggle(
-                                                String(service.id),
-                                                "service",
-                                                pressed
-                                              )
-                                          : undefined
-                                      }
-                                    >
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  }
-                                />
-                              </SwiperSlide>
+                          {getCarouselItemsForTab(serviceItems, tabValue)
+                            .filter(
+                              (service: any) =>
+                                service?.mediaUrls?.[0] &&
+                                service?.title &&
+                                (service.priceMin ??
+                                  service.budget ??
+                                  service.price)
                             )
-                          })}
+                            .slice(0, 8)
+                            .map((service: any, idx: number) => {
+                              return (
+                                <SwiperSlide
+                                  className="h-auto w-[355px]"
+                                  key={service.id ?? `${tabValue}-${idx}`}
+                                >
+                                  <ListingCard
+                                    kind="service"
+                                    id={service.id ?? `top-service-${idx}`}
+                                    title={service.title}
+                                    description={service?.shortDescription}
+                                    mediaUrl={service?.mediaUrls?.[0]}
+                                    duration={
+                                      service.duration
+                                        ? `Starting from ${service.duration}`
+                                        : ""
+                                    }
+                                    budget={String(
+                                      service.priceMin ??
+                                        service.budget ??
+                                        service.price ??
+                                        ""
+                                    )}
+                                    rating={Number(service.rating) || undefined}
+                                    reviewCount={service.reviewCount}
+                                    href={
+                                      service.slug && service.id
+                                        ? serviceDetailsUrl(service.slug, service.id)
+                                        : listingHref("services")
+                                    }
+                                    collaborators={getListingCollaborators(service)}
+                                    favoriteSlot={
+                                      <FavoriteButton
+                                        itemId={service.id ?? `${tabValue}-${idx}`}
+                                        type="service"
+                                        favoritedItems={favoritedItems}
+                                        onToggle={handleFavoriteToggle}
+                                      />
+                                    }
+                                  />
+                                </SwiperSlide>
+                              )
+                            })}
                         </SwiperContent>
                       </TabsContent>
                     ))}
@@ -6222,8 +6071,9 @@ export default function Projects() {
             </div>
           )}
 
-
-          {pageKind === "teams" && (
+          {/* Teams feature temporarily hidden from category pages. */}
+          {/* Original: {pageKind === "teams" && ( */}
+          {false && pageKind === "teams" && (
             <div className="mt-[50px]">
               <Tabs defaultValue="Featured">
                 <div className="flex flex-wrap items-start justify-between gap-6">
@@ -6264,46 +6114,18 @@ export default function Projects() {
                       value={tabValue}
                       className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4"
                     >
-                      {teamSeeds.map((team) => (
+                      {getCarouselItemsForTab(teamItems, tabValue).map((team: any) => (
                         <ListingCard
                           key={`${tabValue}-${team.id}`}
                           kind="team"
-                          id={team.id}
-                          name={team.name}
-                          handle={team.handle}
-                          tagline={team.tagline}
-                          experience={team.experience}
-                          rate={team.rate}
-                          locations={team.location}
-                          rating={team.rating}
-                          projectCount={team.completedProjects}
-                          skills={team.skills}
-                          memberAvatars={team.memberAvatars}
-                          previousClientLogos={team.previousClientLogos}
+                          {...team}
                           favoriteSlot={
-                            <FavoriteRoot>
-                              {({ pressed }) => (
-                                <TooltipProvider delayDuration={75}>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="inline-block">
-                                        <Favorite />
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      {pressed ? (
-                                        <span className="inline-flex items-center gap-x-1">
-                                          <Check className="size-[15px] shrink-0 text-green-500" />
-                                          Saved
-                                        </span>
-                                      ) : (
-                                        "Save to favorites"
-                                      )}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                            </FavoriteRoot>
+                            <FavoriteButton
+                              itemId={team.id}
+                              type="team"
+                              favoritedItems={favoritedItems}
+                              onToggle={handleFavoriteToggle}
+                            />
                           }
                         />
                       ))}
@@ -6313,208 +6135,28 @@ export default function Projects() {
               </Tabs>
             </div>
           )}
-
-          {pageKind === "services" && (
-          <div className="mt-[50px]">
-            <Tabs defaultValue="Featured">
-              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Top Services
-              </h1>
-              <SwiperRoot>
+          {(l1 || l2) && !l3 && (
+            <div className="mt-[50px]">
+              <Tabs defaultValue="Industry">
+                <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
+                  Narrow Your {sectionLabel} Search
+                </h1>
                 <div className="mt-6 flex justify-between items-center">
                   <TabsList className="flex items-center gap-x-3">
-                    {[
-                      "Featured",
-                      "Newest",
-                      "Most Popular",
-                      "Trending",
-                      "Top-Rated",
-                    ].map((tab) => (
-                      <Badge
-                        key={tab}
-                        variant="circular"
-                        visual="gray"
-                        size="lg"
-                        className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                        asChild
-                      >
-                        <TabsTrigger value={tab}>{tab}</TabsTrigger>
-                      </Badge>
-                    ))}
-                  </TabsList>
-                  <div className="flex items-center gap-x-8">
-                    <Button
-                      variant="link"
-                      visual="gray"
-                      size="lg"
-                      className="underline hover:text-dark-blue-400"
-                    >
-                      Explore More Services
-                    </Button>
-                    <div className="flex items-center gap-x-3">
-                      <SwiperPrevTrigger asChild>
-                        <IconButton
-                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                          visual="gray"
-                          variant="outlined"
-                        >
-                          <ChevronLeft className="size-[18px]" />
-                        </IconButton>
-                      </SwiperPrevTrigger>
-                      <SwiperNextTrigger asChild>
-                        <IconButton
-                          className="rounded-full border-dark-blue-400 text-dark-blue-400 opacity-[.19] size-8 transition-opacity duration-300 data-[state=active]:opacity-100 data-[state=active]:hover:ring-1 data-[state=active]:hover:ring-dark-blue-400"
-                          visual="gray"
-                          variant="outlined"
-                        >
-                          <ChevronRight className="size-[18px]" />
-                        </IconButton>
-                      </SwiperNextTrigger>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-6">
-                  {[
-                    "Featured",
-                    "Newest",
-                    "Most Popular",
-                    "Trending",
-                    "Top-Rated",
-                  ].map((tabValue) => (
-                    <TabsContent key={tabValue} value={tabValue}>
-                      <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                        {(listingsServices.length > 0
-                          ? listingsServices.slice(0, 8)
-                          : fromLength(8)
-                        ).map((item: any, idx: number) => {
-                          const service =
-                            listingsServices.length > 0 ? item : null
-                          const mock =
-                            serviceCardMocks[idx % serviceCardMocks.length]
-                          return (
-                            <SwiperSlide
-                              className="w-[355px]"
-                              key={service?.id ?? idx}
-                            >
-                              <ListingCard
-                                kind="service"
-                                id={service?.id ?? `mock-${idx}`}
-                                title={service?.title || mock.title}
-                                description={
-                                  service?.description?.slice(0, 120) ||
-                                  mock.description
-                                }
-                                mediaUrl={service?.mediaUrls?.[0] || mock.mediaUrl}
-                                budget={
-                                  service?.priceMin
-                                    ? `$${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}/month`
-                                    : mock.budget
-                                }
-                                rating={4.9}
-                                reviewCount={5}
-                                href={
-                                  service
-                                    ? buildServiceUrl(
-                                        currentCategoryPath,
-                                        service.slug,
-                                        service.id
-                                      )
-                                    : buildServiceUrl(
-                                        currentCategoryPath,
-                                        mock.slug,
-                                        mock.id
-                                      )
-                                }
-                                collaborators={(talentUsers.length > 0
-                                  ? talentUsers.slice(0, 6)
-                                  : Array(6).fill("/woman.jpg")
-                                ).map(
-                                  (u: any) =>
-                                    (typeof u === "string"
-                                      ? u
-                                      : u?.avatarUrl) || "/woman.jpg"
-                                )}
-                                favoriteSlot={
-                                  service ? (
-                                    <FavoriteRoot
-                                      value={favoritedItems.has(
-                                        String(service.id)
-                                      )}
-                                      onValueChange={(pressed) =>
-                                        handleFavoriteToggle(
-                                          String(service.id),
-                                          "service",
-                                          pressed
-                                        )
-                                      }
-                                    >
-                                      {({ pressed }) => (
-                                        <TooltipProvider delayDuration={75}>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="inline-block">
-                                                <Favorite />
-                                              </span>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              {pressed ? (
-                                                <span className="inline-flex items-center gap-x-1">
-                                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                                  Saved
-                                                </span>
-                                              ) : (
-                                                "Save to favorites"
-                                              )}
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      )}
-                                    </FavoriteRoot>
-                                  ) : null
-                                }
-                              />
-                            </SwiperSlide>
-                          )
-                        })}
-                      </SwiperContent>
-                    </TabsContent>
-                  ))}
-                </div>
-              </SwiperRoot>
-            </Tabs>
-          </div>
-          )}
-          {isL1OrL2AllPage && (
-          <div className="mt-[50px]">
-            <Tabs defaultValue="Project Type">
-              <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-                Narrow Your {sectionLabel} Search
-              </h1>
-              <div className="mt-6 flex justify-between items-center">
-                <TabsList className="flex items-center gap-x-3">
                   <Badge
                     variant="circular"
                     visual="gray"
                     size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
-                    asChild
-                  >
-                    <TabsTrigger value="Project Type">Project Type</TabsTrigger>
-                  </Badge>
-                  {/* <Badge
-                    variant="circular"
-                    visual="gray"
-                    size="lg"
-                    className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                    className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
                     asChild
                   >
                     <TabsTrigger value="Industry">Industry</TabsTrigger>
-                  </Badge> */}
+                  </Badge> 
                     <Badge
                       variant="circular"
                       visual="gray"
                       size="lg"
-                      className="h-8 border bg-white border-gray-300 px-3.5 text-gray-500 transition-colors duration-200 hover:border-dark-blue-400 hover:text-dark-blue-400 data-[state=active]:ring-1 data-[state=active]:ring-dark-blue-400 data-[state=active]:border-dark-blue-400 data-[state=active]:text-dark-blue-400"
+                      className="h-8 border border-gray-300 bg-white px-3.5 text-gray-500 transition-[color,background-color,border-color,border-width] duration-200 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-600 data-[state=active]:border-2 data-[state=active]:border-dark-blue-400 data-[state=active]:bg-white data-[state=active]:text-dark-blue-400 data-[state=active]:hover:bg-white data-[state=active]:hover:border-dark-blue-400 data-[state=active]:hover:text-dark-blue-400"
                       asChild
                     >
                       <TabsTrigger value="Budget">Budget</TabsTrigger>
@@ -6770,7 +6412,7 @@ export default function Projects() {
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
                             <article
-                              className="py-[50px] h-full min-h-[440px] rounded-lg bg-error-700 flex flex-col items-start justify-end px-6"
+                              className="py-[50px] h-full rounded-lg bg-error-700 flex flex-col items-start justify-end px-6"
                               style={{ backgroundColor: "#2459DB" }}
                             >
                                 <h1 className="text-[28px] font-bold leading-none text-white">
@@ -6795,35 +6437,27 @@ export default function Projects() {
                               </div>
                             </article>
                           </SwiperSlide>
-                          {(talentUsers.length > 0
-                            ? talentUsers.slice(0, 8)
-                            : fromLength(8)
-                          ).map((u: any, idx: number) => (
-                            <SwiperSlide
-                              className="w-[355px]"
-                              key={u?.id ?? idx}
-                            >
-                              {talentUsers.length > 0 ? (
+                          {getCarouselItemsForTab(talentUsers, tabValue)
+                            .slice(0, 8)
+                            .map((u: any, idx: number) => (
+                              <SwiperSlide
+                                className="h-auto w-[355px]"
+                                key={u?.id ?? idx}
+                              >
                                 <ListingCard
                                   kind="talent"
                                   {...talentToCardProps(u, idx)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={u.id}
+                                      type="talent"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
                                 />
-                              ) : (
-                                <ListingCard
-                                  kind="talent"
-                                  id={`mock-${idx}`}
-                                  username={`expert-${idx}`}
-                                  name="Expert Freelancer"
-                                  role={`${currentName} Specialist`}
-                                  photo="/woman.jpg"
-                                  rate="$75/hr"
-                                  rating={4.9}
-                                  projects={12}
-                                  skills={["React", "TypeScript", "Node.js"]}
-                                />
-                              )}
-                            </SwiperSlide>
-                          ))}
+                              </SwiperSlide>
+                            ))}
                         </SwiperContent>
                       </TabsContent>
                     ))}
@@ -6970,261 +6604,205 @@ export default function Projects() {
                     ).map((sub: any) => (
                       <TabsContent key={sub.name} value={sub.name}>
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                    <SwiperSlide className="w-[355px] h-auto">
-                      <article className="h-full min-h-[430px] rounded-lg bg-[#E86600] px-8 py-[50px] flex flex-col items-start justify-end text-white">
-                        <h2 className="text-[28px] font-bold leading-[1.2]">
-                          {currentName} {sectionLabel}
-                        </h2>
-                        <p className="mt-5 text-xl font-light leading-snug">
-                          Discover high-quality{" "}
-                          {currentName.toLowerCase()}{" "}
-                          {sectionLabel.toLowerCase()} ready to launch.
-                        </p>
-                        <Button
-                          asChild
-                          className="mt-12 rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white px-6 text-[#B54708] hover:bg-white/90 hover:text-[#B54708]"
-                          size="lg"
-                        >
-                          <NextLink href={listingHref(pageKind)}>
-                            Explore More <ArrowRight className="size-[15px]" />
-                          </NextLink>
-                        </Button>
-                      </article>
-                    </SwiperSlide>
-
-                    {pageKind === "projects" &&
-                      (listingsProjects.length > 0
-                        ? listingsProjects.slice(0, 8)
-                        : fromLength(8)
-                      ).map((item: any, idx: number) => {
-                        const project =
-                          listingsProjects.length > 0 ? item : null
-                        const mock =
-                          projectCardMocks[idx % projectCardMocks.length]
-                        return (
-                          <SwiperSlide
-                            className="w-[355px]"
-                            key={project?.id ?? idx}
-                          >
-                            <ListingCard
-                              kind="project"
-                              id={project?.id ?? `recommended-project-${idx}`}
-                              title={project?.title || mock.title}
-                              description={
-                                project?.description?.slice(0, 120) ||
-                                mock.description
-                              }
-                              mediaUrl={
-                                project?.mediaUrls?.[0] ||
-                                project?.coverImage ||
-                                mock.mediaUrl
-                              }
-                              budget={
-                                project?.budget
-                                  ? `$${Number(project.budget).toLocaleString()}/month`
-                                  : mock.budget
-                              }
-                              rating={4.9}
-                              reviewCount={5}
-                              href={
-                                project
-                                  ? buildProjectUrl(
-                                      currentCategoryPath,
-                                      project.slug,
-                                      project.id
-                                    )
-                                  : buildProjectUrl(
-                                      currentCategoryPath,
-                                      mock.slug,
-                                      mock.id
-                                    )
-                              }
-                              collaborators={(talentUsers.length > 0
-                                ? talentUsers.slice(0, 6)
-                                : Array(6).fill("/woman.jpg")
-                              ).map(
-                                (u: any) =>
-                                  (typeof u === "string"
-                                    ? u
-                                    : u?.avatarUrl) || "/woman.jpg"
-                              )}
-                              favoriteSlot={
-                                <FavoriteRoot>
-                                  {({ pressed }) => (
-                                    <TooltipProvider delayDuration={75}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <span className="inline-block">
-                                            <Favorite />
-                                          </span>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          {pressed ? (
-                                            <span className="inline-flex items-center gap-x-1">
-                                              <Check className="size-[15px] shrink-0 text-green-500" />
-                                              Saved
-                                            </span>
-                                          ) : (
-                                            "Save to favorites"
-                                          )}
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  )}
-                                </FavoriteRoot>
-                              }
-                            />
+                          <SwiperSlide className="w-[355px] h-auto">
+                            <article className="h-full rounded-lg bg-[#E86600] px-8 py-[50px] flex flex-col items-start justify-end text-white">
+                              <h1 className="text-[28px] font-bold leading-none text-white">
+                                {currentName} {sectionLabel}
+                              </h1>
+                              <p className="mt-3 text-lg font-light leading-none text-white">
+                                Discover high-quality{" "}
+                                {currentName.toLowerCase()}{" "}
+                                {sectionLabel.toLowerCase()} ready to launch.
+                              </p>
+                              <div className="mt-8 flex flex-col gap-y-3">
+                                <Button
+                                  asChild
+                                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 px-6 h-12 text-base font-semibold"
+                                  style={{ color: "#E86600" }}
+                                  size="lg"
+                                >
+                                  <NextLink
+                                    href={exploreMoreHref(
+                                      pageKind as "projects" | "services" | "teams" | "talent"
+                                    )}
+                                  >
+                                    Explore More{" "}
+                                    <ArrowRight className="size-[15px] ml-2" />
+                                  </NextLink>
+                                </Button>
+                              </div>
+                            </article>
                           </SwiperSlide>
-                        )
-                      })}
 
-                    {pageKind === "services" &&
-                      (listingsServices.length > 0
-                        ? listingsServices.slice(0, 8)
-                        : fromLength(8)
-                      ).map((item: any, idx: number) => {
-                        const service =
-                          listingsServices.length > 0 ? item : null
-                        const mock =
-                          serviceCardMocks[idx % serviceCardMocks.length]
-                        return (
-                          <SwiperSlide
-                            className="w-[355px]"
-                            key={service?.id ?? idx}
-                          >
-                            <ListingCard
-                              kind="service"
-                              id={service?.id ?? `recommended-service-${idx}`}
-                              title={
-                                service?.title ||
-                                mock.title
-                              }
-                              description={
-                                service?.description?.slice(0, 120) ||
-                                mock.description
-                              }
-                              mediaUrl={
-                                service?.mediaUrls?.[0] ||
-                                service?.coverImage ||
-                                mock.mediaUrl
-                              }
-                              budget={
-                                service?.priceMin
-                                  ? `$${Number(service.priceMin).toLocaleString()}/month`
-                                  : mock.budget
-                              }
-                              rating={4.9}
-                              reviewCount={5}
-                              href={
-                                service
-                                  ? buildServiceUrl(
-                                      currentCategoryPath,
-                                      service.slug,
-                                      service.id
-                                    )
-                                  : buildServiceUrl(
-                                      currentCategoryPath,
-                                      mock.slug,
-                                      mock.id
-                                    )
-                              }
-                              collaborators={(talentUsers.length > 0
-                                ? talentUsers.slice(0, 6)
-                                : Array(6).fill("/woman.jpg")
-                              ).map(
-                                (u: any) =>
-                                  (typeof u === "string"
-                                    ? u
-                                    : u?.avatarUrl) || "/woman.jpg"
-                              )}
-                              favoriteSlot={
-                                <FavoriteRoot>
-                                  {({ pressed }) => (
-                                    <TooltipProvider delayDuration={75}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <span className="inline-block">
-                                            <Favorite />
-                                          </span>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          {pressed ? (
-                                            <span className="inline-flex items-center gap-x-1">
-                                              <Check className="size-[15px] shrink-0 text-green-500" />
-                                              Saved
-                                            </span>
-                                          ) : (
-                                            "Save to favorites"
-                                          )}
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  )}
-                                </FavoriteRoot>
-                              }
-                            />
-                          </SwiperSlide>
-                        )
-                      })}
+                          {pageKind === "projects" &&
+                            getCarouselItemsForCategoryTab(
+                              displayedProjects,
+                              sub,
+                              "Featured"
+                            )
+                              .filter(
+                                (project: any) =>
+                                  project?.mediaUrls?.[0] &&
+                                  project?.title &&
+                                  (project.budget ??
+                                    project.scopeTotal?.budget ??
+                                    project.price)
+                              )
+                              .slice(0, 8)
+                              .map((project: any, idx: number) => {
+                                return (
+                                  <SwiperSlide
+                                    className="w-[355px]"
+                                    key={project.id ?? idx}
+                                  >
+                                    <ListingCard
+                                      kind="project"
+                                      id={
+                                        project.id ??
+                                        `recommended-project-${idx}`
+                                      }
+                                      title={project.title}
+                                      description={project?.shortDescription}
+                                      mediaUrl={project?.mediaUrls?.[0]}
+                                      duration={
+                                        project.duration
+                                          ? `Starting from ${project.duration}`
+                                          : ""
+                                      }
+                                      budget={String(
+                                        project.budget ??
+                                          project.scopeTotal?.budget ??
+                                          project.price ??
+                                          ""
+                                      )}
+                                      rating={Number(project.rating) || undefined}
+                                      reviewCount={project.reviewCount}
+                                      href={
+                                        project.slug && project.id
+                                          ? projectDetailsUrl(project.slug, project.id)
+                                          : listingHref("projects")
+                                      }
+                                      collaborators={getListingCollaborators(project)}
+                                      favoriteSlot={
+                                        <FavoriteButton
+                                          itemId={project.id}
+                                          type="project"
+                                          favoritedItems={favoritedItems}
+                                          onToggle={handleFavoriteToggle}
+                                        />
+                                      }
+                                    />
+                                  </SwiperSlide>
+                                )
+                              })}
 
-                    {pageKind === "teams" &&
-                      teamSeeds.map((team) => (
-                        <SwiperSlide
-                          className="w-[355px]"
-                          key={`recommended-team-${team.id}`}
-                        >
-                          <ListingCard
-                            kind="team"
-                            id={team.id}
-                            name={team.name}
-                            handle={team.handle}
-                            tagline={team.tagline}
-                            experience={team.experience}
-                            rate={team.rate}
-                            locations={team.location}
-                            rating={team.rating}
-                            projectCount={team.completedProjects}
-                            skills={team.skills}
-                            memberAvatars={team.memberAvatars}
-                            previousClientLogos={team.previousClientLogos}
-                            favoriteSlot={
-                              <FavoriteRoot>
-                                {({ pressed }) => (
-                                  <TooltipProvider delayDuration={75}>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span className="inline-block">
-                                          <Favorite />
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        {pressed ? (
-                                          <span className="inline-flex items-center gap-x-1">
-                                            <Check className="size-[15px] shrink-0 text-green-500" />
-                                            Saved
-                                          </span>
-                                        ) : (
-                                          "Save to favorites"
-                                        )}
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                )}
-                              </FavoriteRoot>
-                            }
-                          />
-                        </SwiperSlide>
-                      ))}
+                          {pageKind === "services" &&
+                            getCarouselItemsForCategoryTab(
+                              serviceItems,
+                              sub,
+                              "Featured"
+                            )
+                              .filter(
+                                (service: any) =>
+                                  service?.mediaUrls?.[0] &&
+                                  service?.title &&
+                                  (service.priceMin ??
+                                    service.budget ??
+                                    service.price)
+                              )
+                              .slice(0, 8)
+                              .map((service: any, idx: number) => {
+                                return (
+                                  <SwiperSlide
+                                    className="h-auto w-[355px]"
+                                    key={service.id ?? idx}
+                                  >
+                                    <ListingCard
+                                      kind="service"
+                                      id={
+                                        service.id ??
+                                        `recommended-service-${idx}`
+                                      }
+                                      title={service.title}
+                                      description={service?.shortDescription}
+                                      mediaUrl={service?.mediaUrls?.[0]}
+                                      duration={
+                                        service.duration
+                                          ? `Starting from ${service.duration}`
+                                          : ""
+                                      }
+                                      budget={String(
+                                        service.priceMin ??
+                                          service.budget ??
+                                          service.price ??
+                                          ""
+                                      )}
+                                      rating={Number(service.rating) || undefined}
+                                      reviewCount={service.reviewCount}
+                                      href={
+                                        service.slug && service.id
+                                          ? serviceDetailsUrl(service.slug, service.id)
+                                          : listingHref("services")
+                                      }
+                                      collaborators={getListingCollaborators(service)}
+                                      favoriteSlot={
+                                        <FavoriteButton
+                                          itemId={service.id ?? `recommended-service-${idx}`}
+                                          type="service"
+                                          favoritedItems={favoritedItems}
+                                          onToggle={handleFavoriteToggle}
+                                        />
+                                      }
+                                    />
+                                  </SwiperSlide>
+                                )
+                              })}
 
-                    {pageKind === "talent" &&
-                      topTalentMock.map((talent) => (
-                        <SwiperSlide
-                          className="w-[355px]"
-                          key={`recommended-${talent.id}`}
-                        >
-                          <TopTalentCard talent={talent} />
-                        </SwiperSlide>
-                      ))}
+                          {/* Original: {pageKind === "teams" && teamItems.map((team: any) => ( */}
+                          {false &&
+                            pageKind === "teams" &&
+                            teamItems.map(
+                              (team: any) => (
+                                <SwiperSlide
+                                  className="w-[355px]"
+                                  key={`recommended-team-${team.id}`}
+                                >
+                                  <ListingCard
+                                    kind="team"
+                                    {...team}
+                                    favoriteSlot={
+                                      <FavoriteButton
+                                        itemId={team.id}
+                                        type="team"
+                                        favoritedItems={favoritedItems}
+                                        onToggle={handleFavoriteToggle}
+                                      />
+                                    }
+                                  />
+                                </SwiperSlide>
+                              )
+                            )}
+
+                          {pageKind === "talent" &&
+                            talentUsers.map((talent: any, idx: number) => (
+                              <SwiperSlide
+                                className="h-auto w-[355px]"
+                                key={`recommended-${talent.id}`}
+                              >
+                                <ListingCard
+                                  kind="talent"
+                                  {...talentToCardProps(talent, idx)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={talent.id}
+                                      type="talent"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
+                                />
+                              </SwiperSlide>
+                            ))}
                         </SwiperContent>
                       </TabsContent>
                     ))}
@@ -7301,7 +6879,7 @@ export default function Projects() {
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
                             <article
-                              className="py-[50px] h-full min-h-[440px] rounded-lg bg-error-700 flex flex-col items-start justify-end px-6"
+                              className="py-[50px] h-full rounded-lg bg-error-700 flex flex-col items-start justify-end px-6"
                               style={{ backgroundColor: "#027A48" }}
                             >
                               <h1 className="text-[28px] font-bold leading-none text-white">
@@ -7325,35 +6903,31 @@ export default function Projects() {
                               </div>
                             </article>
                           </SwiperSlide>
-                          {(talentUsers.length > 0
-                            ? talentUsers.slice(0, 8)
-                            : fromLength(8)
-                          ).map((u: any, idx: number) => (
-                            <SwiperSlide
-                              className="w-[355px]"
-                              key={u?.id ?? idx}
-                            >
-                              {talentUsers.length > 0 ? (
+                          {getCarouselItemsForCategoryTab(
+                            talentUsers,
+                            sub,
+                            "Newest"
+                          )
+                            .slice(0, 8)
+                            .map((u: any, idx: number) => (
+                              <SwiperSlide
+                                className="h-auto w-[355px]"
+                                key={u?.id ?? idx}
+                              >
                                 <ListingCard
                                   kind="talent"
                                   {...talentToCardProps(u, idx)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={u?.id}
+                                      type="talent"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
                                 />
-                              ) : (
-                                <ListingCard
-                                  kind="talent"
-                                  id={`mock-${idx}`}
-                                  username={`expert-${idx}`}
-                                  name="Expert Freelancer"
-                                  role={`${currentName} Specialist`}
-                                  photo="/woman.jpg"
-                                  rate="$75/hr"
-                                  rating={4.9}
-                                  projects={12}
-                                  skills={["React", "TypeScript", "Node.js"]}
-                                />
-                              )}
-                            </SwiperSlide>
-                          ))}
+                              </SwiperSlide>
+                            ))}
                         </SwiperContent>
                       </TabsContent>
                     ))}
@@ -7486,7 +7060,7 @@ export default function Projects() {
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
                             <article
-                              className="h-full min-h-[440px] rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
+                              className="h-full rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
                               style={{ backgroundColor: "#2459DB" }}
                             >
                                 <h1 className="text-[28px] font-bold leading-none text-white">
@@ -7510,35 +7084,27 @@ export default function Projects() {
                               </div>
                             </article>
                           </SwiperSlide>
-                          {(talentUsers.length > 0
-                            ? talentUsers.slice(0, 8)
-                            : fromLength(8)
-                          ).map((u: any, idx: number) => (
-                            <SwiperSlide
-                              className="w-[355px]"
-                              key={u?.id ?? idx}
-                            >
-                              {talentUsers.length > 0 ? (
+                          {talentUsers
+                            .slice(0, 8)
+                            .map((u: any, idx: number) => (
+                              <SwiperSlide
+                                className="h-auto w-[355px]"
+                                key={u?.id ?? idx}
+                              >
                                 <ListingCard
                                   kind="talent"
                                   {...talentToCardProps(u, idx)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={u?.id}
+                                      type="talent"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
                                 />
-                              ) : (
-                                <ListingCard
-                                  kind="talent"
-                                  id={`mock-${idx}`}
-                                  username={`expert-${idx}`}
-                                  name="Expert Freelancer"
-                                  role={`${currentName} Specialist`}
-                                  photo="/woman.jpg"
-                                  rate="$75/hr"
-                                  rating={4.9}
-                                  projects={12}
-                                  skills={["React", "TypeScript", "Node.js"]}
-                                />
-                              )}
-                            </SwiperSlide>
-                          ))}
+                              </SwiperSlide>
+                            ))}
                         </SwiperContent>
                       </TabsContent>
                     ))}
@@ -7650,7 +7216,7 @@ export default function Projects() {
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
                           <SwiperSlide className="w-[355px] h-auto">
                             <article
-                              className="h-full min-h-[440px] rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
+                              className="h-full rounded-lg bg-success-700 p-10 flex flex-col items-start justify-between"
                               style={{ backgroundColor: "#027A48" }}
                             >
                               <div className="pt-6">
@@ -7677,10 +7243,13 @@ export default function Projects() {
                               </div>
                             </article>
                           </SwiperSlide>
-                          {(talentUsers.length > 0
-                            ? talentUsers.slice(0, 8)
-                            : fromLength(8)
-                          ).map((u: any, idx: number) => (
+                          {getCarouselItemsForCategoryTab(
+                            talentUsers,
+                            sub,
+                            "Newest"
+                          )
+                            .slice(0, 8)
+                            .map((u: any, idx: number) => (
                             <SwiperSlide
                               className="w-[355px]"
                               key={u?.id ?? idx}
@@ -7689,19 +7258,27 @@ export default function Projects() {
                                 <ListingCard
                                   kind="talent"
                                   {...talentToCardProps(u, idx)}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={u?.id}
+                                      type="talent"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
                                 />
                               ) : (
                                 <ListingCard
                                   kind="talent"
-                                  id={`mock-${idx}`}
-                                  username={`expert-${idx}`}
-                                  name="Expert Freelancer"
-                                  role={`${currentName} Specialist`}
-                                  photo="/woman.jpg"
-                                  rate="$75/hr"
-                                  rating={4.9}
-                                  projects={12}
-                                  skills={["React", "TypeScript", "Node.js"]}
+                                  {...u}
+                                  favoriteSlot={
+                                    <FavoriteButton
+                                      itemId={u?.id}
+                                      type="talent"
+                                      favoritedItems={favoritedItems}
+                                      onToggle={handleFavoriteToggle}
+                                    />
+                                  }
                                 />
                               )}
                             </SwiperSlide>
@@ -7772,175 +7349,89 @@ export default function Projects() {
                     ).map((sub: any) => (
                       <TabsContent key={sub.name} value={sub.name}>
                         <SwiperContent slidesPerView="auto" spaceBetween={20}>
-                          <SwiperSlide className="w-[355px] h-auto">
-                            <article className="py-[50px] h-full rounded-lg bg-error-700 flex flex-col items-start justify-end px-6">
-                              <h1 className="text-[28px] font-bold leading-none text-white">
-                                Cybersecurity Services
-                              </h1>
-                              <p className="mt-3 text-lg font-light leading-none text-white">
-                                Explore cloud computing services tailored to
-                                meet your unique business needs.
-                              </p>
-                              <div className="mt-8 flex flex-col gap-y-3">
-                                <Button
-                                  className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:text-error-800 hover:bg-white text-error-700"
-                                  size="lg"
-                                >
-                                  Explore More{" "}
-                                  <ArrowRight className="size-[15px]" />
-                                </Button>
-                              </div>
-                            </article>
-                          </SwiperSlide>
-                          {(listingsServices.length > 0
-                            ? listingsServices.slice(0, 8)
-                            : fromLength(8)
-                          ).map((item: any, idx: number) => {
-                            const service =
-                              listingsServices.length > 0 ? item : null
-                            const mock =
-                              serviceCardMocks[idx % serviceCardMocks.length]
-                            const href = service
-                              ? buildServiceUrl(
-                                  currentCategoryPath,
-                                  service.slug,
-                                  service.id
-                                )
-                              : buildServiceUrl(
-                                  currentCategoryPath,
-                                  mock.slug,
-                                  mock.id
-                                )
-                            return (
-                              <SwiperSlide
-                                key={service?.id ?? idx}
-                                className="w-[355px]"
-                              >
-                                <NextLink
-                                  href={href}
-                                  className="block focus-visible:outline-none"
-                                >
-                                  <article className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                                    <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
-                                      <NextImage
-                                        className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                                        src={
-                                          service?.mediaUrls?.[0] ||
-                                          mock.mediaUrl
-                                        }
-                                        alt={service?.title || mock.title}
-                                        fill
-                                        sizes="33vw"
-                                      />
-                                      <span className="absolute right-2 top-2 inline-flex max-w-[60%] items-center gap-1 truncate rounded-md bg-dark-blue-400/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
-                                        <svg
-                                          viewBox="0 0 24 24"
-                                          className="size-3 shrink-0"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2.5"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          aria-hidden="true"
-                                        >
-                                          <path d="M21 12a9 9 0 0 1-15.5 6.3" />
-                                          <path d="M3 12A9 9 0 0 1 18.5 5.7" />
-                                          <path d="M7 18H5v-2" />
-                                          <path d="M17 6h2v2" />
-                                        </svg>
-                                        <span className="truncate">Service</span>
-                                      </span>
-                                    </div>
-                                    <div className="mt-3 flex items-start gap-x-3">
-                                      <span className="font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline">
-                                        {service?.title || mock.title}
-                                      </span>
-                                      <div className="inline-flex items-center gap-x-1">
-                                        <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                                        <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                                          4.9{" "}
-                                          <span className="font-extralight">
-                                            (5)
-                                          </span>
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                                      {service?.description?.slice(0, 140) ||
-                                        mock.description}
-                                    </p>
-                                    <div className="mt-[14.5px] flex flex-col gap-y-3">
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <Clock className="size-[18px] shrink-0 text-primary-500" />
-                                        <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                          Starting from{" "}
-                                          {service?.duration || mock.duration}
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-x-[6.4px]">
-                                        <Money className="size-[18px] shrink-0 text-primary-500" />
-                                        <span className="font-medium text-sm leading-none text-dark-blue-400">
-                                          {service?.priceMin
-                                            ? `$${Number(service.priceMin).toLocaleString()} - $${Number(service.priceMax).toLocaleString()}/month`
-                                            : mock.budget}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <div className="mt-5 flex items-end justify-between">
-                                      <AvatarGroup
-                                        max={5}
-                                        size="sm"
-                                        excess
-                                        excessClassName="border-gray-300 text-gray-500"
-                                      >
-                                        {(talentUsers.length > 0
-                                          ? talentUsers.slice(0, 6)
-                                          : fromLength(6)
-                                        ).map((u: any, k: number) => (
-                                          <Avatar
-                                            key={u?.id ?? k}
-                                            size="sm"
-                                            className="border-2 border-white hover:ring-0 active:ring-0"
-                                          >
-                                            <AvatarImage
-                                              src={u?.avatarUrl || "/woman.jpg"}
-                                              alt={u?.firstName || "Team"}
-                                            />
-                                            <AvatarFallback>
-                                              {u?.firstName?.[0] || "T"}
-                                            </AvatarFallback>
-                                          </Avatar>
-                                        ))}
-                                      </AvatarGroup>
-                                      <FavoriteRoot>
-                                        {({ pressed }) => (
-                                          <TooltipProvider delayDuration={75}>
-                                            <Tooltip>
-                                              <TooltipTrigger asChild>
-                                                <span className="inline-block">
-                                                  <Favorite />
-                                                </span>
-                                              </TooltipTrigger>
-                                              <TooltipContent>
-                                                {pressed ? (
-                                                  <span className="inline-flex items-center gap-x-1">
-                                                    <Check className="size-[15px] shrink-0 text-green-500" />
-                                                    Saved
-                                                  </span>
-                                                ) : (
-                                                  "Save to favorites"
-                                                )}
-                                              </TooltipContent>
-                                            </Tooltip>
-                                          </TooltipProvider>
-                                        )}
-                                      </FavoriteRoot>
-                                    </div>
-                                  </article>
-                                </NextLink>
-                              </SwiperSlide>
+                          {!(l2 && pageKind === "show-all") && (
+                            <SwiperSlide className="h-auto w-[355px]">
+                              <article className="py-[50px] h-full rounded-lg bg-error-700 flex flex-col items-start justify-end px-6">
+                                <h1 className="text-[28px] font-bold leading-none text-white">
+                                  {sub.name} Services
+                                </h1>
+                                <p className="mt-3 text-lg font-light leading-none text-white">
+                                  Explore {sub.name} services tailored to
+                                  meet your unique business needs.
+                                </p>
+                                <div className="mt-8 flex flex-col gap-y-3">
+                                  <Button
+                                    asChild
+                                    className="rounded-full duration-300 hover:gap-x-3.5 transition-[column-gap] bg-white hover:bg-white/90 px-6 h-12 text-base font-semibold"
+                                    style={{ color: "#D92D20" }}
+                                    size="lg"
+                                  >
+                                    <NextLink href={exploreMoreHref("services")}>
+                                      Explore More{" "}
+                                      <ArrowRight className="size-[15px] ml-2" />
+                                    </NextLink>
+                                  </Button>
+                                </div>
+                              </article>
+                            </SwiperSlide>
+                          )}
+                          {getCarouselItemsForCategoryTab(
+                            serviceItems,
+                            sub,
+                            l2 && pageKind === "show-all" ? "Top-Rated" : "Featured"
+                          )
+                            .filter(
+                              (service: any) =>
+                                service?.mediaUrls?.[0] &&
+                                service?.title &&
+                                (service.priceMin ??
+                                  service.budget ??
+                                  service.price)
                             )
-                          })}
+                            .slice(0, 8)
+                            .map((service: any, idx: number) => {
+                              return (
+                                <SwiperSlide
+                                  key={service.id ?? idx}
+                                  className="h-auto w-[355px]"
+                                >
+                                  <ListingCard
+                                    kind="service"
+                                    id={service.id ?? `top-service-${idx}`}
+                                    title={service.title}
+                                    description={service?.shortDescription}
+                                    mediaUrl={service?.mediaUrls?.[0]}
+                                    budget={String(
+                                      service.priceMin ??
+                                        service.budget ??
+                                        service.price ??
+                                        ""
+                                    )}
+                                    duration={
+                                      service.duration
+                                        ? `Starting from ${service.duration}`
+                                        : ""
+                                    }
+                                    rating={Number(service.rating) || undefined}
+                                    reviewCount={service.reviewCount}
+                                    href={
+                                      service.slug && service.id
+                                        ? serviceDetailsUrl(service.slug, service.id)
+                                        : listingHref("services")
+                                    }
+                                    collaborators={getListingCollaborators(service)}
+                                    favoriteSlot={
+                                      <FavoriteButton
+                                        itemId={service.id}
+                                        type="service"
+                                        favoritedItems={favoritedItems}
+                                        onToggle={handleFavoriteToggle}
+                                      />
+                                    }
+                                  />
+                                </SwiperSlide>
+                              )
+                            })}
                         </SwiperContent>
                       </TabsContent>
                     ))}
@@ -7949,7 +7440,7 @@ export default function Projects() {
               </Tabs>
             </div>
           )}
-
+{/*
           {isL1OrL2AllPage && (
             <div className="mt-[50px]">
               <div className="flex items-center justify-between">
@@ -7991,7 +7482,7 @@ export default function Projects() {
                     <h2 className="mt-2 text-lg font-bold leading-6 text-dark-blue-400 group-hover:underline">
                       {project.title}
                     </h2>
-                    <p className="mt-2 line-clamp-3 text-sm font-light leading-5 text-dark-blue-400">
+                    <p className="mt-2 line-clamp-3 min-h-[60px] text-sm font-light leading-5 text-dark-blue-400">
                       {project.description}
                     </p>
                   </NextLink>
@@ -8096,7 +7587,7 @@ export default function Projects() {
 
             <div className="grid grid-cols-2 gap-x-8 mt-6">
               <div className="flex flex-col gap-y-8">
-                <article className="flex gap-x-6 group cursor-pointer rounded-lg hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200">
+                <article className="flex gap-x-6 group cursor-pointer rounded-lg">
                   <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0">
                     <NextImage
                       className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
@@ -8132,7 +7623,7 @@ export default function Projects() {
                     </Button>
                   </div>
                 </article>
-                <article className="flex gap-x-6 group cursor-pointer rounded-lg hover:shadow-md motion-safe:transition-shadow motion-safe:duration-200">
+                <article className="flex gap-x-6 group cursor-pointer rounded-lg">
                   <div className="relative w-[238px] overflow-hidden rounded-lg shrink-0">
                     <NextImage
                       className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
@@ -8208,8 +7699,6 @@ export default function Projects() {
               </div>
             </div>
           </div>
-        </div>
-      </div>
       <div className="py-20 px-[50px] bg-white">
         <h1 className="text-[28px] font-bold text-center text-dark-blue-400">
           {currentName} FAQ
@@ -8330,9 +7819,9 @@ export default function Projects() {
             Chat with Us
           </NextLink>
         </div>
-      </div>
+      </div> */}
 
-      <div className="p-[50px] bg-white border-t border-gray-200">
+      <div className="mt-[50px] p-[50px] bg-white border-t border-gray-200">
         <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
           More Ways to Explore
         </h1>
@@ -8431,11 +7920,13 @@ export default function Projects() {
 
           <div className="mt-3 max-w-[346px] text-xs leading-[19px] text-center mx-auto">
             You may unsubscribe at any time. By signing up, you agree to
-            Marketeq&apos;s <span className="underline">Privacy Policy</span>{" "}
+            Marketeq's <span className="underline">Privacy Policy</span>{" "}
             and <span className="underline">Terms of Use</span>.
           </div>
         </div>
       </div>
+    </div>
+    </div>
     </div>
   )
 }

@@ -265,6 +265,26 @@ export class PublishService {
       if (galleryUrls.length > 0) {
         updatePayload.mediaUrls = galleryUrls;
       }
+
+      const proj = await this.projectRepository.findOne({ id: projectId });
+      if (proj) {
+        updatePayload.publishedSnapshot = {
+          title: proj.title,
+          subtitle: proj.subtitle ?? null,
+          shortDescription: proj.shortDescription ?? null,
+          description: proj.fullDescription ?? null,
+          categories: proj.categories ?? [],
+          subcategories: proj.subCategories ?? [],
+          industry: proj.industries ?? [],
+          tags: proj.tags ?? [],
+          skills: proj.skills ?? [],
+          mediaUrls: galleryUrls,
+          videoUrl: proj.videoUrl ?? null,
+          faqs: proj.faqs ?? [],
+          deliverables: proj.deliverables ?? [],
+          scope: proj.scope ?? null,
+        };
+      }
     }
 
     const moderatedProject = await this.projectRepository.update(
@@ -314,26 +334,6 @@ export class PublishService {
     }
 
     return moderatedProject;
-  }
-
-  private handleModerationError(error: unknown, projectId?: string): void {
-    if (error instanceof ModerationUnavailableError) {
-      throw new ServiceUnavailableException({
-        message:
-          'Content moderation is currently unavailable. Project was saved but not published.',
-        projectId,
-        status: 'publish_blocked',
-      });
-    }
-
-    if (error instanceof ModerationInvalidResponseError) {
-      throw new BadGatewayException({
-        message:
-          'Content moderation returned an invalid response. Please retry publishing.',
-        projectId,
-        status: 'publish_blocked',
-      });
-    }
   }
 
   private normalizeOptionalVideoUrl(
@@ -692,23 +692,54 @@ export class PublishService {
       assignedToUserId?: string | null;
       hidden?: boolean;
     }>,
+    authToken?: string,
   ) {
     await this.ensureProjectOwnership(projectId, userId);
-    const normalized = (questions ?? [])
-      .filter((q) => q && typeof q.question === 'string' && q.question.trim())
-      .map((q) => ({
-        id: q.id ?? undefined,
-        question: q.question,
-        answer: q.answer?.trim() ? q.answer : null,
-        askedByName: q.askedByName ?? null,
-        askedByUsername: q.askedByUsername ?? null,
-        askedAt: q.askedAt ?? null,
-        answeredByUserId: q.answer?.trim() ? (q.answeredByUserId ?? null) : null,
-        answeredByName: q.answer?.trim() ? (q.answeredByName ?? null) : null,
-        answeredByRole: q.answer?.trim() ? (q.answeredByRole ?? null) : null,
-        assignedToUserId: q.assignedToUserId ?? null,
-        hidden: !!q.hidden,
-      }));
+    const existing = await this.projectRepository.getRecentQuestions(projectId);
+    const existingById = new Map(existing.map((q) => [q.id, q] as const));
+    const normalized = await Promise.all(
+      (questions ?? [])
+        .filter((q) => q && typeof q.question === 'string' && q.question.trim())
+        .map(async (q) => {
+          const answer = q.answer?.trim() ? q.answer : null;
+          const hidden = !!q.hidden;
+          const prev = q.id ? existingById.get(q.id) : undefined;
+          const questionChanged = !prev || prev.question !== q.question;
+          const answerChanged = !!answer && (!prev || prev.answer !== answer);
+          let moderationFailed = prev?.moderationFailed ?? false;
+          if (questionChanged || answerChanged) {
+            moderationFailed = false;
+            const qStatus = await this.projectModerationService.moderateText(
+              q.question,
+              projectId,
+              authToken,
+            );
+            if (qStatus !== 'approved') moderationFailed = true;
+            if (answer && !moderationFailed) {
+              const aStatus = await this.projectModerationService.moderateText(
+                answer,
+                projectId,
+                authToken,
+              );
+              if (aStatus !== 'approved') moderationFailed = true;
+            }
+          }
+          return {
+            id: q.id ?? undefined,
+            question: q.question,
+            answer,
+            askedByName: q.askedByName ?? null,
+            askedByUsername: q.askedByUsername ?? null,
+            askedAt: q.askedAt ?? null,
+            answeredByUserId: answer ? (q.answeredByUserId ?? null) : null,
+            answeredByName: answer ? (q.answeredByName ?? null) : null,
+            answeredByRole: answer ? (q.answeredByRole ?? null) : null,
+            assignedToUserId: q.assignedToUserId ?? null,
+            hidden,
+            moderationFailed,
+          };
+        }),
+    );
     await this.projectRepository.updateRecentQuestions(projectId, normalized);
     return this.projectRepository.getRecentQuestions(projectId);
   }
@@ -804,12 +835,79 @@ export class PublishService {
     };
   }
 
-  async getMyProjects(userId: string): Promise<Project[]> {
-    return this.projectRepository.findAll({
+  async getMyProjects(
+    userId: string,
+  ): Promise<(Project & { teamAvatars: string[] })[]> {
+    const projects = await this.projectRepository.findAll({
       filterOptions: {
         userId,
       },
     });
+
+    // Resolve team-member avatars for every project in one pass so the
+    // listings cards can render an avatar stack without an N+1 fetch per card.
+    const allMemberIds = Array.from(
+      new Set(
+        projects
+          .flatMap((p) =>
+            Array.isArray(p.teamMemberIds) ? p.teamMemberIds : [],
+          )
+          .filter(Boolean)
+          .map(String),
+      ),
+    );
+    const hydrated = await this.userProfileClient.hydrateTeam(
+      allMemberIds,
+      userId,
+    );
+    const avatarByUserId = new Map(
+      hydrated.map((m) => [String(m.userId), m.avatarUrl]),
+    );
+
+    return projects.map((p) => {
+      const ids = [
+        String(userId),
+        ...(Array.isArray(p.teamMemberIds) ? p.teamMemberIds.map(String) : []),
+      ];
+      const teamAvatars = Array.from(new Set(ids))
+        .map((id) => avatarByUserId.get(id))
+        .filter((url): url is string => Boolean(url));
+      return { ...p, teamAvatars };
+    });
+  }
+
+  /**
+   * Normalizes a service scope to the required shape (docs JL-07) instead of
+   * rejecting it — so autosave never fails mid-edit. Runs only when the scope
+   * carries phase types (project scopes pass through untouched):
+   *   - Setup phases first, Recurring in the middle, Ongoing last (re-ordered).
+   *   - Recurring phases get sensible recurrence defaults when missing.
+   * The frontend enforces the "one Setup / one Ongoing" UX; if extras slip
+   * through they're simply ordered by type, never dropped.
+   */
+  private normalizeServiceScope(
+    phases: CreateProjectPhaseDto[],
+  ): CreateProjectPhaseDto[] {
+    if (!phases.some((p) => p.phaseType)) return phases;
+
+    const rank = (t?: string) =>
+      t === 'setup' ? 0 : t === 'ongoing' ? 2 : 1;
+
+    return [...phases]
+      .sort((a, b) => {
+        const byType = rank(a.phaseType) - rank(b.phaseType);
+        return byType !== 0 ? byType : (a.order ?? 0) - (b.order ?? 0);
+      })
+      .map((p, index) => ({
+        ...p,
+        order: index,
+        ...(p.phaseType === 'recurring'
+          ? {
+              recurrenceSchedule: p.recurrenceSchedule ?? 'monthly',
+              recurrenceCount: p.recurrenceCount ?? 1,
+            }
+          : {}),
+      }));
   }
 
   async replaceProjectScope(
@@ -818,6 +916,7 @@ export class PublishService {
     dto: UpsertProjectScopeDto,
   ): Promise<{ scope: Phase[]; budgetUsdCents: number }> {
     await this.ensureProjectOwnership(projectId, userId);
+    const normalizedScope = this.normalizeServiceScope(dto.scope ?? []);
 
     const existingPhases = await this.phaseRepository.findAll({
       filterOptions: { projectId },
@@ -836,13 +935,16 @@ export class PublishService {
 
     const scope: Phase[] = [];
 
-    for (const phaseDto of dto.scope ?? []) {
+    for (const phaseDto of normalizedScope) {
       const phase = await this.phaseRepository.create({
         name: phaseDto.name,
         stageName: phaseDto.stageName,
         startDay: phaseDto.startDay,
         endDay: phaseDto.endDay,
         order: phaseDto.order,
+        phaseType: phaseDto.phaseType ?? null,
+        recurrenceSchedule: phaseDto.recurrenceSchedule ?? null,
+        recurrenceCount: phaseDto.recurrenceCount ?? null,
         projectId,
       });
 
@@ -907,6 +1009,9 @@ export class PublishService {
     const scopeSnapshot = scope.map((phase, index) => ({
       phaseName: phase.name || phase.stageName || `Phase ${index + 1}`,
       order: phase.order ?? index,
+      phaseType: phase.phaseType ?? null,
+      recurrenceSchedule: phase.recurrenceSchedule ?? null,
+      recurrenceCount: phase.recurrenceCount ?? null,
       tasks: (phase.task ?? []).map((task) => {
         const hours = this.taskHours(task);
         totalHours += hours;
@@ -917,6 +1022,7 @@ export class PublishService {
           experienceLevel:
             task.experienceLevel ?? task.experience?.[0] ?? 'Medior',
           estimatedHours: hours,
+          duration: task.duration ?? null,
         };
       }),
     }));
@@ -958,33 +1064,83 @@ export class PublishService {
         });
       }
 
-      const moderationInput = this.toModerationInput({
-        title: project.title,
-        shortDescription: project.shortDescription,
-        fullDescription: project.fullDescription,
-        categories: project.categories,
-        subCategories: project.subCategories,
-        categorySelections: project.categorySelections,
-        tags: project.tags,
-        faqs: project.faqs,
-      });
-
-      const moderationResult = await this.projectModerationService.moderateProject(
-        project.id!,
-        moderationInput,
-        authToken,
+      // Moderate every visible image (featured + gallery), not just the
+      // cover — a rejected image anywhere in the listing must block publish.
+      const hiddenSet = new Set(media?.hiddenImages ?? []);
+      const imageUrls = Array.from(
+        new Set(
+          [media?.featuredImage, ...(media?.additionalImages ?? [])].filter(
+            (url): url is string =>
+              !!url && url.trim().length > 0 && !hiddenSet.has(url),
+          ),
+        ),
       );
+      for (const url of imageUrls) {
+        const imageResult =
+          await this.projectModerationService.moderateImageUrl(
+            project.id!,
+            url,
+            authToken,
+          );
+        if (imageResult.status !== 'approved') {
+          return await this.applyModerationDecision(project.id!, imageResult);
+        }
+      }
+
+      const videoUrl = media?.featuredVideo ?? project.videoUrl ?? undefined;
+      if (videoUrl && videoUrl.trim().length > 0) {
+        const videoResult =
+          await this.projectModerationService.moderateVideoUrl(
+            project.id!,
+            videoUrl,
+          );
+        if (videoResult.status !== 'approved') {
+          return await this.applyModerationDecision(project.id!, videoResult);
+        }
+      }
+
+      const moderationResult =
+        await this.projectModerationService.moderateProject(
+          project.id!,
+          this.toModerationInput({
+            title: project.title,
+            shortDescription: project.shortDescription,
+            fullDescription: project.fullDescription,
+            categories: project.categories,
+            subCategories: project.subCategories,
+            categorySelections: project.categorySelections,
+            tags: project.tags,
+            faqs: project.faqs,
+            imageUrl: null,
+          }),
+          authToken,
+        );
 
       return await this.applyModerationDecision(project.id!, moderationResult);
     } catch (error) {
-      if (
-        error instanceof ModerationUnavailableError ||
-        error instanceof ModerationInvalidResponseError
-      ) {
+      if (error instanceof ModerationUnavailableError) {
         await this.markPublishBlocked(project.id);
+        throw new ServiceUnavailableException({
+          message:
+            'Content moderation is currently unavailable. Project was saved but not published.',
+          projectId: project.id,
+          status: 'publish_blocked',
+        });
       }
 
-      this.handleModerationError(error, project.id);
+      if (error instanceof ModerationInvalidResponseError) {
+        await this.markPublishBlocked(project.id);
+        throw new BadGatewayException({
+          message:
+            'Content moderation returned an invalid response. Please retry.',
+          projectId: project.id,
+          status: 'publish_blocked',
+        });
+      }
+
+      // Re-throw moderation rejections (BadRequestException from
+      // applyModerationDecision) and any other HttpException so the client
+      // sees the actual rejection reason instead of a generic 500.
       this.throwIfHttpException(error);
       throw new InternalServerErrorException('Failed to publish project');
     }
@@ -1171,7 +1327,9 @@ export class PublishService {
       featured,
       ...additionalImages.filter((url) => !hiddenSet.has(url)),
     ].filter((url): url is string => Boolean(url && url.trim()));
-    await this.projectRepository.update(projectId, { mediaUrls: galleryUrls });
+    if (project.status !== 'published') {
+      await this.projectRepository.update(projectId, { mediaUrls: galleryUrls });
+    }
     if (!existingMedia) {
       return this.mediaRepository.create({
         projectId,
@@ -1195,10 +1353,8 @@ export class PublishService {
     },
     dto: CreateMediaDto,
   ): Promise<Media> {
-    let moderationContext: 'image' | 'video' = 'image';
-
     try {
-      await this.ensureProjectOwnership(dto.projectId, userId);
+      const project = await this.ensureProjectOwnership(dto.projectId, userId);
 
       if (files.additionalImages && files.additionalImages.length > 8) {
         throw new BadRequestException('You can upload a maximum of 8 images.');
@@ -1207,34 +1363,6 @@ export class PublishService {
       const existingMedia = await this.mediaRepository.find({
         projectId: dto.projectId,
       });
-
-      if (files.featuredImage && !this.shouldSkipModeration) {
-        const featuredImageModeration =
-          await this.projectModerationService.moderateUploadedImage(
-            dto.projectId,
-            files.featuredImage,
-          );
-
-        if (featuredImageModeration.status !== 'approved') {
-          const reason =
-            featuredImageModeration.reason ??
-            'Featured image failed moderation.';
-
-          if (featuredImageModeration.status === 'pending_review') {
-            throw new BadRequestException(
-              `Featured image is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
-            );
-          }
-
-          throw new BadRequestException(
-            `Project rejected: image violates moderation policy. ${reason}`.trim(),
-          );
-        }
-      } else if (files.featuredImage) {
-        this.logger.warn(
-          `Skipping image moderation for project ${dto.projectId} (SKIP_CONTENT_MODERATION=true)`,
-        );
-      }
 
       const resolvedVideoUrl = this.normalizeOptionalVideoUrl(
         dto.videoUrl ??
@@ -1245,27 +1373,6 @@ export class PublishService {
       let persistedVideoUrl: string | null = null;
 
       if (uploadedFeaturedVideo) {
-        moderationContext = 'video';
-        if (!this.shouldSkipModeration) {
-          const videoModeration =
-            await this.projectModerationService.moderateUploadedVideo(
-              dto.projectId,
-              uploadedFeaturedVideo,
-            );
-
-          if (videoModeration.status !== 'approved') {
-            const reason = videoModeration.reason ?? 'Featured video failed moderation.';
-            if (videoModeration.status === 'pending_review') {
-              throw new BadRequestException(
-                `Featured video is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
-              );
-            }
-            throw new BadRequestException(
-              `Project rejected: video violates moderation policy. ${reason}`.trim(),
-            );
-          }
-        }
-
         const featuredVideoUpload =
           await this.cloudflareStorageService.uploadProjectMedia(
             dto.projectId,
@@ -1273,31 +1380,12 @@ export class PublishService {
           );
         persistedVideoUrl = featuredVideoUpload.url;
       } else if (resolvedVideoUrl) {
-        moderationContext = 'video';
-        const videoUnchanged = existingMedia?.featuredVideo === resolvedVideoUrl;
-        if (!videoUnchanged && !this.shouldSkipModeration) {
-          const videoModeration =
-            await this.projectModerationService.moderateVideoUrl(
-              dto.projectId,
-              resolvedVideoUrl,
-            );
-
-          if (videoModeration.status !== 'approved') {
-            const reason = videoModeration.reason ?? 'Featured video failed moderation.';
-            if (videoModeration.status === 'pending_review') {
-              throw new BadRequestException(
-                `Featured video is pending moderation review and cannot be uploaded yet. ${reason}`.trim(),
-              );
-            }
-            throw new BadRequestException(
-              `Project rejected: video violates moderation policy. ${reason}`.trim(),
-            );
-          }
-        }
-
         persistedVideoUrl = resolvedVideoUrl;
       }
 
+      const clearFeatured =
+        (dto as CreateMediaDto & { clearFeatured?: string }).clearFeatured ===
+        'true';
       let featuredImageUrl: string;
       if (files.featuredImage) {
         const featuredImageUpload =
@@ -1308,6 +1396,8 @@ export class PublishService {
         featuredImageUrl = featuredImageUpload.url;
       } else if (dto.featuredImage) {
         featuredImageUrl = dto.featuredImage;
+      } else if (clearFeatured) {
+        featuredImageUrl = '';
       } else {
         throw new BadRequestException('Featured image is required.');
       }
@@ -1324,8 +1414,13 @@ export class PublishService {
         ...(dto.additionalImages ?? []),
         ...uploadedAdditionalUrls,
       ];
+      const replaceAdditional =
+        (dto as CreateMediaDto & { replaceAdditional?: string })
+          .replaceAdditional === 'true';
       const hasProvidedAdditional =
-        dto.additionalImages !== undefined || uploadedAdditionalUrls.length > 0;
+        replaceAdditional ||
+        dto.additionalImages !== undefined ||
+        uploadedAdditionalUrls.length > 0;
 
       // Upsert: update existing media record if one exists, otherwise create
       let media: Media;
@@ -1363,36 +1458,22 @@ export class PublishService {
           (url) => !hiddenSet.has(url),
         ),
       ].filter((url): url is string => Boolean(url && url.trim()));
-      if (galleryUrls.length > 0) {
-        await this.projectRepository.update(dto.projectId, {
-          mediaUrls: galleryUrls,
-        });
+      if (project.status !== 'published') {
+        if (galleryUrls.length > 0) {
+          await this.projectRepository.update(dto.projectId, {
+            mediaUrls: galleryUrls,
+          });
+        } else if (clearFeatured) {
+          await this.projectRepository.update(dto.projectId, {
+            mediaUrls: [],
+          });
+        }
       }
 
       return { ...media, url: featuredImageUrl } as Media;
     } catch (error) {
       console.log('err', error);
       this.throwIfHttpException(error);
-      if (error instanceof ModerationUnavailableError) {
-        throw new ServiceUnavailableException({
-          message:
-            moderationContext === 'video'
-              ? 'Video moderation is currently unavailable. Please retry media upload.'
-              : 'Image moderation is currently unavailable. Please retry media upload.',
-          projectId: dto.projectId,
-          status: 'publish_blocked',
-        });
-      }
-      if (error instanceof ModerationInvalidResponseError) {
-        throw new BadGatewayException({
-          message:
-            moderationContext === 'video'
-              ? 'Video moderation returned an invalid response. Please retry media upload.'
-              : 'Image moderation returned an invalid response. Please retry media upload.',
-          projectId: dto.projectId,
-          status: 'publish_blocked',
-        });
-      }
       if (error instanceof Error && error.message) {
         throw new InternalServerErrorException(error.message);
       }

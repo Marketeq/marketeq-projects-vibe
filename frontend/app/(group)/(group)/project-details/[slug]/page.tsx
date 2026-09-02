@@ -4,16 +4,31 @@ import * as React from "react"
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import { claimProject } from "@/src/lib/api/claim"
+import {
+  isTalentAccount,
+  NoTeamAssigned,
+} from "@/components/no-team-assigned"
 import { apiFetch } from "@/src/lib/api"
 import { useAblyChannel } from "@/utils/useAblyChannel"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
-import { estimateScopeBudgetCents } from "@/components/scope-builder"
+import {
+  estimateScopeBudgetCents,
+  PHASE_TYPE_TITLE,
+} from "@/components/scope-builder"
 import {
   addFavorite,
   findFavoriteByItemId,
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
+import { ShareWindow, useShareWindowStore } from "@/components/share-window"
+import { ReportWindow, useReportWindowStore } from "@/components/report-window"
+import { ListingCard } from "@/components/listing-card"
+import { projectDetailsUrl } from "@/src/lib/listing-urls"
+import { ProjectDiscoverySections } from "@/components/project-discovery-sections"
+import { LightboxVideoPlayer } from "./lightbox-video-player"
+import { countryOf } from "@/lib/geo"
 import { cn, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
@@ -21,12 +36,14 @@ import {
   ArrowLeft,
   Attachment01,
   ChartBreakoutCircle,
+  Calendar,
   Check,
   CheckCircle,
   ChevronDown,
   Clock,
   FileText,
   Flag,
+  RefreshCcw05,
   HelpCircle,
   Home03,
   Image03,
@@ -42,6 +59,7 @@ import {
   ShieldDollar,
   ShieldZap,
   ShoppingCart,
+  Play,
   Smile,
   Star,
   Stars02,
@@ -67,7 +85,9 @@ import {
 } from "@/lib/project-details/project-static-content-from-api"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { ProjectAPI } from "@/service/http/project"
+import { UserAPI } from "@/service/http/user"
 import { ChatsContextProvider } from "@/components/chat"
+import { MessageAttachmentView } from "@/app/(group)/inbox/components/message-components"
 import { EditContextProvider, useEditContext } from "@/components/inbox-comps"
 import { LikeDislike } from "@/components/like-dislike"
 import NextImage from "@/components/next-image"
@@ -299,7 +319,7 @@ const Chats = ({
   const [state, setState] = React.useState<CircularProgressDropzoneState>()
   const [open, toggle] = useToggle(false)
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, openAuthModal } = useAuth()
   const myId = user?.id ? String(user.id) : ""
 
   const { onChatChange, chat } = useEditContext()
@@ -318,7 +338,20 @@ const Chats = ({
 
   const [threadId, setThreadId] = React.useState<string | null>(null)
   const [messages, setMessages] = React.useState<
-    Array<{ id: string; senderId: string; content?: string | null; createdAt: string }>
+    Array<{
+      id: string
+      senderId: string
+      content?: string | null
+      createdAt: string
+      messageType?: string
+      attachments?: Array<{
+        id: string
+        fileUrl: string
+        fileType: string
+        fileName?: string | null
+        fileSize?: number | null
+      }>
+    }>
   >([])
   const chatBottomRef = React.useRef<HTMLDivElement | null>(null)
 
@@ -403,9 +436,8 @@ const Chats = ({
   const handleSend = React.useCallback(async () => {
     const text = (textareaValue ?? "").trim()
     if (!text) return
-    // Doc 15: login required before a message is sent.
     if (!myId) {
-      router.push("/sign-in")
+      openAuthModal("sign-in")
       return
     }
     setTextareaValue("")
@@ -425,7 +457,7 @@ const Chats = ({
         prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]
       )
     }
-  }, [textareaValue, myId, ensureThread, router, setTextareaValue])
+  }, [textareaValue, myId, ensureThread, openAuthModal, setTextareaValue])
 
   return (
     <div
@@ -484,7 +516,22 @@ const Chats = ({
                           mine ? "bg-primary-50" : "bg-gray-50"
                         )}
                       >
-                        <p className="text-sm text-dark-blue-400">{m.content}</p>
+                        {m.attachments?.[0] && (
+                          <MessageAttachmentView attachment={m.attachments[0]} />
+                        )}
+                        {m.messageType === "gif" && m.content ? (
+                          <img
+                            src={m.content}
+                            alt="GIF"
+                            className="rounded-md w-60 h-auto max-h-80"
+                          />
+                        ) : (
+                          m.content && (
+                            <p className="text-sm text-dark-blue-400">
+                              {m.content}
+                            </p>
+                          )
+                        )}
                         <p
                           className={cn(
                             "mt-1 text-xs text-gray-400",
@@ -653,16 +700,143 @@ const formatChatTime = (iso?: string) =>
       })
     : ""
 
-const toEmbedUrl = (raw?: string | null): string => {
+const US_STATE_CODES = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL",
+  "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT",
+  "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
+  "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC",
+])
+const COUNTRY_LABELS: Record<string, string> = {
+  "united states": "United States",
+  usa: "United States",
+  "united kingdom": "United Kingdom",
+  uk: "United Kingdom",
+  canada: "Canada",
+  vietnam: "Vietnam",
+  india: "India",
+  pakistan: "Pakistan",
+  australia: "Australia",
+  germany: "Germany",
+  france: "France",
+  spain: "Spain",
+  netherlands: "Netherlands",
+  brazil: "Brazil",
+}
+const formatMemberLocation = (loc?: string | null): string | null => {
+  if (!loc) return null
+  const raw = String(loc).trim()
+  if (!raw) return null
+  const stateMatch = raw.match(/,\s*([A-Za-z]{2})\.?$/)
+  if (stateMatch && US_STATE_CODES.has(stateMatch[1].toUpperCase())) {
+    return "United States"
+  }
+  const lower = raw.toLowerCase()
+  for (const [name, label] of Object.entries(COUNTRY_LABELS)) {
+    if (lower === name || lower.includes(name)) return label
+  }
+  return raw
+}
+
+const toVideoThumb = (raw?: string | null): string => {
   if (!raw) return ""
-  const url = raw.trim()
-  const yt = url.match(
+  const yt = raw.match(
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{11})/
   )
-  if (yt) return `https://www.youtube.com/embed/${yt[1]}`
-  const vimeo = url.match(/vimeo\.com\/(?:video\/)?(\d+)/)
-  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
-  return url
+  if (yt) return `https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg`
+  return ""
+}
+
+const isDirectVideoFile = (raw?: string | null): boolean =>
+  !!raw && /\.(mp4|webm|ogg|ogv|mov|m4v)(\?|#|$)/i.test(raw)
+
+const DEFAULT_SUGGESTED_QUESTIONS = [
+  "Can I see your portfolio?",
+  "What is your typical turnaround time?",
+  "Do you offer revisions?",
+  "How do we communicate during the project?",
+]
+
+const VideoThumb = ({
+  url,
+  alt,
+}: {
+  url?: string | null
+  alt: string
+}): JSX.Element | null => {
+  const yt = toVideoThumb(url)
+  if (yt) {
+    return (
+      <img
+        src={yt}
+        alt={alt}
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+    )
+  }
+  if (isDirectVideoFile(url)) {
+    return (
+      <video
+        src={url ?? undefined}
+        muted
+        playsInline
+        preload="metadata"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+    )
+  }
+  return null
+}
+
+// Derive a readable name from an R2 media URL, whose filenames follow
+// "{OriginalName}_{timestamp}-{uuid}.{ext}". Falls back to the given value.
+const mediaName = (raw?: string | null, fallback = ""): string => {
+  if (!raw) return fallback
+  try {
+    const file = decodeURIComponent(raw.split("?")[0].split("/").pop() ?? "")
+    let base = file.replace(/\.[a-z0-9]+$/i, "")
+    base = base.replace(/_\d{13}.*$/, "")
+    base = base.replace(
+      /[-_][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      ""
+    )
+    const name = base.replace(/[-_]+/g, " ").trim()
+    return name || fallback
+  } catch {
+    return fallback
+  }
+}
+
+function LocationList({ locations }: { locations: string[] }) {
+  const [expanded, setExpanded] = React.useState(false)
+  const countries = React.useMemo(
+    () => Array.from(new Set(locations.map(countryOf).filter(Boolean))),
+    [locations]
+  )
+  const visible = expanded ? countries : countries.slice(0, 3)
+  const extra = countries.length - visible.length
+  return (
+    <div className="flex items-center gap-1 overflow-hidden">
+      {visible.map((c, i) => (
+        <NextLink
+          key={c}
+          href={`/talent?location=${encodeURIComponent(c)}`}
+          className="shrink-0 focus-visible:outline-none duration-300 transition hover:underline text-sm leading-6 font-semibold text-dark-blue-400"
+        >
+          {c}
+          {i < visible.length - 1 || extra > 0 ? "," : ""}
+        </NextLink>
+      ))}
+      {extra > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="shrink-0 text-sm leading-6 font-semibold text-primary-500 hover:underline focus-visible:outline-none"
+        >
+          and {extra} more
+        </button>
+      )}
+    </div>
+  )
 }
 
 const CarouselPreviousTrigger = () => {
@@ -708,6 +882,30 @@ const Shimmer = ({ className }: { className?: string }) => (
   </div>
 )
 
+const listingCollaborators = (item: any): string[] => {
+  const candidates =
+    item?.teamAvatars ??
+    item?.teamMembers ??
+    item?.collaborators ??
+    item?.assignedUsers ??
+    item?.providers ??
+    []
+  if (!Array.isArray(candidates)) return []
+  return candidates
+    .map((member: any) =>
+      typeof member === "string"
+        ? member
+        : member?.avatarUrl ??
+          member?.avatar_url ??
+          member?.avatar ??
+          member?.photo ??
+          member?.image ??
+          member?.profileImageUrl
+    )
+    .filter((avatarUrl: any): avatarUrl is string => Boolean(avatarUrl))
+    .slice(0, 4)
+}
+
 export default function ProjectDetails({
   isPreview = false,
   onEdit,
@@ -717,11 +915,18 @@ export default function ProjectDetails({
 } = {}) {
   const params = useParams()
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, openAuthModal } = useAuth()
   const [project, setProject] = React.useState<any>(null)
   const [loading, setLoading] = React.useState(true)
   const [selected, setSelected] = React.useState<string>("Details")
   const [pendingQuestion, setPendingQuestion] = React.useState("")
+  const [askErrored, setAskErrored] = React.useState(false)
+  const [showAskErrorMsg, setShowAskErrorMsg] = React.useState(false)
+  const [askModalOpen, setAskModalOpen] = React.useState(false)
+  const [lightboxOpen, setLightboxOpen] = React.useState(false)
+  const [selectedMediaIndex, setSelectedMediaIndex] = React.useState(0)
+  const toggleShareWindow = useShareWindowStore((s) => s.toggle)
+  const toggleReportWindow = useReportWindowStore((s) => s.toggle)
   const { isOnline } = useOnlineUsers()
 
   // Real online presence for the team (PL-CV-10 / doc 12): green indicator when
@@ -734,10 +939,63 @@ export default function ProjectDetails({
     [project, isOnline]
   )
 
-  const openLiveChat = React.useCallback((question?: string) => {
-    if (question !== undefined) setPendingQuestion(question)
-    setSelected("Live Chat")
-  }, [])
+  const mediaItems = React.useMemo(() => {
+    const items: { type: "video" | "image"; url: string }[] = []
+    const video =
+      ((project as any)?.videoUrl as string | undefined) ||
+      ((project as any)?.featuredVideo as string | undefined)
+    if (video) items.push({ type: "video", url: video })
+    const gallery =
+      ((project as any)?.mediaUrls as string[] | undefined)?.slice(1) ?? []
+    gallery.forEach((url) => items.push({ type: "image", url }))
+    return items
+  }, [project])
+
+  const openLiveChat = React.useCallback(
+    (question?: string) => {
+      if (!user?.id) {
+        openAuthModal("sign-in")
+        return
+      }
+      if (question !== undefined) setPendingQuestion(question)
+      setSelected("Live Chat")
+    },
+    [user?.id, openAuthModal]
+  )
+
+  const handleAsk = React.useCallback(() => {
+    if (!user?.id) {
+      setAskModalOpen(false)
+      openAuthModal("sign-in")
+      return
+    }
+    if (pendingQuestion.trim()) {
+      setAskModalOpen(false)
+      openLiveChat()
+    } else {
+      setAskErrored(true)
+      setShowAskErrorMsg(true)
+    }
+  }, [user?.id, pendingQuestion, openLiveChat, openAuthModal])
+
+  const [suggestedQuestions, setSuggestedQuestions] = React.useState<string[]>(
+    DEFAULT_SUGGESTED_QUESTIONS
+  )
+  React.useEffect(() => {
+    const pid = project?.id ? String(project.id) : ""
+    if (!pid) return
+    let cancelled = false
+    ProjectAPI.GetSuggestedQuestions(pid)
+      .then((res) => {
+        if (cancelled) return
+        const data = Array.isArray(res?.data) ? res.data : []
+        if (data.length) setSuggestedQuestions(data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [project?.id])
 
   // Owner viewing their own listing shouldn't be able to ask questions on it
   // (Chris: "hide that for your own"). True in view-as-client preview, or when
@@ -747,13 +1005,78 @@ export default function ProjectDetails({
     (!!user?.id &&
       String((project as any)?.ownerId ?? (project as any)?.userId ?? "") ===
         String(user.id))
+  const projectOwnerId = String(
+    (project as any)?.ownerId ?? (project as any)?.userId ?? ""
+  )
+
+  const [ownerProfile, setOwnerProfile] = React.useState<any>(null)
+
+  React.useEffect(() => {
+    if (!projectOwnerId) {
+      setOwnerProfile(null)
+      return
+    }
+    let cancelled = false
+    UserAPI.getProfile(projectOwnerId)
+      .then((res) => {
+        if (cancelled) return
+        setOwnerProfile(res?.data ?? null)
+      })
+      .catch(() => {
+        if (!cancelled) setOwnerProfile(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [projectOwnerId])
+
+  const currentTeam = React.useMemo(() => {
+    const base = Array.isArray((project as any)?.team)
+      ? [...(project as any).team]
+      : []
+    const ownerId = projectOwnerId
+    const hasOwner = base.some((m: any) => {
+      const mid = String(m?.userId ?? m?.id ?? "")
+      return m?.role === "owner" || (!!ownerId && mid === ownerId)
+    })
+    const viewerIsOwner = !!user?.id && !!ownerId && String(user.id) === ownerId
+    const src =
+      ownerProfile ?? (viewerIsOwner ? user : null)
+    if (!hasOwner && src) {
+      const skills = Array.isArray((src as any).skills)
+        ? (src as any).skills.map((s: any) => s?.name ?? s).filter(Boolean)
+        : []
+      const languages = Array.isArray((src as any).languages)
+        ? (src as any).languages.map((l: any) => l?.name ?? l).filter(Boolean)
+        : []
+      base.unshift({
+        id: (src as any).id ?? ownerId,
+        userId: (src as any).id ?? ownerId,
+        firstName:
+          (src as any).firstName ?? (src as any).username ?? "Owner",
+        username: (src as any).username ?? "",
+        avatarUrl: (src as any).avatarUrl ?? null,
+        location:
+          (src as any).location ?? (src as any).country ?? null,
+        languages,
+        skills,
+        role: "owner",
+        isLead: true,
+        isOnline: true,
+      })
+    }
+    const isOwnerMember = (m: any) =>
+      m?.role === "owner" ||
+      (!!ownerId && String(m?.userId ?? m?.id ?? "") === ownerId)
+    return [...base].sort(
+      (a, b) => (isOwnerMember(a) ? 0 : 1) - (isOwnerMember(b) ? 0 : 1)
+    )
+  }, [project, user, ownerProfile, projectOwnerId])
+
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [isFavorited, setIsFavorited] = React.useState(false)
   const [selectedPeriod, setSelectedPeriod] = React.useState("week")
   const [activeAnchor, setActiveAnchor] = React.useState("Description")
-  const [relatedSearches, setRelatedSearches] = React.useState<string[]>([])
-  const [recommendedProjects, setRecommendedProjects] = React.useState<any[]>([])
-  const [recentlyViewed, setRecentlyViewed] = React.useState<any[]>([])
 
   // --- Sidebar pricing (docs §01, §14) ---
   const sidebarPricing = React.useMemo(() => {
@@ -773,27 +1096,34 @@ export default function ProjectDetails({
     // Derive duration + roles from scope (matches edit mode). Handles both the
     // published shape (phase.tasks / roleName) and the draft shape (phase.rows / role).
     const scopeArr = Array.isArray(project.scope) ? project.scope : []
-    const uniqueRoles = new Set<string>()
+    let memberSlots = 0
     let totalDays = 0
     for (const phase of scopeArr) {
       const rows = ((phase?.rows ?? phase?.tasks ?? []) as any[]) ?? []
       const taskDays: number[] = []
       for (const row of rows) {
         const role = row?.role ?? row?.roleName
-        if (role) uniqueRoles.add(role)
+        if (role || row?.task || row?.taskName) memberSlots++
         const dur = row?.duration
+        let days = 0
         if (dur && typeof dur === "object") {
           const val = Number(dur.value) || 0
           if (val > 0) {
-            const days =
+            days =
               dur.type === "weeks"
                 ? val * 7
                 : dur.type === "hours"
                   ? Math.max(1, Math.ceil(val / 24))
                   : val
-            taskDays.push(days)
           }
         }
+        // No explicit duration on the task — derive it from estimatedHours at
+        // 40 hrs/week (full-time), so duration reflects the actual scope.
+        if (days <= 0) {
+          const hrs = Number(row?.estimatedHours) || 0
+          if (hrs > 0) days = Math.max(1, Math.round((hrs * 7) / 40))
+        }
+        if (days > 0) taskDays.push(days)
       }
       if (taskDays.length > 0) totalDays += Math.max(...taskDays)
     }
@@ -806,14 +1136,21 @@ export default function ProjectDetails({
         durationWeeks = Number(project.durationMonths) * 4.33
       }
     }
-    const durationMonths = durationWeeks > 0 ? durationWeeks / 4.33 : 0
-
-    // Cost_Per_Period = Total_Cost ÷ Number_of_Periods
-    const costPerWeek = durationWeeks > 0 ? Math.round(totalCost / durationWeeks) : 0
-    const costPerBiweek = durationWeeks > 0 ? Math.round(totalCost / (durationWeeks / 2)) : 0
-    const costPerMonth = durationMonths > 0 ? Math.round(totalCost / durationMonths) : 0
-    const costPerQuarter = durationMonths >= 3 ? Math.round(totalCost / (durationMonths / 3)) : 0
-    const costPerYear = durationMonths >= 12 ? Math.round(totalCost / (durationMonths / 12)) : 0
+    // Whole billing periods (docs: Installment Plans §04). Each installment is
+    // Total_Cost ÷ ceil(duration / period); the initial payment is one
+    // installment (the first week / 2 weeks / month), not an average spread
+    // over a fractional number of periods.
+    const effDays = totalDays > 0 ? totalDays : Math.round(durationWeeks * 7)
+    const installmentCost = (periodDays: number) => {
+      if (effDays <= 0 || totalCost <= 0) return 0
+      const count = Math.max(1, Math.ceil(effDays / periodDays))
+      return Math.ceil(totalCost / count)
+    }
+    const costPerWeek = installmentCost(7)
+    const costPerBiweek = installmentCost(14)
+    const costPerMonth = installmentCost(30)
+    const costPerQuarter = effDays >= 90 ? installmentCost(90) : 0
+    const costPerYear = effDays >= 360 ? installmentCost(360) : 0
 
     const periodOptions = [
       { label: "week", value: "week", cost: costPerWeek },
@@ -824,7 +1161,6 @@ export default function ProjectDetails({
     ]
 
     // Duration display (docs §01 L98-104): <7d → days, <4w → weeks, else → months (rounded up)
-    const effDays = totalDays > 0 ? totalDays : Math.round(durationWeeks * 7)
     let formattedDuration = ""
     if (effDays > 0 && effDays < 7) {
       formattedDuration = `${effDays} day`
@@ -834,7 +1170,22 @@ export default function ProjectDetails({
       formattedDuration = `${Math.max(1, Math.ceil(effDays / 30))} month`
     }
 
-    return { totalCost, periodOptions, minTeamMembers: uniqueRoles.size, formattedDuration }
+    const isServiceScope =
+      project.listingType === "service" ||
+      scopeArr.some(
+        (p: any) =>
+          p?.phaseType === "setup" ||
+          p?.phaseType === "recurring" ||
+          p?.phaseType === "ongoing"
+      )
+
+    return {
+      totalCost,
+      periodOptions,
+      minTeamMembers: memberSlots,
+      formattedDuration,
+      isServiceScope,
+    }
   }, [project])
 
 
@@ -846,6 +1197,10 @@ export default function ProjectDetails({
   }, [project?.id])
 
   const handleFavoriteToggle = async (pressed: boolean) => {
+    if (!user?.id) {
+      openAuthModal("sign-in")
+      return
+    }
     setIsFavorited(pressed)
     const itemId = String(project.id)
     const type = project.listingType === "service" ? "service" : "project"
@@ -970,6 +1325,34 @@ export default function ProjectDetails({
                           ? Math.max(1, Math.ceil(v / 24))
                           : v
                   }
+                  // The draft endpoint loads tasks from the relational table,
+                  // which stores `duration` (e.g. "2 weeks") but no
+                  // estimatedHours. Derive hours from duration (40 hrs/week,
+                  // 8 hrs/day) so the scope viewer shows real hours, not 0.
+                  const durHours = (dur: any): number => {
+                    if (!dur) return 0
+                    if (typeof dur === "object") {
+                      const v = Number(dur.value) || 0
+                      if (v <= 0) return 0
+                      return dur.type === "weeks"
+                        ? v * 40
+                        : dur.type === "months"
+                          ? v * 160
+                          : dur.type === "hours"
+                            ? v
+                            : v * 8
+                    }
+                    const [rv, ru] = String(dur).trim().split(/\s+/)
+                    const v = Number(rv) || 0
+                    const u = (ru || "days").toLowerCase()
+                    return u.startsWith("week")
+                      ? v * 40
+                      : u.startsWith("month")
+                        ? v * 160
+                        : u.startsWith("hour")
+                          ? v
+                          : v * 8
+                  }
                   const draftPhases: any[] = Array.isArray(d.scope)
                     ? d.scope
                     : []
@@ -981,6 +1364,9 @@ export default function ProjectDetails({
                         ph.stageName ??
                         `Phase ${i + 1}`,
                       order: ph.order ?? i,
+                      phaseType: ph.phaseType ?? undefined,
+                      recurrenceSchedule: ph.recurrenceSchedule ?? undefined,
+                      recurrenceCount: ph.recurrenceCount ?? undefined,
                       tasks: (ph.tasks ?? ph.task ?? []).map((t: any) => ({
                         title: t.title ?? t.taskName ?? "",
                         roleName: t.roleName ?? t.role ?? "",
@@ -995,7 +1381,12 @@ export default function ProjectDetails({
                             ? t.experience[0]
                             : t.experience) ??
                           "Medior",
-                        estimatedHours: Number(t.estimatedHours) || 0,
+                        estimatedHours:
+                          Number(t.estimatedHours) || durHours(t.duration),
+                        duration:
+                          typeof t.duration === "string"
+                            ? t.duration
+                            : undefined,
                       })),
                     })
                   )
@@ -1087,35 +1478,15 @@ export default function ProjectDetails({
     fetchProject()
   }, [params.slug, router])
 
-  // Fetch related data + track view when project loads
+  // Track view when project loads — skip in owner preview
   React.useEffect(() => {
     if (!project?.id || isPreview) return
     const apiBase = getPublicApiUrl() || "http://localhost:4000"
-
-    // Related searches from project metadata
-    fetch(`${apiBase}/v1/projects/${project.id}/related-searches`)
-      .then((r) => r.ok ? r.json() : [])
-      .then(setRelatedSearches)
-      .catch(() => {})
-
-    // Recommended projects (JWT required — best effort)
-    fetch(`${apiBase}/v1/recently-viewed/recommended`, { credentials: "include" })
-      .then((r) => r.ok ? r.json() : [])
-      .then(setRecommendedProjects)
-      .catch(() => {})
-
-    // Recently viewed (JWT required — best effort)
-    fetch(`${apiBase}/v1/recently-viewed`, { credentials: "include" })
-      .then((r) => r.ok ? r.json() : [])
-      .then(setRecentlyViewed)
-      .catch(() => {})
-
-    // Track this view (fire and forget)
     fetch(`${apiBase}/v1/recently-viewed/${project.id}`, {
       method: "POST",
       credentials: "include",
     }).catch(() => {})
-  }, [project?.id])
+  }, [project?.id, isPreview])
 
   // Scroll to top when page loads
   React.useEffect(() => {
@@ -1230,7 +1601,7 @@ export default function ProjectDetails({
         <div className="flex-auto min-w-0">
           <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
             <div className="relative pt-6 pb-[50px]">
-              <div className="absolute top-0 bottom-px bg-gray-50 w-[100vw] left-[calc(50%-50vw)]" />
+              <div className="absolute top-0 bottom-px bg-gray-50 w-screen left-[min(-100px,calc(620px-50vw))]" />
 
               <div className="flex items-center gap-x-2 relative">
                 <NextLink href="/">
@@ -1307,16 +1678,18 @@ export default function ProjectDetails({
               </div>
 
               <div className="flex gap-x-[13px] items-start mt-8 relative">
-                <div className="w-[189px] h-[126px] relative overflow-hidden rounded-lg">
-                  <NextImage
-                    src={project.mediaUrls?.[0] || "/dashboard.png"}
-                    alt={project.title}
-                    sizes="25vw"
-                    loading="eager"
-                    priority
-                    fill
-                  />
-                </div>
+                {project.mediaUrls?.[0] && (
+                  <div className="w-[189px] h-[126px] relative overflow-hidden rounded-lg">
+                    <NextImage
+                      src={project.mediaUrls[0]}
+                      alt={project.title}
+                      sizes="25vw"
+                      loading="eager"
+                      priority
+                      fill
+                    />
+                  </div>
+                )}
 
                 <div className="flex flex-col items-start gap-y-3">
                   <Badge className="rounded-[5px]" visual="gray">
@@ -1437,9 +1810,10 @@ export default function ProjectDetails({
               <Button
                 variant="link"
                 className="!text-primary-500 shrink-0"
-                onClick={() =>
-                  setSelected(selected === "Live Chat" ? "Details" : "Live Chat")
-                }
+                onClick={() => {
+                  if (selected === "Live Chat") setSelected("Details")
+                  else openLiveChat()
+                }}
               >
                 <MessageTextCircle01 className="size-5" />
                 {selected === "Live Chat" ? "Close Chat" : "Live Chat"}
@@ -1501,73 +1875,205 @@ export default function ProjectDetails({
                 static /waves.png placeholder carousel so the design
                 density stays intact (saved "no-empty-swap" memory rule).
               */}
+              {mediaItems.length > 0 && (
               <Carousel className="w-full">
                 <CarouselContent className="-ml-3">
-                  {(() => {
-                    const video =
-                      (project.videoUrl as string | undefined) ||
-                      (project.featuredVideo as string | undefined)
-                    const gallery =
-                      (project.mediaUrls as string[] | undefined)?.slice(1) ??
-                      []
-                    if (!video && gallery.length === 0) {
-                      return Array.from({ length: 5 }).map((_, index) => (
-                        <CarouselItem key={index} className="group basis-1/3">
-                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
-                            <NextImage
-                              className="object-cover"
-                              src="/waves.png"
-                              alt="Waves"
-                              sizes="25vw"
-                              fill
-                            />
-                            <div className="absolute inset-0 transition duration-300" />
-                          </div>
-                        </CarouselItem>
-                      ))
-                    }
-                    const items: React.ReactNode[] = []
-                    if (video) {
-                      items.push(
-                        <CarouselItem key="video" className="group basis-1/3">
-                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-black">
-                            <iframe
-                              src={toEmbedUrl(video)}
-                              className="absolute inset-0 h-full w-full"
-                              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                              allowFullScreen
-                              title="Project video"
-                            />
-                          </div>
-                        </CarouselItem>
-                      )
-                    }
-                    gallery.forEach((url, index) => {
-                      items.push(
+                  {mediaItems.map((m, i) => (
                         <CarouselItem
-                          key={`${url}-${index}`}
+                          key={`${m.url}-${i}`}
                           className="group basis-1/3"
                         >
-                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
-                            <NextImage
-                              className="object-cover"
-                              src={url}
-                              alt={`${project.title} — gallery image ${index + 1}`}
-                              sizes="25vw"
-                              fill
-                            />
-                            <div className="absolute inset-0 transition duration-300" />
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedMediaIndex(i)
+                              setLightboxOpen(true)
+                            }}
+                            className={cn(
+                              "relative block w-full border border-gray-200 h-[150.6px] overflow-hidden rounded-lg focus-visible:outline-none",
+                              m.type === "video" ? "bg-black" : "bg-gray-50"
+                            )}
+                          >
+                            {m.type === "video" ? (
+                              <>
+                                <VideoThumb url={m.url} alt="Project video" />
+                                <span className="absolute inset-0 flex items-center justify-center">
+                                  <span
+                                    className="flex items-center justify-center rounded-full bg-white/90 shadow"
+                                    style={{
+                                      width: 48,
+                                      height: 48,
+                                    }}
+                                  >
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      aria-hidden="true"
+                                      className="text-gray-800"
+                                      style={{
+                                        width: 29,
+                                        height: 29,
+                                        fill: "currentColor",
+                                        marginLeft: 2,
+                                      }}
+                                    >
+                                      <path d="M8 5v14l11-7z" />
+                                    </svg>
+                                  </span>
+                                </span>
+                              </>
+                            ) : (
+                              <NextImage
+                                className="object-cover"
+                                src={m.url}
+                                alt={`${project.title} — media ${i + 1}`}
+                                sizes="25vw"
+                                fill
+                              />
+                            )}
+                          </button>
                         </CarouselItem>
-                      )
-                    })
-                    return items
-                  })()}
+                      ))}
                 </CarouselContent>
 
                 <CarouselPreviousTrigger />
                 <CarouselNextTrigger />
               </Carousel>
+              )}
+
+              <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
+                <DialogContent
+                  className="p-0 bg-transparent border-0 shadow-none"
+                  style={{ maxWidth: 760, width: "100%" }}
+                >
+                  <DialogClose
+                    className="absolute z-10 flex items-center justify-center rounded-full bg-white text-gray-500 shadow-md transition-colors hover:bg-gray-900 hover:text-white focus-visible:outline-none"
+                    style={{ width: 32, height: 32, top: -16, right: -16 }}
+                  >
+                    <X style={{ width: 16, height: 16 }} />
+                  </DialogClose>
+                  {(() => {
+                    const m = mediaItems[selectedMediaIndex]
+                    if (!m) return null
+                    return (
+                      <>
+                        <div
+                          style={{
+                            position: "relative",
+                            width: "100%",
+                            aspectRatio: "16 / 9",
+                            maxHeight: "80vh",
+                            backgroundColor: "#fff",
+                            borderRadius: 8,
+                            overflow: "hidden",
+                          }}
+                        >
+                          {m.type === "video" ? (
+                            <LightboxVideoPlayer
+                              url={m.url}
+                              active={lightboxOpen}
+                            />
+                          ) : (
+                            <>
+                              <img
+                                src={m.url}
+                                alt={project.title}
+                                style={{
+                                  position: "absolute",
+                                  inset: 0,
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "contain",
+                                }}
+                              />
+                              <span
+                                className="absolute text-sm font-semibold text-white"
+                                style={{
+                                  left: 16,
+                                  bottom: 16,
+                                  textShadow: "0 1px 3px rgba(0,0,0,0.6)",
+                                }}
+                              >
+                                {mediaName(m.url, project.title)}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        {mediaItems.length > 1 && (
+                          <div
+                            className="flex gap-x-3 pt-4"
+                            style={{ overflowX: "auto" }}
+                          >
+                            {mediaItems.map((mm, i) => {
+                              const active = i === selectedMediaIndex
+                              return (
+                                <button
+                                  key={`lb-${mm.url}-${i}`}
+                                  type="button"
+                                  onClick={() => setSelectedMediaIndex(i)}
+                                  className={cn(
+                                    "relative shrink-0 overflow-hidden rounded-lg focus-visible:outline-none",
+                                    mm.type === "video" ? "bg-black" : "bg-gray-50"
+                                  )}
+                                  style={{
+                                    width: 84,
+                                    height: 60,
+                                  }}
+                                >
+                                  {mm.type === "video" ? (
+                                    <>
+                                      <VideoThumb url={mm.url} alt="Video" />
+                                      <span className="absolute inset-0 flex items-center justify-center">
+                                        <span
+                                          className="flex items-center justify-center rounded-full"
+                                          style={{
+                                            width: 22,
+                                            height: 22,
+                                            backgroundColor:
+                                              "rgba(255,255,255,0.45)",
+                                          }}
+                                        >
+                                          <svg
+                                            viewBox="0 0 24 24"
+                                            aria-hidden="true"
+                                            className="text-gray-800"
+                                            style={{
+                                              width: 10,
+                                              height: 10,
+                                              fill: "currentColor",
+                                              marginLeft: 1,
+                                            }}
+                                          >
+                                            <path d="M8 5v14l11-7z" />
+                                          </svg>
+                                        </span>
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <img
+                                      src={mm.url}
+                                      alt={`${project.title} — media ${i + 1}`}
+                                      className="absolute inset-0 h-full w-full object-cover"
+                                    />
+                                  )}
+                                  {active && (
+                                    <span
+                                      className="pointer-events-none absolute inset-0"
+                                      style={{
+                                        border: "2px solid #22376B",
+                                        borderRadius: 8,
+                                      }}
+                                    />
+                                  )}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
+                </DialogContent>
+              </Dialog>
 
               <div className="mt-6">
                 <Tabs
@@ -1636,30 +2142,24 @@ export default function ProjectDetails({
                   <div>
                     <div id="section-description" className="pt-6">
                       <CollapsibleCard maxHeight={599}>
-                        <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
-                          {project.title}
-                        </h1>
-
-                        <div className="mt-6 border-t pt-6 border-gray-200">
-                          {/*
-                            project.description is HTML generated from the
-                            Payload Lexical rich-text editor by the
-                            listings-service ProjectSyncService. Editor
-                            content is admin-authored (not user-submitted)
-                            so `dangerouslySetInnerHTML` is safe here — see
-                            the lexicalToHtml() helper on the service which
-                            escapes text content before wrapping in tags.
-                          */}
-                          <div
-                            className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
-                            dangerouslySetInnerHTML={{
-                              __html:
-                                project.description ||
-                                project.summary ||
-                                "",
-                            }}
-                          />
-                        </div>
+                        {/*
+                          project.description is HTML generated from the
+                          Payload Lexical rich-text editor by the
+                          listings-service ProjectSyncService. Editor
+                          content is admin-authored (not user-submitted)
+                          so `dangerouslySetInnerHTML` is safe here — see
+                          the lexicalToHtml() helper on the service which
+                          escapes text content before wrapping in tags.
+                        */}
+                        <div
+                          className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
+                          dangerouslySetInnerHTML={{
+                            __html:
+                              project.description ||
+                              project.summary ||
+                              "",
+                          }}
+                        />
                       </CollapsibleCard>
 
                       <CollapsibleCard maxHeight={456} className="mt-6">
@@ -1891,8 +2391,8 @@ export default function ProjectDetails({
                           project.team[] (Step 2 of the hybrid team model).
                           Falls back to the static design when team is empty.
                         */}
-                        {Array.isArray(project.team) &&
-                        project.team.length > 0 ? (
+                        {Array.isArray(currentTeam) &&
+                        currentTeam.length > 0 ? (
                           (() => {
                             type TeamMember = {
                               firstName: string
@@ -1905,13 +2405,13 @@ export default function ProjectDetails({
                               isLead: boolean
                               isOnline: boolean
                             }
-                            const members = project.team as TeamMember[]
+                            const members = currentTeam as TeamMember[]
                             const lead =
                               members.find((m) => m.isLead) ?? members[0]
                             const allLocations = Array.from(
                               new Set(
                                 members
-                                  .map((m) => m.location)
+                                  .map((m) => formatMemberLocation(m.location))
                                   .filter((l): l is string => !!l)
                               )
                             )
@@ -1976,20 +2476,7 @@ export default function ProjectDetails({
                                         <MapPin className="size-[18px]" />{" "}
                                         Locations
                                       </h3>
-                                      <div className="gap-1 flex items-center flex-wrap">
-                                        {allLocations.map((loc, i) => (
-                                          <NextLink
-                                            key={loc}
-                                            href={`/talent?location=${encodeURIComponent(loc)}`}
-                                            className="focus-visible:outline-none duration-300 transition hover:underline inline-block text-sm leading-6 font-semibold text-dark-blue-400"
-                                          >
-                                            {loc}
-                                            {i < allLocations.length - 1
-                                              ? ","
-                                              : ""}
-                                          </NextLink>
-                                        ))}
-                                      </div>
+                                      <LocationList locations={allLocations} />
                                     </div>
                                   )}
                                 </div>
@@ -2090,50 +2577,85 @@ export default function ProjectDetails({
                           Questions
                         </h1>
 
-                        {onlineTeam.length > 0 && (
-                        <div className="absolute right-12 top-11 pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
-                          <Avatar size="md">
-                            <AvatarImage
-                              src={onlineTeam[0].avatarUrl || "/man.jpg"}
-                              alt={onlineTeam[0].firstName || "Team member"}
-                            />
-                            <AvatarFallback>
-                              {(onlineTeam[0].firstName ?? "T").charAt(0)}
-                            </AvatarFallback>
-                          </Avatar>
-
-                          <div className="flex flex-col items-start gap-y-2">
-                            <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
-                              {onlineTeam.length >= 2
-                                ? onlineTeam
-                                    .slice(0, 2)
-                                    .map((m: any) => m.firstName || m.username)
-                                    .join(", ")
-                                : onlineTeam[0].firstName ||
-                                  onlineTeam[0].username}
-                              {onlineTeam.length > 2
-                                ? ` +${onlineTeam.length - 2}`
-                                : ""}{" "}
-                              {onlineTeam.length < 2 &&
-                                onlineTeam[0].username && (
-                                  <span className="text-xs leading-none text-extralight text-gray-500">
-                                    @{onlineTeam[0].username}
-                                  </span>
-                                )}
-                            </span>
-
-                            <div className="flex items-center gap-x-1">
-                              <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
-                              <span className="text-xs leading-none text-dark-blue-400">
-                                Online
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        )}
-
                         {!isOwnerViewing && (
-                        <div className="mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
+                        <div className="relative mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
+                          {!isPreview && onlineTeam.length > 0 && (
+                          <div
+                            style={{
+                              top: onlineTeam.length === 1 ? -20 : -52,
+                              right: 24,
+                            }}
+                            className="absolute pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]"
+                          >
+                            {onlineTeam.length === 1 ? (
+                              <>
+                                <Avatar size="md">
+                                  <AvatarImage
+                                    src={onlineTeam[0].avatarUrl || "/man.jpg"}
+                                    alt={onlineTeam[0].firstName || "Team member"}
+                                  />
+                                  <AvatarFallback>
+                                    {(onlineTeam[0].firstName ?? "T").charAt(0)}
+                                  </AvatarFallback>
+                                </Avatar>
+
+                                <div className="flex flex-col items-start gap-y-2">
+                                  <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                    {onlineTeam[0].firstName ||
+                                      onlineTeam[0].username}{" "}
+                                    {onlineTeam[0].username && (
+                                      <span className="text-xs leading-none text-extralight text-gray-500">
+                                        @{onlineTeam[0].username}
+                                      </span>
+                                    )}
+                                  </span>
+
+                                  <div className="flex items-center gap-x-1">
+                                    <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                                    <span className="text-xs leading-none text-dark-blue-400">
+                                      Online
+                                    </span>
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex flex-col items-center gap-y-2">
+                                <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                  Live Chat
+                                </span>
+
+                                <AvatarGroup size="sm" max={3} excess>
+                                  {onlineTeam.map((m: any, i: number) => (
+                                    <Avatar
+                                      key={m.username ?? i}
+                                      className="border-2 border-white hover:ring-0 active:ring-0"
+                                      size="sm"
+                                    >
+                                      {m.avatarUrl ? (
+                                        <AvatarImage
+                                          src={m.avatarUrl}
+                                          alt={m.firstName}
+                                        />
+                                      ) : null}
+                                      <AvatarFallback>
+                                        {(m.firstName || "?")
+                                          .charAt(0)
+                                          .toUpperCase()}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                  ))}
+                                </AvatarGroup>
+
+                                <div className="flex items-center gap-x-1">
+                                  <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                                  <span className="text-xs leading-none text-dark-blue-400">
+                                    {onlineTeam.length} team members online
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          )}
                           <Label
                             className="font-semibold inline-flex items-center gap-x-2"
                             size="md"
@@ -2144,27 +2666,48 @@ export default function ProjectDetails({
 
                           <div className="mt-3 flex gap-x-2 items-center">
                             <Input
-                              className="flex-auto"
+                              className={cn(
+                                "flex-auto",
+                                showAskErrorMsg &&
+                                  "border-error-300 focus:border-error-300 focus:ring-error-100"
+                              )}
                               placeholder="Type your question..."
                               value={pendingQuestion}
-                              onChange={(e) => setPendingQuestion(e.target.value)}
+                              onFocus={() => setShowAskErrorMsg(false)}
+                              onChange={(e) => {
+                                const v = e.target.value
+                                setPendingQuestion(v)
+                                if (v.trim()) {
+                                  setAskErrored(false)
+                                  setShowAskErrorMsg(false)
+                                }
+                              }}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") openLiveChat()
+                                if (e.key === "Enter") handleAsk()
                               }}
                             />
                             <Button
                               className="text-xs leading-none"
                               size="lg"
-                              onClick={() => openLiveChat()}
+                              disabled={askErrored && !pendingQuestion.trim()}
+                              onClick={handleAsk}
                             >
                               Ask Question
                             </Button>
                           </div>
 
                           <div className="mt-2 flex items-center justify-between">
-                            <span className="text-xs text-dark-blue-400 leading-none">
-                              A team member will reach out to you as soon as
-                              possible.
+                            <span
+                              className={cn(
+                                "text-xs leading-none",
+                                showAskErrorMsg
+                                  ? "font-medium text-error-500"
+                                  : "text-dark-blue-400"
+                              )}
+                            >
+                              {showAskErrorMsg
+                                ? "Please enter your question above"
+                                : "A team member will reach out to you as soon as possible."}
                             </span>
 
                             <span className="text-xs text-dark-blue-400 leading-none">
@@ -2172,78 +2715,26 @@ export default function ProjectDetails({
                             </span>
                           </div>
 
-                          <div className="mt-6 flex items-center gap-3 flex-wrap">
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your portfolio?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                            <Badge
-                              className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400"
-                              size="lg"
-                              visual="gray"
-                            >
-                              Can I see your work?
-                            </Badge>
-                          </div>
+                          {suggestedQuestions.length > 0 && (
+                            <div className="mt-6 flex items-start gap-3 flex-wrap">
+                              {suggestedQuestions.map((q, idx) => (
+                                <Badge
+                                  key={`sq-${idx}`}
+                                  className="transition duration-300 bg-white border-[1.5px] border-gray-300 hover:border-dark-blue-400 hover:text-dark-blue-400 cursor-pointer hover:ring-1 hover:ring-dark-blue-400 text-left"
+                                  size="lg"
+                                  visual="gray"
+                                  onClick={() => openLiveChat(q)}
+                                  style={{
+                                    maxWidth: "100%",
+                                    height: "auto",
+                                    whiteSpace: "normal",
+                                  }}
+                                >
+                                  {q}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         )}
 
@@ -2379,28 +2870,41 @@ export default function ProjectDetails({
                             </TabsContent>
 
                             <TabsContent value="Recently Asked Questions">
-                              {!project.recentQuestions ||
-                              project.recentQuestions.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-10 text-center">
-                                  <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
-                                    <HelpCircle className="size-5 text-gray-400" />
+                              {(() => {
+                                const visibleQuestions = (
+                                  (project.recentQuestions as Array<{
+                                    question: string
+                                    answer?: string | null
+                                    hidden?: boolean
+                                    moderationFailed?: boolean
+                                  }>) ?? []
+                                ).filter(
+                                  (q) =>
+                                    q &&
+                                    q.answer &&
+                                    !q.hidden &&
+                                    !q.moderationFailed
+                                )
+                                return visibleQuestions.length === 0 ? (
+                                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                                    <div className="mx-auto mb-3 size-10 rounded-full bg-gray-100 flex items-center justify-center">
+                                      <HelpCircle className="size-5 text-gray-400" />
+                                    </div>
+                                    <h3 className="text-sm font-semibold text-dark-blue-400">
+                                      No questions yet
+                                    </h3>
+                                    <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
+                                      When people ask questions on this listing,
+                                      they&apos;ll show up here.
+                                    </p>
                                   </div>
-                                  <h3 className="text-sm font-semibold text-dark-blue-400">
-                                    No questions yet
-                                  </h3>
-                                  <p className="mt-1 text-xs text-gray-500 max-w-[280px]">
-                                    When people ask questions on this listing,
-                                    they&apos;ll show up here.
-                                  </p>
-                                </div>
-                              ) : (
-                                <Accordion
-                                  type="single"
-                                  className="pt-6 space-y-[15px]"
-                                  defaultValue="rq-0"
-                                >
-                                  {(project.recentQuestions as string[]).map(
-                                    (q, idx) => (
+                                ) : (
+                                  <Accordion
+                                    type="single"
+                                    className="pt-6 space-y-[15px]"
+                                    defaultValue="rq-0"
+                                  >
+                                    {visibleQuestions.map((q, idx) => (
                                       <AccordionItem
                                         key={`rq-${idx}`}
                                         className="rounded-lg bg-white border border-gray-300"
@@ -2408,15 +2912,18 @@ export default function ProjectDetails({
                                       >
                                         <AccordionTrigger className="w-full px-5 py-3 flex items-center gap-x-2 text-base leading-[1.3] font-semibold flex-auto text-dark-blue-400">
                                           <span className="flex-auto text-left inline-block">
-                                            {q}
+                                            {q.question}
                                           </span>
                                           <ChevronDown className="size-6 shrink-0 group-data-[state=open]/item:-rotate-180 transition duration-300" />
                                         </AccordionTrigger>
+                                        <DisclosureContent className="text-base px-5 pb-5 leading-[1.5] text-dark-blue-400 font-light">
+                                          {q.answer}
+                                        </DisclosureContent>
                                       </AccordionItem>
-                                    )
-                                  )}
-                                </Accordion>
-                              )}
+                                    ))}
+                                  </Accordion>
+                                )
+                              })()}
                             </TabsContent>
                           </Tabs>
 
@@ -2430,13 +2937,68 @@ export default function ProjectDetails({
                                 <Button
                                   variant="outlined"
                                   visual="gray"
-                                  onClick={() => openLiveChat()}
+                                  onClick={() => {
+                                    if (!user?.id) {
+                                      openAuthModal("sign-in")
+                                      return
+                                    }
+                                    setAskModalOpen(true)
+                                  }}
                                 >
                                   Ask a question
                                 </Button>
                               </div>
                             </div>
                           )}
+
+                          <Dialog
+                            open={askModalOpen}
+                            onOpenChange={setAskModalOpen}
+                          >
+                            <DialogContent className="max-w-[480px] p-6">
+                              <DialogTitle className="text-lg font-semibold text-dark-blue-400">
+                                Ask Question
+                              </DialogTitle>
+
+                              <div className="mt-5">
+                                <Label size="sm" className="text-dark-blue-400">
+                                  Type your question
+                                </Label>
+                                <Textarea
+                                  autoFocus
+                                  isInvalid={showAskErrorMsg}
+                                  className="mt-1.5"
+                                  placeholder="Enter a description..."
+                                  value={pendingQuestion}
+                                  onFocus={() => setShowAskErrorMsg(false)}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setPendingQuestion(v)
+                                    if (v.trim()) {
+                                      setAskErrored(false)
+                                      setShowAskErrorMsg(false)
+                                    }
+                                  }}
+                                />
+                                {showAskErrorMsg && (
+                                  <span className="mt-1.5 block text-xs font-medium text-error-500">
+                                    Please enter your question
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="mt-6 flex items-center justify-between">
+                                <DialogClose asChild>
+                                  <Button variant="link" visual="gray">
+                                    Cancel
+                                  </Button>
+                                </DialogClose>
+                                <Button onClick={handleAsk}>
+                                  Submit Question
+                                </Button>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
                         </div>
                       </div>
 
@@ -3947,10 +4509,14 @@ export default function ProjectDetails({
                     location?: string | null
                     experienceLevel: string
                     estimatedHours: number
+                    duration?: string
                   }
                   type ScopePhase = {
                     phaseName: string
                     order: number
+                    phaseType?: "setup" | "recurring" | "ongoing"
+                    recurrenceSchedule?: "weekly" | "monthly" | "quarterly"
+                    recurrenceCount?: number
                     tasks: ScopeTask[]
                   }
                   const phases = (project.scope as ScopePhase[])
@@ -3966,15 +4532,49 @@ export default function ProjectDetails({
                     "Phase Seven",
                     "Phase Eight",
                   ]
+                  const recurLabelMap: Record<string, string> = {
+                    weekly: "Weekly",
+                    monthly: "Monthly",
+                    quarterly: "Quarterly",
+                  }
                   // Accumulate day ranges across phases so later phases
                   // start on day (prev end + 1).
+                  // Per-task days from hours (40 hrs/week). Tasks in a phase run
+                  // in parallel → take the MAX (matches the my-listings owner
+                  // view); phases are sequential → accumulate.
+                  const taskDays = (t: ScopeTask) => {
+                    const h = Number(t.estimatedHours) || 0
+                    return h > 0 ? Math.max(1, Math.round((h * 7) / 40)) : 0
+                  }
+                  const durationLabel = (h: number) => {
+                    if (h <= 0) return "—"
+                    const weeks = h / 40
+                    if (Number.isInteger(weeks))
+                      return `${weeks} week${weeks > 1 ? "s" : ""}`
+                    const days = Math.max(1, Math.round(h / 8))
+                    return `${days} day${days > 1 ? "s" : ""}`
+                  }
+                  // Show the duration in the UNIT the seller chose (weeks →
+                  // weeks, hours → hours, days → days). Only fall back to the
+                  // hours→weeks estimate when no explicit duration was set.
+                  const taskDurationLabel = (task: ScopeTask) => {
+                    const raw = task.duration?.trim()
+                    const m = raw?.match(/^([\d.]+)\s*([a-zA-Z]+)/)
+                    if (m) {
+                      const val = Number(m[1])
+                      const unit = m[2].toLowerCase().replace(/s$/, "")
+                      if (Number.isFinite(val) && val > 0)
+                        return `${val} ${unit}${val === 1 ? "" : "s"}`
+                    }
+                    if (raw) return raw
+                    return durationLabel(task.estimatedHours)
+                  }
                   let cursor = 1
                   const withDays = phases.map((phase) => {
-                    const phaseHours = (phase.tasks ?? []).reduce(
-                      (sum, t) => sum + (t.estimatedHours || 0),
-                      0
+                    const days = Math.max(
+                      1,
+                      ...(phase.tasks ?? []).map(taskDays)
                     )
-                    const days = Math.max(1, Math.ceil(phaseHours / 8))
                     const start = cursor
                     const end = cursor + days - 1
                     cursor = end + 1
@@ -4001,7 +4601,9 @@ export default function ProjectDetails({
                                   </div>
 
                                   <span className="text-base md:text-[18px] font-semibold leading-7 text-dark-blue-400">
-                                    {phaseLabels[pi] ?? `Phase ${pi + 1}`}{" "}
+                                    {phase.phaseType
+                                      ? PHASE_TYPE_TITLE[phase.phaseType]
+                                      : (phaseLabels[pi] ?? `Phase ${pi + 1}`)}{" "}
                                     <span className="font-light">
                                       {phase.phaseName}
                                     </span>
@@ -4009,15 +4611,61 @@ export default function ProjectDetails({
                                 </div>
 
                                 <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    Day {start}
-                                  </span>
-                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    -
-                                  </span>
-                                  <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                    Day {end}
-                                  </span>
+                                  {phase.phaseType === "ongoing" ? (
+                                    <span className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-[13px] font-semibold text-dark-blue-400">
+                                      <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth={2}
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className="size-4 shrink-0"
+                                        style={{ color: "#12B76A" }}
+                                        aria-hidden="true"
+                                      >
+                                        <path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.74-8z" />
+                                      </svg>
+                                      Ongoing
+                                    </span>
+                                  ) : phase.phaseType === "recurring" ? (
+                                    <span className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-[13px] font-semibold text-dark-blue-400">
+                                      <RefreshCcw05
+                                        className="size-3.5 shrink-0"
+                                        style={{ color: "#12B76A" }}
+                                      />
+                                      Recurs:{" "}
+                                      {
+                                        recurLabelMap[
+                                          phase.recurrenceSchedule ?? "monthly"
+                                        ]
+                                      }
+                                      , {phase.recurrenceCount ?? 1} time
+                                      {(phase.recurrenceCount ?? 1) > 1
+                                        ? "s"
+                                        : ""}
+                                    </span>
+                                  ) : phase.phaseType === "setup" ? (
+                                    <span className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] font-semibold text-dark-blue-400">
+                                      <Calendar
+                                        className="size-3.5 shrink-0"
+                                        style={{ color: "#12B76A" }}
+                                      />
+                                      Day {start} - Day {end}
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                        Day {start}
+                                      </span>
+                                      <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                        -
+                                      </span>
+                                      <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
+                                        Day {end}
+                                      </span>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </AccordionTrigger>
@@ -4073,7 +4721,7 @@ export default function ProjectDetails({
                                       </TableCell>
                                       <TableCell className="py-4 px-6 text-right">
                                         <span className="text-sm text-nowrap text-dark-blue-400">
-                                          {task.estimatedHours} hours
+                                          {taskDurationLabel(task)}
                                         </span>
                                       </TableCell>
                                     </TableRow>
@@ -4747,17 +5395,19 @@ export default function ProjectDetails({
                 ) : null
               })()}
 
+              {(Array.isArray(currentTeam) && currentTeam.length > 0) ||
+              isTalentAccount(user) ? (
               <div className="flex flex-col items-start gap-y-3 mt-6">
                 <span className="inline-block text-xs font-medium text-dark-blue-400">
                   Current Team
                 </span>
 
-                {Array.isArray(project.team) && project.team.length > 0 ? (
+                {Array.isArray(currentTeam) && currentTeam.length > 0 ? (
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <AvatarGroup size="sm" excess>
-                          {project.team.map((m: any, i: number) => (
+                        <AvatarGroup size="sm" excess reverse={false}>
+                          {currentTeam.map((m: any, i: number) => (
                             <Avatar
                               key={m.username ?? i}
                               className="border-2 border-white hover:ring-0 active:ring-0"
@@ -4787,7 +5437,7 @@ export default function ProjectDetails({
                           }
                         >
                           <div className="space-y-3 pr-5">
-                            {project.team.map((m: any, i: number) => (
+                            {currentTeam.map((m: any, i: number) => (
                               <div
                                 key={m.username ?? i}
                                 className="flex items-center gap-x-[18px]"
@@ -4816,7 +5466,7 @@ export default function ProjectDetails({
                                       </span>
                                     </div>
                                     <span className="text-[10px] font-light text-white">
-                                      {m.location ||
+                                      {formatMemberLocation(m.location) ||
                                         m.skills?.[0] ||
                                         "Team Member"}
                                     </span>
@@ -4830,31 +5480,30 @@ export default function ProjectDetails({
                     </Tooltip>
                   </TooltipProvider>
                 ) : (
-                  <div className="flex flex-col items-start gap-y-2">
-                    <div className="flex items-center -space-x-2">
-                      {[0, 1, 2].map((i) => (
-                        <div
-                          key={i}
-                          className="size-8 rounded-full border border-dashed border-gray-300 bg-gray-100 flex items-center justify-center ring-2 ring-white"
-                        >
-                          <User01 className="size-3.5 text-gray-400" />
-                        </div>
-                      ))}
-                    </div>
-                    <span className="text-xs text-gray-400 font-extralight leading-none">
-                      No team assigned yet
-                    </span>
-                  </div>
+                  <NoTeamAssigned
+                    kind="project"
+                    onClaim={
+                      project?.id
+                        ? () => claimProject(String(project.id))
+                        : undefined
+                    }
+                    editHref={
+                      project?.id ? `/my-listings/${project.id}` : undefined
+                    }
+                  />
                 )}
               </div>
+              ) : null}
 
               <div className="mt-6 space-y-3">
                 <div className="flex items-center gap-x-[6.4px]">
                   <Clock className="size-[18px] text-primary-500" />
                   <span className="text-sm leading-none font-medium text-dark-blue-400">
-                    {sidebarPricing?.formattedDuration
-                      ? `Starting from a ${sidebarPricing.formattedDuration} duration`
-                      : "Duration: TBD"}
+                    {sidebarPricing?.isServiceScope
+                      ? "Ongoing duration"
+                      : sidebarPricing?.formattedDuration
+                        ? `Starting from a ${sidebarPricing.formattedDuration} duration`
+                        : "Duration: TBD"}
                   </span>
                 </div>
                 {(sidebarPricing?.minTeamMembers ?? 0) > 0 && (
@@ -4874,6 +5523,12 @@ export default function ProjectDetails({
                       size="lg"
                       className="mt-6 w-full border-2 border-primary-500 text-primary-500 hover:bg-primary-500 hover:text-white"
                       variant="outlined"
+                      onClick={(e) => {
+                        if (!user?.id) {
+                          e.preventDefault()
+                          openAuthModal("sign-in")
+                        }
+                      }}
                     >
                       Start Project
                     </Button>
@@ -4917,14 +5572,7 @@ export default function ProjectDetails({
                     size="lg"
                     variant="outlined"
                     visual="gray"
-                    onClick={() => {
-                      if (
-                        typeof navigator !== "undefined" &&
-                        navigator.clipboard
-                      ) {
-                        navigator.clipboard.writeText(window.location.href)
-                      }
-                    }}
+                    onClick={() => toggleShareWindow(true, project.title)}
                   >
                     <Share06 className="size-5" />
                   </IconButton>
@@ -4961,9 +5609,20 @@ export default function ProjectDetails({
               </div>
             </div>
 
+            <ShareWindow />
+            <ReportWindow />
             <div className="h-[50px] rounded-b-lg bg-gray-50 flex items-center justify-evenly">
               {project.reportButtonEnabled !== false && (
-                <div className="inline-flex items-center gap-x-2">
+                <div
+                  className="inline-flex items-center gap-x-2 cursor-pointer"
+                  onClick={() => {
+                    if (!user?.id) {
+                      openAuthModal("sign-in")
+                      return
+                    }
+                    toggleReportWindow(true, project.id, project.title)
+                  }}
+                >
                   <Flag className="size-[15px] text-gray-500" />
                   <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
                     Report
@@ -4971,17 +5630,18 @@ export default function ProjectDetails({
                 </div>
               )}
 
-              {project.helpButtonEnabled !== false && (
-                <div className="inline-flex items-center gap-x-2">
-                  <HelpCircle className="size-[15px] text-gray-500" />
-                  <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
-                    Help
-                  </span>
-                </div>
-              )}
+              <div className="inline-flex items-center gap-x-2">
+                <HelpCircle className="size-[15px] text-gray-500" />
+                <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
+                  Help
+                </span>
+              </div>
 
               {project.shareButtonEnabled !== false && (
-                <div className="inline-flex items-center gap-x-2">
+                <div
+                  className="inline-flex items-center gap-x-2 cursor-pointer"
+                  onClick={() => toggleShareWindow(true, project.title)}
+                >
                   <Share06 className="size-[15px] text-gray-500" />
                   <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
                     Share
@@ -5058,422 +5718,7 @@ export default function ProjectDetails({
 
       <div className="pb-[100px]" />
 
-      {/* Similar Projects — full-width section */}
-      <div className="-mx-5 px-5 md:-mx-10 md:px-10 lg:-mx-[100px] lg:px-[100px] pt-[100px] pb-[50px] bg-gray-50 border-t border-gray-200">
-        <div>
-          <div className="space-y-6">
-            <div className="flex items-end justify-between">
-              <div className="space-y-2">
-                <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
-                  Similar Projects
-                </h1>
-
-                <p className="text-lg font-light text-dark-blue-400 leading-none">
-                  Users who have viewed this project have also expressed
-                  interest in these as well
-                </p>
-              </div>
-
-              <Button
-                variant="link"
-                visual="gray"
-                size="lg"
-                className="underline"
-              >
-                View More
-              </Button>
-            </div>
-
-            {(project?.similarProjects ?? []).length > 0 ? (
-            <div className="gap-5 grid grid-cols-4">
-              {(project?.similarProjects ?? []).slice(0, 4).map((sp: any) => (
-                <article
-                  key={sp.id}
-                  className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
-                >
-                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                    <NextLink href={`/project-details/${sp.slug}`}>
-                      <NextImage
-                        className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                        src={sp.thumbnail || "/dashboard.png"}
-                        alt={sp.title}
-                        fill
-                        sizes="33vw"
-                      />
-                    </NextLink>
-                  </div>
-
-                  <div className="mt-3 flex items-start gap-x-3">
-                    <NextLink
-                      href={`/project-details/${sp.slug}`}
-                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                    >
-                      {sp.title}
-                    </NextLink>
-
-                    {(sp.rating > 0 || sp.averageRating > 0) && (
-                    <div className="inline-flex items-center gap-x-1">
-                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                        {sp.rating || sp.averageRating} <span className="font-extralight">({sp.reviewCount ?? 0})</span>
-                      </span>
-                    </div>
-                    )}
-                  </div>
-
-                  {sp.shortDescription && (
-                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                    {sp.shortDescription}
-                  </p>
-                  )}
-
-                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                    {sp.duration && (
-                    <div className="flex items-center gap-x-[6.4px]">
-                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-
-                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                        Starting from {sp.duration}
-                      </span>
-                    </div>
-                    )}
-
-                    {sp.budget != null && (
-                    <div className="flex items-center gap-x-[6.4px]">
-                      <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                        ${Number(sp.budget).toLocaleString()} budget
-                      </span>
-                    </div>
-                    )}
-                  </div>
-
-                  <div className="mt-5 flex items-end justify-end">
-                    <FavoriteRoot>
-                      {({ pressed }) => (
-                        <TooltipProvider delayDuration={75}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="inline-block">
-                                <Favorite />
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {pressed ? (
-                                <span className="inline-flex items-center gap-x-1">
-                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                  Saved
-                                </span>
-                              ) : (
-                                "Save to favorites"
-                              )}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </FavoriteRoot>
-                  </div>
-                </article>
-              ))}
-            </div>
-            ) : (
-              <p className="text-sm text-gray-500 py-4">No similar projects found.</p>
-            )}
-          </div>
-
-          {/* Recommended Projects */}
-          {recommendedProjects.length > 0 && (
-          <div className="space-y-6 mt-[50px]">
-            <div className="flex items-end justify-between">
-              <div className="space-y-2">
-                <h1 className="text-[28px] leading-none text-dark-blue-400 font-bold">
-                  Recommended Projects
-                </h1>
-
-                <p className="text-lg font-light text-dark-blue-400 leading-none">
-                  These projects are recommended based on your recent searches
-                  and browsing history
-                </p>
-              </div>
-
-              <Button
-                variant="link"
-                visual="gray"
-                size="lg"
-                className="underline"
-              >
-                View More
-              </Button>
-            </div>
-
-            <div className="gap-5 grid grid-cols-4">
-              {recommendedProjects.slice(0, 4).map((rp: any) => (
-                <article
-                  key={rp.id}
-                  className="p-5 bg-white border rounded-lg border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
-                >
-                  <div className="h-[169px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15">
-                    <NextLink href={`/project-details/${rp.slug}`}>
-                      <NextImage
-                        className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
-                        src={rp.thumbnail || "/dashboard.png"}
-                        alt={rp.title}
-                        fill
-                        sizes="33vw"
-                      />
-                    </NextLink>
-                  </div>
-
-                  <div className="mt-3 flex items-start gap-x-3">
-                    <NextLink
-                      href={`/project-details/${rp.slug}`}
-                      className="focus-visible:outline-none font-bold flex-auto text-base leading-none text-dark-blue-400 hover:underline"
-                    >
-                      {rp.title}
-                    </NextLink>
-
-                    {(rp.rating > 0 || rp.averageRating > 0) && (
-                    <div className="inline-flex items-center gap-x-1">
-                      <Star className="size-[15px] text-primary-500 fill-primary-500" />
-                      <span className="inline-flex items-center gap-x-1 text-sm leading-none text-dark-blue-400 font-medium">
-                        {rp.rating || rp.averageRating} <span className="font-extralight">({rp.reviewCount ?? 0})</span>
-                      </span>
-                    </div>
-                    )}
-                  </div>
-
-                  {rp.shortDescription && (
-                  <p className="mt-3 text-sm leading-none font-extralight text-dark-blue-400">
-                    {rp.shortDescription}
-                  </p>
-                  )}
-
-                  <div className="mt-[14.5px] flex flex-col gap-y-3">
-                    {rp.duration && (
-                    <div className="flex items-center gap-x-[6.4px]">
-                      <Clock className="size-[18px] shrink-0 text-primary-500" />
-
-                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                        Starting from {rp.duration}
-                      </span>
-                    </div>
-                    )}
-
-                    {rp.budget != null && (
-                    <div className="flex items-center gap-x-[6.4px]">
-                      <Money className="size-[18px] shrink-0 text-primary-500" />
-
-                      <span className="font-medium text-sm leading-none text-dark-blue-400">
-                        ${Number(rp.budget).toLocaleString()} budget
-                      </span>
-                    </div>
-                    )}
-                  </div>
-
-                  <div className="mt-5 flex items-end justify-end">
-                    <FavoriteRoot>
-                      {({ pressed }) => (
-                        <TooltipProvider delayDuration={75}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="inline-block">
-                                <Favorite />
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {pressed ? (
-                                <span className="inline-flex items-center gap-x-1">
-                                  <Check className="size-[15px] shrink-0 text-green-500" />
-                                  Saved
-                                </span>
-                              ) : (
-                                "Save to favorites"
-                              )}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </FavoriteRoot>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-          )}
-
-          {/* More Ways to Explore */}
-          <div className="mt-[50px]">
-            <h1 className="text-[28px] font-bold leading-none text-dark-blue-400">
-              More Ways to Explore
-            </h1>
-
-            <Tabs className="mt-5" defaultValue="Related Categories">
-              <RadixTabs.List className="flex items-center gap-x-3">
-                <TabsTrigger
-                  variant="unstyled"
-                  className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                  value="Related Categories"
-                  showUnderline={false}
-                >
-                  Related Categories
-                </TabsTrigger>
-                <TabsTrigger
-                  variant="unstyled"
-                  className="focus-visible:outline-none py-[7px] bg-white hover:bg-gray-50 hover:border-gray-400 px-3.5 border-2 border-gray-300 data-[state=active]:text-dark-blue-400 data-[state=active]:bg-white hover:data-[state=active]:bg-white data-[state=active]:border-dark-blue-400 hover:data-[state=active]:text-dark-blue-400 hover:data-[state=active]:border-dark-blue-400  text-gray-500 hover:text-gray-600 rounded-full text-sm leading-5 font-medium transition duration-300"
-                  value="Related Skills"
-                  showUnderline={false}
-                >
-                  Related Skills
-                </TabsTrigger>
-              </RadixTabs.List>
-
-              <TabsContent value="Related Categories">
-                <div className="mt-5 py-5 flex items-start justify-between">
-                  {(() => {
-                    const cats = project?.relatedCategories ?? []
-                    const allCats = [...(project?.categories ?? []), ...cats]
-                    const unique = Array.from(new Set(allCats)).filter(Boolean)
-                    // Split into 4 columns
-                    const colSize = Math.max(Math.ceil(unique.length / 4), 2)
-                    const columns = [0, 1, 2, 3].map(i => unique.slice(i * colSize, (i + 1) * colSize))
-                    const headers = [
-                      project?.category ?? "Categories",
-                      ...(project?.subcategories?.slice(0, 3) ?? ["Subcategories", "Related", "More"])
-                    ]
-                    return columns.map((col, ci) => (
-                      <div key={ci} className="flex flex-col gap-y-3 items-start">
-                        <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                          {headers[ci] ?? "Categories"}
-                        </h2>
-                        {col.map((cat: string, i: number) => (
-                          <Button key={i} variant="link" className="text-dark-blue-400">
-                            {cat}
-                          </Button>
-                        ))}
-                      </div>
-                    ))
-                  })()}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="Related Skills">
-                <div className="mt-5 py-5 flex items-start justify-between">
-                  {(() => {
-                    const skills = project?.relatedSkills ?? []
-                    const allSkills = [
-                      ...(project?.skills ?? []),
-                      ...(project?.programmingLanguages ?? []),
-                      ...(project?.developmentTech ?? []),
-                      ...skills,
-                    ]
-                    const unique = Array.from(new Set(allSkills)).filter(Boolean)
-                    const colSize = Math.max(Math.ceil(unique.length / 4), 2)
-                    const columns = [0, 1, 2, 3].map(i => unique.slice(i * colSize, (i + 1) * colSize))
-                    const headers = ["Skills", "Technologies", "Tools", "More"]
-                    return columns.map((col, ci) => (
-                      <div key={ci} className="flex flex-col gap-y-3 items-start">
-                        <h2 className="text-lg leading-none font-bold text-dark-blue-400">
-                          {headers[ci]}
-                        </h2>
-                        {col.map((skill: string, i: number) => (
-                          <Button key={i} variant="link" className="text-dark-blue-400">
-                            {skill}
-                          </Button>
-                        ))}
-                      </div>
-                    ))
-                  })()}
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
-
-          {/* Related Searches */}
-          <div className="mt-[50px]">
-            <h1 className="text-[28px] leading-none font-bold text-dark-blue-400">
-              Related Searches
-            </h1>
-
-            <div className="mt-6 flex flex-wrap gap-3">
-              {relatedSearches.map((label, i) => (
-                <Badge
-                  key={i}
-                  className="h-auto py-[4.6px] px-[13.81px] border-[1.5px] border-gray-300"
-                  visual="gray"
-                  size="lg"
-                >
-                  {label}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Recently Viewed */}
-        {recentlyViewed.length > 0 && (
-        <div className="max-w-[1240px] mx-auto py-[35px]">
-          <div className="flex items-center justify-between">
-            <h1 className="text-[24px] leading-none text-dark-blue-400 font-bold">
-              Recently Viewed
-            </h1>
-
-            <Button variant="link" visual="gray">
-              View All
-            </Button>
-          </div>
-
-          <div className="mt-[29px] grid grid-cols-3 gap-x-[42px] gap-y-10">
-            {recentlyViewed.map((rv: any) => (
-              <NextLink key={rv.id} href={`/project-details/${rv.slug}`}>
-                <article className="flex items-start gap-x-6">
-                  <div className="relative size-[100px] overflow-hidden rounded-lg shrink-0">
-                    <NextImage
-                      className="object-cover"
-                      src={rv.thumbnail || "/dashboard.png"}
-                      alt={rv.title}
-                      sizes="25vw"
-                      fill
-                    />
-                  </div>
-
-                  <div className="pr-[45.54px]">
-                    <h1 className="cursor-pointer hover:underline transition duration-300 text-base font-bold leading-none line-clamp-2 text-dark-blue-400">
-                      {rv.title}
-                    </h1>
-
-                    {rv.shortDescription && (
-                    <p className="mt-2 text-sm font-light text-dark-blue-400 line-clamp-2">
-                      {rv.shortDescription}
-                    </p>
-                    )}
-
-                    <div className="mt-3 flex items-center gap-x-3">
-                      {rv.budget != null && (
-                      <span className="text-sm font-medium leading-none text-dark-blue-400">
-                        Starting at ${Number(rv.budget).toLocaleString()}
-                      </span>
-                      )}
-
-                      {rv.budget != null && rv.duration && (
-                      <span className="inline-block shrink-0 rounded-full size-1 bg-gray-300" />
-                      )}
-
-                      {rv.duration && (
-                      <span className="text-sm font-medium leading-none text-dark-blue-400">
-                        {rv.duration}
-                      </span>
-                      )}
-                    </div>
-                  </div>
-                </article>
-              </NextLink>
-            ))}
-          </div>
-        </div>
-        )}
-
-      </div>
+      <ProjectDiscoverySections project={project} />
 
       {/* Ready to Work CTA — only for unauthenticated users */}
       {!user && (

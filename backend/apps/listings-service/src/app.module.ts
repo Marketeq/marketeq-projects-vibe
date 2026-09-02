@@ -21,7 +21,13 @@ import { RecentlyViewedModule } from './recently-viewed/recently-viewed.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['apps/listings-service/.env', '.env'],
+      envFilePath: [
+        'apps/listings-service/.env',
+        'backend/apps/listings-service/.env',
+        '../../.env',
+        'backend/.env',
+        '.env',
+      ],
     }),
     TypeOrmModule.forRoot({
       type: 'postgres',
@@ -29,7 +35,7 @@ import { RecentlyViewedModule } from './recently-viewed/recently-viewed.module';
       schema: process.env.DATABASE_SCHEMA || 'listings',
       ssl: false,
       autoLoadEntities: true,
-      synchronize: process.env.LISTINGS_DATABASE_SYNCHRONIZE === 'true',
+      synchronize: false,
     }),
     RelationalProjectPersistenceModule,
     PublishModule,

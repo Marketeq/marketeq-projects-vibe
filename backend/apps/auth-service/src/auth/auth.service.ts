@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  GatewayTimeoutException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -8,9 +9,11 @@ import {
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scryptSync } from 'crypto';
+import { resolve4, resolveMx } from 'dns/promises';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Not, QueryFailedError, Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -49,6 +52,7 @@ type SyncUserProfilePayload = {
   hasPassword?: boolean;
   firstName?: string;
   lastName?: string;
+  avatarUrl?: string;
 };
 
 type AuthUserPayload = {
@@ -97,6 +101,11 @@ type RateLimitBucket = {
 
 @Injectable()
 export class AuthService implements OnModuleInit, OnModuleDestroy {
+  // Hard ceiling on the signup-time domain check. Node's resolver retries
+  // internally and can stall for many seconds, and this sits in the
+  // synchronous registration path.
+  private static readonly DNS_LOOKUP_TIMEOUT_MS = 3000;
+
   private readonly logger = new Logger(AuthService.name);
   private readonly syncRetryQueue = new Map<string, SyncRetryItem>();
   private readonly passwordResetRateLimits = new Map<string, RateLimitBucket>();
@@ -159,6 +168,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   async register(dto: RegisterDto, userAgent = '', ipAddress = '') {
     const email = normalizeEmail(dto.email);
+    await this.assertValidEmailDomain(email);
 
     const existingUser = await this.userRepository.findOne({
       where: { email },
@@ -213,6 +223,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   async registerEmail(dto: RegisterEmailDto, userAgent = '', ipAddress = '') {
     const email = normalizeEmail(dto.email);
+    await this.assertValidEmailDomain(email);
 
     const existingUser = await this.userRepository.findOne({
       where: { email },
@@ -272,6 +283,78 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     });
 
     return { available: !existingUser };
+  }
+
+  // Format validation (@IsEmail) only checks shape, not whether the domain
+  // can actually receive mail — catches typos like "gmial.con" or made-up
+  // domains at sign-up time instead of a verification email silently
+  // going nowhere.
+  //
+  // Deliberately FAILS OPEN. Only a definitive NXDOMAIN/ENODATA on both the
+  // MX and the A record rejects a signup; a resolver timeout, SERVFAIL or
+  // network blip lets it through. A fail-closed check would turn one flaky
+  // resolver into a total signup outage that blames the user's address —
+  // catching a typo is never worth that trade.
+  private async assertValidEmailDomain(email: string): Promise<void> {
+    const domain = email.split('@')[1];
+    if (!domain) {
+      throw new BadRequestException('Invalid email address');
+    }
+
+    // NXDOMAIN / ENODATA are the only answers that definitively mean "this
+    // domain cannot receive mail". Anything else — timeout, SERVFAIL,
+    // EAI_AGAIN, refused — is inconclusive and must NOT reject the signup.
+    const isDefinitiveMiss = (err: unknown) => {
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      return code === 'ENOTFOUND' || code === 'ENODATA';
+    };
+
+    const lookup = async (
+      fn: (host: string) => Promise<unknown[]>,
+      kind: string,
+    ): Promise<'found' | 'missing' | 'inconclusive'> => {
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        const records = await Promise.race([
+          fn(domain),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () =>
+                reject(
+                  Object.assign(new Error(`${kind} lookup timed out`), {
+                    code: 'ETIMEOUT',
+                  }),
+                ),
+              AuthService.DNS_LOOKUP_TIMEOUT_MS,
+            );
+          }),
+        ]);
+        return Array.isArray(records) && records.length > 0
+          ? 'found'
+          : 'missing';
+      } catch (error) {
+        if (isDefinitiveMiss(error)) return 'missing';
+        this.logger.warn(
+          `${kind} lookup for "${domain}" was inconclusive (${
+            (error as NodeJS.ErrnoException)?.code ?? error
+          }) — allowing signup rather than blocking on DNS`,
+        );
+        return 'inconclusive';
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    const mx = await lookup(resolveMx, 'MX');
+    if (mx !== 'missing') return;
+
+    // A domain with no MX record is NOT necessarily undeliverable: RFC 5321
+    // §5.1 falls back to the A/AAAA record (implicit MX), which plenty of
+    // small self-hosted domains rely on. Only reject once both are absent.
+    const a = await lookup(resolve4, 'A');
+    if (a !== 'missing') return;
+
+    throw new BadRequestException("Email domain can't receive mail");
   }
 
   private throwDuplicateEmailIfNeeded(error: unknown): never | void {
@@ -537,9 +620,28 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         : undefined;
 
     if (resetUrl) {
+      // Try to fetch the user's first name from user-service for a friendlier email
+      let displayName = user.username;
+      try {
+        const userServiceUrl =
+          this.configService.get<string>('USER_SERVICE_URL') ?? 'http://localhost:3002';
+        const internalToken = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+        const profileRes = await axios.get(
+          `${userServiceUrl.replace(/\/$/, '')}/internal/users/${user.id}/summary`,
+          {
+            headers: internalToken ? { 'x-internal-token': internalToken } : {},
+            timeout: 3000,
+          },
+        );
+        const firstName = profileRes?.data?.firstName;
+        if (firstName) displayName = firstName;
+      } catch {
+        // fall back to username
+      }
+
       try {
         await this.brevoService.sendPasswordResetEmail(user.email, {
-          firstName: user.username,
+          firstName: displayName,
           resetUrl,
         });
       } catch (error) {
@@ -691,6 +793,39 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * True if the error means the provider was unreachable or too slow to
+   * respond (network error, timeout) rather than a genuine 4xx rejection.
+   */
+  private isProviderUnreachable(error: unknown): boolean {
+    return (
+      axios.isAxiosError(error) &&
+      (!error.response || error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT')
+    );
+  }
+
+  /**
+   * Classifies a failed outbound OAuth provider call (Google/LinkedIn) and
+   * throws the appropriate exception: a timeout/no-response distinguishes
+   * "provider unreachable" from a genuine 4xx "token/code rejected" case,
+   * so the frontend shows a non-technical "try again" message instead of
+   * a misleading "invalid token" during a provider outage or timeout.
+   * Timeout (504) vs. unreachable (503) is kept distinct at the status-code
+   * level for logs/monitoring, but both use the same user-facing message.
+   */
+  private throwProviderError(error: unknown, provider: 'Google' | 'LinkedIn', invalidMessage: string): never {
+    const unavailableMessage = `${provider} sign-in is unavailable right now. Please try again shortly.`;
+    if (axios.isAxiosError(error)) {
+      if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+        throw new GatewayTimeoutException(unavailableMessage);
+      }
+      if (!error.response) {
+        throw new ServiceUnavailableException(unavailableMessage);
+      }
+    }
+    throw new UnauthorizedException(invalidMessage);
+  }
+
   async loginWithGoogle(dto: GoogleLoginDto, userAgent = '', ipAddress = '') {
     let accessToken = dto.access_token;
     let idToken = dto.id_token ?? dto.credential;
@@ -739,13 +874,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           body.toString(),
           {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 10000,
           },
         );
 
         accessToken = response.data?.access_token ?? accessToken;
         idToken = response.data?.id_token ?? idToken;
-      } catch {
-        throw new UnauthorizedException('Invalid Google auth code');
+      } catch (error) {
+        this.throwProviderError(error, 'Google', 'Invalid Google auth code');
       }
     }
 
@@ -760,6 +896,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     let aud: string | undefined;
     let firstName: string | undefined;
     let lastName: string | undefined;
+    let avatarUrl: string | undefined;
 
     if (idToken) {
       let tokenInfo: {
@@ -776,11 +913,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           'https://oauth2.googleapis.com/tokeninfo',
           {
             params: { id_token: idToken },
+            timeout: 10000,
           },
         );
         tokenInfo = response.data ?? {};
-      } catch {
-        throw new UnauthorizedException('Invalid Google token');
+      } catch (error) {
+        this.throwProviderError(error, 'Google', 'Invalid Google token');
       }
 
       if (!tokenInfo?.email || !tokenInfo?.sub) {
@@ -808,11 +946,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           'https://oauth2.googleapis.com/tokeninfo',
           {
             params: { access_token: accessToken },
+            timeout: 10000,
           },
         );
         tokenInfo = response.data ?? {};
-      } catch {
-        throw new UnauthorizedException('Invalid Google access token');
+      } catch (error) {
+        this.throwProviderError(error, 'Google', 'Invalid Google access token');
       }
 
       aud = tokenInfo.audience ?? tokenInfo.aud ?? tokenInfo.issued_to;
@@ -830,15 +969,17 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           'https://www.googleapis.com/oauth2/v3/userinfo',
           {
             headers: { Authorization: `Bearer ${accessToken}` },
+            timeout: 10000,
           },
         );
         email = email ?? response.data?.email;
         emailVerified = emailVerified ?? response.data?.email_verified;
         firstName = response.data?.given_name;
         lastName = response.data?.family_name;
-      } catch {
+        avatarUrl = response.data?.picture;
+      } catch (error) {
         if (!email) {
-          throw new UnauthorizedException('Invalid Google access token');
+          this.throwProviderError(error, 'Google', 'Invalid Google access token');
         }
       }
 
@@ -891,17 +1032,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      await this.syncUserProfile(user, { firstName, lastName });
+      await this.syncUserProfile(user, { firstName, lastName, avatarUrl });
     } catch (error) {
-      if (createdUser) {
-        // New user: rollback the auth record so the user can retry cleanly.
-        await this.userRepository.delete({ id: user.id });
-        throw error;
-      }
-      // Existing user: profile already exists in user-service — do not
-      // block login just because the sync refresh failed.
+      // Profile sync failure should never block OAuth login.
+      // For new users the profile will be created during onboarding.
+      // For existing users the profile already exists in user-service.
       this.logger.warn(
-        `[google] sync failed for existing user ${user.id} but proceeding with login`,
+        `[google] sync failed for ${createdUser ? 'new' : 'existing'} user ${user.id} but proceeding with login: ${(error as Error)?.message}`,
       );
     }
 
@@ -967,12 +1104,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           body.toString(),
           {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 10000,
           },
         );
 
         accessToken = response.data?.access_token ?? accessToken;
-      } catch {
-        throw new UnauthorizedException('Invalid LinkedIn auth code');
+      } catch (error) {
+        this.throwProviderError(error, 'LinkedIn', 'Invalid LinkedIn auth code');
       }
     }
 
@@ -980,7 +1118,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('access_token or code is required');
     }
 
-    const { email, emailVerified, firstName, lastName } =
+    const { email, emailVerified, firstName, lastName, avatarUrl } =
       await this.fetchLinkedInProfile(accessToken);
 
     if (!email) {
@@ -1027,14 +1165,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      await this.syncUserProfile(user, { firstName, lastName });
+      await this.syncUserProfile(user, { firstName, lastName, avatarUrl });
     } catch (error) {
-      if (createdUser) {
-        await this.userRepository.delete({ id: user.id });
-        throw error;
-      }
+      // Profile sync failure should never block OAuth login.
+      // For new users the profile will be created during onboarding.
+      // For existing users the profile already exists in user-service.
       this.logger.warn(
-        `[linkedin] sync failed for existing user ${user.id} but proceeding with login`,
+        `[linkedin] sync failed for ${createdUser ? 'new' : 'existing'} user ${user.id} but proceeding with login: ${(error as Error)?.message}`,
       );
     }
 
@@ -1821,7 +1958,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return secret;
   }
 
-  private async syncUserProfile(user: User, extra?: { firstName?: string; lastName?: string }) {
+  private async syncUserProfile(
+    user: User,
+    extra?: { firstName?: string; lastName?: string; avatarUrl?: string },
+  ) {
     const payload: SyncUserProfilePayload = {
       id: user.id,
       email: user.email,
@@ -1830,6 +1970,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       hasPassword: user.hasPassword ?? false,
       ...(extra?.firstName && { firstName: extra.firstName }),
       ...(extra?.lastName && { lastName: extra.lastName }),
+      // Google and LinkedIn both return a profile photo on userinfo. It was
+      // being fetched and discarded, so OAuth users arrived at onboarding with
+      // no avatar even though we already had one.
+      ...(extra?.avatarUrl && { avatarUrl: extra.avatarUrl }),
     };
 
     try {
@@ -1943,15 +2087,27 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private async fetchLinkedInProfile(
     accessToken: string,
-  ): Promise<{ email?: string; emailVerified?: boolean; firstName?: string; lastName?: string }> {
+  ): Promise<{
+    email?: string;
+    emailVerified?: boolean;
+    firstName?: string;
+    lastName?: string;
+    avatarUrl?: string;
+  }> {
+    let firstStepUnreachable = false;
+
     try {
       const response = await axios.get('https://api.linkedin.com/v2/userinfo', {
         headers: { Authorization: `Bearer ${accessToken}` },
+        timeout: 10000,
       });
 
       const email = response.data?.email;
       const firstName = response.data?.given_name;
       const lastName = response.data?.family_name;
+      // LinkedIn returns the profile photo on userinfo as `picture`, same as
+      // Google. It was being dropped, leaving OAuth users with no avatar.
+      const avatarUrl = response.data?.picture;
       const emailVerifiedRaw = response.data?.email_verified;
       const emailVerified =
         emailVerifiedRaw === true || emailVerifiedRaw === 'true'
@@ -1961,9 +2117,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
             : undefined;
 
       if (email) {
-        return { email, emailVerified, firstName, lastName };
+        return { email, emailVerified, firstName, lastName, avatarUrl };
       }
-    } catch {
+    } catch (error) {
+      firstStepUnreachable = this.isProviderUnreachable(error);
       // fallback below
     }
 
@@ -1976,13 +2133,17 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
             q: 'members',
             projection: '(elements*(handle~))',
           },
+          timeout: 10000,
         },
       );
 
       const email =
         response.data?.elements?.[0]?.['handle~']?.emailAddress ?? undefined;
       return { email };
-    } catch {
+    } catch (error) {
+      if (firstStepUnreachable || this.isProviderUnreachable(error)) {
+        this.throwProviderError(error, 'LinkedIn', 'Invalid LinkedIn token');
+      }
       return {};
     }
   }
@@ -2003,7 +2164,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private normalizeUsername(value: string): string {
     const trimmed = value.trim().toLowerCase();
-    const normalized = trimmed.replace(/[^a-z0-9_]/g, '');
+    const normalized = trimmed.replace(/[^a-z0-9._]/g, '');
     return normalized.length ? normalized : 'user';
   }
 

@@ -49,6 +49,30 @@ const processQueue = (error: unknown = null) => {
   failedQueue = []
 }
 
+let refreshInFlight: Promise<void> | null = null
+
+/**
+ * Refresh the session, collapsing concurrent callers onto a single request.
+ *
+ * `apiFetch` (src/lib/api.ts) is a separate HTTP layer that does not go through
+ * these interceptors, so without a shared entry point a fetch-side 401 and an
+ * axios-side 401 could POST /auth/refresh concurrently — the second call would
+ * present a refresh token the first one had already consumed and log the user
+ * out. Both layers route through here so only one refresh is ever in flight.
+ */
+export const refreshSession = (): Promise<void> => {
+  if (!refreshInFlight) {
+    const AUTH_BASE = getPublicAuthUrl()
+    refreshInFlight = axiosInstance
+      .post(`${AUTH_BASE}/auth/refresh`, null)
+      .then(() => undefined)
+      .finally(() => {
+        refreshInFlight = null
+      })
+  }
+  return refreshInFlight
+}
+
 axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -71,7 +95,7 @@ axiosInstance.interceptors.response.use(
             originalRequest._retry = true
             resolve(axiosInstance(originalRequest))
           },
-          reject: (err: unknown) => reject(err),
+          reject: () => reject(error),
         })
       })
     }
@@ -80,14 +104,19 @@ axiosInstance.interceptors.response.use(
     originalRequest._retry = true
 
     try {
-      const AUTH_BASE = getPublicAuthUrl()
-      await axiosInstance.post(`${AUTH_BASE}/auth/refresh`, null)
+      await refreshSession()
       processQueue()
       return axiosInstance(originalRequest)
     } catch (refreshError) {
       processQueue(refreshError)
-      // Refresh failed — clear tokens, user will need to re-login
-      return Promise.reject(refreshError)
+      // Refresh failed, so the session is genuinely over. Reject with the
+      // caller's own 401 rather than the refresh call's error: the caller's
+      // payload already reads "Your session has expired. Please log in again
+      // to continue.", whereas the refresh error surfaces the internal
+      // "Invalid refresh token" — which is what onboarding was showing users.
+      // Nothing can be cleared here; access_token/refresh_token are httpOnly,
+      // so only a fresh sign-in replaces them.
+      return Promise.reject(error)
     } finally {
       isRefreshing = false
     }

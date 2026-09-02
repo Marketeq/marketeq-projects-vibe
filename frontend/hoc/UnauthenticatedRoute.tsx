@@ -3,7 +3,22 @@ import { useRouter } from "next/navigation"
 import { resolveDashboardRoute, useAuth } from "@/contexts/auth"
 import { Spinner } from "@/components/ui/spinner/spinner"
 
-const UnauthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
+const UnauthenticatedRoute = ({
+  children,
+  redirectTo,
+}: {
+  children: React.ReactNode
+  /**
+   * Overrides the default post-login destination (resolveDashboardRoute).
+   * Callers set this to a validated `?redirect=` target. Sign-in and
+   * sign-up pass the invite-accept URL an invitee arrived from. Without
+   * this, setUser() from a successful login triggers this effect and
+   * router.replace(resolveDashboardRoute(user)) races the page's own
+   * post-login router.replace(nextRoute); the dashboard route consistently
+   * wins, silently abandoning the pending invite accept.
+   */
+  redirectTo?: string
+}) => {
   const router = useRouter()
 
   const { isLoading, user } = useAuth()
@@ -11,20 +26,19 @@ const UnauthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
   const [isPageLoading, setIsPageLoading] = useState(true)
 
   const routeCheck = async () => {
-    setIsPageLoading(true)
+    if (isLoading) return
 
-    if (user && !isLoading) {
-      router.push(resolveDashboardRoute(user))
+    if (user) {
+      router.replace(redirectTo || resolveDashboardRoute(user))
+      return
     }
 
-    if (!isLoading && !user) {
-      setIsPageLoading(false)
-    }
+    setIsPageLoading(false)
   }
 
   useEffect(() => {
     routeCheck()
-  }, [user, isLoading])
+  }, [user, isLoading, redirectTo])
 
   return (
     <>

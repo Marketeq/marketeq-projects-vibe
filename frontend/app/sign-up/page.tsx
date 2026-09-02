@@ -1,11 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { useAuth } from "@/contexts/auth"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useAuth, resolveDashboardRoute } from "@/contexts/auth"
 import UnauthenticatedRoute from "@/hoc/UnauthenticatedRoute"
 import { AuthAPI } from "@/service/http/auth"
-import { hookFormHasError } from "@/utils/functions"
+import { capitalizeWords, hookFormHasError } from "@/utils/functions"
 import { Check } from "@blend-metrics/icons"
 import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -18,6 +18,12 @@ import { Logo } from "@/components/icons"
 import { MarketeqIcon1 } from "@/components/marketeq-icon-1"
 import NextLink from "@/components/next-link"
 import { Button, Checkbox, ErrorMessage, Input, Label } from "@/components/ui"
+import { InviteBanner } from "@/components/invite-banner"
+import {
+  readInviteContextForAuthPage,
+  readInviteTokenForAuthPage,
+} from "@/lib/invite-link"
+import { useInvitationPreview } from "@/src/hooks/useInvitations"
 
 const signUpSchema = z.object({
   email: z
@@ -33,11 +39,49 @@ type SignUpFormValues = z.infer<typeof signUpSchema>
 
 export default function SignUp() {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const { setUser } = useAuth()
 
   const [isLoading, setIsLoading] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+
+  // An invitee reaches /sign-up as `?redirect=/invite/accept?token=...` (from
+  // /invite/accept's 401 handler), never a bare token. Validate the same way
+  // sign-in does so this can't become an open redirect.
+  const redirectTarget = searchParams.get("redirect")
+  const nextRoute =
+    redirectTarget &&
+    redirectTarget.startsWith("/") &&
+    !redirectTarget.startsWith("//")
+      ? redirectTarget
+      : "/onboarding"
+
+  // The token/company/inviter context rides inside `redirect`, not as its own
+  // param. See lib/invite-link.ts.
+  const inviteToken = readInviteTokenForAuthPage(searchParams)
+  const inviteContext = readInviteContextForAuthPage(searchParams)
+  const { data: invitePreview } = useInvitationPreview(inviteToken)
+  // Don't advertise a canceled/expired invite; the preview call is the source
+  // of truth (the email link carries only ?token=) and the URL context params
+  // are the fallback for invite-dialog links that predate the preview endpoint.
+  const showInviteBanner = !invitePreview || invitePreview.status === "pending"
+  // Names on the invite banner are title-cased for display whatever casing they
+  // were stored in, matching the team cards and the invite emails. The handle
+  // is left alone, since it is an identifier, not a name.
+  const inviterName = capitalizeWords(
+    invitePreview?.inviterName ?? inviteContext.inviter
+  )
+  const inviterHandle =
+    invitePreview?.inviterUsername ?? inviteContext.inviterHandle
+  const inviteDestination = capitalizeWords(
+    invitePreview?.companyName ?? inviteContext.company
+  )
+
+  const signUpRedirectQuery = searchParams.toString()
+  const signInHref = signUpRedirectQuery
+    ? `/sign-in?${signUpRedirectQuery}`
+    : "/sign-in"
 
   const {
     register,
@@ -67,7 +111,7 @@ export default function SignUp() {
           response?.data?.user
         ) {
           setUser(response?.data?.user)
-          router.push("/onboarding")
+          router.push(nextRoute)
           reset()
         } else {
           setFormError(
@@ -106,7 +150,7 @@ export default function SignUp() {
   }
 
   return (
-    <UnauthenticatedRoute>
+    <UnauthenticatedRoute redirectTo={redirectTarget ? nextRoute : undefined}>
       <div className="flex min-h-screen bg-white">
         <div className="relative hidden lg:flex overflow-hidden flex-col justify-between p-[75px] w-[480px] bg-dark-blue-500 shrink-0">
           <div>
@@ -156,7 +200,7 @@ export default function SignUp() {
             </p>
 
             <div className="inline-block relative">
-              <NextLink href="/sign-in">
+              <NextLink href={signInHref}>
               <Button
                 className="text-white hover:bg-white/10 border-white/20"
                 visual="gray"
@@ -185,6 +229,14 @@ export default function SignUp() {
 
         <div className="flex-auto grid place-content-center px-5 md:px-10 py-16">
           <div className="max-w-[560px]">
+            {showInviteBanner && (
+              <InviteBanner
+                className="mb-6"
+                inviterName={inviterName}
+                inviterHandle={inviterHandle}
+                destination={inviteDestination}
+              />
+            )}
             <h1 className="md:text-left text-center text-2xl leading-9 font-semibold text-dark-blue-400">
               Welcome Changemakers!
             </h1>
@@ -193,9 +245,23 @@ export default function SignUp() {
             </p>
 
             <div className="grid md:grid-cols-2 mt-10 md:mt-[50px] gap-3 items-center">
-              <GoogleLoginButton />
+              <GoogleLoginButton
+                mode="sign-up"
+                onSuccess={(nextUser) =>
+                  router.replace(
+                    redirectTarget ? nextRoute : resolveDashboardRoute(nextUser)
+                  )
+                }
+              />
 
-              <LinkedInLoginButton />
+              <LinkedInLoginButton
+                mode="sign-up"
+                onSuccess={(nextUser) =>
+                  router.replace(
+                    redirectTarget ? nextRoute : resolveDashboardRoute(nextUser)
+                  )
+                }
+              />
             </div>
 
             <div className="flex gap-x-[9px] mt-6 items-center">
@@ -256,7 +322,7 @@ export default function SignUp() {
                   className="text-[#939DA7] font-normal"
                   htmlFor="agrees-to-terms-privacy-policy"
                 >
-                  I agree to Markerteq's{" "}
+                  I agree to Marketeq's{" "}
                   <Button
                     className="whitespace-normal font-normal"
                     size="sm"
@@ -305,7 +371,7 @@ export default function SignUp() {
                   Already have an account?
                 </span>
                 <NextLink
-                  href="/sign-in"
+                  href={signInHref}
                   className="underline font-normal text-blue-500 text-sm leading-6"
                 >
                   Sign in

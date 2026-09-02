@@ -13,6 +13,8 @@ import { WireTransfer } from './checkout/entities/wire-transfer.entity';
 import { StripeMetadata } from './checkout/entities/stripe-metadata.entity';
 import { CheckoutService } from './checkout/checkout.service';
 import { CheckoutController } from './checkout/checkout.controller';
+import { UcheckoutUserviceController } from './checkout-service.controller';
+import { UcheckoutUserviceService } from './checkout-service.service';
 import { StripeService } from './stripe/stripe.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
@@ -28,7 +30,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
         WalletTransaction, PaymentFailure, InstallmentPayment,
         SavedBankAccount, WireTransfer, StripeMetadata,
       ],
-      synchronize: process.env.NODE_ENV !== 'production',
+      synchronize: false,
       migrationsRun: true,
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       ssl: (process.env.DATABASE_SSL_ENABLED ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
@@ -52,7 +54,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
         ])]
       : []),
   ],
-  controllers: [CheckoutController],
-  providers: [CheckoutService, StripeService, JwtAuthGuard],
+  controllers: [CheckoutController, UcheckoutUserviceController],
+  providers: [CheckoutService, UcheckoutUserviceService, StripeService, JwtAuthGuard],
 })
 export class CheckoutServiceModule {}

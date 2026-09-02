@@ -16,19 +16,45 @@
 |---|---|---|---|
 | `dev-main` | Active development. Default branch. All feature PRs target this. | Developers (via PR) | Vercel `marketeq-projects-dev` |
 | `staging` | QA testing. Receives promoted commits from `dev-main`. Regression fixes go here directly. | QA (via promotion script) + Developers (via PR for regression fixes) | Vercel `marketeq-projects-staging` |
-| `live-mvp` | Production. Receives promoted commits from `staging`. | CTO + QA (via promotion script) | Vercel `marketeq-projects-live-mvp` + Render `marketeq-backend` |
+| `live` | Production. Receives promoted commits from `staging`. Renamed from `live-mvp` on 2026-07-09. | CTO + QA (via promotion script) | Vercel `marketeq-projects-live-mvp` + Render `marketeq-backend` |
+| `mvp` | MVP demo branch. Copy of `dev-main` for MVP-specific work. | Developers (via PR) | — |
 
-**Flow:** feature branch → PR → `dev-main` → QA promotes to `staging` → QA tests → promote to `live-mvp` → production.
+**Flow:** feature branch → PR → `dev-main` → QA promotes to `staging` → QA tests → promote to `live` → production.
 
 **Regression fix flow:** QA finds bug on `staging` → developer creates `fix/*` branch from `staging` → PR targeting `staging` → merge → developer cherry-picks fix back to `dev-main` to keep branches in sync.
 
+### 1.1 Never push without updating the branch first
+
+**Absolute, and it applies to every push — including doc-only changes, one-line
+fixes, and the second and third push in the same session.**
+
+**A branch that is even one commit behind is stale. There is no acceptable
+number of commits to be behind other than zero.**
+
+```bash
+git fetch origin <branch>
+git rev-list --left-right --count origin/<branch>...HEAD   # left number MUST be 0
+```
+
+A non-zero left number means the branch is behind: merge `origin/<branch>` in
+and resolve before pushing. A push from a stale branch is how merged work
+silently disappears, and "I fetched earlier in the session" is not updating —
+the branch moves between pushes, and one that succeeds only because nobody else
+pushed in that window is luck, not process.
+
+This is also enforced mechanically by the `Jenkins / Branch Freshness` check,
+which blocks a PR that is behind its base and touches files changed on both
+sides. The check catches the dangerous subset; this rule covers all of it.
+
 **Never:**
-- Push directly to `dev-main`, `staging`, or `live-mvp` (all changes go through PRs or promotion scripts)
-- Force-push any of the three protected branches
-- Merge `dev-main` → `live-mvp` directly (must pass through `staging`)
-- Rename any of the three branches (historical rename is locked in — `live-mvp` is the production branch name, not `main-live` or `live/mvp`)
+- Push directly to `dev-main`, `staging`, or `live` (all changes go through PRs or promotion scripts)
+- Force-push any of the protected branches
+- Merge `dev-main` → `live` directly (must pass through `staging`)
+- Rename any of the protected branches without CTO approval
 - **Duplicate commits across branches** — never commit the same work separately to `dev-main` AND `staging`. Code goes to `dev-main` first, then is promoted. Duplicating creates divergence and causes code loss in squash merges (see `CODE_REVIEW_SOP.md` §8.11)
-- **Merge a stale branch** — if a feature branch is more than 5 commits behind the base, it MUST be rebased first. Squash-merging a stale branch silently overwrites intermediate changes on the base. This is a hard block, no exceptions.
+- **Merge a stale branch** — a feature branch must be at **zero** commits behind its base before merge. Squash-merging a stale branch silently overwrites intermediate changes on the base. Check `behind_by`; if it is >= 1, bring it current with `gh pr update-branch <N>` (no flag, merge commit). If it stops on a conflict, block and report the conflict to the author. Hard block, no exceptions.
+- **Destroy a developer's work from automation** — no pipeline, workflow, script, bot, or agent may. Bringing a stale branch current with `gh pr update-branch` (no flag) is a merge commit and is non-destructive, so automate it freely. Forbidden: `--rebase` or any force-push (rewrites their commits), auto-resolving conflicts (deletes one side), auto-fixes pushed to their branch, and reverts. On a conflict, automation determines which side is better and **reports** it; the author resolves it. See `CODE_REVIEW_SOP.md` §1.11.
+- **Remove a developer's merged code** — no script, workflow, button, agent, reviewer, or DevOps engineer may. A failing check, a bad promotion, or an SOP bypass is fixed **forward**: keep the code, open a follow-up, fix it. A reviewer's or DevOps engineer's approval never authorizes deleting a feature; only its author or the CTO can, and only after reading what would be removed. See `CODE_REVIEW_SOP.md` §1.1 and §1.9.
 - **Use `--admin` to force-merge** — this bypasses all safety checks including the staleness check. Only the CTO may authorize `--admin`, and only by explicitly typing "use --admin" in the conversation
 
 ---
@@ -41,7 +67,7 @@ Three Vercel projects, all under the `marketeq-projects-vibe` GitHub repo, each 
 |---|---|---|---|
 | `marketeq-projects-dev` (`prj_IuUgufT5MaEY03bNmdb3lFcr51WC`) | `dev-main` | `dev-marketeq-projects.vercel.app` | Dev preview. Lets the team see work-in-progress frontend against the production Render backend. |
 | `marketeq-projects-staging` (`prj_zxwZ4cEzY1kRsMbPst6nAoMWTxTG`) | `staging` | `staging-marketeq-projects.vercel.app` | QA testing environment. |
-| `marketeq-projects-live-mvp` (`prj_vvtSNsNsVxyMteDejCo32rh2CEiD`) | `live-mvp` | `live-marketeq-projects.vercel.app` | Production. |
+| `marketeq-projects-live-mvp` (`prj_vvtSNsNsVxyMteDejCo32rh2CEiD`) | `live` | `live-marketeq-projects.vercel.app` | Production. |
 
 Each Vercel project has its own env var set in the Vercel dashboard, populated from the matching frozen env template (§5). **No Vercel project reads env from the repo `.env.*.example` files at runtime** — those files are templates for humans, not runtime config.
 
@@ -60,7 +86,7 @@ Each Vercel project has its own env var set in the Vercel dashboard, populated f
 
 | Render service | ID | Branch (dashboard) | Deploy mechanism | Serves | URL |
 |---|---|---|---|---|---|
-| `marketeq-backend` | `srv-d76r48nafjfc73e1djf0` | `live-mvp` | n8n orchestrator API deploys | Vercel dev + Vercel staging + Vercel live | `https://marketeq-backend.onrender.com` |
+| `marketeq-backend` | `srv-d76r48nafjfc73e1djf0` | `live` | n8n orchestrator API deploys | Vercel dev + Vercel staging + Vercel live | `https://marketeq-backend.onrender.com` |
 
 ### 3.0.1 One service means one service
 
@@ -82,9 +108,9 @@ There must be **exactly one** active (non-suspended) Render web service at any t
 
 ### 3.1 How the shared backend deploys
 
-All three Vercel projects point to the same Render backend. The Jenkins `staging-orchestrator` pipeline triggers Render API deploys with the specific commit SHA whenever backend files change on `dev-main` or `staging`. This keeps the shared backend current for all frontends without waiting for a `live-mvp` promotion.
+All three Vercel projects point to the same Render backend. The Jenkins `staging-orchestrator` pipeline triggers Render API deploys with the specific commit SHA whenever backend files change on `dev-main` or `staging`. This keeps the shared backend current for all frontends without waiting for a `live` promotion.
 
-The Render dashboard branch is set to `live-mvp` as a fallback for manual deploys, but normal operation uses the Jenkins orchestrator's API-driven deploys with explicit commit SHAs.
+The Render dashboard branch is set to `live` as a fallback for manual deploys, but normal operation uses the Jenkins orchestrator's API-driven deploys with explicit commit SHAs.
 
 **Constraints (Render Starter plan — 512 MB RAM):**
 - `boot-all.js` only starts services the API gateway actively proxies to (see `SERVICES` array)
@@ -98,7 +124,7 @@ The Render dashboard branch is set to `live-mvp` as a fallback for manual deploy
 |---|---|---|
 | `marketeq-projects-dev` | `dev-main` | `marketeq-backend` |
 | `marketeq-projects-staging` | `staging` | `marketeq-backend` |
-| `marketeq-projects-live-mvp` | `live-mvp` | `marketeq-backend` |
+| `marketeq-projects-live-mvp` | `live` | `marketeq-backend` |
 
 ### 3.3 Database isolation
 
@@ -156,7 +182,7 @@ There are **three frozen env templates per app**, one per environment, each inde
 |---|---|---|
 | `frontend/.env.local.example` | `backend/.env.local.example` | Local dev on `dev-main` or any feature branch |
 | `frontend/.env.staging.example` | `backend/.env.staging.example` | Vercel `marketeq-projects-staging` against the shared Render backend |
-| `frontend/.env.production.example` | `backend/.env.production.example` | Vercel `marketeq-projects-live-mvp` + Render `marketeq-backend` |
+| `frontend/.env.production.example` | `backend/.env.production.example` | Vercel `marketeq-projects-live-mvp` + Render `marketeq-backend` (branch: `live`) |
 
 Each template owns a distinct set of values for:
 - `NEXT_PUBLIC_BACKEND_URL` / `BACKEND_URL`
@@ -183,7 +209,7 @@ A PR that modifies **any** of these six template files requires a four-point con
 3. `staging CORS origin allowlist is unchanged`
 4. `manual QA was performed against the staging Vercel deployment with a client account and a talent account`
 
-**Production four-point confirmation** (required on any PR targeting `live-mvp` that modifies `*.production.example`):
+**Production four-point confirmation** (required on any PR targeting `live` that modifies `*.production.example`):
 
 1. `production login on Vercel live still works against the production Render backend`
 2. `production cookie SameSite/Secure flags are unchanged`
@@ -194,7 +220,7 @@ A PR that modifies **any** of these six template files requires a four-point con
 
 - A PR modifying `*.local.example` must target `dev-main`
 - A PR modifying `*.staging.example` must target `staging`
-- A PR modifying `*.production.example` must target `live-mvp`
+- A PR modifying `*.production.example` must target `live`
 
 GitHub Actions `sop-check` workflow blocks branch/template mismatches. The three template pairs are independent: modifying the local template never affects staging or prod; modifying staging never affects local or prod. If a PR modifies more than one pair at once, block it and ask the author to split.
 
@@ -247,7 +273,7 @@ Run by QA (or CTO) when `dev-main` has accumulated a milestone worth testing.
 
 **What it does NOT do:**
 
-- Does not touch Render. Render is on `live-mvp` (§3) and is untouched by a staging promotion
+- Does not touch Render. Render is on `live` (§3) and is untouched by a staging promotion
 - Does not deploy to production
 - Does not delete branches
 - Does not force-push
@@ -259,33 +285,33 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 **What it does:**
 
 1. Preflight + fetch
-2. Verifies `staging` and `live-mvp` exist
+2. Verifies `staging` and `live` exist
 3. Shows every commit being promoted
 4. Requires typing `PROMOTE TO PRODUCTION` literally
-5. Checks out `live-mvp`, merges `staging` with the protected-file strategy:
-   - `live-mvp` wins on conflict for: `frontend/.env.production.example`, `backend/.env.production.example`, `frontend/vercel.json`, `render.yaml`
+5. Checks out `live`, merges `staging` with the protected-file strategy:
+   - `live` wins on conflict for: `frontend/.env.production.example`, `backend/.env.production.example`, `frontend/vercel.json`, `render.yaml`
 6. Runs `gitleaks`
-7. Pushes `live-mvp` — triggers both Vercel `marketeq-projects-live-mvp` and Render `marketeq-backend` auto-deploys **in lockstep**
+7. Pushes `live` — triggers both Vercel `marketeq-projects-live-mvp` and Render `marketeq-backend` auto-deploys **in lockstep**
 8. Polls Vercel **and** Render APIs for the resulting deployments until both report `READY` / `live` or fail (10-min timeout)
 9. Creates an annotated git tag `release-YYYY-MM-DD-HHMM` and a GitHub Release listing every promoted commit
 
 **What it does NOT do:**
 
 - Does not touch `dev-main`
-- Does not change Render branch configuration (that's a fixed-at-`live-mvp` invariant, not per-promotion state)
+- Does not change Render branch configuration (that's a fixed-at-`live` invariant, not per-promotion state)
 - Does not delete `staging` or any feature branches
 
 ---
 
 ## 8. Role separation
 
-| Role | `dev-main` | `staging` | `live-mvp` | Promotion scripts |
+| Role | `dev-main` | `staging` | `live` | `mvp` | Promotion scripts |
 |---|---|---|---|---|
-| Developer | ✅ via PR | ✅ via PR (regression fixes only) | ❌ | ❌ |
-| QA | ❌ | ✅ via script | ❌ (script only) | ✅ |
-| CTO | ✅ all branches | ✅ all branches | ✅ all branches | ✅ |
+| Developer | ✅ via PR | ✅ via PR (regression fixes only) | ❌ | ✅ via PR | ❌ |
+| QA | ❌ | ✅ via script | ❌ (script only) | ❌ | ✅ |
+| CTO | ✅ all branches | ✅ all branches | ✅ all branches | ✅ all branches | ✅ |
 
-**Enforcement:** CODEOWNERS routes reviews by directory, PR template has different required confirmations per target branch, and promotion scripts are the only approved path onto `staging` and `live-mvp`. Breaking role separation is caught by the GitHub Actions `post-merge-audit` workflow (with Jenkins as a safety net): a direct push to `staging` or `live-mvp` (no PR, no script) opens an urgent issue and tags the CTO within ~60 seconds of the push.
+**Enforcement:** CODEOWNERS routes reviews by directory, PR template has different required confirmations per target branch, and promotion scripts are the only approved path onto `staging` and `live`. Breaking role separation is caught by the GitHub Actions `post-merge-audit` workflow (with Jenkins as a safety net): a direct push to `staging` or `live` (no PR, no script) opens an urgent issue and tags the CTO within ~60 seconds of the push.
 
 ---
 
@@ -297,9 +323,9 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 | Merge conflicts outside protected files | Developer and QA touched the same non-protected file | Contact CTO; developer rebases their work |
 | `gitleaks` detects a secret | A secret was committed on `dev-main` | **Do not push.** Reset staging, open an urgent issue, CTO fixes the leak on `dev-main` first |
 | Vercel deploy fails after promotion push | Build error, env var missing, framework change | Script exits non-zero with the Vercel deployment URL; investigate there |
-| Render deploy fails after `live-mvp` promotion | Build error, migration error, env var missing | Script exits non-zero with the Render deploy log URL; investigate there. Do **not** revert `live-mvp` until the root cause is understood — the commit may be fine and the cause may be Render infra |
-| Post-merge audit auto-reverts a promotion | Required checks failed on the promoted commits | CTO reviews the revert PR; developer fixes the failing checks; re-promote |
-| Someone force-pushes `dev-main`, `staging`, or `live-mvp` | Mistake or deliberate bypass | GitHub Actions `post-merge-audit` workflow (+ Jenkins safety net) opens an urgent issue within ~60 seconds; CTO investigates and, if needed, restores the previous SHA from the reflog |
+| Render deploy fails after `live` promotion | Build error, migration error, env var missing | Script exits non-zero with the Render deploy log URL; investigate there. Do **not** revert `live` until the root cause is understood — the commit may be fine and the cause may be Render infra |
+| Post-merge audit flags a promotion | Required checks failed on the promoted commits | CTO reviews the issue; developer fixes the failing checks forward; re-promote |
+| Someone force-pushes `dev-main`, `staging`, or `live` | Mistake or deliberate bypass | GitHub Actions `post-merge-audit` workflow (+ Jenkins safety net) opens an urgent issue within ~60 seconds; CTO investigates and, if needed, restores the previous SHA from the reflog |
 | Backend service is DOWN on staging | Service crash-loop (missing env var, DB schema mismatch, import error, OOM) | **P0 — fix immediately.** Check Render logs, identify the crash cause, fix and redeploy. Never disable/comment-out a service as a workaround. All services must be running at all times (§3.0.2). |
 
 ---
@@ -325,4 +351,6 @@ Run by QA (or CTO) after QA has signed off on a staging build.
 | 2026-04-11 | Initial document. Split from `docs/CODE_REVIEW_SOP.md` at CTO request — devops concerns belong here, code review concerns stay in the review SOP. Branch names locked to `dev-main` / `staging` / `live-mvp` (real names on origin). §3 CTO call: Render on `live-mvp` with auto-deploy on, one service, all three Vercel projects hit it. §1.11 "dev-main not on Vercel" rule from the review SOP is deleted — dev-main legitimately deploys to `marketeq-projects-dev`, the bug was hardcoded login values not the Vercel coupling itself. |
 | 2026-05-22 | CI/CD split: PR gate checks (`sop-check`, `ai-breakage-check`, `gitleaks`, `code-review`, `login-gate`) run on **GitHub Actions**. Post-merge enforcement (`post-merge-audit`, `login-violation-alert`) runs on **both** GitHub Actions and Jenkins. Post-deploy automation (deployments, smoke tests, staging sync, stale branch cleanup) runs on **Jenkins** (72.61.77.231:8080). n8n DevOps workflows deactivated. Old docs archived to `docs/md/Deployment (CI-CD)/old devops docs/`. |
 | 2026-06-30 | Added §3.0.2 Zero-downtime service rule: no service may ever be down on staging or production. Added P0 failure mode for services down. Wired `sync-dev-main-to-staging` into Jenkins webhook dispatcher. Re-enabled messaging-service in `boot-all.js`. Added `offer-service` and `cms-service` to `Dockerfile.all` build list. |
-| 2026-07-09 | Added three hard rules to §1 Never list: no duplicating commits across branches, no merging stale branches (>5 behind = block), no `--admin` without CTO explicitly typing "use --admin". Driven by audit finding code loss from stale squash merges (CODE_REVIEW_SOP §8.11). |
+| 2026-07-09 | Renamed `live-mvp` branch to `live`. Created `mvp` branch. Added three hard rules to §1 Never list: no duplicating commits across branches, no merging stale branches (>5 behind = block), no `--admin` without CTO explicitly typing "use --admin". |
+| 2026-08-31 | **Automation may not DESTROY a developer's work.** Auto-updating a stale branch is fine when non-destructive: `gh pr update-branch` with no flag adds a merge commit and keeps every author commit. `--rebase` and force-pushes are forbidden (they rewrite commits), as is auto-resolving conflicts. Conflicts are analysed and reported, never resolved by automation. See `CODE_REVIEW_SOP.md` §1.11. |
+| 2026-08-28 | **No reverts.** Reverting means deleting somebody's work; the Never list now forbids it outright (fix forward instead), and the post-merge-audit failure mode reports rather than reverts. Stale-branch rule changed from ">5 commits behind" to zero behind, brought current automatically via `gh pr update-branch --rebase` (server-side; no local force-push by reviewers); block only if the rebase fails. Added Never-list entry forbidding single-action deletion of a developer's merged work. |

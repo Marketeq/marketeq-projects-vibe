@@ -26,11 +26,17 @@ export class Certification {
   @Column({ type: 'date', nullable: true })
   expirationDate?: Date;
 
+  @Column({ type: 'boolean', default: false })
+  doesntExpire: boolean;
+
   @Column({ nullable: true })
   credentialId?: string;
 
   @Column({ nullable: true })
   credentialUrl?: string;
+
+  @Column({ nullable: true })
+  issuerLogoUrl?: string;
 
   @Column({ type: 'text', array: true, nullable: true })
   skills?: string[];

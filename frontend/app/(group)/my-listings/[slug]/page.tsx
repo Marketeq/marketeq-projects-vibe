@@ -3,8 +3,9 @@
 import * as React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, usePathname, useRouter } from "next/navigation"
 import { ProjectChatPanel } from "./project-chat-panel"
+import { RecentQuestionsManager } from "./recent-questions-manager"
 
 const ClientListingView = dynamic(
   () => import("@/app/(group)/(group)/project-details/[slug]/page"),
@@ -138,6 +139,7 @@ import { useInviteWindowStore } from "@/components/invite-window"
 import { LikeDislike } from "@/components/like-dislike"
 import { MarketplaceFooter } from "@/components/marketplace-footer"
 import NextImage from "@/components/next-image"
+import { countryOf } from "@/lib/geo"
 import NextLink from "@/components/next-link"
 import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
 import { ReadMoreLessComp, ReadMoreLessRoot } from "@/components/read-more-less"
@@ -394,6 +396,15 @@ const toEmbedUrl = (raw?: string | null): string => {
   return url
 }
 
+const toVideoThumb = (raw?: string | null): string => {
+  if (!raw) return ""
+  const yt = raw.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{11})/
+  )
+  if (yt) return `https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg`
+  return ""
+}
+
 const backendErrorMessage = (err: any): string => {
   const raw = err?.response?.data?.message
   if (Array.isArray(raw)) return raw.join(" ")
@@ -550,6 +561,82 @@ const DEFAULT_SUGGESTED_CATEGORIES: SuggestedCategoryOption[] = [
   { category: "Development", subCategory: "Mobile App" },
   { category: "Data Science", subCategory: "Machine Learning" },
 ]
+
+const SUGGESTION_STOPWORDS = new Set([
+  "the", "and", "for", "with", "your", "our", "that", "this", "from", "into",
+  "over", "you", "are", "was", "will", "can", "get", "all", "new", "use",
+  "per", "via",
+])
+
+const tokenizeForSuggestion = (text: string): string[] =>
+  text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 3 && !SUGGESTION_STOPWORDS.has(token))
+
+const scoreCandidateAgainstTitle = (
+  titleTokens: string[],
+  candidateText: string
+): number => {
+  const candidateTokens = tokenizeForSuggestion(candidateText)
+  let score = 0
+  for (const candidateToken of candidateTokens) {
+    for (const titleToken of titleTokens) {
+      if (candidateToken === titleToken) {
+        score += 2
+        break
+      }
+      if (
+        candidateToken.length >= 4 &&
+        titleToken.length >= 4 &&
+        (candidateToken.includes(titleToken) ||
+          titleToken.includes(candidateToken))
+      ) {
+        score += 1
+        break
+      }
+    }
+  }
+  return score
+}
+
+const suggestionsFromText = (
+  text: string,
+  nodes: CategoryTreeNode[]
+): SuggestedCategoryOption[] => {
+  const tokens = tokenizeForSuggestion(text)
+  if (!tokens.length || !nodes.length) return []
+
+  const scored: Array<SuggestedCategoryOption & { score: number }> = []
+  for (const categoryNode of nodes) {
+    if (!isActiveCategoryNode(categoryNode) || !categoryNode.name) continue
+    const subs = (categoryNode.children ?? []).filter(isActiveCategoryNode)
+    for (const sub of subs) {
+      if (!sub.name || sub.name === categoryNode.name) continue
+      const score = scoreCandidateAgainstTitle(
+        tokens,
+        `${categoryNode.name} ${sub.name}`
+      )
+      if (score > 0) {
+        scored.push({
+          category: categoryNode.name,
+          subCategory: sub.name,
+          score,
+        })
+      }
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score)
+  const seenCategories = new Set<string>()
+  const result: SuggestedCategoryOption[] = []
+  for (const item of scored) {
+    if (seenCategories.has(item.category)) continue
+    seenCategories.add(item.category)
+    result.push({ category: item.category, subCategory: item.subCategory })
+  }
+  return result
+}
 
 type CategoryRow = {
   category: string
@@ -1344,7 +1431,13 @@ function SortableGalleryItem({
 export default function ProjectDetails() {
   const params = useParams()
   const router = useRouter()
-  const { user } = useAuth()
+  const pathname = usePathname()
+  const { user, isLoading: isAuthLoading } = useAuth()
+  React.useEffect(() => {
+    if (!isAuthLoading && !user) {
+      router.replace(`/sign-in?redirect=${encodeURIComponent(pathname)}`)
+    }
+  }, [isAuthLoading, user, router, pathname])
   const [project, setProject] = React.useState<any>({
     id: "draft",
     title: "Enter Project Title",
@@ -1530,6 +1623,12 @@ export default function ProjectDetails() {
           project.subcategories?.length > 0 ||
           project.tags?.length > 0
         ),
+        (project.tags || []).length < 3,
+        Math.max(
+          project.skills?.length ?? 0,
+          project.programmingLanguages?.length ?? 0
+        ) < 3,
+        (project.industries || []).length < 1,
         !project.faqs || project.faqs.length === 0,
       ].some(Boolean)
     : false
@@ -1550,6 +1649,12 @@ export default function ProjectDetails() {
           project.subcategories?.length > 0 ||
           project.tags?.length > 0
         ) && "project details",
+        (project.tags || []).length < 3 && "at least 3 tags",
+        Math.max(
+          project.skills?.length ?? 0,
+          project.programmingLanguages?.length ?? 0
+        ) < 3 && "at least 3 skills",
+        (project.industries || []).length < 1 && "at least 1 industry",
         !(
           Array.isArray(project.deliverables) &&
           project.deliverables.length > 0
@@ -1557,6 +1662,21 @@ export default function ProjectDetails() {
         (!project.faqs || project.faqs.length === 0) && "FAQ's",
       ].filter(Boolean) as string[])
     : []
+
+  const projectDetailsHasError =
+    SHOW_PUBLISH_VALIDATION &&
+    ((project.tags || []).length < 3 ||
+      Math.max(
+        project.skills?.length ?? 0,
+        project.programmingLanguages?.length ?? 0
+      ) < 3 ||
+      (project.industries || []).length < 1 ||
+      !(
+        project.programmingLanguages?.length > 0 ||
+        project.developmentTech?.length > 0 ||
+        project.subcategories?.length > 0 ||
+        project.tags?.length > 0
+      ))
 
   const missingPublishImages =
     SHOW_PUBLISH_VALIDATION &&
@@ -1922,9 +2042,6 @@ export default function ProjectDetails() {
   const [removeTarget, setRemoveTarget] = React.useState<any | null>(null)
   const [leadSearch, setLeadSearch] = React.useState("")
 
-  // The project owner. my-listings is owner-scoped, so the logged-in user is
-  // the owner; prefer the project's stored userId when present. Never derive
-  // "owner" from list position.
   const ownerId = String(
     (project as any)?.userId ??
       (project as any)?.ownerId ??
@@ -1932,9 +2049,6 @@ export default function ProjectDetails() {
       ""
   )
 
-  // my-listings is the owner's own listing — hide "Ask a Question" (you don't
-  // ask questions on your own project). Always true here, but keep the check
-  // explicit and safe.
   const isOwnerViewing =
     !(user as any)?.id ||
     !ownerId ||
@@ -1949,22 +2063,42 @@ export default function ProjectDetails() {
     [project, isOnline]
   )
 
+  const isOwnerMember = (m: any) =>
+    m?.role === "owner" ||
+    (!!ownerId && String(m?.id ?? m?.userId ?? "") === ownerId)
+
   const projectAssignees = React.useMemo(() => {
     const team = Array.isArray((project as any)?.team) ? (project as any).team : []
-    const mapped = team.map((m: any) => ({
-      id: String(m.id || m.userId || ""),
-      firstName: m.firstName || m.name || "User",
-      username: m.username || m.email?.split("@")[0] || "",
-      avatarUrl: m.avatarUrl || null,
-      jobTitle: jobTitleOf(m),
-    }))
     const ids = Array.isArray((project as any)?.teamMemberIds)
       ? (project as any).teamMemberIds.map(String)
       : []
-    return ids.length > 0
-      ? mapped.filter((m: any) => ids.includes(m.id))
-      : mapped
-  }, [project])
+    return team
+      .filter((m: any) => {
+        const mid = String(m.id || m.userId || "")
+        return m.role === "owner" || mid === ownerId || ids.includes(mid)
+      })
+      .sort((a: any, b: any) => (isOwnerMember(a) ? 0 : 1) - (isOwnerMember(b) ? 0 : 1))
+      .map((m: any) => ({
+        id: String(m.id || m.userId || ""),
+        firstName: m.firstName || m.name || "User",
+        username: m.username || m.email?.split("@")[0] || "",
+        avatarUrl: m.avatarUrl || null,
+        jobTitle: jobTitleOf(m),
+      }))
+  }, [project, ownerId])
+
+  const currentTeam = React.useMemo(() => {
+    const team = Array.isArray((project as any)?.team) ? (project as any).team : []
+    const ids = Array.isArray((project as any)?.teamMemberIds)
+      ? (project as any).teamMemberIds.map(String)
+      : []
+    return team
+      .filter((m: any) => {
+        const mid = String(m.id || m.userId || "")
+        return m.role === "owner" || mid === ownerId || ids.includes(mid)
+      })
+      .sort((a: any, b: any) => (isOwnerMember(a) ? 0 : 1) - (isOwnerMember(b) ? 0 : 1))
+  }, [project, ownerId])
 
   const confirmRemoveMember = async (deactivateInstead: boolean) => {
     const target = removeTarget
@@ -2126,8 +2260,6 @@ export default function ProjectDetails() {
     let leadLabel = ""
     for (const m of pm) {
       const uid = String(m.userId)
-      // "Owner" is derived from the real owner id, never from stored roles —
-      // ignore any stale/persisted "Owner" on non-owner members.
       if (m.projectRole && m.projectRole !== "Owner") roles[uid] = m.projectRole
       if (m.status) statuses[uid] = m.status
       if (m.isLead) {
@@ -2284,10 +2416,13 @@ export default function ProjectDetails() {
         const nextCategoryOptions = getUniqueOptions(
           selectableCategories.map((node) => node.name)
         )
-        const nextSuggested = selectableCategories
+        const nextSuggested = nodes
+          .filter(isActiveCategoryNode)
           .map((node) => {
-            const subCategory = findSuggestedSubCategory(node)
-            return subCategory ? { category: node.name, subCategory } : null
+            const sub = (node.children ?? []).filter(isActiveCategoryNode)[0]
+            return sub?.name && node.name
+              ? { category: node.name, subCategory: sub.name }
+              : null
           })
           .filter((value): value is SuggestedCategoryOption => value !== null)
 
@@ -2498,16 +2633,36 @@ export default function ProjectDetails() {
     [infoCategories]
   )
 
-  const suggestedForDisplay = React.useMemo(
-    () =>
-      suggested
-        .filter(
-          ({ category, subCategory }) =>
-            !selectedSuggestedPairs.has(`${category}::${subCategory}`)
-        )
-        .slice(0, 3),
-    [selectedCategoryNames, selectedSuggestedPairs, suggested]
-  )
+  const derivedSuggestions = React.useMemo(() => {
+    const enteredNames = infoCategories
+      .map((c) => c.category?.trim())
+      .filter((name): name is string => Boolean(name))
+      .join(" ")
+    return suggestionsFromText(
+      `${infoProjectType} ${enteredNames}`.trim(),
+      categoryTree
+    )
+  }, [infoProjectType, infoCategories, categoryTree])
+
+  const suggestedForDisplay = React.useMemo(() => {
+    const seenCategories = new Set(selectedCategoryNames)
+    const result: SuggestedCategoryOption[] = []
+    for (const item of [...derivedSuggestions, ...suggested]) {
+      if (item.category === item.subCategory) continue
+      if (seenCategories.has(item.category)) continue
+      if (selectedSuggestedPairs.has(`${item.category}::${item.subCategory}`))
+        continue
+      seenCategories.add(item.category)
+      result.push(item)
+      if (result.length >= 3) break
+    }
+    return result
+  }, [
+    derivedSuggestions,
+    suggested,
+    selectedCategoryNames,
+    selectedSuggestedPairs,
+  ])
 
   // Persist a partial update to the backend so edits are saved to the DB.
   // If no backend draft exists yet, create one first, get the real UUID,
@@ -2756,6 +2911,9 @@ export default function ProjectDetails() {
               startDay: 1,
               endDay: 30,
               order: idx,
+              phaseType: phase.phaseType ?? undefined,
+              recurrenceSchedule: phase.recurrenceSchedule ?? undefined,
+              recurrenceCount: phase.recurrenceCount ?? undefined,
               projectId: project.id,
               tasks: (phase.rows || []).map((row: any) => ({
                 taskName: row.task || "",
@@ -2818,6 +2976,16 @@ export default function ProjectDetails() {
   // ── Budget & Duration computed from scope ──────────────────────────────────
   const [budgetPeriod, setBudgetPeriod] = React.useState("week")
 
+  const isServiceListing =
+    project?.listingType === "service" ||
+    (Array.isArray(project?.scope) &&
+      project.scope.some(
+        (p: any) =>
+          p?.phaseType === "setup" ||
+          p?.phaseType === "recurring" ||
+          p?.phaseType === "ongoing"
+      ))
+
   const { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays } =
     React.useMemo(() => {
       const phases = project.scope ?? []
@@ -2826,15 +2994,34 @@ export default function ProjectDetails() {
       // Matches the scope builder's getPhaseDurationInDays logic.
       let totalDays = 0
       for (const phase of phases) {
-        const taskDurations = (phase.rows ?? [])
+        const taskDurations = ((phase.rows ?? phase.tasks ?? []) as any[])
           .map((row: any) => {
             const dur = row.duration
-            if (!dur) return 0
-            const val = Number(dur.value) || 0
-            if (val <= 0) return 0
-            if (dur.type === "weeks") return val * 7
-            if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
-            return val // days
+            // Object form { value, type }
+            if (dur && typeof dur === "object") {
+              const val = Number(dur.value) || 0
+              if (val > 0) {
+                if (dur.type === "weeks") return val * 7
+                if (dur.type === "months") return val * 30
+                if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+                return val // days
+              }
+            }
+            // String form, e.g. "2 weeks" (relational scope stores it this way)
+            if (typeof dur === "string" && dur.trim()) {
+              const [rv, ru] = dur.trim().split(/\s+/)
+              const v = Number(rv) || 0
+              const u = (ru || "days").toLowerCase()
+              if (v > 0) {
+                if (u.startsWith("week")) return v * 7
+                if (u.startsWith("month")) return v * 30
+                if (u.startsWith("hour")) return Math.max(1, Math.ceil(v / 24))
+                return v
+              }
+            }
+            // Fall back to estimatedHours at 40 hrs/week.
+            const hrs = Number(row.estimatedHours) || 0
+            return hrs > 0 ? Math.max(1, Math.round((hrs * 7) / 40)) : 0
           })
           .filter((d: number) => d > 0)
         if (taskDurations.length > 0) {
@@ -3020,12 +3207,7 @@ export default function ProjectDetails() {
             role: d.category || d.categories?.[0] || "Software Development",
             summary: d.shortDescription || d.fullDescription || "",
             description: d.fullDescription || "",
-            featuredImage:
-              featuredImage ||
-              d.featuredImage ||
-              galleryUrls[0] ||
-              d.mediaUrls?.[0] ||
-              null,
+            featuredImage: featuredImage || d.featuredImage || null,
             featuredVideo:
               featuredVideo || d.featuredVideo || d.videoUrl || null,
             mediaUrls: finalGallery,
@@ -3069,6 +3251,9 @@ export default function ProjectDetails() {
                 return {
                   phaseName:
                     phase.phaseName || phase.name || phase.stageName || "",
+                  phaseType: phase.phaseType ?? undefined,
+                  recurrenceSchedule: phase.recurrenceSchedule ?? undefined,
+                  recurrenceCount: phase.recurrenceCount ?? undefined,
                   ...(rawTasks.length > 0
                     ? {
                         rows: rawTasks.map((t: any) => {
@@ -3237,9 +3422,6 @@ export default function ProjectDetails() {
               })
             )
             setProject((prev: any) => {
-              // Union the roster with anyone already assigned to this project
-              // so assigned members never drop out of the picker even if they
-              // aren't (yet) in the roster.
               const byId = new Map<string, any>()
               for (const m of prev.team ?? []) byId.set(m.id || m.userId, m)
               for (const m of hydratedMembers) byId.set(m.id || m.userId, m)
@@ -3385,15 +3567,19 @@ export default function ProjectDetails() {
     return buildProjectStaticContentFromGateway(project?.projectStaticContent)
   }, [project?.projectStaticContent])
 
+  if (!isAuthLoading && !user) {
+    return null
+  }
+
   if (loading) {
     return (
       <div className="px-[100px] pb-[100px] relative bg-white">
-        <div className="max-w-[1240px] flex items-start gap-x-8">
+        <div className="max-w-[1240px] w-full mx-auto flex items-start gap-x-8">
           <div className="max-w-[818px] flex-auto">
             {/* gray header area */}
             <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
               <div className="relative pt-6 pb-[50px]">
-                <div className="absolute w-screen -translate-x-[100px] top-0 bottom-0 bg-gray-50" />
+                <div className="absolute w-screen left-[min(-100px,calc(620px-50vw))] top-0 bottom-0 bg-gray-50" />
                 {/* breadcrumb */}
                 <div className="flex items-center gap-x-2 relative">
                   <Shimmer className="size-[18px] rounded" />
@@ -3561,11 +3747,11 @@ export default function ProjectDetails() {
   return (
     <>
       <div className="px-[100px] pb-[100px] relative bg-white">
-        <div className="max-w-[1240px] flex items-start gap-x-8">
+        <div className="max-w-[1240px] w-full mx-auto flex items-start gap-x-8">
           <div className="max-w-[818px] flex-auto">
             <div className="after:content-[''] after:absolute after:inset-x-0 after:border-b after:border-gray-200">
               <div className="relative pt-6 pb-[50px]">
-                <div className="absolute w-screen -translate-x-[100px] top-0 bottom-0 bg-gray-50" />
+                <div className="absolute w-screen left-[min(-100px,calc(620px-50vw))] top-0 bottom-0 bg-gray-50" />
 
                 <div className="flex items-center gap-x-2 relative">
                   <NextLink href="/">
@@ -4020,6 +4206,7 @@ export default function ProjectDetails() {
                           )
                           setInfoSummary(project.summary || "")
                           setInfoTab("Categories")
+                          setSelected("Details")
                           setProjectInfoOpen(true)
                         }}
                       >
@@ -4049,6 +4236,7 @@ export default function ProjectDetails() {
                       )
                       setInfoSummary(project.summary || "")
                       setInfoTab("Basic Info")
+                      setSelected("Details")
                       setProjectInfoOpen(true)
                     }}
                   >
@@ -4061,6 +4249,7 @@ export default function ProjectDetails() {
                   onClick={() => {
                     setInfoTab("Basic Info")
                     setFocusSummaryOnOpen(true)
+                    setSelected("Details")
                     setProjectInfoOpen(true)
                   }}
                 >
@@ -4260,16 +4449,27 @@ export default function ProjectDetails() {
                         {project.featuredVideo && (
                           <div className="group/slide shrink-0 w-[calc(33.333%-8px)]">
                             <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg bg-black">
-                              <iframe
-                                src={toEmbedUrl(project.featuredVideo)}
-                                className={cn(
-                                  "absolute inset-0 w-full h-full pointer-events-none transition-all duration-300",
-                                  videoHidden && "opacity-40 blur-[1px]"
-                                )}
-                                allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                tabIndex={-1}
-                                title="Featured video"
-                              />
+                              {toVideoThumb(project.featuredVideo) ? (
+                                <img
+                                  src={toVideoThumb(project.featuredVideo)}
+                                  alt="Featured video"
+                                  className={cn(
+                                    "absolute inset-0 w-full h-full object-cover pointer-events-none transition-all duration-300",
+                                    videoHidden && "opacity-40 blur-[1px]"
+                                  )}
+                                />
+                              ) : (
+                                <iframe
+                                  src={toEmbedUrl(project.featuredVideo)}
+                                  className={cn(
+                                    "absolute inset-0 w-full h-full pointer-events-none transition-all duration-300",
+                                    videoHidden && "opacity-40 blur-[1px]"
+                                  )}
+                                  allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  tabIndex={-1}
+                                  title="Featured video"
+                                />
+                              )}
                               <div
                                 className={cn(
                                   "absolute inset-0 flex items-center justify-center pointer-events-none group-hover/slide:opacity-0 transition-opacity duration-200",
@@ -4277,7 +4477,19 @@ export default function ProjectDetails() {
                                 )}
                               >
                                 <div className="size-10 rounded-full bg-white/90 flex items-center justify-center shadow">
-                                  <Play className="size-5 text-gray-800 ml-0.5" />
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                    className="text-gray-800"
+                                    style={{
+                                      width: 29,
+                                      height: 29,
+                                      fill: "currentColor",
+                                      marginLeft: 2,
+                                    }}
+                                  >
+                                    <path d="M8 5v14l11-7z" />
+                                  </svg>
                                 </div>
                               </div>
                               {videoHidden && (
@@ -5274,7 +5486,14 @@ export default function ProjectDetails() {
                           project.developmentTech?.length > 0 ||
                           project.subcategories?.length > 0 ||
                           project.tags?.length > 0 ? (
-                            <div className="mt-6 border gap-x-[50px] rounded-lg border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                            <div
+                              className={cn(
+                                "mt-6 border gap-x-[50px] rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]",
+                                publishAttempted && projectDetailsHasError
+                                  ? "border-error-300 bg-error-25"
+                                  : "border-gray-200 bg-white"
+                              )}
+                            >
                               <div className="p-6 border-b border-gray-200">
                                 <div className="flex items-start justify-between">
                                   <h2 className="text-xl leading-none font-bold text-dark-blue-400">
@@ -5467,8 +5686,8 @@ export default function ProjectDetails() {
                           project.team[] (Step 2 of the hybrid team model).
                           Falls back to the static design when team is empty.
                         */}
-                              {Array.isArray(project.team) &&
-                              project.team.length > 0 ? (
+                              {Array.isArray(currentTeam) &&
+                              currentTeam.length > 0 ? (
                                 (() => {
                                   type TeamMember = {
                                     firstName: string
@@ -5480,7 +5699,7 @@ export default function ProjectDetails() {
                                     isLead: boolean
                                     isOnline: boolean
                                   }
-                                  const members = project.team as TeamMember[]
+                                  const members = currentTeam as TeamMember[]
                                   // Profiles may deliver languages/skills/location
                                   // as objects ({ name, fluency, ... }); coerce to
                                   // display strings before rendering.
@@ -5511,7 +5730,9 @@ export default function ProjectDetails() {
                                   const allLocations = Array.from(
                                     new Set(
                                       members
-                                        .map((m) => toName(m.location))
+                                        .map((m) =>
+                                          countryOf(toName(m.location))
+                                        )
                                         .filter(Boolean)
                                     )
                                   )
@@ -5977,6 +6198,7 @@ export default function ProjectDetails() {
                                     label: "Industry",
                                     desc: "Add up to 5 industries that align with your project scope for targeted visibility.",
                                     max: 5,
+                                    min: 1,
                                     value: detailsIndustry,
                                     onChange: setDetailsIndustry,
                                     placeholder: "Add Industries",
@@ -5988,6 +6210,7 @@ export default function ProjectDetails() {
                                     label: "Tags",
                                     desc: "Add up to 10 tags that align with your project scope for targeted visibility.",
                                     max: 10,
+                                    min: 3,
                                     value: detailsTags,
                                     onChange: setDetailsTags,
                                     placeholder: "Add Tags",
@@ -5999,6 +6222,7 @@ export default function ProjectDetails() {
                                     label: "Skills",
                                     desc: "List up to 10 key skills or proficiencies required to implement this template effectively.",
                                     max: 10,
+                                    min: 3,
                                     value: detailsSkills,
                                     onChange: setDetailsSkills,
                                     placeholder: "Add Skills",
@@ -6112,6 +6336,13 @@ export default function ProjectDetails() {
                                       </TagsInputContext>
                                       <TagsInputHiddenInput />
                                     </TagsInputRoot>
+                                    {field.min != null &&
+                                      field.value.length < field.min && (
+                                        <p className="mt-1.5 text-xs text-error-500">
+                                          Please add at least {field.min}{" "}
+                                          {field.label.toLowerCase()}
+                                        </p>
+                                      )}
                                   </div>
                                 ))}
 
@@ -6262,9 +6493,6 @@ export default function ProjectDetails() {
                                     className="pt-6 pb-6"
                                   >
                                     {(() => {
-                                      // The actual current lead is the persisted
-                                      // lead (or the owner by default) — never
-                                      // just the first row.
                                       const effectiveLeadId =
                                         originalLeadId || ownerId
                                       const currentLead =
@@ -6411,7 +6639,11 @@ export default function ProjectDetails() {
                                                     </InputLeftElement>
                                                   </InputGroup>
                                                   {leadSearch && (
-                                                    <div className="mt-1 rounded-lg border border-gray-100 bg-white shadow-lg max-h-[240px] overflow-y-auto">
+                                                    <ScrollArea
+                                                      className="mt-1 rounded-lg border border-gray-100 bg-white shadow-lg"
+                                                      scrollBar={<ScrollBar className="w-4 p-1" />}
+                                                      viewportClassName="max-h-[240px]"
+                                                    >
                                                       {candidates.length > 0 ? (
                                                         candidates.map(
                                                           (m: any) => (
@@ -6466,7 +6698,7 @@ export default function ProjectDetails() {
                                                           No matching members.
                                                         </div>
                                                       )}
-                                                    </div>
+                                                    </ScrollArea>
                                                   )}
                                                 </>
                                               )}
@@ -6642,7 +6874,11 @@ export default function ProjectDetails() {
                                       </DropdownMenu>
                                     </div>
 
-                                    <div className="mt-6 max-h-[40vh] overflow-y-auto">
+                                    <ScrollArea
+                                      className="mt-6"
+                                      scrollBar={<ScrollBar className="w-4 p-1" />}
+                                      viewportClassName="max-h-[40vh]"
+                                    >
                                       <Table>
                                         <TableHeader>
                                           <TableRow className="hover:bg-transparent">
@@ -6892,7 +7128,7 @@ export default function ProjectDetails() {
                                           )}
                                         </TableBody>
                                       </Table>
-                                    </div>
+                                    </ScrollArea>
                                   </TabsContent>
                                 </Tabs>
                               </div>
@@ -6997,52 +7233,87 @@ export default function ProjectDetails() {
                           {(project.faqs?.length > 0 ||
                             project.recentQuestions?.length > 0) && (
                             <>
-                              {onlineTeam.length > 0 && (
-                              <div className="absolute right-12 top-11 pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
-                                <Avatar size="md">
-                                  <AvatarImage
-                                    src={onlineTeam[0].avatarUrl || "/man.jpg"}
-                                    alt={onlineTeam[0].firstName || "Team member"}
-                                  />
-                                  <AvatarFallback>
-                                    {(onlineTeam[0].firstName ?? "T").charAt(0)}
-                                  </AvatarFallback>
-                                </Avatar>
-
-                                <div className="flex flex-col items-start gap-y-2">
-                                  <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
-                                    {onlineTeam.length >= 2
-                                      ? onlineTeam
-                                          .slice(0, 2)
-                                          .map(
-                                            (m: any) => m.firstName || m.username
-                                          )
-                                          .join(", ")
-                                      : onlineTeam[0].firstName ||
-                                        onlineTeam[0].username}
-                                    {onlineTeam.length > 2
-                                      ? ` +${onlineTeam.length - 2}`
-                                      : ""}{" "}
-                                    {onlineTeam.length < 2 &&
-                                      onlineTeam[0].username && (
-                                        <span className="text-xs leading-none text-extralight text-gray-500">
-                                          @{onlineTeam[0].username}
-                                        </span>
-                                      )}
-                                  </span>
-
-                                  <div className="flex items-center gap-x-1">
-                                    <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
-                                    <span className="text-xs leading-none text-dark-blue-400">
-                                      Online
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                              )}
-
                               {!isOwnerViewing && (
-                              <div className="mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
+                              <div className="relative mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
+                                {onlineTeam.length > 0 && (
+                                <div
+                                  style={{
+                                    top: onlineTeam.length === 1 ? -20 : -52,
+                                    right: 24,
+                                  }}
+                                  className="absolute pr-5 p-3 rounded-lg flex items-start gap-x-2.5 bg-white border border-gray-200 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]"
+                                >
+                                  {onlineTeam.length === 1 ? (
+                                    <>
+                                      <Avatar size="md">
+                                        <AvatarImage
+                                          src={onlineTeam[0].avatarUrl || "/man.jpg"}
+                                          alt={
+                                            onlineTeam[0].firstName || "Team member"
+                                          }
+                                        />
+                                        <AvatarFallback>
+                                          {(onlineTeam[0].firstName ?? "T").charAt(0)}
+                                        </AvatarFallback>
+                                      </Avatar>
+
+                                      <div className="flex flex-col items-start gap-y-2">
+                                        <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                          {onlineTeam[0].firstName ||
+                                            onlineTeam[0].username}{" "}
+                                          {onlineTeam[0].username && (
+                                            <span className="text-xs leading-none text-extralight text-gray-500">
+                                              @{onlineTeam[0].username}
+                                            </span>
+                                          )}
+                                        </span>
+
+                                        <div className="flex items-center gap-x-1">
+                                          <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                                          <span className="text-xs leading-none text-dark-blue-400">
+                                            Online
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div className="flex flex-col items-center gap-y-2">
+                                      <span className="text-[13px] leading-none font-semibold text-dark-blue-400">
+                                        Live Chat
+                                      </span>
+
+                                      <AvatarGroup size="sm" max={3} excess>
+                                        {onlineTeam.map((m: any, i: number) => (
+                                          <Avatar
+                                            key={m.username ?? i}
+                                            className="border-2 border-white hover:ring-0 active:ring-0"
+                                            size="sm"
+                                          >
+                                            {m.avatarUrl ? (
+                                              <AvatarImage
+                                                src={m.avatarUrl}
+                                                alt={m.firstName}
+                                              />
+                                            ) : null}
+                                            <AvatarFallback>
+                                              {(m.firstName || "?")
+                                                .charAt(0)
+                                                .toUpperCase()}
+                                            </AvatarFallback>
+                                          </Avatar>
+                                        ))}
+                                      </AvatarGroup>
+
+                                      <div className="flex items-center gap-x-1">
+                                        <span className="size-[10.52px] rounded-full shrink-0 bg-[#19BD1F]" />
+                                        <span className="text-xs leading-none text-dark-blue-400">
+                                          {onlineTeam.length} team members online
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                                )}
                                 <Label
                                   className="font-semibold inline-flex items-center gap-x-2"
                                   size="md"
@@ -7509,7 +7780,11 @@ export default function ProjectDetails() {
                                 </TabsList>
                               </div>
 
-                              <div className="px-6 py-6 max-h-[60vh] overflow-y-auto">
+                              <ScrollArea
+                                scrollBar={<ScrollBar className="w-4 p-1" />}
+                                viewportClassName="max-h-[60vh]"
+                              >
+                              <div className="px-6 py-6">
                                 {questionsTab === "dialog-faqs" && (
                                   <>
                                     <p className="text-sm font-light text-dark-blue-400">
@@ -7585,11 +7860,23 @@ export default function ProjectDetails() {
                                           </p>
                                         )}
 
-                                        <div className="px-6 py-4 max-h-[420px] overflow-y-auto space-y-3">
+                                        <ScrollArea
+                                          scrollBar={
+                                            <ScrollBar className="w-4 p-1" />
+                                          }
+                                          viewportClassName="max-h-[420px]"
+                                        >
+                                        <div className="px-6 py-4 space-y-3">
                                           {faqGenLoading ? (
-                                            <p className="py-8 text-center text-sm text-gray-500">
-                                              Generating suggestions…
-                                            </p>
+                                            <div className="flex flex-col items-center justify-center gap-3 py-12">
+                                              <Spinner
+                                                size={32}
+                                                strokeWidth={4}
+                                              />
+                                              <p className="text-sm text-gray-500">
+                                                Generating suggestions…
+                                              </p>
+                                            </div>
                                           ) : faqGenError ? (
                                             <div className="py-8 text-center">
                                               <p className="text-sm text-error-500">
@@ -7674,6 +7961,7 @@ export default function ProjectDetails() {
                                             ))
                                           )}
                                         </div>
+                                        </ScrollArea>
 
                                         <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
                                           <Button
@@ -7914,255 +8202,10 @@ export default function ProjectDetails() {
                                 )}
 
                                 {questionsTab === "dialog-recent" && (
-                                  <Tabs
-                                    value={recentQTab}
-                                    onValueChange={setRecentQTab}
-                                    unanimated
-                                  >
-                                    <TabsList className="justify-start border-b-0 px-0 pt-0 mb-4">
-                                      <TabsTrigger value="all">
-                                        All
-                                        <Badge
-                                          visual="gray"
-                                          className="ml-1.5 bg-gray-100 text-[10px] text-gray-500"
-                                        >
-                                          8
-                                        </Badge>
-                                      </TabsTrigger>
-                                      <TabsTrigger value="awaiting">
-                                        Awaiting Response
-                                        <Badge
-                                          visual="gray"
-                                          className="ml-1.5 bg-gray-100 text-[10px] text-gray-500"
-                                        >
-                                          5
-                                        </Badge>
-                                      </TabsTrigger>
-                                      <TabsTrigger value="answered">
-                                        Answered
-                                        <Badge
-                                          visual="gray"
-                                          className="ml-1.5 bg-gray-100 text-[10px] text-gray-500"
-                                        >
-                                          3
-                                        </Badge>
-                                      </TabsTrigger>
-                                    </TabsList>
-
-                                    <TabsContent value="all">
-                                      <div className="space-y-3">
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div className="flex items-start gap-2 min-w-0">
-                                              <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
-                                              <p className="text-sm font-medium text-dark-blue-400">
-                                                What is the expected timeline
-                                                for this project?
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <p className="mt-2 ml-6 text-xs text-gray-500">
-                                            Asked by Kevin{" "}
-                                            <span className="text-gray-400">
-                                              @usernamehere
-                                            </span>{" "}
-                                            3 weeks ago
-                                          </p>
-                                          <div className="mt-3 ml-6 flex items-start gap-2">
-                                            <Avatar size="xs">
-                                              <AvatarImage
-                                                src="/man.jpg"
-                                                alt="Chris"
-                                              />
-                                              <AvatarFallback>C</AvatarFallback>
-                                            </Avatar>
-                                            <div className="min-w-0">
-                                              <p className="text-xs font-medium text-dark-blue-400">
-                                                Chris{" "}
-                                                <span className="text-gray-400">
-                                                  @ux23isee
-                                                </span>
-                                              </p>
-                                              <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                                We typically complete projects
-                                                within 4-6 weeks depending on
-                                                scope. We&apos;ll provide a
-                                                detailed timeline after our
-                                                initial consultation.
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="mt-3 ml-6 flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <span className="text-xs text-gray-500">
-                                                Hide this question
-                                              </span>
-                                              <Switch />
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div className="flex items-start gap-2 min-w-0">
-                                              <p className="text-sm font-medium text-dark-blue-400">
-                                                Can I request changes after the
-                                                project starts?
-                                              </p>
-                                            </div>
-                                            <IconButton
-                                              variant="ghost"
-                                              visual="gray"
-                                              size="sm"
-                                              className="rounded-full text-gray-500 hover:text-gray-800"
-                                            >
-                                              <Edit03 className="size-4" />
-                                            </IconButton>
-                                          </div>
-                                          <p className="mt-2 text-xs text-gray-500">
-                                            Asked by Sarah{" "}
-                                            <span className="text-gray-400">
-                                              @sarahdesigns
-                                            </span>{" "}
-                                            2 weeks ago
-                                          </p>
-                                        </div>
-
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div className="flex items-start gap-2 min-w-0">
-                                              <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
-                                              <p className="text-sm font-medium text-dark-blue-400">
-                                                How do you handle communication
-                                                during the project?
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <p className="mt-2 ml-6 text-xs text-gray-500">
-                                            Asked by Alex{" "}
-                                            <span className="text-gray-400">
-                                              @alexdev
-                                            </span>{" "}
-                                            1 week ago
-                                          </p>
-                                          <div className="mt-3 ml-6 flex items-start gap-2">
-                                            <Avatar size="xs">
-                                              <AvatarImage
-                                                src="/man.jpg"
-                                                alt="Chris"
-                                              />
-                                              <AvatarFallback>C</AvatarFallback>
-                                            </Avatar>
-                                            <div className="min-w-0">
-                                              <p className="text-xs font-medium text-dark-blue-400">
-                                                Chris{" "}
-                                                <span className="text-gray-400">
-                                                  @ux23isee
-                                                </span>
-                                              </p>
-                                              <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                                We use Slack for daily updates
-                                                and have weekly video calls to
-                                                review progress. You&apos;ll
-                                                always know where things stand.
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="mt-3 ml-6 flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <span className="text-xs text-gray-500">
-                                                Hide this question
-                                              </span>
-                                              <Switch />
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </TabsContent>
-
-                                    <TabsContent value="awaiting">
-                                      <div className="space-y-3">
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <p className="text-sm font-medium text-dark-blue-400">
-                                              Can I request changes after the
-                                              project starts?
-                                            </p>
-                                            <IconButton
-                                              variant="ghost"
-                                              visual="gray"
-                                              size="sm"
-                                              className="rounded-full text-gray-500 hover:text-gray-800"
-                                            >
-                                              <Edit03 className="size-4" />
-                                            </IconButton>
-                                          </div>
-                                          <p className="mt-2 text-xs text-gray-500">
-                                            Asked by Sarah{" "}
-                                            <span className="text-gray-400">
-                                              @sarahdesigns
-                                            </span>{" "}
-                                            2 weeks ago
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </TabsContent>
-
-                                    <TabsContent value="answered">
-                                      <div className="space-y-3">
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                          <div className="flex items-start justify-between gap-3">
-                                            <div className="flex items-start gap-2 min-w-0">
-                                              <Check className="size-4 mt-0.5 shrink-0 text-success-500" />
-                                              <p className="text-sm font-medium text-dark-blue-400">
-                                                What is the expected timeline
-                                                for this project?
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <p className="mt-2 ml-6 text-xs text-gray-500">
-                                            Asked by Kevin{" "}
-                                            <span className="text-gray-400">
-                                              @usernamehere
-                                            </span>{" "}
-                                            3 weeks ago
-                                          </p>
-                                          <div className="mt-3 ml-6 flex items-start gap-2">
-                                            <Avatar size="xs">
-                                              <AvatarImage
-                                                src="/man.jpg"
-                                                alt="Chris"
-                                              />
-                                              <AvatarFallback>C</AvatarFallback>
-                                            </Avatar>
-                                            <div className="min-w-0">
-                                              <p className="text-xs font-medium text-dark-blue-400">
-                                                Chris{" "}
-                                                <span className="text-gray-400">
-                                                  @ux23isee
-                                                </span>
-                                              </p>
-                                              <p className="mt-1 text-sm font-light text-dark-blue-400">
-                                                We typically complete projects
-                                                within 4-6 weeks depending on
-                                                scope.
-                                              </p>
-                                            </div>
-                                          </div>
-                                          <div className="mt-3 ml-6 flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                              <span className="text-xs text-gray-500">
-                                                Hide this question
-                                              </span>
-                                              <Switch />
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </TabsContent>
-                                  </Tabs>
+                                  <RecentQuestionsManager projectId={String(project.id)} />
                                 )}
                               </div>
+                              </ScrollArea>
                             </Tabs>
 
                             <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
@@ -9791,7 +9834,7 @@ export default function ProjectDetails() {
                         </span>
                         <div className="mt-2">
                           <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                            {durationLabel}
+                            {isServiceListing ? "Ongoing" : durationLabel}
                           </span>
                         </div>
                       </div>
@@ -9801,6 +9844,21 @@ export default function ProjectDetails() {
 
                   <ScopeBuilder
                     embedded
+                    scopeType={
+                      project?.listingType === "service"
+                        ? "service"
+                        : "project"
+                    }
+                    onScopeTypeChange={(type) => {
+                      setProject((prev: any) => ({
+                        ...prev,
+                        listingType: type,
+                      }))
+                      setHasChanges(true)
+                      ProjectAPI.UpdateProjectDraft(project.id, {
+                        listingType: type,
+                      } as any).catch(() => {})
+                    }}
                     phases={
                       project.scope?.length > 0 ? project.scope : undefined
                     }
@@ -9828,16 +9886,17 @@ export default function ProjectDetails() {
                             null,
                         }
                       })
+                      // Scope assignees must be members ON this project
+                      // (Chris 07-28) — the owner (self) plus added members —
+                      // never the whole roster or seed members.
                       const ids = Array.isArray(project.teamMemberIds)
                         ? project.teamMemberIds.map(String)
                         : []
-                      const subset =
-                        ids.length > 0
-                          ? apiTeam.filter((m: any) =>
-                              ids.includes(String(m.id))
-                            )
-                          : apiTeam
-                      return subset.length > 0 ? subset : SEED_TEAM_MEMBERS
+                      return apiTeam.filter(
+                        (m: any) =>
+                          ids.includes(String(m.id)) ||
+                          String(m.id) === ownerId
+                      )
                     })()}
                   />
                 </div>
@@ -9899,7 +9958,7 @@ export default function ProjectDetails() {
                 <div className="mt-3">
                   <span className="inline-block text-sm leading-none font-medium text-dark-blue-400">
                     {budgetTotalCents > 0
-                      ? `with an initial payment of $${Math.round((budgetTotalCents / 100) * 0.25).toLocaleString()} to kickoff`
+                      ? `with an initial payment of ${formatBudget(budgetTotalCents, budgetPeriod)} to kickoff`
                       : "with an initial payment of $0 to kickoff"}
                   </span>
                 </div>
@@ -9909,17 +9968,17 @@ export default function ProjectDetails() {
                     Current Team
                   </span>
 
-                  {Array.isArray(project.assignedTeam) &&
-                  project.assignedTeam.length > 0 ? (
+                  {Array.isArray(currentTeam) &&
+                  currentTeam.length > 0 ? (
                     <div className="group relative w-fit">
                       <div className="flex items-center -space-x-2">
-                      {project.assignedTeam
+                      {currentTeam
                         .slice(0, 5)
                         .map((m: any, i: number) => (
                           <Avatar
                             key={m.userId ?? m.username ?? i}
                             size="sm"
-                            className="border-2 border-white"
+                            className="border-2 border-white hover:ring-0 active:ring-0"
                           >
                             {m.avatarUrl && (
                               <AvatarImage
@@ -9932,9 +9991,9 @@ export default function ProjectDetails() {
                             </AvatarFallback>
                           </Avatar>
                         ))}
-                      {project.assignedTeam.length > 5 && (
+                      {currentTeam.length > 5 && (
                         <span className="pl-3 text-xs font-medium text-dark-blue-400">
-                          +{project.assignedTeam.length - 5}
+                          +{currentTeam.length - 5}
                         </span>
                       )}
                       </div>
@@ -9945,7 +10004,7 @@ export default function ProjectDetails() {
                             <span>
                               Your project currently has{" "}
                               <span className="font-bold">
-                                {project.assignedTeam.length} team members
+                                {currentTeam.length} team members
                               </span>
                             </span>
                           </div>
@@ -9953,6 +10012,10 @@ export default function ProjectDetails() {
                             type="button"
                             className="mt-2 inline-flex items-center gap-x-1 text-sm font-semibold text-primary-500 hover:text-primary-600 focus-visible:outline-none"
                             onClick={() => {
+                              // The team dialog lives in the "Details" tab, which
+                              // unmounts on other tabs — switch to it so the
+                              // dialog is mounted, then open it.
+                              setSelected("Details")
                               setTeamTab("Team Members")
                               setTeamDialogOpen(true)
                             }}
@@ -9963,17 +10026,43 @@ export default function ProjectDetails() {
                       </div>
                     </div>
                   ) : (
-                    <Avatar size="sm" className="border-2 border-white">
-                      {user?.avatarUrl && (
-                        <AvatarImage
-                          src={user.avatarUrl}
-                          alt={user.firstName || "Owner"}
-                        />
-                      )}
-                      <AvatarFallback>
-                        {user?.firstName?.[0]?.toUpperCase() || "O"}
-                      </AvatarFallback>
-                    </Avatar>
+                    <div className="group relative w-fit">
+                      <Avatar size="sm" className="border-2 border-white hover:ring-0 active:ring-0">
+                        {user?.avatarUrl && (
+                          <AvatarImage
+                            src={user.avatarUrl}
+                            alt={user.firstName || "Owner"}
+                          />
+                        )}
+                        <AvatarFallback>
+                          {user?.firstName?.[0]?.toUpperCase() || "O"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="pointer-events-none absolute left-0 top-full z-20 pt-2 w-[300px] opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+                        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
+                          <div className="flex items-center gap-x-2 text-sm font-light text-dark-blue-400">
+                            <Users03 className="size-4 shrink-0 text-primary-500" />
+                            <span>
+                              No team members yet — just you as owner.
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="mt-2 inline-flex items-center gap-x-1 text-sm font-semibold text-primary-500 hover:text-primary-600 focus-visible:outline-none"
+                            onClick={() => {
+                              // The team dialog lives in the "Details" tab, which
+                              // unmounts on other tabs — switch to it so the
+                              // dialog is mounted, then open it.
+                              setSelected("Details")
+                              setTeamTab("Team Members")
+                              setTeamDialogOpen(true)
+                            }}
+                          >
+                            Manage Team <span aria-hidden>→</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
 
@@ -9981,23 +10070,25 @@ export default function ProjectDetails() {
                   <div className="flex items-center gap-x-[6.4px]">
                     <Clock className="size-[18px] text-primary-500" />
                     <span className="text-sm leading-none font-medium text-dark-blue-400">
-                      {durationDays > 0
-                        ? `Starting from a ${durationValue} ${durationUnit} duration`
-                        : "Add a scope to see duration"}
+                      {isServiceListing
+                        ? "Ongoing duration"
+                        : durationDays > 0
+                          ? `Starting from a ${durationValue} ${durationUnit} duration`
+                          : "Add a scope to see duration"}
                     </span>
                   </div>
                   <div className="flex items-center gap-x-[6.4px]">
                     <Users03 className="size-[18px] text-primary-500" />
                     <span className="text-sm leading-none font-medium text-dark-blue-400">
                       {(() => {
-                        const roles = new Set<string>()
+                        let memberSlots = 0
                         for (const phase of project.scope ?? []) {
                           for (const row of phase.rows ?? []) {
-                            if (row.role) roles.add(row.role)
+                            if (row.role || row.task) memberSlots++
                           }
                         }
-                        return roles.size > 0
-                          ? `Minimum ${roles.size} team member${roles.size !== 1 ? "s" : ""}`
+                        return memberSlots > 0
+                          ? `Minimum ${memberSlots} team member${memberSlots !== 1 ? "s" : ""}`
                           : "Add a scope to see team members"
                       })()}
                     </span>
@@ -10204,7 +10295,7 @@ export default function ProjectDetails() {
                   open={publishDialogOpen}
                   onOpenChange={setPublishDialogOpen}
                 >
-                  <DialogContent className="max-w-[480px] p-0">
+                  <DialogContent className="p-0" style={{ maxWidth: 416 }}>
                     <div className="p-6">
                       <DialogTitle>
                         Publish this{" "}
@@ -10426,6 +10517,8 @@ export default function ProjectDetails() {
             </Card>
           </div>
         </div>
+
+        <div className="pb-[100px]" />
       </div>
 
       <MarketplaceFooter />

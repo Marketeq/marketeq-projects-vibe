@@ -186,7 +186,7 @@ const faqColumns = [
   ],
 ] as const
 
-function BillingOverviewContent({
+export function BillingOverviewContent({
   onNavigateTab,
 }: {
   onNavigateTab: (tab: BillingTabValue) => void
@@ -519,7 +519,7 @@ function BillingOverviewContent({
   )
 }
 
-function BillingMyPlansContent() {
+export function BillingMyPlansContent() {
   const [planTab, setPlanTab] = useState<"individual" | "team">("team")
   const [inviteThreshold, setInviteThreshold] = useState(
     inviteThresholdOptions[0]
@@ -863,7 +863,7 @@ function BillingMyPlansContent() {
                           <span className="text-sm font-semibold text-dark-blue-400">
                             {item.question}
                           </span>
-                          <ChevronDown className="mt-0.5 size-5 shrink-0 text-gray-500" />
+                          <ChevronDown className="mt-0.5 size-5 shrink-0 text-gray-500 transition-transform duration-300 group-data-[state=open]/trigger:rotate-180" />
                         </div>
                       </AccordionTrigger>
                       <AccordionContent>

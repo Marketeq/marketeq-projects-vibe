@@ -226,7 +226,11 @@ const ComboboxOptions = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ComboboxPrimitive.Options
     className={cn(
-      "absolute mt-1 w-full z-50 space-y-1 rounded-[5px] bg-white px-1 shadow-2xl",
+      // py-1 matches SelectContent's viewport; without it the first and last
+      // option sat flush against the dropdown edge. No horizontal padding:
+      // the Figma list item spans the full dropdown width, and px-1 was
+      // insetting every option by 4px a side.
+      "absolute mt-1 w-full z-50 space-y-1 rounded-[5px] bg-white py-1 shadow-2xl",
       className
     )}
     {...props}
@@ -254,7 +258,11 @@ const ComboboxOption = React.forwardRef<HTMLLIElement, ComboboxOptionProps>(
   ({ className, ...props }: ComboboxOptionProps, ref) => (
     <ComboboxPrimitive.Option
       className={cn(
-        "cursor-pointer bg-white px-3 py-2.5 text-[13px] font-medium leading-none text-gray-500 ui-active:bg-gray-50 ui-active:text-gray-900",
+        // ui-active covers keyboard navigation only: Headless UI 1.7 sets
+        // data-headlessui-state="active" from arrow keys but never from the
+        // mouse, so styling through it alone left options with no hover state
+        // at all. hover: gives the pointer the same Gray/50 the spec calls for.
+        "cursor-pointer bg-white px-3 py-2.5 text-[13px] font-medium leading-none text-gray-500 hover:bg-gray-50 hover:text-gray-900 ui-active:bg-gray-50 ui-active:text-gray-900",
         className
       )}
       ref={ref}

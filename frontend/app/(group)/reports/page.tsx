@@ -962,7 +962,7 @@ export default function ReportsPage() {
                         conversion correlations.
                       </div>
                       <div className="mt-3">
-                        <NextLink href="/billing">
+                        <NextLink href="/settings?tab=billing-plans">
                           <Button size="sm" variant="outlined" visual="gray">
                             View Premium Analytics
                           </Button>

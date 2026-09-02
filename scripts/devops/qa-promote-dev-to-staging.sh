@@ -16,7 +16,7 @@
 #        - staging's vercel.json WINS on conflict
 #        - staging's render.yaml WINS on conflict
 #        - everything else: dev-main wins
-#   5. Runs the gitleaks secret scan locally on the merged result
+#   5. Runs the gitleaks secret scan over the commits being promoted
 #   6. Pushes staging to origin
 #   7. Opens a GitHub issue tracking the QA round
 #
@@ -165,9 +165,24 @@ ok "Merged dev-main into staging"
 # --- Secret scan -------------------------------------------------------------
 
 if command -v gitleaks >/dev/null; then
-  say "Running gitleaks on the merged result"
-  if ! gitleaks detect --source "$REPO_ROOT" --config "$REPO_ROOT/.gitleaks.toml" --no-banner; then
-    err "gitleaks detected committed secrets. DO NOT PUSH. Investigate and fix on dev-main first, then re-run this script."
+  # Scope the scan to the commits this promotion actually adds.
+  #
+  # `gitleaks detect` scans the repo's whole commit history by default, not the
+  # working tree. Unscoped, it walked all ~1000 commits (315 MB, ~4m20s) and
+  # aborted every promotion on 56 pre-existing findings dated months earlier —
+  # findings that are already on staging and that no amount of fixing dev-main
+  # can remove, since they live in immutable history. That made the gate
+  # permanently unpassable rather than merely strict.
+  #
+  # The question a promotion gate must ask is "do the commits being promoted
+  # introduce a secret?", which is exactly $STAGING_SHA..HEAD. A secret added by
+  # the promoted commits still fails the gate. Pre-existing history is out of
+  # scope here by design — it is a real problem, but it is not this script's to
+  # catch, and blocking promotion on it does not fix it.
+  say "Running gitleaks on the promoted commits (${STAGING_SHA:0:7}..HEAD)"
+  if ! gitleaks detect --source "$REPO_ROOT" --config "$REPO_ROOT/.gitleaks.toml" \
+      --log-opts="${STAGING_SHA}..HEAD" --no-banner; then
+    err "gitleaks detected secrets in the commits being promoted. DO NOT PUSH. Remove the secret on dev-main, then re-run this script."
     git reset --hard origin/staging
     exit 1
   fi

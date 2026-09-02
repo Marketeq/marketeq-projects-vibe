@@ -461,12 +461,6 @@ function formatPrice(min: number | null, max: number | null): string {
 
 // ── Card renderers ──────────────────────────────────────────────────────────
 
-// Fallback avatar group — matches the static page's visual: 6 stacked
-// placeholder avatars so the ListingCard always renders an AvatarGroup.
-// When the backend starts populating `item.collaborators`, the real values
-// take precedence.
-const FALLBACK_COLLABORATORS = fromLength(6).map(() => "/woman.jpg")
-
 function renderProjectCarousel(item: ProjectCard) {
   return (
     <ListingCard
@@ -483,11 +477,7 @@ function renderProjectCarousel(item: ProjectCard) {
       duration={formatDuration(item.duration)}
       rating={item.rating ?? 4.9}
       reviewCount={item.reviewCount ?? 5}
-      collaborators={
-        item.collaborators && item.collaborators.length > 0
-          ? item.collaborators
-          : FALLBACK_COLLABORATORS
-      }
+      collaborators={item.collaborators}
       favoriteSlot={<FavoriteButton />}
     />
   )
@@ -883,7 +873,7 @@ function CategorySpotlightCard({
     <NextLink
       href={`/c/${category.slug}`}
       className={cn(
-        "group relative rounded-lg p-5 lg:p-[30px] overflow-hidden flex items-center bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] border border-[#122A4B]/[.15] min-h-[140px] hover:shadow-md transition-shadow",
+        "group relative rounded-lg p-5 lg:p-[30px] overflow-hidden flex items-center bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] border border-[#122A4B]/[.15] min-h-[140px]",
         className
       )}
     >
