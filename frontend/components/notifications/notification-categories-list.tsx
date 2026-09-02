@@ -49,10 +49,10 @@ export default function NotificationCategoriesList({
             <SearchMd className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search..."
+              placeholder="Search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-10 w-full rounded-[5px] border border-gray-300 bg-white pl-9 pr-3 text-sm text-dark-blue-400 shadow-xs placeholder:text-gray-500 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-50 transition-colors"
+              className="h-10 w-full rounded-[5px] border border-gray-300 bg-white pl-9 pr-3 text-sm text-dark-blue-400 shadow-xs placeholder:text-gray-500 placeholder:opacity-50 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-50 transition-colors"
             />
           </div>
           <DropdownMenu>
@@ -89,7 +89,7 @@ export default function NotificationCategoriesList({
                 <Icon className="size-5 text-primary-500" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-dark-blue-400 truncate">
+                <p className="text-sm leading-[17px] font-semibold text-dark-blue-400 truncate">
                   {category.title}
                 </p>
                 <p className="text-xs leading-[15px] text-gray-500">
