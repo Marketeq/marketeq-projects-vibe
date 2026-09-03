@@ -12,14 +12,28 @@ import {
   USER_OWNER_TARGET_CLIENT,
 } from './owner-target-client.port';
 
-/** Which owner-target client resolves each item type. */
+/**
+ * Which owner-target client resolves each item type — matches
+ * favorites-service's target-validation.service.ts routing exactly:
+ * PROJECT/SERVICE/JOB -> listing-service, TALENT/TEAM -> user-service.
+ * Teams are user-service's resolveTeamOwnerTarget()/validateTeam(), not
+ * listings-service's, which only ever resolves 'project' and hard-returns
+ * exists:false for anything else — routing TEAM there silently made every
+ * viewed team read back as unavailable.
+ */
 const CLIENT_BY_TYPE: Record<
   BrowsingHistoryItemType,
   typeof LISTING_OWNER_TARGET_CLIENT | typeof USER_OWNER_TARGET_CLIENT
 > = {
   [BrowsingHistoryItemType.PROJECT]: LISTING_OWNER_TARGET_CLIENT,
+  // SERVICE has no resolver anywhere today — listings-service's
+  // validateTarget only ever resolves targetType 'project' and
+  // hard-returns exists:false for anything else. Pre-existing platform
+  // limitation shared with favorites-service, not introduced here; service
+  // items will read as unavailable until listings-service adds a resolver
+  // for them.
   [BrowsingHistoryItemType.SERVICE]: LISTING_OWNER_TARGET_CLIENT,
-  [BrowsingHistoryItemType.TEAM]: LISTING_OWNER_TARGET_CLIENT,
+  [BrowsingHistoryItemType.TEAM]: USER_OWNER_TARGET_CLIENT,
   [BrowsingHistoryItemType.TALENT]: USER_OWNER_TARGET_CLIENT,
 };
 

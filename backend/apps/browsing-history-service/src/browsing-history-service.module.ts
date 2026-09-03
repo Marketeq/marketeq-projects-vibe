@@ -25,10 +25,12 @@ import {
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
         url: config.get<string>('DATABASE_URL'),
-        schema: config.get<string>('DATABASE_SCHEMA') || 'browsing_history',
+        schema: config.get<string>('DATABASE_SCHEMA') || 'public',
         entities: [BrowsingHistory],
         // Permanent guardrail: schema changes must go through migrations.
         synchronize: false,
+        migrationsRun: true,
+        migrations: [__dirname + '/migrations/*{.ts,.js}'],
         logging: process.env.NODE_ENV !== 'production',
         ssl:
           (config.get('DATABASE_SSL_ENABLED') ?? 'false').toString().toLowerCase() === 'true'

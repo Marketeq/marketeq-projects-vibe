@@ -15,7 +15,7 @@ loadEnv(envPath ? { path: envPath } : undefined);
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url: process.env.DATABASE_URL,
-  schema: process.env.DATABASE_SCHEMA || 'browsing_history',
+  schema: process.env.DATABASE_SCHEMA || 'public',
   synchronize: false,
   entities: [__dirname + '/**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
