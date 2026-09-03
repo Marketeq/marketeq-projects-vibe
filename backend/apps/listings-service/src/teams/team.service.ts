@@ -21,6 +21,35 @@ export class TeamsService {
     return this.repo.find({ where: { status }, order: { createdAt: 'DESC' } });
   }
 
+  /**
+   * Teams the user owns or belongs to, split so the caller can present them
+   * separately -- owning a team and being a member of one are different
+   * relationships and are managed differently.
+   *
+   * No status filter: this is the user's own management view, so their drafts
+   * belong here even though findAll() (the public list) shows Published only.
+   *
+   * memberIds is a text[] column, so membership uses the array containment
+   * operator rather than a LIKE on a serialised list.
+   */
+  async findMine(userId: string): Promise<{ owned: Team[]; member: Team[] }> {
+    const owned = await this.repo.find({
+      where: { createdBy: userId },
+      order: { createdAt: 'DESC' },
+    });
+
+    const member = await this.repo
+      .createQueryBuilder('team')
+      .where(':userId = ANY(team."memberIds")', { userId })
+      .andWhere('(team."createdBy" IS NULL OR team."createdBy" != :userId)', {
+        userId,
+      })
+      .orderBy('team."createdAt"', 'DESC')
+      .getMany();
+
+    return { owned, member };
+  }
+
   async findOne(id: string) {
     const item = await this.repo.findOne({ where: { id } });
     if (!item) throw new NotFoundException('Team not found');

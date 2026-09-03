@@ -11,6 +11,14 @@ export class TeamsController {
   @Get()
   findAll() { return this.service.findAll(); }
 
+  // Must stay ABOVE @Get(':id') -- Nest matches in declaration order, so below
+  // it 'mine' would bind as an :id and fail the lookup.
+  @Get('mine')
+  @UseGuards(JwtAuthGuard)
+  findMine(@Req() req: any) {
+    return this.service.findMine(req.user?.id ?? req.user?.sub);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) { return this.service.findOne(id); }
 

@@ -41,6 +41,7 @@ interface TeamsAPIType {
   ) => ReturnType<typeof AxiosRequest.del>
   getMyTeam: () => ReturnType<typeof AxiosRequest.get>
   getAffiliatedTeams: () => ReturnType<typeof AxiosRequest.get>
+  getMyTeams: () => ReturnType<typeof AxiosRequest.get>
   createAffiliatedTeam: (dto: {
     name: string
     location: string
@@ -55,6 +56,12 @@ interface TeamsAPIType {
 export const TeamsAPI: TeamsAPIType = {
   getTalentUserByUsername: (username: string) => {
     return AxiosRequest.get(`/talent/users/${username}`)
+  },
+
+  // Teams the signed-in user owns or belongs to, returned as
+  // { owned: Team[], member: Team[] } so the two can be shown separately.
+  getMyTeams: () => {
+    return AxiosRequest.get(`${TEAMS_BASE}/mine`)
   },
 
   // Get all members of a team
