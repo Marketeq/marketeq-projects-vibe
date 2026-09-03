@@ -11188,9 +11188,9 @@ const NoScopeRoleInfoStep = ({
       viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
-      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
-        <div className="flex flex-col gap-8 min-[1180px]:flex-row">
-          <div className="min-w-0 flex-auto max-w-[890px]">
+      <div className="flex flex-col gap-y-10 px-5 pb-[100px] pt-10 md:px-10 min-[1024px]:flex-row min-[1024px]:gap-x-8 min-[1024px]:px-[100px] min-[1024px]:py-[50px]">
+        <div className="contents">
+          <div className="flex-auto min-w-0">
             <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
               {isTeamMode
                 ? "Describe roles you need"
@@ -11614,7 +11614,8 @@ const NoScopeRoleInfoStep = ({
             </div>
           </div>
 
-          <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
+          <div className="xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
+            <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1024px]:w-[321px] self-start">
             <div className="flex items-center gap-x-2">
               <span className="text-base leading-normal font-semibold text-gray-400">
                 Quick tip
@@ -11639,6 +11640,7 @@ const NoScopeRoleInfoStep = ({
                   </span>
                 </div>
               ))}
+            </div>
             </div>
           </div>
         </div>
