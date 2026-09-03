@@ -4542,7 +4542,7 @@ const ProjectInfo = ({
                                 key={option.value}
                                 value={option.value}
                                 className={cn(
-                                  "flex h-20 w-[435px] items-center gap-x-4 rounded-lg border border-gray-200 bg-white py-4 pl-4 pr-6 text-left focus-visible:outline-none",
+                                  "flex h-20 w-[435px] flex-1 items-center gap-x-4 rounded-lg border border-gray-200 bg-white py-4 pl-4 pr-6 text-left focus-visible:outline-none",
                                   selected &&
                                     "border-2 border-primary-500 bg-primary-25",
                                 )}
