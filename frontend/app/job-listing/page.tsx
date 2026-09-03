@@ -9412,10 +9412,6 @@ const DescribeProjectStep = ({
   const firstQuestionTextareaClassName = isService
     ? "h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
     : descriptionTextareaClassName;
-  const describeProjectContainerClassName =
-    descriptionFieldVariant === "project"
-      ? "min-w-0 flex-auto max-w-[886px]"
-      : "min-w-0 flex-auto min-[1024px]:max-w-[886px]";
   const describeProjectContentClassName =
     descriptionFieldVariant === "project"
       ? "mt-8 flex flex-col gap-16"
@@ -9442,9 +9438,9 @@ const DescribeProjectStep = ({
     >
       <div
         ref={contentRef}
-        className="flex flex-col gap-y-8 px-5 pb-[100px] pt-6 md:px-10 min-[1024px]:flex-row min-[1024px]:gap-8 min-[1024px]:px-[100px] min-[1024px]:py-[50px]"
+        className="flex flex-col gap-y-10 px-5 pb-[100px] pt-10 md:px-10 min-[1024px]:flex-row min-[1024px]:gap-x-8 min-[1024px]:px-[100px] min-[1024px]:py-[50px]"
       >
-        <div className={describeProjectContainerClassName}>
+        <div className="flex-auto min-w-0">
           <h1
             className={cn(
               "text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400",
@@ -10285,7 +10281,7 @@ const DescribeProjectStep = ({
           ) : null}
         </div>
 
-        <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start">
+        <div className="xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
           <ProjectInfoTip
             variant={isService ? "describeServiceStep" : "describeProjectStep"}
           />
