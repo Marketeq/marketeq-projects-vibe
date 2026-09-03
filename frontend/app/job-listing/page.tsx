@@ -9410,7 +9410,7 @@ const DescribeProjectStep = ({
     ? "text-sm leading-5 font-normal text-gray-400"
     : descriptionCounterClassName;
   const firstQuestionTextareaClassName = isService
-    ? "h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
+    ? "h-[160px] w-[886px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
     : descriptionTextareaClassName;
   const describeProjectContentClassName =
     descriptionFieldVariant === "project"
@@ -9713,17 +9713,17 @@ const DescribeProjectStep = ({
                     updateDraftDetails({ deliverables: value.trim() });
                   }}
                   placeholder="UX design, front-end development, database setup"
-                  className="h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
+                  className="h-[160px] w-[886px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
                 />
               </div>
 
               <div className="mt-16 flex flex-col gap-6">
-                <div className="flex h-[52px] flex-col items-start gap-1">
-                  <Label className="text-[18px] leading-7 font-medium text-dark-blue-400">
+                <div className="flex h-[52px] w-[886px] flex-col items-center justify-center gap-1">
+                  <Label className="w-full text-[18px] leading-7 font-medium text-dark-blue-400">
                     Do you have documentation or a brief to share?
                     <span className="text-gray-400"> (Optional)</span>
                   </Label>
-                  <p className="text-sm leading-5 text-dark-blue-400">
+                  <p className="w-full text-sm leading-5 text-dark-blue-400">
                     If you&apos;ve already written a scope or have a doc with
                     details, upload it here. It&apos;ll help us better match the
                     team to your needs.
@@ -9732,9 +9732,9 @@ const DescribeProjectStep = ({
                 {scopeFile ? (
                   <div
                     className={cn(
-                      "rounded-lg border border-gray-200 bg-white px-4 py-3",
+                      "w-[886px] rounded-lg border border-gray-200 bg-white px-4 py-3",
                       scopeUploadStatus === "complete" &&
-                        "box-border flex h-[72px] w-full items-center gap-1 rounded-lg border-2 border-dashed border-gray-300 p-4",
+                        "box-border flex h-[72px] items-center gap-1 rounded-lg border-2 border-dashed border-gray-300 p-4",
                       scopeUploadStatus === "error" &&
                         "border-error-300 bg-error-25",
                     )}
@@ -9839,7 +9839,7 @@ const DescribeProjectStep = ({
                 ) : (
                   <label
                     className={cn(
-                      "flex h-[341px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white px-6 py-[100px] text-center focus-within:ring-2 focus-within:ring-primary-500",
+                      "flex h-[341px] w-[886px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white px-6 py-[100px] text-center focus-within:ring-2 focus-within:ring-primary-500",
                       isScopeDropActive && "border-primary-500",
                     )}
                     onClick={(event) => {
