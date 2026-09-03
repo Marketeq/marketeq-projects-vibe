@@ -23,6 +23,7 @@ import type {
 } from '../timer/timer-service';
 import type { ScreenshotService } from '../capture/screenshot-service';
 import type { ActivityMonitor } from '../capture/activity-monitor';
+import { getInputLevels } from '../capture/input-activity';
 import type { ScreenshotTakenEvent, ActivitySample } from '../../../shared/ipc-contracts';
 
 export interface EventBridgeDeps {
@@ -191,25 +192,13 @@ export function createEventBridge(deps: EventBridgeDeps) {
           log?.warn({ err }, 'event-bridge: failed to read screenshot file for upload');
         }
 
-        // Compute activity from instant idle time at capture moment
-        let keyboard = 0;
-        let mouse = 0;
-        try {
-          const { powerMonitor } = require('electron');
-          const idleSec = powerMonitor.getSystemIdleTime();
-          if (idleSec < 300) {
-            // Activity level derived from system idle time.
-            // keyboard/mouse breakdown requires native input hooks (rejected per DTT-D-009
-            // privacy guarantee — no keystroke data leaves the device). Values remain 0
-            // until an explicit repo-owner decision on a privacy-compliant measurement approach.
-            const basePct = Math.round((1 - idleSec / 300) * 100);
-            keyboard = 0; // Placeholder — see DTT-D-009
-            mouse = 0;    // Placeholder — see DTT-D-009
-            void basePct; // Available for overall activity signal if needed
-          }
-        } catch {
-          // Non-fatal
-        }
+        // Real keyboard/mouse activity for the trailing screenshot interval,
+        // measured separately. input-activity records only THAT input occurred,
+        // never which key, so the DTT-D-009 privacy guarantee (no keystroke
+        // data leaves the device) still holds — we send percentages, not keys.
+        const { keyboardPct, mousePct } = getInputLevels();
+        const keyboard = keyboardPct;
+        const mouse = mousePct;
 
         deps.outbox.enqueue({
           kind: 'screenshot.confirm',
