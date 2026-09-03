@@ -10121,12 +10121,21 @@ const DescribeProjectStep = ({
                               </div>
                               <div className="flex h-11 w-[395px] items-start gap-2">
                                 <Input
-                                  className="h-11 w-[251px] rounded-[5px] px-3.5 text-[16px] leading-6 text-gray-400 placeholder:text-gray-400"
+                                  className={cn(
+                                    "h-11 w-[251px] rounded-[5px] px-3.5 text-[16px] leading-6 text-gray-400 placeholder:text-gray-400",
+                                    customDuration !== "" &&
+                                      "text-dark-blue-400",
+                                  )}
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
                                   placeholder="Enter duration"
                                   value={customDuration}
                                   onClick={(event) => event.stopPropagation()}
                                   onChange={(event) => {
-                                    const value = event.target.value;
+                                    const value = event.target.value.replace(
+                                      /\D/g,
+                                      "",
+                                    );
                                     setCustomDuration(value);
                                     updateDraftDetails({
                                       durationMonths: isService
