@@ -11052,14 +11052,18 @@ const NoScopeRoleInfoStep = ({
   hiringMode,
 }: ProgressProps & { hiringMode?: HiringModeChoice }) => {
   const { toggleValidation } = useStepContext();
-  const { setDetails } = useJobListingDraftContext();
+  const { details, setDetails } = useJobListingDraftContext();
   const { projectScopeMethods } = useProjectScopeContext();
   const [, setProjectScopeState] = projectScopeMethods;
   const isTeamMode = hiringMode !== "individual";
   const useNoScopeLayout = true;
   const [roleDescription, setRoleDescription] = useState("");
   const [headcount, setHeadcount] = useState("");
-  const [budget, setBudget] = useState("");
+  const [budget, setBudget] = useState(
+    typeof details.budgetAmount === "number"
+      ? String(details.budgetAmount)
+      : "0.00",
+  );
   const [budgetFrequency, setBudgetFrequency] = useState<
     "per_week" | "per_month"
   >("per_week");
@@ -11076,7 +11080,7 @@ const NoScopeRoleInfoStep = ({
     toggleValidation(
       Boolean(roleDescription.trim()) &&
         (!isTeamMode || Boolean(headcount.trim())) &&
-        Boolean(budget.trim()) &&
+        budget.trim().length > 0 && Number(budget.replace(/,/g, "")) > 0 &&
         hasValidDuration,
     );
   }, [
@@ -11334,10 +11338,15 @@ const NoScopeRoleInfoStep = ({
                         )}
                         inputMode="decimal"
                         pattern="^\d*(\.\d{0,2})?$"
-                        placeholder="0.00"
                         value={budget}
                         onFocus={() => {
-                          if (budget === "0.00") setBudget("");
+                          if (budget === "0.00") {
+                            setBudget("");
+                            setDetails((previous) => ({
+                              ...previous,
+                              budgetAmount: 0,
+                            }));
+                          }
                         }}
                         onChange={(event) => {
                           const value = event.target.value.replace(/[^0-9.]/g, "");
