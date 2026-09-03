@@ -18,6 +18,16 @@ export class InitiatePayoutDto {
   // is only ever a preview.
   @IsOptional() @IsBoolean()
   ignoreReserve?: boolean;
+
+  // The frontend's own base URL for the magic-link confirmation page (e.g.
+  // "https://staging.marketeq.com/verify-withdrawal") — one shared backend
+  // serves three different Vercel frontends (dev/staging/live), so it can't
+  // guess which one to point the email link at. Same pattern as
+  // AuthService.resolveTrustedPasswordResetBase()'s redirectUrl: only used
+  // if its origin is on the FRONTEND_URL trusted list server-side, never
+  // trusted blindly.
+  @IsOptional() @IsString()
+  redirectUrl?: string;
 }
 
 export class InitiatePayoutResponseDto {
