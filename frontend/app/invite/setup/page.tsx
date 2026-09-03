@@ -489,7 +489,7 @@ function InviteSetup() {
   // notification, shown on /my-team once it lands) happen.
   const goToDashboard = async () => {
     if (!inviteToken) {
-      router.push("/my-team")
+      router.push("/my-network")
       return
     }
 
@@ -525,7 +525,7 @@ function InviteSetup() {
       const companyName = joinedCompany?.name
       const query = new URLSearchParams({ inviteAccepted: "1" })
       if (companyName) query.set("company", companyName)
-      router.push(`/my-team?${query.toString()}`)
+      router.push(`/my-network?${query.toString()}`)
     } catch (error: any) {
       const errorCode = error?.response?.data?.error as string | undefined
       const rawMessage =

@@ -809,6 +809,18 @@ These are reusable composed modules built from base UI components. Located at `f
 - **Import**: `import { ... } from "@/components/listing-card"`
 - **Exports**: Project/service listing card
 
+### TeamCardLandscape
+- **File**: `team-card-landscape.tsx`
+- **Import**: `import { TeamCardLandscape } from "@/components/team-card-landscape"`
+- **Exports**: `TeamCardLandscape`, `TeamCardLandscapeProps`
+- **Use for**: the team **list/landscape row** (Figma Component 1035). `ListingCard`
+  with `kind="team"` has no `layout="list"` — only project and service cards do —
+  so this is the team row. Grid view still uses `ListingCard kind="team"`.
+- **Key Props**: `id`, `name`, `tagline?`, `handle?`, `experience?`, `rate?`,
+  `locations?`, `rating?`, `projectCount?`, `skills?`, `memberAvatars?`,
+  `previousClientLogos?`, `href?`, `isSaved?`, `onSaveClick?`
+- **Used by**: Browsing History list view, /my-teams
+
 ### ListingCardCompact
 - **File**: `listing-card-compact.tsx`
 - **Import**: `import { ListingCardCompact } from "@/components/listing-card-compact"`

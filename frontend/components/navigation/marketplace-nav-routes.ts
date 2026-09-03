@@ -1,7 +1,7 @@
 export const MARKETPLACE_SECONDARY_NAV_PATHS = [
   "/",
   "/talent-profile",
-  "/my-team",
+  "/my-network",
   "/favorite-projects",
   "/favorite-talent",
   "/browser-history",

@@ -1,18 +1,21 @@
 "use client"
 
 /**
- * Browsing History-only Team list-row card.
+ * Team list-row (landscape) card — the approved appearance, Figma Component 1035.
  *
  * The shared TeamListingCard (frontend/components/listing-card.tsx) has no
- * list/landscape layout at all — TeamCardProps carries no `layout` or
- * `cardVariant` field, so there is no way to get this row treatment from the
- * shared component without modifying it. Per the approved appearance
- * (Figma Component 1035), this local component recreates just that row.
- * Used only on the Browsing History page's list view; the grid view still
- * uses the real shared ListingCard unmodified.
+ * list/landscape layout: TeamCardProps carries no `layout` or `cardVariant`
+ * field, so that row treatment cannot come out of the shared component without
+ * modifying it. This is the master team row instead.
+ *
+ * It began as a Browsing History-local file and was promoted here on
+ * 2026-09-03 when /my-teams needed the same row, so the two pages share one
+ * component rather than a copy. Markup is unchanged from that original.
+ *
+ * Pair it with ListingCard kind="team" for grid view.
  */
-import { cn } from "@/utils/functions"
 import { teamDetailsUrl } from "@/src/lib/listing-urls"
+import { cn } from "@/utils/functions"
 import { ChevronDown, MarkerPin02, Star } from "@blend-metrics/icons"
 import NextLink from "@/components/next-link"
 import {
@@ -67,7 +70,7 @@ function TeamAvatarLoop({ avatars }: { avatars: string[] }) {
   )
 }
 
-interface BrowsingHistoryTeamCardLandscapeProps {
+export interface TeamCardLandscapeProps {
   id: string
   name: string
   handle?: string
@@ -85,7 +88,7 @@ interface BrowsingHistoryTeamCardLandscapeProps {
   onSaveClick?: () => void
 }
 
-export function BrowsingHistoryTeamCardLandscape({
+export function TeamCardLandscape({
   id,
   name,
   handle,
@@ -101,7 +104,7 @@ export function BrowsingHistoryTeamCardLandscape({
   href,
   isSaved,
   onSaveClick,
-}: BrowsingHistoryTeamCardLandscapeProps) {
+}: TeamCardLandscapeProps) {
   const computedHref = href ?? teamDetailsUrl(id)
   const avatars =
     memberAvatars && memberAvatars.length > 0 ? memberAvatars : ["/woman.jpg"]
