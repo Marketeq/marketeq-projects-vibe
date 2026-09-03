@@ -22,6 +22,7 @@
  * is short and each row carries more detail than a portrait card would.
  */
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { FavoriteType } from "@/service/http/favorites"
 import { TeamsAPI } from "@/service/http/teams"
@@ -30,10 +31,16 @@ import {
   useFavorites,
   useRemoveFavorite,
 } from "@/src/hooks/useFavorites"
-import { Users01 } from "@blend-metrics/icons"
+import { Plus, Users01 } from "@blend-metrics/icons"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import { TeamCardLandscape } from "@/components/team-card-landscape"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui"
+import {
+  Button,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui"
 
 type MyTeam = {
   id: string
@@ -91,11 +98,14 @@ const toCardProps = (team: MyTeam) => {
     // completedProjects is a different number and would mislabel it.
     projectCount: team.reviewCount ?? undefined,
     memberAvatars: team.mediaUrls?.length ? team.mediaUrls : undefined,
+    // Roster size, so the cluster's "+N" bubble counts the whole team rather
+    // than only the avatars stored on the record.
+    memberCount: size,
   }
 }
 
 const EmptyState = ({ message }: { message: string }) => (
-  <div className="mt-3 flex flex-col items-center gap-y-3 rounded-lg border border-dashed border-gray-200 bg-white px-6 py-14">
+  <div className="mt-6 flex flex-col items-center gap-y-3 rounded-lg border border-dashed border-gray-200 bg-white px-6 py-14">
     <Users01 className="size-6 text-gray-400" />
     <span className="text-sm font-light text-gray-500">{message}</span>
   </div>
@@ -110,7 +120,7 @@ const TeamList = ({
   savedIds: Set<string>
   onToggleSave: (teamId: string) => void
 }) => (
-  <div className="flex flex-col gap-5 pt-3">
+  <div className="flex flex-col gap-5 pt-6">
     {teams.map((team) => (
       <TeamCardLandscape
         key={team.id}
@@ -170,6 +180,25 @@ export default function MyTeamsPage() {
 
   const savedIds = useMemo(() => new Set(savedByTeamId.keys()), [savedByTeamId])
 
+  const router = useRouter()
+  const [isCreating, setIsCreating] = useState(false)
+
+  // Mirrors My Listings' "New Listing": create the record, then open it so the
+  // owner names it on the team profile rather than in a dialog here.
+  const onCreateTeam = useCallback(async () => {
+    if (isCreating) return
+    setIsCreating(true)
+    try {
+      const res = await TeamsAPI.createMyTeam()
+      const created = (res as { data?: { id?: string } })?.data
+      if (created?.id) router.push(`/team-profile?teamId=${created.id}`)
+      else await load()
+    } catch {
+      // Leave the page as it is; the list is still valid and the owner can retry.
+      setIsCreating(false)
+    }
+  }, [isCreating, router, load])
+
   const onToggleSave = useCallback(
     (teamId: string) => {
       const existingId = savedByTeamId.get(teamId)
@@ -186,15 +215,23 @@ export default function MyTeamsPage() {
 
         <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
           <div className="space-y-5 min-w-0">
-            <div>
-              <h1 className="text-xl font-bold text-dark-blue-400">My Teams</h1>
-              <p className="mt-1 text-sm font-light text-gray-500">
-                Team profiles you own or belong to.
-              </p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h1 className="text-xl font-bold text-dark-blue-400">
+                  My Teams
+                </h1>
+                <p className="mt-1 text-sm font-light text-gray-500">
+                  Team profiles you own or belong to.
+                </p>
+              </div>
+              <Button disabled={isCreating} onClick={onCreateTeam}>
+                <Plus className="size-[15px]" />
+                Create a Team
+              </Button>
             </div>
 
             <Tabs defaultValue={OWNED}>
-              <div className="border-b border-gray-200">
+              <div>
                 <TabsList className="flex justify-start border-b-0 px-0">
                   <TabsTrigger value={OWNED}>{OWNED}</TabsTrigger>
                   <TabsTrigger value={MEMBER}>{MEMBER}</TabsTrigger>
