@@ -349,7 +349,8 @@ export class ProxyController {
       prefix === 'v1' &&
       (segments[1] === 'projects' ||
         segments[1] === 'services' ||
-        segments[1] === 'recently-viewed')
+        segments[1] === 'recently-viewed' ||
+        segments[1] === 'my-teams')
     ) {
       prefix = 'listings'
     } else if (prefix === 'v1' && (segments[1] === 'threads' || segments[1] === 'messages')) {

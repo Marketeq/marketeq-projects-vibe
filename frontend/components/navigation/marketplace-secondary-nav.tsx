@@ -35,7 +35,7 @@ const TeamMemberLink = () => {
       className="gap-x-0.5 text-[11px] leading-6 lg:text-[13px] lg:leading-6 text-dark-blue-400"
       variant="link"
       visual="gray"
-      onClick={() => router.push("/my-team")}
+      onClick={() => router.push("/my-network")}
     >
       {teamCount} team member{teamCount !== 1 ? "s" : ""}
       <ChevronRight className="size-3 lg:size-3.5" />

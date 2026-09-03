@@ -809,6 +809,30 @@ These are reusable composed modules built from base UI components. Located at `f
 - **Import**: `import { ... } from "@/components/listing-card"`
 - **Exports**: Project/service listing card
 
+### TeamCardLandscape — MASTER team card, list view
+- **File**: `team-card-landscape.tsx`
+- **Import**: `import { TeamCardLandscape } from "@/components/team-card-landscape"`
+- **Exports**: `TeamCardLandscape`, `TeamCardLandscapeProps`
+- **Storybook**: `stories/team-card-landscape.stories.tsx` (`Cards/Team Card Landscape`)
+- **Figma**: card `13290:20976` (Component 1035); avatar cluster `13491:46526`
+- **Use for**: every team row in **list view**. Grid view is
+  `ListingCard kind="team"`. `ListingCard` has no `layout="list"` for teams —
+  only projects and services take it — so team rows come from here. Do not
+  fork this or hand-roll a team row anywhere.
+- **Key Props**: `id`, `name`, `handle?`, `tagline?` (team type, not a
+  description — it is one capitalised line), `experience?`, `locations?`,
+  `rate?`, `rating?`, `projectCount?` (renders as "N reviews"), `skills?`,
+  `memberAvatars?`, `memberCount?` (whole roster, drives the "+N" bubble),
+  `previousClientLogos?`, `href?`, `isOwner?`, `isSaved?`, `onSaveClick?`,
+  `onLeaveClick?`
+- **Avatar cluster**: one variant per member count (1 = 50×50 … 6 = 128×140,
+  6-plus-overflow = 140×140). Always sits in a 140×140 frame anchored
+  **bottom-left**, never centred or top-left. The "+N" bubble appears only once
+  all six seats are filled.
+- **No card hover.** The only hovers are the team name (underline) and the
+  footer skill links (60% → full opacity).
+- **Used by**: `/my-teams`, Browsing History list view
+
 ### ListingCardCompact
 - **File**: `listing-card-compact.tsx`
 - **Import**: `import { ListingCardCompact } from "@/components/listing-card-compact"`

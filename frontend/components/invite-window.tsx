@@ -989,7 +989,7 @@ export const InviteWindow = () => {
 
   const handleManageRoles = () => {
     setSentInvites(null)
-    router.push("/my-team")
+    router.push("/my-network")
   }
 
   return (

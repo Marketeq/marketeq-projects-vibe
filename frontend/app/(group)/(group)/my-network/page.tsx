@@ -919,7 +919,7 @@ export default function MyTeam() {
     params.delete("inviteAccepted")
     params.delete("company")
     const query = params.toString()
-    router.replace(query ? `/my-team?${query}` : "/my-team", { scroll: false })
+    router.replace(query ? `/my-network?${query}` : "/my-network", { scroll: false })
     // Only ever fires once per navigation into this page, deliberately not
     // re-run on every searchParams change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1217,7 +1217,7 @@ export default function MyTeam() {
       </div>
 
       <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400 xs:max-md:mt-6">
-        My Team
+        My Network
       </h1>
 
       <Tabs className="mt-7 lg:mt-[19px]" defaultValue="Talent Network">

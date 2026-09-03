@@ -102,6 +102,16 @@ const nextConfig = {
         destination: "/search?q=:l3&category=:kind",
         permanent: false,
       },
+      {
+        // /my-team was renamed to /my-network on 2026-09-03. It sat one
+        // character from /my-teams (the team-profile collection), a
+        // different page entirely. Kept so existing links, bookmarks and
+        // already-sent invite emails still land. Query strings carry over
+        // automatically -- invite/setup redirects here with one.
+        source: "/my-team",
+        destination: "/my-network",
+        permanent: false,
+      },
     ]
   },
   async rewrites() {
