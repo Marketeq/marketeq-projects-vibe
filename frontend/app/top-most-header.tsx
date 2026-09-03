@@ -33,6 +33,7 @@ import {
   Bell,
   Briefcase02,
   ChevronDown,
+  ClockRewind,
   CoinStack,
   FileCheck02,
   LayoutGrid02,
@@ -1907,6 +1908,15 @@ export const TopMostHeader = ({
               >
                 <Star className="size-4" />
                 My Favorites
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setMenuOpen(false)
+                  router.push("/browsing-history")
+                }}
+              >
+                <ClockRewind className="size-4" />
+                Browsing History
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
