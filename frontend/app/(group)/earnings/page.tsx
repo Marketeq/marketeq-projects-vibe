@@ -151,7 +151,7 @@ export default function TransactionsPage() {
         <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
           <div className="space-y-5 min-w-0">
             <h1 className="text-xl font-bold text-dark-blue-400">
-              Transactions
+              Financials
             </h1>
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>

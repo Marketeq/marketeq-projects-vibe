@@ -98,7 +98,7 @@ const buildTalentSections = (inboxBadge?: string): SidebarSection[] => [
       { href: "/my-jobs", label: "My Jobs", icon: Briefcase },
       { href: "/my-team", label: "My Network", icon: Users },
       { href: "/my-teams", label: "My Teams", icon: Users },
-      { href: "/earnings", label: "Transactions", icon: CurrencyDollar },
+      { href: "/earnings", label: "Financials", icon: CurrencyDollar },
       { href: "/reports", label: "Reports", icon: BarChartSquare02 },
     ],
   },
