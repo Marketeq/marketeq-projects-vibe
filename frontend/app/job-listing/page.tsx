@@ -10281,7 +10281,7 @@ const DescribeProjectStep = ({
           ) : null}
         </div>
 
-        <div className="xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
+        <div className="xs:max-[1024px]:hidden shrink-0 self-start">
           <ProjectInfoTip
             variant={isService ? "describeServiceStep" : "describeProjectStep"}
           />
@@ -11614,7 +11614,7 @@ const NoScopeRoleInfoStep = ({
             </div>
           </div>
 
-          <div className="xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
+          <div className="xs:max-[1024px]:hidden shrink-0 self-start">
             <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1024px]:w-[321px] self-start">
             <div className="flex items-center gap-x-2">
               <span className="text-base leading-normal font-semibold text-gray-400">
