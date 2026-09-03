@@ -1898,7 +1898,7 @@ export const TopMostHeader = ({
                 }}
               >
                 <Users className="size-4" />
-                My Team
+                My Network
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
