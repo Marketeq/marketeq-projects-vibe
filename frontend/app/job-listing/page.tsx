@@ -11191,7 +11191,7 @@ const NoScopeRoleInfoStep = ({
       <div className="flex flex-col gap-y-10 px-5 pb-[100px] pt-10 md:px-10 min-[1024px]:flex-row min-[1024px]:gap-x-8 min-[1024px]:px-[100px] min-[1024px]:py-[50px]">
         <div className="contents">
           <div className="flex-auto min-w-0">
-            <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
+            <h1 className="text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
               {isTeamMode
                 ? "Describe roles you need"
                 : "Describe role you need"}
@@ -11467,7 +11467,7 @@ const NoScopeRoleInfoStep = ({
                     className={cn(
                       "flex min-h-[84px] items-start gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
                       useNoScopeLayout &&
-                        "h-[84px] w-[435px] min-h-0 gap-x-4 py-4 pr-6 pl-4",
+                        "h-[84px] w-[435px] min-h-0 items-center gap-x-4 py-4 pr-6 pl-4",
                       durationChoice === option.label && "border-primary-500",
                     )}
                   >
@@ -11486,11 +11486,16 @@ const NoScopeRoleInfoStep = ({
                     </span>
                     <span
                       className={cn(
-                        "mt-1 inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
+                        "mt-1 inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border-[1.5px] border-gray-300",
+                        useNoScopeLayout && "mt-0",
                         durationChoice === option.label &&
-                          "border-[5px] border-primary-500",
+                          "border-primary-500",
                       )}
-                    />
+                    >
+                      {durationChoice === option.label ? (
+                        <span className="size-2 rounded-full bg-primary-500" />
+                      ) : null}
+                    </span>
                   </HeadlessRadioGroupItem>
                 ))}
 
@@ -11517,10 +11522,10 @@ const NoScopeRoleInfoStep = ({
                   <div
                     className={cn(
                       "flex items-start gap-x-4",
-                    useNoScopeLayout && durationChoice === "Other"
-                        ? "flex h-7 w-full items-center justify-between gap-2"
+                      useNoScopeLayout && durationChoice === "Other"
+                        ? "flex h-7 w-[395px] items-center justify-between gap-2"
                         : useNoScopeLayout
-                          ? "flex h-[52px] w-[361px] items-center gap-4"
+                          ? "flex h-[52px] w-[395px] items-center gap-4"
                           : undefined,
                     )}
                   >
@@ -11531,11 +11536,16 @@ const NoScopeRoleInfoStep = ({
                     </span>
                     <span
                       className={cn(
-                        "mt-1 inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
+                        "mt-1 inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border-[1.5px] border-gray-300",
+                        useNoScopeLayout && "mt-0",
                         durationChoice === "Other" &&
-                          "border-[5px] border-primary-500",
+                          "border-primary-500",
                       )}
-                    />
+                    >
+                      {durationChoice === "Other" ? (
+                        <span className="size-2 rounded-full bg-primary-500" />
+                      ) : null}
+                    </span>
                   </div>
                   {(!useNoScopeLayout || durationChoice === "Other") && (
                     <div
