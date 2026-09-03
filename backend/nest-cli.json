@@ -142,6 +142,15 @@
         "tsConfigPath": "apps/favorites-service/tsconfig.app.json"
       }
     },
+    "browsing-history-service": {
+      "type": "application",
+      "root": "apps/browsing-history-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/browsing-history-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/browsing-history-service/tsconfig.app.json"
+      }
+    },
     "invitations-service": {
       "type": "application",
       "root": "apps/invitations-service",

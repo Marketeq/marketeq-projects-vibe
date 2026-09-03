@@ -19,6 +19,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   search: 'search',
   algolia: 'algolia',
   favorites: 'favorites',
+  'browsing-history': 'browsingHistory',
   portfolio: 'portfolio',
   'case-studies': 'portfolio',  // portfolio-service's case-study builder API
   media: 'portfolio',           // portfolio-service's R2 presigned media upload/delete
@@ -203,6 +204,7 @@ export class ProxyController {
       'contracts-service': process.env.CONTRACTS_SERVICE_URL || 'http://localhost:3010',
       'offer-service': process.env.OFFER_SERVICE_URL || 'http://localhost:3011',
       'favorites-service': process.env.FAVORITES_SERVICE_URL || 'http://localhost:3012',
+      'browsing-history-service': process.env.BROWSING_HISTORY_SERVICE_URL || 'http://localhost:3034',
       'invitations-service': process.env.INVITATIONS_SERVICE_URL || 'http://localhost:3013',
       'content-moderation-service': process.env.MODERATION_SERVICE_URL || 'http://localhost:3014',
       'portfolio-service': process.env.PORTFOLIO_SERVICE_URL || 'http://localhost:3015',
