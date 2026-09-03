@@ -11241,7 +11241,7 @@ const NoScopeRoleInfoStep = ({
                     useNoScopeLayout && "font-normal",
                   )}
                 >
-                  67 / 100
+                  {roleDescription.length}/100
                 </span>
               </div>
               <Textarea
@@ -11249,6 +11249,8 @@ const NoScopeRoleInfoStep = ({
                   "mt-3 h-40 text-base",
                   useNoScopeLayout &&
                     "mt-0 h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400",
+                  useNoScopeLayout &&
+                    roleDescription !== "" && "text-dark-blue-400",
                 )}
                 placeholder="Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
                 value={roleDescription}
@@ -11574,14 +11576,21 @@ const NoScopeRoleInfoStep = ({
                     >
                       <Input
                         className={cn(
-                          "w-[180px]",
+                          "w-[180px] text-gray-400 placeholder:text-gray-400",
                           useNoScopeLayout &&
-                            "h-11 w-[251px] rounded-[5px] px-[14px] py-2.5 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400",
+                            "h-11 w-[251px] rounded-[5px] px-[14px] py-2.5 text-[16px] leading-6 font-normal shadow-xs",
+                          useNoScopeLayout &&
+                            customDuration !== "" &&
+                            "text-dark-blue-400",
                         )}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         placeholder="Enter duration"
                         value={customDuration}
                         onChange={(event) =>
-                          setCustomDuration(event.target.value)
+                          setCustomDuration(
+                            event.target.value.replace(/\D/g, ""),
+                          )
                         }
                       />
                       {useNoScopeLayout ? (
