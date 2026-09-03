@@ -8,6 +8,9 @@ import Cookies from "js-cookie"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
+import { useRefreshUser } from "../hooks/use-refresh-user"
+import { useCompanyInfo } from "../hooks/use-company-info"
+import { useClientIp } from "../hooks/use-client-ip"
 import { AuthAPI } from "@/service/http/auth"
 import { ClientAPI } from "@/service/http/client"
 import { cn, convertToKbOrMb, getIsNotEmpty } from "@/utils/functions"
@@ -131,16 +134,29 @@ import {
   useToast,
 } from "@/components/ui"
 
-// The value shown in the design. There is no endpoint that reports the caller's
-// public IP, so this stays a constant until that wiring is done separately.
-const currentIpAddress = "11.12.122.122"
 
 // Cap on how many IPs one dialog can add before "Add More" greys out.
 const MAX_IP_ROWS = 10
 
+// Current session first, then most recently active — the ordering
+// ActiveSessionsModal already uses. Shared so the initial load and the refetch
+// after a removal cannot drift apart, which is what made the list silently
+// reorder once a device was removed.
+const sortDeviceSessions = <T extends { isCurrent: boolean; lastActiveAt: string }>(
+  sessions: T[]
+): T[] =>
+  [...sessions].sort((a, b) => {
+    if (a.isCurrent) return -1
+    if (b.isCurrent) return 1
+    return (
+      new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
+    )
+  })
+
 export default function SettingsPage() {
-  const { user, setUser } = useAuth()
+  const { user, setUser, logoutHandler } = useAuth()
   const { toast } = useToast()
+  const refreshUser = useRefreshUser()
   const router = useRouter()
   const routeParams = useParams()
   const searchParams = useSearchParams()
@@ -166,6 +182,13 @@ export default function SettingsPage() {
     },
     [router]
   )
+
+  const {
+    company,
+    save: saveCompanyInfo,
+  } = useCompanyInfo(activeTab === "company-info")
+
+  const { ip: currentIpAddress } = useClientIp(activeTab === "ip-restrictions")
 
   const toggleInviteWindow = useInviteWindowStore((s) => s.toggle)
   const invoiceExporters = useBillingExportStore((s) => s.exporters.invoices)
@@ -208,6 +231,7 @@ export default function SettingsPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
+  const [companyError, setCompanyError] = useState<string | null>(null)
   const [profileForm, setProfileForm] = useState({
     firstName: "",
     lastName: "",
@@ -262,9 +286,10 @@ export default function SettingsPage() {
 
   const [showLogoModal, setShowLogoModal] = useState(false)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
   const [isLogoRemoved, setIsLogoRemoved] = useState(false)
 
-  const logoSrc = isLogoRemoved ? "" : logoPreview ?? ""
+  const logoSrc = isLogoRemoved ? "" : logoPreview ?? company?.logoUrl ?? ""
 
   const onLogoDropAccepted = useCallback((files: File[]) => {
     const file = files[0]
@@ -274,12 +299,14 @@ export default function SettingsPage() {
     reader.onloadend = () => {
       setIsLogoRemoved(false)
       setLogoPreview(reader.result as string)
+      setLogoFile(file)
     }
     reader.readAsDataURL(file)
   }, [])
 
   const onLogoRemove = useCallback(() => {
     setLogoPreview(null)
+    setLogoFile(null)
     setIsLogoRemoved(true)
   }, [])
 
@@ -411,17 +438,7 @@ export default function SettingsPage() {
     AuthAPI.GetSessions(currentSessionId)
       .then((res) => {
         if (res?.status === 200 && Array.isArray(res.data)) {
-          // Current session first, then most recently active — same ordering
-          // ActiveSessionsModal uses.
-          const sorted = [...res.data].sort((a, b) => {
-            if (a.isCurrent) return -1
-            if (b.isCurrent) return 1
-            return (
-              new Date(b.lastActiveAt).getTime() -
-              new Date(a.lastActiveAt).getTime()
-            )
-          })
-          setDeviceSessions(sorted)
+          setDeviceSessions(sortDeviceSessions(res.data))
         }
       })
       .catch(() => {
@@ -525,6 +542,9 @@ export default function SettingsPage() {
   const handleConfirmRemoveDevice = async () => {
     if (!deviceDetail) return
     const id = deviceDetail.id
+    // Revoking the session you are signed in with kills the token this page is
+    // using. Captured before the optimistic removal drops the record.
+    const isRemovingCurrentDevice = deviceDetail.isCurrent === true
 
     setIsRemoveDeviceOpen(false)
 
@@ -534,10 +554,20 @@ export default function SettingsPage() {
 
     await AuthAPI.RevokeSession(id).catch(() => {})
 
+    if (isRemovingCurrentDevice) {
+      // Sign out rather than refetching. auth-service rejects the revoked
+      // session (401) while user-service still honours the JWT (200), so
+      // carrying on leaves a half-signed-out app: some calls succeed, some
+      // fail, and nothing tells the user why. Signing out is also what the
+      // action means — it is the "sign me out of this device" path.
+      logoutHandler()
+      return
+    }
+
     AuthAPI.GetSessions(currentSessionId)
       .then((res) => {
         if (res?.status === 200 && Array.isArray(res.data)) {
-          setDeviceSessions(res.data)
+          setDeviceSessions(sortDeviceSessions(res.data))
         }
       })
       .catch(() => {})
@@ -598,9 +628,7 @@ export default function SettingsPage() {
   }
 
   const twoFactorNumbers = [
-    ...((user as any)?.twoFactorPhone
-      ? [(user as any).twoFactorPhone as string]
-      : []),
+    ...(user?.twoFactorPhone ? [user.twoFactorPhone] : []),
     ...addedTwoFactorNumbers,
   ]
   const [isMagicLinkSent, setIsMagicLinkSent] = useState(false)
@@ -702,15 +730,15 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (user) {
-      const rawTeam = (user as any).team ?? ""
-      const rawLang = (user as any).language ?? ""
+      const rawLang = user.language ?? ""
       setProfileForm({
         firstName: user.firstName ?? "",
         lastName: user.lastName ?? "",
         username: user.username ?? "",
-        phone: (user as any).phone ?? "",
-        jobTitle: (user as any).recentJobTitle ?? "",
-        team: rawTeam ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+        phone: user.phone ?? "",
+        jobTitle: user.recentJobTitle ?? "",
+        // No column backs the department field yet — see handleProfileSave.
+        team: [],
         languages: rawLang ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
       })
     }
@@ -722,11 +750,9 @@ export default function SettingsPage() {
     if (isAvatarDirty) return true
     if (!user) return false
 
-    const rawTeam = (user as any).team ?? ""
-    const rawLang = (user as any).language ?? ""
-    const savedTeam = rawTeam
-      ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean)
-      : []
+    const rawLang = user.language ?? ""
+    // Nothing persists the department, so a saved value can never exist.
+    const savedTeam: string[] = []
     const savedLanguages = rawLang
       ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean)
       : []
@@ -735,8 +761,8 @@ export default function SettingsPage() {
       profileForm.firstName !== (user.firstName ?? "") ||
       profileForm.lastName !== (user.lastName ?? "") ||
       profileForm.username !== (user.username ?? "") ||
-      profileForm.phone !== ((user as any).phone ?? "") ||
-      profileForm.jobTitle !== ((user as any).recentJobTitle ?? "") ||
+      profileForm.phone !== (user.phone ?? "") ||
+      profileForm.jobTitle !== (user.recentJobTitle ?? "") ||
       profileForm.team.join(",") !== savedTeam.join(",") ||
       profileForm.languages.join(",") !== savedLanguages.join(",")
     )
@@ -752,10 +778,48 @@ export default function SettingsPage() {
 
   const isLogoDirty = logoPreview !== null || isLogoRemoved
 
+  // Saved values for the two fields that persist. The other six have no
+  // column anywhere, so their saved value is always empty.
+  const savedCompanyName = company?.name ?? ""
+  const savedCompanyWebsite = company?.domain ?? ""
+
+  useEffect(() => {
+    if (!company) return
+    setCompanyForm((prev) => ({
+      ...prev,
+      name: company.name ?? "",
+      website: company.domain ?? "",
+    }))
+  }, [company])
+
+  // The six fields with no column still need Save and Cancel to behave, so
+  // their "saved" state is whatever they held at the last save. Without this
+  // they could never match a saved value and the actions would never retire.
+  const [savedCompanyExtras, setSavedCompanyExtras] = useState({
+    industry: "",
+    businessType: "",
+    companySize: "",
+    annualRevenue: "",
+    phone: "",
+    timeZone: "",
+  })
+
   const isCompanyDirty = useMemo(() => {
     if (isLogoDirty) return true
-    return Object.values(companyForm).some((value) => value !== "")
-  }, [companyForm, isLogoDirty])
+    // Compared against what was loaded rather than against empty, or the form
+    // would read as permanently dirty the moment a saved company loads.
+    if (companyForm.name !== savedCompanyName) return true
+    if (companyForm.website !== savedCompanyWebsite) return true
+    return (
+      Object.keys(savedCompanyExtras) as (keyof typeof savedCompanyExtras)[]
+    ).some((key) => companyForm[key] !== savedCompanyExtras[key])
+  }, [
+    companyForm,
+    isLogoDirty,
+    savedCompanyName,
+    savedCompanyWebsite,
+    savedCompanyExtras,
+  ])
 
   const [hasJustSavedCompany, setHasJustSavedCompany] = useState(false)
 
@@ -765,24 +829,56 @@ export default function SettingsPage() {
 
   const areCompanyActionsVisible = isCompanyDirty && !hasJustSavedCompany
 
-  const handleCompanySave = () => {
-    setSavedAlertMessage("Your company info has been saved")
-    setIsSavedAlertMounted(true)
-    setHasJustSavedCompany(true)
+  const handleCompanySave = async () => {
+    setCompanyError(null)
+    try {
+      await saveCompanyInfo(
+        { name: companyForm.name, website: companyForm.website },
+        logoFile
+      )
+      setLogoFile(null)
+      // The upload is now the saved logo, so the pending preview retires and
+      // logoSrc falls through to company.logoUrl. Leaving it set would keep
+      // isLogoDirty true and the actions would never hide.
+      setLogoPreview(null)
+      setIsLogoRemoved(false)
+      setSavedCompanyExtras({
+        industry: companyForm.industry,
+        businessType: companyForm.businessType,
+        companySize: companyForm.companySize,
+        annualRevenue: companyForm.annualRevenue,
+        phone: companyForm.phone,
+        timeZone: companyForm.timeZone,
+      })
+      setSavedAlertMessage("Your company info has been saved")
+      setIsSavedAlertMounted(true)
+      setHasJustSavedCompany(true)
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.errors?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Something went wrong"
+      // Toasts confirm successes only; a failed save reports itself inline,
+      // matching how Personal Info reports one.
+      setCompanyError(
+        message.startsWith("Please") ? message : `Please try again. ${message}`
+      )
+    }
   }
 
   const handleCompanyCancel = () => {
+    setCompanyError(null)
     setCompanyForm({
-      name: "",
-      website: "",
-      industry: "",
-      businessType: "",
-      companySize: "",
-      annualRevenue: "",
-      phone: "",
-      timeZone: "",
+      // Restores what was saved rather than blanking the form. Clearing was
+      // harmless while nothing persisted; with a real record behind the panel
+      // it would look like Cancel had deleted the company details.
+      name: savedCompanyName,
+      website: savedCompanyWebsite,
+      ...savedCompanyExtras,
     })
     setLogoPreview(null)
+    setLogoFile(null)
     setIsLogoRemoved(false)
   }
 
@@ -1072,6 +1168,11 @@ export default function SettingsPage() {
         phone: profileForm.phone,
         recentJobTitle: profileForm.jobTitle,
         language: profileForm.languages.join(", "),
+        // NOT teamName — that column holds the client's *company name*
+        // (complete-client-profile writes `teamName: companyName`, and the
+        // entity says so). This field is "What team do you work on?", a
+        // department. Sending it here would overwrite Company Info. The
+        // department has no column yet, so it stays unsubmitted.
       }
       const response = await UserAPI.updateProfile(user.id, payload)
       const isSuccess =
@@ -1092,6 +1193,10 @@ export default function SettingsPage() {
         )
         setIsEditing(false)
         toast({ title: "Profile updated successfully", variant: "success" })
+        // The patch above only carries the three fields it names. Re-read so
+        // the rest of the app sees the phone, job title, team, languages and
+        // the avatar URL the upload returned.
+        await refreshUser()
       } else {
         throw new Error("Failed to update profile")
       }
@@ -1113,15 +1218,14 @@ export default function SettingsPage() {
   }
 
   const handleProfileCancel = () => {
-    const rawTeam = (user as any)?.team ?? ""
-    const rawLang = (user as any)?.language ?? ""
+    const rawLang = user?.language ?? ""
     setProfileForm({
       firstName: user?.firstName ?? "",
       lastName: user?.lastName ?? "",
       username: user?.username ?? "",
-      phone: (user as any)?.phone ?? "",
-      jobTitle: (user as any)?.recentJobTitle ?? "",
-      team: rawTeam ? rawTeam.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
+      phone: user?.phone ?? "",
+      jobTitle: user?.recentJobTitle ?? "",
+      team: [],
       languages: rawLang ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
     })
     setAvatarPreview(null)
@@ -1750,6 +1854,12 @@ export default function SettingsPage() {
                           Save Changes
                         </Button>
                       </div>
+                    )}
+
+                    {companyError && (
+                      <p className="mt-3 text-xs font-medium text-error-500">
+                        {companyError}
+                      </p>
                     )}
                   </div>
                 </>
@@ -3018,10 +3128,7 @@ export default function SettingsPage() {
                             First Activity
                           </TableHead>
                           <TableHead className="whitespace-nowrap border-b border-gray-200 hover:text-gray-600">
-                            <span className="flex items-center gap-x-1">
-                              Device Name
-                              <Edit01 className="size-4 text-gray-400" />
-                            </span>
+                            Device Name
                           </TableHead>
                         </TableRow>
                       </TableHeader>
@@ -3194,7 +3301,7 @@ export default function SettingsPage() {
                             Your current IP address is:
                           </span>
                           <span className="text-sm font-bold text-gray-700">
-                            {currentIpAddress}
+                            {currentIpAddress ?? "—"}
                           </span>
                         </div>
                       </div>
