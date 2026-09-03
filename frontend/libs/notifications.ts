@@ -528,7 +528,7 @@ export const getNotificationHref = (
     case "message":
       return "/inbox"
     case "team":
-      return "/my-team"
+      return "/my-network"
     case "project":
       return "/publish-project"
     case "system":

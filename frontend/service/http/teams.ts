@@ -2,6 +2,10 @@ import AxiosRequest from ".."
 
 // Teams service runs on port 3003 (user-service), accessed through gateway
 const TEAMS_BASE = process.env.NEXT_PUBLIC_TEAMS_URL ?? "/teams"
+// Team profiles the user owns or joined. Separate prefix from TEAMS_BASE:
+// the gateway routes `/teams` to user-service (membership) and `/my-teams`
+// to listings-service (the profiles themselves).
+const MY_TEAMS_BASE = "/v1/my-teams"
 const AFFILIATED_TEAMS_BASE = "/affiliated-teams"
 
 export interface TeamMember {
@@ -42,6 +46,7 @@ interface TeamsAPIType {
   getMyTeam: () => ReturnType<typeof AxiosRequest.get>
   getAffiliatedTeams: () => ReturnType<typeof AxiosRequest.get>
   getMyTeams: () => ReturnType<typeof AxiosRequest.get>
+  createMyTeam: (dto?: { title?: string }) => ReturnType<typeof AxiosRequest.post>
   createAffiliatedTeam: (dto: {
     name: string
     location: string
@@ -61,7 +66,10 @@ export const TeamsAPI: TeamsAPIType = {
   // Teams the signed-in user owns or belongs to, returned as
   // { owned: Team[], member: Team[] } so the two can be shown separately.
   getMyTeams: () => {
-    return AxiosRequest.get(`${TEAMS_BASE}/mine`)
+    return AxiosRequest.get(MY_TEAMS_BASE)
+  },
+  createMyTeam: (dto) => {
+    return AxiosRequest.post(MY_TEAMS_BASE, dto ?? {})
   },
 
   // Get all members of a team

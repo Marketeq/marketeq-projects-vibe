@@ -61,7 +61,8 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
         {section.items.map((item) => {
           const Icon = item.icon
 
-          const isActive = pathname === item.href || pathname?.startsWith(item.href + "/")
+          const isActive =
+            pathname === item.href || pathname?.startsWith(item.href + "/")
 
           return (
             <NextLink
@@ -69,7 +70,12 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
               className={linkClass(item.href)}
               href={item.href}
             >
-              <Icon className={cn("size-[18px]", isActive ? "text-primary-500" : "text-dark-blue-400/50")} />
+              <Icon
+                className={cn(
+                  "size-[18px]",
+                  isActive ? "text-primary-500" : "text-dark-blue-400/50"
+                )}
+              />
               {item.label}
               {item.badge && (
                 <Badge
@@ -96,7 +102,6 @@ const buildTalentSections = (inboxBadge?: string): SidebarSection[] => [
       { href: "/my-listings", label: "My Listings", icon: Search },
       { href: "/my-contracts", label: "My Contracts", icon: FileCheck02 },
       { href: "/my-jobs", label: "My Jobs", icon: Briefcase },
-      { href: "/my-team", label: "My Network", icon: Users },
       { href: "/my-teams", label: "My Teams", icon: Users },
       { href: "/earnings", label: "Financials", icon: CurrencyDollar },
       { href: "/reports", label: "Reports", icon: BarChartSquare02 },

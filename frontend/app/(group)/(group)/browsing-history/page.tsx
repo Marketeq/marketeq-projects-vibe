@@ -5,21 +5,21 @@ import { useState } from "react"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
 import {
+  type FavoriteType,
   addFavorite,
   findFavoriteByTypeAndItemId,
   getAllFavorites,
   removeFavorite,
-  type FavoriteType,
 } from "@/src/lib/api/favorites"
 import { cn, getFirstItem } from "@/utils/functions"
 import { Check, SearchMd, User01, X } from "@blend-metrics/icons"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Grid, List, SortAs } from "@/components/icons"
 import { ListingCard } from "@/components/listing-card"
+import NextLink from "@/components/next-link"
 import { TalentSearchCard } from "@/components/talent-search-card"
 import { TalentSearchCardLandscape } from "@/components/talent-search-card-landscape"
-import { BrowsingHistoryTeamCardLandscape } from "./team-card-landscape"
-import NextLink from "@/components/next-link"
+import { TeamCardLandscape } from "@/components/team-card-landscape"
 import {
   Avatar,
   AvatarFallback,
@@ -527,14 +527,12 @@ function renderHistoryItem(
     }
     case "team": {
       const team = item.data
-      // TeamCardProps has no list/landscape layout in dev-main's shared
-      // ListingCard — grid view uses the real shared component unmodified;
-      // list view uses a Browsing History-local recreation of the approved
-      // Figma row (see team-card-landscape.tsx), since the shared component
-      // cannot produce it without being modified.
+      // TeamCardProps has no list/landscape layout on the shared ListingCard,
+      // so grid view uses ListingCard and list view uses the shared
+      // TeamCardLandscape row (components/team-card-landscape.tsx).
       if (!isGrid) {
         return (
-          <BrowsingHistoryTeamCardLandscape
+          <TeamCardLandscape
             key={`team-${team.id}`}
             id={team.id}
             name={team.name}
@@ -797,7 +795,13 @@ export default function BrowsingHistoryPage() {
 
   const itemsByTab: Record<TabValue, HistoryItem[]> = {
     "Show All": sortHistoryItems(
-      interleave([talentItems, teamItems, jobItems, projectItems, serviceItems]),
+      interleave([
+        talentItems,
+        teamItems,
+        jobItems,
+        projectItems,
+        serviceItems,
+      ]),
       sortBy
     ),
     "Recent Projects": sortHistoryItems(projectItems, sortBy),
@@ -973,66 +977,68 @@ export default function BrowsingHistoryPage() {
                   </NextLink>
                 }
               />
-            ) : (() => {
-              const visibleItems = itemsByTab[tab]
-                .filter((item) => item.type !== "talent" || !isLoading)
-                .filter(matchesSearch)
+            ) : (
+              (() => {
+                const visibleItems = itemsByTab[tab]
+                  .filter((item) => item.type !== "talent" || !isLoading)
+                  .filter(matchesSearch)
 
-              if (visibleItems.length === 0 && normalizedQuery) {
-                return (
-                  <div className="py-16 text-center">
-                    <p className="text-sm font-semibold text-dark-blue-400">
-                      0 Results for &quot;{searchQuery}&quot;
-                    </p>
-                    <p className="mt-1 text-sm text-gray-400">
-                      We couldn&apos;t find any results for your search. Try
-                      adjusting your keywords or clearing your search.
-                    </p>
-                    <Button
-                      variant="outlined"
-                      visual="gray"
-                      size="sm"
-                      className="mt-4"
-                      onClick={() => {
-                        setSearchQuery("")
-                        setIsSearchOpen(false)
-                      }}
-                    >
-                      Clear Search
-                    </Button>
+                if (visibleItems.length === 0 && normalizedQuery) {
+                  return (
+                    <div className="py-16 text-center">
+                      <p className="text-sm font-semibold text-dark-blue-400">
+                        0 Results for &quot;{searchQuery}&quot;
+                      </p>
+                      <p className="mt-1 text-sm text-gray-400">
+                        We couldn&apos;t find any results for your search. Try
+                        adjusting your keywords or clearing your search.
+                      </p>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        className="mt-4"
+                        onClick={() => {
+                          setSearchQuery("")
+                          setIsSearchOpen(false)
+                        }}
+                      >
+                        Clear Search
+                      </Button>
+                    </div>
+                  )
+                }
+
+                return isGrid ? (
+                  <div className="columns-2 lg:columns-3 gap-x-3 lg:gap-x-6 pt-3.5 lg:pt-6">
+                    {visibleItems.map((item) => (
+                      <div
+                        key={`${item.type}-${item.data.id}`}
+                        className="mb-3 break-inside-avoid lg:mb-5"
+                      >
+                        {renderHistoryItem(
+                          item,
+                          true,
+                          talentFavoriteProps,
+                          favoritesProps
+                        )}
+                      </div>
+                    ))}
                   </div>
-                )
-              }
-
-              return isGrid ? (
-                <div className="columns-2 lg:columns-3 gap-x-3 lg:gap-x-6 pt-3.5 lg:pt-6">
-                  {visibleItems.map((item) => (
-                    <div
-                      key={`${item.type}-${item.data.id}`}
-                      className="mb-3 break-inside-avoid lg:mb-5"
-                    >
-                      {renderHistoryItem(
+                ) : (
+                  <div className="flex flex-col gap-3 lg:gap-6 pt-3.5 lg:pt-6">
+                    {visibleItems.map((item) =>
+                      renderHistoryItem(
                         item,
-                        true,
+                        false,
                         talentFavoriteProps,
                         favoritesProps
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3 lg:gap-6 pt-3.5 lg:pt-6">
-                  {visibleItems.map((item) =>
-                    renderHistoryItem(
-                      item,
-                      false,
-                      talentFavoriteProps,
-                      favoritesProps
-                    )
-                  )}
-                </div>
-              )
-            })()}
+                      )
+                    )}
+                  </div>
+                )
+              })()
+            )}
           </TabsContent>
         ))}
       </Tabs>

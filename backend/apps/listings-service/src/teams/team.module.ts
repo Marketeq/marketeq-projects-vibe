@@ -4,6 +4,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TeamsInternalController } from './teams-internal.controller';
 import { TeamsController } from './team.controller';
+import { MyTeamsController } from './my-teams.controller';
 import { TeamsService } from './team.service';
 import { Team } from './entities/team.entity';
 
@@ -31,7 +32,7 @@ import { Team } from './entities/team.entity';
       },
     ]),
   ],
-  controllers: [TeamsController, TeamsInternalController],
+  controllers: [TeamsController, MyTeamsController, TeamsInternalController],
   providers: [TeamsService],
   exports: [TeamsService],
 })
