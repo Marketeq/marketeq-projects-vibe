@@ -101,6 +101,10 @@ export class CompaniesService {
   async update(id: string, dto: UpdateCompanyDto): Promise<Company> {
     const company = await this.findOne(id);
     if (dto.name !== undefined) company.name = dto.name.trim();
+    // Trimmed to empty means "clear it", matching how create treats a blank
+    // domain, rather than storing an empty string.
+    if (dto.domain !== undefined)
+      company.domain = dto.domain.trim() || undefined;
     if (dto.logoUrl !== undefined) company.logoUrl = dto.logoUrl;
     return this.companyRepo.save(company);
   }
