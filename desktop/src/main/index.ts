@@ -24,6 +24,7 @@ import {
 import { createPermissionsService } from './services/permissions/permissions-service';
 import { createScreenshotService } from './services/capture/screenshot-service';
 import { createActivityMonitor } from './services/capture/activity-monitor';
+import { startInputActivity, stopInputActivity } from './services/capture/input-activity';
 import { createCleanupJob } from './services/capture/cleanup-job';
 import { createCaptureSupervisor } from './services/capture/capture-supervisor';
 import { registerCaptureIpcHandlers } from './services/capture/register-ipc';
@@ -346,6 +347,10 @@ async function bootstrap(): Promise<void> {
       captureSupervisor,
     });
     captureSupervisor.start();
+    // Separate keyboard/mouse activity measurement — feeds real percentages
+    // into each screenshot upload (see event-bridge.ts). Non-fatal if the
+    // native input hook is unavailable.
+    startInputActivity(logger);
     logger.info('phase 3 capture pipeline wired');
   } catch (err) {
     logger.error({ err }, 'failed to initialize capture pipeline');
@@ -626,6 +631,7 @@ async function bootstrap(): Promise<void> {
     try {
       stopCaptureIpc?.();
       captureSupervisor?.stop();
+      stopInputActivity();
     } catch (err) {
       logger.warn({ err }, 'error while stopping capture supervisor');
     }
