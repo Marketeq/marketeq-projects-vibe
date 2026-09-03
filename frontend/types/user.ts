@@ -35,6 +35,11 @@ export type User = {
   recentJobTitle?: string | null
   jobTitles?: string[] | null
   teamName?: string | null
+  /** Comma-separated list of languages the user speaks. A profile attribute —
+   *  it does not switch the interface language. */
+  language?: string | null
+  /** Phone registered as the second factor. Separate from `phone`. */
+  twoFactorPhone?: string | null
   companyWebsite?: string | null
   workplaceValues?: string[] | null
   clientOnboardedAt?: string | Date | null

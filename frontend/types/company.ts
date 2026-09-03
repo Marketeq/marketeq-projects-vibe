@@ -29,6 +29,9 @@ export interface CreateCompanyDto {
 
 export interface UpdateCompanyDto {
   name?: string
+  /** Company website. Accepted by create from the start; update gained it so
+   *  Settings > Company Info can correct a website after registration. */
+  domain?: string
   logoUrl?: string
 }
 
