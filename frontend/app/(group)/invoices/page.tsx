@@ -13,7 +13,7 @@ export default function InvoicesPage() {
       <div className="flex min-h-screen bg-gray-50">
         <LeftSidebar />
 
-        <div className="min-[1024px]:pl-[324px] min-[1024px]:pr-[100px] min-[1024px]:py-8 flex-auto overflow-hidden p-3.5 md:p-6">
+        <div className="min-[1024px]:pl-[274px] min-[1024px]:pr-[50px] min-[1024px]:pt-[50px] min-[1024px]:pb-8 flex-auto overflow-hidden p-3.5 md:p-6">
           <div className="mx-auto max-w-[1160px] space-y-5">
             <BillingSectionHeader
               title="Billing"

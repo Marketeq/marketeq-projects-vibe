@@ -413,7 +413,7 @@ export default function ReportsPage() {
       <div className="flex bg-gray-50">
         <LeftSidebar />
 
-        <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[324px] min-[1024px]:pr-[100px] overflow-hidden">
+        <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px] overflow-hidden">
           <div className="flex-auto min-w-0">
             <Alert variant="primary" className="mb-6">
               <AlertIcon>

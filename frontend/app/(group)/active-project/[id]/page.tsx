@@ -1077,7 +1077,7 @@ export default function ActiveProjectPage() {
       <div className={`flex bg-gray-50 min-h-screen transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}>
         <LeftSidebar />
 
-        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[324px] min-[1024px]:pr-[100px]">
+        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px]">
           {/* Breadcrumb */}
           <Breadcrumb>
             <BreadcrumbItem>
