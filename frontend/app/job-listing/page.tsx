@@ -10415,18 +10415,20 @@ const ReviewToolsTechnologiesStep = ({
     >
       <div className="flex min-h-full flex-col gap-8 bg-gray-50 px-5 py-10 md:px-10 min-[1024px]:px-[100px] min-[1024px]:pb-5 min-[1024px]:pt-[50px] min-[1180px]:flex-row min-[1180px]:items-start">
         <div className="min-w-0 flex-auto min-[1180px]:w-[887px]">
-          <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
-            Review tools and technologies
-          </h1>
-          <p className="mt-4 text-sm leading-5 text-dark-blue-400">
-            We&apos;ve generated a list based on your{" "}
-            {source === "roles"
-              ? "roles' description"
-              : source === "service"
-                ? "service details"
-                : "project details"}
-            . Feel free to add or remove anything so it better fits your needs.
-          </p>
+          <div className="flex h-20 w-[886px] flex-col items-center justify-center gap-4">
+            <h1 className="h-11 w-[886px] text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
+              Review tools and technologies
+            </h1>
+            <p className="h-5 w-[886px] text-sm leading-5 text-dark-blue-400">
+              We&apos;ve generated a list based on your{" "}
+              {source === "roles"
+                ? "roles' description"
+                : source === "service"
+                  ? "service details"
+                  : "project details"}
+              . Feel free to add or remove anything so it better fits your needs.
+            </p>
+          </div>
 
           <TagsInputRoot
             value={tools}
@@ -10435,13 +10437,13 @@ const ReviewToolsTechnologiesStep = ({
           >
             <TagsInputContext>
               {(tagsInput) => (
-                <TagsInputControl className="flex w-full flex-col items-start gap-3 border-0 p-0 shadow-none [&>div:first-child>div]:w-full">
+                <TagsInputControl className="flex w-full flex-col items-start gap-3 border-0 bg-transparent p-0 shadow-none [&>div:first-child>div]:w-full">
                   <div className="relative w-full">
-                    <SearchMd className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                    <SearchMd className="pointer-events-none absolute left-3 top-1/2 z-10 size-5 -translate-y-1/2 text-gray-400" />
                     <TagsInputInput
                       placeholder="Search tools and technologies"
                       allowCreateOption
-                      className="h-11 w-full rounded-[5px] border border-gray-300 bg-white pl-12 pr-4 text-sm leading-5 text-dark-blue-400 shadow-xs placeholder:text-gray-400 focus-visible:outline-none"
+                      className="h-11 w-full rounded-[5px] border border-gray-300 bg-white px-[14px] py-2.5 pl-[42px] text-[16px] leading-6 text-gray-500/50 shadow-xs placeholder:text-gray-500/50 focus-visible:outline-none"
                     />
                   </div>
 
@@ -10451,11 +10453,11 @@ const ReviewToolsTechnologiesStep = ({
                         <TagsInputItemPreview
                           size="md"
                           visual="gray"
-                          className="h-10 rounded-[5px] border border-gray-300 bg-white px-4 text-sm leading-5 text-dark-blue-400 shadow-xs"
+                          className="h-10 gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2.5 pl-4 text-sm leading-5 text-dark-blue-400 shadow-xs"
                         >
                           <TagsInputItemText>{value}</TagsInputItemText>
-                          <TagsInputItemDeleteTrigger className="ml-2 text-gray-500 opacity-100 hover:text-gray-700">
-                            <X2 className="size-3" />
+                          <TagsInputItemDeleteTrigger className="size-4 text-gray-400 opacity-100 hover:text-gray-700">
+                            <X2 className="size-4" />
                           </TagsInputItemDeleteTrigger>
                         </TagsInputItemPreview>
                         <TagsInputItemInput />
