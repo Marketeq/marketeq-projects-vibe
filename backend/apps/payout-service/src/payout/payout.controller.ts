@@ -9,6 +9,7 @@ import { MagicLinkService }    from '../magic-link/magic-link.service';
 import { JwtAuthGuard }        from '../guards/jwt-auth.guard';
 import { ValidateAmountDto }   from './dto/validate-amount.dto';
 import { InitiatePayoutDto }   from './dto/initiate-payout.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { Public }              from '../decorators/public.decorator';
 
 @Controller('v1/payouts')
@@ -83,8 +84,9 @@ export class PayoutController {
   async resendVerification(
     @Request() req: any,
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResendVerificationDto,
   ) {
-    return this.magicLinkService.resendVerification(req.user.userId, id, req.user.email);
+    return this.magicLinkService.resendVerification(req.user.userId, id, req.user.email, dto.redirectUrl);
   }
 
   // Cancel a pending/queued withdrawal

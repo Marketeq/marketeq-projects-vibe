@@ -316,7 +316,11 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
     setResending(true)
     setResendMessage("")
     try {
-      const res = await payoutFetch(`${PAYOUT_SERVICE_URL}/payouts/${result.payoutRequestId}/resend-verification`, { method: "POST" })
+      const res = await payoutFetch(`${PAYOUT_SERVICE_URL}/payouts/${result.payoutRequestId}/resend-verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ redirectUrl: `${window.location.origin}/verify-withdrawal` }),
+      })
       const data = await res.json()
       if (!res.ok) {
         if (data.errorCode === "ERR_MAGIC_LINK_RESEND_COOLDOWN") {
@@ -450,7 +454,13 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
       const res = await payoutFetch(`${PAYOUT_SERVICE_URL}/payouts/initiate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountUsd: amount, speed, depositMethodId: methodId, idempotencyKey, ignoreReserve }),
+        body: JSON.stringify({
+          amountUsd: amount, speed, depositMethodId: methodId, idempotencyKey, ignoreReserve,
+          // One shared backend serves dev/staging/live — tells it which
+          // frontend to point the magic-link confirmation email back at.
+          // Backend only trusts this if its origin is on FRONTEND_URL.
+          redirectUrl: `${window.location.origin}/verify-withdrawal`,
+        }),
       })
       const data = await res.json()
       if (!res.ok) {
