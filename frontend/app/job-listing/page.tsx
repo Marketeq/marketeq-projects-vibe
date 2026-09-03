@@ -17809,6 +17809,8 @@ function PublishProject({
         if (firstInvalidTarget) {
           scrollToPublishField(firstInvalidTarget.targetId);
         }
+
+        return false;
       }
 
       const isNewContractWorkflow =
