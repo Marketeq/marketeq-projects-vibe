@@ -3013,26 +3013,33 @@ const ProjectInfoTip = ({
   closeTrigger,
   className,
   variant = "scope",
+  source = "project",
 }: {
   closeTrigger?: React.ReactNode;
   showArrow?: boolean;
   className?: string;
+  source?: "project" | "service" | "roles";
   variant?:
     | "scope"
     | "contract"
     | "describeProjectStep"
-    | "describeServiceStep";
+    | "describeServiceStep"
+    | "reviewToolsTechnologiesStep";
 }) => {
   const isContractTip = variant === "contract";
   const isDescribeProjectStepTip = variant === "describeProjectStep";
   const isDescribeServiceStepTip = variant === "describeServiceStep";
+  const isReviewToolsTechnologiesStepTip =
+    variant === "reviewToolsTechnologiesStep";
   return (
     <div
       className={cn(
-        isDescribeProjectStepTip || isDescribeServiceStepTip
+        isDescribeProjectStepTip ||
+          isDescribeServiceStepTip ||
+          isReviewToolsTechnologiesStepTip
           ? "flex w-[322px] flex-col items-start gap-4 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
           : "flex w-[322px] flex-col items-start gap-y-4 p-5 rounded-lg bg-white border border-gray-200 relative shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]",
-        isDescribeServiceStepTip &&
+        (isDescribeServiceStepTip || isReviewToolsTechnologiesStepTip) &&
           "shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]",
         isContractTip
           ? "h-[288px]"
@@ -3040,13 +3047,47 @@ const ProjectInfoTip = ({
             ? "h-80"
             : isDescribeProjectStepTip
             ? "h-[260px]"
+            : isReviewToolsTechnologiesStepTip
+            ? "h-[228px]"
             : "h-[252px]",
         className,
       )}
     >
       {closeTrigger}
 
-      {isDescribeProjectStepTip || isDescribeServiceStepTip ? (
+      {isReviewToolsTechnologiesStepTip ? (
+        <>
+          <div className="flex h-6 w-[282px] items-start justify-between gap-2">
+            <span className="h-6 flex-1 rounded text-base leading-6 font-semibold text-gray-400">
+              Quick tip
+            </span>
+            <Lightbulb03 className="size-5 shrink-0 text-gray-400" />
+          </div>
+          <div className="flex h-[148px] w-[282px] flex-col items-start gap-2">
+            <span className="h-14 w-full text-lg leading-7 font-semibold text-dark-blue-400">
+              Edit tools and technologies to tailor it to your{" "}
+              {source === "roles"
+                ? "job"
+                : source === "service"
+                  ? "service"
+                  : "project"}
+            </span>
+            <ul className="h-[84px] w-full space-y-1">
+              {[
+                "Remove any tools and technologies you don't need.",
+                "Add missing frameworks, languages, or services that are essential.",
+              ].map((item) => (
+                <li className="flex items-start gap-x-3" key={item}>
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
+                  <span className="text-sm leading-5 text-dark-blue-400">
+                    {item}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      ) : isDescribeProjectStepTip || isDescribeServiceStepTip ? (
         <>
           <div className="flex h-6 w-full items-center justify-between gap-x-2">
             <span className="flex h-6 flex-1 items-center text-base font-semibold leading-6 text-gray-400">
@@ -10429,35 +10470,10 @@ const ReviewToolsTechnologiesStep = ({
         </div>
 
         <div className="xs:max-[1180px]:hidden shrink-0 self-start">
-          <div className="w-[321px] rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-            <div className="flex items-center gap-x-2">
-              <span className="text-base leading-normal font-semibold text-gray-400">
-                Quick tip
-              </span>
-              <Lightbulb05 className="ml-auto size-5 shrink-0 text-gray-400" />
-            </div>
-            <p className="mt-5 text-lg leading-7 font-semibold text-dark-blue-400">
-              Edit tools and technologies to tailor it to your{" "}
-              {source === "roles"
-                ? "job"
-                : source === "service"
-                  ? "service"
-                  : "project"}
-            </p>
-            <div className="mt-2 space-y-1.5">
-              {[
-                "Remove any tools and technologies you don't need.",
-                "Add missing frameworks, languages, or services that are essential.",
-              ].map((item) => (
-                <div className="flex items-start gap-x-3" key={item}>
-                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
-                  <span className="text-xs leading-[18px] text-dark-blue-400">
-                    {item}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ProjectInfoTip
+            variant="reviewToolsTechnologiesStep"
+            source={source}
+          />
         </div>
       </div>
     </ScrollArea>
