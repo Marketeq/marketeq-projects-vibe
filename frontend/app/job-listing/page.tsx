@@ -9393,7 +9393,7 @@ const DescribeProjectStep = ({
   const descriptionFieldVariant = isService ? "service" : "project";
   const descriptionLabelClassName =
     descriptionFieldVariant === "project"
-      ? "text-[18px] leading-7 font-medium text-dark-blue-400"
+      ? "flex-1 text-[18px] leading-7 font-medium text-dark-blue-400"
       : "text-sm leading-5 font-semibold text-dark-blue-400";
   const descriptionCounterClassName =
     descriptionFieldVariant === "project"
@@ -9401,7 +9401,7 @@ const DescribeProjectStep = ({
       : "text-xs leading-[18px] text-gray-500";
   const descriptionTextareaClassName =
     descriptionFieldVariant === "project"
-      ? "h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
+      ? "h-[160px] w-[886px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
       : "h-20 text-sm";
   const firstQuestionLabelClassName = isService
     ? "flex-1 text-lg leading-7 font-medium text-dark-blue-400"
@@ -9418,7 +9418,7 @@ const DescribeProjectStep = ({
       : "mt-8";
   const describeProjectQuestionClassName =
     descriptionFieldVariant === "project"
-      ? "space-y-3"
+      ? "w-[886px] space-y-3"
       : "w-[886px] space-y-3";
   const describeProjectGroupClassName =
     descriptionFieldVariant === "project" ? "mt-16 space-y-4" : "space-y-2";
@@ -9483,7 +9483,7 @@ const DescribeProjectStep = ({
 
             {!isService && scopeKnowledgeChoice === "known" ? (
               <>
-                <div className="space-y-3">
+                <div className="w-[886px] space-y-3">
                   <div className="flex h-7 items-baseline justify-between gap-2">
                     <Label className={descriptionLabelClassName}>
                       What are the main tasks or deliverables?
@@ -9506,12 +9506,12 @@ const DescribeProjectStep = ({
                 </div>
 
                 <div className="flex flex-col gap-6">
-                  <div className="flex h-[52px] flex-col items-start gap-1">
-                    <Label className="text-[18px] leading-7 font-medium text-dark-blue-400">
+                    <div className="flex h-[52px] flex-col items-center justify-center gap-1">
+                    <Label className="w-full text-[18px] leading-7 font-medium text-dark-blue-400">
                       Do you have documentation or a brief to share?
                       <span className="text-gray-400"> (Optional)</span>
                     </Label>
-                    <p className="text-sm leading-5 text-dark-blue-400">
+                    <p className="w-full text-sm leading-5 text-dark-blue-400">
                       If you&apos;ve already written a scope or have a doc with
                       details, upload it here. It&apos;ll help us better match the
                       team to your needs.
@@ -9519,7 +9519,7 @@ const DescribeProjectStep = ({
                   </div>
                   {scopeFile ? (
                     scopeUploadStatus === "complete" ? (
-                      <div className="box-border flex h-[72px] w-full items-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white p-4">
+                      <div className="box-border flex h-[72px] w-[886px] items-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white p-4">
                         <div className="flex h-10 min-w-0 flex-1 items-center gap-4">
                           <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-[28px] border-4 border-primary-25 bg-primary-50">
                             <FileIcon className="size-4 text-primary-500" />
@@ -9550,7 +9550,7 @@ const DescribeProjectStep = ({
                     ) : (
                       <div
                         className={cn(
-                          "relative isolate box-border flex h-24 w-full items-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white p-4",
+                          "relative isolate box-border flex h-24 w-[886px] items-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white p-4",
                           scopeUploadStatus === "error" &&
                             "border-error-300 bg-error-25",
                         )}
@@ -9588,7 +9588,7 @@ const DescribeProjectStep = ({
                   ) : (
                     <label
                     className={cn(
-                      "flex h-[341px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white px-6 py-[100px] text-center focus-within:ring-2 focus-within:ring-primary-500",
+                      "flex h-[341px] w-[886px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white px-6 py-[100px] text-center focus-within:ring-2 focus-within:ring-primary-500",
                       isScopeDropActive && "border-primary-500",
                     )}
                     onClick={(event) => {
@@ -10092,7 +10092,7 @@ const DescribeProjectStep = ({
                         : getDraftDurationMonths(value),
                     });
                   }}
-                  className="grid gap-3 md:grid-cols-2"
+                  className="grid w-[886px] grid-cols-2 gap-4"
                 >
                   {durationOptions.map((option, index) => {
                     const id = `${option.value}-${option.unit}-${index}`;
@@ -10227,7 +10227,7 @@ const DescribeProjectStep = ({
               </div>
 
               {scopeKnowledgeChoice === "known" ? (
-                <div className="mt-16 space-y-3">
+                <div className="mt-16 w-[886px] space-y-3">
                   <div className="flex h-7 items-baseline justify-between gap-2">
                     <Label className={descriptionLabelClassName}>
                       How will you know this project is successful?
