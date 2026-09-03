@@ -4198,7 +4198,7 @@ const ProjectInfo = ({
         viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
-        <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-[41.45px]">
+        <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[100px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-8">
           <div className="p-3 pr-9 border rounded-lg border-blue-300 bg-blue-100 min-[1024px]:hidden">
             <div className="flex items-start gap-x-3">
               <Lightbulb05 className="size-[30px] text-primary-500" />
@@ -5878,7 +5878,7 @@ const ProjectInfo = ({
               </div>
             ) : null}
           </div>
-          <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
+          <div className="xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
             <ProjectInfoTip
               showArrow
               variant={contractChoice === "new" ? "scope" : "contract"}
