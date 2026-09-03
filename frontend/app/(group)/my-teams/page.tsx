@@ -57,6 +57,11 @@ type MyTeam = {
   memberIds?: string[]
   mediaUrls?: string[]
   category?: string
+  location?: string | null
+  yearsExperience?: number | null
+  rateMin?: number | null
+  rateMax?: number | null
+  previousClientLogos?: string[]
 }
 
 const OWNED = "Teams You Own"
@@ -65,33 +70,32 @@ const MEMBER = "Teams You're In"
 /**
  * Team entity -> the shared TeamCardLandscape row's shape.
  *
- * `tagline` is a single capitalised line in the row, not a paragraph, so the
- * team's primary specialization goes there and the long description is left
- * out -- the row has no slot for prose. `experience` carries the roster size,
- * which is the one line of detail the record can actually support.
+ * The row's slots are fixed by the design: `tagline` is a single capitalised
+ * line naming the team's discipline, `experience` is the seniority line, and
+ * the rate range and location each have their own slot. The description is not
+ * shown -- the row has no slot for prose.
  */
 const toCardProps = (team: MyTeam) => {
   const skills = team.specializations?.length
     ? team.specializations
     : team.skills
   const size = team.teamSize ?? team.memberIds?.length
+  const { rateMin, rateMax, yearsExperience } = team
 
   return {
     id: String(team.id),
     name: team.title ?? "Untitled team",
     handle: team.slug ? `@${team.slug}` : undefined,
     tagline: skills?.[0] ?? undefined,
-    // The row's one prose line. The team's own description goes here (the
-    // `tagline` slot above it is a single capitalised heading, not a
-    // paragraph), with the roster size appended since nothing else shows it.
-    experience: [
-      team.description?.trim() || undefined,
-      typeof size === "number"
-        ? `${size} member${size === 1 ? "" : "s"}`
+    experience:
+      typeof yearsExperience === "number"
+        ? `Average ${yearsExperience} years of experience`
         : undefined,
-    ]
-      .filter(Boolean)
-      .join(" · "),
+    locations: team.location ?? undefined,
+    rate:
+      typeof rateMin === "number" && typeof rateMax === "number"
+        ? `$${rateMin} - $${rateMax}/hr`
+        : undefined,
     skills,
     rating: team.rating != null ? Number(team.rating) : undefined,
     // The row renders this as "N reviews", so it must be the review count --
@@ -101,6 +105,9 @@ const toCardProps = (team: MyTeam) => {
     // Roster size, so the cluster's "+N" bubble counts the whole team rather
     // than only the avatars stored on the record.
     memberCount: size,
+    previousClientLogos: team.previousClientLogos?.length
+      ? team.previousClientLogos
+      : undefined,
   }
 }
 
@@ -115,16 +122,19 @@ const TeamList = ({
   teams,
   savedIds,
   onToggleSave,
+  isOwner,
 }: {
   teams: MyTeam[]
   savedIds: Set<string>
   onToggleSave: (teamId: string) => void
+  isOwner: boolean
 }) => (
   <div className="flex flex-col gap-5 pt-6">
     {teams.map((team) => (
       <TeamCardLandscape
         key={team.id}
         {...toCardProps(team)}
+        isOwner={isOwner}
         isSaved={savedIds.has(String(team.id))}
         onSaveClick={() => onToggleSave(String(team.id))}
       />
@@ -244,6 +254,7 @@ export default function MyTeamsPage() {
                     teams={owned}
                     savedIds={savedIds}
                     onToggleSave={onToggleSave}
+                    isOwner
                   />
                 ) : (
                   <EmptyState message="You haven't created a team yet." />
@@ -256,6 +267,7 @@ export default function MyTeamsPage() {
                     teams={member}
                     savedIds={savedIds}
                     onToggleSave={onToggleSave}
+                    isOwner={false}
                   />
                 ) : (
                   <EmptyState message="You're not a member of anyone else's team yet." />

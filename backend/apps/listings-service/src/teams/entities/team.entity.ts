@@ -55,6 +55,25 @@ export class Team {
   @Column({ nullable: true })
   teamSize: number;
 
+  // Fields the team row (Figma Component 1035) renders but the table never
+  // held, so the card fell back to hiding them: the location line under the
+  // headline, the "Average N years of experience" line, the footer rate range,
+  // and the "Previous clients" logo strip.
+  @Column({ type: 'varchar', nullable: true })
+  location: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  yearsExperience: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  rateMin: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  rateMax: number | null;
+
+  @Column('text', { array: true, default: [] })
+  previousClientLogos: string[];
+
   @Column({ type: 'decimal', precision: 3, scale: 1, default: 0 })
   rating: number;
 

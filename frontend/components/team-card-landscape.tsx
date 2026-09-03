@@ -15,8 +15,11 @@
  * 23.714px, 3.032px, the 0.571px/1.142px shadow) are exact and deliberate —
  * do not round them to the nearest Tailwind step.
  *
- * The card itself has no hover state. The only hover in the design is the
- * underline on the team name.
+ * The options trigger is a circle so its hover fill reads round; everything
+ * else keeps the Dev Mode geometry.
+ *
+ * The card itself has no hover state. Hovers are limited to the team name
+ * (underline) and the footer skill links, which lift from 60% to full opacity.
  */
 import { teamDetailsUrl } from "@/src/lib/listing-urls"
 import { cn } from "@/utils/functions"
@@ -26,8 +29,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioTrigger,
   DropdownMenuTrigger,
   IconButton,
 } from "@/components/ui"
@@ -187,6 +188,10 @@ export interface TeamCardLandscapeProps {
   href?: string
   isSaved?: boolean
   onSaveClick?: () => void
+  /** Owners get manage actions; members get join/leave ones. */
+  isOwner?: boolean
+  /** Only rendered when supplied, so a card with no handler shows no dead item. */
+  onLeaveClick?: () => void
 }
 
 export function TeamCardLandscape({
@@ -206,8 +211,19 @@ export function TeamCardLandscape({
   href,
   isSaved,
   onSaveClick,
+  isOwner,
+  onLeaveClick,
 }: TeamCardLandscapeProps) {
   const computedHref = href ?? teamDetailsUrl(id)
+
+  // Copying the link needs no backend, so it works the same on every surface
+  // this row appears on.
+  const onShare = () => {
+    if (typeof window === "undefined") return
+    void navigator.clipboard?.writeText(
+      new URL(computedHref, window.location.origin).toString()
+    )
+  }
   const avatars =
     memberAvatars && memberAvatars.length > 0 ? memberAvatars : ["/woman.jpg"]
 
@@ -215,7 +231,13 @@ export function TeamCardLandscape({
     <article className="flex w-full flex-col gap-px rounded-lg border border-gray-200 bg-white drop-shadow-[0px_2px_2.5px_rgba(0,0,0,0.04)]">
       <div className="flex w-full flex-col items-center p-6">
         <div className="flex w-full items-start gap-10">
-          <TeamAvatarLoop avatars={avatars} memberCount={memberCount} />
+          {/* The card always reserves a 140x140 slot and centres the cluster in
+              it (Figma 13290:20798), so a 2-member cluster and a 6-member one
+              occupy the same footprint and the text column starts at the same
+              x on every row. */}
+          <div className="flex size-[140px] shrink-0 items-center justify-center">
+            <TeamAvatarLoop avatars={avatars} memberCount={memberCount} />
+          </div>
 
           <div className="flex min-w-0 flex-1 items-start justify-between">
             <div className="flex min-w-0 flex-1 flex-col items-start gap-3">
@@ -275,7 +297,7 @@ export function TeamCardLandscape({
                     </div>
                   )}
                   {typeof projectCount === "number" && (
-                    <div className="flex items-center gap-x-0.5 whitespace-nowrap font-[Roboto] text-xs font-medium leading-normal text-dark-blue-400">
+                    <div className="flex items-center gap-x-0.5 whitespace-nowrap text-xs font-medium leading-normal text-dark-blue-400">
                       <span>{projectCount}</span>
                       <span>{projectCount === 1 ? "review" : "reviews"}</span>
                     </div>
@@ -290,37 +312,49 @@ export function TeamCardLandscape({
                   <IconButton
                     variant="ghost"
                     visual="gray"
-                    className="flex h-6 flex-col items-center rounded-[5px] px-1.5 py-0.5 text-gray-500"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full p-0 text-gray-500"
                     aria-label={`Options for ${name}`}
                   >
                     <DotsHorizontal className="h-5 w-[21.667px]" />
                   </IconButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" side="bottom">
-                  {onSaveClick && (
-                    <DropdownMenuItem onClick={onSaveClick}>
-                      <Star
-                        className={cn(
-                          "size-4",
-                          isSaved
-                            ? "fill-primary-500 text-primary-500"
-                            : "text-gray-400"
-                        )}
-                      />
-                      {isSaved ? "Saved" : "Save"}
+                  {isOwner ? (
+                    <>
+                      <DropdownMenuItem>
+                        <NextLink className="w-full" href={computedHref}>
+                          Edit team
+                        </NextLink>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <NextLink
+                          className="w-full"
+                          href={`${computedHref}#members`}
+                        >
+                          Manage members
+                        </NextLink>
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <DropdownMenuItem>
+                      <NextLink className="w-full" href={computedHref}>
+                        View team profile
+                      </NextLink>
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuRadioGroup value="">
-                    <DropdownMenuRadioTrigger value="digital-marketing">
-                      Digital Marketing
-                    </DropdownMenuRadioTrigger>
-                    <DropdownMenuRadioTrigger value="customer-service">
-                      Customer Service
-                    </DropdownMenuRadioTrigger>
-                    <DropdownMenuRadioTrigger value="email-marketing">
-                      Email Marketing
-                    </DropdownMenuRadioTrigger>
-                  </DropdownMenuRadioGroup>
+                  {onSaveClick && (
+                    <DropdownMenuItem onClick={onSaveClick}>
+                      {isSaved ? "Remove from saved" : "Save team"}
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={onShare}>
+                    Copy team link
+                  </DropdownMenuItem>
+                  {!isOwner && onLeaveClick && (
+                    <DropdownMenuItem onClick={onLeaveClick}>
+                      Leave team
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -385,18 +419,21 @@ export function TeamCardLandscape({
               <span className="whitespace-nowrap text-center text-sm font-bold leading-5 text-dark-blue-400">
                 Team Skills
               </span>
-              <div className="flex items-start gap-3 overflow-clip">
+              {/* The skill list fills the rest of the row so "More..." is pushed
+                  out to the far corner rather than trailing the last skill. */}
+              <div className="flex min-w-0 flex-1 items-center gap-3 overflow-clip">
                 {skills.map((skill) => (
-                  <span
+                  <NextLink
                     key={skill}
-                    className="flex h-3 items-center justify-center overflow-clip whitespace-nowrap text-center text-xs font-semibold leading-5 text-gray-500 opacity-60"
+                    href={`/search?q=${encodeURIComponent(skill)}&category=teams`}
+                    className="flex h-3 items-center justify-center overflow-clip whitespace-nowrap text-center text-xs font-semibold leading-5 text-gray-500 opacity-60 motion-safe:transition-opacity hover:opacity-100"
                   >
                     {skill}
-                  </span>
+                  </NextLink>
                 ))}
                 <NextLink
                   href={`${computedHref}#skills`}
-                  className="flex h-3 items-center justify-center overflow-clip whitespace-nowrap text-center text-xs font-bold leading-5 text-gray-500"
+                  className="ml-auto flex h-3 shrink-0 items-center justify-center whitespace-nowrap text-center text-xs font-bold leading-5 text-gray-500 motion-safe:transition-opacity hover:opacity-80"
                 >
                   More...
                 </NextLink>
