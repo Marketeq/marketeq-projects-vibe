@@ -3074,13 +3074,21 @@ const ProjectInfoTip = ({
             </span>
             <ul className="h-[84px] w-full space-y-1">
               {[
-                "Remove any tools and technologies you don't need.",
+                "Remove any tools and technologies you don’t need.",
                 "Add missing frameworks, languages, or services that are essential.",
-              ].map((item) => (
+              ].map((item, index) => (
                 <li className="flex items-start gap-x-3" key={item}>
                   <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
-                  <span className="text-sm leading-5 text-dark-blue-400">
-                    {item}
+                  <span className="text-sm leading-5 font-normal text-dark-blue-400">
+                    {index === 0 ? (
+                      <>
+                        Remove any tools and technologies
+                        <br />
+                        you don’t need.
+                      </>
+                    ) : (
+                      item
+                    )}
                   </span>
                 </li>
               ))}
@@ -10437,7 +10445,7 @@ const ReviewToolsTechnologiesStep = ({
           >
             <TagsInputContext>
               {(tagsInput) => (
-                <TagsInputControl className="flex w-full flex-col items-start gap-3 border-0 bg-transparent p-0 shadow-none [&>div:first-child>div]:w-full">
+                <TagsInputControl className="flex w-full flex-col items-start gap-3 border-0 bg-transparent p-0 shadow-none focus-within:border-transparent focus-within:ring-0 [&>div:first-child>div]:w-full">
                   <div className="relative w-full">
                     <SearchMd className="pointer-events-none absolute left-3 top-1/2 z-10 size-5 -translate-y-1/2 text-gray-400" />
                     <TagsInputInput
