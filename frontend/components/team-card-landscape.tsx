@@ -5,7 +5,7 @@
  *
  * Source of truth:
  *   card   https://www.figma.com/design/OXmLCzzRZARva9RiPm4Qsp/...?node-id=13290-20976
- *   avatar https://www.figma.com/design/WcQWbeGlH4CdW1R1o9F0Ca/...?node-id=13101-104827
+ *   avatar https://www.figma.com/design/WcQWbeGlH4CdW1R1o9F0Ca/...?node-id=13491-46526
  *
  * The shared ListingCard has no list/landscape layout for teams — TeamCardProps
  * carries no `layout` or `cardVariant` field — so this is the master team row.
@@ -34,15 +34,20 @@ import {
 } from "@/components/ui"
 
 /**
- * The avatar cluster is a master component with one variant per member count,
- * not one fixed box — a 2-member team is 82×61, a 6-member team is 128×140.
- * Rendering every count inside the 6-member frame leaves small teams floating
- * in dead space, so the frame and the seat positions both change with count.
+ * The avatar cluster is a master component with one variant per member count:
+ * a 2-member cluster measures 82×61, a 6-member one 128×140, and the overflow
+ * variant 140×140. Each avatar is exactly 50×50, and the seats below are the
+ * Dev Mode offsets within each variant's own bounds.
  *
- * Each avatar is exactly 50×50; positions are the Dev Mode insets resolved
- * against their own frame, so they are stated here in flat pixels.
+ * The frame the cluster sits in is always 140×140, and the cluster is anchored
+ * BOTTOM-LEFT inside it (Figma 13491:46526 — `flex items-end`, and `flex-col
+ * items-start justify-end` for the two-member variant). It is neither centred
+ * nor top-left: smaller clusters grow up and to the right out of that corner,
+ * so every row's avatars share one baseline.
  */
 const AVATAR_SIZE = 50
+/** The cluster always occupies this box, whatever the member count. */
+const AVATAR_FRAME = "size-[140px]"
 
 type AvatarCluster = {
   width: number
@@ -124,47 +129,55 @@ function TeamAvatarLoop({
   memberCount?: number
 }) {
   const shown = avatars.slice(0, MAX_AVATAR_SEATS)
-  // Overflow counts the whole roster, not just the avatars we were handed, so a
-  // team of 34 that supplies 6 images still reads "+28".
+  // The master component has one variant per avatar count, and the "+N" bubble
+  // exists only on the six-avatar variant. So the layout is chosen by how many
+  // avatars are actually drawn -- filling six seats with four images left the
+  // bottom-left corner empty and pushed the cluster to the top right.
   const total = Math.max(memberCount ?? avatars.length, shown.length)
-  const overflow = total - shown.length
+  const overflow = shown.length === MAX_AVATAR_SEATS ? total - shown.length : 0
   const cluster =
     overflow > 0
       ? AVATAR_CLUSTER_WITH_OVERFLOW
       : (AVATAR_CLUSTERS[shown.length] ?? AVATAR_CLUSTERS[1])
 
   return (
-    <div
-      className="relative shrink-0"
-      style={{ width: cluster.width, height: cluster.height }}
-    >
-      {shown.map((src, i) => (
-        <div
-          key={i}
-          className="absolute overflow-hidden rounded-full border-2 border-white"
-          style={{
-            left: cluster.seats[i].left,
-            top: cluster.seats[i].top,
-            width: AVATAR_SIZE,
-            height: AVATAR_SIZE,
-          }}
-        >
-          <img src={src} alt="Team member" className="size-full object-cover" />
-        </div>
-      ))}
-      {overflow > 0 && (
-        <div
-          className="absolute flex items-center justify-center rounded-[200px] border-2 border-gray-300 bg-white text-center text-[15.24px] font-medium leading-[23.714px] text-gray-500"
-          style={{
-            left: AVATAR_OVERFLOW_SEAT.left,
-            top: AVATAR_OVERFLOW_SEAT.top,
-            width: AVATAR_SIZE,
-            height: AVATAR_SIZE,
-          }}
-        >
-          +{overflow}
-        </div>
-      )}
+    <div className={cn("relative shrink-0", AVATAR_FRAME)}>
+      <div
+        className="absolute bottom-0 left-0"
+        style={{ width: cluster.width, height: cluster.height }}
+      >
+        {shown.map((src, i) => (
+          <div
+            key={i}
+            className="absolute overflow-hidden rounded-full border-2 border-white"
+            style={{
+              left: cluster.seats[i].left,
+              top: cluster.seats[i].top,
+              width: AVATAR_SIZE,
+              height: AVATAR_SIZE,
+            }}
+          >
+            <img
+              src={src}
+              alt="Team member"
+              className="size-full object-cover"
+            />
+          </div>
+        ))}
+        {overflow > 0 && (
+          <div
+            className="absolute flex items-center justify-center rounded-[200px] border-2 border-gray-300 bg-white text-center text-[15.24px] font-medium leading-[23.714px] text-gray-500"
+            style={{
+              left: AVATAR_OVERFLOW_SEAT.left,
+              top: AVATAR_OVERFLOW_SEAT.top,
+              width: AVATAR_SIZE,
+              height: AVATAR_SIZE,
+            }}
+          >
+            +{overflow}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -231,13 +244,7 @@ export function TeamCardLandscape({
     <article className="flex w-full flex-col gap-px rounded-lg border border-gray-200 bg-white drop-shadow-[0px_2px_2.5px_rgba(0,0,0,0.04)]">
       <div className="flex w-full flex-col items-center p-6">
         <div className="flex w-full items-start gap-10">
-          {/* The card always reserves a 140x140 slot and centres the cluster in
-              it (Figma 13290:20798), so a 2-member cluster and a 6-member one
-              occupy the same footprint and the text column starts at the same
-              x on every row. */}
-          <div className="flex size-[140px] shrink-0 items-center justify-center">
-            <TeamAvatarLoop avatars={avatars} memberCount={memberCount} />
-          </div>
+          <TeamAvatarLoop avatars={avatars} memberCount={memberCount} />
 
           <div className="flex min-w-0 flex-1 items-start justify-between">
             <div className="flex min-w-0 flex-1 flex-col items-start gap-3">

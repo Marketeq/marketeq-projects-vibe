@@ -67,6 +67,14 @@ type MyTeam = {
 const OWNED = "Teams You Own"
 const MEMBER = "Teams You're In"
 
+/** "digital-marketing" -> "Digital Marketing" */
+const toTitleCase = (value: string) =>
+  value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+
 /**
  * Team entity -> the shared TeamCardLandscape row's shape.
  *
@@ -86,7 +94,12 @@ const toCardProps = (team: MyTeam) => {
     id: String(team.id),
     name: team.title ?? "Untitled team",
     handle: team.slug ? `@${team.slug}` : undefined,
-    tagline: skills?.[0] ?? undefined,
+    // The type line is the team's own discipline, not its first skill --
+    // skills carry the shared Top Categories taxonomy, so every card would
+    // otherwise read the same word.
+    tagline: team.category
+      ? toTitleCase(team.category)
+      : (skills?.[0] ?? undefined),
     experience:
       typeof yearsExperience === "number"
         ? `Average ${yearsExperience} years of experience`
