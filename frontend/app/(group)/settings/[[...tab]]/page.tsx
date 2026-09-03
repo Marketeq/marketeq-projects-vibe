@@ -153,6 +153,17 @@ const sortDeviceSessions = <T extends { isCurrent: boolean; lastActiveAt: string
     )
   })
 
+// Comma-separated list column -> array. Shared so the load, the dirty check
+// and the cancel handler read a stored value identically; if they disagreed the
+// form would read as dirty the moment it loaded.
+const splitList = (value?: string | null): string[] =>
+  value
+    ? value
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean)
+    : []
+
 export default function SettingsPage() {
   const { user, setUser, logoutHandler } = useAuth()
   const { toast } = useToast()
@@ -737,8 +748,7 @@ export default function SettingsPage() {
         username: user.username ?? "",
         phone: user.phone ?? "",
         jobTitle: user.recentJobTitle ?? "",
-        // No column backs the department field yet — see handleProfileSave.
-        team: [],
+        team: splitList(user.department),
         languages: rawLang ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
       })
     }
@@ -751,8 +761,7 @@ export default function SettingsPage() {
     if (!user) return false
 
     const rawLang = user.language ?? ""
-    // Nothing persists the department, so a saved value can never exist.
-    const savedTeam: string[] = []
+    const savedTeam = splitList(user.department)
     const savedLanguages = rawLang
       ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean)
       : []
@@ -785,24 +794,30 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!company) return
-    setCompanyForm((prev) => ({
-      ...prev,
+    setCompanyForm({
       name: company.name ?? "",
       website: company.domain ?? "",
-    }))
+      industry: company.industry ?? "",
+      businessType: company.businessType ?? "",
+      companySize: company.companySize ?? "",
+      annualRevenue: company.annualRevenue ?? "",
+      phone: company.phone ?? "",
+      timeZone: company.timeZone ?? "",
+    })
   }, [company])
 
-  // The six fields with no column still need Save and Cancel to behave, so
-  // their "saved" state is whatever they held at the last save. Without this
-  // they could never match a saved value and the actions would never retire.
-  const [savedCompanyExtras, setSavedCompanyExtras] = useState({
-    industry: "",
-    businessType: "",
-    companySize: "",
-    annualRevenue: "",
-    phone: "",
-    timeZone: "",
-  })
+  // All eight fields persist now, so the saved baseline is simply the record.
+  const savedCompanyExtras = useMemo(
+    () => ({
+      industry: company?.industry ?? "",
+      businessType: company?.businessType ?? "",
+      companySize: company?.companySize ?? "",
+      annualRevenue: company?.annualRevenue ?? "",
+      phone: company?.phone ?? "",
+      timeZone: company?.timeZone ?? "",
+    }),
+    [company]
+  )
 
   const isCompanyDirty = useMemo(() => {
     if (isLogoDirty) return true
@@ -832,24 +847,13 @@ export default function SettingsPage() {
   const handleCompanySave = async () => {
     setCompanyError(null)
     try {
-      await saveCompanyInfo(
-        { name: companyForm.name, website: companyForm.website },
-        logoFile
-      )
+      await saveCompanyInfo(companyForm, logoFile)
       setLogoFile(null)
       // The upload is now the saved logo, so the pending preview retires and
       // logoSrc falls through to company.logoUrl. Leaving it set would keep
       // isLogoDirty true and the actions would never hide.
       setLogoPreview(null)
       setIsLogoRemoved(false)
-      setSavedCompanyExtras({
-        industry: companyForm.industry,
-        businessType: companyForm.businessType,
-        companySize: companyForm.companySize,
-        annualRevenue: companyForm.annualRevenue,
-        phone: companyForm.phone,
-        timeZone: companyForm.timeZone,
-      })
       setSavedAlertMessage("Your company info has been saved")
       setIsSavedAlertMounted(true)
       setHasJustSavedCompany(true)
@@ -1168,11 +1172,10 @@ export default function SettingsPage() {
         phone: profileForm.phone,
         recentJobTitle: profileForm.jobTitle,
         language: profileForm.languages.join(", "),
-        // NOT teamName — that column holds the client's *company name*
-        // (complete-client-profile writes `teamName: companyName`, and the
-        // entity says so). This field is "What team do you work on?", a
-        // department. Sending it here would overwrite Company Info. The
-        // department has no column yet, so it stays unsubmitted.
+        // `department`, never `teamName` — that column holds the client's
+        // company name, and writing this field there would overwrite Company
+        // Info.
+        department: profileForm.team.join(", "),
       }
       const response = await UserAPI.updateProfile(user.id, payload)
       const isSuccess =
@@ -1225,7 +1228,7 @@ export default function SettingsPage() {
       username: user?.username ?? "",
       phone: user?.phone ?? "",
       jobTitle: user?.recentJobTitle ?? "",
-      team: [],
+      team: splitList(user?.department),
       languages: rawLang ? rawLang.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
     })
     setAvatarPreview(null)
