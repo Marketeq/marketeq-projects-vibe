@@ -7,7 +7,15 @@ import type {
 } from "@/service/http/notifications"
 import { cn } from "@/utils/functions"
 import { Edit01, Plus } from "@blend-metrics/icons"
-import { Button, Switch, useToast } from "@/components/ui"
+import {
+  Button,
+  Switch,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  useToast,
+} from "@/components/ui"
 import BrowserAlertsModal from "./modals/browser-alerts-modal"
 import EditEmailModal from "./modals/edit-email-modal"
 import EditPhoneModal from "./modals/edit-phone-modal"
@@ -15,6 +23,7 @@ import {
   SMS_ENABLED,
   channelIcons,
   channelLabels,
+  formatPhoneForDisplay,
   requestBrowserNotificationPermission,
 } from "./shared"
 
@@ -125,6 +134,13 @@ export default function NotificationGlobalChannels({
     }
   }
 
+  // Null once the channel can actually be switched on.
+  const smsDisabledReason = !SMS_ENABLED
+    ? "Text notifications are coming soon"
+    : !accountPhone
+      ? "Add a phone number to receive text notifications"
+      : null
+
   const inAppBrowserBtn = channels.inApp.browser ? (
     <Button
       type="button"
@@ -228,16 +244,70 @@ export default function NotificationGlobalChannels({
           </div>
 
           {/* SMS / Text */}
-          <div className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-5 h-[60px] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] opacity-60">
+          <div className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-5 h-[60px] shadow-[0px_1px_4px_rgba(0,0,0,0.03)]">
             <SmsIcon />
             <span className="text-sm leading-[17px] font-semibold text-dark-blue-400">
               {channelLabels.sms}
             </span>
-            <span className="ml-2 inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
-              Coming soon
-            </span>
             <span className="flex-1" />
-            <Switch checked={false} disabled size="sm" />
+            <span
+              className={cn(
+                "text-xs leading-[15px] text-gray-500 group-hover:hidden",
+                !channels.sms.enabled && "opacity-50"
+              )}
+            >
+              {accountPhone
+                ? formatPhoneForDisplay(accountPhone)
+                : "Missing Phone Number"}
+            </span>
+            {/* Shown whether or not the channel is on: adding a number is the
+                prerequisite for switching it on, so it cannot be gated behind
+                the toggle the way Edit Email is. */}
+            <Button
+              type="button"
+              visual="gray"
+              variant="outlined"
+              size="sm"
+              leftIcon={
+                accountPhone ? (
+                  <Edit01 className="size-3.5" />
+                ) : (
+                  <Plus className="size-3.5" />
+                )
+              }
+              onClick={() => setEditPhoneOpen(true)}
+              className="hidden group-hover:inline-flex"
+            >
+              {accountPhone ? "Edit Phone Number" : "Add Phone Number"}
+            </Button>
+            {/* The number is real and saving it is real; only delivery is not.
+                The toggle stays inert until there is an SMS sender behind it,
+                rather than promising texts that never arrive. The reason is
+                worth saying out loud, so a disabled toggle carries a tooltip
+                and a working one does not. */}
+            {smsDisabledReason ? (
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <Switch checked={false} disabled size="sm" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="top"
+                    className="max-w-[220px] text-center"
+                  >
+                    {smsDisabledReason}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <Switch
+                checked={channels.sms.enabled}
+                onCheckedChange={(v) => onToggleChannel("sms", v)}
+                size="sm"
+              />
+            )}
           </div>
         </div>
       </div>

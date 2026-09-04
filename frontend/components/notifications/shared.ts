@@ -2,6 +2,8 @@ import type {
   ChannelKey,
   ScopedChannelState,
 } from "@/service/http/notifications"
+import { phoneUtil } from "@/components/phone-number-input"
+import { PhoneNumberFormat } from "google-libphonenumber"
 import {
   BellRinging03,
   Briefcase,
@@ -84,4 +86,22 @@ export async function requestBrowserNotificationPermission(): Promise<BrowserPer
   if (Notification.permission === "denied") return "denied"
   const result = await Notification.requestPermission()
   return result as BrowserPermissionResult
+}
+
+/**
+ * Renders a stored E.164 number the way the design shows it — "(704) 555-0127"
+ * rather than "+17045550127".
+ *
+ * Falls back to the raw string whenever the number cannot be parsed, so a value
+ * saved before this formatter existed, or one from a country the library does
+ * not recognise, still displays instead of disappearing.
+ */
+export function formatPhoneForDisplay(phone: string): string {
+  try {
+    const parsed = phoneUtil.parseAndKeepRawInput(phone)
+    if (!phoneUtil.isValidNumber(parsed)) return phone
+    return phoneUtil.format(parsed, PhoneNumberFormat.NATIONAL)
+  } catch {
+    return phone
+  }
 }

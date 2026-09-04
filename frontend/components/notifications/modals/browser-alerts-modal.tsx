@@ -46,7 +46,7 @@ export default function BrowserAlertsModal({
           <DialogDescription className="text-sm font-light text-dark-blue-400">
             {isEnable
               ? "Alerts will be displayed in your web browser"
-              : "Alerts will no longer be displayed in your web browser"}
+              : "All web browser notifications will be disabled"}
           </DialogDescription>
         </div>
 

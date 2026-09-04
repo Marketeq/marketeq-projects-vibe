@@ -1,16 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { RefreshCcw01 } from "@blend-metrics/icons"
+import {
+  PhoneNumberInput,
+  isPhoneValid,
+} from "@/components/phone-number-input"
 import {
   Button,
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
+  DialogOverlay,
   DialogTitle,
-  Input,
-  Label,
 } from "@/components/ui"
 
 interface Props {
@@ -21,8 +23,6 @@ interface Props {
   isLoading?: boolean
 }
 
-const PHONE_REGEX = /^\+?[1-9]\d{6,14}$/
-
 export default function EditPhoneModal({
   open,
   onOpenChange,
@@ -30,75 +30,109 @@ export default function EditPhoneModal({
   onSave,
   isLoading,
 }: Props) {
-  const [value, setValue] = useState(currentPhone ?? "")
+  const saved = currentPhone ?? ""
+  const [value, setValue] = useState(saved)
   const [error, setError] = useState<string | null>(null)
 
-  const handleSave = async () => {
-    const trimmed = value.trim()
-    if (trimmed.length === 0) {
-      await onSave(null)
-      onOpenChange(false)
-      return
+  // The saved number can change under an open dialog — saving here writes it
+  // back to the account, and Personal Info edits the same field.
+  useEffect(() => {
+    if (open) {
+      setValue(saved)
+      setError(null)
     }
-    const normalized = trimmed.replace(/[\s()\-]/g, "")
-    if (!PHONE_REGEX.test(normalized)) {
-      setError(
-        "Enter a valid phone number with country code, e.g. +15551234567"
-      )
+  }, [open, saved])
+
+  // A phone input pre-fills the dial code, so "empty" is "+1", not "". Treating
+  // it as typed content would enable Save on an untouched Add dialog.
+  const digits = value.replace(/\D/g, "")
+  const isEmpty = digits.length <= 1
+  const isDirty = value !== saved
+
+  const handleSave = async () => {
+    if (!isPhoneValid(value)) {
+      setError("Enter a valid phone number")
       return
     }
     setError(null)
-    await onSave(normalized)
+    await onSave(value)
     onOpenChange(false)
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) {
-          setValue(currentPhone ?? "")
-          setError(null)
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="w-[404px] max-w-[calc(100vw-2rem)] gap-0 overflow-visible p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+        dialogOverlay={
+          <DialogOverlay className="bg-gray-700/50 backdrop-blur-[8px]" />
         }
-        onOpenChange(next)
-      }}
-    >
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>
-            {currentPhone ? "Edit Phone Number" : "Add Phone Number"}
-          </DialogTitle>
-          <DialogDescription>
-            Used for SMS notifications and security alerts
-          </DialogDescription>
-        </DialogHeader>
+      >
+        <DialogTitle className="text-base leading-6 font-semibold text-dark-blue-400">
+          {currentPhone ? "Edit Phone Number" : "Add Phone Number"}
+        </DialogTitle>
+        <DialogDescription className="mt-1 text-sm leading-5 font-light text-dark-blue-400">
+          You will receive notifications to this phone number
+        </DialogDescription>
 
-        <div className="mt-2 space-y-2">
-          <Label size="sm">Phone Number</Label>
-          <Input
-            type="tel"
+        <div className="mt-5">
+          <PhoneNumberInput
+            defaultCountry="us"
+            placeholder="+1 (555) 000-0000"
+            disableDialCodePrefill
             value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="+1 (555) 123-4567"
-            autoFocus
+            onChange={(v) => {
+              setValue(v)
+              setError(null)
+            }}
+            invalid={Boolean(error)}
           />
-          {error && <p className="text-xs text-red-500">{error}</p>}
+          {error && <p className="mt-1.5 text-xs text-error-500">{error}</p>}
         </div>
 
-        <DialogFooter className="mt-6 flex gap-2 sm:gap-2">
-          <Button
-            variant="outlined"
-            visual="gray"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-            disabled={isLoading}
-          >
-            Cancel
-          </Button>
-          <Button size="sm" onClick={handleSave} disabled={isLoading}>
-            {isLoading ? "Saving..." : "Save"}
-          </Button>
-        </DialogFooter>
+        {/* Reset sits opposite the actions and only once there is something to
+            reset — on an untouched dialog it would be a no-op control. */}
+        <div className="mt-6 flex items-center justify-between gap-4">
+          {isDirty ? (
+            <Button
+              type="button"
+              variant="link"
+              visual="gray"
+              size="sm"
+              className="h-5 p-0"
+              onClick={() => {
+                setValue(saved)
+                setError(null)
+              }}
+              disabled={isLoading}
+              leftIcon={<RefreshCcw01 className="size-3.5" />}
+            >
+              Reset to default
+            </Button>
+          ) : (
+            <span />
+          )}
+
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              variant="outlined"
+              visual="gray"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleSave}
+              disabled={isLoading || isEmpty || !isDirty}
+            >
+              {isLoading ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   )
