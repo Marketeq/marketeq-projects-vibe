@@ -887,10 +887,17 @@ export default function SettingsPage() {
 
   const paymentMethodsRef = useRef<BillingPaymentMethodsContentHandle | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const tabScrollPositions = useRef<Record<string, number>>({})
+  const prevTab = useRef(activeTab)
 
   useEffect(() => {
-    if (contentRef.current) contentRef.current.scrollTop = 0
-    window.scrollTo(0, 0)
+    const el = contentRef.current
+    if (!el) return
+    // Save outgoing tab's scroll position
+    tabScrollPositions.current[prevTab.current] = el.scrollTop
+    // Restore incoming tab's scroll position (0 if never visited)
+    el.scrollTop = tabScrollPositions.current[activeTab] ?? 0
+    prevTab.current = activeTab
   }, [activeTab])
 
   // `?add=1` opens the add-payment-method dialog on arrival, so entry points
