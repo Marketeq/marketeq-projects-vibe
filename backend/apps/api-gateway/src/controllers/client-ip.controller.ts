@@ -23,7 +23,20 @@ import { Request } from 'express'
  * sensitive to you, but it is tied to a session, so it stays behind auth like
  * the rest of Settings.
  */
-@Controller('v1/client-ip')
+/*
+ * Both paths, because the frontend's base URL is not consistent about the
+ * `/api` segment: `NEXT_PUBLIC_API_URL` is `http://localhost:4000/api`, so an
+ * `AxiosRequest.get('/v1/client-ip')` actually asks for `/api/v1/client-ip`.
+ * Registered only at the bare path, that request fell through to the catch-all
+ * proxy, which tried to resolve `v1` as a service name and answered 502 — the
+ * hook then swallowed it and the panel showed a dash.
+ *
+ * This mirrors what the homepage routes already do (`homepage`, `api/homepage`
+ * and `v1/homepage` all point at the same handler). This controller is
+ * registered ahead of ProxyController in api-gateway.module.ts, so the explicit
+ * path wins over its `@All('*')`.
+ */
+@Controller(['v1/client-ip', 'api/v1/client-ip'])
 export class ClientIpController {
   @Get()
   @HttpCode(HttpStatus.OK)

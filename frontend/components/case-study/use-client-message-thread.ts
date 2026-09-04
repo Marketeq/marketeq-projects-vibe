@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { apiFetch } from "@/src/lib/api"
 import { ensureEncryptionKeysExist, loadPrivateKey } from "@/src/crypto/keys"
 import { getAccessToken, getCurrentUser } from "@/utils/auth"
+import { useFileUpload } from "@/app/(group)/inbox/hooks/use-file-upload"
 import { useSendMessage } from "@/app/(group)/inbox/hooks/use-send-message"
 
 /**
@@ -21,6 +22,7 @@ export function useClientMessageThread(talentId: string | undefined) {
   const [error, setError] = useState<string | null>(null)
   const token = getAccessToken() || ""
   const sendEncrypted = useSendMessage(token, privateKey, false)
+  const uploadFile = useFileUpload(token, privateKey, false)
 
   useEffect(() => {
     if (!token) return
@@ -38,9 +40,10 @@ export function useClientMessageThread(talentId: string | undefined) {
   }, [token])
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, files: File[] = []) => {
       const myId = getCurrentUser()?.id
-      if (!myId || !talentId || !text.trim()) return
+      if (!myId || !talentId) return
+      if (!text.trim() && files.length === 0) return
       setSending(true)
       setError(null)
       try {
@@ -49,7 +52,18 @@ export function useClientMessageThread(talentId: string | undefined) {
           headers: { Authorization: `Bearer ${token}` },
           body: { participantIds: [myId, talentId], isGroup: false },
         })
-        await sendEncrypted(thread.id, text.trim())
+        if (files.length > 0) {
+          // /messaging/upload carries the (encrypted) text alongside the
+          // first file, exactly as the inbox composer does — so an
+          // attachment plus a caption is one message, not two. Any further
+          // files follow as their own attachment-only messages.
+          await uploadFile(thread.id, files[0], text.trim() || undefined)
+          for (const file of files.slice(1)) {
+            await uploadFile(thread.id, file)
+          }
+        } else {
+          await sendEncrypted(thread.id, text.trim())
+        }
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Couldn't send your message."
@@ -59,7 +73,7 @@ export function useClientMessageThread(talentId: string | undefined) {
         setSending(false)
       }
     },
-    [talentId, token, sendEncrypted]
+    [talentId, token, sendEncrypted, uploadFile]
   )
 
   return { send, sending, error, ready: Boolean(privateKey) }
