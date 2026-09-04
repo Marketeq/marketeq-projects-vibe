@@ -23,7 +23,6 @@ import {
 } from "@/components/ui"
 import { cn } from "@/utils/functions"
 import {
-  SMS_ENABLED,
   channelIcons,
   channelLabels,
   channelOrder,
@@ -162,17 +161,11 @@ export default function NotificationCategoriesList({
                     <div className="flex w-full flex-col">
                       {channelOrder.map((channel) => {
                         const ChannelIcon = channelIcons[channel]
-                        // Text is COMING SOON: shown so the set reads complete,
-                        // dimmed and inert because there is nothing behind it.
-                        const isUnavailable = channel === "sms" && !SMS_ENABLED
 
                         return (
                           <div
                             key={channel}
-                            className={cn(
-                              "flex h-11 w-full items-center justify-between gap-3 py-2",
-                              isUnavailable && "opacity-50"
-                            )}
+                            className="flex h-11 w-full items-center justify-between gap-3 py-2"
                           >
                             <span className="flex items-center gap-2">
                               <ChannelIcon className="size-5 text-gray-400" />
@@ -182,13 +175,10 @@ export default function NotificationCategoriesList({
                             </span>
                             <Switch
                               checked={
-                                isUnavailable
-                                  ? false
-                                  : state.channels[channel] &&
-                                    globalChannels[channel].enabled
+                                state.channels[channel] &&
+                                globalChannels[channel].enabled
                               }
                               disabled={
-                                isUnavailable ||
                                 !state.enabled ||
                                 !globalChannels[channel].enabled
                               }

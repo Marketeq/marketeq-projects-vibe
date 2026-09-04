@@ -7,20 +7,11 @@ import type {
 } from "@/service/http/notifications"
 import { cn } from "@/utils/functions"
 import { Edit01, Plus } from "@blend-metrics/icons"
-import {
-  Button,
-  Switch,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-  useToast,
-} from "@/components/ui"
+import { Button, Switch, useToast } from "@/components/ui"
 import BrowserAlertsModal from "./modals/browser-alerts-modal"
 import EditEmailModal from "./modals/edit-email-modal"
 import EditPhoneModal from "./modals/edit-phone-modal"
 import {
-  SMS_ENABLED,
   channelIcons,
   channelLabels,
   formatPhoneForDisplay,
@@ -69,20 +60,28 @@ export default function NotificationGlobalChannels({
     setBrowserLoading(true)
     try {
       if (browserMode === "enable") {
+        // The preference records the choice; the browser permission decides
+        // whether we can act on it. They were tied together, so dismissing or
+        // having previously blocked the native prompt left "Browser" struck
+        // through — the click looked like it had done nothing. Saving first
+        // means the row always reflects what was asked for, and the toast
+        // carries the part the browser still has to allow.
+        onSetBrowserAlerts(true)
         const result = await requestBrowserNotificationPermission()
-        if (result !== "granted") {
+        if (result === "granted") {
+          toast({ title: "Browser alerts are now enabled", variant: "success" })
+        } else if (result === "denied") {
           toast({
             title:
-              result === "denied"
-                ? "Browser notifications are blocked — enable them in your browser settings"
-                : "Browser notification permission was dismissed",
+              "Browser alerts are on, but your browser is blocking them — allow notifications in your browser settings",
             variant: "destructive",
           })
-          setBrowserMode(null)
-          return
+        } else {
+          toast({
+            title:
+              "Browser alerts are on — allow notifications when your browser asks",
+          })
         }
-        onSetBrowserAlerts(true)
-        toast({ title: "Browser alerts are now enabled", variant: "success" })
       } else {
         onSetBrowserAlerts(false)
         toast({ title: "Browser alerts are now disabled", variant: "success" })
@@ -133,13 +132,6 @@ export default function NotificationGlobalChannels({
       setPhoneLoading(false)
     }
   }
-
-  // Null once the channel can actually be switched on.
-  const smsDisabledReason = !SMS_ENABLED
-    ? "Text notifications are coming soon"
-    : !accountPhone
-      ? "Add a phone number to receive text notifications"
-      : null
 
   const inAppBrowserBtn = channels.inApp.browser ? (
     <Button
@@ -280,34 +272,14 @@ export default function NotificationGlobalChannels({
             >
               {accountPhone ? "Edit Phone Number" : "Add Phone Number"}
             </Button>
-            {/* The number is real and saving it is real; only delivery is not.
-                The toggle stays inert until there is an SMS sender behind it,
-                rather than promising texts that never arrive. The reason is
-                worth saying out loud, so a disabled toggle carries a tooltip
-                and a working one does not. */}
-            {smsDisabledReason ? (
-              <TooltipProvider delayDuration={150}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex">
-                      <Switch checked={false} disabled size="sm" />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent
-                    side="top"
-                    className="max-w-[220px] text-center"
-                  >
-                    {smsDisabledReason}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (
-              <Switch
-                checked={channels.sms.enabled}
-                onCheckedChange={(v) => onToggleChannel("sms", v)}
-                size="sm"
-              />
-            )}
+            {/* Not gated on having a number: the design shows the channel on
+                alongside "Missing Phone Number", and the row's own hover
+                button is how a number gets added. */}
+            <Switch
+              checked={channels.sms.enabled}
+              onCheckedChange={(v) => onToggleChannel("sms", v)}
+              size="sm"
+            />
           </div>
         </div>
       </div>
