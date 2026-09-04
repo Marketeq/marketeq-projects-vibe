@@ -52,6 +52,7 @@ import {
   EyeOff,
   File04,
   Fingerprint01,
+  LayersThree01,
   Lock01,
   Mail01,
   Smartphone,
@@ -66,6 +67,7 @@ import {
   Save01,
   Send01,
   Settings02,
+  Shield01,
   ShieldOff,
   Share06,
   Trash01,
@@ -73,6 +75,7 @@ import {
   Upload01,
   User01,
   Users01,
+  Zap,
   UploadCloud02,
   X,
   X2,
@@ -3281,7 +3284,7 @@ export default function SettingsPage() {
                           No team members yet
                         </h3>
                         <p className="mt-1 max-w-md text-sm text-gray-500">
-                          Invite people to your team and manage their roles and permissions.
+                          Grow faster by bringing your team on board. Collaborate on projects, share workloads, and keep everyone aligned in one place.
                         </p>
                         <div className="mt-5">
                           <Button size="sm" leftIcon={<Plus className="size-4" />} onClick={() => toggleInviteWindow(true, "Invite Team Member")}>
@@ -3648,9 +3651,92 @@ export default function SettingsPage() {
               )}
 
               {activeTab === "roles" && (
-                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
-                  Roles
-                </h1>
+                <>
+                  <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                    Roles
+                  </h1>
+
+                  <div className="mt-6 flex flex-col items-center">
+                    {/* Hero card */}
+                    <div className="w-full rounded-lg border border-gray-200 bg-white shadow-xs overflow-hidden">
+                      {/* Gradient banner */}
+                      <div className="relative flex flex-col items-center bg-gradient-to-br from-primary-50 via-primary-25 to-white px-6 pb-8 pt-10">
+                        <div className="flex size-16 items-center justify-center rounded-2xl border border-primary-100 bg-white shadow-xs">
+                          <Zap className="size-7 text-primary-500" />
+                        </div>
+                        <h2 className="mt-5 text-xl font-semibold text-dark-blue-400">
+                          Custom Roles
+                        </h2>
+                        <p className="mt-2 max-w-md text-center text-sm leading-5 text-gray-500">
+                          Create tailored roles with granular permissions that match your exact team structure and workflow needs.
+                        </p>
+                        <Badge visual="primary" size="sm" className="mt-4">
+                          Premium Feature
+                        </Badge>
+                      </div>
+
+                      {/* Benefits grid */}
+                      <div className="border-t border-gray-100 px-8 py-8">
+                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                          {[
+                            {
+                              icon: Shield01,
+                              title: "Granular Access Control",
+                              desc: "Define exactly what each team member can see, edit, and manage across your entire workspace.",
+                            },
+                            {
+                              icon: Users01,
+                              title: "Unlimited Custom Roles",
+                              desc: "Go beyond standard roles. Create as many custom roles as your organization needs.",
+                            },
+                            {
+                              icon: LayersThree01,
+                              title: "Role Hierarchy",
+                              desc: "Set up role inheritance so senior roles automatically include the permissions of junior ones.",
+                            },
+                            {
+                              icon: Lock01,
+                              title: "Sensitive Data Protection",
+                              desc: "Restrict access to financial data, contracts, and confidential documents to only those who need it.",
+                            },
+                          ].map((benefit) => {
+                            const BenefitIcon = benefit.icon
+                            return (
+                              <div key={benefit.title} className="flex gap-x-3">
+                                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white shadow-xs">
+                                  <BenefitIcon className="size-5 text-primary-500" />
+                                </div>
+                                <div className="flex flex-col gap-y-1">
+                                  <span className="text-sm font-semibold text-dark-blue-400">
+                                    {benefit.title}
+                                  </span>
+                                  <span className="text-sm leading-5 text-gray-500">
+                                    {benefit.desc}
+                                  </span>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+
+                      {/* CTA */}
+                      <div className="flex flex-col items-center border-t border-gray-100 bg-gray-25 px-8 py-8">
+                        <p className="text-sm text-gray-500">
+                          Upgrade your plan to unlock custom roles and take full control of your team permissions.
+                        </p>
+                        <Button
+                          className="mt-4"
+                          size="md"
+                          leftIcon={<Zap className="size-4" />}
+                          onClick={() => goToTab("billing-plans")}
+                        >
+                          Upgrade Plan
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </>
               )}
 
               {activeTab === "devices" && !deviceDetail && (
