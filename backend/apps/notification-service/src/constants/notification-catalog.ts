@@ -83,6 +83,51 @@ export const NOTIFICATION_CATALOG: NotificationCatalogCategory[] = [
   },
 ];
 
+/**
+ * Maps the category names publishers actually send onto the catalog ids the
+ * preference screen stores against.
+ *
+ * These had drifted completely apart. Publishers emit `teams`, `team` and
+ * `account`; the catalog holds `general`, `inbox`, `listings`, `offers` and
+ * `contacts` — no overlap at all. An unmatched category falls through to the
+ * permissive defaults in `dispatch`, so every switch on the notification
+ * settings screen was being bypassed for every notification the platform
+ * sends. A user could turn everything off and still receive all of it.
+ *
+ * Doing it here rather than by editing the publishers keeps each service's
+ * emitted vocabulary its own business, and means a service can be renamed or
+ * re-pointed without a coordinated deploy. It also covers the four ids the
+ * catalog itself used before the redesign, so preferences and history stored
+ * under those names still resolve.
+ *
+ * `team` maps to `offers` rather than `contacts` because the only event that
+ * uses it is the invitation the recipient sees, which is titled "New Offer".
+ * The two `teams` events both go to the inviter and are about who has joined,
+ * which is what Contacts covers.
+ */
+export const CATEGORY_ALIASES: Record<string, string> = {
+  // Emitted today by invitations-service and the magic-link handler.
+  teams: 'contacts',
+  team: 'offers',
+  account: 'general',
+  // Catalog ids retired by the 2026-09 redesign.
+  projects: 'listings',
+  messages: 'inbox',
+  contracts: 'offers',
+  marketing: 'general',
+};
+
+/**
+ * Returns the catalog id a category resolves to, or null when nothing claims
+ * it. Null rather than a default: guessing a category silently applies the
+ * wrong user preference, and the caller can say so in the log instead.
+ */
+export function resolveCategoryId(category: string): string | null {
+  if (getAllCategoryIds().has(category)) return category;
+  const alias = CATEGORY_ALIASES[category];
+  return alias && getAllCategoryIds().has(alias) ? alias : null;
+}
+
 export const DEFAULT_GLOBAL_CHANNELS: GlobalChannelPrefs = {
   inApp: { enabled: true, bell: true, popup: true, browser: false },
   email: { enabled: true, address: null },
