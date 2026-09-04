@@ -15,6 +15,7 @@ RUN npx nest build api-gateway
 RUN npx nest build auth-service
 RUN npx nest build autocomplete-service
 RUN npx nest build billing-service
+RUN npx nest build browsing-history-service
 RUN npx nest build category-service
 RUN npx nest build checkout-service
 RUN npx nest build content-moderation-service
