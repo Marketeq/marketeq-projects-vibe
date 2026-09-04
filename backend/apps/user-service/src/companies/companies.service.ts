@@ -58,6 +58,12 @@ export class CompaniesService {
           name: dto.name.trim(),
           domain: dto.domain?.trim() || undefined,
           logoUrl: dto.logoUrl,
+          industry: dto.industry?.trim() || undefined,
+          businessType: dto.businessType?.trim() || undefined,
+          companySize: dto.companySize?.trim() || undefined,
+          annualRevenue: dto.annualRevenue?.trim() || undefined,
+          phone: dto.phone?.trim() || undefined,
+          timeZone: dto.timeZone?.trim() || undefined,
           ownerUserId,
         }),
       );
@@ -106,6 +112,19 @@ export class CompaniesService {
     if (dto.domain !== undefined)
       company.domain = dto.domain.trim() || undefined;
     if (dto.logoUrl !== undefined) company.logoUrl = dto.logoUrl;
+    // The remaining Company Info fields. Trimmed-empty clears the value rather
+    // than storing an empty string, matching how domain is handled above.
+    for (const field of [
+      'industry',
+      'businessType',
+      'companySize',
+      'annualRevenue',
+      'phone',
+      'timeZone',
+    ] as const) {
+      const value = dto[field];
+      if (value !== undefined) company[field] = value.trim() || undefined;
+    }
     return this.companyRepo.save(company);
   }
 
