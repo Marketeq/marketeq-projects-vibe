@@ -11170,6 +11170,16 @@ const NoScopeRoleInfoStep = ({
       : Number(customDuration) > 0);
   const roleDescriptionWordCount = getWordCount(roleDescription);
   const hasWordLimitError = roleDescriptionWordCount > STEP_TWO_WORD_LIMIT;
+  const parsedHeadcount = Number(headcount);
+  const hasHeadcountError =
+    isTeamMode &&
+    headcount.trim().length > 0 &&
+    (!Number.isFinite(parsedHeadcount) || parsedHeadcount <= 0);
+  const hasValidHeadcount =
+    !isTeamMode ||
+    (headcount.trim().length > 0 &&
+      Number.isFinite(parsedHeadcount) &&
+      parsedHeadcount > 0);
   const hasNegativeBudget = budget.trim().startsWith("-");
   const hasValidBudget =
     budget.trim().length > 0 &&
@@ -11181,7 +11191,7 @@ const NoScopeRoleInfoStep = ({
     toggleValidation(
       Boolean(roleDescription.trim()) &&
         !hasWordLimitError &&
-        (!isTeamMode || Boolean(headcount.trim())) &&
+        hasValidHeadcount &&
         hasValidBudget &&
         hasValidDuration,
     );
@@ -11189,6 +11199,8 @@ const NoScopeRoleInfoStep = ({
     budget,
     customDuration,
     durationChoice,
+    hasHeadcountError,
+    hasValidHeadcount,
     hasWordLimitError,
     headcount,
     hasValidDuration,
@@ -11403,10 +11415,13 @@ const NoScopeRoleInfoStep = ({
                     "mt-2",
                     useNoScopeLayout &&
                       "mt-0 h-11 w-[320px] rounded-[5px] border-gray-300 px-[14px] py-2.5 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs",
+                    hasHeadcountError &&
+                      "border-error-300 focus:border-error-300 focus:ring-error-100",
                   )}
                   inputMode="numeric"
                   pattern={useNoScopeLayout ? "[0-9]*" : undefined}
                   value={headcount}
+                  isInvalid={hasHeadcountError}
                   onChange={(event) =>
                     setHeadcount(
                       useNoScopeLayout
