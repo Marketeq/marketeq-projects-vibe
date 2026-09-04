@@ -131,7 +131,7 @@ export default function SettingsSidebar({
   const backHref = role === "CLIENT" ? "/client-dashboard" : "/talent-dashboard"
 
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [isScrolled, setIsScrolled] = useState(persistedScrollTop > 0)
+  const [isScrolled, setIsScrolled] = useState(false)
 
   // Restore before paint on mount so there's no visible jump
   useLayoutEffect(() => {
