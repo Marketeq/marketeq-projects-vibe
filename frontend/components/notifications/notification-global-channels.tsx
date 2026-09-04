@@ -156,9 +156,6 @@ export default function NotificationGlobalChannels({
           <h3 className="text-base font-semibold text-dark-blue-400">
             Notifications by type
           </h3>
-          <p className="text-sm text-gray-500">
-            Control all notifications at once
-          </p>
         </div>
         <div className="px-6 pb-6 space-y-2.5">
           {/* In App */}
@@ -168,7 +165,7 @@ export default function NotificationGlobalChannels({
             )}
           >
             <InAppIcon />
-            <span className="text-sm font-semibold text-dark-blue-400">
+            <span className="text-sm leading-[17px] font-semibold text-dark-blue-400">
               {channelLabels.inApp}
             </span>
             <span className="flex-1" />
@@ -198,7 +195,7 @@ export default function NotificationGlobalChannels({
           {/* Email */}
           <div className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-5 h-[60px] shadow-[0px_1px_4px_rgba(0,0,0,0.03)]">
             <EmailIcon />
-            <span className="text-sm font-semibold text-dark-blue-400">
+            <span className="text-sm leading-[17px] font-semibold text-dark-blue-400">
               {channelLabels.email}
             </span>
             <span className="flex-1" />
@@ -233,7 +230,7 @@ export default function NotificationGlobalChannels({
           {/* SMS / Text */}
           <div className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-5 h-[60px] shadow-[0px_1px_4px_rgba(0,0,0,0.03)] opacity-60">
             <SmsIcon />
-            <span className="text-sm font-semibold text-dark-blue-400">
+            <span className="text-sm leading-[17px] font-semibold text-dark-blue-400">
               {channelLabels.sms}
             </span>
             <span className="ml-2 inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600">

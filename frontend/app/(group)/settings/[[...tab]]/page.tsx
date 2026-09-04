@@ -48,6 +48,7 @@ import {
   Mail01,
   Smartphone,
   HelpCircle,
+  Home03,
   Image as ImageIcon,
   InfoCircle,
   LinkExternal01,
@@ -98,6 +99,9 @@ const BillingMyPlansContent = dynamic(
 import {
   Alert,
   AlertContent,
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
   AlertIcon,
   AlertTitle,
   Avatar,
@@ -1876,9 +1880,22 @@ export default function SettingsPage() {
 
               {activeTab === "notifications" && (
                 <>
-                  <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400 mb-6">
-                    Notifications
-                  </h1>
+                  <Breadcrumb spacing="0.5rem" listClassName="mb-6">
+                    <BreadcrumbItem>
+                      <BreadcrumbLink
+                        href="/"
+                        className="inline-flex items-center"
+                      >
+                        <Home03 className="size-[18px]" />
+                      </BreadcrumbLink>
+                    </BreadcrumbItem>
+                    <BreadcrumbItem>
+                      <BreadcrumbLink href="/settings">Settings</BreadcrumbLink>
+                    </BreadcrumbItem>
+                    <BreadcrumbItem isCurrentPage>
+                      <BreadcrumbLink>Notifications</BreadcrumbLink>
+                    </BreadcrumbItem>
+                  </Breadcrumb>
                   <NotificationPreferences />
                 </>
               )}
