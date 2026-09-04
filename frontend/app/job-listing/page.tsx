@@ -9572,7 +9572,11 @@ const DescribeProjectStep = ({
                     ? "I need ongoing design and development support for my e-commerce store..."
                     : "I need help building a new website for my e-commerce store..."
                 }
-                className={firstQuestionTextareaClassName}
+                className={cn(
+                  firstQuestionTextareaClassName,
+                  descriptionWordCount > STEP_TWO_WORD_LIMIT &&
+                    "border-error-300 focus:border-error-300 focus:ring-error-100",
+                )}
               />
             </div>
 
@@ -9596,7 +9600,11 @@ const DescribeProjectStep = ({
                       updateDraftDetails({ deliverables: value.trim() });
                     }}
                     placeholder="UX design, front-end development, database setup"
-                    className={descriptionTextareaClassName}
+                    className={cn(
+                      descriptionTextareaClassName,
+                      deliverablesWordCount > STEP_TWO_WORD_LIMIT &&
+                        "border-error-300 focus:border-error-300 focus:ring-error-100",
+                    )}
                   />
                 </div>
 
@@ -9808,7 +9816,11 @@ const DescribeProjectStep = ({
                     updateDraftDetails({ deliverables: value.trim() });
                   }}
                   placeholder="UX design, front-end development, database setup"
-                  className="h-[160px] w-[886px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
+                  className={cn(
+                    "h-[160px] w-[886px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400",
+                    deliverablesWordCount > STEP_TWO_WORD_LIMIT &&
+                      "border-error-300 focus:border-error-300 focus:ring-error-100",
+                  )}
                 />
               </div>
 
@@ -10063,6 +10075,8 @@ const DescribeProjectStep = ({
                       "h-11 w-[176px] rounded-[5px] border-gray-300 px-[14px] py-2.5 pl-8 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400",
                       budget !== "" && budget !== "0.00" &&
                         "text-dark-blue-400",
+                      hasNegativeBudget &&
+                        "border-error-300 focus:border-error-300 focus:ring-error-100",
                     )}
                     inputMode="decimal"
                     pattern="^\d*(\.\d{0,2})?$"
@@ -10168,9 +10182,6 @@ const DescribeProjectStep = ({
                 </DropdownMenu>
               </div>
             </div>
-            {hasNegativeBudget ? (
-              <ErrorMessage size="sm">{NEGATIVE_BUDGET_ERROR}</ErrorMessage>
-            ) : null}
           </div>
 
           {!isService ? (
@@ -10353,7 +10364,11 @@ const DescribeProjectStep = ({
                       });
                     }}
                     placeholder="Launch MVP by October, increase signups by 20%, working prototype demo"
-                    className={descriptionTextareaClassName}
+                    className={cn(
+                      descriptionTextareaClassName,
+                      successCriteriaWordCount > STEP_TWO_WORD_LIMIT &&
+                        "border-error-300 focus:border-error-300 focus:ring-error-100",
+                    )}
                   />
                 </div>
               ) : null}
@@ -10379,7 +10394,11 @@ const DescribeProjectStep = ({
                       });
                     }}
                     placeholder="Launch MVP by October, increase signups by 20, working prototype demo"
-                    className="h-20 text-sm"
+                    className={cn(
+                      "h-20 text-sm",
+                      successCriteriaWordCount > STEP_TWO_WORD_LIMIT &&
+                        "border-error-300 focus:border-error-300 focus:ring-error-100",
+                    )}
                   />
                 </div>
               ) : null}
@@ -11336,6 +11355,8 @@ const NoScopeRoleInfoStep = ({
                     "mt-0 h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400",
                   useNoScopeLayout &&
                     roleDescription !== "" && "text-dark-blue-400",
+                  hasWordLimitError &&
+                    "border-error-300 focus:border-error-300 focus:ring-error-100",
                 )}
                 placeholder="Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
                 value={roleDescription}
@@ -11423,6 +11444,8 @@ const NoScopeRoleInfoStep = ({
                           "h-11 w-[176px] rounded-[5px] border-gray-300 px-[14px] py-2.5 pl-8 text-[16px] leading-6 font-normal text-gray-400 shadow-xs",
                           budget !== "" && budget !== "0.00" &&
                             "text-dark-blue-400",
+                          hasNegativeBudget &&
+                            "border-error-300 focus:border-error-300 focus:ring-error-100",
                         )}
                         inputMode="decimal"
                         pattern="^\d*(\.\d{0,2})?$"
@@ -11497,9 +11520,6 @@ const NoScopeRoleInfoStep = ({
                     </SelectContent>
                   </Select>
                 </div>
-                {hasNegativeBudget ? (
-                  <ErrorMessage size="sm">{NEGATIVE_BUDGET_ERROR}</ErrorMessage>
-                ) : null}
               </div>
             ) : (
               <div className="mt-16">
