@@ -11,6 +11,7 @@ import { UserAPI, UserProfilePayload } from "@/service/http/user"
 import { useRefreshUser } from "../hooks/use-refresh-user"
 import { useCompanyInfo } from "../hooks/use-company-info"
 import { useClientIp } from "../hooks/use-client-ip"
+import { useAllowedIps } from "../hooks/use-allowed-ips"
 import { AuthAPI } from "@/service/http/auth"
 import { ClientAPI } from "@/service/http/client"
 import { cn, convertToKbOrMb, getIsNotEmpty } from "@/utils/functions"
@@ -200,6 +201,13 @@ export default function SettingsPage() {
   } = useCompanyInfo(activeTab === "company-info")
 
   const { ip: currentIpAddress } = useClientIp(activeTab === "ip-restrictions")
+  const {
+    entries: allowedIps,
+    error: allowedIpsError,
+    addMany: addAllowedIps,
+    updateOne: updateAllowedIp,
+    removeOne: removeAllowedIpEntry,
+  } = useAllowedIps(activeTab === "ip-restrictions")
 
   const toggleInviteWindow = useInviteWindowStore((s) => s.toggle)
   const invoiceExporters = useBillingExportStore((s) => s.exporters.invoices)
@@ -236,13 +244,11 @@ export default function SettingsPage() {
     []
   )
   const [isIpRestrictionEnabled, setIsIpRestrictionEnabled] = useState(true)
-  const [allowedIps, setAllowedIps] = useState<
-    { id: string; address: string; description: string; addedAt: string }[]
-  >([])
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
   const [companyError, setCompanyError] = useState<string | null>(null)
+  const [ipSaveError, setIpSaveError] = useState<string | null>(null)
   const [profileForm, setProfileForm] = useState({
     firstName: "",
     lastName: "",
@@ -977,46 +983,55 @@ export default function SettingsPage() {
   const resetIpRows = () =>
     setIpRows([{ address: "", rangeFrom: "", rangeTo: "", description: "" }])
 
-  // Local-only for now so the populated table can be exercised; the real
-  // persistence lands with the IP backend.
-  const handleSaveIps = () => {
-    const now = Date.now()
+  const handleSaveIps = async () => {
     const entries = ipRows
       .filter((row) =>
         ipEntryType === "range"
           ? row.rangeFrom.trim().length > 0 && row.rangeTo.trim().length > 0
           : row.address.trim().length > 0
       )
-      .map((row, index) => ({
-        id: `${now}-${index}`,
+      .map((row) => ({
         address:
           ipEntryType === "range"
             ? `${row.rangeFrom.trim()} – ${row.rangeTo.trim()}`
             : row.address.trim(),
         description: row.description.trim(),
-        addedAt: new Date().toISOString(),
       }))
 
     if (entries.length === 0) return
 
-    if (editingIpId) {
-      // Editing acts on one entry and keeps its original Date Added.
-      const [updated] = entries
-      setAllowedIps((prev) =>
-        prev.map((entry) =>
-          entry.id === editingIpId
-            ? {
-                ...entry,
-                address: updated.address,
-                description: updated.description,
-              }
-            : entry
+    setIpSaveError(null)
+    try {
+      if (editingIpId) {
+        // Editing acts on one entry and keeps its original Date Added.
+        const [updated] = entries
+        await updateAllowedIp(editingIpId, updated)
+        setSavedAlertMessage("Successfully updated IP address")
+      } else {
+        const { added, skipped } = await addAllowedIps(entries)
+        // Nothing new means every address was already on the list. Saying so
+        // beats a success alert over a table that did not change.
+        if (added === 0 && skipped.length > 0) {
+          setIpSaveError(
+            skipped.length === 1
+              ? `${skipped[0]} is already on your list`
+              : `All ${skipped.length} addresses are already on your list`
+          )
+          return
+        }
+        setSavedAlertMessage(
+          skipped.length > 0
+            ? `Added ${added}, skipped ${skipped.length} already on your list`
+            : "Successfully added IP addresses"
         )
+      }
+    } catch (err: any) {
+      setIpSaveError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Couldn't save that IP address"
       )
-      setSavedAlertMessage("Successfully updated IP address")
-    } else {
-      setAllowedIps((prev) => [...entries, ...prev])
-      setSavedAlertMessage("Successfully added IP addresses")
+      return
     }
 
     setEditingIpId(null)
@@ -1025,8 +1040,15 @@ export default function SettingsPage() {
     setIsSavedAlertMounted(true)
   }
 
-  const removeAllowedIp = (id: string) =>
-    setAllowedIps((prev) => prev.filter((entry) => entry.id !== id))
+  const removeAllowedIp = (id: string) => {
+    void removeAllowedIpEntry(id).catch((err: any) => {
+      setIpSaveError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Couldn't remove that IP address"
+      )
+    })
+  }
 
   // Closing with edits pending routes through the discard prompt instead. Covers
   // the X, Escape and overlay clicks, since they all come through onOpenChange.
@@ -1122,11 +1144,30 @@ export default function SettingsPage() {
     clearCsvFile()
   }
 
-  const handleSaveCsvIps = () => {
+  const handleSaveCsvIps = async () => {
     if (csvEntries.length === 0 || csvStatus !== "done") return
-    setAllowedIps((prev) => [...csvEntries, ...prev])
+    setIpSaveError(null)
+    try {
+      const { added, skipped } = await addAllowedIps(
+        csvEntries.map((entry) => ({
+          address: entry.address,
+          description: entry.description,
+        }))
+      )
+      setSavedAlertMessage(
+        skipped.length > 0
+          ? `Added ${added}, skipped ${skipped.length} already on your list`
+          : "Successfully added IP addresses"
+      )
+    } catch (err: any) {
+      setIpSaveError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Couldn't import that file"
+      )
+      return
+    }
     closeCsvDialog()
-    setSavedAlertMessage("Successfully added IP addresses")
     setIsSavedAlertMounted(true)
   }
 
@@ -3333,6 +3374,15 @@ export default function SettingsPage() {
                       </div>
                     </div>
 
+                    {/* A failed load leaves an empty table that reads as "you
+                        have no allowed addresses", which is the opposite of
+                        what it means. */}
+                    {allowedIpsError && (
+                      <p className="mt-6 text-sm text-error-500">
+                        {allowedIpsError}
+                      </p>
+                    )}
+
                     {allowedIps.length > 0 && (
                       <div className="mt-6 flex items-center gap-x-3">
                         <Switch
@@ -3711,6 +3761,11 @@ export default function SettingsPage() {
                             Preview
                           </Button>
                         )}
+                        {ipSaveError && (
+                          <p className="self-center text-sm text-error-500">
+                            {ipSaveError}
+                          </p>
+                        )}
                         <Button
                           variant="filled"
                           visual="primary"
@@ -3912,6 +3967,11 @@ export default function SettingsPage() {
                         ))}
                       </div>
 
+                      {ipSaveError && (
+                        <p className="w-full pt-3 text-sm text-error-500">
+                          {ipSaveError}
+                        </p>
+                      )}
                       <div className="flex w-full items-start justify-end gap-x-3 pt-5">
                         {hasAnyIpAddress && !editingIpId && (
                           <Button
