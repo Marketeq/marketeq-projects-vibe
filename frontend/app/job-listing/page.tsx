@@ -2025,8 +2025,21 @@ const getRichTextCharacterCount = (value: string) =>
   plainTextFromRichTextHtml(value).length;
 
 const STEP_TWO_WORD_LIMIT = 100;
+const NEGATIVE_BUDGET_ERROR = "Budget cannot be negative";
 
 const getWordCount = (value: string) => (value.match(/\S+/g) ?? []).length;
+
+const normalizeBudgetInput = (value: string) => {
+  const sanitizedValue = value.replace(/[^0-9.-]/g, "");
+  const sign = sanitizedValue.startsWith("-") ? "-" : "";
+  const unsignedValue = sanitizedValue.replace(/-/g, "");
+  const [whole = "", fraction = ""] = unsignedValue.split(".");
+
+  return sign +
+    (unsignedValue.includes(".")
+      ? `${whole}.${fraction.slice(0, 2)}`
+      : whole);
+};
 
 const DURATION_TYPE = ["hours", "days", "weeks", "months"] as const;
 
@@ -2459,6 +2472,17 @@ const BottomBar = ({
 
         if (!listingId) {
           throw new Error("Unable to create job listing draft");
+        }
+
+        if (
+          typeof jobListingDraftDetails.budgetAmount === "number" &&
+          jobListingDraftDetails.budgetAmount < 0
+        ) {
+          toast({
+            title: NEGATIVE_BUDGET_ERROR,
+            variant: "destructive",
+          });
+          return;
         }
 
         if (typeof window !== "undefined") {
@@ -9080,8 +9104,12 @@ const DescribeProjectStep = ({
   const hasValidCustomDuration =
     !isCustomDurationSelected ||
     (Number.isFinite(customDurationAmount) && customDurationAmount > 0);
+  const hasNegativeBudget = budget.trim().startsWith("-");
   const hasValidBudget =
-    budget.trim().length > 0 && Number(budget.replace(/,/g, "")) > 0;
+    budget.trim().length > 0 &&
+    !hasNegativeBudget &&
+    Number.isFinite(Number(budget.replace(/,/g, ""))) &&
+    Number(budget.replace(/,/g, "")) >= 0;
   const descriptionWordCount = getWordCount(description);
   const deliverablesWordCount = getWordCount(deliverables);
   const successCriteriaWordCount = getWordCount(successCriteria);
@@ -9388,7 +9416,7 @@ const DescribeProjectStep = ({
 
   useEffect(() => {
     if (!effectiveJobListingId || !hasUserEditedDetailsRef.current) return;
-    if (hasWordLimitError) return;
+    if (hasWordLimitError || hasNegativeBudget) return;
 
     const hasUserEnteredDetails =
       Boolean(description.trim()) ||
@@ -9428,6 +9456,7 @@ const DescribeProjectStep = ({
     description,
     durationMonths,
     effectiveJobListingId,
+    hasNegativeBudget,
     hasWordLimitError,
     isService,
     successCriteria,
@@ -10038,6 +10067,7 @@ const DescribeProjectStep = ({
                     inputMode="decimal"
                     pattern="^\d*(\.\d{0,2})?$"
                     value={budget}
+                    isInvalid={hasNegativeBudget}
                     onFocus={() => {
                       if (budget === "0.00") {
                         setBudget("");
@@ -10045,11 +10075,9 @@ const DescribeProjectStep = ({
                       }
                     }}
                     onChange={(event) => {
-                      const value = event.target.value.replace(/[^0-9.]/g, "");
-                      const [whole = "", fraction = ""] = value.split(".");
-                      const nextValue = value.includes(".")
-                        ? `${whole}.${fraction.slice(0, 2)}`
-                        : whole;
+                      const nextValue = normalizeBudgetInput(
+                        event.target.value,
+                      );
                       setBudget(nextValue);
                       updateDraftDetails({
                         budgetAmount: Number(nextValue.replace(/,/g, "")) || 0,
@@ -10071,7 +10099,7 @@ const DescribeProjectStep = ({
                       ) {
                         return;
                       }
-                      if (!/^[0-9.]$/.test(event.key)) {
+                      if (!/^[0-9.-]$/.test(event.key)) {
                         event.preventDefault();
                         return;
                       }
@@ -10140,6 +10168,9 @@ const DescribeProjectStep = ({
                 </DropdownMenu>
               </div>
             </div>
+            {hasNegativeBudget ? (
+              <ErrorMessage size="sm">{NEGATIVE_BUDGET_ERROR}</ErrorMessage>
+            ) : null}
           </div>
 
           {!isService ? (
@@ -11120,13 +11151,19 @@ const NoScopeRoleInfoStep = ({
       : Number(customDuration) > 0);
   const roleDescriptionWordCount = getWordCount(roleDescription);
   const hasWordLimitError = roleDescriptionWordCount > STEP_TWO_WORD_LIMIT;
+  const hasNegativeBudget = budget.trim().startsWith("-");
+  const hasValidBudget =
+    budget.trim().length > 0 &&
+    !hasNegativeBudget &&
+    Number.isFinite(Number(budget.replace(/,/g, ""))) &&
+    Number(budget.replace(/,/g, "")) >= 0;
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(
       Boolean(roleDescription.trim()) &&
         !hasWordLimitError &&
         (!isTeamMode || Boolean(headcount.trim())) &&
-        budget.trim().length > 0 && Number(budget.replace(/,/g, "")) > 0 &&
+        hasValidBudget &&
         hasValidDuration,
     );
   }, [
@@ -11136,6 +11173,7 @@ const NoScopeRoleInfoStep = ({
     hasWordLimitError,
     headcount,
     hasValidDuration,
+    hasValidBudget,
     roleDescription,
   ]);
 
@@ -11389,6 +11427,7 @@ const NoScopeRoleInfoStep = ({
                         inputMode="decimal"
                         pattern="^\d*(\.\d{0,2})?$"
                         value={budget}
+                        isInvalid={hasNegativeBudget}
                         onFocus={() => {
                           if (budget === "0.00") {
                             setBudget("");
@@ -11399,13 +11438,10 @@ const NoScopeRoleInfoStep = ({
                           }
                         }}
                         onChange={(event) => {
-                          const value = event.target.value.replace(/[^0-9.]/g, "");
-                          const [whole = "", fraction = ""] = value.split(".");
-                          setBudget(
-                            value.includes(".")
-                              ? `${whole}.${fraction.slice(0, 2)}`
-                              : whole,
+                          const value = normalizeBudgetInput(
+                            event.target.value,
                           );
+                          setBudget(value);
                         }}
                         onKeyDown={(event) => {
                           const allowedKeys = [
@@ -11424,7 +11460,7 @@ const NoScopeRoleInfoStep = ({
                           ) {
                             return;
                           }
-                          if (!/^[0-9.]$/.test(event.key)) {
+                          if (!/^[0-9.-]$/.test(event.key)) {
                             event.preventDefault();
                             return;
                           }
@@ -11461,6 +11497,9 @@ const NoScopeRoleInfoStep = ({
                     </SelectContent>
                   </Select>
                 </div>
+                {hasNegativeBudget ? (
+                  <ErrorMessage size="sm">{NEGATIVE_BUDGET_ERROR}</ErrorMessage>
+                ) : null}
               </div>
             ) : (
               <div className="mt-16">
@@ -17508,6 +17547,8 @@ function PublishProject({
         lastCompletedStep: currentStep,
       };
       if (
+        (typeof payload.budgetAmount === "number" &&
+          payload.budgetAmount < 0) ||
         getWordCount(payload.description ?? "") > STEP_TWO_WORD_LIMIT ||
         getWordCount(payload.deliverables ?? "") > STEP_TWO_WORD_LIMIT ||
         getWordCount(payload.successCriteria ?? "") > STEP_TWO_WORD_LIMIT
