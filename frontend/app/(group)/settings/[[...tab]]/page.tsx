@@ -65,6 +65,7 @@ import {
   Trash01,
   Trash03,
   Upload01,
+  User01,
   UploadCloud02,
   X,
   X2,
@@ -3177,22 +3178,22 @@ export default function SettingsPage() {
                             <TableRow key={idx}>
                               <TableCell className="h-[72px] px-6 py-4">
                                 <div className="flex items-center gap-x-3">
-                                  <Avatar size="md" className="hover:ring-0 active:ring-0">
-                                    {member.name ? (
-                                      <>
-                                        <AvatarImage src={member.avatar || undefined} alt={member.name} />
-                                        <AvatarFallback>
-                                          {member.name
-                                            .split(" ")
-                                            .map((n) => n[0])
-                                            .join("")
-                                            .slice(0, 2)}
-                                        </AvatarFallback>
-                                      </>
-                                    ) : (
-                                      <AvatarFallbackIcon />
-                                    )}
-                                  </Avatar>
+                                  {member.name ? (
+                                    <Avatar size="md" className="hover:ring-0 active:ring-0">
+                                      <AvatarImage src={member.avatar || undefined} alt={member.name} />
+                                      <AvatarFallback>
+                                        {member.name
+                                          .split(" ")
+                                          .map((n) => n[0])
+                                          .join("")
+                                          .slice(0, 2)}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                  ) : (
+                                    <div className="flex size-10 shrink-0 items-center justify-center rounded-full border border-dashed border-gray-300 bg-gray-50">
+                                      <User01 className="size-[15px] text-gray-400" />
+                                    </div>
+                                  )}
                                   <div className="flex flex-col">
                                     {member.name && (
                                       <span className="text-sm font-semibold leading-5 text-gray-900">
