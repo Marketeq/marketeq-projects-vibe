@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation"
 import { cn } from "@/utils/functions"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
-import { useRef, useEffect, useState, useMemo } from "react"
+import { useRef, useEffect, useLayoutEffect, useState, useMemo } from "react"
 import {
   Bell,
   Building05,
@@ -43,6 +43,9 @@ type SidebarSection = {
 
 const sidebarFrameClass =
   "w-[224px] shrink-0 bg-gray-50 min-[1024px]:flex flex-col fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200"
+
+// Module-level so the value survives component remounts (tab navigation).
+let persistedScrollTop = 0
 
 const sharedAccountItems: SidebarItem[] = [
   { href: "/settings/personal-info", label: "Personal Info", icon: UserCircle },
@@ -130,10 +133,19 @@ export default function SettingsSidebar({
   const scrollRef = useRef<HTMLDivElement>(null)
   const [isScrolled, setIsScrolled] = useState(false)
 
+  // Restore before paint on mount so there's no visible jump
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (el && persistedScrollTop > 0) el.scrollTop = persistedScrollTop
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const onScroll = () => setIsScrolled(el.scrollTop > 0)
+    const onScroll = () => {
+      persistedScrollTop = el.scrollTop
+      setIsScrolled(el.scrollTop > 0)
+    }
     el.addEventListener("scroll", onScroll, { passive: true })
     return () => el.removeEventListener("scroll", onScroll)
   }, [])
