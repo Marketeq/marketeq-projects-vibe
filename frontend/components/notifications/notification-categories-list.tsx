@@ -5,7 +5,6 @@ import type {
   CatalogCategory,
   CategoryPref,
   ChannelKey,
-  GlobalChannelPrefs,
 } from "@/service/http/notifications"
 import {
   BellRinging03,
@@ -32,7 +31,6 @@ import {
 interface Props {
   catalog: CatalogCategory[]
   getCategoryState: (categoryId: string) => CategoryPref
-  globalChannels: GlobalChannelPrefs
   expandedCategory: string | null
   onToggleExpanded: (categoryId: string) => void
   onToggleCategoryMaster: (categoryId: string) => void
@@ -43,7 +41,6 @@ interface Props {
 export default function NotificationCategoriesList({
   catalog,
   getCategoryState,
-  globalChannels,
   expandedCategory,
   onToggleExpanded,
   onToggleCategoryMaster,
@@ -174,14 +171,8 @@ export default function NotificationCategoriesList({
                               </span>
                             </span>
                             <Switch
-                              checked={
-                                state.channels[channel] &&
-                                globalChannels[channel].enabled
-                              }
-                              disabled={
-                                !state.enabled ||
-                                !globalChannels[channel].enabled
-                              }
+                              checked={state.channels[channel]}
+                              disabled={!state.enabled}
                               onCheckedChange={() =>
                                 onToggleCategoryChannel(category.id, channel)
                               }

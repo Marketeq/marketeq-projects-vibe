@@ -175,11 +175,22 @@ export default function NotificationPreferences() {
     categoryId: string,
     channel: ChannelKey
   ) => {
-    if (!globalChannels[channel].enabled) return
     const current = getCategoryState(categoryId)
+    const nextEnabled = !current.channels[channel]
+
+    // Selecting a channel for a category turns the channel itself on if it was
+    // off, the same way enabling any category pulls Inbox on. Without this the
+    // switch would refuse to move: a channel the account has switched off
+    // delivers nothing, so the category could never show it as selected.
+    const channelsPatch =
+      nextEnabled && !globalChannels[channel].enabled
+        ? { [channel]: { enabled: true } }
+        : undefined
+
     update({
+      ...(channelsPatch ? { channels: channelsPatch } : {}),
       categories: {
-        [categoryId]: { channels: { [channel]: !current.channels[channel] } },
+        [categoryId]: { channels: { [channel]: nextEnabled } },
       },
     })
   }
@@ -282,7 +293,6 @@ export default function NotificationPreferences() {
         <NotificationCategoriesList
           catalog={catalog}
           getCategoryState={getCategoryState}
-          globalChannels={globalChannels}
           expandedCategory={expandedCategory}
           onToggleExpanded={(categoryId) =>
             setExpandedCategory((current) =>
