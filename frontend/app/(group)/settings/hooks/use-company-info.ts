@@ -22,15 +22,20 @@ import type { Company } from "@/types/company"
  * enrols the caller as an admin, which is what lets the subsequent PATCH pass
  * its permission check.
  *
- * Only three of the form's eight fields have anywhere to go today: name,
- * website and logo. Industry, business type, company size, annual revenue,
- * phone and time zone have no column on any table, so this hook does not
- * pretend to persist them — they are deliberately absent from the payload
- * rather than sent and silently dropped.
+ * All eight fields persist. Industry, business type, company size, annual
+ * revenue, phone and time zone gained columns on `companies`; before that they
+ * were deliberately withheld from the payload rather than sent and silently
+ * dropped.
  */
 export type CompanyInfoDraft = {
   name: string
   website: string
+  industry: string
+  businessType: string
+  companySize: string
+  annualRevenue: string
+  phone: string
+  timeZone: string
 }
 
 export function useCompanyInfo(enabled: boolean) {
@@ -86,15 +91,26 @@ export function useCompanyInfo(enabled: boolean) {
       const logoUrl = logoFile ? await uploadCompanyLogo(logoFile) : undefined
       const domain = draft.website.trim()
 
+      const profile = {
+        industry: draft.industry.trim(),
+        businessType: draft.businessType.trim(),
+        companySize: draft.companySize.trim(),
+        annualRevenue: draft.annualRevenue.trim(),
+        phone: draft.phone.trim(),
+        timeZone: draft.timeZone.trim(),
+      }
+
       const saved = company
         ? await updateCompany(company.id, {
             name,
             domain,
+            ...profile,
             ...(logoUrl ? { logoUrl } : {}),
           })
         : await createCompany({
             name,
             domain: domain || undefined,
+            ...profile,
             ...(logoUrl ? { logoUrl } : {}),
           })
 

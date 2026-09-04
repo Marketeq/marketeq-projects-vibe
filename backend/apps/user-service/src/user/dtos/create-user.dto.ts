@@ -163,6 +163,17 @@ export class CreateUserDto {
   @IsString()
   teamName?: string;
 
+  /**
+   * The department someone works in — Personal Info's "What team do you work
+   * on?". Distinct from `teamName` above, which is the client's company name.
+   * Without this declared, the whitelisting ValidationPipe rejects the field
+   * outright, which is why it was previously collected and never submitted.
+   */
+  @ApiPropertyOptional({ example: 'Engineering' })
+  @IsOptional()
+  @IsString()
+  department?: string;
+
   @ApiPropertyOptional({ example: 'acme.com' })
   @IsOptional()
   @IsString()
