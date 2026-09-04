@@ -133,11 +133,11 @@ export default function SettingsSidebar({
   const scrollRef = useRef<HTMLDivElement>(null)
   const [isScrolled, setIsScrolled] = useState(persistedScrollTop > 0)
 
-  // Restore before paint so there's no visible jump
+  // Restore before paint on mount so there's no visible jump
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (el && persistedScrollTop > 0) el.scrollTop = persistedScrollTop
-  })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const el = scrollRef.current
