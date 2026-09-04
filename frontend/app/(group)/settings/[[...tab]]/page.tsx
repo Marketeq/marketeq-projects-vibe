@@ -14,6 +14,12 @@ import { useClientIp } from "../hooks/use-client-ip"
 import { useAllowedIps } from "../hooks/use-allowed-ips"
 import { AuthAPI } from "@/service/http/auth"
 import { ClientAPI } from "@/service/http/client"
+import {
+  getCompanyMembers,
+  updateCompanyMember,
+  removeCompanyMember,
+} from "@/service/http/companies"
+import type { CompanyMember } from "@/types/company"
 import { cn, convertToKbOrMb, getIsNotEmpty } from "@/utils/functions"
 import languagesMock from "@/public/mock/languages.json"
 import ActiveSessionsModal from "@/components/active-sessions-modal"
@@ -33,9 +39,9 @@ import { AndroidBrand, AppleBrand, MicrosoftBrand } from "@blend-metrics/icons/b
 import {
   AlertTriangle,
   ArrowDown,
+  ArrowUp,
   Check,
   DotsHorizontal,
-  Minimize01,
   CheckCircle,
   ChevronDown,
   ArrowLeft,
@@ -66,6 +72,7 @@ import {
   Trash03,
   Upload01,
   User01,
+  Users01,
   UploadCloud02,
   X,
   X2,
@@ -122,6 +129,7 @@ import {
   Input,
   InputGroup,
   InputLeftAddon,
+  InputLeftElement,
   InputRightElement,
   Label,
   Listbox,
@@ -138,6 +146,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   useToast,
 } from "@/components/ui"
 
@@ -201,10 +213,31 @@ export default function SettingsPage() {
     [router]
   )
 
+  const {
+    company,
+    save: saveCompanyInfo,
+  } = useCompanyInfo(activeTab === "company-info" || activeTab === "users")
+
   // ── Permissions flyout state (users tab) ──────────────────────
+  type TeamMemberRow = {
+    userId: string
+    name: string
+    email: string
+    avatar: string
+    role: string
+    company: string
+    status: "active" | "pending"
+    permissions: string[]
+  }
+  const [teamMembers, setTeamMembers] = useState<TeamMemberRow[]>([])
+  const [teamMembersLoaded, setTeamMembersLoaded] = useState(false)
   const [editingMemberIdx, setEditingMemberIdx] = useState<number | null>(null)
+  const [permsFlyoutVisible, setPermsFlyoutVisible] = useState(false)
   const [permSearch, setPermSearch] = useState("")
   const [selectedPerms, setSelectedPerms] = useState<string[]>([])
+  const [removeMemberIdx, setRemoveMemberIdx] = useState<number | null>(null)
+  const [usersSortKey, setUsersSortKey] = useState<"name" | "role" | "company" | "status" | null>("name")
+  const [usersSortDir, setUsersSortDir] = useState<"asc" | "desc">("asc")
 
   const permissionCategories = useMemo(
     () => [
@@ -318,22 +351,168 @@ export default function SettingsPage() {
     )
   }, [])
 
+  // Build a flat lookup: role label -> role id
+  const roleLabelToId = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const cat of permissionCategories) {
+      for (const r of cat.roles) {
+        map.set(r.label.toLowerCase(), r.id)
+      }
+    }
+    return map
+  }, [permissionCategories])
+
+  const roleIdToLabel = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const cat of permissionCategories) {
+      for (const r of cat.roles) {
+        map.set(r.id, r.label)
+      }
+    }
+    return map
+  }, [permissionCategories])
+
   const openPermsFlyout = useCallback((idx: number) => {
     setEditingMemberIdx(idx)
     setPermSearch("")
-    setSelectedPerms([])
-  }, [])
+    // Pre-select from the member's stored permissions array, or fall back to matching by role label
+    const member = teamMembers[idx]
+    if (member?.permissions?.length) {
+      setSelectedPerms([...member.permissions])
+    } else if (member?.role) {
+      // Try matching each comma-separated role label to a permission id
+      const ids = member.role
+        .split(", ")
+        .map((r) => roleLabelToId.get(r.trim().toLowerCase()))
+        .filter(Boolean) as string[]
+      setSelectedPerms(ids)
+    } else {
+      setSelectedPerms([])
+    }
+    // Mount first, then animate in on next frame
+    requestAnimationFrame(() => setPermsFlyoutVisible(true))
+  }, [teamMembers, roleLabelToId])
 
   const closePermsFlyout = useCallback(() => {
-    setEditingMemberIdx(null)
-    setPermSearch("")
-    setSelectedPerms([])
+    setPermsFlyoutVisible(false)
+    // Wait for slide-out transition to finish before unmounting
+    setTimeout(() => {
+      setEditingMemberIdx(null)
+      setPermSearch("")
+      setSelectedPerms([])
+    }, 150)
   }, [])
 
-  const {
-    company,
-    save: saveCompanyInfo,
-  } = useCompanyInfo(activeTab === "company-info")
+  const applyPerms = useCallback(async () => {
+    if (editingMemberIdx === null || selectedPerms.length === 0) return
+    const member = teamMembers[editingMemberIdx]
+    if (!member) return
+
+    // Build a combined role label from selected permissions
+    const labels = selectedPerms
+      .map((id) => roleIdToLabel.get(id))
+      .filter(Boolean) as string[]
+    const newRole = labels.join(", ")
+
+    // Persist to backend if we have a company
+    if (company?.id && member.userId) {
+      try {
+        await updateCompanyMember(company.id, member.userId, {
+          permissions: selectedPerms,
+        })
+        toast({ title: "Permissions updated", variant: "success" })
+      } catch (err) {
+        console.error("[settings/users] failed to update permissions", err)
+        toast({ title: "Failed to update permissions", variant: "success" })
+        return
+      }
+    }
+
+    setTeamMembers((prev) =>
+      prev.map((m, i) => (i === editingMemberIdx ? { ...m, role: newRole, permissions: selectedPerms } : m))
+    )
+    closePermsFlyout()
+  }, [editingMemberIdx, selectedPerms, roleIdToLabel, closePermsFlyout, teamMembers, company, toast])
+
+  const handleRemoveMember = useCallback(async () => {
+    if (removeMemberIdx === null) return
+    const member = teamMembers[removeMemberIdx]
+
+    if (company?.id && member?.userId) {
+      try {
+        await removeCompanyMember(company.id, member.userId)
+      } catch (err) {
+        console.error("[settings/users] failed to remove member", err)
+        toast({ title: "Failed to remove user", variant: "success" })
+        setRemoveMemberIdx(null)
+        return
+      }
+    }
+
+    setTeamMembers((prev) => prev.filter((_, i) => i !== removeMemberIdx))
+    setRemoveMemberIdx(null)
+    toast({ title: "User removed successfully", variant: "success" })
+  }, [removeMemberIdx, teamMembers, company, toast])
+
+  const handleResendInvite = useCallback((idx: number) => {
+    const member = teamMembers[idx]
+    if (!member) return
+    toast({ title: `Invite resent to ${member.email}`, variant: "success" })
+  }, [teamMembers, toast])
+
+  const handleCancelInvite = useCallback((idx: number) => {
+    setTeamMembers((prev) => prev.filter((_, i) => i !== idx))
+    toast({ title: "Invitation cancelled", variant: "success" })
+  }, [toast])
+
+  const toggleUsersSort = useCallback((key: "name" | "role" | "company" | "status") => {
+    if (usersSortKey === key) {
+      setUsersSortDir((d) => (d === "asc" ? "desc" : "asc"))
+    } else {
+      setUsersSortKey(key)
+      setUsersSortDir("asc")
+    }
+  }, [usersSortKey])
+
+  const sortedTeamMembers = useMemo(() => {
+    if (!usersSortKey) return teamMembers
+    return [...teamMembers].sort((a, b) => {
+      const aVal = (a[usersSortKey] || "").toLowerCase()
+      const bVal = (b[usersSortKey] || "").toLowerCase()
+      const cmp = aVal.localeCompare(bVal)
+      return usersSortDir === "asc" ? cmp : -cmp
+    })
+  }, [teamMembers, usersSortKey, usersSortDir])
+
+  // Load company members when the Users tab is active
+  useEffect(() => {
+    if (activeTab !== "users" || !company?.id || teamMembersLoaded) return
+    let cancelled = false
+    getCompanyMembers(company.id)
+      .then((members) => {
+        if (cancelled) return
+        setTeamMembers(
+          members.map((m: CompanyMember) => ({
+            userId: m.userId,
+            name: m.name || "",
+            email: m.email || "",
+            avatar: m.avatarUrl || "",
+            role: m.permissions?.length
+              ? m.permissions.join(", ")
+              : m.role || "",
+            company: company.name,
+            status: (m.role === "pending" ? "pending" : "active") as "active" | "pending",
+            permissions: m.permissions || [],
+          }))
+        )
+        setTeamMembersLoaded(true)
+      })
+      .catch((err) => {
+        console.warn("[settings/users] could not load members", err)
+        setTeamMembersLoaded(true)
+      })
+    return () => { cancelled = true }
+  }, [activeTab, company, teamMembersLoaded])
 
   const { ip: currentIpAddress } = useClientIp(activeTab === "ip-restrictions")
   const {
@@ -3093,89 +3272,60 @@ export default function SettingsPage() {
                   </h1>
 
                   <div className="mt-6 w-full">
-                    {/* Table */}
+                    {sortedTeamMembers.length === 0 ? (
+                      <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-white py-16 px-6 flex flex-col items-center justify-center text-center">
+                        <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center">
+                          <Users01 className="size-6 text-gray-400" />
+                        </div>
+                        <h3 className="mt-4 text-base font-semibold text-dark-blue-400">
+                          No team members yet
+                        </h3>
+                        <p className="mt-1 max-w-md text-sm text-gray-500">
+                          Invite people to your team and manage their roles and permissions.
+                        </p>
+                        <div className="mt-5">
+                          <Button size="sm" leftIcon={<Plus className="size-4" />} onClick={() => toggleInviteWindow(true, "Invite Team Member")}>
+                            Add Team Member
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
                     <div className="w-full overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,0.03)]">
-                      <Table className="min-w-[900px] border-separate border-spacing-0">
-                        <TableHeader className="bg-white [&_tr]:border-0">
+                      <Table className="w-full">
+                        <TableHeader>
                           <TableRow className="hover:bg-transparent">
-                            <TableHead className="h-11 px-6 py-3">
-                              <span className="flex items-center gap-x-1 text-xs font-medium text-gray-600">
+                            <TableHead className="cursor-pointer select-none" onClick={() => toggleUsersSort("name")}>
+                              <div className="inline-flex items-center gap-x-1">
                                 Team Member
-                                <ArrowDown className="size-4" />
-                              </span>
+                                {usersSortKey === "name" && (usersSortDir === "asc" ? <ArrowUp className="size-4" /> : <ArrowDown className="size-4" />)}
+                              </div>
                             </TableHead>
-                            <TableHead className="h-11 px-6 py-3">
-                              <span className="text-xs font-medium text-gray-600">Role</span>
+                            <TableHead className="cursor-pointer select-none" onClick={() => toggleUsersSort("role")}>
+                              <div className="inline-flex items-center gap-x-1">
+                                Role
+                                {usersSortKey === "role" && (usersSortDir === "asc" ? <ArrowUp className="size-4" /> : <ArrowDown className="size-4" />)}
+                              </div>
                             </TableHead>
-                            <TableHead className="h-11 px-6 py-3">
-                              <span className="text-xs font-medium text-gray-600">Company</span>
+                            <TableHead className="cursor-pointer select-none" onClick={() => toggleUsersSort("company")}>
+                              <div className="inline-flex items-center gap-x-1">
+                                Company
+                                {usersSortKey === "company" && (usersSortDir === "asc" ? <ArrowUp className="size-4" /> : <ArrowDown className="size-4" />)}
+                              </div>
                             </TableHead>
-                            <TableHead className="h-11 px-6 py-3">
-                              <span className="text-xs font-medium text-gray-600">Status</span>
+                            <TableHead className="cursor-pointer select-none" onClick={() => toggleUsersSort("status")}>
+                              <div className="inline-flex items-center gap-x-1">
+                                Status
+                                {usersSortKey === "status" && (usersSortDir === "asc" ? <ArrowUp className="size-4" /> : <ArrowDown className="size-4" />)}
+                              </div>
                             </TableHead>
-                            <TableHead className="h-11 w-[75px]" />
+                            <TableHead className="w-[75px]" />
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {[
-                            {
-                              name: "Alicia Hebert",
-                              email: "jfriedl@me.com",
-                              avatar: "",
-                              role: "General Manager",
-                              company: "Alliance Corp.",
-                              status: "active" as const,
-                            },
-                            {
-                              name: "Kevin Zavala",
-                              email: "raines@live.com",
-                              avatar: "",
-                              role: "Legal Adviser",
-                              company: "Alliance Corp.",
-                              status: "pending" as const,
-                            },
-                            {
-                              name: "Paul Cannon",
-                              email: "rande@gmail.com",
-                              avatar: "",
-                              role: "Graphic Designer",
-                              company: "Alliance Corp.",
-                              status: "active" as const,
-                            },
-                            {
-                              name: "Elliot Spencer",
-                              email: "leviathan@yahoo.com",
-                              avatar: "",
-                              role: "Marketing Manager",
-                              company: "Alliance Corp.",
-                              status: "active" as const,
-                            },
-                            {
-                              name: "",
-                              email: "oevans@icloud.com",
-                              avatar: "",
-                              role: "",
-                              company: "",
-                              status: "pending" as const,
-                            },
-                            {
-                              name: "Jenny Gill",
-                              email: "hmbrand@me.com",
-                              avatar: "",
-                              role: "Project Manager",
-                              company: "Alliance Corp.",
-                              status: "active" as const,
-                            },
-                            {
-                              name: "Andrew Roddick",
-                              email: "john.jacob@gmail.com",
-                              avatar: "",
-                              role: "Systems Analyst",
-                              company: "Alliance Corp.",
-                              status: "active" as const,
-                            },
-                          ].map((member, idx) => (
-                            <TableRow key={idx}>
+                          {sortedTeamMembers.map((member) => {
+                            const originalIdx = teamMembers.indexOf(member)
+                            return (
+                            <TableRow key={originalIdx} className="cursor-pointer" onClick={() => openPermsFlyout(originalIdx)}>
                               <TableCell className="h-[72px] px-6 py-4">
                                 <div className="flex items-center gap-x-3">
                                   {member.name ? (
@@ -3207,21 +3357,48 @@ export default function SettingsPage() {
                                 </div>
                               </TableCell>
                               <TableCell className="h-[72px] px-6 py-4">
-                                {member.role ? (
-                                  <span className="text-sm capitalize leading-5 text-gray-600">
-                                    {member.role}
-                                  </span>
-                                ) : (
+                                {member.role ? (() => {
+                                  const roles = member.role.split(", ").filter(Boolean)
+                                  if (roles.length <= 2) {
+                                    return (
+                                      <span className="text-sm capitalize leading-5 text-gray-600">
+                                        {member.role}
+                                      </span>
+                                    )
+                                  }
+                                  return (
+                                    <span className="flex items-center gap-x-1.5 text-sm capitalize leading-5 text-gray-600">
+                                      {roles[0]}
+                                      <TooltipProvider delayDuration={200}>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span className="inline-flex h-5 min-w-[20px] cursor-default items-center justify-center rounded-full bg-gray-100 px-1.5 text-xs font-medium text-gray-600">
+                                              +{roles.length - 1}
+                                            </span>
+                                          </TooltipTrigger>
+                                          <TooltipContent side="top" size="sm">
+                                            {roles.slice(1).map((r, i) => (
+                                              <div key={i}>{r}</div>
+                                            ))}
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    </span>
+                                  )
+                                })() : (
                                   <span className="text-sm leading-5 text-gray-300">
                                     &mdash;
                                   </span>
                                 )}
                               </TableCell>
-                              <TableCell className="h-[72px] px-6 py-4">
+                              <TableCell className="h-[72px] px-6 py-4" onClick={(e) => e.stopPropagation()}>
                                 {member.company ? (
-                                  <span className="text-sm font-semibold leading-5 text-primary-500 cursor-pointer">
+                                  <a
+                                    href="/client-profile"
+                                    className="text-sm font-semibold leading-5 text-primary-500 transition-colors hover:text-primary-700 hover:underline"
+                                  >
                                     {member.company}
-                                  </span>
+                                  </a>
                                 ) : (
                                   <span className="text-sm leading-5 text-gray-300">
                                     &mdash;
@@ -3239,59 +3416,137 @@ export default function SettingsPage() {
                                   </Badge>
                                 )}
                               </TableCell>
-                              <TableCell className="h-[72px] w-[75px] px-6 py-4">
+                              <TableCell className="h-[72px] w-[75px] px-6 py-4" onClick={(e) => e.stopPropagation()}>
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <button className="rounded-[5px] px-1.5 py-0.5 hover:bg-gray-50">
-                                      <DotsHorizontal className="h-5 w-[21.667px] text-gray-400" />
-                                    </button>
+                                    <Button
+                                      className="h-6 px-1.5 py-1 text-gray-500"
+                                      visual="gray"
+                                      variant="ghost"
+                                    >
+                                      <DotsHorizontal className="size-5" />
+                                    </Button>
                                   </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end" className="w-[165px] rounded-lg border-gray-100 p-1 shadow-lg">
+                                  <DropdownMenuContent align="end" className="w-[165px]">
                                     <DropdownMenuItem
-                                      className="px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-gray-500"
-                                      onClick={() => openPermsFlyout(idx)}
+                                      onClick={() => openPermsFlyout(originalIdx)}
                                     >
                                       Edit Permissions
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem className="px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-gray-500">
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        if (member.name) {
+                                          router.push("/talent-profile")
+                                        }
+                                      }}
+                                    >
                                       View Profile
                                     </DropdownMenuItem>
                                     {member.status === "pending" && (
                                       <>
-                                        <DropdownMenuItem className="px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-gray-500">
+                                        <DropdownMenuItem onClick={() => handleResendInvite(originalIdx)}>
                                           Resend Invite
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem className="px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-gray-500">
+                                        <DropdownMenuItem onClick={() => handleCancelInvite(originalIdx)}>
                                           Cancel Invite
                                         </DropdownMenuItem>
                                       </>
                                     )}
-                                    <DropdownMenuSeparator className="my-1 bg-gray-100" />
-                                    <DropdownMenuItem className="px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-error-600">
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem visual="destructive" onClick={() => setRemoveMemberIdx(originalIdx)}>
                                       Remove User
                                     </DropdownMenuItem>
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                               </TableCell>
                             </TableRow>
-                          ))}
+                          )})}
                         </TableBody>
                       </Table>
                     </div>
+                    )}
 
                   </div>
+
+                  {/* Remove user confirmation modal */}
+                  <Dialog
+                    open={removeMemberIdx !== null}
+                    onOpenChange={(open) => {
+                      if (!open) setRemoveMemberIdx(null)
+                    }}
+                  >
+                    <DialogContent
+                      className="flex w-[534px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 p-[55px] shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="absolute right-2.5 top-2.5 size-[38px] rounded-[5px]"
+                        onClick={() => setRemoveMemberIdx(null)}
+                      >
+                        <X className="size-6 text-gray-500 opacity-50" />
+                      </IconButton>
+
+                      <div className="flex w-full flex-col items-center gap-5">
+                        <span className="flex size-12 items-center justify-center rounded-full border-8 border-error-50 bg-error-100">
+                          <AlertTriangle className="size-6 text-error-500" />
+                        </span>
+
+                        <div className="flex w-full flex-col items-center gap-2">
+                          <DialogTitle className="max-w-[284px] text-center text-lg leading-7 font-semibold text-gray-900">
+                            Remove {removeMemberIdx !== null ? (teamMembers[removeMemberIdx]?.name || teamMembers[removeMemberIdx]?.email) : "user"}?
+                          </DialogTitle>
+                          <DialogDescription className="text-center text-sm text-gray-500">
+                            This user will lose access to the team and all assigned
+                            permissions. This action cannot be undone.
+                          </DialogDescription>
+                        </div>
+                      </div>
+
+                      <div className="flex w-full items-start justify-center gap-x-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => setRemoveMemberIdx(null)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          visual="error"
+                          size="sm"
+                          onClick={handleRemoveMember}
+                          leftIcon={<Trash01 className="size-[15px]" />}
+                        >
+                          Yes, Remove User
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
 
                   {/* Permissions flyout overlay */}
                   {editingMemberIdx !== null && (
                     <>
-                      {/* Backdrop */}
+                      {/* Backdrop — z-[60] to cover nav (z-50) */}
                       <div
-                        className="fixed inset-0 z-40 bg-black/20 transition-opacity"
+                        className={cn(
+                          "fixed inset-0 z-[60] bg-black/20 transition-opacity duration-150",
+                          permsFlyoutVisible ? "opacity-100" : "opacity-0"
+                        )}
                         onClick={closePermsFlyout}
                       />
 
-                      {/* Panel */}
-                      <div className="fixed inset-y-0 right-0 z-50 flex w-[380px] flex-col border-l border-gray-100 bg-white shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08)]">
+                      {/* Panel — slides in from right */}
+                      <div
+                        className={cn(
+                          "fixed inset-y-0 right-0 z-[70] flex w-[380px] flex-col border-l border-gray-100 bg-white shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08)] transition-transform duration-150 ease-out",
+                          permsFlyoutVisible ? "translate-x-0" : "translate-x-full"
+                        )}
+                      >
                         {/* Header */}
                         <div className="flex flex-col gap-6 px-6 pb-2 pt-6">
                           <div className="flex items-center justify-between">
@@ -3302,6 +3557,7 @@ export default function SettingsPage() {
                               variant="ghost"
                               visual="gray"
                               size="sm"
+                              className="opacity-50 transition-opacity hover:opacity-100"
                               onClick={closePermsFlyout}
                             >
                               <X className="size-[18px]" />
@@ -3381,7 +3637,7 @@ export default function SettingsPage() {
                           <span className="text-sm font-medium text-dark-blue-400">
                             {selectedPerms.length} role{selectedPerms.length !== 1 ? "s" : ""} selected
                           </span>
-                          <Button size="sm" className="rounded-[5px] px-3.5 py-2 text-xs" disabled={selectedPerms.length === 0}>
+                          <Button size="sm" className="rounded-[5px] px-3.5 py-2 text-xs" disabled={selectedPerms.length === 0} onClick={applyPerms}>
                             Apply
                           </Button>
                         </div>
