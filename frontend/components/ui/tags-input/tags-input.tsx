@@ -14,7 +14,7 @@ import {
   CommandItem,
   CommandList,
 } from "../../own-combobox"
-import { ScrollArea, ScrollBar } from ".."
+import { ScrollArea, ScrollAreaScrollbar, ScrollAreaThumb } from ".."
 import { badgeVariants } from "../badge"
 import { labelVariants } from "../label"
 import { Popover, PopoverContent, PopoverTrigger } from "../popover"
@@ -116,6 +116,18 @@ export const TagsInputItemDeleteTrigger = React.forwardRef<
 
 TagsInputItemDeleteTrigger.displayName = TagsInput.ItemDeleteTrigger.displayName
 
+const WORD_DELIMITER_RE = /[\s./-]/
+
+/** Extends a search match to the end of its token (next space/period/dash/
+ * slash) so a query like "rea" highlights the full "React" in "React.js" /
+ * "React Native", not just the three typed characters. */
+function matchBoldEnd(option: string, matchStart: number, matchLen: number): number {
+  const minEnd = matchStart + matchLen
+  const rest = option.slice(minEnd)
+  const delimiterIndex = rest.search(WORD_DELIMITER_RE)
+  return delimiterIndex === -1 ? option.length : minEnd + delimiterIndex
+}
+
 export const TagsInputItemInput = TagsInput.ItemInput
 
 export const TagsInputInput = React.forwardRef<
@@ -125,6 +137,11 @@ export const TagsInputInput = React.forwardRef<
     onInputValueChange?: (value: string) => void
     allowCreateOption?: boolean
     portalDropdown?: boolean
+    dropdownWidth?: number
+    preferBelow?: boolean
+    alignToControl?: boolean
+    alwaysShowScrollbar?: boolean
+    preserveOptionOrder?: boolean
   }
 >(
   (
@@ -134,6 +151,11 @@ export const TagsInputInput = React.forwardRef<
       onInputValueChange,
       allowCreateOption,
       portalDropdown,
+      dropdownWidth = 202,
+      preferBelow = false,
+      alignToControl = false,
+      alwaysShowScrollbar = false,
+      preserveOptionOrder = false,
       onKeyDown,
       ...props
     },
@@ -187,12 +209,19 @@ export const TagsInputInput = React.forwardRef<
       top?: number
       bottom?: number
       left: number
+      maxHeight: number
     } | null>(null)
 
     const updateDropdownPos = React.useCallback(() => {
       const el = anchorRef.current
       if (!el) return
-      const r = el.getBoundingClientRect()
+      // With alignToControl, anchor to the bordered control box (the
+      // anchor div's immediate parent) instead of the inner div that only
+      // wraps the text input — otherwise a wide dropdownWidth (matched to
+      // the control's own width) overhangs past the control's edges by
+      // whatever left padding the control applies.
+      const positionEl = alignToControl ? (el.parentElement ?? el) : el
+      const r = positionEl.getBoundingClientRect()
       // Hide the portaled dropdown when the input is scrolled out of the
       // viewport or clipped by any scrollable ancestor (e.g. a dialog body),
       // otherwise the fixed-positioned dropdown floats detached from its input.
@@ -212,13 +241,45 @@ export const TagsInputInput = React.forwardRef<
       }
       const estimatedHeight = 250
       const spaceBelow = window.innerHeight - r.bottom
-      const flipUp = spaceBelow < estimatedHeight && r.top > spaceBelow
+      const flipUp =
+        !preferBelow && spaceBelow < estimatedHeight && r.top > spaceBelow
+      // Cap the dropdown's own height to whatever room is actually left in
+      // the viewport on whichever side it renders — otherwise, especially
+      // with preferBelow forcing it down regardless of space, it can run
+      // off the bottom of the page instead of staying fully in view.
+      const gap = 8
+      const edgeMargin = 16
+      const available = flipUp
+        ? r.top - gap - edgeMargin
+        : window.innerHeight - r.bottom - gap - edgeMargin
+      const maxHeight = Math.max(100, Math.min(232, available))
       setDropdownPos(
         flipUp
-          ? { bottom: window.innerHeight - r.top + 8, left: r.left }
-          : { top: r.bottom + 8, left: r.left }
+          ? { bottom: window.innerHeight - r.top + gap, left: r.left, maxHeight }
+          : { top: r.bottom + gap, left: r.left, maxHeight }
       )
-    }, [])
+    }, [preferBelow, alignToControl])
+
+    // A dropdown portaled to document.body sits OUTSIDE the scroll lock
+    // Radix Dialog puts around its content (react-remove-scroll), whose
+    // document-level `wheel` handler preventDefault()s any wheel event it
+    // can't attribute to the locked subtree — which silently made this
+    // list unscrollable by wheel, leaving only the scrollbar thumb to drag.
+    // That handler is on `document` in the bubble phase, so stopping
+    // propagation at the dropdown itself is enough to let the wheel through.
+    // Must be a native non-passive listener: React's own handler is
+    // registered on the portal container (document.body), too late to stop it.
+    const dropdownRef = React.useRef<HTMLDivElement>(null)
+    React.useEffect(() => {
+      const el = dropdownRef.current
+      if (!portalDropdown || !open || !el) return
+      const stop = (event: WheelEvent) => event.stopPropagation()
+      el.addEventListener("wheel", stop, { passive: false })
+      return () => el.removeEventListener("wheel", stop)
+      // dropdownPos gates whether the portal is mounted at all, so it has to
+      // re-run once the position resolves — on the render that first opens
+      // the dropdown it is still null and there is no node to attach to.
+    }, [portalDropdown, open, dropdownPos])
 
     React.useEffect(() => {
       if (!portalDropdown || !open) return
@@ -265,27 +326,26 @@ export const TagsInputInput = React.forwardRef<
             const dropdown = (
               <ScaleOutIn show={open}>
                 <div
-                  style={
-                    portalDropdown && dropdownPos
+                  ref={dropdownRef}
+                  style={{
+                    ...(portalDropdown && dropdownPos
                       ? {
-                          position: "fixed",
+                          position: "fixed" as const,
                           ...(dropdownPos.top != null
                             ? { top: dropdownPos.top }
                             : { bottom: dropdownPos.bottom }),
                           left: dropdownPos.left,
-                          width: 202,
-                          pointerEvents: "auto",
+                          pointerEvents: "auto" as const,
                         }
-                      : undefined
-                  }
+                      : undefined),
+                    width: dropdownWidth,
+                  }}
                   className={cn(
                     "px-0 pt-0 bg-white rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]",
-                    portalDropdown
-                      ? "z-[60]"
-                      : "absolute left-0 mt-2 w-[202px] z-50"
+                    portalDropdown ? "z-[115]" : "absolute left-0 mt-2 z-50"
                   )}
                 >
-                  <Command>
+                  <Command shouldFilter={!preserveOptionOrder}>
                 <CommandInput
                   placeholder="Search"
                   containerClassName="sr-only"
@@ -297,8 +357,29 @@ export const TagsInputInput = React.forwardRef<
                   }}
                 />
                 <ScrollArea
-                  scrollBar={<ScrollBar className="w-4 p-1" />}
-                  viewportClassName="max-h-[232px]"
+                  // "auto" keeps the bar on screen the whole time the list
+                  // actually overflows (unlike "scroll", which fades it out
+                  // between scroll events) while still hiding it entirely for
+                  // a short list — "always" drew a dead, undraggable thumb
+                  // over lists that fit.
+                  type={alwaysShowScrollbar ? "auto" : "scroll"}
+                  // Vertical only: the shared ScrollBar also renders a
+                  // horizontal bar, which the dropdown never needs and which
+                  // showed up as a stub in the bottom-left corner.
+                  scrollBar={
+                    <ScrollAreaScrollbar
+                      orientation="vertical"
+                      className="w-4 p-1"
+                    >
+                      <ScrollAreaThumb />
+                    </ScrollAreaScrollbar>
+                  }
+                  viewportClassName="max-h-[232px] overflow-x-hidden"
+                  viewportStyle={
+                    portalDropdown && dropdownPos
+                      ? { maxHeight: dropdownPos.maxHeight }
+                      : undefined
+                  }
                 >
                 <CommandList className="max-h-none">
                   {canCreateOption ? null : (
@@ -309,6 +390,10 @@ export const TagsInputInput = React.forwardRef<
                       const matchIndex = option
                         .toLowerCase()
                         .indexOf(inputValue.toLowerCase())
+                      const boldEnd =
+                        matchIndex >= 0
+                          ? matchBoldEnd(option, matchIndex, inputValue.length)
+                          : 0
                       return (
                         <CommandItem
                           key={option}
@@ -324,13 +409,10 @@ export const TagsInputInput = React.forwardRef<
                             {matchIndex >= 0 ? (
                               <>
                                 {option.slice(0, matchIndex)}
-                                <span className="font-bold">
-                                  {option.slice(
-                                    matchIndex,
-                                    matchIndex + inputValue.length
-                                  )}
+                                <span className="font-semibold text-gray-900">
+                                  {option.slice(matchIndex, boldEnd)}
                                 </span>
-                                {option.slice(matchIndex + inputValue.length)}
+                                {option.slice(boldEnd)}
                               </>
                             ) : (
                               option
