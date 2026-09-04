@@ -36,6 +36,9 @@ export function CaseStudyClientPreview({
 }) {
   const [blocks, setBlocks] = useState<CaseStudyBlock[]>([])
   const [title, setTitle] = useState("")
+  // Skills attached to THIS case study at publish time (case_studies.skills)
+  // — what the "Related Skills" row in the collaborate card shows.
+  const [skills, setSkills] = useState<string[]>([])
   const composeRef = useRef<HTMLTextAreaElement>(null)
   const engagedRef = useRef(false)
 
@@ -46,6 +49,7 @@ export function CaseStudyClientPreview({
         if (cancelled) return
         setBlocks(data.schemaJson?.blocks ?? [])
         setTitle(data.title)
+        setSkills(data.skills ?? [])
       })
       .catch(() => {})
     return () => {
@@ -88,6 +92,7 @@ export function CaseStudyClientPreview({
             <CaseStudyViewer title={title} blocks={blocks} />
             <ClientViewCollaborateCard
               talentProfile={talentProfile}
+              caseStudySkills={skills}
               isSelfPreview={isSelfPreview}
               composeRef={composeRef}
             />
