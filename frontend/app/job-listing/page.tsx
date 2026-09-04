@@ -8923,7 +8923,6 @@ const DescribeProjectStep = ({
   >("idle");
   const [scopeUploadError, setScopeUploadError] = useState("");
   const [isScopeDropActive, setIsScopeDropActive] = useState(false);
-  const scopeUploadTimerRef = useRef<number | null>(null);
   const scopeFilePickerSelectionRef = useRef(false);
   const scopeFileInputRef = useRef<HTMLInputElement | null>(null);
   const scopeFilePickerScrollTopRef = useRef(0);
@@ -8933,15 +8932,9 @@ const DescribeProjectStep = ({
   const skipNextDraftDetailsWriteRef = useRef(false);
   const previousIsServiceRef = useRef(isService);
   const hasUserEditedDetailsRef = useRef(false);
-  const clearScopeUploadTimer = useCallback(() => {
-    if (scopeUploadTimerRef.current) {
-      window.clearInterval(scopeUploadTimerRef.current);
-      scopeUploadTimerRef.current = null;
-    }
-  }, []);
   const getScopeFileContentType = useCallback((file: File) => {
     const fileName = file.name.toLowerCase();
-    if (file.type === "application/pdf" || fileName.endsWith(".pdf")) {
+    if (fileName.endsWith(".pdf")) {
       return "application/pdf";
     }
     if (fileName.endsWith(".docx")) {
@@ -8950,7 +8943,6 @@ const DescribeProjectStep = ({
     return "";
   }, []);
   const resetScopeFile = useCallback(() => {
-    clearScopeUploadTimer();
     setScopeFile(null);
     setScopeUploadProgress(0);
     setScopeUploadStatus("idle");
@@ -8961,21 +8953,9 @@ const DescribeProjectStep = ({
       briefFilename: undefined,
       briefSizeBytes: undefined,
     }));
-  }, [clearScopeUploadTimer, setJobListingDraftDetails]);
-  const startLocalScopeUploadProgress = useCallback(() => {
-    clearScopeUploadTimer();
-    setScopeUploadProgress(8);
-    scopeUploadTimerRef.current = window.setInterval(() => {
-      setScopeUploadProgress((currentProgress) =>
-        currentProgress >= 92
-          ? currentProgress
-          : Math.min(92, currentProgress + 14),
-      );
-    }, 180);
-  }, [clearScopeUploadTimer]);
+  }, [setJobListingDraftDetails]);
   const completeScopeUpload = useCallback(
     (file: File, briefR2Key?: string) => {
-      clearScopeUploadTimer();
       setScopeUploadProgress(100);
       setScopeUploadStatus("complete");
       setScopeUploadError("");
@@ -8986,55 +8966,89 @@ const DescribeProjectStep = ({
         briefSizeBytes: file.size,
       }));
     },
-    [clearScopeUploadTimer, setJobListingDraftDetails],
+    [setJobListingDraftDetails],
   );
   const uploadScopeFile = useCallback(
     async (file: File, contentType: string) => {
       setScopeFile(file);
       setScopeUploadStatus("uploading");
       setScopeUploadError("");
-      startLocalScopeUploadProgress();
-
-      if (!effectiveJobListingId) {
-        throw new Error(
-          "Job listing draft is still being prepared. Please try the upload again.",
-        );
-      }
+      setScopeUploadProgress(10);
 
       try {
-        const presignResponse = await JobListingAPI.PresignBriefUpload(
-          effectiveJobListingId,
-          {
-            filename: file.name,
-            contentType,
-            sizeBytes: file.size,
-          },
-        );
-        const { presignedUrl, key } = presignResponse?.data ?? {};
-
-        if (!presignedUrl || !key) {
-          throw new Error("Brief upload URL was not returned.");
+        if (!effectiveJobListingId) {
+          throw new Error(
+            "Job listing draft is still being prepared. Please try the upload again.",
+          );
         }
 
-        const uploadResponse = await fetch(presignedUrl, {
-          method: "PUT",
-          headers: { "Content-Type": contentType },
-          body: file,
-        });
+        let briefR2Key = "";
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const presignResponse = await JobListingAPI.PresignBriefUpload(
+            effectiveJobListingId,
+            {
+              filename: file.name,
+              contentType,
+              sizeBytes: file.size,
+            },
+          );
+          const { presignedUrl, key } = presignResponse?.data ?? {};
 
-        if (!uploadResponse.ok) {
-          throw new Error("Brief upload failed.");
+          if (!presignedUrl || !key) {
+            throw new Error("Brief upload URL was not returned.");
+          }
+
+          try {
+            await new Promise<void>((resolve, reject) => {
+              const xhr = new XMLHttpRequest();
+              xhr.open("PUT", presignedUrl);
+              xhr.setRequestHeader("Content-Type", contentType);
+              xhr.upload.onprogress = (event) => {
+                if (event.lengthComputable) {
+                  setScopeUploadProgress(
+                    Math.min(
+                      99,
+                      10 + Math.round((event.loaded / event.total) * 90),
+                    ),
+                  );
+                }
+              };
+              xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  resolve();
+                  return;
+                }
+                const error = new Error("Brief upload failed.") as Error & {
+                  status?: number;
+                };
+                error.status = xhr.status;
+                reject(error);
+              };
+              xhr.onerror = () => reject(new Error("Brief upload failed."));
+              xhr.onabort = () =>
+                reject(new Error("Brief upload was canceled."));
+              xhr.send(file);
+            });
+            briefR2Key = key;
+            setScopeUploadProgress(100);
+            break;
+          } catch (error) {
+            const status =
+              error instanceof Error
+                ? (error as Error & { status?: number }).status
+                : undefined;
+            if (status !== 403 || attempt === 1) throw error;
+          }
         }
 
         await JobListingAPI.SaveBriefMetadata(effectiveJobListingId, {
-          briefR2Key: key,
+          briefR2Key,
           briefFilename: file.name,
           briefSizeBytes: file.size,
         });
 
-        completeScopeUpload(file, key);
+        completeScopeUpload(file, briefR2Key);
       } catch (error) {
-        clearScopeUploadTimer();
         setScopeUploadStatus("error");
         setScopeUploadProgress(0);
         setScopeUploadError(
@@ -9048,13 +9062,7 @@ const DescribeProjectStep = ({
         });
       }
     },
-    [
-      clearScopeUploadTimer,
-      completeScopeUpload,
-      effectiveJobListingId,
-      startLocalScopeUploadProgress,
-      toast,
-    ],
+    [completeScopeUpload, effectiveJobListingId, toast],
   );
   const acceptScopeFile = useCallback(
     (file?: File | null) => {
@@ -9062,24 +9070,24 @@ const DescribeProjectStep = ({
       const contentType = getScopeFileContentType(file);
 
       if (!contentType) {
-        toast({
-          title: "Please upload a PDF or DOCX file.",
-          variant: "destructive",
-        });
+        setScopeFile(file);
+        setScopeUploadProgress(0);
+        setScopeUploadStatus("error");
+        setScopeUploadError("Please upload a PDF or DOCX file.");
         return;
       }
 
       if (file.size > 26_214_400) {
-        toast({
-          title: "Please upload a file smaller than 25 MB.",
-          variant: "destructive",
-        });
+        setScopeFile(file);
+        setScopeUploadProgress(0);
+        setScopeUploadStatus("error");
+        setScopeUploadError("Please upload a file no larger than 25 MB.");
         return;
       }
 
       void uploadScopeFile(file, contentType);
     },
-    [getScopeFileContentType, toast, uploadScopeFile],
+    [getScopeFileContentType, uploadScopeFile],
   );
   const tipItems = isService
     ? [
@@ -9466,8 +9474,6 @@ const DescribeProjectStep = ({
   useEffect(() => {
     setProgress?.(20);
   }, [setProgress]);
-
-  useEffect(() => clearScopeUploadTimer, [clearScopeUploadTimer]);
 
   useEffect(() => {
     if (previousIsServiceRef.current === isService) return;
