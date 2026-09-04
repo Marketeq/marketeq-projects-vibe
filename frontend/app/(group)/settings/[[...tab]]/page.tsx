@@ -34,6 +34,8 @@ import {
   AlertTriangle,
   ArrowDown,
   Check,
+  DotsHorizontal,
+  Minimize01,
   CheckCircle,
   ChevronDown,
   ArrowLeft,
@@ -54,6 +56,7 @@ import {
   Phone,
   Plus,
   SearchLg,
+  SearchMd,
   Save01,
   Send01,
   Settings02,
@@ -65,11 +68,13 @@ import {
   UploadCloud02,
   X,
   X2,
+  XCircle,
 } from "@blend-metrics/icons"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui"
 import { useInviteWindowStore } from "@/components/invite-window"
@@ -102,6 +107,7 @@ import {
   AlertTitle,
   Avatar,
   AvatarFallback,
+  AvatarFallbackIcon,
   AvatarImage,
   Badge,
   Button,
@@ -193,6 +199,135 @@ export default function SettingsPage() {
     },
     [router]
   )
+
+  // ── Permissions flyout state (users tab) ──────────────────────
+  const [editingMemberIdx, setEditingMemberIdx] = useState<number | null>(null)
+  const [permSearch, setPermSearch] = useState("")
+  const [selectedPerms, setSelectedPerms] = useState<string[]>([])
+
+  const permissionCategories = useMemo(
+    () => [
+      {
+        title: "Contracts & Hiring",
+        roles: [
+          {
+            id: "hiring-manager",
+            label: "Hiring Manager",
+            desc: "Create, edit, and end contracts. Send, negotiate, accept/decline offers. Complete checkout and approve spend.",
+          },
+          {
+            id: "negotiator",
+            label: "Negotiator",
+            desc: "Manage all contracts and offers, send/accept/decline offers. Cannot end contracts, start new spend, or change settings.",
+          },
+          {
+            id: "drafter",
+            label: "Drafter",
+            desc: "Draft offers and add comments. Cannot send, approve, end, or spend.",
+          },
+          {
+            id: "observer",
+            label: "Observer",
+            desc: "Read-only view of contracts and offers.",
+          },
+        ],
+      },
+      {
+        title: "Jobs & Talent",
+        roles: [
+          {
+            id: "recruitment-lead",
+            label: "Recruitment Lead",
+            desc: "Create, edit, publish, and close jobs. Search talent, save jobs and talent to the account, send invitations, manage the candidate pipeline.",
+          },
+          {
+            id: "recruiter",
+            label: "Recruiter",
+            desc: "Edit and publish jobs, search talent, save talent and jobs, suggest candidates, approve shortlists. Cannot delete postings or change settings.",
+          },
+          {
+            id: "sourcer",
+            label: "Sourcer",
+            desc: "Create draft jobs, search talent, save jobs and talent to the account's shortlists, add candidate notes. Cannot publish or invite.",
+          },
+          {
+            id: "contributor-jt",
+            label: "Contributor",
+            desc: "This is where the role's permissions and limitations are briefly explained.",
+          },
+          {
+            id: "viewer-jt",
+            label: "Viewer",
+            desc: "This is where the role's permissions and limitations are briefly explained.",
+          },
+        ],
+      },
+      {
+        title: "Finance Roles",
+        roles: [
+          {
+            id: "super-admin",
+            label: "Super Admin",
+            desc: "This is where the role's permissions and limitations are briefly explained.",
+          },
+          {
+            id: "manager-fin",
+            label: "Manager",
+            desc: "This is where the role's permissions and limitations are briefly explained.",
+          },
+          {
+            id: "bookkeeper",
+            label: "Bookkeeper",
+            desc: "View all transactions and invoices in full detail and export them. Cannot move money or change anything.",
+          },
+          {
+            id: "moderator",
+            label: "Moderator",
+            desc: "Access all team threads, triage and reassign, message talent and members. Cannot change account-wide settings.",
+          },
+          {
+            id: "analyst",
+            label: "Analyst",
+            desc: "View all dashboards and reports, build and export reports, set date ranges. Cannot configure shared dashboards.",
+          },
+        ],
+      },
+    ],
+    []
+  )
+
+  const filteredPermCategories = useMemo(() => {
+    if (!permSearch.trim()) return permissionCategories
+    const q = permSearch.toLowerCase()
+    return permissionCategories
+      .map((cat) => ({
+        ...cat,
+        roles: cat.roles.filter(
+          (r) =>
+            r.label.toLowerCase().includes(q) ||
+            r.desc.toLowerCase().includes(q)
+        ),
+      }))
+      .filter((cat) => cat.roles.length > 0)
+  }, [permSearch, permissionCategories])
+
+  const togglePerm = useCallback((id: string) => {
+    setSelectedPerms((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
+    )
+  }, [])
+
+  const openPermsFlyout = useCallback((idx: number) => {
+    setEditingMemberIdx(idx)
+    setPermSearch("")
+    setSelectedPerms([])
+  }, [])
+
+  const closePermsFlyout = useCallback(() => {
+    setEditingMemberIdx(null)
+    setPermSearch("")
+    setSelectedPerms([])
+  }, [])
 
   const {
     company,
@@ -896,9 +1031,8 @@ export default function SettingsPage() {
   const paymentMethodsRef = useRef<BillingPaymentMethodsContentHandle | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (contentRef.current) contentRef.current.scrollTop = 0
-  }, [activeTab])
+  // Deliberately removed: no scroll-to-top on tab change so the
+  // sidebar position stays stable and there are no visual jumps.
 
   // `?add=1` opens the add-payment-method dialog on arrival, so entry points
   // elsewhere (the client dashboard "Verify Payment Method" link, the profile
@@ -1312,7 +1446,7 @@ export default function SettingsPage() {
         <div
           ref={contentRef}
           className={cn(
-          "flex-auto p-3.5 md:p-6 min-[1024px]:p-16 min-[1024px]:pl-[288px]",
+          "flex-auto p-3.5 md:p-6 min-[1024px]:p-16 min-[1024px]:pl-[288px] scrollbar-thin scrollbar-thumb-transparent hover:scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg",
           activeTab === "billing-payment-methods"
             ? "flex flex-col overflow-hidden"
             : "overflow-y-auto"
@@ -2952,9 +3086,308 @@ export default function SettingsPage() {
               )}
 
               {activeTab === "users" && (
-                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
-                  Users
-                </h1>
+                <>
+                  <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                    Users
+                  </h1>
+
+                  <div className="mt-6 w-full">
+                    {/* Table */}
+                    <div className="w-full overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,0.03)]">
+                      <Table className="min-w-[900px] border-separate border-spacing-0">
+                        <TableHeader className="bg-white [&_tr]:border-0">
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead className="h-11 px-6 py-3">
+                              <span className="flex items-center gap-x-1 text-xs font-medium text-gray-600">
+                                Team Member
+                                <ArrowDown className="size-4" />
+                              </span>
+                            </TableHead>
+                            <TableHead className="h-11 px-6 py-3">
+                              <span className="text-xs font-medium text-gray-600">Role</span>
+                            </TableHead>
+                            <TableHead className="h-11 px-6 py-3">
+                              <span className="text-xs font-medium text-gray-600">Company</span>
+                            </TableHead>
+                            <TableHead className="h-11 px-6 py-3">
+                              <span className="text-xs font-medium text-gray-600">Status</span>
+                            </TableHead>
+                            <TableHead className="h-11 w-[75px]" />
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {[
+                            {
+                              name: "Alicia Hebert",
+                              email: "jfriedl@me.com",
+                              avatar: "",
+                              role: "General Manager",
+                              company: "Alliance Corp.",
+                              status: "active" as const,
+                            },
+                            {
+                              name: "Kevin Zavala",
+                              email: "raines@live.com",
+                              avatar: "",
+                              role: "Legal Adviser",
+                              company: "Alliance Corp.",
+                              status: "pending" as const,
+                            },
+                            {
+                              name: "Paul Cannon",
+                              email: "rande@gmail.com",
+                              avatar: "",
+                              role: "Graphic Designer",
+                              company: "Alliance Corp.",
+                              status: "active" as const,
+                            },
+                            {
+                              name: "Elliot Spencer",
+                              email: "leviathan@yahoo.com",
+                              avatar: "",
+                              role: "Marketing Manager",
+                              company: "Alliance Corp.",
+                              status: "active" as const,
+                            },
+                            {
+                              name: "",
+                              email: "oevans@icloud.com",
+                              avatar: "",
+                              role: "",
+                              company: "",
+                              status: "pending" as const,
+                            },
+                            {
+                              name: "Jenny Gill",
+                              email: "hmbrand@me.com",
+                              avatar: "",
+                              role: "Project Manager",
+                              company: "Alliance Corp.",
+                              status: "active" as const,
+                            },
+                            {
+                              name: "Andrew Roddick",
+                              email: "john.jacob@gmail.com",
+                              avatar: "",
+                              role: "Systems Analyst",
+                              company: "Alliance Corp.",
+                              status: "active" as const,
+                            },
+                          ].map((member, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell className="h-[72px] px-6 py-4">
+                                <div className="flex items-center gap-x-3">
+                                  <Avatar size="md" className="hover:ring-0 active:ring-0">
+                                    {member.name ? (
+                                      <>
+                                        <AvatarImage src={member.avatar || undefined} alt={member.name} />
+                                        <AvatarFallback>
+                                          {member.name
+                                            .split(" ")
+                                            .map((n) => n[0])
+                                            .join("")
+                                            .slice(0, 2)}
+                                        </AvatarFallback>
+                                      </>
+                                    ) : (
+                                      <AvatarFallbackIcon />
+                                    )}
+                                  </Avatar>
+                                  <div className="flex flex-col">
+                                    {member.name && (
+                                      <span className="text-sm font-semibold leading-5 text-gray-900">
+                                        {member.name}
+                                      </span>
+                                    )}
+                                    <span className="text-sm leading-5 text-gray-500">
+                                      {member.email}
+                                    </span>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="h-[72px] px-6 py-4">
+                                {member.role ? (
+                                  <span className="text-sm capitalize leading-5 text-gray-600">
+                                    {member.role}
+                                  </span>
+                                ) : (
+                                  <span className="text-sm leading-5 text-gray-300">
+                                    &mdash;
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell className="h-[72px] px-6 py-4">
+                                {member.company ? (
+                                  <span className="text-sm font-semibold leading-5 text-primary-500 cursor-pointer">
+                                    {member.company}
+                                  </span>
+                                ) : (
+                                  <span className="text-sm leading-5 text-gray-300">
+                                    &mdash;
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell className="h-[72px] px-6 py-4">
+                                {member.status === "active" ? (
+                                  <Badge visual="success" size="sm">
+                                    Active
+                                  </Badge>
+                                ) : (
+                                  <Badge visual="gray" size="sm">
+                                    Invitation pending
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="h-[72px] w-[75px] px-6 py-4">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button className="rounded-[5px] px-1.5 py-0.5 hover:bg-gray-50">
+                                      <DotsHorizontal className="h-5 w-[21.667px] text-gray-400" />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-[165px] rounded-lg border-gray-100 p-1 shadow-lg">
+                                    <DropdownMenuItem
+                                      className="px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-gray-500"
+                                      onClick={() => openPermsFlyout(idx)}
+                                    >
+                                      Edit Permissions
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem className="px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-gray-500">
+                                      View Profile
+                                    </DropdownMenuItem>
+                                    {member.status === "pending" && (
+                                      <>
+                                        <DropdownMenuItem className="px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-gray-500">
+                                          Resend Invite
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem className="px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-gray-500">
+                                          Cancel Invite
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                    <DropdownMenuSeparator className="my-1 bg-gray-100" />
+                                    <DropdownMenuItem className="px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-error-600">
+                                      Remove User
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                  </div>
+
+                  {/* Permissions flyout overlay */}
+                  {editingMemberIdx !== null && (
+                    <>
+                      {/* Backdrop */}
+                      <div
+                        className="fixed inset-0 z-40 bg-black/20 transition-opacity"
+                        onClick={closePermsFlyout}
+                      />
+
+                      {/* Panel */}
+                      <div className="fixed inset-y-0 right-0 z-50 flex w-[380px] flex-col border-l border-gray-100 bg-white shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08)]">
+                        {/* Header */}
+                        <div className="flex flex-col gap-6 px-6 pb-2 pt-6">
+                          <div className="flex items-center justify-between">
+                            <span className="text-base font-semibold capitalize text-dark-blue-400">
+                              Select Permissions
+                            </span>
+                            <IconButton
+                              variant="ghost"
+                              visual="gray"
+                              size="sm"
+                              onClick={closePermsFlyout}
+                            >
+                              <X className="size-[18px]" />
+                            </IconButton>
+                          </div>
+
+                          {/* Search */}
+                          <InputGroup className="group/search w-full">
+                            <InputLeftElement>
+                              <SearchMd className="size-4 text-gray-400 transition-colors duration-300 group-hover/search:text-gray-500 group-focus-within/search:!text-primary-500" />
+                            </InputLeftElement>
+                            <Input
+                              placeholder="Search"
+                              className="h-9 pl-9 pr-9 transition-[border-color] duration-300 hover:border-primary-200 hover:shadow-[0px_0px_0px_4px_#E1EAFF] focus:!ring-0 focus:!shadow-[0px_0px_0px_4px_#E1EAFF]"
+                              value={permSearch}
+                              onChange={(e) => setPermSearch(e.target.value)}
+                            />
+                            {permSearch && (
+                              <InputRightElement>
+                                <button
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => setPermSearch("")}
+                                >
+                                  <XCircle className="size-4 text-gray-500 opacity-50 hover:opacity-100" />
+                                </button>
+                              </InputRightElement>
+                            )}
+                          </InputGroup>
+                        </div>
+
+                        {/* Scrollable role list */}
+                        <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-transparent hover:scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+                          <div className="flex flex-col gap-6">
+                            {filteredPermCategories.map((cat, catIdx) => (
+                              <div key={cat.title}>
+                                {catIdx > 0 && (
+                                  <hr className="mb-6 border-gray-200" />
+                                )}
+                                <div className="flex flex-col gap-6">
+                                  <p className="text-base font-bold leading-6 tracking-[-0.3px] text-dark-blue-400">
+                                    {cat.title}
+                                  </p>
+                                  <div className="flex flex-col gap-3.5">
+                                    {cat.roles.map((role) => (
+                                      <label
+                                        key={role.id}
+                                        className="flex cursor-pointer items-start gap-3"
+                                      >
+                                        <Checkbox
+                                          size="sm"
+                                          checked={selectedPerms.includes(role.id)}
+                                          onCheckedChange={() => togglePerm(role.id)}
+                                          className="mt-px"
+                                        />
+                                        <div className="flex flex-1 flex-col gap-1.5">
+                                          <span className="text-[15px] font-semibold leading-[13.3px] text-gray-500">
+                                            {role.label}
+                                          </span>
+                                          <span className="text-[13px] leading-[13.3px] text-gray-500">
+                                            {role.desc}
+                                          </span>
+                                          <button className="self-start text-[10px] font-semibold leading-5 text-primary-500 transition-colors hover:text-primary-700 hover:underline">
+                                            View Details
+                                          </button>
+                                        </div>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="flex items-center justify-between border-t border-gray-200 py-3 pl-6 pr-3">
+                          <span className="text-sm font-medium text-dark-blue-400">
+                            {selectedPerms.length} role{selectedPerms.length !== 1 ? "s" : ""} selected
+                          </span>
+                          <Button size="sm" className="rounded-[5px] px-3.5 py-2 text-xs" disabled={selectedPerms.length === 0}>
+                            Apply
+                          </Button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
               )}
 
               {activeTab === "roles" && (

@@ -169,7 +169,7 @@ export default function SettingsSidebar({
         isScrolled ? "mx-0" : "mx-[15px]"
       )} />
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto pt-5 px-[15px] pb-[15px] space-y-6">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto pt-5 px-[15px] pb-[15px] space-y-6 scrollbar-thin scrollbar-thumb-transparent hover:scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
       {sections.map((section) => (
         <div key={section.label} className="flex flex-col gap-y-2">
           <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">
