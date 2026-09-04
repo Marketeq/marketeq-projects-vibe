@@ -243,6 +243,8 @@ export default function SettingsPage() {
     },
     []
   )
+  // Defaults on, but null on the user record means "never touched this screen"
+  // rather than "deliberately off", so the two stay distinguishable.
   const [isIpRestrictionEnabled, setIsIpRestrictionEnabled] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -1038,6 +1040,33 @@ export default function SettingsPage() {
     resetIpRows()
     setIsAddIpsOpen(false)
     setIsSavedAlertMounted(true)
+  }
+
+  // Seeded from the user record once it has loaded. Written straight through
+  // rather than behind a Save button: the switch has no surrounding form, so
+  // there is nothing for a pending change to belong to.
+  useEffect(() => {
+    if (user?.ipRestrictionEnabled != null) {
+      setIsIpRestrictionEnabled(user.ipRestrictionEnabled)
+    }
+  }, [user?.ipRestrictionEnabled])
+
+  const handleIpRestrictionToggle = async (next: boolean) => {
+    const previous = isIpRestrictionEnabled
+    setIsIpRestrictionEnabled(next)
+    setIpSaveError(null)
+    if (!user?.id) return
+    try {
+      await UserAPI.updateProfile(user.id, { ipRestrictionEnabled: next })
+      setUser((prev) => (prev ? { ...prev, ipRestrictionEnabled: next } : prev))
+    } catch (err: any) {
+      setIsIpRestrictionEnabled(previous)
+      setIpSaveError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Couldn't change the IP restriction setting"
+      )
+    }
   }
 
   const removeAllowedIp = (id: string) => {
@@ -3387,7 +3416,7 @@ export default function SettingsPage() {
                       <div className="mt-6 flex items-center gap-x-3">
                         <Switch
                           checked={isIpRestrictionEnabled}
-                          onCheckedChange={setIsIpRestrictionEnabled}
+                          onCheckedChange={handleIpRestrictionToggle}
                         />
                         <span className="flex items-center gap-x-2 text-sm font-medium text-gray-700">
                           Enable IP Restriction
