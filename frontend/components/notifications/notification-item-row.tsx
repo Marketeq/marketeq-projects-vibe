@@ -10,7 +10,6 @@ import { cn } from "@/utils/functions"
 import { BellRinging03, ChevronDown } from "@blend-metrics/icons"
 import { Switch } from "@/components/ui"
 import {
-  SMS_ENABLED,
   channelIcons,
   channelLabels,
   channelOrder,
@@ -88,7 +87,6 @@ export default function NotificationItemRow({
                 Where do you get these notifications
               </p>
               {channelOrder
-                .filter((k) => SMS_ENABLED || k !== "sms")
                 .map((key) => {
                   const ChannelIcon = channelIcons[key]
                   const globalOff = !globalChannels[key].enabled

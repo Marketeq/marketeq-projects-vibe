@@ -1,12 +1,12 @@
 "use client"
 
+import { X } from "@blend-metrics/icons"
 import {
   Button,
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
+  DialogOverlay,
   DialogTitle,
 } from "@/components/ui"
 
@@ -26,31 +26,47 @@ export default function BrowserAlertsModal({
   isLoading,
 }: Props) {
   const isEnable = mode === "enable"
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>
+      {/* The design splits this into a white body and a gray-25 action bar, so
+          the padding lives on the sections rather than on DialogContent. The
+          overlay is lighter here than the other settings modals — 50% rather
+          than 70%. */}
+      <DialogContent
+        className="w-[409px] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden p-0 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+        dialogOverlay={
+          <DialogOverlay className="bg-gray-700/50 backdrop-blur-[8px]" />
+        }
+      >
+        <div className="flex w-full flex-col items-start gap-2 border-b border-gray-200 p-6">
+          <DialogTitle className="w-full text-lg leading-7 font-semibold text-dark-blue-400">
             {isEnable ? "Enable browser alerts?" : "Disable browser alerts?"}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-sm font-light text-dark-blue-400">
             {isEnable
-              ? "You'll receive push notifications from this browser when new alerts come in."
-              : "You'll stop receiving browser push notifications. You can re-enable them anytime."}
+              ? "Alerts will be displayed in your web browser"
+              : "All web browser notifications will be disabled"}
           </DialogDescription>
-        </DialogHeader>
-        <DialogFooter className="mt-4 flex gap-2 sm:gap-2">
+        </div>
+
+        <div className="flex w-full items-center justify-between gap-8 rounded-b-xl bg-gray-25 px-6 py-4">
           <Button
-            variant="outlined"
+            variant="link"
             visual="gray"
             size="sm"
+            className="h-5 p-0 opacity-50"
             onClick={() => onOpenChange(false)}
             disabled={isLoading}
+            leftIcon={<X className="size-[15px] text-dark-blue-400" />}
           >
             Cancel
           </Button>
           <Button
+            variant="outlined"
+            visual="gray"
             size="sm"
+            className="bg-white shadow-xs"
             onClick={async () => {
               await onConfirm()
             }}
@@ -59,10 +75,10 @@ export default function BrowserAlertsModal({
             {isLoading
               ? "Please wait..."
               : isEnable
-                ? "Enable Alerts"
-                : "Disable Alerts"}
+                ? "Yes, Enable Alerts"
+                : "Yes, Disable Alerts"}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   )
