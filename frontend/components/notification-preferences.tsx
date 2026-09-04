@@ -12,9 +12,13 @@ import type {
 import { useNotificationPreferences } from "@/src/hooks/useNotificationPreferences"
 import { useToast } from "@/components/ui"
 import ResetDefaultsModal from "./notifications/modals/reset-defaults-modal"
+import BrowserAlertsModal from "./notifications/modals/browser-alerts-modal"
 import NotificationCategoriesList from "./notifications/notification-categories-list"
 import NotificationGlobalChannels from "./notifications/notification-global-channels"
 import { EMPTY_CHANNELS } from "./notifications/shared"
+
+// Inbox gates the rest: every other category depends on it being on.
+const INBOX_CATEGORY_ID = "inbox"
 
 const defaultGlobalChannels: GlobalChannelPrefs = {
   inApp: { enabled: true, bell: true, popup: true, browser: false },
@@ -38,6 +42,7 @@ export default function NotificationPreferences() {
 
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
   const [resetOpen, setResetOpen] = useState(false)
+  const [inboxAlertsOpen, setInboxAlertsOpen] = useState(false)
   const [resetLoading, setResetLoading] = useState(false)
 
   const globalChannels: GlobalChannelPrefs =
@@ -120,17 +125,50 @@ export default function NotificationPreferences() {
     const category = catalog.find((c) => c.id === categoryId)
     if (!category) return
 
-    update({
-      categories: {
-        [categoryId]: { enabled: nextEnabled, channels: nextChannels },
-      },
-      notifications: Object.fromEntries(
-        category.notifications.map((item) => [
-          item.id,
-          { enabled: nextEnabled, channels: nextChannels },
-        ])
-      ),
-    })
+    // Inbox is the master. Switching it off silences everything, and switching
+    // any other category on requires Inbox to be on for anything to arrive —
+    // so it comes on with it.
+    const isInbox = categoryId === INBOX_CATEGORY_ID
+    const inboxWasEnabled = getCategoryState(INBOX_CATEGORY_ID).enabled
+
+    const affected =
+      isInbox && !nextEnabled
+        ? catalog // switching Inbox off switches every category off
+        : catalog.filter(
+            (c) =>
+              c.id === categoryId ||
+              (!isInbox && nextEnabled && c.id === INBOX_CATEGORY_ID)
+          )
+
+    const categoriesPatch: Record<
+      string,
+      { enabled: boolean; channels: ScopedChannelState }
+    > = {}
+    const notificationsPatch: Record<
+      string,
+      { enabled: boolean; channels: ScopedChannelState }
+    > = {}
+
+    for (const affectedCategory of affected) {
+      categoriesPatch[affectedCategory.id] = {
+        enabled: nextEnabled,
+        channels: nextChannels,
+      }
+      for (const item of affectedCategory.notifications) {
+        notificationsPatch[item.id] = {
+          enabled: nextEnabled,
+          channels: nextChannels,
+        }
+      }
+    }
+
+    update({ categories: categoriesPatch, notifications: notificationsPatch })
+
+    // Inbox going from off to on is what prompts for browser alerts — whether
+    // it was switched directly or pulled on by another category.
+    if (nextEnabled && !inboxWasEnabled && INBOX_CATEGORY_ID in categoriesPatch) {
+      setInboxAlertsOpen(true)
+    }
   }
 
   const handleToggleCategoryChannel = (
@@ -256,6 +294,16 @@ export default function NotificationPreferences() {
           onRequestReset={() => setResetOpen(true)}
         />
       </div>
+
+      <BrowserAlertsModal
+        open={inboxAlertsOpen}
+        mode="enable"
+        onOpenChange={setInboxAlertsOpen}
+        onConfirm={() => {
+          handleSetBrowserAlerts(true)
+          setInboxAlertsOpen(false)
+        }}
+      />
 
       <ResetDefaultsModal
         open={resetOpen}
