@@ -2024,6 +2024,10 @@ const plainTextFromRichTextHtml = (value: string) => {
 const getRichTextCharacterCount = (value: string) =>
   plainTextFromRichTextHtml(value).length;
 
+const STEP_TWO_WORD_LIMIT = 100;
+
+const getWordCount = (value: string) => (value.match(/\S+/g) ?? []).length;
+
 const DURATION_TYPE = ["hours", "days", "weeks", "months"] as const;
 
 const formatDurationUnit = (
@@ -9077,8 +9081,17 @@ const DescribeProjectStep = ({
     (Number.isFinite(customDurationAmount) && customDurationAmount > 0);
   const hasValidBudget =
     budget.trim().length > 0 && Number(budget.replace(/,/g, "")) > 0;
+  const descriptionWordCount = getWordCount(description);
+  const deliverablesWordCount = getWordCount(deliverables);
+  const successCriteriaWordCount = getWordCount(successCriteria);
+  const hasWordLimitError =
+    descriptionWordCount > STEP_TWO_WORD_LIMIT ||
+    ((isService ? isKnownServiceFlow : scopeKnowledgeChoice === "known") &&
+      (deliverablesWordCount > STEP_TWO_WORD_LIMIT ||
+        successCriteriaWordCount > STEP_TWO_WORD_LIMIT));
   const isValid =
     description.trim().length > 0 &&
+    !hasWordLimitError &&
     (isService
       ? (isKnownServiceFlow ? deliverables.trim().length > 0 : true) &&
         hasValidBudget
@@ -9374,6 +9387,7 @@ const DescribeProjectStep = ({
 
   useEffect(() => {
     if (!effectiveJobListingId || !hasUserEditedDetailsRef.current) return;
+    if (hasWordLimitError) return;
 
     const hasUserEnteredDetails =
       Boolean(description.trim()) ||
@@ -9413,6 +9427,7 @@ const DescribeProjectStep = ({
     description,
     durationMonths,
     effectiveJobListingId,
+    hasWordLimitError,
     isService,
     successCriteria,
   ]);
@@ -9510,12 +9525,12 @@ const DescribeProjectStep = ({
                       : "What do you want to accomplish with this project?"}
                 </Label>
                 <span className={firstQuestionCounterClassName}>
-                  {description.length}/100
+                  {descriptionWordCount}/{STEP_TWO_WORD_LIMIT} words
                 </span>
               </div>
               <Textarea
-                maxLength={100}
                 value={description}
+                isInvalid={descriptionWordCount > STEP_TWO_WORD_LIMIT}
                 onChange={(event) => {
                   const value = event.target.value;
                   setDescription(value);
@@ -9538,12 +9553,12 @@ const DescribeProjectStep = ({
                       What are the main tasks or deliverables?
                     </Label>
                     <span className={descriptionCounterClassName}>
-                      {deliverables.length}/100
+                      {deliverablesWordCount}/{STEP_TWO_WORD_LIMIT} words
                     </span>
                   </div>
                   <Textarea
-                    maxLength={100}
                     value={deliverables}
+                    isInvalid={deliverablesWordCount > STEP_TWO_WORD_LIMIT}
                     onChange={(event) => {
                       const value = event.target.value;
                       setDeliverables(value);
@@ -9750,12 +9765,12 @@ const DescribeProjectStep = ({
                     What are the main tasks or deliverables?
                   </Label>
                   <span className="text-sm leading-5 font-normal text-gray-400">
-                    {deliverables.length}/100
+                    {deliverablesWordCount}/{STEP_TWO_WORD_LIMIT} words
                   </span>
                 </div>
                 <Textarea
-                  maxLength={100}
                   value={deliverables}
+                  isInvalid={deliverablesWordCount > STEP_TWO_WORD_LIMIT}
                   onChange={(event) => {
                     const value = event.target.value;
                     setDeliverables(value);
@@ -10291,12 +10306,12 @@ const DescribeProjectStep = ({
                       How will you know this project is successful?
                     </Label>
                     <span className={descriptionCounterClassName}>
-                      {successCriteria.length}/100
+                      {successCriteriaWordCount}/{STEP_TWO_WORD_LIMIT} words
                     </span>
                   </div>
                   <Textarea
-                    maxLength={100}
                     value={successCriteria}
+                    isInvalid={successCriteriaWordCount > STEP_TWO_WORD_LIMIT}
                     onChange={(event) => {
                       const value = event.target.value;
                       setSuccessCriteria(value);
@@ -10317,12 +10332,12 @@ const DescribeProjectStep = ({
                       How will you know this project is successful?
                     </Label>
                     <span className="text-xs leading-[18px] text-gray-500">
-                      {successCriteria.length}/100
+                      {successCriteriaWordCount}/{STEP_TWO_WORD_LIMIT} words
                     </span>
                   </div>
                   <Textarea
-                    maxLength={100}
                     value={successCriteria}
+                    isInvalid={successCriteriaWordCount > STEP_TWO_WORD_LIMIT}
                     onChange={(event) => {
                       const value = event.target.value;
                       setSuccessCriteria(value);
@@ -11101,10 +11116,13 @@ const NoScopeRoleInfoStep = ({
     (durationChoice !== "Other" && durationChoice !== ""
       ? true
       : Number(customDuration) > 0);
+  const roleDescriptionWordCount = getWordCount(roleDescription);
+  const hasWordLimitError = roleDescriptionWordCount > STEP_TWO_WORD_LIMIT;
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(
       Boolean(roleDescription.trim()) &&
+        !hasWordLimitError &&
         (!isTeamMode || Boolean(headcount.trim())) &&
         budget.trim().length > 0 && Number(budget.replace(/,/g, "")) > 0 &&
         hasValidDuration,
@@ -11113,6 +11131,7 @@ const NoScopeRoleInfoStep = ({
     budget,
     customDuration,
     durationChoice,
+    hasWordLimitError,
     headcount,
     hasValidDuration,
     roleDescription,
@@ -11267,7 +11286,7 @@ const NoScopeRoleInfoStep = ({
                     useNoScopeLayout && "font-normal",
                   )}
                 >
-                  {roleDescription.length}/100
+                  {roleDescriptionWordCount}/{STEP_TWO_WORD_LIMIT} words
                 </span>
               </div>
               <Textarea
@@ -11280,6 +11299,7 @@ const NoScopeRoleInfoStep = ({
                 )}
                 placeholder="Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
                 value={roleDescription}
+                isInvalid={hasWordLimitError}
                 onChange={(event) => setRoleDescription(event.target.value)}
               />
             </div>
@@ -17484,6 +17504,13 @@ function PublishProject({
         ndaEnabled: jobListingDraftDetails.ndaEnabled,
         lastCompletedStep: currentStep,
       };
+      if (
+        getWordCount(payload.description ?? "") > STEP_TWO_WORD_LIMIT ||
+        getWordCount(payload.deliverables ?? "") > STEP_TWO_WORD_LIMIT ||
+        getWordCount(payload.successCriteria ?? "") > STEP_TWO_WORD_LIMIT
+      ) {
+        return;
+      }
       const basicInfoPayload = {
         title: info.title ?? "",
         jobType: selectedWorkType ?? undefined,
