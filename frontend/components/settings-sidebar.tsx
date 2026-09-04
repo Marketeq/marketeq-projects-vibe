@@ -44,6 +44,9 @@ type SidebarSection = {
 const sidebarFrameClass =
   "w-[224px] shrink-0 bg-gray-50 min-[1024px]:flex flex-col fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200"
 
+// Module-level so the value survives component remounts (tab navigation).
+let persistedScrollTop = 0
+
 const sharedAccountItems: SidebarItem[] = [
   { href: "/settings/personal-info", label: "Personal Info", icon: UserCircle },
 ]
@@ -133,7 +136,12 @@ export default function SettingsSidebar({
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const onScroll = () => setIsScrolled(el.scrollTop > 0)
+    // Restore scroll position after remount (tab navigation can remount the page)
+    if (persistedScrollTop > 0) el.scrollTop = persistedScrollTop
+    const onScroll = () => {
+      persistedScrollTop = el.scrollTop
+      setIsScrolled(el.scrollTop > 0)
+    }
     el.addEventListener("scroll", onScroll, { passive: true })
     return () => el.removeEventListener("scroll", onScroll)
   }, [])
