@@ -898,7 +898,6 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (contentRef.current) contentRef.current.scrollTop = 0
-    window.scrollTo(0, 0)
   }, [activeTab])
 
   // `?add=1` opens the add-payment-method dialog on arrival, so entry points

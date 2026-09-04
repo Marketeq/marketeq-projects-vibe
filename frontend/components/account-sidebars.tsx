@@ -160,6 +160,17 @@ export const TalentAccountSidebar = () => {
   return (
     <div className={sidebarFrameClass}>
       {renderSections(sections, pathname)}
+      <div className="border-t border-gray-200 pt-5 px-3">
+        <p className="text-xs text-gray-500 leading-4">
+          Find talent, services, and projects.
+        </p>
+        <NextLink
+          href="/search"
+          className="text-sm font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
+        >
+          Browse the Marketplace
+        </NextLink>
+      </div>
     </div>
   )
 }
@@ -183,6 +194,17 @@ export const ClientAccountSidebar = () => {
         <Sidebar className="size-[15px]" />
       </IconButton>
       {renderSections(sections, pathname)}
+      <div className="border-t border-gray-200 pt-5 px-3">
+        <p className="text-xs text-gray-500 leading-4">
+          Find talent, services, and projects.
+        </p>
+        <NextLink
+          href="/search"
+          className="text-sm font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
+        >
+          Browse the Marketplace
+        </NextLink>
+      </div>
     </div>
   )
 }
