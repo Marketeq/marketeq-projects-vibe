@@ -25,6 +25,7 @@ export class ProxyService {
       search: config.get('SEARCH_SERVICE_URL') || 'http://localhost:3007',
       algolia: config.get('ALGOLIA_SERVICE_URL') || 'http://localhost:3008',
       favorites: config.get('FAVORITES_SERVICE_URL') || 'http://localhost:3012',
+      browsingHistory: config.get('BROWSING_HISTORY_SERVICE_URL') || 'http://localhost:3034',
       portfolio: config.get('PORTFOLIO_SERVICE_URL') || 'http://localhost:3015',
       invitations: config.get('INVITATIONS_SERVICE_URL') || 'http://localhost:3013',
       moderation: config.get('MODERATION_SERVICE_URL') || 'http://localhost:3014',

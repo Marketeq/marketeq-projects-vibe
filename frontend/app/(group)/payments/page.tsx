@@ -1114,7 +1114,7 @@ export const BillingPaymentMethodsContent = forwardRef<
           <div className="flex h-[100dvh] overflow-hidden bg-gray-50">
             <LeftSidebar />
 
-            <div className="min-[1024px]:pl-[248px] min-[1024px]:pr-6 min-[1024px]:py-8 flex h-full flex-auto overflow-hidden p-3.5 md:p-6">
+            <div className="min-[1024px]:pl-[274px] min-[1024px]:pr-[50px] min-[1024px]:pt-[50px] min-[1024px]:pb-8 flex h-full flex-auto overflow-hidden p-3.5 md:p-6">
               <div className="mx-auto flex h-full max-h-full w-full max-w-[1160px] flex-col gap-5 overflow-hidden">
                 <BillingSectionHeader
                   title="Billing"

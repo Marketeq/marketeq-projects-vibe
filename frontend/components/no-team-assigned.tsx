@@ -38,6 +38,18 @@ export const isTalentAccount = (
     ?.activeRole?.toUpperCase?.()
   if (active === ROLE.TALENT) return true
   if (active === ROLE.CLIENT) return false
+
+  // No persisted activeRole (account has never used the switcher). Trust `role`,
+  // which IS the active session, before falling back to the resolver.
+  //
+  // resolveDashboardRole checks TALENT across role/accountType/userType and
+  // returns on the first match, so it answers TALENT for a client whose account
+  // also carries `userType: talent` — a combination the doc comment above notes
+  // is common. That made this card visible to clients on project details.
+  // Clients and signed-out visitors must render nothing here.
+  const sessionRole = user?.role?.toUpperCase?.()
+  if (sessionRole === ROLE.CLIENT) return false
+
   return resolveDashboardRole(user) === ROLE.TALENT
 }
 

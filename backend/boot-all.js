@@ -70,6 +70,7 @@ const SERVICES = [
   // payout-service, so 3028 here would collide (and did — user-service's
   // resume upload was POSTing to payout-service).
   { name: 'resume-parsing-service',     port: '3033', dir: 'apps/resume-parsing-service',     maxOldSpaceMb: 96 },
+  { name: 'browsing-history-service',   port: '3034', dir: 'apps/browsing-history-service',   maxOldSpaceMb: 48 },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway', maxOldSpaceMb: 96 };
@@ -112,6 +113,7 @@ const gatewayEnv = {
   // Consumed by user-service resume.service.ts, which otherwise falls back to
   // its hardcoded http://localhost:3028 default — payout-service in this file.
   RESUME_PARSING_SERVICE_URL:     'http://localhost:3033',
+  BROWSING_HISTORY_SERVICE_URL:   'http://localhost:3034',
 };
 
 // svc.portKey allows services that read a non-standard env var for their port
