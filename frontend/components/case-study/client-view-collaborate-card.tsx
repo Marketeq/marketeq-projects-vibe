@@ -123,7 +123,13 @@ export function ClientViewCollaborateCard({
   // Publish caps the list at 10 (MAX_SKILLS in publish-dialog.tsx) and the
   // row wraps, so every skill the talent picked is shown rather than a
   // truncated subset — they chose them for this case study deliberately.
-  const skills = caseStudySkills ?? []
+  // A case study published before skills existed on it carries none, so the
+  // talent's profile skills stay the fallback and the row never renders
+  // empty — that is the behaviour this card shipped with.
+  const skills =
+    caseStudySkills && caseStudySkills.length > 0
+      ? caseStudySkills
+      : (talentProfile.skills ?? []).slice(0, 6).map((skill) => skill.name)
 
   const handleSend = async () => {
     if ((!message.trim() && attachments.length === 0) || sending) return

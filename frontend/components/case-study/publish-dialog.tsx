@@ -33,9 +33,6 @@ const MAX_TITLE_LENGTH = 120
 // skills.json is 710 entries; one request pulls the whole vocabulary so the
 // typeahead below searches every skill, not an alphabetical slice.
 const SKILL_LIBRARY_LIMIT = 1000
-// Dialog is max-w-[740px] with p-6 (24px) side padding — 740 - 24*2 = 692,
-// matching the Figma spec's full-width skills dropdown.
-const SKILLS_DROPDOWN_WIDTH = 692
 
 // Fallback vocabulary — used only until the live autocomplete library
 // resolves, and if it ever comes back empty.
@@ -394,10 +391,11 @@ export function PublishDialog({
     return chosen
   }, [contentSuggestions, skills])
 
-  // Typeahead dropdown pool, in the order it is rendered (TagsInputInput is
-  // given `preserveOptionOrder`, so this order survives to the list). It is
-  // the skills library and nothing else — the case study's own content plays
-  // no part in what appears or in what order. Typing "React" returns every
+  // Typeahead dropdown pool. Ranked here so the best match is computed on
+  // our side; the dropdown's own Command applies its scoring on top, so
+  // treat this as which skills appear rather than a guaranteed final order.
+  // It is the skills library and nothing else — the case study's own
+  // content plays no part in what appears or in what order. Typing "React" returns every
   // React skill the library holds, best match first: exact, then labels
   // starting with it, then labels whose later words start with it, then bare
   // substrings; alphabetical inside each tier so the list is stable.
@@ -440,8 +438,15 @@ export function PublishDialog({
 
         <div className="shrink-0 border-t border-gray-200" />
 
+        {/*
+          Same call-site pattern as case-study-client-preview.tsx: the flex
+          column and min-height come from here so the body scrolls between
+          the header and footer, without changing the shared ScrollArea
+          primitive for its other consumers.
+        */}
         <ScrollArea
-          className="min-h-0 flex-1"
+          className="flex-1 min-h-0 flex flex-col"
+          viewportClassName="flex-1 min-h-0"
           scrollBar={<ScrollBar className="w-4 p-1" />}
         >
         <div className="p-6 space-y-6">
@@ -600,16 +605,17 @@ export function PublishDialog({
               </div>
 
               <TagsInputControl>
+                {/*
+                  Rendered in-flow rather than with `portalDropdown`: a
+                  portaled dropdown mounts on document.body at z-[60], which
+                  is below this dialog's own z-[110], so it would open behind
+                  the dialog. The in-flow dropdown lives inside the dialog's
+                  stacking context and stays visible.
+                */}
                 <TagsInputInput
                   options={dropdownOptions}
                   onInputValueChange={setSkillQuery}
                   placeholder="Add Skills"
-                  portalDropdown
-                  dropdownWidth={SKILLS_DROPDOWN_WIDTH}
-                  preferBelow
-                  alignToControl
-                  alwaysShowScrollbar
-                  preserveOptionOrder
                 />
               </TagsInputControl>
             </TagsInputRoot>
