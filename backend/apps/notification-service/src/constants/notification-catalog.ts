@@ -22,128 +22,64 @@ export interface NotificationCatalogCategory {
   notifications: NotificationCatalogItem[];
 }
 
-const ALL_ON: ScopedChannelState = { inApp: true, email: true, sms: false };
-const ALL_OFF: ScopedChannelState = { inApp: false, email: false, sms: false };
+// Every category row in the design reads "In App, Text" — in-app and SMS on,
+// email off.
+const IN_APP_AND_TEXT: ScopedChannelState = {
+  inApp: true,
+  email: false,
+  sms: true,
+};
 
+// The five categories the Notifications design specifies. Replaces the earlier
+// Projects / Messages / Contracts & Payments / Marketing & Promotions set,
+// which predates this design.
+//
+// `notifications` is empty on each: the design gives the category rows and
+// their channel summary, not the individual notification types inside them.
+// Inventing that list would be guesswork, so the drill-down starts empty until
+// the item-level design lands. Preferences already stored against the old
+// category ids are ignored on read — `getAllCategoryIds()` drives that — so no
+// stale row leaks into the UI.
 export const NOTIFICATION_CATALOG: NotificationCatalogCategory[] = [
   {
-    id: 'projects',
-    title: 'Projects',
-    icon: 'briefcase',
+    id: 'general',
+    title: 'General',
+    icon: 'layout-alt-01',
     defaultEnabled: true,
-    defaultChannels: ALL_ON,
-    notifications: [
-      {
-        id: 'new-proposal',
-        title: 'New Proposal Received',
-        description:
-          'Get notified when a freelancer submits a proposal on your project',
-        defaultEnabled: true,
-        defaultChannels: ALL_ON,
-      },
-      {
-        id: 'milestone-complete',
-        title: 'Milestone Completed',
-        description:
-          'Receive a notification when a project milestone is marked as complete',
-        defaultEnabled: true,
-        defaultChannels: ALL_ON,
-      },
-      {
-        id: 'project-update',
-        title: 'Project Status Update',
-        description:
-          'Get notified about changes to project status or timeline',
-        defaultEnabled: false,
-        defaultChannels: ALL_OFF,
-      },
-      {
-        id: 'project-invitation',
-        title: 'Project Invitation',
-        description:
-          'Receive a notification when you are invited to collaborate on a project',
-        defaultEnabled: true,
-        defaultChannels: { inApp: true, email: true, sms: true },
-      },
-    ],
+    defaultChannels: IN_APP_AND_TEXT,
+    notifications: [],
   },
   {
-    id: 'messages',
-    title: 'Messages',
-    icon: 'message-chat-square',
+    id: 'inbox',
+    title: 'Inbox',
+    icon: 'mail-02',
     defaultEnabled: true,
-    defaultChannels: { inApp: true, email: true, sms: true },
-    notifications: [
-      {
-        id: 'new-message',
-        title: 'New Message',
-        description: 'Get notified when you receive a new direct message',
-        defaultEnabled: true,
-        defaultChannels: { inApp: true, email: true, sms: true },
-      },
-      {
-        id: 'message-request',
-        title: 'Message Request',
-        description:
-          'Receive a notification when someone sends you a message request',
-        defaultEnabled: true,
-        defaultChannels: { inApp: true, email: false, sms: false },
-      },
-    ],
+    defaultChannels: IN_APP_AND_TEXT,
+    notifications: [],
   },
   {
-    id: 'contracts',
-    title: 'Contracts & Payments',
-    icon: 'file-search-02',
+    id: 'listings',
+    title: 'Listings',
+    icon: 'presentation-chart-01',
     defaultEnabled: true,
-    defaultChannels: ALL_ON,
-    notifications: [
-      {
-        id: 'contract-started',
-        title: 'Contract Started',
-        description: 'Get notified when a new contract is activated',
-        defaultEnabled: true,
-        defaultChannels: ALL_ON,
-      },
-      {
-        id: 'payment-received',
-        title: 'Payment Received',
-        description: 'Receive a notification when a payment is processed',
-        defaultEnabled: true,
-        defaultChannels: ALL_ON,
-      },
-      {
-        id: 'contract-deadline',
-        title: 'Contract Deadline Reminder',
-        description: 'Get reminded about upcoming contract deadlines',
-        defaultEnabled: true,
-        defaultChannels: ALL_ON,
-      },
-    ],
+    defaultChannels: IN_APP_AND_TEXT,
+    notifications: [],
   },
   {
-    id: 'marketing',
-    title: 'Marketing & Promotions',
-    icon: 'star',
-    defaultEnabled: false,
-    defaultChannels: ALL_OFF,
-    notifications: [
-      {
-        id: 'product-updates',
-        title: 'Product Updates',
-        description: 'Learn about new features and improvements to the platform',
-        defaultEnabled: false,
-        defaultChannels: ALL_OFF,
-      },
-      {
-        id: 'tips-newsletter',
-        title: 'Tips & Newsletter',
-        description:
-          'Receive tips to improve your freelancing or hiring experience',
-        defaultEnabled: false,
-        defaultChannels: ALL_OFF,
-      },
-    ],
+    id: 'offers',
+    title: 'Offers',
+    icon: 'package-search',
+    defaultEnabled: true,
+    defaultChannels: IN_APP_AND_TEXT,
+    notifications: [],
+  },
+  {
+    id: 'contacts',
+    title: 'Contacts',
+    icon: 'user-square',
+    defaultEnabled: true,
+    defaultChannels: IN_APP_AND_TEXT,
+    notifications: [],
   },
 ];
 

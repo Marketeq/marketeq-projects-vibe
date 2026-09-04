@@ -6,15 +6,24 @@ import {
   BellRinging03,
   Briefcase,
   FileSearch02,
+  LayoutAlt01,
   Mail01,
+  Mail02,
   MessageChatSquare,
   MessageTextSquare01,
+  PackageSearch,
+  PresentationChart01,
   Star,
+  UserSquare,
 } from "@blend-metrics/icons"
 
 export const channelOrder: ChannelKey[] = ["inApp", "email", "sms"]
 
-export const SMS_ENABLED = false
+// The design treats Text as a live channel: the channels card carries a Text
+// row with a number and an active toggle, and every category summary reads
+// "In App, Text". With this false, `summarizeChannels` filtered SMS out and
+// those rows read "In App only".
+export const SMS_ENABLED = true
 
 export const channelLabels: Record<ChannelKey, string> = {
   inApp: "In App",
@@ -32,6 +41,14 @@ export const channelIcons: Record<
 }
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+  // The five categories the design specifies.
+  "layout-alt-01": LayoutAlt01,
+  "mail-02": Mail02,
+  "presentation-chart-01": PresentationChart01,
+  "package-search": PackageSearch,
+  "user-square": UserSquare,
+  // Kept so a preference stored against a retired category still resolves an
+  // icon rather than falling through to the default.
   briefcase: Briefcase,
   "message-chat-square": MessageChatSquare,
   "file-search-02": FileSearch02,
