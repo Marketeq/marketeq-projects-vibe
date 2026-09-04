@@ -2494,7 +2494,7 @@ const BottomBar = ({
           tools: jobListingDraftDetails.tools ?? [],
           media: buildJobListingMediaPayload(media),
           budgetAmount: jobListingDraftDetails.budgetAmount,
-          budgetDisplayCurrency: "USD",
+          budgetDisplayCurrency: user?.currency || "USD",
           budgetFrequency: jobListingDraftDetails.budgetFrequency ?? "per_week",
           durationMonths: jobListingDraftDetails.durationMonths,
           isOngoing: jobListingDraftDetails.isOngoing,
@@ -8852,6 +8852,7 @@ const DescribeProjectStep = ({
 }) => {
   const { toggleValidation } = useStepContext();
   const { toast } = useToast();
+  const { user } = useAuth();
   const { details, setDetails: setJobListingDraftDetails } =
     useJobListingDraftContext();
   const isService = workType === "service";
@@ -9406,7 +9407,7 @@ const DescribeProjectStep = ({
             deliverables: deliverables.trim(),
             successCriteria: isService ? undefined : successCriteria.trim(),
             budgetAmount,
-            budgetDisplayCurrency: "USD",
+            budgetDisplayCurrency: user?.currency || "USD",
             budgetFrequency,
             durationMonths: isService ? undefined : durationMonths,
             isOngoing: isService ? true : undefined,
@@ -9430,6 +9431,7 @@ const DescribeProjectStep = ({
     hasWordLimitError,
     isService,
     successCriteria,
+    user?.currency,
   ]);
 
   useEffect(() => {
@@ -16854,6 +16856,7 @@ function PublishProject({
     currentStep: initialStep,
   });
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const stepperValue = useMemo(
     () => ({ nextStep, prevStep, setStep, toggleStepValidation }),
@@ -17494,7 +17497,7 @@ function PublishProject({
         tools: jobListingDraftDetails.tools ?? [],
         media: mediaPayload,
         budgetAmount: jobListingDraftDetails.budgetAmount,
-        budgetDisplayCurrency: "USD",
+        budgetDisplayCurrency: user?.currency || "USD",
         budgetFrequency: jobListingDraftDetails.budgetFrequency ?? "per_week",
         durationMonths: jobListingDraftDetails.durationMonths,
         isOngoing: jobListingDraftDetails.isOngoing,
@@ -17635,6 +17638,7 @@ function PublishProject({
     isProjectSubmitted,
     selectedHiringMode,
     selectedWorkType,
+    user?.currency,
     watchedProjectInfo,
   ]);
 
