@@ -3284,7 +3284,7 @@ export default function SettingsPage() {
                           No team members yet
                         </h3>
                         <p className="mt-1 max-w-md text-sm text-gray-500">
-                          Invite people to your team and manage their roles and permissions.
+                          Grow faster by bringing your team on board. Collaborate on projects, share workloads, and keep everyone aligned in one place.
                         </p>
                         <div className="mt-5">
                           <Button size="sm" leftIcon={<Plus className="size-4" />} onClick={() => toggleInviteWindow(true, "Invite Team Member")}>
