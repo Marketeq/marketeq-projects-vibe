@@ -44,6 +44,7 @@ module.exports = {
     svcNested('messaging-service', 3005),
     svcNested('notification-service', 3006),
     svcNested('favorites-service', 3012),
+    svcNested('browsing-history-service', 3034),
     svc('contracts-service', 3010),
     svc('time-tracking-service', 3017),
     svcNested('invitations-service', 3013),
