@@ -13,7 +13,6 @@ import { useNotificationPreferences } from "@/src/hooks/useNotificationPreferenc
 import { useToast } from "@/components/ui"
 import ResetDefaultsModal from "./notifications/modals/reset-defaults-modal"
 import NotificationCategoriesList from "./notifications/notification-categories-list"
-import NotificationCategoryDetail from "./notifications/notification-category-detail"
 import NotificationGlobalChannels from "./notifications/notification-global-channels"
 import { EMPTY_CHANNELS } from "./notifications/shared"
 
@@ -222,7 +221,6 @@ export default function NotificationPreferences() {
     )
   }
 
-  const selectedCategory = catalog.find((c) => c.id === expandedCategory)
 
   return (
     <>
@@ -230,50 +228,34 @@ export default function NotificationPreferences() {
         <p className="text-xs text-gray-400 mb-2 text-right">Saving…</p>
       )}
 
-      {selectedCategory ? (
-        <NotificationCategoryDetail
-          category={selectedCategory}
-          categoryState={getCategoryState(selectedCategory.id)}
-          globalChannels={globalChannels}
+      {/* The categories now expand in place rather than replacing the screen,
+          so the channels card and the list stay mounted throughout. */}
+      <div className="space-y-6">
+        <NotificationGlobalChannels
+          channels={globalChannels}
           accountEmail={accountEmail}
           accountPhone={accountPhone}
-          getItemState={(notificationId) =>
-            getItemState(selectedCategory.id, notificationId)
-          }
-          onBack={() => setExpandedCategory(null)}
-          onToggleCategoryMaster={() =>
-            handleToggleCategoryMaster(selectedCategory.id)
-          }
-          onToggleCategoryChannel={(channel) =>
-            handleToggleCategoryChannel(selectedCategory.id, channel)
-          }
-          onToggleItemEnabled={(notificationId) =>
-            handleToggleItemEnabled(selectedCategory.id, notificationId)
-          }
-          onToggleItemChannel={(notificationId, channel) =>
-            handleToggleItemChannel(notificationId, channel)
-          }
+          onToggleChannel={handleToggleGlobalChannel}
+          onSetBrowserAlerts={handleSetBrowserAlerts}
+          onSetEmailAddress={handleSetEmailAddress}
+          onSetAccountPhone={handleSetAccountPhone}
         />
-      ) : (
-        <div className="space-y-6">
-          <NotificationGlobalChannels
-            channels={globalChannels}
-            accountEmail={accountEmail}
-            accountPhone={accountPhone}
-            onToggleChannel={handleToggleGlobalChannel}
-            onSetBrowserAlerts={handleSetBrowserAlerts}
-            onSetEmailAddress={handleSetEmailAddress}
-            onSetAccountPhone={handleSetAccountPhone}
-          />
 
-          <NotificationCategoriesList
-            catalog={catalog}
-            getCategoryState={getCategoryState}
-            onSelect={setExpandedCategory}
-            onRequestReset={() => setResetOpen(true)}
-          />
-        </div>
-      )}
+        <NotificationCategoriesList
+          catalog={catalog}
+          getCategoryState={getCategoryState}
+          globalChannels={globalChannels}
+          expandedCategory={expandedCategory}
+          onToggleExpanded={(categoryId) =>
+            setExpandedCategory((current) =>
+              current === categoryId ? null : categoryId
+            )
+          }
+          onToggleCategoryMaster={handleToggleCategoryMaster}
+          onToggleCategoryChannel={handleToggleCategoryChannel}
+          onRequestReset={() => setResetOpen(true)}
+        />
+      </div>
 
       <ResetDefaultsModal
         open={resetOpen}

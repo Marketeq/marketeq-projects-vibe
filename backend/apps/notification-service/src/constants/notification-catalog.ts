@@ -22,12 +22,12 @@ export interface NotificationCatalogCategory {
   notifications: NotificationCatalogItem[];
 }
 
-// Every category row in the design reads "In App, Text" — in-app and SMS on,
-// email off.
-const IN_APP_AND_TEXT: ScopedChannelState = {
+// Every collapsed category row in the design reads "In App only". Text is
+// marked COMING SOON in the channels card, so it is not a default anywhere.
+const IN_APP_ONLY: ScopedChannelState = {
   inApp: true,
   email: false,
-  sms: true,
+  sms: false,
 };
 
 // The five categories the Notifications design specifies. Replaces the earlier
@@ -46,7 +46,7 @@ export const NOTIFICATION_CATALOG: NotificationCatalogCategory[] = [
     title: 'General',
     icon: 'layout-alt-01',
     defaultEnabled: true,
-    defaultChannels: IN_APP_AND_TEXT,
+    defaultChannels: IN_APP_ONLY,
     notifications: [],
   },
   {
@@ -54,7 +54,7 @@ export const NOTIFICATION_CATALOG: NotificationCatalogCategory[] = [
     title: 'Inbox',
     icon: 'mail-02',
     defaultEnabled: true,
-    defaultChannels: IN_APP_AND_TEXT,
+    defaultChannels: IN_APP_ONLY,
     notifications: [],
   },
   {
@@ -62,7 +62,7 @@ export const NOTIFICATION_CATALOG: NotificationCatalogCategory[] = [
     title: 'Listings',
     icon: 'presentation-chart-01',
     defaultEnabled: true,
-    defaultChannels: IN_APP_AND_TEXT,
+    defaultChannels: IN_APP_ONLY,
     notifications: [],
   },
   {
@@ -70,7 +70,7 @@ export const NOTIFICATION_CATALOG: NotificationCatalogCategory[] = [
     title: 'Offers',
     icon: 'package-search',
     defaultEnabled: true,
-    defaultChannels: IN_APP_AND_TEXT,
+    defaultChannels: IN_APP_ONLY,
     notifications: [],
   },
   {
@@ -78,7 +78,7 @@ export const NOTIFICATION_CATALOG: NotificationCatalogCategory[] = [
     title: 'Contacts',
     icon: 'user-square',
     defaultEnabled: true,
-    defaultChannels: IN_APP_AND_TEXT,
+    defaultChannels: IN_APP_ONLY,
     notifications: [],
   },
 ];

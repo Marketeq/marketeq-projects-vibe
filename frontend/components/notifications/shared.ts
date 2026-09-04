@@ -19,11 +19,11 @@ import {
 
 export const channelOrder: ChannelKey[] = ["inApp", "email", "sms"]
 
-// The design treats Text as a live channel: the channels card carries a Text
-// row with a number and an active toggle, and every category summary reads
-// "In App, Text". With this false, `summarizeChannels` filtered SMS out and
-// those rows read "In App only".
-export const SMS_ENABLED = true
+// Text is marked COMING SOON in the design: the channel row is dimmed with its
+// toggle off, and collapsed category rows read "In App only". Keeping this
+// false leaves SMS out of every channel summary and out of the per-category
+// toggles, which is what the design shows.
+export const SMS_ENABLED = false
 
 export const channelLabels: Record<ChannelKey, string> = {
   inApp: "In App",
