@@ -174,6 +174,16 @@ export class CreateUserDto {
   @IsString()
   department?: string;
 
+  /**
+   * Settings > IP Restrictions master switch. Declared for the same reason as
+   * `department`: the whitelisting ValidationPipe drops anything undeclared, so
+   * an omitted field is silently discarded rather than rejected loudly.
+   */
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  ipRestrictionEnabled?: boolean;
+
   @ApiPropertyOptional({ example: 'acme.com' })
   @IsOptional()
   @IsString()

@@ -38,6 +38,9 @@ export type User = {
   /** Department from Personal Info's "What team do you work on?".
    *  Distinct from `teamName`, which is the client's company name. */
   department?: string | null
+  /** Settings > IP Restrictions master switch. Null until the screen is used —
+   *  which is not the same as having deliberately switched restriction off. */
+  ipRestrictionEnabled?: boolean | null
   /** Comma-separated list of languages the user speaks. A profile attribute —
    *  it does not switch the interface language. */
   language?: string | null
