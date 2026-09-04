@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useReducer, useRef, useState } from "react"
+import React, { useEffect, useMemo, useReducer, useRef, useState } from "react"
 import { Reorder, motion, useDragControls, useMotionValue } from "framer-motion"
 import { getId } from "@/utils/functions"
 import {
@@ -10,6 +10,7 @@ import {
 } from "@/service/http/case-study"
 import {
   buildColumnsData,
+  collectCaseStudyText,
   regionsToSchemaJson,
   schemaJsonToRegions,
   type CaseStudyBlockType,
@@ -36,6 +37,13 @@ type Action =
       type: "add"
       payload: CaseStudyBlockType
       data?: Record<string, unknown>
+      /**
+       * Where to put the new block. Omitted (or out of range) appends to the
+       * end — what the trailing "+" divider and the empty-canvas InitialBlock
+       * want. A "+" divider sitting above block i passes i, so the new block
+       * lands in that gap instead of at the bottom of the canvas.
+       */
+      index?: number
     }
   | { type: "reorder"; payload: EditorRegion[] }
   | { type: "hydrate"; payload: EditorRegion[] }
@@ -47,14 +55,20 @@ type Action =
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
-    case "add":
-      return {
-        ...state,
-        regions: [
-          ...state.regions,
-          { id: getId(), region: action.payload, data: action.data },
-        ],
+    case "add": {
+      const block: EditorRegion = {
+        id: getId(),
+        region: action.payload,
+        data: action.data,
       }
+      const at =
+        action.index === undefined
+          ? state.regions.length
+          : Math.max(0, Math.min(action.index, state.regions.length))
+      const regions = [...state.regions]
+      regions.splice(at, 0, block)
+      return { ...state, regions }
+    }
 
     case "reorder":
       return { ...state, regions: action.payload }
@@ -169,7 +183,27 @@ function BlockRoot({
       dragListener={false}
     >
       <div className="-top-[100px] h-[100px] flex flex-col justify-center inset-x-0 absolute group/spacer">
-        <div className="group-hover/spacer:visible invisible">
+        {/*
+          `relative z-20` + `opacity-0` (rather than `invisible`) are both
+          load-bearing here, not styling. The invisible hover-bridge span
+          below starts at -top-16 — 64px above this block — so it blankets
+          the bottom two thirds of this 41px plus button. It is a later
+          sibling at the same z-index, so it used to win the hit test:
+          approaching the "+" from the block below, the pointer hit the
+          bridge, the spacer never registered as hovered, the divider stayed
+          hidden, and any click went to the bridge. Only the top ~6px of the
+          button responded. z-20 puts the divider above the bridge; opacity
+          instead of visibility keeps it hit-testable while hidden, since a
+          `visibility: hidden` element takes no pointer events at all and so
+          could never be the thing that triggers its own reveal. The divider
+          band sits at -70.5px..-29.5px and the toolbar at ~-40px..0, so
+          the two overlap by ~8px at the top of the toolbar — hence
+          `pointer-events-none` on the row with it re-enabled on the button
+          alone: the lifted, always-hit-testable footprint is just the 41px
+          circle in the middle of the canvas, nowhere near the toolbar at
+          the right edge.
+        */}
+        <div className="relative z-20 opacity-0 group-hover/spacer:opacity-100 pointer-events-none [&_button]:pointer-events-auto">
           <AddBlockDivider.Horizontal onPlus={onAdd} />
         </div>
       </div>
@@ -265,11 +299,19 @@ export default function CaseStudyEditor({
   const [state, dispatch] = useReducer(reducer, defaultValue)
   const [open, setOpen] = useState(false)
   const [columnPickerOpen, setColumnPickerOpen] = useState(false)
+  // Which slot the block picker is currently adding into. Set by whichever
+  // "+" was clicked, read when the pick finally resolves — which can be one
+  // or two dialogs later, since "Custom columns" hands off to
+  // ColumnLayoutPicker (and that can hand back to the template dialog).
+  // Deliberately not cleared when a dialog closes, only after the block is
+  // added: the handoff closes the template dialog mid-flow.
+  const [insertIndex, setInsertIndex] = useState<number | undefined>(undefined)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
   const [isPreview, setIsPreview] = useState(false)
   const [title, setTitle] = useState(projectName)
   const [titleError, setTitleError] = useState(false)
   const [description, setDescription] = useState("")
+  const [descriptionError, setDescriptionError] = useState(false)
   const [id, setId] = useState<string | undefined>(caseStudyId)
   const [isReady, setIsReady] = useState(false)
   const [status, setStatus] = useState<CaseStudyStatus>("draft")
@@ -282,6 +324,12 @@ export default function CaseStudyEditor({
   const descriptionTextareaRef = useRef<HTMLTextAreaElement>(null)
   const { toast } = useToast()
 
+  /** Opens the block picker, remembering which gap the "+" belongs to. */
+  const openBlockPicker = (index?: number) => {
+    setInsertIndex(index)
+    setOpen(true)
+  }
+
   useEffect(() => {
     autoResizeTextarea(titleTextareaRef.current)
   }, [title])
@@ -289,6 +337,20 @@ export default function CaseStudyEditor({
   useEffect(() => {
     autoResizeTextarea(descriptionTextareaRef.current)
   }, [description])
+
+  // A failed publish attempt can happen while scrolled far down the canvas
+  // (or from the in-preview popup, which sits above the whole page as an
+  // overlay) — closing the popup alone dropped the user back on the editor
+  // with no visual cue where the error actually was. Scroll/focus the
+  // description field into view whenever its error turns on so the error
+  // is never off-screen.
+  useEffect(() => {
+    if (!descriptionError || isPreview) return
+    const el = descriptionTextareaRef.current
+    if (!el) return
+    el.scrollIntoView({ behavior: "smooth", block: "center" })
+    el.focus({ preventScroll: true })
+  }, [descriptionError, isPreview])
 
   // Create (new) or load (existing) the case study once on mount, against
   // the real backend. A load failure leaves the dialog open but empty
@@ -407,6 +469,36 @@ export default function CaseStudyEditor({
     }
   }
 
+  // Plain-text digest of everything the case study says — handed to the
+  // publish dialog so its skill suggestions come from this project's actual
+  // content rather than a fixed list. Recomputed only when the content
+  // changes, not on every keystroke elsewhere in the editor.
+  const contentText = useMemo(
+    () =>
+      collectCaseStudyText(
+        regionsToSchemaJson(state.regions).blocks,
+        title,
+        description
+      ),
+    [state.regions, title, description]
+  )
+
+  // Gates the publish dialog on a non-empty description. Called from both
+  // Publish entry points below (the main EditorTopBar and the in-preview
+  // EditorPreviewBar) so neither can bypass the check. The description
+  // field itself only exists in the main canvas, not the preview popup —
+  // so a failed check also exits preview, otherwise the inline error would
+  // render behind a bar the user can't see.
+  const handleOpenPublish = () => {
+    const isDescriptionValid = description.trim().length > 0
+    setDescriptionError(!isDescriptionValid)
+    if (!isDescriptionValid) {
+      setIsPreview(false)
+      return
+    }
+    setPublishDialogOpen(true)
+  }
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       <EditorTopBar
@@ -416,7 +508,7 @@ export default function CaseStudyEditor({
         lastSavedAt={lastSavedAt}
         isPreview={isPreview}
         onPreviewToggle={() => setIsPreview((v) => !v)}
-        onPublish={() => setPublishDialogOpen(true)}
+        onPublish={handleOpenPublish}
         onClose={onClose}
       />
 
@@ -471,16 +563,25 @@ export default function CaseStudyEditor({
                       rows={1}
                       value={description}
                       placeholder="Write what into this design or add any details you want to mention"
-                      onChange={(e) => setDescription(e.currentTarget.value)}
+                      onChange={(e) => {
+                        const value = e.currentTarget.value
+                        setDescription(value)
+                        if (value.trim()) setDescriptionError(false)
+                      }}
                       className="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-2xl leading-snug font-light text-dark-blue-400 placeholder:text-gray-500 focus-visible:outline-none focus:ring-0"
                     />
+                    {descriptionError && (
+                      <p className="mt-1 text-sm font-medium text-error-500">
+                        Please add a description.
+                      </p>
+                    )}
                   </div>
                 </div>
               </TitleDescriptionBlock>
 
               {state.regions.length === 0 ? (
                 <div className="mt-[100px]">
-                  <InitialBlock onAddBlock={() => setOpen(true)} />
+                  <InitialBlock onAddBlock={() => openBlockPicker()} />
                 </div>
               ) : (
                 <Reorder.Group
@@ -496,7 +597,7 @@ export default function CaseStudyEditor({
                     <BlockRoot
                       key={region.id}
                       value={region}
-                      onAdd={() => setOpen(true)}
+                      onAdd={() => openBlockPicker(index)}
                       onRemove={() =>
                         dispatch({ type: "remove", payload: region.id })
                       }
@@ -530,7 +631,7 @@ export default function CaseStudyEditor({
 
               {state.regions.length > 0 && (
                 <div className="mt-[100px]">
-                  <AddBlockDivider.Horizontal onPlus={() => setOpen(true)} />
+                  <AddBlockDivider.Horizontal onPlus={() => openBlockPicker()} />
                 </div>
               )}
             </div>
@@ -545,7 +646,7 @@ export default function CaseStudyEditor({
               projectName={title || projectName}
               lastSavedAt={lastSavedAt}
               onEdit={() => setIsPreview(false)}
-              onPublish={() => setPublishDialogOpen(true)}
+              onPublish={handleOpenPublish}
               onClose={() => setIsPreview(false)}
             />
 
@@ -564,20 +665,23 @@ export default function CaseStudyEditor({
             setColumnPickerOpen(true)
             return
           }
-          dispatch({ type: "add", payload: type })
+          dispatch({ type: "add", payload: type, index: insertIndex })
+          setInsertIndex(undefined)
         }}
       />
 
       <ColumnLayoutPicker
         open={columnPickerOpen}
         onOpenChange={setColumnPickerOpen}
-        onSelect={(widths) =>
+        onSelect={(widths) => {
           dispatch({
             type: "add",
             payload: "custom-columns",
             data: buildColumnsData(widths) as unknown as Record<string, unknown>,
+            index: insertIndex,
           })
-        }
+          setInsertIndex(undefined)
+        }}
         onUseTemplate={() => {
           setColumnPickerOpen(false)
           setOpen(true)
@@ -588,6 +692,7 @@ export default function CaseStudyEditor({
         open={publishDialogOpen}
         onOpenChange={setPublishDialogOpen}
         title={title}
+        content={contentText}
         onPublish={handlePublish}
         publishing={isPublishing}
       />

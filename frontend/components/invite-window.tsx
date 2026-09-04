@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useCallback, useEffect, useState } from "react"
 import { useAuth } from "@/contexts/auth"
 import { InvitationsAPI } from "@/service/http/invitations"
 import { callAll, cn, isNotEmpty } from "@/utils/functions"
@@ -64,18 +64,47 @@ interface Invitee {
 
 type Invitees = Invitee[]
 
-const contacts = [
-  {
-    avatar: "/man.jpg",
-    username: "Thomas",
-    email: "tranthuy.nute@gmail.com",
-  },
-  {
-    avatar: "/woman.jpg",
-    username: "Tiffany Steiner",
-    email: "tiff.steinter@gmail.com",
-  },
-]
+interface Contact {
+  avatar: string
+  username: string
+  email: string
+}
+
+/**
+ * Stand-in for a contact with no profile picture. Pending invitees are only
+ * an email address until they accept, so invitations-service has no avatar
+ * to enrich the row with, and the suggestion list renders an image
+ * unconditionally.
+ */
+const CONTACT_FALLBACK_AVATAR = "/placeholder-img.svg"
+
+/**
+ * "Find contacts" suggestions, drawn from invitations-service itself:
+ * everyone this team has already invited, newest first. Accepted invites
+ * come back enriched with the invitee's real name and avatar (see
+ * InvitationsService.list); pending ones are just an address, so the local
+ * part of the email stands in for the name.
+ */
+function toContacts(rows: unknown): Contact[] {
+  if (!Array.isArray(rows)) return []
+  const seen = new Set<string>()
+  const contacts: Contact[] = []
+  for (const row of rows as Array<Record<string, unknown>>) {
+    const email = String(row?.invitedEmail ?? "")
+      .trim()
+      .toLowerCase()
+    if (!email || seen.has(email)) continue
+    seen.add(email)
+    const name = typeof row?.inviteeName === "string" ? row.inviteeName : ""
+    const avatar = typeof row?.avatarUrl === "string" ? row.avatarUrl : ""
+    contacts.push({
+      avatar: avatar || CONTACT_FALLBACK_AVATAR,
+      username: name || email.split("@")[0],
+      email,
+    })
+  }
+  return contacts
+}
 
 const isEmail = (value: string) => z.string().email().safeParse(value).success
 
@@ -287,12 +316,40 @@ export const InviteWindow = () => {
   const [message, setMessage] = useState("")
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [copySuccess, setCopySuccess] = useState(false)
+  const [contacts, setContacts] = useState<Contact[]>([])
   const { user } = useAuth()
   const { toast } = useToast()
   const inviteBaseUrl = (
     process.env.NEXT_PUBLIC_APP_URL ||
     (typeof window !== "undefined" ? window.location.origin : "")
   ).replace(/\/$/, "")
+
+  const teamId = (user?.id || (user as any)?.sub) as string | undefined
+
+  // Contact suggestions come from invitations-service — this team's own
+  // invitation history — so the list is real people the inviter has worked
+  // with rather than a fixed sample. Refetched whenever the window opens
+  // and after a send, so someone invited a moment ago is suggestable next
+  // time. A failure just leaves the suggestions empty; it must never block
+  // the invite itself.
+  const loadContacts = useCallback(async () => {
+    if (!teamId) {
+      setContacts([])
+      return
+    }
+    try {
+      const res = await InvitationsAPI.listInvitations({ teamId, limit: 50 })
+      const payload = res?.data as { data?: unknown } | undefined
+      setContacts(toContacts(payload?.data ?? payload))
+    } catch {
+      setContacts([])
+    }
+  }, [teamId])
+
+  useEffect(() => {
+    if (!open) return
+    void loadContacts()
+  }, [open, loadContacts])
 
   const filteredContacts = inputValue
     ? contacts.filter(
@@ -323,7 +380,7 @@ export const InviteWindow = () => {
     setShowSuggestions(false)
   }
 
-  const handleAddContact = (contact: (typeof contacts)[0]) => {
+  const handleAddContact = (contact: Contact) => {
     const normalizedEmail = contact.email.toLowerCase()
     if (!invitees.some((i) => i.email.toLowerCase() === normalizedEmail)) {
       setInvitees((prev) => [
@@ -374,7 +431,6 @@ export const InviteWindow = () => {
       return
     }
 
-    const teamId = user?.id || (user as any)?.sub
     if (!teamId) {
       toast({
         title: "Authentication required",
@@ -407,6 +463,7 @@ export const InviteWindow = () => {
           )
       )
 
+      void loadContacts()
       setInviteSent(true)
       setTimeout(() => {
         setInviteSent(false)
@@ -427,7 +484,6 @@ export const InviteWindow = () => {
   }
 
   const handleCopyLink = async () => {
-    const teamId = user?.id || (user as any)?.sub
     if (!teamId) {
       toast({
         title: "Unable to copy link",
@@ -453,7 +509,7 @@ export const InviteWindow = () => {
       const res = await InvitationsAPI.createInvitationLink({
         teamId,
         teamName,
-        role: "viewer",
+        role: defaultRole,
       })
       const inviteLink =
         res?.data?.url ||

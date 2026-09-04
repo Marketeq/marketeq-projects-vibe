@@ -217,6 +217,65 @@ export function regionsToSchemaJson(
   }
 }
 
+/**
+ * Every human-readable string in a case study, flattened into one plain-text
+ * digest — what the skill suggester reads to work out what the project was
+ * actually about.
+ *
+ * Block data is free-form (`Record<string, unknown>`) and nests arbitrarily
+ * (columns hold items, personas hold rows, galleries hold captions), so this
+ * walks the whole structure rather than naming fields. Rich-text fields hold
+ * HTML, so tags are stripped and entities collapsed; URL-shaped strings are
+ * dropped, since an R2 image key is noise that would otherwise dominate the
+ * digest. Capped at 4000 chars: the suggester embeds this, and the opening
+ * sections carry the description of the work.
+ */
+export function collectCaseStudyText(
+  blocks: CaseStudyBlock[] | undefined,
+  ...leading: (string | undefined)[]
+): string {
+  const parts: string[] = []
+  let length = 0
+  const MAX = 4000
+
+  const push = (raw: string) => {
+    if (length >= MAX) return
+    const text = raw
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&#\d+;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+    if (!text) return
+    // Skip URLs/keys — an image path says nothing about the skills used.
+    if (/^(https?:\/\/|data:|blob:)/i.test(text)) return
+    if (!/[a-z]/i.test(text)) return
+    parts.push(text)
+    length += text.length + 1
+  }
+
+  const walk = (value: unknown) => {
+    if (length >= MAX) return
+    if (typeof value === "string") return push(value)
+    if (Array.isArray(value)) return value.forEach(walk)
+    if (value && typeof value === "object") {
+      Object.values(value as Record<string, unknown>).forEach(walk)
+    }
+  }
+
+  leading.forEach((value) => {
+    if (value) push(value)
+  })
+  for (const block of blocks ?? []) {
+    walk(block.data)
+  }
+
+  return parts.join(". ").slice(0, MAX)
+}
+
 /** Best-effort thumbnail: the first image URL found in any block's data. */
 export function firstCaseStudyImageUrl(
   blocks: CaseStudyBlock[] | undefined
