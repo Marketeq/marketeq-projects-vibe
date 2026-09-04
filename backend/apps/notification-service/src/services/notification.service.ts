@@ -18,6 +18,7 @@ import {
   buildDefaultNotificationMap,
   getAllCategoryIds,
   getAllNotificationIds,
+  resolveCategoryId,
 } from '../constants/notification-catalog';
 import { UpdatePreferencesDto } from '../dtos/update-preferences.dto';
 import { BrevoService } from '../brevo/brevo.service';
@@ -101,7 +102,22 @@ export class NotificationService {
 
     const itemId = payload.event;
     const item = resolved.notifications[itemId];
-    const categoryPref = resolved.categories[payload.category];
+
+    // The name a publisher emits is not always the id the preference screen
+    // stores against, so resolve before looking the preference up. The stored
+    // row keeps `payload.category` untouched — that value is what the
+    // notification list filters on.
+    const categoryId = resolveCategoryId(payload.category);
+    if (!categoryId) {
+      this.logger.warn(
+        `Category "${payload.category}" (event ${payload.event}) matches no catalog id or alias; ` +
+          `this notification ignores the recipient's category preferences. ` +
+          `Add it to CATEGORY_ALIASES or emit a catalog id.`,
+      );
+    }
+    const categoryPref = categoryId
+      ? resolved.categories[categoryId]
+      : undefined;
 
     const categoryActive = categoryPref?.enabled ?? true;
     const itemActive = item?.enabled ?? true;

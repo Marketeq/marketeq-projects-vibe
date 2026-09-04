@@ -53,6 +53,8 @@ export interface IndustryPayload {
 }
 
 export interface UserProfilePayload {
+  /** Settings > IP Restrictions master switch. */
+  ipRestrictionEnabled?: boolean
   firstName?: string
   lastName?: string
   username?: string
