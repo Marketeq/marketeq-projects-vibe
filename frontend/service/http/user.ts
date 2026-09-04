@@ -88,6 +88,9 @@ export interface UserProfilePayload {
   // Client company profile — collected by the client "Complete My Profile"
   // steps. `teamName` is the company name; the logo reuses `avatarUrl`.
   teamName?: string
+  /** Department — Personal Info's "What team do you work on?". Distinct from
+   *  `teamName`, which is the client's company name. */
+  department?: string
   companyWebsite?: string
   workplaceValues?: string[]
 }

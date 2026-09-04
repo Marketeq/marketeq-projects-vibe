@@ -35,6 +35,9 @@ export type User = {
   recentJobTitle?: string | null
   jobTitles?: string[] | null
   teamName?: string | null
+  /** Department from Personal Info's "What team do you work on?".
+   *  Distinct from `teamName`, which is the client's company name. */
+  department?: string | null
   /** Comma-separated list of languages the user speaks. A profile attribute —
    *  it does not switch the interface language. */
   language?: string | null

@@ -92,6 +92,12 @@ export class User {
   @Column({ nullable: true })
   teamName?: string;
 
+  // Personal Info's "What team do you work on?" — a department (Engineering,
+  // Design, Marketing...). Deliberately NOT `teamName`, which above holds the
+  // client's company name; writing one to the other overwrites Company Info.
+  @Column({ nullable: true })
+  department?: string;
+
   // Client company profile. `teamName` above is the company name; these two
   // carry the rest of what the client "Complete My Profile" steps collect.
   // Kept on the user row so a single getProfile call returns the whole
