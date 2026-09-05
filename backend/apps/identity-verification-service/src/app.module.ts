@@ -20,6 +20,7 @@ import { OBJECT_STORAGE_PROVIDER } from './providers/storage/object-storage-prov
 import { R2ObjectStorageProvider } from './providers/storage/r2-object-storage.provider';
 import { NOTIFICATION_EVENT_PUBLISHER } from './events/notification-event-publisher.interface';
 import { RabbitMqNotificationEventPublisher } from './events/rabbitmq-notification-event-publisher';
+import { MetricsModule } from './metrics/metrics.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { RabbitMqNotificationEventPublisher } from './events/rabbitmq-notificati
     ]),
     ScheduleModule.forRoot(),
     HealthModule,
+    MetricsModule,
   ],
   controllers: [
     IdentityVerificationController,
