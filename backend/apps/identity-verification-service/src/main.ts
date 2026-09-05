@@ -1,9 +1,7 @@
 import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
-import { Logger, ValidationPipe } from '@nestjs/common';
-import { AllExceptionsFilter } from './utils/all-exceptions.filter';
-
-const logger = new Logger('IdentityVerificationService');
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -13,21 +11,11 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
-      transformOptions: {
-        enableImplicitConversion: true,
-      },
     }),
   );
 
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  const port = process.env.PORT || 3019;
-  await app.listen(port);
-
-  logger.log(`Identity Verification Service is running on port ${port}`);
+  await app.listen(process.env.PORT ?? 3019);
 }
-
-bootstrap().catch((err) => {
-  logger.error('Failed to start Identity Verification Service', err);
-  process.exit(1);
-});
+bootstrap();
