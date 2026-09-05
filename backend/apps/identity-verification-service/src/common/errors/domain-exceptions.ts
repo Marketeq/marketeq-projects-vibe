@@ -69,3 +69,17 @@ export class ClassificationRequiredException extends DomainException {
     super('Record a Temporarily Traveling classification before declaring a travel duration.', HttpStatus.CONFLICT, details);
   }
 }
+
+export class InvalidWebhookSignatureException extends DomainException {
+  readonly code = 'INVALID_SIGNATURE';
+  constructor(details?: Record<string, unknown>) {
+    super('Webhook signature verification failed.', HttpStatus.UNAUTHORIZED, details);
+  }
+}
+
+export class UnknownVendorSessionException extends DomainException {
+  readonly code = 'UNKNOWN_VENDOR_SESSION';
+  constructor(details?: Record<string, unknown>) {
+    super('No verification attempt matches this vendor session.', HttpStatus.NOT_FOUND, details);
+  }
+}

@@ -1,4 +1,6 @@
-import { Controller, Post, Body, Headers, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, Headers, HttpCode, HttpStatus, Req } from '@nestjs/common';
+import { RawBodyRequest } from '@nestjs/common';
+import { Request } from 'express';
 import { IdentityVerificationService } from '../services/identity-verification.service';
 import { DiditWebhookPayloadDto } from '../dto/webhooks/didit-webhook.payload.dto';
 
@@ -11,8 +13,9 @@ export class IdentityVerificationWebhooksController {
   async handleDiditWebhook(
     @Body() payload: DiditWebhookPayloadDto,
     @Headers('x-didit-signature') signature: string | undefined,
+    @Req() req: RawBodyRequest<Request>,
   ): Promise<{ received: boolean }> {
-    await this.service.handleDiditWebhook(payload, signature);
+    await this.service.handleDiditWebhook(payload, signature, req.rawBody as Buffer);
     return { received: true };
   }
 }
