@@ -162,11 +162,11 @@ export const TalentAccountSidebar = () => {
       {renderSections(sections, pathname)}
       <div className="border-t border-gray-200 pt-5 px-3">
         <p className="text-xs text-gray-500 leading-4">
-          Find talent, services, and projects.
+          Get the right talent for your next project.
         </p>
         <NextLink
           href="/search"
-          className="text-sm font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
+          className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
         >
           Browse the Marketplace
         </NextLink>
@@ -196,11 +196,11 @@ export const ClientAccountSidebar = () => {
       {renderSections(sections, pathname)}
       <div className="border-t border-gray-200 pt-5 px-3">
         <p className="text-xs text-gray-500 leading-4">
-          Find talent, services, and projects.
+          Get the right talent for your next project.
         </p>
         <NextLink
           href="/search"
-          className="text-sm font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
+          className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
         >
           Browse the Marketplace
         </NextLink>
