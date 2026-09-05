@@ -7,21 +7,21 @@ import {
 import { IdentityVerificationProfile } from '../../entities/identity-verification-profile.entity';
 
 export class ProfileStatusResponseDto {
-  verifiedHomeCountry: string | null;
-  detectedCountry: string | null;
-  detectedRegionState: string | null;
-  detectedCity: string | null;
-  timeZone: string | null;
+  verifiedHomeCountry!: string | null;
+  detectedCountry!: string | null;
+  detectedRegionState!: string | null;
+  detectedCity!: string | null;
+  timeZone!: string | null;
 
-  travelClassification: TravelClassification | null;
-  declaredDuration: DeclaredDuration | null;
-  travelModeActive: boolean;
+  travelClassification!: TravelClassification | null;
+  declaredDuration!: DeclaredDuration | null;
+  travelModeActive!: boolean;
 
-  identityVerificationStatus: IdentityVerificationStatus;
-  identityRejectionReason: string | null;
-  locationVerificationStatus: LocationVerificationStatus;
+  identityVerificationStatus!: IdentityVerificationStatus;
+  identityRejectionReason!: string | null;
+  locationVerificationStatus!: LocationVerificationStatus;
 
-  reconfirmationRequired: boolean;
+  reconfirmationRequired!: boolean;
 
   static fromEntity(profile: IdentityVerificationProfile): ProfileStatusResponseDto {
     const dto = new ProfileStatusResponseDto();

@@ -1,5 +1,5 @@
 export class ErrorResponseDto {
-  code: string;
-  message: string;
+  code!: string;
+  message!: string;
   details?: Record<string, unknown>;
 }

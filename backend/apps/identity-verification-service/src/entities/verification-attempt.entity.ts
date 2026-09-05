@@ -20,35 +20,35 @@ import {
 @Check('chk_verification_attempts_attempt_number', '"attempt_number" >= 1 AND "attempt_number" <= 3')
 export class VerificationAttempt {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Index('idx_verification_attempts_profile_id')
   @Column({ name: 'profile_id', type: 'uuid' })
-  profileId: string;
+  profileId!: string;
 
   @ManyToOne(() => IdentityVerificationProfile, (profile) => profile.attempts, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'profile_id' })
-  profile: IdentityVerificationProfile;
+  profile!: IdentityVerificationProfile;
 
   @Index('idx_verification_attempts_document_id')
   @Column({ name: 'document_id', type: 'uuid', nullable: true })
-  documentId: string | null;
+  documentId!: string | null;
 
   @ManyToOne(() => IdentityDocument, (document) => document.attempts, {
     onDelete: 'CASCADE',
     nullable: true,
   })
   @JoinColumn({ name: 'document_id' })
-  document: IdentityDocument | null;
+  document!: IdentityDocument | null;
 
   @Index('idx_verification_attempts_vendor_session_id', { unique: true })
   @Column({ name: 'vendor_session_id', type: 'varchar', length: 128 })
-  vendorSessionId: string;
+  vendorSessionId!: string;
 
   @CreateDateColumn({ name: 'attempt_timestamp', type: 'timestamptz' })
-  attemptTimestamp: Date;
+  attemptTimestamp!: Date;
 
   @Column({
     name: 'attempt_method',
@@ -56,7 +56,7 @@ export class VerificationAttempt {
     enum: CaptureMethod,
     enumName: 'capture_method_enum',
   })
-  attemptMethod: CaptureMethod;
+  attemptMethod!: CaptureMethod;
 
   @Column({
     name: 'attempt_document_type',
@@ -64,16 +64,16 @@ export class VerificationAttempt {
     enum: DocumentType,
     enumName: 'document_type_enum',
   })
-  attemptDocumentType: DocumentType;
+  attemptDocumentType!: DocumentType;
 
   @Column({ name: 'attempt_outcome', type: 'varchar', length: 32 })
-  attemptOutcome: string;
+  attemptOutcome!: string;
 
   @Column({ name: 'failure_code', type: 'varchar', length: 64, nullable: true })
-  failureCode: string | null;
+  failureCode!: string | null;
 
   @Column({ name: 'attempt_number', type: 'smallint' })
-  attemptNumber: number;
+  attemptNumber!: number;
 
   @Column({
     name: 'vpn_proxy_detection_result',
@@ -82,5 +82,5 @@ export class VerificationAttempt {
     enumName: 'vpn_proxy_detection_result_enum',
     default: VpnProxyDetectionResult.NONE,
   })
-  vpnProxyDetectionResult: VpnProxyDetectionResult;
+  vpnProxyDetectionResult!: VpnProxyDetectionResult;
 }

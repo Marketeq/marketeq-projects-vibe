@@ -22,17 +22,17 @@ import {
 @Check('chk_identity_documents_issuing_state', `"issuing_state" IS NULL OR "document_type" = 'drivers_licence'`)
 export class IdentityDocument {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Index('idx_identity_documents_profile_id')
   @Column({ name: 'profile_id', type: 'uuid' })
-  profileId: string;
+  profileId!: string;
 
   @ManyToOne(() => IdentityVerificationProfile, (profile) => profile.documents, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'profile_id' })
-  profile: IdentityVerificationProfile;
+  profile!: IdentityVerificationProfile;
 
   @Column({
     name: 'document_type',
@@ -40,23 +40,23 @@ export class IdentityDocument {
     enum: DocumentType,
     enumName: 'document_type_enum',
   })
-  documentType: DocumentType;
+  documentType!: DocumentType;
 
   @Column({ name: 'issuing_country', type: 'char', length: 2 })
-  issuingCountry: string;
+  issuingCountry!: string;
 
   @Column({ name: 'document_number', type: 'varchar', length: 64 })
-  documentNumber: string;
+  documentNumber!: string;
 
   @Index('idx_identity_documents_fingerprint')
   @Column({ name: 'document_number_normalized', type: 'varchar', length: 64 })
-  documentNumberNormalized: string;
+  documentNumberNormalized!: string;
 
   @Column({ name: 'expiration_date', type: 'date' })
-  expirationDate: string;
+  expirationDate!: string;
 
   @Column({ name: 'issuing_state', type: 'varchar', length: 10, nullable: true })
-  issuingState: string | null;
+  issuingState!: string | null;
 
   @Column({
     name: 'capture_method',
@@ -64,10 +64,10 @@ export class IdentityDocument {
     enum: CaptureMethod,
     enumName: 'capture_method_enum',
   })
-  captureMethod: CaptureMethod;
+  captureMethod!: CaptureMethod;
 
   @Column({ name: 'document_image_reference', type: 'varchar', length: 512 })
-  documentImageReference: string;
+  documentImageReference!: string;
 
   @Column({
     name: 'verification_depth',
@@ -76,21 +76,21 @@ export class IdentityDocument {
     enumName: 'verification_depth_enum',
     nullable: true,
   })
-  verificationDepth: VerificationDepth | null;
+  verificationDepth!: VerificationDepth | null;
 
   @Column({ name: 'is_duplicate_match', type: 'boolean', default: false })
-  isDuplicateMatch: boolean;
+  isDuplicateMatch!: boolean;
 
   @Index('idx_identity_documents_duplicate_of')
   @Column({ name: 'duplicate_of_document_id', type: 'uuid', nullable: true })
-  duplicateOfDocumentId: string | null;
+  duplicateOfDocumentId!: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
-  updatedAt: Date;
+  updatedAt!: Date;
 
   @OneToMany(() => VerificationAttempt, (attempt) => attempt.document)
-  attempts: VerificationAttempt[];
+  attempts!: VerificationAttempt[];
 }

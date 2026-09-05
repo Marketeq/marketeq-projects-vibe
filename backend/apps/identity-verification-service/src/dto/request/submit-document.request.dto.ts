@@ -14,21 +14,21 @@ export class SubmitDocumentRequestDto {
   @IsEnum(DocumentType, {
     message: 'documentType must be one of: passport, id_card, drivers_licence, residence_permit',
   })
-  documentType: DocumentType;
+  documentType!: DocumentType;
 
   @IsString()
   @Length(2, 2)
   @Matches(/^[A-Z]{2}$/, { message: 'issuingCountry must be a 2-letter uppercase ISO country code' })
-  issuingCountry: string;
+  issuingCountry!: string;
 
   @IsString()
   @Length(1, 64)
-  documentNumber: string;
+  documentNumber!: string;
 
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'expirationDate must be in YYYY-MM-DD format' })
   @IsNotPastDate()
-  expirationDate: string;
+  expirationDate!: string;
 
   @ValidateIf((o) => o.documentType === DocumentType.DRIVERS_LICENCE)
   @IsString()
@@ -38,9 +38,9 @@ export class SubmitDocumentRequestDto {
   issuingState?: string;
 
   @IsEnum(CaptureMethod, { message: 'captureMethod must be one of: scan, manual_entry' })
-  captureMethod: CaptureMethod;
+  captureMethod!: CaptureMethod;
 
   @IsString()
   @IsNotEmpty()
-  documentImageReference: string;
+  documentImageReference!: string;
 }

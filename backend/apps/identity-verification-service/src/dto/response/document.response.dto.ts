@@ -6,15 +6,15 @@ import {
 import { IdentityDocument } from '../../entities/identity-document.entity';
 
 export class DocumentResponseDto {
-  id: string;
-  documentType: DocumentType;
-  issuingCountry: string;
-  expirationDate: string;
-  issuingState: string | null;
-  captureMethod: CaptureMethod;
-  verificationDepth: VerificationDepth | null;
-  isDuplicateMatch: boolean;
-  createdAt: Date;
+  id!: string;
+  documentType!: DocumentType;
+  issuingCountry!: string;
+  expirationDate!: string;
+  issuingState!: string | null;
+  captureMethod!: CaptureMethod;
+  verificationDepth!: VerificationDepth | null;
+  isDuplicateMatch!: boolean;
+  createdAt!: Date;
 
   static fromEntity(document: IdentityDocument): DocumentResponseDto {
     const dto = new DocumentResponseDto();
