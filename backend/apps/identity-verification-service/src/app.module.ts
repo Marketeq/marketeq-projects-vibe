@@ -11,6 +11,7 @@ import { IdentityVerificationInternalController } from './controllers/identity-v
 import { IdentityVerificationWebhooksController } from './controllers/identity-verification-webhooks.controller';
 import { IdentityVerificationService } from './services/identity-verification.service';
 import { TravelModeReminderJob } from './jobs/travel-mode-reminder.job';
+import { HealthModule } from './health/health.module';
 import { DOCUMENT_VERIFICATION_PROVIDER } from './providers/document-verification/document-verification-provider.interface';
 import { DiditDocumentVerificationProvider } from './providers/document-verification/didit-document-verification.provider';
 import { VPN_PROXY_DETECTION_PROVIDER } from './providers/vpn-proxy/vpn-proxy-detection-provider.interface';
@@ -30,6 +31,7 @@ import { RabbitMqNotificationEventPublisher } from './events/rabbitmq-notificati
       PendingVerificationSession,
     ]),
     ScheduleModule.forRoot(),
+    HealthModule,
   ],
   controllers: [
     IdentityVerificationController,
