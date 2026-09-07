@@ -4865,9 +4865,13 @@ export const OverviewTab = ({
                             {
                               type: "WISE",
                               label: "Wise",
+                              // Now settles over the same Stripe ACH rail as
+                              // Direct Deposit (see BANK_CONNECT above) —
+                              // Wise is only used to OAuth-link the banking
+                              // details, not to move the money itself.
                               sub: [
-                                "Transfer in 1–3 business days",
-                                "Charges flat $1–$2 per withdrawal",
+                                "Transfer reflects in 1–2 business days",
+                                "Charges $0–$1 per transaction",
                               ],
                               // Same bare-glyph-in-square-chip treatment as
                               // Connected Accounts' getMethodIcon WISE case —
@@ -4884,9 +4888,13 @@ export const OverviewTab = ({
                             {
                               type: "PAYONEER",
                               label: "Payoneer",
+                              // Now settles over the same Stripe ACH rail as
+                              // Direct Deposit (see BANK_CONNECT above) —
+                              // Payoneer is only used to OAuth-link the
+                              // banking details, not to move the money itself.
                               sub: [
-                                "Transfer in 1–3 business days",
-                                "Often free or $1–$2",
+                                "Transfer reflects in 1–2 business days",
+                                "Charges $0–$1 per transaction",
                               ],
                               icon: <PayoneerCircleIcon />,
                               selfContained: true,
