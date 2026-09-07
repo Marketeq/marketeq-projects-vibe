@@ -11499,8 +11499,10 @@ export const PayoutsTab = ({
 
   return (
     <div className="space-y-5">
-      {/* Stats Cards — Figma: navy labels, 2×2 rows, bottom-aligned meta */}
-      <div className="flex gap-4 items-stretch">
+      {/* Stats Cards — Figma: navy labels, 2×2 rows, bottom-aligned meta,
+          equal flex-grow so all three cards stay the same width (Figma
+          "Frame 1948757691": gap 20px, each card flex-grow:1). */}
+      <div className="flex gap-5 items-stretch">
         <StatCard
           visual="emphasis"
           label="Next Payout"
