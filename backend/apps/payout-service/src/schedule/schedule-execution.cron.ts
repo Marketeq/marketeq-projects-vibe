@@ -33,6 +33,7 @@ import { EarningsClient } from '../common/earnings.client';
 import { AuditService } from '../audit/audit.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
 import { PayoutService } from '../payout/payout.service';
+import { KycGateService } from '../kyc/kyc-gate.service';
 
 const CONCURRENCY_CAP = 50;
 const LOCK_TTL_MS = 25 * 60 * 1000; // 25 minutes
@@ -74,6 +75,7 @@ export class ScheduleExecutionCron {
     private readonly auditService: AuditService,
     private readonly publisher: PayoutPublisher,
     private readonly payoutService: PayoutService,
+    private readonly kycGateService: KycGateService,
     @InjectQueue('schedule-secondary-retry') private readonly retryQueue: Queue,
   ) {
     this.redis = new Redis(this.config.get<string>('REDIS_URL', 'redis://localhost:6379'));
@@ -174,6 +176,26 @@ export class ScheduleExecutionCron {
         await this.publisher.publishPayoutsPaused(schedule.contractorId, {
           reason: 'primary_method_reauth_required', depositMethodId: primaryMethod.id,
         });
+        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+        return;
+      }
+
+      // Check 1b (PS-15): same KYC/suspension/first-payout-hold gate the
+      // manual withdrawal path enforces via PayoutService.initiate() — the
+      // scheduler must not pay out a suspended contractor, one still under
+      // the first-payout hold, or a method that hasn't cleared Tier 3 bank
+      // ownership. checkGate() throws PayoutError on suspension/service-down;
+      // treat any block (thrown or returned allowed:false) as a skip, not a
+      // hard failure — retried on the next tick, same as the other gates.
+      try {
+        const gate = await this.kycGateService.checkGate(schedule.contractorId, primaryMethod.id);
+        if (!gate.allowed) {
+          this.logger.log(`Schedule ${schedule.id} skipped — KYC gate blocked (${gate.blockedBy})`);
+          await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+          return;
+        }
+      } catch (err: any) {
+        this.logger.log(`Schedule ${schedule.id} skipped — KYC gate blocked (${err.errorCode ?? err.message})`);
         await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
         return;
       }
@@ -279,6 +301,24 @@ export class ScheduleExecutionCron {
     if (secondaryMethod.verificationStatus !== VerificationStatus.VERIFIED || secondaryMethod.reauthRequired) {
       // PS-18 §7.1: REAUTH_REQUIRED — skip secondary, primary already executed at its split portion
       this.logger.warn(`Split: secondary method needs reauth — skipping secondary for schedule ${schedule.id}`);
+      await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+      await this.scheduleRepo.update(schedule.id, { consecutiveMissCount: 0 });
+      return;
+    }
+
+    // PS-15: gate the secondary method too — Tier 3 bank ownership is
+    // method-scoped, so a verified primary doesn't clear an unverified
+    // secondary. Primary already executed at this point and is NOT reversed.
+    try {
+      const secondaryGate = await this.kycGateService.checkGate(schedule.contractorId, secondaryMethod.id);
+      if (!secondaryGate.allowed) {
+        this.logger.warn(`Split: secondary KYC gate blocked (${secondaryGate.blockedBy}) — skipping secondary for schedule ${schedule.id}`);
+        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+        await this.scheduleRepo.update(schedule.id, { consecutiveMissCount: 0 });
+        return;
+      }
+    } catch (err: any) {
+      this.logger.warn(`Split: secondary KYC gate blocked (${err.errorCode ?? err.message}) — skipping secondary for schedule ${schedule.id}`);
       await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
       await this.scheduleRepo.update(schedule.id, { consecutiveMissCount: 0 });
       return;

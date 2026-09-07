@@ -18,6 +18,7 @@ import { CommonModule }              from '../common/common.module';
 import { PublishersModule }          from '../publishers/publishers.module';
 import { PauseModule }               from '../pause/pause.module';
 import { PayoutModule }              from '../payout/payout.module';
+import { KycModule }                 from '../kyc/kyc.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { PayoutModule }              from '../payout/payout.module';
     PublishersModule,   // PayoutPublisher
     PauseModule,        // PauseStatusService (PS-16 assertNotPaused)
     PayoutModule,       // PayoutService.enqueueForProcessing
+    KycModule,          // KycGateService — same PS-15 gate the manual withdrawal path uses
   ],
   controllers: [ScheduleController],
   providers: [
