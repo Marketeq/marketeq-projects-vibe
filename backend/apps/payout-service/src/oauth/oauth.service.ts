@@ -193,7 +193,7 @@ export class OAuthService {
       // future payouts to this method go through Stripe, same as any other
       // ACH bank payout.
       const externalAccount = await this.stripeProvider.createExternalAccountFromRouting({
-        contractorId, routingNumber: bankingDetails.routingNumber,
+        contractorId, depositMethodId: existingMethodId!, routingNumber: bankingDetails.routingNumber,
         accountNumber: bankingDetails.accountNumber, accountHolderName: bankingDetails.displayName,
       });
 

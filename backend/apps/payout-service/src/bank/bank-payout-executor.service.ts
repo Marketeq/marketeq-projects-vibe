@@ -31,7 +31,7 @@ export class BankPayoutExecutorService {
     if (key && key !== 'sk_test_YOUR_TEST_KEY_HERE') {
       try {
         const Stripe = require('stripe');
-        this.stripe = new Stripe(key, { apiVersion: '2024-06-20' });
+        this.stripe = new Stripe(key, { apiVersion: this.config.get('STRIPE_API_VERSION', '2024-06-20') });
       } catch { this.logger.warn('Stripe SDK not available — using stubs'); }
     }
   }
@@ -102,12 +102,17 @@ export class BankPayoutExecutorService {
         // Custom account's own balance has to be funded before it can pay
         // out from it — there's no single "pay this destination bank
         // directly from platform balance" call for Connect.
-        const transfer = await this.stripe.transfers.create({
-          amount: amountCents,
-          currency: 'usd',
-          destination: method.stripeConnectAccountId,
-          metadata: { payoutRequestId, contractorId: payout.contractorId },
-        });
+        // PS-33 §6: transfer-{payoutRequestId} — a network-error retry of
+        // this same payout job must not create a second Transfer.
+        const transfer = await this.stripe.transfers.create(
+          {
+            amount: amountCents,
+            currency: 'usd',
+            destination: method.stripeConnectAccountId,
+            metadata: { payoutRequestId, contractorId: payout.contractorId },
+          },
+          { idempotencyKey: `transfer-${payoutRequestId}` },
+        );
         transferId = transfer.id;
 
         // Previously always omitted (implicit 'standard') regardless of
@@ -117,6 +122,8 @@ export class BankPayoutExecutorService {
         // itself rejects this if the connected account isn't instant-payout
         // capable, which the surrounding try/catch already turns into a
         // normal failPayout() rather than a silent fallback to standard.
+        // PS-33 §6: payout-{payoutRequestId} — same dedup reasoning as the
+        // transfer above, one step further down the pipeline.
         const stripePayout = await this.stripe.payouts.create(
           {
             amount: amountCents,
@@ -125,7 +132,7 @@ export class BankPayoutExecutorService {
             metadata: { payoutRequestId, contractorId: payout.contractorId },
             ...(payout.speed === PayoutSpeed.INSTANT ? { method: 'instant' } : {}),
           },
-          { stripeAccount: method.stripeConnectAccountId },
+          { stripeAccount: method.stripeConnectAccountId, idempotencyKey: `payout-${payoutRequestId}` },
         );
         payoutId = stripePayout.id;
       } else {
