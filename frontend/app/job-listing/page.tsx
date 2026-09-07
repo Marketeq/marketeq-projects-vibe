@@ -490,8 +490,11 @@ const resolveMediaFileForUpload = async (
 };
 
 const hydrateRemoteMediaFile = async (url: string, fallbackName: string) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: controller.signal });
     const blob = await response.blob();
     const file = new File([blob], fallbackName, {
       type: blob.type || "image/jpeg",
@@ -500,6 +503,8 @@ const hydrateRemoteMediaFile = async (url: string, fallbackName: string) => {
     return file;
   } catch {
     return buildPersistedMediaFile(url, fallbackName);
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 };
 
@@ -599,7 +604,11 @@ const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
 const getJobListingScopeKnowledge = (
   selectedWorkType?: WorkTypeChoice,
   isNoScopeFlow = false,
+  scopeKnowledgeChoice?: ScopeKnowledgeChoice,
 ) => {
+  if (scopeKnowledgeChoice === "known") return "has_scope" as const;
+  if (scopeKnowledgeChoice === "unknown") return "no_scope" as const;
+  if (scopeKnowledgeChoice === "none") return "no_scope_selected" as const;
   if (isNoScopeFlow) return "no_scope_selected" as const;
   return selectedWorkType ? ("has_scope" as const) : undefined;
 };
@@ -625,7 +634,7 @@ const toHiringModeChoice = (value: unknown): HiringModeChoice =>
   value === "individual" || value === "team" ? value : null;
 
 const isNoScopeKnowledge = (value: unknown) =>
-  value === "no_scope" || value === "no_scope_selected";
+  value === "no_scope_selected";
 
 const toJobListingPhaseType = (phaseName: string, phaseIndex = 0) => {
   const normalized = phaseName.trim().toLowerCase();
@@ -2405,6 +2414,7 @@ const BottomBar = ({
   workType,
   jobListingId,
   selectedHiringMode,
+  scopeKnowledgeChoice,
   isNoScopeFlow,
   isExistingContractFlow,
   selectedExistingContractId,
@@ -2414,6 +2424,7 @@ const BottomBar = ({
   workType?: WorkTypeChoice;
   jobListingId?: string | null;
   selectedHiringMode?: HiringModeChoice;
+  scopeKnowledgeChoice?: ScopeKnowledgeChoice;
   isNoScopeFlow?: boolean;
   isExistingContractFlow?: boolean;
   selectedExistingContractId?: string | null;
@@ -2463,6 +2474,7 @@ const BottomBar = ({
             scopeKnowledge: getJobListingScopeKnowledge(
               workType,
               Boolean(isNoScopeFlow),
+              scopeKnowledgeChoice,
             ),
             workType: getJobListingWorkType(workType),
             hiringType: getJobListingHiringType(selectedHiringMode),
@@ -2498,6 +2510,7 @@ const BottomBar = ({
           scopeKnowledge: getJobListingScopeKnowledge(
             workType,
             Boolean(isNoScopeFlow),
+            scopeKnowledgeChoice,
           ),
           workType: getJobListingWorkType(workType),
           hiringType: getJobListingHiringType(selectedHiringMode),
@@ -3004,15 +3017,9 @@ const BottomBar = ({
               disabled={currentStep !== 0 && !isValid}
               onClick={async () => {
                 if (isValid) {
-                  if (currentStep === 0) {
-                    const canAdvance = await onNextClick?.();
-                    if (canAdvance === false) return;
-                    nextStep();
-                  } else if (currentStep === 1) {
-                    setStep(2);
-                  } else {
-                    nextStep();
-                  }
+                  const canAdvance = await onNextClick?.();
+                  if (canAdvance === false) return;
+                  nextStep();
                 } else {
                   await onNextClick?.(); // show errors on the current step
                 }
@@ -3699,6 +3706,11 @@ type ProjectInfoProps = {
   onSelectedWorkTypeChange?: (value: WorkTypeChoice) => void;
   selectedHiringMode?: HiringModeChoice;
   onSelectedHiringModeChange?: (value: HiringModeChoice) => void;
+  scopeKnowledgeChoice?: ScopeKnowledgeChoice;
+  isNoScopeFlow?: boolean;
+  isExistingContractFlow?: boolean;
+  selectedExistingContractId?: string | null;
+  isWorkflowLocked?: boolean;
   onScopeKnowledgeChange?: (value: ScopeKnowledgeChoice) => void;
   onNoScopeFlowChange?: (value: boolean) => void;
   onExistingContractFlowChange?: (value: boolean) => void;
@@ -3711,6 +3723,11 @@ const ProjectInfo = ({
   onSelectedWorkTypeChange,
   selectedHiringMode,
   onSelectedHiringModeChange,
+  scopeKnowledgeChoice,
+  isNoScopeFlow,
+  isExistingContractFlow,
+  selectedExistingContractId,
+  isWorkflowLocked = false,
   onScopeKnowledgeChange,
   onNoScopeFlowChange,
   onExistingContractFlowChange,
@@ -3797,6 +3814,30 @@ const ProjectInfo = ({
         : Boolean(contractChoice && scopeChoice && workTypeChoice);
   const isProjectInfoValid =
     projectInfoSchema.safeParse(projectInfoValues).success;
+
+  useEffect(() => {
+    if (!isWorkflowLocked || isExistingContractFlow === undefined) return;
+
+    setContractChoice(isExistingContractFlow ? "existing" : "new");
+    setSelectedExistingListing(selectedExistingContractId ?? null);
+
+    if (isExistingContractFlow) {
+      setScopeChoice(null);
+    } else if (isNoScopeFlow) {
+      setScopeChoice("none");
+    } else if (
+      scopeKnowledgeChoice === "known" ||
+      scopeKnowledgeChoice === "unknown"
+    ) {
+      setScopeChoice(scopeKnowledgeChoice);
+    }
+  }, [
+    isExistingContractFlow,
+    isNoScopeFlow,
+    scopeKnowledgeChoice,
+    selectedExistingContractId,
+  ]);
+
   useIsomorphicLayoutEffect(() => {
     toggleValidation(foundationIsValid);
   }, [foundationIsValid]);
@@ -4364,8 +4405,10 @@ const ProjectInfo = ({
                       <HeadlessRadioGroupItem
                         key={option.value}
                         value={option.value}
+                        disabled={isWorkflowLocked}
                         className={cn(
                           "inline-flex h-10 items-center justify-center rounded-[52px] border border-gray-300 bg-white px-4 text-sm leading-5 font-medium text-dark-blue-400 focus-visible:outline-none",
+                          "disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:opacity-50 data-[state=checked]:disabled:border-primary-500 data-[state=checked]:disabled:bg-primary-25",
                           contractChoice === option.value &&
                             "border-2 border-primary-500 bg-primary-25 text-dark-blue-400",
                         )}
@@ -4392,6 +4435,7 @@ const ProjectInfo = ({
                           <Input
                             placeholder="Search"
                             value={contractSearchValue}
+                            disabled={isWorkflowLocked}
                             onChange={(event) =>
                               setContractSearchValue(event.target.value)
                             }
@@ -4427,10 +4471,11 @@ const ProjectInfo = ({
                           <HeadlessRadioGroupItem
                             key={option.id}
                             value={option.id}
-                            disabled={disabled}
+                            disabled={disabled || isWorkflowLocked}
                             title={option.disabledReason}
                             className={cn(
                               "flex h-[92px] w-full items-center gap-[48px] rounded-lg border border-gray-300 bg-white py-4 pl-4 pr-6 text-left focus-visible:outline-none",
+                              "disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:opacity-50 data-[state=checked]:disabled:border-primary-500 data-[state=checked]:disabled:bg-primary-25",
                               selected && "border-2 border-primary-500 bg-primary-25",
                               disabled && "cursor-not-allowed opacity-60",
                             )}
@@ -4533,7 +4578,12 @@ const ProjectInfo = ({
                         Do you already know the scope of work?
                       </p>
 
-                      <div className="flex h-10 w-full items-start gap-x-2">
+                      <div
+                        className={cn(
+                          "flex h-10 w-full items-start gap-x-2",
+                          isWorkflowLocked && "cursor-not-allowed",
+                        )}
+                      >
                         {[
                           {
                             value: "known",
@@ -4556,6 +4606,7 @@ const ProjectInfo = ({
                             type="button"
                             variant="outlined"
                             visual="gray"
+                            disabled={isWorkflowLocked}
                             className={cn(
                               "h-10 items-start gap-x-4 rounded-[52px] px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none",
                               option.className,
@@ -4618,8 +4669,10 @@ const ProjectInfo = ({
                               <HeadlessRadioGroupItem
                                 key={option.value}
                                 value={option.value}
+                                disabled={isWorkflowLocked}
                                 className={cn(
                                   "flex h-20 w-[435px] flex-1 items-center gap-x-4 rounded-lg border border-gray-200 bg-white py-4 pl-4 pr-6 text-left focus-visible:outline-none",
+                                  "disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:opacity-50 data-[state=checked]:disabled:border-primary-500 data-[state=checked]:disabled:bg-primary-25",
                                   selected &&
                                     "border-2 border-primary-500 bg-primary-25",
                                 )}
@@ -4683,8 +4736,10 @@ const ProjectInfo = ({
                               <HeadlessRadioGroupItem
                                 key={option.value}
                                 value={option.value}
+                                disabled={isWorkflowLocked}
                                 className={cn(
                                   "flex h-20 w-[435px] flex-1 items-center gap-x-4 rounded-lg border border-gray-300 bg-white py-4 pl-4 pr-6 text-left focus-visible:outline-none",
+                                  "disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:opacity-50 data-[state=checked]:disabled:border-primary-500 data-[state=checked]:disabled:bg-primary-25",
                                   selected &&
                                     "border-2 border-primary-500 bg-primary-25",
                                 )}
@@ -9126,14 +9181,17 @@ const DescribeProjectStep = ({
     ((isService ? isKnownServiceFlow : scopeKnowledgeChoice === "known") &&
       (deliverablesWordCount > STEP_TWO_WORD_LIMIT ||
         successCriteriaWordCount > STEP_TWO_WORD_LIMIT));
+  const isKnownProjectFlow =
+    !isService && scopeKnowledgeChoice === "known";
   const isValid =
     description.trim().length > 0 &&
     !hasWordLimitError &&
     (isService
       ? (isKnownServiceFlow ? deliverables.trim().length > 0 : true) &&
         hasValidBudget
-      : deliverables.trim().length > 0 &&
-        successCriteria.trim().length > 0 &&
+      : (!isKnownProjectFlow ||
+          (deliverables.trim().length > 0 &&
+            successCriteria.trim().length > 0)) &&
         hasValidBudget &&
         Boolean(selectedDurationOption) &&
         hasValidCustomDuration);
@@ -9420,55 +9478,6 @@ const DescribeProjectStep = ({
     isService,
     setJobListingDraftDetails,
     successCriteria,
-  ]);
-
-  useEffect(() => {
-    if (!effectiveJobListingId || !hasUserEditedDetailsRef.current) return;
-    if (hasWordLimitError || hasNegativeBudget) return;
-
-    const hasUserEnteredDetails =
-      Boolean(description.trim()) ||
-      Boolean(deliverables.trim()) ||
-      Boolean(successCriteria.trim()) ||
-      budgetAmount > 0 ||
-      typeof durationMonths === "number";
-
-    if (!hasUserEnteredDetails) return;
-
-    const timeout = window.setTimeout(() => {
-      const saveDescribeStep = async () => {
-        try {
-          await JobListingAPI.Update(effectiveJobListingId, {
-            description: description.trim(),
-            deliverables: deliverables.trim(),
-            successCriteria: isService ? undefined : successCriteria.trim(),
-            budgetAmount,
-            budgetDisplayCurrency: user?.currency || "USD",
-            budgetFrequency,
-            durationMonths: isService ? undefined : durationMonths,
-            isOngoing: isService ? true : undefined,
-          });
-        } catch (error) {
-          console.error("Failed to save job listing details", error);
-        }
-      };
-
-      void saveDescribeStep();
-    }, 500);
-
-    return () => window.clearTimeout(timeout);
-  }, [
-    budgetAmount,
-    budgetFrequency,
-    deliverables,
-    description,
-    durationMonths,
-    effectiveJobListingId,
-    hasNegativeBudget,
-    hasWordLimitError,
-    isService,
-    successCriteria,
-    user?.currency,
   ]);
 
   useEffect(() => {
@@ -11169,6 +11178,7 @@ const NoScopeRoleInfoStep = ({
   const [durationChoice, setDurationChoice] = useState("");
   const [customDuration, setCustomDuration] = useState("");
   const [customDurationUnit, setCustomDurationUnit] = useState("months");
+  const didHydrateDetailsRef = useRef(false);
   const hasValidDuration =
     !useNoScopeLayout ||
     (durationChoice !== "Other" && durationChoice !== ""
@@ -11192,6 +11202,47 @@ const NoScopeRoleInfoStep = ({
     !hasNegativeBudget &&
     Number.isFinite(Number(budget.replace(/,/g, ""))) &&
     Number(budget.replace(/,/g, "")) >= 0;
+
+  useEffect(() => {
+    if (didHydrateDetailsRef.current) return;
+
+    const hasPersistedDetails =
+      typeof details.description === "string" ||
+      typeof details.deliverables === "string" ||
+      typeof details.headcount === "number" ||
+      typeof details.budgetAmount === "number" ||
+      typeof details.durationMonths === "number";
+
+    if (!hasPersistedDetails) return;
+
+    didHydrateDetailsRef.current = true;
+    setRoleDescription(details.description ?? details.deliverables ?? "");
+    setHeadcount(
+      typeof details.headcount === "number" ? String(details.headcount) : "",
+    );
+    if (typeof details.budgetAmount === "number") {
+      setBudget(String(details.budgetAmount));
+    }
+    if (
+      details.budgetFrequency === "per_week" ||
+      details.budgetFrequency === "per_month"
+    ) {
+      setBudgetFrequency(details.budgetFrequency);
+    }
+
+    if (typeof details.durationMonths === "number") {
+      const standardDuration = [3, 6, 12, 24].find(
+        (months) => months === details.durationMonths,
+      );
+      if (standardDuration) {
+        setDurationChoice(`${standardDuration} months`);
+      } else {
+        setDurationChoice("Other");
+        setCustomDuration(String(details.durationMonths));
+        setCustomDurationUnit("months");
+      }
+    }
+  }, [details]);
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(
@@ -16919,8 +16970,12 @@ function PublishProject({
 
     const urlParams = new URLSearchParams(window.location.search);
     const urlJobListingId = urlParams.get("jobListingId");
-    return urlParams.get("edit") === "1" ||
-      Boolean(urlJobListingId && UUID_PATTERN.test(urlJobListingId))
+    const isJobListingRoute = window.location.pathname.startsWith(
+      "/job-listing",
+    );
+    return !isJobListingRoute &&
+      (urlParams.get("edit") === "1" ||
+        Boolean(urlJobListingId && UUID_PATTERN.test(urlJobListingId)))
       ? 1
       : undefined;
   }, []);
@@ -16997,6 +17052,7 @@ function PublishProject({
   const [selectedExistingContractId, setSelectedExistingContractId] = useState<
     string | null
   >(null);
+  const lastCompletedStepRef = useRef(1);
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null);
   const [jobListingId, setJobListingId] = useState<string | null>(null);
   const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true);
@@ -17009,8 +17065,12 @@ function PublishProject({
   const lastScopePayloadRef = useRef<string>("");
   const lastMediaPayloadRef = useRef<string>("");
   const skipNextJobListingDraftSaveRef = useRef(false);
-  const didInitializeLocalJobListingRef = useRef(false);
-  const didApplyEditResumeFallbackRef = useRef(false);
+  const jobListingSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingJobListingSavesRef = useRef<Set<() => Promise<void>>>(
+    new Set(),
+  );
+  const lastJobListingTextSignatureRef = useRef<string>("");
+  const lastJobListingNonTextSignatureRef = useRef<string>("");
   const ensureJobListingDraftPromiseRef = useRef<Promise<string | null> | null>(
     null,
   );
@@ -17019,31 +17079,48 @@ function PublishProject({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (didInitializeLocalJobListingRef.current) return;
-    didInitializeLocalJobListingRef.current = true;
 
     let cancelled = false;
 
     const hydrateDraft = async () => {
       const urlParams = new URLSearchParams(window.location.search);
       const existingDraftId = urlParams.get("draftId");
+      const urlJobListingId = urlParams.get("jobListingId");
       const storedJobListingId = window.sessionStorage.getItem(
         "marketeq-job-listing-id",
       );
-      const existingJobListingId =
-        urlParams.get("jobListingId") ??
-        existingDraftId ??
-        (storedJobListingId && UUID_PATTERN.test(storedJobListingId)
-          ? storedJobListingId
-          : null);
       const type = urlParams.get("type") ?? "project";
-      const shouldResumeExistingListing = urlParams.get("edit") === "1";
       const isJobListingFlow =
         window.location.pathname.startsWith("/job-listing");
+      const hasValidStoredJobListingId = Boolean(
+        storedJobListingId && UUID_PATTERN.test(storedJobListingId),
+      );
+      const redirectToMyJobs = () => {
+        if (cancelled) return;
+        window.sessionStorage.removeItem("marketeq-job-listing-id");
+        setIsDraftBootstrapping(false);
+        router.replace("/my-jobs");
+      };
 
       if (
         isJobListingFlow &&
-        shouldResumeExistingListing &&
+        ((storedJobListingId && !hasValidStoredJobListingId) ||
+          (urlJobListingId !== null &&
+            (!hasValidStoredJobListingId ||
+              urlJobListingId !== storedJobListingId)))
+      ) {
+        redirectToMyJobs();
+        return;
+      }
+
+      const existingJobListingId = isJobListingFlow
+        ? hasValidStoredJobListingId
+          ? storedJobListingId
+          : null
+        : (existingDraftId ?? null);
+
+      if (
+        isJobListingFlow &&
         existingJobListingId &&
         UUID_PATTERN.test(existingJobListingId)
       ) {
@@ -17065,6 +17142,10 @@ function PublishProject({
           if (cancelled) return;
 
           const listing = getResponsePayload(response);
+          if (listing?.status !== "draft") {
+            redirectToMyJobs();
+            return;
+          }
           const nextJobListingId = String(
             listing?.id ?? existingJobListingId ?? "",
           );
@@ -17072,13 +17153,27 @@ function PublishProject({
             listing?.workType ?? listing?.listingType,
           );
           const hydratedHiringMode = toHiringModeChoice(listing?.hiringType);
+          const hydratedScopeKnowledge =
+            listing?.scopeKnowledge === "no_scope_selected"
+              ? ("none" as const)
+              : listing?.scopeKnowledge === "no_scope"
+                ? ("unknown" as const)
+                : listing?.scopeKnowledge === "has_scope"
+                  ? ("known" as const)
+                  : null;
 
           setJobListingId(nextJobListingId || null);
           setDraftProjectId(null);
           setSelectedWorkType(hydratedWorkType);
           setSelectedHiringMode(hydratedHiringMode);
+          setScopeKnowledgeChoice(hydratedScopeKnowledge);
           setIsNoScopeFlow(isNoScopeKnowledge(listing?.scopeKnowledge));
           setIsExistingContractFlow(listing?.contractType === "existing");
+          setSelectedExistingContractId(
+            typeof listing?.contractId === "string"
+              ? listing.contractId
+              : null,
+          );
 
           if (nextJobListingId) {
             window.sessionStorage.setItem(
@@ -17259,20 +17354,25 @@ function PublishProject({
                 ? listingMedia.featuredVideo
                 : "",
           });
+          const rawLastCompletedStep = listing?.lastCompletedStep;
           const lastCompletedStep =
-            typeof listing?.lastCompletedStep === "number"
-              ? listing.lastCompletedStep
-              : null;
-          if (lastCompletedStep && lastCompletedStep > 0) {
-            setStep(Math.min(lastCompletedStep, totalSteps - 1));
-          } else if (shouldResumeExistingListing) {
-            setStep(Math.min(1, totalSteps - 1));
-          } else if (
-            existingJobListingId &&
-            (listing?.description || Array.isArray(listing?.phases))
-          ) {
-            setStep(Math.min(1, totalSteps - 1));
+            typeof rawLastCompletedStep === "number" &&
+            Number.isInteger(rawLastCompletedStep) &&
+            rawLastCompletedStep >= 1
+              ? rawLastCompletedStep
+              : 1;
+          const boundedLastCompletedStep = Math.min(
+            lastCompletedStep,
+            totalSteps,
+          );
+          if (lastCompletedStep > totalSteps) {
+            console.error(
+              "Draft lastCompletedStep exceeds the available workflow steps.",
+              { lastCompletedStep, totalSteps },
+            );
           }
+          lastCompletedStepRef.current = boundedLastCompletedStep;
+          setStep(boundedLastCompletedStep - 1);
           setIsDraftBootstrapping(false);
           return;
         }
@@ -17445,6 +17545,9 @@ function PublishProject({
         );
       } catch (error) {
         console.error("Failed to hydrate project draft", error);
+        if (isJobListingFlow && existingJobListingId) {
+          redirectToMyJobs();
+        }
       } finally {
         if (!cancelled) {
           setIsDraftBootstrapping(false);
@@ -17457,34 +17560,7 @@ function PublishProject({
     return () => {
       cancelled = true;
     };
-  }, [
-    mediaMethods,
-    projectInfoMethods,
-    projectScopeMethods,
-    setStep,
-    totalSteps,
-  ]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (isDraftBootstrapping) return;
-    if (didApplyEditResumeFallbackRef.current) return;
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlJobListingId = urlParams.get("jobListingId");
-    const shouldResumeListing =
-      urlParams.get("edit") === "1" ||
-      Boolean(urlJobListingId && UUID_PATTERN.test(urlJobListingId));
-
-    if (!shouldResumeListing) return;
-
-    didApplyEditResumeFallbackRef.current = true;
-    if (currentStep === 0) {
-      window.setTimeout(() => {
-        setStep(Math.min(1, totalSteps - 1));
-      }, 0);
-    }
-  }, [currentStep, isDraftBootstrapping, setStep, totalSteps]);
+  }, []);
 
   const ensureJobListingDraft = useCallback(async () => {
     if (jobListingId) return jobListingId;
@@ -17503,6 +17579,7 @@ function PublishProject({
       scopeKnowledge: getJobListingScopeKnowledge(
         selectedWorkType,
         isNoScopeFlow,
+        scopeKnowledgeChoice,
       ),
       workType: getJobListingWorkType(selectedWorkType),
       hiringType: getJobListingHiringType(selectedHiringMode),
@@ -17539,6 +17616,7 @@ function PublishProject({
     isExistingContractFlow,
     isNoScopeFlow,
     jobListingId,
+    scopeKnowledgeChoice,
     selectedExistingContractId,
     selectedHiringMode,
     selectedWorkType,
@@ -17562,6 +17640,7 @@ function PublishProject({
         scopeKnowledge: getJobListingScopeKnowledge(
           selectedWorkType,
           isNoScopeFlow,
+          scopeKnowledgeChoice,
         ),
         workType: getJobListingWorkType(selectedWorkType),
         hiringType: getJobListingHiringType(selectedHiringMode),
@@ -17585,7 +17664,6 @@ function PublishProject({
         briefFilename: jobListingDraftDetails.briefFilename,
         briefSizeBytes: jobListingDraftDetails.briefSizeBytes,
         ndaEnabled: jobListingDraftDetails.ndaEnabled,
-        lastCompletedStep: currentStep,
       };
       if (
         (typeof payload.budgetAmount === "number" &&
@@ -17641,37 +17719,113 @@ function PublishProject({
       if (skipNextJobListingDraftSaveRef.current) {
         skipNextJobListingDraftSaveRef.current = false;
         lastDraftPayloadRef.current = serializedPayload;
+        lastJobListingTextSignatureRef.current = textSignature;
+        lastJobListingNonTextSignatureRef.current = nonTextSignature;
         return;
       }
 
-      if (serializedPayload === lastDraftPayloadRef.current) return;
-
-      const previousPayload = lastDraftPayloadRef.current
-        ? JSON.parse(lastDraftPayloadRef.current)
-        : null;
-      const textChanged = previousPayload?.textSignature !== textSignature;
+      const textChanged =
+        lastJobListingTextSignatureRef.current !== textSignature;
       const nonTextChanged =
-        previousPayload?.nonTextSignature !== nonTextSignature;
-      const saveDelay = textChanged && !nonTextChanged ? 500 : 0;
+        lastJobListingNonTextSignatureRef.current !== nonTextSignature;
+      if (!textChanged && !nonTextChanged) return;
 
-      const timeout = window.setTimeout(() => {
-        const saveJobListingDraft = async () => {
+      const textPayload = {
+        description: payload.description,
+        deliverables: payload.deliverables,
+        successCriteria: payload.successCriteria,
+      };
+      const textBasicInfoPayload = {
+        title: basicInfoPayload.title,
+      };
+      const nonTextPayload = {
+        scopeKnowledge: payload.scopeKnowledge,
+        workType: payload.workType,
+        hiringType: payload.hiringType,
+        headcount: payload.headcount,
+        categorySelections: payload.categorySelections,
+        tags: payload.tags,
+        skills: payload.skills,
+        tools: payload.tools,
+        media: payload.media,
+        budgetAmount: payload.budgetAmount,
+        budgetDisplayCurrency: payload.budgetDisplayCurrency,
+        budgetFrequency: payload.budgetFrequency,
+        durationMonths: payload.durationMonths,
+        isOngoing: payload.isOngoing,
+        briefR2Key: payload.briefR2Key,
+        briefFilename: payload.briefFilename,
+        briefSizeBytes: payload.briefSizeBytes,
+        ndaEnabled: payload.ndaEnabled,
+      };
+      const nonTextBasicInfoPayload = {
+        jobType: basicInfoPayload.jobType,
+        industries: basicInfoPayload.industries,
+        languages: basicInfoPayload.languages,
+      };
+
+      const enqueueSave = (
+        save: () => Promise<void>,
+        delay: number,
+      ) => {
+        let timeout: number | undefined;
+        const runSave = async (throwOnError: boolean) => {
+          if (timeout !== undefined) window.clearTimeout(timeout);
+          pendingJobListingSavesRef.current.delete(flushSave);
+
+          const savePromise = jobListingSaveQueueRef.current.then(
+            save,
+            save,
+          );
+          jobListingSaveQueueRef.current = savePromise.catch(() => undefined);
+
           try {
-            await JobListingAPI.Update(jobListingId, payload);
-            await JobListingAPI.UpdateBasicInformation(
-              jobListingId,
-              basicInfoPayload,
-            );
-            lastDraftPayloadRef.current = serializedPayload;
+            await savePromise;
           } catch (error) {
             console.error("Failed to save job listing draft", error);
+            if (throwOnError) throw error;
           }
         };
+        const flushSave = () => runSave(true);
 
-        void saveJobListingDraft();
-      }, saveDelay);
+        pendingJobListingSavesRef.current.add(flushSave);
+        timeout = window.setTimeout(() => {
+          void runSave(false);
+        }, delay);
 
-      return () => window.clearTimeout(timeout);
+        return () => {
+          if (timeout !== undefined) window.clearTimeout(timeout);
+          pendingJobListingSavesRef.current.delete(flushSave);
+        };
+      };
+
+      const cleanups: Array<() => void> = [];
+      if (nonTextChanged) {
+        cleanups.push(
+          enqueueSave(async () => {
+            await JobListingAPI.Update(jobListingId, nonTextPayload);
+            await JobListingAPI.UpdateBasicInformation(
+              jobListingId,
+              nonTextBasicInfoPayload,
+            );
+            lastJobListingNonTextSignatureRef.current = nonTextSignature;
+          }, 0),
+        );
+      }
+      if (textChanged) {
+        cleanups.push(
+          enqueueSave(async () => {
+            await JobListingAPI.Update(jobListingId, textPayload);
+            await JobListingAPI.UpdateBasicInformation(
+              jobListingId,
+              textBasicInfoPayload,
+            );
+            lastJobListingTextSignatureRef.current = textSignature;
+          }, 500),
+        );
+      }
+
+      return () => cleanups.forEach((cleanup) => cleanup());
     }
 
     if (isJobListingFlow) return;
@@ -17711,9 +17865,9 @@ function PublishProject({
     draftProjectId,
     ensureJobListingDraft,
     jobListingId,
-    currentStep,
     isDraftBootstrapping,
     isNoScopeFlow,
+    scopeKnowledgeChoice,
     jobListingDraftDetails,
     mediaMethods,
     projectInfoMethods,
@@ -17906,6 +18060,84 @@ function PublishProject({
     typeof window !== "undefined" &&
     window.location.pathname.startsWith("/job-listing");
 
+  const saveJobListingStepProgress = React.useCallback(
+    async (completedStep: number) => {
+      if (!jobListingId) return;
+
+      const info = {
+        ...projectInfoMethods.getValues(),
+        ...watchedProjectInfo,
+      };
+      const mediaPayload = buildJobListingMediaPayload(
+        mediaMethods.getValues(),
+      );
+      const nextLastCompletedStep = Math.max(
+        lastCompletedStepRef.current,
+        completedStep,
+      );
+      const payload = {
+        scopeKnowledge: getJobListingScopeKnowledge(
+          selectedWorkType,
+          isNoScopeFlow,
+          scopeKnowledgeChoice,
+        ),
+        workType: getJobListingWorkType(selectedWorkType),
+        hiringType: getJobListingHiringType(selectedHiringMode),
+        description:
+          jobListingDraftDetails.description ?? info.shortDescription ?? "",
+        deliverables:
+          jobListingDraftDetails.deliverables ?? info.fullDescription ?? "",
+        successCriteria: jobListingDraftDetails.successCriteria,
+        headcount: jobListingDraftDetails.headcount,
+        categorySelections: info.category ?? [],
+        tags: info.tags ?? [],
+        skills: info.skills ?? [],
+        tools: jobListingDraftDetails.tools ?? [],
+        media: mediaPayload,
+        budgetAmount: jobListingDraftDetails.budgetAmount,
+        budgetDisplayCurrency: user?.currency || "USD",
+        budgetFrequency: jobListingDraftDetails.budgetFrequency ?? "per_week",
+        durationMonths: jobListingDraftDetails.durationMonths,
+        isOngoing: jobListingDraftDetails.isOngoing,
+        briefR2Key: jobListingDraftDetails.briefR2Key,
+        briefFilename: jobListingDraftDetails.briefFilename,
+        briefSizeBytes: jobListingDraftDetails.briefSizeBytes,
+        ndaEnabled: jobListingDraftDetails.ndaEnabled,
+        lastCompletedStep: nextLastCompletedStep,
+      };
+      const basicInfoPayload = {
+        title: info.title ?? "",
+        jobType: selectedWorkType ?? undefined,
+        industries: info.industry ?? [],
+        languages: info.languages ?? [],
+      };
+      const save = async () => {
+        await JobListingAPI.Update(jobListingId, payload);
+        await JobListingAPI.UpdateBasicInformation(
+          jobListingId,
+          basicInfoPayload,
+        );
+        lastCompletedStepRef.current = nextLastCompletedStep;
+      };
+      const savePromise = jobListingSaveQueueRef.current.then(save, save);
+      jobListingSaveQueueRef.current = savePromise.catch(() => undefined);
+      await savePromise;
+    },
+    [
+      isNoScopeFlow,
+      scopeKnowledgeChoice,
+      jobListingDraftDetails,
+      jobListingId,
+      jobListingSaveQueueRef,
+      mediaMethods,
+      projectInfoMethods,
+      selectedHiringMode,
+      selectedWorkType,
+      user?.currency,
+      watchedProjectInfo,
+    ],
+  );
+
   //  Validate the current step when Next is clicked
   const validateCurrentStep = React.useCallback(async () => {
     if (currentStep === 0) {
@@ -17926,19 +18158,22 @@ function PublishProject({
         return false;
       }
 
-      const isNewContractWorkflow =
-        isJobListingRoute && !isExistingContractFlow;
-
-      if (isNewContractWorkflow && !jobListingId) {
+      let createdJobListing = false;
+      if (isJobListingRoute && !jobListingId) {
         try {
           const response = await JobListingAPI.Create({
-            contractType: "new",
+            contractType: isExistingContractFlow ? "existing" : "new",
+            contractId: isExistingContractFlow
+              ? resolveExistingContractApiId(selectedExistingContractId)
+              : undefined,
             scopeKnowledge: getJobListingScopeKnowledge(
               selectedWorkType,
               isNoScopeFlow,
+              scopeKnowledgeChoice,
             ),
             workType: getJobListingWorkType(selectedWorkType),
             hiringType: getJobListingHiringType(selectedHiringMode),
+            lastCompletedStep: 1,
           });
 
           if (response.status !== 201) {
@@ -17951,10 +18186,18 @@ function PublishProject({
             throw new Error("Unable to create job listing draft");
           }
 
+          skipNextJobListingDraftSaveRef.current = true;
           setJobListingId(nextJobListingId);
+          lastCompletedStepRef.current = 1;
+          createdJobListing = true;
           window.sessionStorage.setItem(
             "marketeq-job-listing-id",
             nextJobListingId,
+          );
+          window.history.replaceState(
+            window.history.state,
+            "",
+            `/job-listing?jobListingId=${encodeURIComponent(nextJobListingId)}`,
           );
         } catch (error) {
           console.error("Failed to create job listing draft", error);
@@ -17966,12 +18209,43 @@ function PublishProject({
         }
       }
 
+      if (isJobListingRoute && !createdJobListing) {
+        try {
+          await saveJobListingStepProgress(1);
+        } catch (error) {
+          console.error("Failed to save job listing step progress", error);
+          return false;
+        }
+      }
+
       return isStepValid;
     }
     if (currentStep === 1) {
-      return Boolean(stepsState[currentStep]?.isValid);
+      const isStepValid = Boolean(stepsState[currentStep]?.isValid);
+      if (!isStepValid) return false;
+
+      if (isJobListingRoute) {
+        try {
+          await saveJobListingStepProgress(2);
+        } catch (error) {
+          console.error("Failed to save job listing step progress", error);
+          return false;
+        }
+      }
+
+      return true;
     }
-    // Step 3 uses its own schema checks
+
+    if (isJobListingRoute) {
+      try {
+        await saveJobListingStepProgress(currentStep + 1);
+      } catch (error) {
+        console.error("Failed to save job listing step progress", error);
+        return false;
+      }
+    }
+
+    // Later steps use their own schema checks.
     return true;
   }, [
     currentStep,
@@ -17983,6 +18257,7 @@ function PublishProject({
     scopeKnowledgeChoice,
     selectedHiringMode,
     selectedWorkType,
+    saveJobListingStepProgress,
     stepsState,
     toast,
   ]);
@@ -18011,12 +18286,28 @@ function PublishProject({
     finalReviewProgress,
   ]);
 
-  const handleSaveExit = React.useCallback(() => {
+  const handleSaveExit = React.useCallback(async () => {
     toggleIsSaveExitDialogOpen(false);
+    const pendingSaves = Array.from(pendingJobListingSavesRef.current);
+    pendingJobListingSavesRef.current.clear();
+    try {
+      await Promise.all(pendingSaves.map((pendingSave) => pendingSave()));
+      await jobListingSaveQueueRef.current;
+    } catch {
+      return;
+    }
     // Jobs live on My Jobs; /my-listings is a leftover from the project flow
     // this screen was built from.
     router.push("/my-jobs");
-  }, [toggleIsSaveExitDialogOpen, router]);
+  }, [router, toggleIsSaveExitDialogOpen]);
+
+  if (isJobListingRoute && isDraftBootstrapping) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <Spinner size={32} strokeWidth={4} />
+      </div>
+    );
+  }
 
   return isProjectSubmitted ? (
     <div className="min-h-screen flex flex-col">
@@ -18050,6 +18341,11 @@ function PublishProject({
                               onSelectedWorkTypeChange: setSelectedWorkType,
                               selectedHiringMode,
                               onSelectedHiringModeChange: setSelectedHiringMode,
+                              scopeKnowledgeChoice,
+                              isNoScopeFlow,
+                              isExistingContractFlow,
+                              selectedExistingContractId,
+                              isWorkflowLocked: Boolean(jobListingId),
                               onScopeKnowledgeChange: setScopeKnowledgeChoice,
                               onNoScopeFlowChange: setIsNoScopeFlow,
                               onExistingContractFlowChange:
@@ -18177,6 +18473,7 @@ function PublishProject({
                       workType={selectedWorkType}
                       jobListingId={jobListingId}
                       selectedHiringMode={selectedHiringMode}
+                      scopeKnowledgeChoice={scopeKnowledgeChoice}
                       isNoScopeFlow={isNoScopeFlow}
                       isExistingContractFlow={isExistingContractFlow}
                       selectedExistingContractId={selectedExistingContractId}

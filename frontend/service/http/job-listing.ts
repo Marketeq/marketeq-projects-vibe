@@ -36,6 +36,7 @@ export const JobListingAPI = {
     workType?: JobListingWorkType;
     hiringType?: JobListingHiringType;
     contractId?: string;
+    lastCompletedStep?: number;
   }) => AxiosRequest.post(jobListingUrl("/v1/job-listings"), data),
 
   Get: (id: string) =>
