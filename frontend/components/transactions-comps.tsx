@@ -1783,10 +1783,15 @@ const StatCard = ({
     <div className="flex-1 h-full min-w-0 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] flex flex-col gap-3">
       <div className="flex items-center justify-between gap-4 min-w-0">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          {/* Figma "Frame 1948757701": label + aside share one fixed row,
+              never wrapping to a second line — flex-wrap here let a long
+              date (e.g. "Sunday, Sep 27th") drop onto its own row, making
+              this card's top section taller than its two siblings even
+              though all three share the same h-full/items-stretch height. */}
+          <div className="flex items-baseline gap-x-2 min-w-0">
             <p
               className={cn(
-                "text-sm whitespace-nowrap",
+                "text-sm whitespace-nowrap shrink-0",
                 visual === "emphasis"
                   ? "font-semibold text-[#22376B]"
                   : "font-medium text-[#667085]"
@@ -1795,7 +1800,7 @@ const StatCard = ({
               {label}
             </p>
             {aside ? (
-              <span className="text-sm text-[#667085]">{aside}</span>
+              <span className="text-sm text-[#667085] truncate">{aside}</span>
             ) : null}
           </div>
           {sublabel && !aside ? (
