@@ -98,6 +98,14 @@ envVarGroups:
         sync: false
       - key: CLOUDFLARE_PUBLIC_URL
         value: https://pub-4789db6a57d64de3ad7b5e8c316d125b.r2.dev
+      # portfolio-service's case-study media has its own bucket, separate from
+      # the profile-image bucket above. Without these two, its presigned
+      # uploads fall back to CLOUDFLARE_R2_BUCKET and land in the avatar
+      # bucket instead.
+      - key: PORTFOLIO_R2_BUCKET
+        value: marketeq-portfolio-media
+      - key: PORTFOLIO_R2_PUBLIC_URL
+        value: https://pub-a66d1bacc56845be8d84370dce1f7747.r2.dev
       # ── Email (Brevo) ──
       - key: BREVO_API_KEY
         sync: false
