@@ -1413,6 +1413,7 @@ interface DepositMethodOption {
   nickname: string | null
   isDefault: boolean
   verificationStatus: string
+  reauthRequired?: boolean
 }
 
 // ─── Left Sidebar (reused from talent-dashboard, with Transactions active) ──
@@ -2729,6 +2730,39 @@ export const OverviewTab = ({
     }
   }
 
+  // Reconnect an OAuth-linked method whose provider token was revoked/expired
+  // (reauthRequired=true on the method — see oauth.service.ts's
+  // applyReauthRequired). Same shape as handleConnectOAuth: POST for a fresh
+  // authorization URL, stash the provider so the returning ?oauth=success|error
+  // screen (handled by the effect below) knows which provider it's reporting
+  // on, then hand the browser off to it.
+  const [reauthorizingId, setReauthorizingId] = React.useState<string | null>(
+    null
+  )
+  const handleReauthorize = async (method: DepositMethodOption) => {
+    setReauthorizingId(method.id)
+    try {
+      const res = await payoutFetch(
+        `/deposit-methods/${method.id}/reauthorize`,
+        { method: "POST" }
+      )
+      const data = await res.json()
+      if (!res.ok)
+        throw new Error(data.message ?? "Failed to start reconnection")
+      const redirectUrl = data.redirectUrl
+      if (!redirectUrl) throw new Error("No authorization URL returned")
+      sessionStorage.setItem("oauth_pending_provider", method.methodType)
+      window.location.href = redirectUrl
+    } catch (e: any) {
+      setReauthorizingId(null)
+      toast({
+        title: "Reconnection failed",
+        description: e?.message ?? "Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
   // AC-06.06/07.04/08.04: handle the ?oauth=success|error redirect back from the
   // provider callback — mapped by the actual errorCode oauth.service.ts throws
   // (oauth.controller.ts:26 passes it through as ?code=), not a single generic message.
@@ -3143,6 +3177,14 @@ export const OverviewTab = ({
   const getMethodStatusBadge = (
     m: any
   ): { visual: "success" | "warning" | "error" | "gray"; label: string } => {
+    // Checked ahead of verificationStatus — an OAuth-linked method (Wise/
+    // Payoneer) can be "verified" from its original link yet still need the
+    // contractor to re-authorize (e.g. a revoked/expired provider token).
+    // That's a distinct, actionable state from any verificationStatus value,
+    // so it takes over the badge entirely rather than being layered on top.
+    if (m.reauthRequired) {
+      return { visual: "warning", label: "Needs Reauthorization" }
+    }
     switch (m.verificationStatus) {
       case "verified":
         return { visual: "success", label: "Verified" }
@@ -4087,10 +4129,25 @@ export const OverviewTab = ({
                           <span className="text-sm text-gray-400">{sub}</span>
                         )}
                       </div>
-                      {m.verificationStatus !== "verified" && (
+                      {(m.reauthRequired ||
+                        m.verificationStatus !== "verified") && (
                         <Badge visual={statusBadge.visual} size="sm">
                           {statusBadge.label}
                         </Badge>
+                      )}
+                      {m.reauthRequired && (
+                        <Button
+                          variant="outlined"
+                          visual="primary"
+                          size="sm"
+                          className="mr-2"
+                          disabled={reauthorizingId === m.id}
+                          onClick={() => handleReauthorize(m)}
+                        >
+                          {reauthorizingId === m.id
+                            ? "Reconnecting…"
+                            : "Reconnect"}
+                        </Button>
                       )}
                       {m.isDefault ? (
                         <Badge
