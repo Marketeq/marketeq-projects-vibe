@@ -200,35 +200,8 @@ const DollarSignIcon = ({ className, ...props }: SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
-// Real PayPal "P" glyph — bare paths, no background card, no border rect
-// baked in (unlike @blend-metrics/icons' PayPalDefault, which draws both and
-// made a clean circular/square badge impossible — see PaypalCircleIcon and
-// getMethodIcon's PAYPAL case below for the two badge shapes this feeds).
-export const PaypalIcon = ({ className }: { className?: string }) => (
-  <svg
-    viewBox="0 0 20 20"
-    className={cn("shrink-0", className)}
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M15.2152 6.07227C15.407 4.82177 15.2152 3.9881 14.544 3.21856C13.8087 2.35283 12.4662 2.00012 10.74 2.00012H5.78531C5.43369 2.00012 5.14599 2.25664 5.08206 2.60934L3.00428 15.7556C2.97231 16.0121 3.16411 16.2366 3.41984 16.2366H6.48856L6.2648 17.5833C6.23283 17.8077 6.39266 18.0001 6.64839 18.0001H9.23763C9.55728 18.0001 9.81301 17.7757 9.84498 17.4871L10.3884 14.0883C10.4204 13.7997 10.7081 13.5753 10.9957 13.5753H11.3793C13.8727 13.5753 15.8546 12.5492 16.4299 9.59932C16.6537 8.38088 16.5578 7.32277 15.9185 6.61736C15.7267 6.39291 15.5029 6.23259 15.2152 6.07227Z"
-      fill="#009CDE"
-    />
-    <path
-      d="M15.2152 6.07227C15.407 4.82177 15.2152 3.9881 14.544 3.21856C13.8087 2.35283 12.4662 2.00012 10.74 2.00012H5.78531C5.43369 2.00012 5.14599 2.25664 5.08206 2.60934L3.00428 15.7556C2.97231 16.0121 3.16411 16.2366 3.41984 16.2366H6.48856L7.22377 11.4911C7.28771 11.1384 7.5754 10.8819 7.92702 10.8819H9.39745C12.2744 10.8819 14.512 9.72758 15.1513 6.32878C15.1833 6.26465 15.1833 6.16846 15.2152 6.07227Z"
-      fill="#012169"
-    />
-    <path
-      d="M8.08685 6.10433C8.11882 5.87988 8.40651 5.5913 8.6942 5.5913H12.594C13.0416 5.5913 13.4891 5.62337 13.8727 5.6875C14.2243 5.75163 14.8636 5.91195 15.1833 6.10433C15.3751 4.85383 15.1833 4.02016 14.512 3.25062C13.8087 2.35283 12.4662 2.00012 10.74 2.00012H5.78531C5.43369 2.00012 5.14599 2.25664 5.08206 2.60934L3.00428 15.7556C2.97231 16.0121 3.16411 16.2366 3.41984 16.2366H6.48856L8.08685 6.10433Z"
-      fill="#003087"
-    />
-  </svg>
-)
-
 // Real Wise "W" glyph — bare path only (the source asset's own rx=4 green
-// rect is dropped since WiseIcon draws its own circular badge below,
-// same bare-glyph-in-custom-badge pattern as PaypalIcon/PaypalCircleIcon).
+// rect is dropped since WiseIcon draws its own circular badge below.
 const WiseGlyph = ({ className }: { className?: string }) => (
   <svg
     viewBox="0 0 20 20"
@@ -311,17 +284,6 @@ const PayoneerGlyph = ({ className }: { className?: string }) => (
       d="m19.284 7.377-.096-.024c-.098 0-.195 0-.3.003a6.169 6.169 0 0 0-.106.023l-.132.028a5.177 5.177 0 0 0-1.373.48 10.526 10.526 0 0 0-2.559 1.837c-.507.486-.998.995-1.473 1.515a14.058 14.058 0 0 0-2.118 3.028c-.293.572-.558 1.156-.677 1.79-.022.117.016.253.053.37.016.047.104.082.164.1.016.007.063-.072.085-.116l.024-.053c.137-.299.322-.704.482-.972.34-.568.608-1.008.99-1.548a19.19 19.19 0 0 1 2.072-2.472c.709-.71 1.418-1.345 2.309-1.825.409-.218.828-.433 1.256-.61a9.703 9.703 0 0 1 2.304-.63c.085-.014.198-.08.227-.15.025-.062-.035-.182-.095-.242-.242-.25-.526-.44-.878-.496a1.48 1.48 0 0 1-.16-.036Zm-7.207 4.308c.151-.41.227-.837.236-1.279l-.01-.142c-.008-.095-.015-.19-.027-.284-.085-.733-.4-1.355-.9-1.888a.6.6 0 0 0-.224-.136c-.082-.032-.135.016-.13.11l.001.006c.006.08.013.164.028.244l.066.379c.078.449.157.9.243 1.348.085.451.179.9.28 1.345.034.142.091.284.16.417.054.1.13.091.199 0 .031-.038.063-.076.078-.12Z"
     />
   </svg>
-)
-
-const PaypalCircleIcon = ({ className }: { className?: string }) => (
-  <div
-    className={cn(
-      "size-9 rounded-full border border-gray-200 bg-white flex items-center justify-center shrink-0",
-      className
-    )}
-  >
-    <PaypalIcon className="w-1/2 h-1/2" />
-  </div>
 )
 
 const PayoneerCircleIcon = ({ className }: { className?: string }) => (
@@ -1945,29 +1907,15 @@ const PROMO_BANNERS: { id: string; emoji: string; content: React.ReactNode }[] =
     },
   ]
 
-// Figma masks the PayPal email the same way bank account numbers are
-// masked elsewhere in this list (e.g. "...4553") — first char + last 3
-// of the local part, first + last char of the domain.
-const maskEmail = (email: string): string => {
-  const at = email.indexOf("@")
-  if (at < 1) return email
-  const local = email.slice(0, at)
-  const domain = email.slice(at + 1)
-  const maskedLocal =
-    local.length > 4 ? `${local[0]}...${local.slice(-3)}` : local
-  const maskedDomain =
-    domain.length > 2 ? `${domain[0]}...${domain.slice(-1)}` : domain
-  return `${maskedLocal}@${maskedDomain}`
-}
-
-// Same "first...last" masking as maskEmail, but for plain IDs (no @) —
-// used for Wise/Payoneer account identifiers.
+// "first...last" masking for plain IDs (no @) — used for Wise/Payoneer
+// account identifiers, the same masking style bank account numbers use
+// elsewhere in this list (e.g. "...4553").
 const maskId = (value: string): string =>
   value.length > 6 ? `${value.slice(0, 1)}...${value.slice(-3)}` : value
 
 // The deposit-methods LIST endpoint doesn't return the per-provider raw
-// fields (paypalEmail/wiseAccountId/payoneerPayeeId/cryptoAddress) — only
-// displayLabel (e.g. "PayPal (customer123@example.com)" for OAuth methods,
+// fields (wiseAccountId/payoneerPayeeId/cryptoAddress) — only
+// displayLabel (e.g. "Wise (customer123@example.com)" for OAuth methods,
 // "TRANSAK ETH ••••1111" for crypto). Fall back to parsing that when the
 // raw field is missing, so the sub-label isn't just blank.
 const emailFromDisplayLabel = (
@@ -1978,12 +1926,6 @@ const emailFromDisplayLabel = (
 // OverviewTab (e.g. PayoutScheduleDialog) that don't have getMethodLabel's
 // full {name, sub} split — same masking rules, single display string.
 export const formatMethodOptionLabel = (m: any): string => {
-  if (m.methodType === "PAYPAL") {
-    const email = m.paypalEmail ?? emailFromDisplayLabel(m.displayLabel)
-    return [m.nickname || "PayPal", email ? maskEmail(email) : ""]
-      .filter(Boolean)
-      .join(" ")
-  }
   if (m.methodType === "WISE") {
     const id = m.wiseAccountId ?? emailFromDisplayLabel(m.displayLabel)
     return [m.nickname || "Wise", id ? maskId(id) : ""]
@@ -2017,16 +1959,11 @@ function splitMethodLabel(m: {
   methodType?: string
   nickname?: string | null
   displayLabel?: string | null
-  paypalEmail?: string | null
   wiseAccountId?: string | null
   payoneerPayeeId?: string | null
   cryptoAddress?: string | null
   cryptoProvider?: string | null
 }): { name: string; sub: string } {
-  if (m.methodType === "PAYPAL") {
-    const email = m.paypalEmail ?? emailFromDisplayLabel(m.displayLabel)
-    return { name: m.nickname || "PayPal", sub: email ? maskEmail(email) : "" }
-  }
   if (m.methodType === "WISE") {
     const id = m.wiseAccountId ?? emailFromDisplayLabel(m.displayLabel)
     return { name: m.nickname || "Wise", sub: id ? maskId(id) : "" }
@@ -2067,7 +2004,6 @@ function FilterMethodIcon({
       {child}
     </span>
   )
-  if (method.methodType === "PAYPAL") return wrap(<PaypalIcon className="size-5" />)
   if (method.methodType === "WISE")
     return wrap(<WiseGlyphV2 className="size-5" />)
   if (method.methodType === "CRYPTO")
@@ -2763,9 +2699,7 @@ export const OverviewTab = ({
   // the contractor back on this page with ?oauth=success|error (handled by the
   // effect below, mirroring how OverviewTab already reacts to other async state).
   const [oauthConnecting, setOauthConnecting] = React.useState(false)
-  const handleConnectOAuth = async (
-    methodType: "PAYPAL" | "WISE" | "PAYONEER"
-  ) => {
+  const handleConnectOAuth = async (methodType: "WISE" | "PAYONEER") => {
     setOauthConnecting(true)
     try {
       const res = await payoutFetch(`/deposit-methods`, {
@@ -2781,7 +2715,7 @@ export const OverviewTab = ({
       // ?oauth=success&methodId=... or ?oauth=error&code=... — no provider
       // name on the error path (nothing was created yet to read it off of).
       // Stash it client-side across the full-page redirect so the returning
-      // "PayPal/Wise/Payoneer Connected" / "Couldn't Connect" screen knows
+      // "Wise/Payoneer Connected" / "Couldn't Connect" screen knows
       // which provider it's reporting on.
       sessionStorage.setItem("oauth_pending_provider", methodType)
       window.location.href = oauthUrl
@@ -2811,7 +2745,7 @@ export const OverviewTab = ({
   // just a toast — the toast alone gave no confirmation of *which* account
   // got linked or a way to set it default/retry in place.
   const [oauthResult, setOauthResult] = React.useState<{
-    provider: "PAYPAL" | "WISE" | "PAYONEER"
+    provider: "WISE" | "PAYONEER"
     status: "success" | "error"
     method?: any
     errorMessage?: string
@@ -2823,10 +2757,9 @@ export const OverviewTab = ({
     if (!result) return
     const provider =
       (sessionStorage.getItem("oauth_pending_provider") as
-        | "PAYPAL"
         | "WISE"
         | "PAYONEER"
-        | null) ?? "PAYPAL"
+        | null) ?? "WISE"
     sessionStorage.removeItem("oauth_pending_provider")
     if (result === "success") {
       const methodId = params.get("methodId")
@@ -3145,17 +3078,9 @@ export const OverviewTab = ({
   // Figma shows every Connected Accounts row icon inside the same
   // ~44px bordered chip, regardless of provider — BankLogo and
   // CryptoProviderIcon already draw their own box (resized here, not
-  // re-wrapped, to avoid the double-box seam). PaypalIcon is a bare glyph
-  // with no card of its own, so it gets an explicit square border/bg
-  // wrapper here (the circular badge case is PaypalCircleIcon instead).
+  // re-wrapped, to avoid the double-box seam).
   const getMethodIcon = (m: any) => {
     const type = typeof m === "string" ? m : m?.methodType
-    if (type === "PAYPAL")
-      return (
-        <div className="size-11 rounded-lg border border-gray-200 bg-white flex items-center justify-center shrink-0">
-          <PaypalIcon className="w-1/2 h-1/2" />
-        </div>
-      )
     if (type === "WISE")
       return (
         <div className="size-11 rounded-lg border border-gray-200 bg-white flex items-center justify-center shrink-0">
@@ -3182,13 +3107,6 @@ export const OverviewTab = ({
   }
 
   const getMethodLabel = (m: any) => {
-    if (m.methodType === "PAYPAL") {
-      const email = m.paypalEmail ?? emailFromDisplayLabel(m.displayLabel)
-      return {
-        name: m.nickname || "PayPal",
-        sub: email ? maskEmail(email) : "",
-      }
-    }
     if (m.methodType === "CRYPTO") {
       const address = m.cryptoAddress
         ? m.cryptoAddress.slice(0, 6) + "..." + m.cryptoAddress.slice(-4)
@@ -4662,7 +4580,7 @@ export const OverviewTab = ({
               </div>
             )}
 
-            {/* PayPal/Wise/Payoneer OAuth return — dedicated "X Connected" /
+            {/* Wise/Payoneer OAuth return — dedicated "X Connected" /
               "Couldn't Connect to X" screens (Figma), replacing what used to be
               a toast-only confirmation with no way to set default or retry in place. */}
             {oauthResult && (
@@ -4686,41 +4604,30 @@ export const OverviewTab = ({
                   {oauthResult.status === "success" ? (
                     <div className="text-center py-2 space-y-4">
                       <div className="flex flex-col items-center gap-1">
-                        {oauthResult.provider === "PAYPAL" ? (
-                          <PaypalCircleIcon className="size-10" />
-                        ) : oauthResult.provider === "WISE" ? (
+                        {oauthResult.provider === "WISE" ? (
                           <WiseIconV2 className="size-12" />
                         ) : (
                           <PayoneerDefault className="size-10" />
                         )}
                       </div>
                       <h4 className="text-base font-semibold text-dark-blue-400">
-                        {oauthResult.provider === "PAYPAL"
-                          ? "PayPal"
-                          : oauthResult.provider === "WISE"
-                            ? "Wise"
-                            : "Payoneer"}{" "}
+                        {oauthResult.provider === "WISE" ? "Wise" : "Payoneer"}{" "}
                         Connected
                       </h4>
                       <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-3 text-left">
-                        {oauthResult.provider === "PAYPAL" ? (
-                          <PaypalCircleIcon className="size-5" />
-                        ) : oauthResult.provider === "WISE" ? (
+                        {oauthResult.provider === "WISE" ? (
                           <WiseIconV2 className="size-5 rounded-full" />
                         ) : (
                           <PayoneerDefault className="size-5" />
                         )}
                         <div className="flex flex-col items-start min-w-0">
                           <span className="text-sm font-medium text-dark-blue-400">
-                            {oauthResult.provider === "PAYPAL"
-                              ? "Paypal Email"
-                              : oauthResult.provider === "WISE"
-                                ? "Wise Account"
-                                : "Payoneer Account"}
+                            {oauthResult.provider === "WISE"
+                              ? "Wise Account"
+                              : "Payoneer Account"}
                           </span>
                           <span className="text-xs text-gray-400 truncate">
-                            {oauthResult.method?.paypalEmail ??
-                              oauthResult.method?.displayLabel ??
+                            {oauthResult.method?.displayLabel ??
                               oauthResult.method?.nickname ??
                               "—"}
                           </span>
@@ -4764,15 +4671,11 @@ export const OverviewTab = ({
                       </div>
                       <h4 className="text-base font-semibold text-dark-blue-400">
                         Couldn't Connect to{" "}
-                        {oauthResult.provider === "PAYPAL"
-                          ? "PayPal"
-                          : oauthResult.provider === "WISE"
-                            ? "Wise"
-                            : "Payoneer"}
+                        {oauthResult.provider === "WISE" ? "Wise" : "Payoneer"}
                       </h4>
                       <p className="text-sm text-gray-500">
                         {oauthResult.errorMessage ??
-                          `We were unable to link your ${oauthResult.provider === "PAYPAL" ? "PayPal" : oauthResult.provider === "WISE" ? "Wise" : "Payoneer"} account. You may have canceled the login or encountered a connection issue.`}
+                          `We were unable to link your ${oauthResult.provider === "WISE" ? "Wise" : "Payoneer"} account. You may have canceled the login or encountered a connection issue.`}
                       </p>
                       <div className="flex flex-col gap-2">
                         <Button
@@ -4899,19 +4802,9 @@ export const OverviewTab = ({
                                 <BankIcon className="size-5 text-gray-500" />
                               ),
                             },
-                            // PaypalCircleIcon/PayoneerCircleIcon use the bare glyph paths (no
-                            // card/border baked in, unlike PaypalIcon/PayoneerIcon) inside their
+                            // PayoneerCircleIcon uses the bare glyph paths (no
+                            // card/border baked in, unlike PayoneerIcon) inside its
                             // own circular badge — matches WiseIcon's own circular badge below.
-                            {
-                              type: "PAYPAL",
-                              label: "PayPal",
-                              sub: [
-                                "Transfer reflects in 1–2 business days",
-                                "Charges $0–$1 per transaction",
-                              ],
-                              icon: <PaypalCircleIcon />,
-                              selfContained: true,
-                            },
                             {
                               type: "WISE",
                               label: "Wise",
@@ -5047,7 +4940,7 @@ export const OverviewTab = ({
                     // nothing here — this is purely so the contractor sees the "your
                     // credentials are never shared with Marketeq" disclosure before we
                     // hand off to Stripe's hosted modal, matching the consent step every
-                    // other provider — PayPal/Wise/Payoneer — already has).
+                    // other provider — Wise/Payoneer — already has).
                     <div className="p-6 relative">
                       <div className="absolute top-4 right-4">
                         <IconButton
@@ -5403,7 +5296,7 @@ export const OverviewTab = ({
                             </p>
                             {/* Storybook Buttons/Button > GoogleOutlined pattern — outlined/
                               gray with a leftIcon brand mark, matching the other provider
-                              connect buttons (PayPal/Wise/Payoneer) and GoogleLoginButton.tsx. */}
+                              connect buttons (Wise/Payoneer) and GoogleLoginButton.tsx. */}
                             <Button
                               variant="outlined"
                               visual="gray"
@@ -6235,14 +6128,13 @@ export const OverviewTab = ({
                         </div>
                       )
                     })()
-                  ) : addForm.methodType === "PAYPAL" ||
-                    addForm.methodType === "WISE" ||
+                  ) : addForm.methodType === "WISE" ||
                     addForm.methodType === "PAYONEER" ? (
-                    /* Step 2b/2c: PayPal / Wise / Payoneer — real OAuth redirect
-                     (AC-06.01/06.04, AC-07.01/07.04, AC-08.01/08.04). One shared
+                    /* Step 2b/2c: Wise / Payoneer — real OAuth redirect
+                     (AC-07.01/07.04, AC-08.01/08.04). One shared
                      screen: same backend call (handleConnectOAuth -> POST
                      /deposit-methods -> verification.oauthUrl -> redirect) and
-                     the same Figma layout for all three providers — centered
+                     the same Figma layout for both providers — centered
                      icon, no title bar, single X close in the corner. Figma places
                      the provider icon to the left of the heading, side by side —
                      not centered above it. */
@@ -6257,20 +6149,14 @@ export const OverviewTab = ({
                         <X className="size-4" />
                       </IconButton>
                       <div className="flex items-center pt-6 pb-3 gap-4">
-                        {addForm.methodType === "PAYPAL" ? (
-                          <PaypalIcon className="size-14 shrink-0" />
-                        ) : addForm.methodType === "WISE" ? (
+                        {addForm.methodType === "WISE" ? (
                           <WiseIconV2 className="size-14 shrink-0" />
                         ) : (
                           <PayoneerDefault className="size-14 shrink-0" />
                         )}
                         <h3 className="text-base font-semibold text-dark-blue-400">
                           You'll be redirected to{" "}
-                          {addForm.methodType === "PAYPAL"
-                            ? "PayPal"
-                            : addForm.methodType === "WISE"
-                              ? "Wise"
-                              : "Payoneer"}{" "}
+                          {addForm.methodType === "WISE" ? "Wise" : "Payoneer"}{" "}
                           to securely connect your account.
                         </h3>
                       </div>
@@ -6293,13 +6179,13 @@ export const OverviewTab = ({
                         disabled={!addForm.bankConsent || oauthConnecting}
                         onClick={() =>
                           handleConnectOAuth(
-                            addForm.methodType as "PAYPAL" | "WISE" | "PAYONEER"
+                            addForm.methodType as "WISE" | "PAYONEER"
                           )
                         }
                       >
                         {oauthConnecting
                           ? "Connecting…"
-                          : `Continue To ${addForm.methodType === "PAYPAL" ? "PayPal" : addForm.methodType === "WISE" ? "Wise" : "Payoneer"}`}
+                          : `Continue To ${addForm.methodType === "WISE" ? "Wise" : "Payoneer"}`}
                       </Button>
                       <Button
                         variant="link"
@@ -6328,17 +6214,11 @@ export const OverviewTab = ({
                         <span className="text-xs text-gray-400">
                           By connecting your account, you authorize Marketeq to
                           send deposits to your linked{" "}
-                          {addForm.methodType === "PAYPAL"
-                            ? "PayPal"
-                            : addForm.methodType === "WISE"
-                              ? "Wise"
-                              : "Payoneer"}{" "}
+                          {addForm.methodType === "WISE" ? "Wise" : "Payoneer"}{" "}
                           account. You agree to abide by{" "}
-                          {addForm.methodType === "PAYPAL"
-                            ? "PayPal's"
-                            : addForm.methodType === "WISE"
-                              ? "Wise's"
-                              : "Payoneer's"}{" "}
+                          {addForm.methodType === "WISE"
+                            ? "Wise's"
+                            : "Payoneer's"}{" "}
                           terms and conditions for receiving business payments.
                         </span>
                       </label>
@@ -8111,7 +7991,6 @@ export const HelpSupportDialog = ({
 // OverviewTab's getMethodIcon — that one isn't reachable from here since
 // it's a closure inside a different component.
 const renderScheduleMethodIcon = (m: any) => {
-  if (m.methodType === "PAYPAL") return <PaypalIcon className="size-5" />
   if (m.methodType === "WISE") return <WiseIcon className="size-5" />
   if (m.methodType === "PAYONEER") return <PayoneerIcon className="size-5" />
   if (m.methodType === "CRYPTO")

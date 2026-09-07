@@ -23,7 +23,7 @@ import {
   IconButton, Input, RadioGroup, RadioGroupItem,
 } from "@/components/ui"
 import { PayoneerDefault } from "@blend-metrics/icons/payment-methods"
-import { PaypalIcon, CryptoProviderIcon, formatMethodOptionLabel } from "@/components/transactions-comps"
+import { CryptoProviderIcon, formatMethodOptionLabel } from "@/components/transactions-comps"
 import { getBalance, type BalanceResponse } from "@/service/http/earnings"
 import { getPublicAuthUrl, getPublicApiUrl } from "@/lib/runtime-urls"
 
@@ -113,12 +113,6 @@ function resolveErrorMessage(data: { errorCode?: string; message?: string; avail
 
 function methodIcon(m: { methodType: string; displayLabel: string | null }) {
   switch (m.methodType) {
-    case "PAYPAL":
-      return (
-        <div className="size-10 rounded-lg border border-gray-200 bg-white flex items-center justify-center shrink-0">
-          <PaypalIcon className="w-1/2 h-1/2" />
-        </div>
-      )
     case "PAYONEER":
       return (
         <div className="size-10 flex items-center justify-center shrink-0">
