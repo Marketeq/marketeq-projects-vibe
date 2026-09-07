@@ -7861,6 +7861,8 @@ const SCHEDULE_ERROR_MESSAGES: Record<string, string> = {
   ERR_SPLIT_NOT_ENABLED: "Enable split payout before setting a percentage.",
   ERR_SCHEDULE_NOT_FOUND: "Save your schedule before configuring split payout.",
   ERR_SCHEDULE_END_DATE_BEFORE_START: "End date must be after start date.",
+  ERR_SCHEDULE_INVALID_FREQUENCY:
+    "Daily payouts are only available for bank transfer methods.",
 }
 
 // F-13 Help & Support Tab (US-95–99). Facts below are pulled from the actual
@@ -8094,6 +8096,28 @@ export const PayoutScheduleDialog = ({
   const [authorized, setAuthorized] = useState(false)
 
   const selectedDayFull = DAYS_OF_WEEK[dayOfWeek]?.fullName ?? "Monday"
+
+  // ERR_SCHEDULE_INVALID_FREQUENCY: daily payouts only settle over the ACH
+  // rail (BANK_STRIPE/BANK_MANUAL) — Wise/Payoneer/Crypto still route through
+  // an OAuth-linked or on-chain transfer that can't clear same-day, every day.
+  // Mirror that server-side rule client-side so the option is disabled (with
+  // a reason) before the contractor ever submits and hits the error.
+  const ACH_METHOD_TYPES = ["BANK_STRIPE", "BANK_MANUAL"]
+  const isNonAchMethod = (methodId: string) => {
+    if (!methodId) return false
+    const method = methods.find((m) => m.id === methodId)
+    return !!method && !ACH_METHOD_TYPES.includes(method.methodType)
+  }
+  const dailyDisabled =
+    isNonAchMethod(primaryMethodId) ||
+    (splitEnabled && isNonAchMethod(secondaryMethodId))
+
+  // If a non-ACH method gets picked as primary/secondary while "Daily" is
+  // already selected (e.g. switching primary method after choosing Daily),
+  // fall back to Weekly rather than leaving an invalid frequency selected.
+  React.useEffect(() => {
+    if (dailyDisabled && frequency === "daily") setFrequency("weekly")
+  }, [dailyDisabled, frequency])
 
   const getScheduleLabel = () => {
     if (frequency === "weekly") return `Weekly (every ${selectedDayFull})`
@@ -8637,12 +8661,20 @@ export const PayoutScheduleDialog = ({
                         <SelectItem value="monthly">
                           Monthly (on the {dayOfMonth})
                         </SelectItem>
-                        <SelectItem value="daily">Daily (every day)</SelectItem>
+                        <SelectItem value="daily" disabled={dailyDisabled}>
+                          Daily (every day)
+                        </SelectItem>
                         <SelectItem value="custom">
                           Set Custom Schedule
                         </SelectItem>
                       </SelectContent>
                     </Select>
+                    {dailyDisabled && (
+                      <p className="text-xs text-gray-500">
+                        Daily payouts are only available for bank transfer
+                        methods.
+                      </p>
+                    )}
                   </div>
 
                   {/* ── Select Deposit Day ── (custom schedules pick their day
