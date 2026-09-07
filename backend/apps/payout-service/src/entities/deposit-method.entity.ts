@@ -12,7 +12,6 @@ import {
 export enum MethodType {
   BANK_STRIPE         = 'BANK_STRIPE',
   BANK_MANUAL         = 'BANK_MANUAL',
-  PAYPAL              = 'PAYPAL',
   WISE                = 'WISE',
   PAYONEER            = 'PAYONEER',
   CRYPTO              = 'CRYPTO',
@@ -117,13 +116,6 @@ export class DepositMethod {
   // states to the contractor; not read by any payout-gating logic.
   @Column({ type: 'jsonb', name: 'connect_requirements_due', nullable: true })
   connectRequirementsDue: string[] | null;
-
-  // -- PayPal fields --
-  @Column({ type: 'varchar', name: 'paypal_email', nullable: true })
-  paypalEmail: string | null;
-
-  @Column({ type: 'varchar', name: 'paypal_account_id', nullable: true })
-  paypalAccountId: string | null;
 
   // -- Wise fields --
   @Column({ type: 'varchar', name: 'wise_account_id', nullable: true })

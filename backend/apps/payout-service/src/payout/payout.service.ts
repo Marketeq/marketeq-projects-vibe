@@ -750,7 +750,6 @@ export class PayoutService {
     [MethodType.TEQ_COIN]: 0,
     [MethodType.MARKETEQ_DEBIT_CARD]: 1,
     [MethodType.BANK_STRIPE]: 2,
-    [MethodType.PAYPAL]: 1,
     [MethodType.WISE]: 2,
     [MethodType.PAYONEER]: 2,
     [MethodType.BANK_MANUAL]: 3,

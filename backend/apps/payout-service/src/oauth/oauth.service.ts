@@ -39,31 +39,7 @@ export class OAuthService {
     const keyHex = this.config.get('OAUTH_TOKEN_ENCRYPTION_KEY', '');
     this.encryptionKey = keyHex.length === 64 ? Buffer.from(keyHex, 'hex') : crypto.randomBytes(32);
 
-    const mode = this.config.get('PAYPAL_MODE', 'sandbox');
-    const ppBase = mode === 'live' ? 'https://www.paypal.com' : 'https://www.sandbox.paypal.com';
-    const ppApi = mode === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
-
     this.providerConfig = {
-      PAYPAL: {
-        // Both /signin/authorize and /connect were tested — identical token
-        // response shape either way (scope,access_token,token_type,
-        // expires_in,refresh_token,nonce,state — never an id_token), so this
-        // is one product under two front doors, not two distinct flows.
-        // PS-09 §10.1's documented endpoint pair, kept as-is:
-        authUrl: `${ppBase}/signin/authorize`,
-        tokenUrl: `${ppApi}/v1/oauth2/token`,
-        // Reproducibly 400s ("Unable to fetch details to serve the request")
-        // for real user-consent tokens while working fine with a
-        // client_credentials token against the same endpoint — a PayPal
-        // sandbox-side limitation on this app's Log-in-with-PayPal identity
-        // feature, not something fixable from this code. See the response-
-        // keys diagnostic log in exchangeCode() below.
-        profileUrl: `${ppApi}/v1/identity/oauth2/userinfo?schema=paypalv1.1`,
-        clientId: this.config.get('PAYPAL_CLIENT_ID', ''),
-        clientSecret: this.config.get('PAYPAL_CLIENT_SECRET', ''),
-        redirectUri: this.config.get('PAYPAL_REDIRECT_URI', ''),
-        scopes: this.config.get('PAYPAL_SCOPES', 'openid email'),
-      },
       WISE: {
         authUrl: 'https://api.transferwise.com/oauth/authorize',
         tokenUrl: 'https://api.transferwise.com/oauth/token',
@@ -100,11 +76,10 @@ export class OAuthService {
   }
 
   // Brand-cased provider names for user-facing labels. MethodType values are
-  // uppercase enum keys ('PAYPAL'), so interpolating them directly renders
-  // "PAYPAL (pending authorization)" on the deposit-method card. Mirrors the
+  // uppercase enum keys ('WISE'), so interpolating them directly renders
+  // "WISE (pending authorization)" on the deposit-method card. Mirrors the
   // same mapping in pause-status.service.ts.
   private static readonly PROVIDER_LABELS: Record<string, string> = {
-    PAYPAL: 'PayPal',
     WISE: 'Wise',
     PAYONEER: 'Payoneer',
   };
@@ -184,10 +159,10 @@ export class OAuthService {
       // 2. Exchange code for tokens
       const tokens = await this.exchangeCode(provider, code);
 
-      // 3. Fetch profile — prefer decoding the id_token PayPal returns for any
-      // openid-scoped grant (no extra network call, sidesteps the sandbox
-      // userinfo 400); fall back to the userinfo call for providers/grants
-      // that don't return one (WISE, PAYONEER, or PayPal without an id_token).
+      // 3. Fetch profile — prefer decoding an id_token if the provider's
+      // grant returns one for an openid-scoped flow (no extra network call);
+      // fall back to the userinfo call for providers/grants that don't
+      // return one (WISE, PAYONEER).
       const profile = (tokens.idToken && this.decodeIdToken(tokens.idToken))
         || await this.fetchProfile(provider, tokens.accessToken);
 
@@ -210,7 +185,7 @@ export class OAuthService {
         HttpStatus.NOT_FOUND, 'ERR_DEPOSIT_METHOD_NOT_FOUND');
 
       // Same account already linked (e.g. a contractor re-connecting the
-      // same PayPal email as an existing method, or a duplicate reauth) —
+      // same provider email as an existing method, or a duplicate reauth) —
       // mirrors the ERR_DEPOSIT_METHOD_DUPLICATE check already used for
       // bank accounts in methods.service.ts, which the frontend already
       // maps to "This account is already linked."
@@ -348,15 +323,14 @@ export class OAuthService {
     };
   }
 
-  // Decodes the id_token PayPal returns alongside the access token for any
-  // `openid`-scoped grant, without a separate network call. Added because
-  // PayPal's sandbox /v1/identity/oauth2/userinfo endpoint reliably 400s
-  // ("Unable to fetch details to serve the request") for real user-consent
-  // tokens minted through "Log in with PayPal" — a long-standing, widely
-  // reported PayPal sandbox quirk, not something fixable on our side. The
-  // id_token is a JWT signed by PayPal and delivered directly over the
-  // server-to-server TLS token exchange, so decoding its payload without a
-  // second signature-verification round trip is safe here.
+  // Decodes an id_token returned alongside the access token for any
+  // `openid`-scoped grant, without a separate network call. Neither WISE nor
+  // PAYONEER currently requests the openid scope, so this is a defensive
+  // fallback only — kept in case a future OAuth provider's grant returns one
+  // and its userinfo endpoint proves unreliable. The id_token is a JWT
+  // delivered directly over the server-to-server TLS token exchange, so
+  // decoding its payload without a second signature-verification round trip
+  // is safe here.
   private decodeIdToken(idToken: string): ProfileResult | null {
     try {
       const payloadB64 = idToken.split('.')[1];

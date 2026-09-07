@@ -13,7 +13,6 @@ import { MethodType } from '../entities/deposit-method.entity';
 import { CryptoPayoutExecutorService } from '../execution/crypto-payout-executor.service';
 import { CardPayoutExecutorService } from '../card/card-payout-executor.service';
 import { BankPayoutExecutorService } from '../bank/bank-payout-executor.service';
-import { PaypalPayoutExecutorService } from '../paypal/paypal-payout-executor.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
 
 @Processor({ name: 'payout-processing' })
@@ -26,7 +25,6 @@ export class PayoutQueueProcessor {
     private readonly cryptoExecutor: CryptoPayoutExecutorService,
     private readonly cardExecutor: CardPayoutExecutorService,
     private readonly bankExecutor: BankPayoutExecutorService,
-    private readonly paypalExecutor: PaypalPayoutExecutorService,
     private readonly publisher: PayoutPublisher,
   ) {}
 
@@ -77,8 +75,6 @@ export class PayoutQueueProcessor {
       case MethodType.BANK_STRIPE:
       case MethodType.BANK_MANUAL:
         return this.bankExecutor.executeBankPayout(payoutRequestId);
-      case MethodType.PAYPAL:
-        return this.paypalExecutor.executePaypalPayout(payoutRequestId);
       default:
         // WISE/PAYONEER/TEQ_COIN execution isn't built yet. Leaving the
         // request QUEUED kept it visible instead of vanishing, which was the
