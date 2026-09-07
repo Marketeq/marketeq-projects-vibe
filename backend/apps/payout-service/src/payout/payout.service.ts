@@ -859,7 +859,8 @@ export class PayoutService {
   // Figma "Your withdrawal was declined — reserve balance is too low": an
   // ad-hoc withdrawal previously had no reserve awareness at all (reserveUsd
   // on payout_schedules only applied to the scheduled-payout engine's own
-  // calculatePayoutAmount() in schedule.service.ts). A contractor could
+  // reserve deduction in schedule-execution.cron.ts's processSchedule()).
+  // A contractor could
   // withdraw their entire available balance manually, silently defeating the
   // reserve they configured. This enforces the same floor for ad-hoc
   // withdrawals, with an explicit, one-time bypass (ignoreReserve) rather
