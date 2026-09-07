@@ -8,9 +8,15 @@ import { DepositMethod, MethodType, VerificationStatus } from '../entities/depos
 import { AuditService }       from '../audit/audit.service';
 import { PayoutPublisher }    from '../publishers/payout.publisher';
 import { PayoutError }        from '../common/errors/payout.error';
+import { StripeProvider }     from '../providers/stripe.provider';
 
 interface TokenResult { accessToken: string; refreshToken: string; expiresAt: Date; idToken?: string; }
 interface ProfileResult { email: string; accountIdentifier: string; displayName: string; }
+// PS-09 v2.0 §7: retrieved from the provider API after OAuth and registered
+// as a Stripe external_account — this is what makes the Stripe ACH
+// execution model (PS-32 §2) work without ever calling the provider's own
+// Payouts API.
+interface BankingDetailsResult { routingNumber: string; accountNumber: string; accountEmail: string; displayName: string; }
 
 @Injectable()
 export class OAuthService {
@@ -20,7 +26,7 @@ export class OAuthService {
   private readonly stateTtl: number;
 
   private readonly providerConfig: Record<string, {
-    authUrl: string; tokenUrl: string; profileUrl: string;
+    apiBase: string; authUrl: string; tokenUrl: string; profileUrl: string;
     clientId: string; clientSecret: string; redirectUri: string; scopes: string;
   }>;
 
@@ -31,6 +37,7 @@ export class OAuthService {
     private readonly config: ConfigService,
     private readonly auditService: AuditService,
     private readonly publisher: PayoutPublisher,
+    private readonly stripeProvider: StripeProvider,
   ) {
     const redisUrl = this.config.get('REDIS_URL', 'redis://localhost:6379');
     this.redis = new Redis(redisUrl);
@@ -39,20 +46,29 @@ export class OAuthService {
     const keyHex = this.config.get('OAUTH_TOKEN_ENCRYPTION_KEY', '');
     this.encryptionKey = keyHex.length === 64 ? Buffer.from(keyHex, 'hex') : crypto.randomBytes(32);
 
+    // PS-09 v2.0 §3/§12: base URL is env-driven so sandbox (local dev,
+    // staging) and production point at different hosts without a code
+    // change — previously hardcoded to production for Wise, which meant
+    // sandbox credentials could never actually authorize.
+    const wiseBase = this.config.get('WISE_API_BASE_URL', 'https://api.transferwise.com');
+    const payoneerBase = this.config.get('PAYONEER_API_BASE_URL', 'https://api.payoneer.com');
+
     this.providerConfig = {
       WISE: {
-        authUrl: 'https://api.transferwise.com/oauth/authorize',
-        tokenUrl: 'https://api.transferwise.com/oauth/token',
-        profileUrl: 'https://api.transferwise.com/v2/me',
+        apiBase: wiseBase,
+        authUrl: `${wiseBase}/oauth/authorize`,
+        tokenUrl: `${wiseBase}/oauth/token`,
+        profileUrl: `${wiseBase}/v2/me`,
         clientId: this.config.get('WISE_CLIENT_ID', ''),
         clientSecret: this.config.get('WISE_CLIENT_SECRET', ''),
         redirectUri: this.config.get('WISE_REDIRECT_URI', ''),
         scopes: 'transfers:read transfers:write balances:read',
       },
       PAYONEER: {
-        authUrl: 'https://api.payoneer.com/v2/oauth2/authorize',
-        tokenUrl: 'https://api.payoneer.com/v2/oauth2/token',
-        profileUrl: 'https://api.payoneer.com/v4/accounts/current',
+        apiBase: payoneerBase,
+        authUrl: `${payoneerBase}/v2/oauth2/authorize`,
+        tokenUrl: `${payoneerBase}/v2/oauth2/token`,
+        profileUrl: `${payoneerBase}/v4/accounts/current`,
         clientId: this.config.get('PAYONEER_CLIENT_ID', ''),
         clientSecret: this.config.get('PAYONEER_CLIENT_SECRET', ''),
         redirectUri: this.config.get('PAYONEER_REDIRECT_URI', ''),
@@ -166,6 +182,21 @@ export class OAuthService {
       const profile = (tokens.idToken && this.decodeIdToken(tokens.idToken))
         || await this.fetchProfile(provider, tokens.accessToken);
 
+      // 3b. PS-09 v2.0 §2/§7: retrieve the contractor's US routing + account
+      // number from the provider API. This is the step that makes the
+      // Stripe ACH execution model work — Marketeq never calls the
+      // provider's own Payouts API to move money.
+      const bankingDetails = await this.fetchBankingDetails(provider, tokens.accessToken);
+
+      // 3c. PS-09 v2.0 §8: register the routing + account number as a
+      // Stripe external_account on the contractor's Connect account. All
+      // future payouts to this method go through Stripe, same as any other
+      // ACH bank payout.
+      const externalAccount = await this.stripeProvider.createExternalAccountFromRouting({
+        contractorId, routingNumber: bankingDetails.routingNumber,
+        accountNumber: bankingDetails.accountNumber, accountHolderName: bankingDetails.displayName,
+      });
+
       // 4. Encrypt tokens
       const encAccess = this.encrypt(tokens.accessToken);
       const encRefresh = this.encrypt(tokens.refreshToken);
@@ -197,13 +228,19 @@ export class OAuthService {
           HttpStatus.CONFLICT, 'ERR_DEPOSIT_METHOD_DUPLICATE');
       }
 
-      // 6. Update method
+      // 6. Update method — accountIdentifier is the last 4 digits of the
+      // provider account number only (PS-09 §9: "Never store full account
+      // number"); the full account number lives solely on the Stripe
+      // external_account object created above.
       await this.methodRepo.update(method.id, {
         oauthAccessToken: encAccess,
         oauthRefreshToken: encRefresh,
         oauthTokenExpiresAt: tokens.expiresAt,
         accountEmail: profile.email,
-        accountIdentifier: profile.accountIdentifier,
+        accountIdentifier: bankingDetails.accountNumber.slice(-4),
+        routingNumber: bankingDetails.routingNumber,
+        stripeExternalAccountId: externalAccount.externalAccountId,
+        stripeConnectAccountId: externalAccount.connectAccountId,
         verificationStatus: VerificationStatus.VERIFIED,
         displayLabel: `${provider} (${profile.email})`,
         reauthRequired: false,
@@ -374,6 +411,111 @@ export class OAuthService {
       email,
       accountIdentifier: data.user_id ?? data.id ?? data.sub ?? email,
       displayName: data.name ?? email,
+    };
+  }
+
+  // ─── PS-09 v2.0 §7: Fetch the contractor's US routing + account number
+  // from the provider API ─────────────────────────────────────────
+  // This is the step that makes the Stripe ACH execution model work.
+  // Marketeq does NOT call wise.com/v3/transfers or payoneer.com/v4/payments
+  // to send money — the OAuth token is used only to retrieve these details,
+  // which are then registered as a Stripe external_account (§8). Only the
+  // last 4 digits of accountNumber are ever persisted (handleCallback).
+  async fetchBankingDetails(provider: string, accessToken: string): Promise<BankingDetailsResult> {
+    if (provider === 'WISE') return this.fetchWiseBankingDetails(accessToken);
+    if (provider === 'PAYONEER') return this.fetchPayoneerBankingDetails(accessToken);
+    throw new PayoutError('Unsupported OAuth provider.', HttpStatus.BAD_REQUEST, 'ERR_OAUTH_UNSUPPORTED');
+  }
+
+  private async fetchWiseBankingDetails(accessToken: string): Promise<BankingDetailsResult> {
+    const base = this.providerConfig.WISE.apiBase;
+
+    // Step 1: the contractor's Wise personal profile ID + email.
+    const profileRes = await fetch(`${base}/v2/me`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!profileRes.ok) {
+      this.logger.error(`[WISE] Profile fetch failed: ${profileRes.status}`);
+      throw new PayoutError('Failed to fetch Wise profile.',
+        HttpStatus.BAD_GATEWAY, 'ERR_OAUTH_PROFILE_FETCH_FAILED');
+    }
+    const profile: any = await profileRes.json();
+
+    // Step 2: the USD balance under this profile — Wise issues each account
+    // holder a US routing number + account number here. These are the
+    // details Stripe will ACH to.
+    const accountRes = await fetch(`${base}/v1/borderless-accounts?profileId=${profile.id}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!accountRes.ok) {
+      this.logger.error(`[WISE] Borderless account fetch failed: ${accountRes.status}`);
+      throw new PayoutError('Failed to fetch Wise account details.',
+        HttpStatus.BAD_GATEWAY, 'ERR_OAUTH_PROFILE_FETCH_FAILED');
+    }
+    const accounts: any[] = await accountRes.json();
+
+    const usdAccount = accounts
+      .flatMap((a: any) => a.balances ?? [])
+      .find((b: any) => b.currency === 'USD' && b.bankDetails?.routingNumber);
+
+    if (!usdAccount?.bankDetails?.routingNumber) {
+      throw new PayoutError(
+        'This Wise account does not have a US USD account with routing details. ' +
+        'The contractor must add a USD balance in their Wise account first.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_WISE_NO_USD_ACCOUNT');
+    }
+
+    return {
+      routingNumber: usdAccount.bankDetails.routingNumber,
+      accountNumber: usdAccount.bankDetails.accountNumber,
+      accountEmail: profile.email,
+      displayName: `${profile.firstName ?? ''} ${profile.lastName ?? ''}`.trim() || profile.email,
+    };
+  }
+
+  private async fetchPayoneerBankingDetails(accessToken: string): Promise<BankingDetailsResult> {
+    const base = this.providerConfig.PAYONEER.apiBase;
+
+    // Step 1: the contractor's Payoneer account details.
+    const accountRes = await fetch(`${base}/v4/accounts/current`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!accountRes.ok) {
+      this.logger.error(`[PAYONEER] Account fetch failed: ${accountRes.status}`);
+      throw new PayoutError('Failed to fetch Payoneer account details.',
+        HttpStatus.BAD_GATEWAY, 'ERR_OAUTH_PROFILE_FETCH_FAILED');
+    }
+    const account: any = await accountRes.json();
+
+    // Step 2: the US receiving account — Payoneer issues a US ACH routing
+    // number + account number through its partner bank (Community Federal
+    // Savings Bank or First Century Bank).
+    const receivingRes = await fetch(`${base}/v4/accounts/current/payment-methods/bank-accounts`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!receivingRes.ok) {
+      this.logger.error(`[PAYONEER] Receiving-account fetch failed: ${receivingRes.status}`);
+      throw new PayoutError('Failed to fetch Payoneer receiving accounts.',
+        HttpStatus.BAD_GATEWAY, 'ERR_OAUTH_PROFILE_FETCH_FAILED');
+    }
+    const receivingAccounts: any = await receivingRes.json();
+
+    const usdAccount = (receivingAccounts?.items ?? []).find(
+      (a: any) => a.currency === 'USD' && a.routingNumber,
+    );
+
+    if (!usdAccount?.routingNumber) {
+      throw new PayoutError(
+        'This Payoneer account does not have a US USD receiving account. ' +
+        'The contractor must set up a USD receiving account in Payoneer first.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYONEER_NO_USD_ACCOUNT');
+    }
+
+    return {
+      routingNumber: usdAccount.routingNumber,
+      accountNumber: usdAccount.accountNumber,
+      accountEmail: account.email,
+      displayName: `${account.firstName ?? ''} ${account.lastName ?? ''}`.trim() || account.email,
     };
   }
 

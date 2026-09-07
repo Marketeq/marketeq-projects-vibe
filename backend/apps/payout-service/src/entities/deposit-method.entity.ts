@@ -183,6 +183,13 @@ export class DepositMethod {
   @Column({ name: 'account_email', nullable: true, type: 'varchar' }) accountEmail: string | null;
   @Column({ name: 'account_identifier', nullable: true, type: 'varchar' }) accountIdentifier: string | null;
 
+  // PS-09 v2.0 §7/§9: US ABA routing number retrieved from the Wise/Payoneer
+  // provider API via fetchBankingDetails() and registered as a Stripe
+  // external_account. Not sensitive — public info for the receiving bank —
+  // so stored in plaintext, unlike the OAuth tokens above.
+  @Column({ name: 'routing_number', type: 'varchar', length: 9, nullable: true })
+  routingNumber: string | null;
+
   // -- Metadata --
   @Column({
     name: 'verification_status',

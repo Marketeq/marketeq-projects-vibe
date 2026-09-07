@@ -446,6 +446,52 @@ export class StripeProvider {
     return account.id;
   }
 
+  // ─── PS-09 v2.0 §8: Connect external_account from a raw routing +
+  // account number ──────────────────────────────────────────────
+  // Used by OAuthService.handleCallback() after retrieving a contractor's
+  // Wise/Payoneer US routing + account number via fetchBankingDetails() —
+  // this is the step that lets Stripe ACH funds directly to the
+  // contractor's Wise or Payoneer balance without Marketeq ever calling the
+  // Wise/Payoneer Payouts API. Unlike attachVerifiedBankAsExternalAccount
+  // (BANK_STRIPE/BANK_MANUAL, which goes through a confirmed SetupIntent +
+  // token), Wise/Payoneer never hand payout-service a SetupIntent — the
+  // routing/account number is all the provider API returns — so the
+  // external_account is created directly from those raw values, per
+  // PS-09 §8's documented createExternalAccount() shape.
+  async createExternalAccountFromRouting(params: {
+    contractorId: string;
+    routingNumber: string;
+    accountNumber: string;
+    accountHolderName: string;
+  }): Promise<{ connectAccountId: string; externalAccountId: string }> {
+    const connectAccountId = await this.getOrCreateConnectAccount(params.contractorId);
+
+    if (!this.stripe || !this.isRealStripeKey()) {
+      return { connectAccountId, externalAccountId: `ba_mock_${Date.now()}` };
+    }
+
+    let externalAccount: any;
+    try {
+      externalAccount = await this.stripe.accounts.createExternalAccount(connectAccountId, {
+        external_account: {
+          object: 'bank_account',
+          country: 'US',
+          currency: 'usd',
+          routing_number: params.routingNumber,
+          account_number: params.accountNumber,
+          account_holder_name: params.accountHolderName,
+          account_holder_type: 'individual',
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`Stripe external_account attach failed (routing) for account ${connectAccountId}: ${err?.message}`);
+      throw new PayoutError('We could not attach your account for payouts. Please contact support.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_STRIPE_CONNECT_EXTERNAL_ACCOUNT_FAILED');
+    }
+
+    return { connectAccountId, externalAccountId: externalAccount.id };
+  }
+
   // ─── PS-08: BANK_MANUAL/US real ACH micro-deposits ────────────
   // Stripe's us_bank_account payment method type only exists for US
   // accounts — there is no equivalent ACH micro-deposit mechanism for any

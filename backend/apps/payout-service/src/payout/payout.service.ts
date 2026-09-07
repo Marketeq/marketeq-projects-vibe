@@ -236,6 +236,12 @@ export class PayoutService {
       throw new PayoutError('This deposit method has not been verified yet.',
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_METHOD_UNVERIFIED');
     }
+    // PS-09 v2.0 §11: a manual withdrawal to a method whose OAuth token
+    // refresh has failed must be blocked until the contractor re-authorizes.
+    if ((method as any).reauthRequired) {
+      throw new PayoutError('Your Wise/Payoneer connection needs to be re-authorized before you can withdraw to this method.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_METHOD_REAUTH_REQUIRED', { depositMethodId: method.id });
+    }
     if (method.methodType === MethodType.TEQ_COIN && !this.config.get('FEATURE_TEQ_COIN_ENABLED', false)) {
       throw new PayoutError('This payout method is not currently available.',
         HttpStatus.BAD_REQUEST, 'ERR_PAYOUT_METHOD_UNAVAILABLE');

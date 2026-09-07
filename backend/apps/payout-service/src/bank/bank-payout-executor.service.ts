@@ -47,14 +47,29 @@ export class BankPayoutExecutorService {
       return;
     }
 
+    // PS-09 v2.0 §2: WISE/PAYONEER execute through this same Stripe ACH path
+    // — Marketeq never calls the Wise/Payoneer Payouts API directly. Once
+    // OAuth has registered a Stripe external_account for the method
+    // (oauth.service.ts's handleCallback), it is indistinguishable from a
+    // regular bank payout from here on.
     const method = payout.depositMethod;
-    if (!method || (method.methodType !== MethodType.BANK_STRIPE && method.methodType !== MethodType.BANK_MANUAL)) {
-      this.logger.error(`Payout ${payoutRequestId} is not a bank type`);
+    const bankLikeTypes = [MethodType.BANK_STRIPE, MethodType.BANK_MANUAL, MethodType.WISE, MethodType.PAYONEER];
+    if (!method || !bankLikeTypes.includes(method.methodType)) {
+      this.logger.error(`Payout ${payoutRequestId} is not a bank-executed type`);
       return;
     }
 
     if (method.verificationStatus !== VerificationStatus.VERIFIED) {
       await this.failPayout(payout, 'Bank account has not been verified.', 'ERR_BANK_NOT_VERIFIED');
+      return;
+    }
+
+    // PS-09 v2.0 §11: a token-refresh failure sets reauthRequired and blocks
+    // payouts to this method until the contractor re-authorizes.
+    if ((method as any).reauthRequired) {
+      await this.failPayout(payout,
+        'Your Wise/Payoneer connection needs to be re-authorized before this payout can proceed.',
+        'ERR_PAYOUT_METHOD_REAUTH_REQUIRED');
       return;
     }
 
@@ -142,7 +157,7 @@ export class BankPayoutExecutorService {
         metadata: { transferId, payoutId, amountCents },
       });
 
-      this.logger.log(`Bank payout initiated: ${payoutRequestId} → $${amountUsd} to ••••${method.bankAccountLast4}`);
+      this.logger.log(`Bank payout initiated: ${payoutRequestId} → $${amountUsd} to ••••${method.bankAccountLast4 ?? method.accountIdentifier}`);
 
     } catch (err: any) {
       this.logger.error(`Bank payout failed: ${payoutRequestId} — ${err.message}`);

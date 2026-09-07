@@ -74,6 +74,12 @@ export class PayoutQueueProcessor {
         return this.cardExecutor.executeCardPayout(payoutRequestId);
       case MethodType.BANK_STRIPE:
       case MethodType.BANK_MANUAL:
+      // PS-09 v2.0 §2: WISE/PAYONEER execute through the same Stripe ACH
+      // path as a regular bank payout — the OAuth-retrieved routing +
+      // account number was already registered as a Stripe external_account
+      // at connection time (oauth.service.ts's handleCallback).
+      case MethodType.WISE:
+      case MethodType.PAYONEER:
         return this.bankExecutor.executeBankPayout(payoutRequestId);
       default:
         // WISE/PAYONEER/TEQ_COIN execution isn't built yet. Leaving the
