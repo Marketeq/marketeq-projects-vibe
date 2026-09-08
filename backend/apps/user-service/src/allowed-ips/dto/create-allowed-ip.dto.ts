@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  IsBoolean,
   ArrayMinSize,
   IsArray,
   IsOptional,
@@ -42,4 +43,9 @@ export class BulkCreateAllowedIpsDto {
   @ValidateNested({ each: true })
   @Type(() => CreateAllowedIpDto)
   entries!: CreateAllowedIpDto[];
+}
+
+export class SetIpRestrictionDto {
+  @IsBoolean()
+  enabled!: boolean;
 }

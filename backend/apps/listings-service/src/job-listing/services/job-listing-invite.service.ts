@@ -70,6 +70,26 @@ export class JobListingInviteService {
         roleTitle: dto.roleTitle ?? null,
         clientUserId: listing.clientUserId,
       });
+
+      // To the invited talent, not the client who sent it — the sender already
+      // knows. The role title is included when the invite names one; the
+      // listing title lives on a separate entity and is not worth a join here,
+      // so the link carries the rest of the context.
+      this.publisher.notify({
+        recipientId: talentUserId,
+        event: "job_listing.invite_sent",
+        title: dto.roleTitle
+          ? `You've been invited to apply: ${dto.roleTitle}`
+          : "You've been invited to apply to a job",
+        body: "A client invited you to apply. Open the listing to see the details.",
+        link: "/job-listing",
+        metadata: {
+          listingId,
+          roleRowId: dto.roleRowId ?? null,
+          roleTitle: dto.roleTitle ?? null,
+          invitedByUserId: listing.clientUserId,
+        },
+      });
     }
   }
 

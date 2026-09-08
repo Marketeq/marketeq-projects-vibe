@@ -92,6 +92,13 @@ const PUBLIC_PATTERNS = [
   // the webhooks/oauth-callback entries above.
   /^\/v1\/invitations\/preview$/,
   /^\/invitations\/preview$/,
+  // Confirming a notification email change. The token in the link is the
+  // proof, and the link is opened from an inbox — often on a device with no
+  // Marketeq session — so requiring one would make it unclickable. Already
+  // @Public() in notification-service, which is powerless against this
+  // upstream check, same as the entries above. Both prefixes because the
+  // frontend base URL carries an /api segment.
+  /^(?:\/api)?\/v1\/notifications\/preferences\/email\/verify$/,
 ]
 
 function isPublic(path: string): boolean {

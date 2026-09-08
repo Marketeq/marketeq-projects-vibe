@@ -70,6 +70,21 @@ export class JobListingDraftService {
         lastActivityAt: draft.lastActivityAt?.toISOString(),
       });
 
+      // The domain event above is for other services; this is the one the
+      // owner sees. Worth notifying because nothing they did triggered it —
+      // the cron did, and the draft is heading for archival.
+      this.publisher.notify({
+        recipientId: draft.clientUserId,
+        event: 'job_listing.stale_draft_warning',
+        title: 'A job listing draft needs your attention',
+        body: `You haven't updated this draft in ${staleWarningDays} days. Open it to finish and publish.`,
+        link: '/job-listing',
+        metadata: {
+          listingId: draft.id,
+          lastActivityAt: draft.lastActivityAt?.toISOString(),
+        },
+      });
+
       await this.repo.update(draft.id, { staleWarningSent: true });
       this.logger.log(`Stale draft warning sent for listing ${draft.id}`);
     }
