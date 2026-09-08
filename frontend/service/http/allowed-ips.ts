@@ -47,6 +47,11 @@ const AllowedIpsAPI = {
 
   remove: (id: string): Promise<AxiosResponse<void>> =>
     AxiosRequest.del(`${BASE}/${id}`),
+
+  /** The master switch. Its own route because switching it on is refused when
+   *  the caller's address is not covered by the list. */
+  setEnabled: (enabled: boolean): Promise<AxiosResponse<{ enabled: boolean }>> =>
+    AxiosRequest.patch(`${BASE}/settings/enabled`, { enabled }),
 }
 
 export default AllowedIpsAPI
