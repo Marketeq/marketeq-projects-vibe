@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Message } from './entities/message.entity';
@@ -113,7 +114,9 @@ export class MessagesService {
     }
     const { shadow } = await this.blockEnforcement.assertCanSend(dto.senderId, thread);
 
-    const message = this.messageRepo.create({ ...dto, status: 'sent' });
+    // Hosted schemas may not carry the UUID column default declared by the
+    // entity, so assign it before insert instead of relying on the database.
+    const message = this.messageRepo.create({ id: randomUUID(), ...dto, status: 'sent' });
     const saved = await this.messageRepo.save(message);
 
     const bumpedAt = new Date();
@@ -157,6 +160,7 @@ export class MessagesService {
     try {
       result = await this.dataSource.transaction(async (em) => {
         const msg = em.getRepository(Message).create({
+          id: randomUUID(),
           threadId,
           senderId,
           ciphertext: ciphertext ?? undefined,
