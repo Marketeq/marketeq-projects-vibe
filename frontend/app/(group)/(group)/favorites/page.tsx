@@ -225,7 +225,7 @@ const ProjectGroupListCard = ({
         </p>
       </div>
 
-      <div className="flex relative xs:max-md:border-t xs:max-md:bg-gray-50 border-gray-200 h-[35px] md:h-[55px] lg:h-[72px] items-center flex-auto md:pl-5 isolate">
+      <div className="flex relative xs:max-md:border-t xs:max-md:bg-gray-50 md:bg-gray-100 border-gray-200 h-[35px] md:h-[55px] lg:h-[72px] items-center flex-auto md:pl-5 isolate">
         <div className="md:py-[4.53px] lg:py-[10.59px]">
           <div className="inline-flex absolute xs:max-md:-top-[22.5px] xs:max-md:right-3.5 md:relative z-10 flex-col shrink-0 size-[45px] lg:size-[50px] rounded-full justify-center items-center bg-white border-[.74px] lg:border-[.82px] border-gray-200 shadow-[0px_1.64px_4.1px_0px_theme(colors.black/.04)]">
             <span className="text-[12.01px] leading-[14.54px] lg:text-sm lg:leading-[16.94px] font-semibold text-dark-blue-400">
@@ -236,7 +236,7 @@ const ProjectGroupListCard = ({
             </span>
           </div>
         </div>
-        <div className="relative flex flex-auto self-stretch md:-left-[25px] overflow-hidden">
+        <div className="relative flex flex-auto self-stretch md:-left-[25px] overflow-hidden bg-gray-100">
           {Array.from({ length: 4 }).map((_, i) =>
             available[i] ? (
               <motion.div
@@ -268,7 +268,7 @@ const ProjectGroupListCard = ({
       </div>
 
       <div
-        className="justify-end py-2.5 space-y-1 pl-5 pr-2.5 lg:flex hidden"
+        className="justify-end py-2.5 space-y-1 pl-5 pr-2.5 lg:flex hidden bg-gray-100"
         data-dropdown-zone
       >
         <CardDropdown
@@ -504,7 +504,7 @@ const TalentCardLandscapeRow = ({
         <div className="md:contents flex items-center justify-between">
           <div className="md:flex-auto md:pl-6 lg:pl-[25px] md:py-3 lg:py-[25px] md:last:pr-3 lg:last:pr-[25px]">
             <div className="flex items-center gap-x-3">
-              <div className="flex flex-col">
+              <div className="flex flex-col items-start">
                 <span className="text-xs leading-[14.52px] lg:text-base font-semibold inline-block lg:leading-[19.07px] text-dark-blue-400">
                   {talents.length}
                 </span>
