@@ -62,13 +62,14 @@ export const FavoriteListCardSkeleton = () => (
   </div>
 )
 
-/** Matches a group card on the groups index. */
+/** Matches a group card on the groups index (ProjectGroupCard). */
 export const FavoriteGroupCardSkeleton = () => (
-  <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xs">
-    <Shimmer className="h-[140px]" />
-    <div className="space-y-3 p-5">
-      <Shimmer className="h-4 w-32 rounded" />
-      <Shimmer className="h-3 w-24 rounded" />
+  <div className="rounded-lg border border-gray-200 bg-white shadow-xs">
+    <Shimmer className="h-[163px] lg:h-[222px] rounded-t-lg" />
+    <div className="relative pt-[30px] lg:pt-[47px] p-5 lg:p-[25px]">
+      <Shimmer className="size-11 lg:size-[61px] rounded-full absolute -top-[22px] lg:-top-[30.5px] left-1/2 -translate-x-1/2" />
+      <Shimmer className="h-4 w-28 rounded mx-auto" />
+      <Shimmer className="mt-2 h-3 w-20 rounded mx-auto" />
     </div>
   </div>
 )
