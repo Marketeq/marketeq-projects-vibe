@@ -304,8 +304,11 @@ export default function JobDetailsPage({
       ? slugTitle
       : job.subtitle
   const { user } = useAuth()
-  const isLegalServiceNda =
-    heroVariant === "legal-service-nda" || searchParams.get("view") === "offer"
+  const isOfferView = searchParams.get("view") === "offer"
+  const isLegalServiceNda = heroVariant === "legal-service-nda" || isOfferView
+  const isPrivateJob =
+    heroVariant === "legal-service-nda" ||
+    (isOfferView && searchParams.get("visibility") === "private")
   const primaryCtaLabel = isLegalServiceNda ? "Accept Offer" : "Apply"
   const metaLeadLabel = isLegalServiceNda
     ? `Offer received ${job.posted} ago`
@@ -1029,7 +1032,7 @@ export default function JobDetailsPage({
               <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="mb-4 flex flex-wrap items-center gap-2">
-                    {isLegalServiceNda ? (
+                    {isPrivateJob ? (
                       <Badge visual="gray" className="gap-x-1.5">
                         Private
                       </Badge>

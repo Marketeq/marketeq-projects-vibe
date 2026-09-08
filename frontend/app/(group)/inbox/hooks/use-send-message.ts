@@ -1,9 +1,14 @@
 "use client"
 
 import { decryptWithPrivateKey, encryptAES } from "@/src/crypto/e2ee"
-import { exportPrivateKey } from "@/src/crypto/keys"
+import {
+  ensureEncryptionKeysExist,
+  loadPrivateKey,
+  republishPublicKey,
+} from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
+import { getCurrentUser } from "@/utils/auth"
 import type { Message, MessageType } from "@/types/message"
 
 /// Backend returns the message directly
@@ -38,28 +43,59 @@ export function useSendMessage(
     let key: Uint8Array | null = null
     try {
       key = loadKey(convId)
+      if (key.byteLength !== 32) {
+        localStorage.removeItem(`convKey:${convId}`)
+        key = null
+      }
     } catch {
       // no cached key
     }
 
-    if (!key && privateKey) {
+    let activePrivateKey = privateKey
+    if (!activePrivateKey) {
+      const currentUserId = getCurrentUser()?.id
+      if (currentUserId) {
+        await ensureEncryptionKeysExist(currentUserId)
+        activePrivateKey = await loadPrivateKey(currentUserId)
+      }
+    }
+
+    const fetchAndUnwrapKey = async (rsaPrivateKey: CryptoKey) => {
+      const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
+        `/messaging/conversations/${convId}/key?isGroup=${isGroup}`
+      )
+      const wrapped = Uint8Array.from(atob(encryptedKey), (c) =>
+        c.charCodeAt(0)
+      )
+      const rawBuffer = await crypto.subtle.decrypt(
+        { name: "RSA-OAEP" },
+        rsaPrivateKey,
+        wrapped
+      )
+      const rawKey = new Uint8Array(rawBuffer)
+      if (rawKey.byteLength !== 32) {
+        throw new Error("Invalid conversation encryption key")
+      }
+      saveKey(convId, btoa(String.fromCharCode(...rawKey)))
+      return rawKey
+    }
+
+    if (!key && activePrivateKey) {
       try {
-        const { encryptedKey } = await apiFetch<{ encryptedKey: string }>(
-          `/messaging/conversations/${convId}/key?isGroup=${isGroup}`
-        )
-        const wrapped = Uint8Array.from(atob(encryptedKey), (c) =>
-          c.charCodeAt(0)
-        )
-        const rawBuffer = await crypto.subtle.decrypt(
-          { name: "RSA-OAEP" },
-          privateKey,
-          wrapped
-        )
-        key = new Uint8Array(rawBuffer)
-        const b64 = btoa(String.fromCharCode(...key))
-        saveKey(convId, b64)
+        key = await fetchAndUnwrapKey(activePrivateKey)
       } catch {
-        // key exchange not available yet, fall through to plaintext
+        // A browser keypair may have been regenerated after this thread was
+        // seeded. Re-publish the browser's current public key, discard only
+        // this recoverable wrapped copy, and request a fresh wrapping.
+        try {
+          await republishPublicKey()
+          await apiFetch(`/messaging/conversations/${convId}/key`, {
+            method: "DELETE",
+          })
+          key = await fetchAndUnwrapKey(activePrivateKey)
+        } catch {
+          // Fall through to the explicit encryption error below.
+        }
       }
     }
 
