@@ -53,8 +53,13 @@ export interface IndustryPayload {
 }
 
 export interface UserProfilePayload {
+  /** Profile photo; the client company logo reuses this field. */
+  avatarUrl?: string | null
   /** Settings > IP Restrictions master switch. */
   ipRestrictionEnabled?: boolean
+  /** Empty string clears the avatar. Not null — the DTO validates @IsString(),
+   *  so null is rejected outright. */
+  avatarUrl?: string
   firstName?: string
   lastName?: string
   username?: string

@@ -12,6 +12,7 @@ import { useRefreshUser } from "../hooks/use-refresh-user"
 import { useCompanyInfo } from "../hooks/use-company-info"
 import { useClientIp } from "../hooks/use-client-ip"
 import { useAllowedIps } from "../hooks/use-allowed-ips"
+import AllowedIpsAPI from "@/service/http/allowed-ips"
 import { AuthAPI } from "@/service/http/auth"
 import { ClientAPI } from "@/service/http/client"
 import {
@@ -1231,7 +1232,7 @@ export default function SettingsPage() {
   }, [activeTab, addParam])
 
   const accountRole = useMemo(() => resolveDashboardRole(user), [user])
-  const settingsTabItems = useMemo(() => buildSettingsTabItems(accountRole), [accountRole])
+  const settingsTabItems = useMemo(() => buildSettingsTabItems(accountRole ?? null), [accountRole])
 
   const handleBillingTabChange = (value: BillingTabValue) => {
     const map: Record<BillingTabValue, string> = {
@@ -1372,7 +1373,10 @@ export default function SettingsPage() {
     setIpSaveError(null)
     if (!user?.id) return
     try {
-      await UserAPI.updateProfile(user.id, { ipRestrictionEnabled: next })
+      // The dedicated route, not the generic profile update: switching this on
+      // is refused server-side when the caller's own address is not covered by
+      // the list, which is the check that stops someone locking themselves out.
+      await AllowedIpsAPI.setEnabled(next)
       setUser((prev) => (prev ? { ...prev, ipRestrictionEnabled: next } : prev))
     } catch (err: any) {
       setIsIpRestrictionEnabled(previous)
@@ -1561,6 +1565,11 @@ export default function SettingsPage() {
         // company name, and writing this field there would overwrite Company
         // Info.
         department: profileForm.team.join(", "),
+        // Removing the photo was display-only: the flag drove the rendered
+        // image and the dirty check, and the save carried nothing, so the
+        // avatar came back on the next load. Empty string rather than null —
+        // the DTO validates @IsString() and would reject null.
+        ...(isAvatarRemoved ? { avatarUrl: "" } : {}),
       }
       const response = await UserAPI.updateProfile(user.id, payload)
       const isSuccess =
@@ -1580,6 +1589,7 @@ export default function SettingsPage() {
             : prev
         )
         setIsEditing(false)
+        setIsAvatarRemoved(false)
         toast({ title: "Profile updated successfully", variant: "success" })
         // The patch above only carries the three fields it names. Re-read so
         // the rest of the app sees the phone, job title, team, languages and

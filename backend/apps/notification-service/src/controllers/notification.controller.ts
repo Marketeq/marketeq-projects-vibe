@@ -67,20 +67,45 @@ export class NotificationController {
     return this.service.delete(req.user?.sub ?? req.user?.id, id);
   }
 
+  // Both routes go through presentPreferences so an address awaiting
+  // confirmation reads back the way it was typed. Without that on the PATCH
+  // response too, saving a new address would immediately render the old one and
+  // look like the save had failed.
   @Get('preferences')
-  getPreferences(@Req() req: any) {
-    return this.service.getOrCreatePreferences(req.user?.sub ?? req.user?.id);
+  async getPreferences(@Req() req: any) {
+    return this.service.presentPreferences(
+      await this.service.getOrCreatePreferences(req.user?.sub ?? req.user?.id),
+    );
   }
 
   @Patch('preferences')
-  updatePreferences(@Req() req: any, @Body() dto: UpdatePreferencesDto) {
-    return this.service.updatePreferences(req.user?.sub ?? req.user?.id, dto);
+  async updatePreferences(@Req() req: any, @Body() dto: UpdatePreferencesDto) {
+    return this.service.presentPreferences(
+      await this.service.updatePreferences(req.user?.sub ?? req.user?.id, dto),
+    );
   }
 
   @Post('preferences/reset')
   @HttpCode(HttpStatus.OK)
   resetPreferences(@Req() req: any) {
     return this.service.resetPreferences(req.user?.sub ?? req.user?.id);
+  }
+
+  /**
+   * Confirms a notification email change.
+   *
+   * A GET so the link in the email works by being clicked, and public — the
+   * token is the proof, and requiring a session would break confirming from a
+   * phone that is not signed in. Deliberately not tied to the requesting
+   * session for the same reason.
+   *
+   * Returns JSON. The link currently lands on this response rather than a
+   * page; giving it a proper landing screen needs a design, and none exists.
+   */
+  @Public()
+  @Get('preferences/email/verify')
+  verifyEmail(@Query('token') token: string) {
+    return this.service.verifyPendingEmail(token);
   }
 
   @Get('preferences/catalog')

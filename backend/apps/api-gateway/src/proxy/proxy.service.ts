@@ -79,16 +79,6 @@ export class ProxyService {
       // these exact paths ahead of the global json() parser).
       ...(req.headers['stripe-signature'] ? { 'stripe-signature': req.headers['stripe-signature'] as string } : {}),
       ...(req.headers['x-ramp-signature'] ? { 'x-ramp-signature': req.headers['x-ramp-signature'] as string } : {}),
-      // PayPal webhook signature verification — same reasoning as
-      // Stripe/Ramp above, but PayPal spreads its signature across five
-      // headers instead of one. Missing this silently blanked all five at
-      // payout-service, which then correctly rejected verification with
-      // "Required field cannot be blank" — confirmed live.
-      ...(req.headers['paypal-auth-algo'] ? { 'paypal-auth-algo': req.headers['paypal-auth-algo'] as string } : {}),
-      ...(req.headers['paypal-cert-url'] ? { 'paypal-cert-url': req.headers['paypal-cert-url'] as string } : {}),
-      ...(req.headers['paypal-transmission-id'] ? { 'paypal-transmission-id': req.headers['paypal-transmission-id'] as string } : {}),
-      ...(req.headers['paypal-transmission-sig'] ? { 'paypal-transmission-sig': req.headers['paypal-transmission-sig'] as string } : {}),
-      ...(req.headers['paypal-transmission-time'] ? { 'paypal-transmission-time': req.headers['paypal-transmission-time'] as string } : {}),
     }
 
     // Downstream services (timezone-resolution.service.ts, geo.service.ts's

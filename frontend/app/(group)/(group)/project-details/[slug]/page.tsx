@@ -762,7 +762,7 @@ const VideoThumb = ({
 }: {
   url?: string | null
   alt: string
-}): JSX.Element | null => {
+}): React.JSX.Element | null => {
   const yt = toVideoThumb(url)
   if (yt) {
     return (

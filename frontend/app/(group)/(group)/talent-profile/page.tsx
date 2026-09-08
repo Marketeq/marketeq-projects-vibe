@@ -466,12 +466,7 @@ function Default() {
   const router = useRouter()
   const pathname = usePathname()
   const handleShareProfile = () => {
-    const base =
-      typeof window !== "undefined" ? window.location.origin : ""
-    const url = profile?.username
-      ? `${base}/talent-profile?username=${encodeURIComponent(profile.username)}`
-      : `${base}/talent-profile`
-    openInviteWindow(true, "Share Profile", url)
+    openInviteWindow(true, "Share Profile")
   }
   const searchParams = useSearchParams()
   const usernameParam = searchParams.get("username")

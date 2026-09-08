@@ -300,6 +300,15 @@
       "compilerOptions": {
         "tsConfigPath": "apps/resume-parsing-service/tsconfig.app.json"
       }
+    },
+    "location-service": {
+      "type": "application",
+      "root": "apps/location-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/location-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/location-service/tsconfig.app.json"
+      }
     }
   }
 }

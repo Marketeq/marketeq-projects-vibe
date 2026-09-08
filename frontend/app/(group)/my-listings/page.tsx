@@ -93,6 +93,17 @@ const OFFER_TYPE_OPTIONS: { value: MyListingType; label: string }[] = [
 ]
 const STATUS_OPTIONS = MY_LISTING_STATUSES
 
+const CASCADE_DELAYS = [
+  "delay-0",
+  "delay-100",
+  "delay-200",
+  "delay-300",
+  "delay-500",
+  "delay-700",
+]
+const cascadeDelay = (i: number) =>
+  CASCADE_DELAYS[Math.min(i, CASCADE_DELAYS.length - 1)]
+
 export default function MyListingsPage() {
   const router = useRouter()
   const { user } = useAuth()
@@ -433,8 +444,30 @@ export default function MyListingsPage() {
 
               <TabsContent value={activeTab}>
                 {isLoading ? (
-                  <div className="py-16 text-center text-sm text-gray-500">
-                    Loading listings...
+                  <div className="grid grid-cols-4 gap-4 pt-[20px]">
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div key={i} className="flex flex-col gap-3">
+                        <div className="relative h-[170px] overflow-hidden rounded-xl bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </div>
+                        <div className="flex flex-col gap-2 px-1">
+                          <div className="relative h-4 w-3/4 overflow-hidden rounded bg-gray-100">
+                            <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                          </div>
+                          <div className="relative h-3 w-1/2 overflow-hidden rounded bg-gray-100">
+                            <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                          </div>
+                          <div className="mt-1 flex gap-2">
+                            <div className="relative h-5 w-14 overflow-hidden rounded-full bg-gray-100">
+                              <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                            </div>
+                            <div className="relative h-5 w-14 overflow-hidden rounded-full bg-gray-100">
+                              <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ) : filteredListings.length === 0 ? (
                   <div className="py-16 text-center">
@@ -476,8 +509,8 @@ export default function MyListingsPage() {
                   </div>
                 ) : viewMode === "grid" ? (
                   <div className="grid grid-cols-4 gap-4 pt-[20px]">
-                    {filteredListings.map((listing) => (
-                      <article key={listing.id} className="group">
+                    {filteredListings.map((listing, index) => (
+                      <article key={listing.id} className={`group animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(index)}`}>
                         <div className="h-[170px] relative overflow-hidden rounded-xl bg-gray-100">
                           {listing.mediaUrl ? (
                             <Image

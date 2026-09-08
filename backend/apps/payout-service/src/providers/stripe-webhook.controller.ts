@@ -40,11 +40,29 @@ export class StripeWebhookController {
       case 'financial_connections.account.disconnected':
         await this.stripeProvider.handleFCDisconnected(event.data.object);
         break;
+      case 'payout.created':
+        await this.stripeProvider.handlePayoutCreated(event.data.object);
+        break;
       case 'payout.paid':
         await this.stripeProvider.handlePayoutPaid(event.data.object);
         break;
       case 'payout.failed':
         await this.stripeProvider.handlePayoutFailed(event.data.object);
+        break;
+      case 'payout.updated':
+        await this.stripeProvider.handlePayoutUpdated(event.data.object);
+        break;
+      case 'payout.canceled':
+        await this.stripeProvider.handlePayoutCanceled(event.data.object);
+        break;
+      case 'transfer.created':
+        await this.stripeProvider.handleTransferCreated(event.data.object);
+        break;
+      case 'transfer.reversed':
+        await this.stripeProvider.handleTransferReversed(event.data.object);
+        break;
+      case 'account.external_account.updated':
+        await this.stripeProvider.handleExternalAccountUpdated(event.data.object);
         break;
       case 'account.updated':
         await this.stripeProvider.handleAccountUpdated(event.data.object);

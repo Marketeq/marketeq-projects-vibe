@@ -236,10 +236,19 @@ export default function InboxRoot() {
                   title: item.title,
                   body: item.body,
                   href: getNotificationHref(item, getNotificationKind(item)),
-                  viewJobHref: `${jobDetailsUrl(jobListingId)}?view=offer&contractId=${encodeURIComponent(offerId)}&participantId=${encodeURIComponent(conversationParticipantId)}`,
+                  viewJobHref: offerJobHref(
+                    jobListingId,
+                    offerId,
+                    conversationParticipantId,
+                    metadata
+                  ),
                   jobListingId,
                   createdAt: item.createdAt,
                   actorId: conversationParticipantId,
+                  threadId:
+                    typeof metadata.threadId === "string"
+                      ? metadata.threadId
+                      : undefined,
                   senderDisplayName:
                     typeof metadata.senderDisplayName === "string"
                       ? metadata.senderDisplayName
@@ -378,11 +387,15 @@ export default function InboxRoot() {
                   body: item.body,
                   href: getNotificationHref(item, getNotificationKind(item)),
                   viewJobHref: jobListingId
-                    ? `${jobDetailsUrl(jobListingId)}?view=offer&contractId=${encodeURIComponent(offerId)}${actorId ? `&participantId=${encodeURIComponent(actorId)}` : ""}`
+                    ? offerJobHref(jobListingId, offerId, actorId, metadata)
                     : "",
                   jobListingId: jobListingId ?? "",
                   createdAt: item.createdAt,
                   actorId,
+                  threadId:
+                    typeof metadata.threadId === "string"
+                      ? metadata.threadId
+                      : undefined,
                   senderDisplayName:
                     typeof metadata.senderDisplayName === "string"
                       ? metadata.senderDisplayName
@@ -631,12 +644,21 @@ export default function InboxRoot() {
     }
 
     return Array.from(byActor.entries()).map(([actorId, messages]) => {
-      const latest = [...messages].sort(
+      const sortedMessages = [...messages].sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      )[0]
+      )
+      const latest = sortedMessages[0]
+      // Some actors have multiple offer notifications. Use the newest real
+      // messaging thread available for that actor instead of allowing a newer
+      // display-only notification to force a synthetic conversation id.
+      const realThreadId = sortedMessages.find((message) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          message.threadId ?? ""
+        )
+      )?.threadId
       return {
-        id: `offer-notifications-${actorId}`,
+        id: realThreadId || `offer-notifications-${actorId}`,
         isGroup: false,
         createdAt: latest.createdAt,
         updatedAt: latest.createdAt,
@@ -662,6 +684,24 @@ export default function InboxRoot() {
   useEffect(() => {
     if (!selectedConversation && seededOfferConversations.length > 0) {
       setSelectedConversation(seededOfferConversations[0])
+      return
+    }
+
+    // Older seeded inbox sessions cached a display-only conversation ID such
+    // as `offer-notifications-<actorId>`. Reconcile that stale snapshot to the
+    // real messaging thread carried by the notification so encrypted sends use
+    // a valid UUID without requiring the user to clear session storage.
+    if (selectedConversation?.id.startsWith("offer-notifications-")) {
+      const currentUserId = getCurrentUser()?.id
+      const actorId = selectedConversation.participantIds.find(
+        (participantId) => participantId !== currentUserId
+      )
+      const realConversation = seededOfferConversations.find(
+        (conversation) =>
+          conversation.id !== selectedConversation.id &&
+          conversation.participantIds.includes(actorId ?? "")
+      )
+      if (realConversation) setSelectedConversation(realConversation)
     }
   }, [selectedConversation, seededOfferConversations])
 
@@ -798,4 +838,35 @@ export default function InboxRoot() {
       </Inbox>
     </AuthenticatedRoute>
   )
+}
+const isHiringFlowOfferMetadata = (metadata: Record<string, unknown>) => {
+  const source = [
+    metadata.offerSource,
+    metadata.source,
+    metadata.origin,
+    metadata.createdFrom,
+  ].find((value): value is string => typeof value === "string")
+
+  return (
+    metadata.hiringFlow === true ||
+    metadata.isPrivate === true ||
+    source?.toLowerCase() === "hire" ||
+    source?.toLowerCase() === "hire-me" ||
+    source?.toLowerCase() === "hiring-page"
+  )
+}
+
+const offerJobHref = (
+  jobListingId: string,
+  offerId: string,
+  participantId: string | undefined,
+  metadata: Record<string, unknown>
+) => {
+  const params = new URLSearchParams({
+    view: "offer",
+    visibility: isHiringFlowOfferMetadata(metadata) ? "private" : "public",
+    contractId: offerId,
+  })
+  if (participantId) params.set("participantId", participantId)
+  return `${jobDetailsUrl(jobListingId)}?${params.toString()}`
 }
