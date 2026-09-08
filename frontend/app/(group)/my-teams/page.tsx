@@ -131,6 +131,17 @@ const EmptyState = ({ message }: { message: string }) => (
   </div>
 )
 
+const CASCADE_DELAYS = [
+  "delay-0",
+  "delay-100",
+  "delay-200",
+  "delay-300",
+  "delay-500",
+  "delay-700",
+]
+const cascadeDelay = (i: number) =>
+  CASCADE_DELAYS[Math.min(i, CASCADE_DELAYS.length - 1)]
+
 const TeamList = ({
   teams,
   savedIds,
@@ -142,15 +153,19 @@ const TeamList = ({
   onToggleSave: (teamId: string) => void
   isOwner: boolean
 }) => (
-  <div className="flex flex-col gap-5 pt-6">
-    {teams.map((team) => (
-      <TeamCardLandscape
+  <div className="flex flex-col gap-3 pt-3">
+    {teams.map((team, index) => (
+      <div
         key={team.id}
-        {...toCardProps(team)}
-        isOwner={isOwner}
-        isSaved={savedIds.has(String(team.id))}
-        onSaveClick={() => onToggleSave(String(team.id))}
-      />
+        className={`animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(index)}`}
+      >
+        <TeamCardLandscape
+          {...toCardProps(team)}
+          isOwner={isOwner}
+          isSaved={savedIds.has(String(team.id))}
+          onSaveClick={() => onToggleSave(String(team.id))}
+        />
+      </div>
     ))}
   </div>
 )
