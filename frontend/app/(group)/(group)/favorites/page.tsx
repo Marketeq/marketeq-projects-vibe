@@ -236,7 +236,7 @@ const ProjectGroupListCard = ({
             </span>
           </div>
         </div>
-        <div className="relative flex flex-auto self-stretch md:-left-[25px] overflow-hidden">
+        <div className="relative flex flex-auto self-stretch md:-left-[25px] overflow-hidden bg-gray-100">
           {Array.from({ length: 4 }).map((_, i) =>
             available[i] ? (
               <motion.div
@@ -268,7 +268,7 @@ const ProjectGroupListCard = ({
       </div>
 
       <div
-        className="justify-end py-2.5 space-y-1 pl-5 pr-2.5 lg:flex hidden"
+        className="justify-end py-2.5 space-y-1 pl-5 pr-2.5 lg:flex hidden bg-gray-100"
         data-dropdown-zone
       >
         <CardDropdown
@@ -504,7 +504,7 @@ const TalentCardLandscapeRow = ({
         <div className="md:contents flex items-center justify-between">
           <div className="md:flex-auto md:pl-6 lg:pl-[25px] md:py-3 lg:py-[25px] md:last:pr-3 lg:last:pr-[25px]">
             <div className="flex items-center gap-x-3">
-              <div className="flex flex-col">
+              <div className="flex flex-col items-start">
                 <span className="text-xs leading-[14.52px] lg:text-base font-semibold inline-block lg:leading-[19.07px] text-dark-blue-400">
                   {talents.length}
                 </span>
