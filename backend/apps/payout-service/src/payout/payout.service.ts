@@ -236,6 +236,12 @@ export class PayoutService {
       throw new PayoutError('This deposit method has not been verified yet.',
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_METHOD_UNVERIFIED');
     }
+    // PS-09 v2.0 §11: a manual withdrawal to a method whose OAuth token
+    // refresh has failed must be blocked until the contractor re-authorizes.
+    if ((method as any).reauthRequired) {
+      throw new PayoutError('Your Wise/Payoneer connection needs to be re-authorized before you can withdraw to this method.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_METHOD_REAUTH_REQUIRED', { depositMethodId: method.id });
+    }
     if (method.methodType === MethodType.TEQ_COIN && !this.config.get('FEATURE_TEQ_COIN_ENABLED', false)) {
       throw new PayoutError('This payout method is not currently available.',
         HttpStatus.BAD_REQUEST, 'ERR_PAYOUT_METHOD_UNAVAILABLE');
@@ -750,7 +756,6 @@ export class PayoutService {
     [MethodType.TEQ_COIN]: 0,
     [MethodType.MARKETEQ_DEBIT_CARD]: 1,
     [MethodType.BANK_STRIPE]: 2,
-    [MethodType.PAYPAL]: 1,
     [MethodType.WISE]: 2,
     [MethodType.PAYONEER]: 2,
     [MethodType.BANK_MANUAL]: 3,
@@ -854,7 +859,8 @@ export class PayoutService {
   // Figma "Your withdrawal was declined — reserve balance is too low": an
   // ad-hoc withdrawal previously had no reserve awareness at all (reserveUsd
   // on payout_schedules only applied to the scheduled-payout engine's own
-  // calculatePayoutAmount() in schedule.service.ts). A contractor could
+  // reserve deduction in schedule-execution.cron.ts's processSchedule()).
+  // A contractor could
   // withdraw their entire available balance manually, silently defeating the
   // reserve they configured. This enforces the same floor for ad-hoc
   // withdrawals, with an explicit, one-time bypass (ignoreReserve) rather
