@@ -31,7 +31,7 @@ export class BankPayoutExecutorService {
     if (key && key !== 'sk_test_YOUR_TEST_KEY_HERE') {
       try {
         const Stripe = require('stripe');
-        this.stripe = new Stripe(key, { apiVersion: '2024-06-20' });
+        this.stripe = new Stripe(key, { apiVersion: this.config.get('STRIPE_API_VERSION', '2024-06-20') });
       } catch { this.logger.warn('Stripe SDK not available — using stubs'); }
     }
   }
@@ -47,14 +47,29 @@ export class BankPayoutExecutorService {
       return;
     }
 
+    // PS-09 v2.0 §2: WISE/PAYONEER execute through this same Stripe ACH path
+    // — Marketeq never calls the Wise/Payoneer Payouts API directly. Once
+    // OAuth has registered a Stripe external_account for the method
+    // (oauth.service.ts's handleCallback), it is indistinguishable from a
+    // regular bank payout from here on.
     const method = payout.depositMethod;
-    if (!method || (method.methodType !== MethodType.BANK_STRIPE && method.methodType !== MethodType.BANK_MANUAL)) {
-      this.logger.error(`Payout ${payoutRequestId} is not a bank type`);
+    const bankLikeTypes = [MethodType.BANK_STRIPE, MethodType.BANK_MANUAL, MethodType.WISE, MethodType.PAYONEER];
+    if (!method || !bankLikeTypes.includes(method.methodType)) {
+      this.logger.error(`Payout ${payoutRequestId} is not a bank-executed type`);
       return;
     }
 
     if (method.verificationStatus !== VerificationStatus.VERIFIED) {
       await this.failPayout(payout, 'Bank account has not been verified.', 'ERR_BANK_NOT_VERIFIED');
+      return;
+    }
+
+    // PS-09 v2.0 §11: a token-refresh failure sets reauthRequired and blocks
+    // payouts to this method until the contractor re-authorizes.
+    if ((method as any).reauthRequired) {
+      await this.failPayout(payout,
+        'Your Wise/Payoneer connection needs to be re-authorized before this payout can proceed.',
+        'ERR_PAYOUT_METHOD_REAUTH_REQUIRED');
       return;
     }
 
@@ -87,12 +102,17 @@ export class BankPayoutExecutorService {
         // Custom account's own balance has to be funded before it can pay
         // out from it — there's no single "pay this destination bank
         // directly from platform balance" call for Connect.
-        const transfer = await this.stripe.transfers.create({
-          amount: amountCents,
-          currency: 'usd',
-          destination: method.stripeConnectAccountId,
-          metadata: { payoutRequestId, contractorId: payout.contractorId },
-        });
+        // PS-33 §6: transfer-{payoutRequestId} — a network-error retry of
+        // this same payout job must not create a second Transfer.
+        const transfer = await this.stripe.transfers.create(
+          {
+            amount: amountCents,
+            currency: 'usd',
+            destination: method.stripeConnectAccountId,
+            metadata: { payoutRequestId, contractorId: payout.contractorId },
+          },
+          { idempotencyKey: `transfer-${payoutRequestId}` },
+        );
         transferId = transfer.id;
 
         // Previously always omitted (implicit 'standard') regardless of
@@ -102,6 +122,8 @@ export class BankPayoutExecutorService {
         // itself rejects this if the connected account isn't instant-payout
         // capable, which the surrounding try/catch already turns into a
         // normal failPayout() rather than a silent fallback to standard.
+        // PS-33 §6: payout-{payoutRequestId} — same dedup reasoning as the
+        // transfer above, one step further down the pipeline.
         const stripePayout = await this.stripe.payouts.create(
           {
             amount: amountCents,
@@ -110,7 +132,7 @@ export class BankPayoutExecutorService {
             metadata: { payoutRequestId, contractorId: payout.contractorId },
             ...(payout.speed === PayoutSpeed.INSTANT ? { method: 'instant' } : {}),
           },
-          { stripeAccount: method.stripeConnectAccountId },
+          { stripeAccount: method.stripeConnectAccountId, idempotencyKey: `payout-${payoutRequestId}` },
         );
         payoutId = stripePayout.id;
       } else {
@@ -142,7 +164,7 @@ export class BankPayoutExecutorService {
         metadata: { transferId, payoutId, amountCents },
       });
 
-      this.logger.log(`Bank payout initiated: ${payoutRequestId} → $${amountUsd} to ••••${method.bankAccountLast4}`);
+      this.logger.log(`Bank payout initiated: ${payoutRequestId} → $${amountUsd} to ••••${method.bankAccountLast4 ?? method.accountIdentifier}`);
 
     } catch (err: any) {
       this.logger.error(`Bank payout failed: ${payoutRequestId} — ${err.message}`);

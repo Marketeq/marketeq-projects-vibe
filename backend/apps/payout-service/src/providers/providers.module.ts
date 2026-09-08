@@ -2,8 +2,6 @@ import { Module }              from '@nestjs/common';
 import { TypeOrmModule }       from '@nestjs/typeorm';
 import { StripeProvider }      from './stripe.provider';
 import { StripeWebhookController } from './stripe-webhook.controller';
-import { PaypalWebhookController } from './paypal-webhook.controller';
-import { PaypalProvider }      from './paypal.provider';
 import { WiseProvider }        from './wise.provider';
 import { PayoneerProvider }    from './payoneer.provider';
 import { CryptoPayoutProvider } from './crypto.provider';
@@ -18,8 +16,8 @@ import { PublishersModule }   from '../publishers/publishers.module';
     TypeOrmModule.forFeature([DepositMethod, DepositMethodVerification, PayoutRequest]),
     PublishersModule,
   ],
-  controllers: [StripeWebhookController, PaypalWebhookController],
-  providers: [StripeProvider, PaypalProvider, WiseProvider, PayoneerProvider, CryptoPayoutProvider, TeqCoinProvider],
-  exports: [StripeProvider, PaypalProvider, WiseProvider, PayoneerProvider, CryptoPayoutProvider, TeqCoinProvider],
+  controllers: [StripeWebhookController],
+  providers: [StripeProvider, WiseProvider, PayoneerProvider, CryptoPayoutProvider, TeqCoinProvider],
+  exports: [StripeProvider, WiseProvider, PayoneerProvider, CryptoPayoutProvider, TeqCoinProvider],
 })
 export class ProvidersModule {}

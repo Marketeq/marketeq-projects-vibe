@@ -1,13 +1,15 @@
 // apps/payout-service/src/providers/payoneer.provider.ts
-// PS-00 §3.1: Payoneer API — OAuth 2.0
-// Retry 3 attempts — then fail payout
-// Full implementation in PS-10
+// PS-09 v2.0 §2: Marketeq does NOT call the Payoneer Payments API to move
+// money. OAuth (see src/oauth/oauth.service.ts) is used only to retrieve the
+// contractor's US routing + account number, which is then registered as a
+// Stripe external account (bank.service.ts). All execution goes through
+// Stripe Connect ACH — the same path as any other bank payout. Do not add a
+// createPayment()/direct-payout method here; that would reintroduce the
+// prefunded-balance model PS-32 §2 explicitly eliminated.
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class PayoneerProvider {
   constructor(private readonly config: ConfigService) {}
-
-  // createPayment()  — PS-10
 }
