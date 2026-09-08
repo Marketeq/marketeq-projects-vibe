@@ -8,6 +8,7 @@ import {
   useSearchParams,
 } from "next/navigation"
 import { UserAPI } from "@/service/http/user"
+import { CheckoutAPI } from "@/service/http/checkout"
 import {
   getCheckoutProjectSummary,
   titleizeCheckoutSlug,
@@ -16,6 +17,7 @@ import {
 import { cn } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
 import {
+  AlertCircle,
   ArrowDown,
   ArrowLeft,
   ChevronDown,
@@ -51,6 +53,11 @@ import {
   Accordion,
   AccordionItem,
   AccordionTrigger,
+  Alert,
+  AlertContent,
+  AlertDescription,
+  AlertIcon,
+  AlertTitle,
   Avatar,
   AvatarFallback,
   AvatarImage,
@@ -435,6 +442,11 @@ export default function CheckoutPage() {
   )
   const [projectSummary, setProjectSummary] =
     React.useState<CheckoutProjectSummary | null>(null)
+  const [isProjectSummaryLoading, setIsProjectSummaryLoading] =
+    React.useState(!isTalentCheckout)
+  const [projectSummaryError, setProjectSummaryError] = React.useState(false)
+  const [projectSummaryRetryKey, setProjectSummaryRetryKey] = React.useState(0)
+  const [walletBalance, setWalletBalance] = React.useState(0)
   const [isTalentProfileLoading, setIsTalentProfileLoading] =
     React.useState(isTalentCheckout)
   const [selectedRateValue, setSelectedRateValue] = React.useState(
@@ -517,16 +529,28 @@ export default function CheckoutPage() {
     if (isTalentCheckout) return
 
     let isActive = true
+    setIsProjectSummaryLoading(true)
+    setProjectSummaryError(false)
 
     const loadProjectSummary = async () => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000)
       try {
-        const summary = await getCheckoutProjectSummary(decodedSlug)
+        const summary = await getCheckoutProjectSummary(
+          decodedSlug,
+          controller.signal
+        )
         if (isActive) {
           setProjectSummary(summary)
         }
       } catch {
         if (isActive) {
-          setProjectSummary(null)
+          setProjectSummaryError(true)
+        }
+      } finally {
+        clearTimeout(timeoutId)
+        if (isActive) {
+          setIsProjectSummaryLoading(false)
         }
       }
     }
@@ -536,7 +560,32 @@ export default function CheckoutPage() {
     return () => {
       isActive = false
     }
-  }, [decodedSlug, isTalentCheckout])
+  }, [decodedSlug, isTalentCheckout, projectSummaryRetryKey])
+
+  React.useEffect(() => {
+    if (isTalentCheckout) return
+
+    let isActive = true
+
+    const loadWalletBalance = async () => {
+      try {
+        const response = await CheckoutAPI.GetWalletBalance()
+        if (isActive) {
+          setWalletBalance(Number(response?.data?.balance) || 0)
+        }
+      } catch {
+        if (isActive) {
+          setWalletBalance(0)
+        }
+      }
+    }
+
+    loadWalletBalance()
+
+    return () => {
+      isActive = false
+    }
+  }, [isTalentCheckout])
 
   const talentName = talentProfile?.firstName || fallbackTalentName
   const talentUsername = talentProfile?.username || decodedSlug
@@ -589,6 +638,48 @@ export default function CheckoutPage() {
   const formattedEstimatedTax = `$${estimatedTax.toFixed(2)}/hr`
   const formattedTotalHourlyRate = `$${totalHourlyRate.toFixed(2)}/hr`
   const formattedWeeklyCost = `$${Math.round(estimatedWeeklyCost).toLocaleString()}/wk`
+
+  // Tax has no backend source yet; per the checkout spec's documented fallback
+  // for an unavailable tax service, show $0.00 rather than guessing a rate.
+  const projectCheckoutEstimatedTax = 0
+  const projectCheckoutCost = projectSummary?.projectCost ?? null
+  // Available balance auto-applies in full on load (spec default), capped at
+  // the order total so it can never exceed what's owed.
+  const projectCheckoutBalanceApplied =
+    projectCheckoutCost !== null
+      ? Math.min(walletBalance, projectCheckoutCost)
+      : 0
+  const centsFormatter = React.useMemo(
+    () =>
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+    []
+  )
+  const formattedProjectCheckoutCost =
+    projectCheckoutCost !== null
+      ? formatter.format(projectCheckoutCost)
+      : "Pricing unavailable"
+  const formattedProjectCheckoutTax = centsFormatter.format(
+    projectCheckoutEstimatedTax
+  )
+  const formattedProjectCheckoutBalanceApplied = centsFormatter.format(
+    -projectCheckoutBalanceApplied
+  )
+  const formattedProjectCheckoutTotal =
+    projectCheckoutCost !== null
+      ? formatter.format(
+          Math.max(
+            0,
+            projectCheckoutCost +
+              projectCheckoutEstimatedTax -
+              projectCheckoutBalanceApplied
+          )
+        )
+      : "Pricing unavailable"
 
   const recommendations = [
     {
@@ -964,6 +1055,45 @@ export default function CheckoutPage() {
     })
   }
 
+  const retryProjectSummary = () => {
+    setProjectSummaryRetryKey((count) => count + 1)
+  }
+
+  if (!isTalentCheckout && projectSummaryError) {
+    return (
+      <div className="bg-gray-50 pt-[64px]">
+        <CheckoutNavigation
+          currentStep={1}
+          logoHref=""
+          firstStepLabel="Project Details"
+        />
+        <div className="px-[150px] py-[50px]">
+          <div className="max-w-[1140px] mx-auto">
+            <Alert variant="error" className="items-center p-5">
+              <AlertIcon>
+                <AlertCircle className="size-5" />
+              </AlertIcon>
+              <AlertContent>
+                <AlertTitle>Something went wrong</AlertTitle>
+                <AlertDescription className="mt-1">
+                  We couldn&apos;t load your project details. Please try
+                  again.
+                </AlertDescription>
+                <Button
+                  variant="filled"
+                  className="mt-4"
+                  onClick={retryProjectSummary}
+                >
+                  Try Again
+                </Button>
+              </AlertContent>
+            </Alert>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-gray-50 pt-[64px]">
       <CheckoutNavigation
@@ -1315,33 +1445,71 @@ export default function CheckoutPage() {
               ) : (
                 <>
                   <div className="p-5 border flex items-center gap-x-3 border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                    <div className="relative h-[92px] overflow-hidden w-[181px] border border-[#DFDFDF] rounded-md shrink-0">
-                      <NextImage
-                        className="object-cover"
-                        src={checkoutProjectImage}
-                        alt={checkoutProjectTitle}
-                        sizes="25vw"
-                        fill
-                      />
-                    </div>
+                    {isProjectSummaryLoading ? (
+                      <div
+                        className="relative h-[92px] overflow-hidden w-[181px] rounded-md shrink-0 bg-gray-100"
+                        aria-hidden="true"
+                      >
+                        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                      </div>
+                    ) : (
+                      <div className="relative h-[92px] overflow-hidden w-[181px] border border-[#DFDFDF] rounded-md shrink-0">
+                        <NextImage
+                          className="object-cover"
+                          src={checkoutProjectImage}
+                          alt={checkoutProjectTitle}
+                          sizes="25vw"
+                          fill
+                        />
+                      </div>
+                    )}
 
                     <div className="flex-auto flex items-center gap-x-5">
                       <div className="flex-auto">
-                        <h1 className="text-sm font-medium leading-5 border-gray-800">
-                          {checkoutProjectTitle}
-                        </h1>
+                        {isProjectSummaryLoading ? (
+                          <div
+                            className="relative h-5 w-40 overflow-hidden rounded bg-gray-100"
+                            aria-hidden="true"
+                          >
+                            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                          </div>
+                        ) : (
+                          <h1 className="text-sm font-medium leading-5 border-gray-800">
+                            {checkoutProjectTitle}
+                          </h1>
+                        )}
 
                         <div className="mt-2 inline-flex items-center gap-x-2">
-                          <UserGroup />
-                          <span className="text-xs leading-5 font-semibold text-primary-500">
-                            {checkoutProjectTeamLabel}
-                          </span>
+                          {isProjectSummaryLoading ? (
+                            <div
+                              className="relative h-4 w-28 overflow-hidden rounded bg-gray-100"
+                              aria-hidden="true"
+                            >
+                              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                            </div>
+                          ) : (
+                            <>
+                              <UserGroup />
+                              <span className="text-xs leading-5 font-semibold text-primary-500">
+                                {checkoutProjectTeamLabel}
+                              </span>
+                            </>
+                          )}
                         </div>
 
                         <div className="flex mt-2 items-center gap-x-2">
-                          <span className="text-[13px] leading-none font-semibold text-[#122A4B]">
-                            {checkoutProjectDateRange}
-                          </span>
+                          {isProjectSummaryLoading ? (
+                            <div
+                              className="relative h-4 w-24 overflow-hidden rounded bg-gray-100"
+                              aria-hidden="true"
+                            >
+                              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                            </div>
+                          ) : (
+                            <span className="text-[13px] leading-none font-semibold text-[#122A4B]">
+                              {checkoutProjectDateRange}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="inline-flex flex-col items-end gap-y-[26px]">
@@ -1349,10 +1517,19 @@ export default function CheckoutPage() {
                           8 months
                         </Badge>
 
-                        <div className="inline-flex flex-col gap-y-0.5">
-                          <span className="inline-block text-dark-blue-400 text-xl leading-none font-semibold">
-                            $94,000
-                          </span>
+                        <div className="inline-flex flex-col gap-y-0.5 items-end">
+                          {isProjectSummaryLoading ? (
+                            <div
+                              className="relative h-6 w-20 overflow-hidden rounded bg-gray-100"
+                              aria-hidden="true"
+                            >
+                              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                            </div>
+                          ) : (
+                            <span className="inline-block text-dark-blue-400 text-xl leading-none font-semibold">
+                              {formattedProjectCheckoutCost}
+                            </span>
+                          )}
                           <span className="inline-block text-dark-blue-400 text-xs leading-none">
                             Project Cost
                           </span>
@@ -2566,26 +2743,46 @@ export default function CheckoutPage() {
                         <span className="text-xs font-light text-dark-blue-400">
                           Project cost
                         </span>
-                        <span className="text-xs text-dark-blue-400">
-                          $94,000
-                        </span>
+                        {isProjectSummaryLoading ? (
+                          <div
+                            className="relative h-3.5 w-14 overflow-hidden rounded bg-gray-100"
+                            aria-hidden="true"
+                          >
+                            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-dark-blue-400">
+                            {formattedProjectCheckoutCost}
+                          </span>
+                        )}
                       </li>
                       <li className="flex items-center justify-between">
                         <span className="text-xs font-light text-dark-blue-400">
                           Estimated tax *
                         </span>
-                        <span className="text-xs text-dark-blue-400">
-                          $0.00
-                        </span>
+                        {isProjectSummaryLoading ? (
+                          <div
+                            className="relative h-3.5 w-14 overflow-hidden rounded bg-gray-100"
+                            aria-hidden="true"
+                          >
+                            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-dark-blue-400">
+                            {formattedProjectCheckoutTax}
+                          </span>
+                        )}
                       </li>
-                      <li className="flex items-center justify-between">
-                        <span className="text-xs font-light text-dark-blue-400">
-                          Balance applied
-                        </span>
-                        <span className="text-xs text-dark-blue-400">
-                          $0.00
-                        </span>
-                      </li>
+                      {projectCheckoutBalanceApplied > 0 ? (
+                        <li className="flex items-center justify-between">
+                          <span className="text-xs font-light text-dark-blue-400">
+                            Balance applied
+                          </span>
+                          <span className="text-xs text-dark-blue-400">
+                            {formattedProjectCheckoutBalanceApplied}
+                          </span>
+                        </li>
+                      ) : null}
                     </ul>
 
                     <ul className="pt-4 mt-4 space-y-2 border-t border-gray-200">
@@ -2593,9 +2790,18 @@ export default function CheckoutPage() {
                         <span className="text-xs font-light text-dark-blue-400">
                           Total amount to be paid
                         </span>
-                        <span className="text-base font-bold leading-none text-dark-blue-400">
-                          $94,000
-                        </span>
+                        {isProjectSummaryLoading ? (
+                          <div
+                            className="relative h-4 w-16 overflow-hidden rounded bg-gray-100"
+                            aria-hidden="true"
+                          >
+                            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                          </div>
+                        ) : (
+                          <span className="text-base font-bold leading-none text-dark-blue-400">
+                            {formattedProjectCheckoutTotal}
+                          </span>
+                        )}
                       </li>
                     </ul>
                   </>

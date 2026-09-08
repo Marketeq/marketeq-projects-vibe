@@ -5,6 +5,7 @@ export type CheckoutProjectSummary = {
   mediaUrl: string
   teamMemberCount: number | null
   dateRangeLabel: string
+  projectCost: number | null
 }
 
 export const titleizeCheckoutSlug = (value: string): string =>
@@ -34,6 +35,11 @@ const getTeamMemberCount = (project: any): number | null => {
   return roles.size > 0 ? roles.size : null
 }
 
+const getProjectCost = (project: any): number | null => {
+  const cost = project.budget ?? project.priceMin ?? project.priceMax
+  return typeof cost === "number" && cost > 0 ? cost : null
+}
+
 const getDateRangeLabel = (project: any): string => {
   if (project.dateRangeLabel) return project.dateRangeLabel
   if (project.startDate && project.endDate) {
@@ -48,20 +54,28 @@ const mapProjectSummary = (project: any, slug: string): CheckoutProjectSummary =
   mediaUrl: project.mediaUrls?.[0] || project.featuredImage || "/dashboard.png",
   teamMemberCount: getTeamMemberCount(project),
   dateRangeLabel: getDateRangeLabel(project),
+  projectCost: getProjectCost(project),
 })
 
 export const getCheckoutProjectSummary = async (
-  slug: string
+  slug: string,
+  signal?: AbortSignal
 ): Promise<CheckoutProjectSummary | null> => {
   const apiBase = getPublicApiUrl() || "http://localhost:4000"
 
   for (const candidate of getProjectCandidates(slug)) {
-    const projectResponse = await fetch(`${apiBase}/v1/projects/slug/${candidate}`)
+    const projectResponse = await fetch(
+      `${apiBase}/v1/projects/slug/${candidate}`,
+      { signal }
+    )
     if (projectResponse.ok) {
       return mapProjectSummary(await projectResponse.json(), candidate)
     }
 
-    const serviceResponse = await fetch(`${apiBase}/v1/services/slug/${candidate}`)
+    const serviceResponse = await fetch(
+      `${apiBase}/v1/services/slug/${candidate}`,
+      { signal }
+    )
     if (serviceResponse.ok) {
       return mapProjectSummary(await serviceResponse.json(), candidate)
     }
