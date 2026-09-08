@@ -7,6 +7,7 @@ import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import data from "@/public/mock/projects.json"
 import { ProjectAPI } from "@/service/http/project"
 import { UserAPI } from "@/service/http/user"
+import { DashboardTasksAPI } from "@/service/http/dashboard-tasks"
 import {
   type MyListing,
   formatActivityDate,
@@ -492,26 +493,9 @@ export const Editable = ({
 }
 
 interface Task {
-  id: string | number
+  id: string
   done: boolean
   value: string
-}
-
-const TASKS_STORAGE_KEY = "marketeq-dashboard-tasks"
-
-const loadTasks = (): Task[] => {
-  try {
-    const saved = localStorage.getItem(TASKS_STORAGE_KEY)
-    return saved ? JSON.parse(saved) : []
-  } catch {
-    return []
-  }
-}
-
-const saveTasks = (tasks: Task[]) => {
-  try {
-    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks))
-  } catch {}
 }
 
 export const Tasks = () => {
@@ -519,61 +503,55 @@ export const Tasks = () => {
   const [shouldClearAll, toggleShouldClearAll] = useToggle(false)
 
   React.useEffect(() => {
-    setTasks(loadTasks())
+    DashboardTasksAPI.list().then(setTasks).catch(() => {})
   }, [])
-
-  React.useEffect(() => {
-    saveTasks(tasks)
-  }, [tasks])
 
   React.useEffect(() => {
     if (shouldClearAll) {
       const timeoutId = setTimeout(() => {
-        setTasks((prev) => prev.filter((task) => !task.done))
+        const doneTasks = tasks.filter((t) => t.done)
+        setTasks((prev) => prev.filter((t) => !t.done))
         toggleShouldClearAll(false)
+        doneTasks.forEach((t) => DashboardTasksAPI.delete(t.id).catch(() => {}))
       }, ONE_SECOND * 6)
 
       return () => {
         clearTimeout(timeoutId)
       }
     }
-  }, [shouldClearAll, toggleShouldClearAll])
+  }, [shouldClearAll, tasks, toggleShouldClearAll])
 
   const addTask = () => {
-    setTasks((prev) => [...prev, { id: getId(), value: "", done: false }])
+    const tempId = getId().toString()
+    setTasks((prev) => [...prev, { id: tempId, value: "", done: false }])
+    DashboardTasksAPI.create({ value: "", sortOrder: tasks.length })
+      .then((saved) => {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === tempId ? { ...t, id: saved.id } : t))
+        )
+      })
+      .catch(() => {
+        setTasks((prev) => prev.filter((t) => t.id !== tempId))
+      })
   }
 
-  const onDoneChange = ({ id, done }: { id: Task["id"]; done: boolean }) => {
+  const onDoneChange = ({ id, done }: { id: string; done: boolean }) => {
     setTasks((prev) =>
-      prev.reduce(
-        (previousValue, currentValue) =>
-          currentValue.id === id
-            ? [...previousValue, { ...currentValue, done }]
-            : [...previousValue, currentValue],
-        [] as Task[]
-      )
+      prev.map((t) => (t.id === id ? { ...t, done } : t))
     )
+    DashboardTasksAPI.update(id, { done }).catch(() => {})
   }
 
-  const onEditableChange = ({
-    value,
-    id,
-  }: {
-    value: string
-    id: Task["id"]
-  }) => {
+  const onEditableChange = ({ value, id }: { value: string; id: string }) => {
     setTasks((prev) =>
-      prev.reduce(
-        (previousValue, currentValue) =>
-          currentValue.id === id
-            ? [...previousValue, { ...currentValue, value }]
-            : [...previousValue, currentValue],
-        [] as Task[]
-      )
+      prev.map((t) => (t.id === id ? { ...t, value } : t))
     )
+    DashboardTasksAPI.update(id, { value }).catch(() => {})
   }
-  const onRemove = (id: Task["id"]) => {
-    setTasks((prev) => prev.filter((task) => task.id !== id))
+
+  const onRemove = (id: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== id))
+    DashboardTasksAPI.delete(id).catch(() => {})
   }
 
   const undoneTasks = tasks.filter((task) => !task.done)

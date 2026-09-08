@@ -145,6 +145,8 @@ interface TalentMember {
   localTime: string
   rate: string
   skills: string[]
+  email?: string
+  company?: string
   /** Bucket from contracts-service. Drives the Status column and badge. */
   status: TalentNetworkStatus
 }
