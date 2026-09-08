@@ -82,6 +82,25 @@ import { AlgoliaService } from '../algolia/algolia.service';
         }),
         inject: [ConfigService],
       },
+      // Separate client for user-facing notifications. It has to be its own
+      // registration rather than a second use of RABBITMQ_CLIENT above: that
+      // one targets the listings topic exchange, and notification-service
+      // consumes a plain durable queue. This mirrors how invitations-service
+      // reaches notifications, which is the only wiring in the repo that
+      // currently works.
+      {
+        name: 'NOTIFICATIONS_CLIENT',
+        imports: [ConfigModule],
+        useFactory: (config: ConfigService) => ({
+          transport: Transport.RMQ,
+          options: {
+            urls:         [config.get<string>('RABBITMQ_URL') || 'amqp://localhost:5672'],
+            queue:        'notification_service_queue',
+            queueOptions: { durable: true },
+          },
+        }),
+        inject: [ConfigService],
+      },
     ]),
   ],
 
