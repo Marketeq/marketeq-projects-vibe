@@ -606,8 +606,67 @@ export function SettingsTaxInfo() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <p className="text-sm font-light text-gray-500">Loading…</p>
+      <div className="flex flex-col gap-6">
+        {/* Header row */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="relative h-9 w-28 overflow-hidden rounded-lg bg-gray-100">
+            <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+          </div>
+          <div className="relative h-10 w-64 overflow-hidden rounded-lg bg-gray-100">
+            <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+          </div>
+        </div>
+
+        {/* Tabs skeleton */}
+        <div className="flex gap-x-8 border-b border-gray-200 pb-3">
+          {[80, 110, 60].map((w, i) => (
+            <div key={i} className="relative h-4 overflow-hidden rounded bg-gray-100" style={{ width: w }}>
+              <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+            </div>
+          ))}
+        </div>
+
+        {/* Content cards skeleton */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-6">
+              <div className="relative mb-4 h-10 w-10 overflow-hidden rounded-full bg-gray-100">
+                <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+              </div>
+              <div className="relative mb-2 h-4 w-3/4 overflow-hidden rounded bg-gray-100">
+                <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+              </div>
+              <div className="relative h-3 w-full overflow-hidden rounded bg-gray-100">
+                <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+              </div>
+              <div className="relative mt-1 h-3 w-5/6 overflow-hidden rounded bg-gray-100">
+                <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+              </div>
+              <div className="relative mt-4 h-3 w-20 overflow-hidden rounded bg-gray-100">
+                <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Form section skeleton */}
+        <div className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-6">
+          <div className="relative mb-6 h-5 w-40 overflow-hidden rounded bg-gray-100">
+            <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+          </div>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="flex flex-col gap-2">
+                <div className="relative h-3 w-24 overflow-hidden rounded bg-gray-100">
+                  <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                </div>
+                <div className="relative h-10 w-full overflow-hidden rounded-lg bg-gray-100">
+                  <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     )
   }

@@ -11,6 +11,7 @@ import {
   DialogOverlay,
   DialogTitle,
 } from "@/components/ui"
+import { useToast } from "@/components/ui/toast/use-toast"
 import { SECTION_TILES } from "./template-dialog"
 
 const DEFAULT_TITLE = "Your case study's title"
@@ -38,6 +39,7 @@ export function CreateCaseStudyModal({
   onCreated: (caseStudyId: string) => void
 }) {
   const [isCreating, setIsCreating] = useState(false)
+  const { toast } = useToast()
 
   const startFromScratch = async () => {
     if (isCreating) return
@@ -46,6 +48,8 @@ export function CreateCaseStudyModal({
       const { data } = await CaseStudyAPI.Create({ title: DEFAULT_TITLE })
       onOpenChange(false)
       onCreated(data.id)
+    } catch {
+      toast({ title: "Couldn't create case study", description: "Please try again." })
     } finally {
       setIsCreating(false)
     }
@@ -65,6 +69,8 @@ export function CreateCaseStudyModal({
       })
       onOpenChange(false)
       onCreated(data.id)
+    } catch {
+      toast({ title: "Couldn't create case study", description: "Please try again." })
     } finally {
       setIsCreating(false)
     }

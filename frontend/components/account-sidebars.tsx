@@ -165,7 +165,7 @@ export const TalentAccountSidebar = () => {
           Get the right talent for your next project.
         </p>
         <NextLink
-          href="/search"
+          href="/"
           className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
         >
           Browse the Marketplace
@@ -199,7 +199,7 @@ export const ClientAccountSidebar = () => {
           Get the right talent for your next project.
         </p>
         <NextLink
-          href="/search"
+          href="/"
           className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
         >
           Browse the Marketplace
