@@ -84,21 +84,13 @@ export class NotificationService {
     private readonly brevoService: BrevoService,
   ) {}
 
-  async dispatch(payload: NotificationPayload) {
+  /**
+   * Returns the stored notification, or null when the recipient's preferences
+   * mean there is nothing to store.
+   */
+  async dispatch(payload: NotificationPayload): Promise<Notification | null> {
     const prefs = await this.prefRepo.findOne({ where: { userId: payload.recipientId } });
     const resolved = this.resolvePreferences(prefs);
-
-    const notification = this.notifRepo.create({
-      userId: payload.recipientId,
-      title: payload.title,
-      body: payload.body,
-      link: payload.link,
-      category: payload.category,
-      event: payload.event,
-      metadata: payload.metadata,
-      origin: payload.origin || 'system',
-    });
-    const saved = await this.notifRepo.save(notification);
 
     const itemId = payload.event;
     const item = resolved.notifications[itemId];
@@ -140,9 +132,41 @@ export class NotificationService {
       itemActive &&
       itemChannels.email;
 
-    let ablyDelivered = false;
+    // The row IS the in-app notification — the bell panel and the unread count
+    // read this table and nothing else. It used to be written before any of the
+    // checks above, so a recipient who had switched a category off, or
+    // everything off, still accumulated rows and an unread badge for it. The
+    // publisher's own suppression had the same hole: invitations-service
+    // documents having to skip the emit entirely because `delivery.inApp:false`
+    // still listed the notification and still counted it unread.
+    //
+    // Deliberately not stored-but-hidden. Hiding needs a column, a filter on
+    // every read, and a rule for what un-hides it; "In App off" has one honest
+    // meaning, which is that it does not go in the panel. Nothing is lost that
+    // the recipient asked to receive — email below is decided separately.
+    if (!inAppAllowed) {
+      this.logger.log(
+        `In-app suppressed for user ${payload.recipientId} (event ${payload.event}, ` +
+          `category ${payload.category}); not stored.`,
+      );
+    }
 
-    if (inAppAllowed) {
+    const saved = inAppAllowed
+      ? await this.notifRepo.save(
+          this.notifRepo.create({
+            userId: payload.recipientId,
+            title: payload.title,
+            body: payload.body,
+            link: payload.link,
+            category: payload.category,
+            event: payload.event,
+            metadata: payload.metadata,
+            origin: payload.origin || 'system',
+          }),
+        )
+      : null;
+
+    if (saved) {
       if (this.ablyService.isEnabled()) {
         try {
           await this.ablyService.sendInApp(payload.recipientId, {
@@ -156,25 +180,34 @@ export class NotificationService {
           });
           const unreadCount = await this.getUnreadCount(payload.recipientId);
           await this.ablyService.updateBadgeCount(payload.recipientId, unreadCount);
-          ablyDelivered = true;
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
           this.logger.warn(
-            `Ably delivery failed for user ${payload.recipientId}; falling back to SMTP. Error: ${errMsg}`,
+            `Ably realtime delivery failed for user ${payload.recipientId}; ` +
+              `the notification is stored and will appear in the panel. Error: ${errMsg}`,
           );
         }
       } else {
         this.logger.warn(
-          `Ably is not configured; falling back to SMTP for user ${payload.recipientId}.`,
+          `Ably is not configured; user ${payload.recipientId} will see this in the ` +
+            `panel on next load rather than in real time.`,
         );
       }
     }
 
-    const fallbackToSmtp = inAppAllowed && !ablyDelivered;
+    // Email is decided by the Email switch alone. It used to also fire whenever
+    // realtime in-app delivery had not succeeded — including when Ably was
+    // simply not configured — which meant a recipient who had switched Email
+    // off got emailed anyway, and the settings screen was lying to them.
+    //
+    // Nothing is silently dropped by removing that: the notification is stored
+    // above whenever in-app is allowed, so a failed realtime push degrades to
+    // "appears in the panel on next load" rather than to nothing. Both branches
+    // of the Ably attempt already log which of those happened, so the flag that
+    // used to drive the fallback has gone with it.
     const recipientAddress =
       resolved.channels.email.address ?? payload.recipientEmail;
-    const shouldSendEmail =
-      (emailAllowed || fallbackToSmtp) && !!recipientAddress;
+    const shouldSendEmail = emailAllowed && !!recipientAddress;
 
     if (shouldSendEmail && recipientAddress) {
       this.logger.log(
