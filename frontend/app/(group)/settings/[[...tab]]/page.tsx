@@ -1232,7 +1232,7 @@ export default function SettingsPage() {
   }, [activeTab, addParam])
 
   const accountRole = useMemo(() => resolveDashboardRole(user), [user])
-  const settingsTabItems = useMemo(() => buildSettingsTabItems(accountRole), [accountRole])
+  const settingsTabItems = useMemo(() => buildSettingsTabItems(accountRole ?? null), [accountRole])
 
   const handleBillingTabChange = (value: BillingTabValue) => {
     const map: Record<BillingTabValue, string> = {
