@@ -1,4 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { createHash, randomBytes } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from '../entities/notification.entity';
@@ -311,6 +317,7 @@ export class NotificationService {
   ): Promise<UserPreference> {
     const prefs = await this.getOrCreatePreferences(userId);
     const resolved = this.resolvePreferences(prefs);
+    let pendingRequest: string | null = null;
 
     if (dto.channels) {
       const next: GlobalChannelPrefs = { ...resolved.channels };
@@ -318,14 +325,29 @@ export class NotificationService {
         next.inApp = { ...next.inApp, ...dto.channels.inApp };
       }
       if (dto.channels.email) {
+        const requested = dto.channels.email.address;
+        // Everything except the address applies straight away.
         next.email = {
           ...next.email,
           ...dto.channels.email,
-          address:
-            dto.channels.email.address === undefined
-              ? next.email.address
-              : dto.channels.email.address,
+          address: next.email.address,
         };
+
+        if (requested !== undefined) {
+          // Clearing the override, or setting it back to the address they
+          // already sign in with, needs no proof — they have already proven
+          // that one. Anything else goes to the waiting room instead of taking
+          // effect, so a redirect cannot be completed by whoever asked for it.
+          const normalised = requested?.trim().toLowerCase() || null;
+          if (normalised === null) {
+            next.email.address = null;
+            prefs.pendingEmail = null;
+            prefs.pendingEmailTokenHash = null;
+            prefs.pendingEmailExpiresAt = null;
+          } else if (normalised !== next.email.address?.toLowerCase()) {
+            pendingRequest = normalised;
+          }
+        }
       }
       if (dto.channels.sms) {
         next.sms = {
@@ -376,6 +398,10 @@ export class NotificationService {
       prefs.notifications = nextNotifications;
     }
 
+    if (pendingRequest) {
+      await this.startEmailVerification(prefs, pendingRequest);
+    }
+
     prefs.inAppEnabled = prefs.channels?.inApp.enabled ?? prefs.inAppEnabled;
     prefs.emailEnabled = prefs.channels?.email.enabled ?? prefs.emailEnabled;
     prefs.smsEnabled = prefs.channels?.sms.enabled ?? prefs.smsEnabled;
@@ -384,9 +410,129 @@ export class NotificationService {
     return prefs;
   }
 
+  /**
+   * The client's view of a preference row.
+   *
+   * An address waiting on confirmation is shown in the usual `address` field so
+   * the settings dialog reflects what was just typed — otherwise saving would
+   * look like it had failed. `addressPending` says which of the two it is:
+   * true means notifications are still going to the previous address until the
+   * link is clicked. Nothing in the UI reads that flag yet; it exists so a
+   * pending state can be designed without another backend change.
+   *
+   * Only the presentation is swapped. `prefs.channels.email.address` on disk
+   * stays the verified value, which is the one dispatch reads.
+   */
+  presentPreferences(prefs: UserPreference): UserPreference & {
+    addressPending?: boolean;
+  } {
+    if (!prefs.pendingEmail) return prefs;
+
+    const channels = prefs.channels ?? this.cloneDefaultChannels();
+    return {
+      ...prefs,
+      channels: {
+        ...channels,
+        email: { ...channels.email, address: prefs.pendingEmail },
+      },
+      addressPending: true,
+    } as UserPreference & { addressPending?: boolean };
+  }
+
+  /** How long a confirmation link stays good for. */
+  private static readonly EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  /**
+   * Records the requested address and emails it a confirmation link. Mutates
+   * `prefs` rather than saving — the caller is mid-update and saves once.
+   */
+  private async startEmailVerification(
+    prefs: UserPreference,
+    address: string,
+  ): Promise<void> {
+    const token = randomBytes(32).toString('hex');
+    prefs.pendingEmail = address;
+    prefs.pendingEmailTokenHash = this.hashToken(token);
+    prefs.pendingEmailExpiresAt = new Date(
+      Date.now() + NotificationService.EMAIL_TOKEN_TTL_MS,
+    );
+
+    const base = (process.env.API_PUBLIC_URL || '').replace(/\/$/, '');
+    const link = `${base}/v1/notifications/preferences/email/verify?token=${token}`;
+
+    // Sent to the requested address, never to the current one — the point is to
+    // prove whoever asked can read the new inbox.
+    await this.sendEmailViaBrevo(
+      address,
+      'Confirm your notification email address',
+      'Confirm this address to start receiving Marketeq notifications here. ' +
+        'Until you do, notifications keep going to your current address. ' +
+        'If you did not request this, ignore this message and nothing changes.',
+      link,
+    );
+
+    this.logger.log(
+      `Notification email change requested for user ${prefs.userId}; confirmation sent to ${address}.`,
+    );
+  }
+
+  /**
+   * Completes a change. Promotes the pending address into `channels.email`,
+   * which is the only field dispatch reads, and clears the waiting room.
+   */
+  async verifyPendingEmail(token: string): Promise<{ address: string }> {
+    if (!token?.trim()) throw new BadRequestException('Token is required');
+
+    const prefs = await this.prefRepo.findOne({
+      where: { pendingEmailTokenHash: this.hashToken(token.trim()) },
+    });
+    if (!prefs || !prefs.pendingEmail) {
+      throw new NotFoundException(
+        'That confirmation link is not valid. It may already have been used.',
+      );
+    }
+    if (
+      prefs.pendingEmailExpiresAt &&
+      prefs.pendingEmailExpiresAt.getTime() < Date.now()
+    ) {
+      // Cleared on expiry so a stale row cannot be retried indefinitely.
+      prefs.pendingEmail = null;
+      prefs.pendingEmailTokenHash = null;
+      prefs.pendingEmailExpiresAt = null;
+      await this.prefRepo.save(prefs);
+      throw new BadRequestException(
+        'That confirmation link has expired. Request the change again.',
+      );
+    }
+
+    const address = prefs.pendingEmail;
+    const channels = prefs.channels ?? this.cloneDefaultChannels();
+    channels.email = { ...channels.email, address };
+    prefs.channels = channels;
+    prefs.pendingEmail = null;
+    prefs.pendingEmailTokenHash = null;
+    prefs.pendingEmailExpiresAt = null;
+    await this.prefRepo.save(prefs);
+
+    this.logger.log(
+      `Notification email confirmed for user ${prefs.userId}; now delivering to ${address}.`,
+    );
+    return { address };
+  }
+
   async resetPreferences(userId: string): Promise<UserPreference> {
     const prefs = await this.getOrCreatePreferences(userId);
     prefs.channels = this.cloneDefaultChannels();
+    // A reset drops the override, so an unconfirmed change must go with it —
+    // otherwise a later click would apply an address the user has since
+    // reset away.
+    prefs.pendingEmail = null;
+    prefs.pendingEmailTokenHash = null;
+    prefs.pendingEmailExpiresAt = null;
     prefs.categories = buildDefaultCategoryMap();
     prefs.notifications = buildDefaultNotificationMap();
     prefs.inAppEnabled = prefs.channels.inApp.enabled;
