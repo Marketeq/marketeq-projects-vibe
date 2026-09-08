@@ -28,11 +28,47 @@
 /frontend/hoc/AuthenticatedRoute.tsx                @CTorres9800 @Marketeq/code-review
 /frontend/hoc/UnauthenticatedRoute.tsx              @CTorres9800 @Marketeq/code-review
 /frontend/components/auth/                          @CTorres9800 @Marketeq/code-review
-/backend/apps/auth-service/                         @CTorres9800 @Marketeq/code-review
 /backend/apps/user-service/src/guards/              @CTorres9800 @Marketeq/code-review
 /backend/apps/api-gateway/src/proxy/proxy.service.ts @CTorres9800 @Marketeq/code-review
 /backend/libs/shared/src/guards/                    @CTorres9800 @Marketeq/code-review
 /backend/libs/shared/src/decorators/                @CTorres9800 @Marketeq/code-review
+
+# ----- auth-service: login flow files (CTO-only) -----
+# The core login/register/OAuth/session-creation files. These ARE the
+# login screens' backend. CTO review required.
+/backend/apps/auth-service/src/auth/auth.controller.ts  @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/auth/auth.service.ts     @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/auth/auth.module.ts      @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/auth/strategies/         @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/auth/guards/             @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/auth/dto/login.dto.ts    @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/auth/dto/register.dto.ts @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/auth/dto/register-email.dto.ts @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/auth/dto/google-login.dto.ts   @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/auth/dto/linkedin-login.dto.ts @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/auth/dto/refresh.dto.ts  @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/auth/dto/forgot-password.dto.ts @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/auth/dto/reset-password.dto.ts  @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/main.ts                  @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/auth-service.module.ts   @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/data-source.ts           @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/middleware/              @CTorres9800 @Marketeq/code-review
+/backend/apps/auth-service/src/user/                    @CTorres9800 @Marketeq/code-review
+
+# ----- auth-service: login settings files (team-reviewable) -----
+# New modules for change-password, WebAuthn, IP restrictions, session
+# management, two-factor setup. These are LOGIN SETTINGS, not login
+# screens. Any code-review team member can approve.
+/backend/apps/auth-service/src/password-history/        @Marketeq/code-review
+/backend/apps/auth-service/src/session/                 @Marketeq/code-review
+/backend/apps/auth-service/src/auth/dto/set-password.dto.ts    @Marketeq/code-review
+/backend/apps/auth-service/src/auth/dto/two-factor.dto.ts      @Marketeq/code-review
+/backend/apps/auth-service/src/auth/dto/password-validation.ts @Marketeq/code-review
+/backend/apps/auth-service/src/auth/dto/session-response.dto.ts @Marketeq/code-review
+/backend/apps/auth-service/src/auth/dto/check-username.dto.ts  @Marketeq/code-review
+/backend/apps/auth-service/src/auth/dto/update-username.dto.ts @Marketeq/code-review
+/backend/apps/auth-service/src/migrations/              @Marketeq/code-review
+/backend/apps/auth-service/src/brevo/                   @Marketeq/code-review
 
 # ----- CRITICAL: profile data loading -----
 # Per SOP §1.3 "Profile Data Loading — NEVER Break".
@@ -62,6 +98,11 @@
 # engineers can wire it without CTO review.
 /frontend/app/(group)/my-jobs/page.tsx              @CTorres9800 @Marketeq/code-review
 # ^ backend seam (NOT frozen, edit freely): frontend/app/(group)/my-jobs/my-jobs.data.ts
+
+# ----- CRITICAL: billing and tax (frozen) -----
+/frontend/app/(group)/billing/                      @CTorres9800 @Marketeq/code-review
+/frontend/components/settings-tax-info.tsx          @CTorres9800 @Marketeq/code-review
+/backend/apps/user-service/src/tax-info/            @CTorres9800 @Marketeq/code-review
 
 # ----- Shared UI components -----
 /frontend/components/listing-card.tsx               @Marketeq/code-review
