@@ -593,6 +593,17 @@ function renderHistoryItem(
 
 type SortOption = "newest" | "oldest" | "name-asc" | "name-desc"
 
+const CASCADE_DELAYS = [
+  "delay-0",
+  "delay-100",
+  "delay-200",
+  "delay-300",
+  "delay-500",
+  "delay-700",
+]
+const cascadeDelay = (i: number) =>
+  CASCADE_DELAYS[Math.min(i, CASCADE_DELAYS.length - 1)]
+
 const SORT_LABELS: Record<SortOption, string> = {
   "name-asc": "Name A-Z",
   "name-desc": "Name Z-A",
@@ -942,7 +953,7 @@ export default function BrowsingHistoryPage() {
 
         {TABS.map((tab) => (
           <TabsContent key={tab} value={tab}>
-            {tab === "Recent Talent" && showTalentLoading ? (
+            {isLoading ? (
               <div className="columns-2 lg:columns-3 gap-x-3 lg:gap-x-6 pt-3.5 lg:pt-6">
                 {Array.from({ length: 8 }).map((_, i) => (
                   <div
@@ -950,14 +961,14 @@ export default function BrowsingHistoryPage() {
                     className="mb-3 break-inside-avoid rounded-lg border border-gray-200 bg-white shadow-xs overflow-hidden lg:mb-5"
                   >
                     <div className="relative h-[140px] bg-gray-100 overflow-hidden">
-                      <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                      <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
                     </div>
                     <div className="p-3 space-y-3">
                       <div className="relative h-4 w-32 rounded bg-gray-100 overflow-hidden">
-                        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
                       </div>
                       <div className="relative h-3 w-24 rounded bg-gray-100 overflow-hidden">
-                        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
                       </div>
                     </div>
                   </div>
@@ -1011,10 +1022,10 @@ export default function BrowsingHistoryPage() {
 
                 return isGrid ? (
                   <div className="columns-2 lg:columns-3 gap-x-3 lg:gap-x-6 pt-3.5 lg:pt-6">
-                    {visibleItems.map((item) => (
+                    {visibleItems.map((item, index) => (
                       <div
                         key={`${item.type}-${item.data.id}`}
-                        className="mb-3 break-inside-avoid lg:mb-5"
+                        className={`mb-3 break-inside-avoid lg:mb-5 animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(index)}`}
                       >
                         {renderHistoryItem(
                           item,
@@ -1027,14 +1038,19 @@ export default function BrowsingHistoryPage() {
                   </div>
                 ) : (
                   <div className="flex flex-col gap-3 lg:gap-6 pt-3.5 lg:pt-6">
-                    {visibleItems.map((item) =>
-                      renderHistoryItem(
-                        item,
-                        false,
-                        talentFavoriteProps,
-                        favoritesProps
-                      )
-                    )}
+                    {visibleItems.map((item, index) => (
+                      <div
+                        key={`${item.type}-${item.data.id}`}
+                        className={`animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(index)}`}
+                      >
+                        {renderHistoryItem(
+                          item,
+                          false,
+                          talentFavoriteProps,
+                          favoritesProps
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )
               })()
