@@ -565,6 +565,10 @@ export const StatusDialog = ({
             ...prev["JOB_TITLE_RATE"],
             finished: Boolean(p.rateMin || p.rateMax),
           },
+          PORTFOLIO: {
+            ...prev["PORTFOLIO"],
+            finished: Boolean(p.portfolio?.length),
+          },
         }))
       })
       .catch(() => setProfileError(true))
