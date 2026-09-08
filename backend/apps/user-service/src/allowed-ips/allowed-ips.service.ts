@@ -9,6 +9,11 @@ import { AllowedIp } from './entities/allowed-ip.entity';
 import { User } from '../user/entities/user.entity';
 import { coversAddress } from './ip-range.util';
 import {
+  AUDIT_ACTIONS,
+  AuditContext,
+  AuditService,
+} from '../audit/audit.service';
+import {
   CreateAllowedIpDto,
   UpdateAllowedIpDto,
 } from './dto/create-allowed-ip.dto';
@@ -23,6 +28,7 @@ export class AllowedIpsService {
     private readonly repo: Repository<AllowedIp>,
     @InjectRepository(User)
     private readonly users: Repository<User>,
+    private readonly audit: AuditService,
   ) {}
 
   /** Whether the caller currently has IP restriction switched on. */
@@ -42,16 +48,27 @@ export class AllowedIpsService {
     });
   }
 
-  async create(userId: string, dto: CreateAllowedIpDto): Promise<AllowedIp> {
+  async create(
+    userId: string,
+    dto: CreateAllowedIpDto,
+    ctx?: AuditContext,
+  ): Promise<AllowedIp> {
     const address = dto.address.trim();
     try {
-      return await this.repo.save(
+      const saved = await this.repo.save(
         this.repo.create({
           userId,
           address,
           description: dto.description?.trim() || null,
         }),
       );
+      if (ctx) {
+        await this.audit.record(AUDIT_ACTIONS.ALLOWED_IP_ADDED, userId, ctx, {
+          entryId: saved.id,
+          address,
+        });
+      }
+      return saved;
     } catch (err: any) {
       if (err?.code === UNIQUE_VIOLATION) {
         throw new ConflictException(`${address} is already on your list`);
@@ -68,6 +85,7 @@ export class AllowedIpsService {
   async createMany(
     userId: string,
     entries: CreateAllowedIpDto[],
+    ctx?: AuditContext,
   ): Promise<{ created: AllowedIp[]; skipped: string[] }> {
     const seen = new Set<string>();
     const deduped: CreateAllowedIpDto[] = [];
@@ -97,6 +115,16 @@ export class AllowedIpsService {
         )
       : [];
 
+    // One record for the import, not one per address — a 500-row CSV should
+    // not produce 500 audit rows. The addresses are in the metadata.
+    if (ctx && created.length > 0) {
+      await this.audit.record(AUDIT_ACTIONS.ALLOWED_IP_BULK_ADDED, userId, ctx, {
+        addedCount: created.length,
+        addresses: created.map((e) => e.address),
+        skippedCount: existingAddresses.size,
+      });
+    }
+
     return { created, skipped: [...existingAddresses] };
   }
 
@@ -104,9 +132,12 @@ export class AllowedIpsService {
     userId: string,
     id: string,
     dto: UpdateAllowedIpDto,
+    ctx?: AuditContext,
   ): Promise<AllowedIp> {
     const entry = await this.repo.findOne({ where: { id, userId } });
     if (!entry) throw new NotFoundException('Allowed IP not found');
+
+    const previousAddress = entry.address;
 
     if (dto.address !== undefined) entry.address = dto.address.trim();
     if (dto.description !== undefined) {
@@ -114,7 +145,15 @@ export class AllowedIpsService {
     }
 
     try {
-      return await this.repo.save(entry);
+      const saved = await this.repo.save(entry);
+      if (ctx) {
+        await this.audit.record(AUDIT_ACTIONS.ALLOWED_IP_UPDATED, userId, ctx, {
+          entryId: id,
+          previousAddress,
+          address: saved.address,
+        });
+      }
+      return saved;
     } catch (err: any) {
       if (err?.code === UNIQUE_VIOLATION) {
         throw new ConflictException(
@@ -138,6 +177,7 @@ export class AllowedIpsService {
     userId: string,
     id: string,
     callerIp: string | null,
+    ctx?: AuditContext,
   ): Promise<void> {
     const entry = await this.repo.findOne({ where: { id, userId } });
     if (!entry) throw new NotFoundException('Allowed IP not found');
@@ -166,6 +206,14 @@ export class AllowedIpsService {
     }
 
     await this.repo.delete({ id, userId });
+
+    if (ctx) {
+      await this.audit.record(AUDIT_ACTIONS.ALLOWED_IP_REMOVED, userId, ctx, {
+        entryId: id,
+        address: entry.address,
+        description: entry.description ?? null,
+      });
+    }
   }
 
   /**
@@ -179,6 +227,7 @@ export class AllowedIpsService {
     userId: string,
     enabled: boolean,
     callerIp: string | null,
+    ctx?: AuditContext,
   ): Promise<{ enabled: boolean }> {
     if (enabled) {
       if (!callerIp) {
@@ -201,6 +250,18 @@ export class AllowedIpsService {
     }
 
     await this.users.update({ id: userId }, { ipRestrictionEnabled: enabled });
+
+    if (ctx) {
+      await this.audit.record(
+        enabled
+          ? AUDIT_ACTIONS.IP_RESTRICTION_ENABLED
+          : AUDIT_ACTIONS.IP_RESTRICTION_DISABLED,
+        userId,
+        ctx,
+        { coveredBy: callerIp ?? null },
+      );
+    }
+
     return { enabled };
   }
 }
