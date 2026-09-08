@@ -601,6 +601,7 @@ export default function CheckoutPage() {
       : "Team details unavailable"
   const checkoutProjectDateRange =
     projectSummary?.dateRangeLabel || "Timeline unavailable"
+  const checkoutProjectDuration = projectSummary?.durationLabel || null
   const selectedRate =
     offerRates.find((rate) => rate.value === selectedRateValue) ||
     offerRates.find((rate) => rate.value === "web-development") ||
@@ -1513,9 +1514,18 @@ export default function CheckoutPage() {
                         </div>
                       </div>
                       <div className="inline-flex flex-col items-end gap-y-[26px]">
-                        <Badge size="md" visual="primary">
-                          8 months
-                        </Badge>
+                        {isProjectSummaryLoading ? (
+                          <div
+                            className="relative h-6 w-16 overflow-hidden rounded bg-gray-100"
+                            aria-hidden="true"
+                          >
+                            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                          </div>
+                        ) : checkoutProjectDuration ? (
+                          <Badge size="md" visual="primary">
+                            {checkoutProjectDuration}
+                          </Badge>
+                        ) : null}
 
                         <div className="inline-flex flex-col gap-y-0.5 items-end">
                           {isProjectSummaryLoading ? (
@@ -1530,9 +1540,11 @@ export default function CheckoutPage() {
                               {formattedProjectCheckoutCost}
                             </span>
                           )}
-                          <span className="inline-block text-dark-blue-400 text-xs leading-none">
-                            Project Cost
-                          </span>
+                          {!isProjectSummaryLoading && (
+                            <span className="inline-block text-dark-blue-400 text-xs leading-none">
+                              Project Cost
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

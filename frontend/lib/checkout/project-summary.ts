@@ -6,6 +6,7 @@ export type CheckoutProjectSummary = {
   teamMemberCount: number | null
   dateRangeLabel: string
   projectCost: number | null
+  durationLabel: string | null
 }
 
 export const titleizeCheckoutSlug = (value: string): string =>
@@ -49,12 +50,23 @@ const getDateRangeLabel = (project: any): string => {
   return "Timeline unavailable"
 }
 
+const getDurationLabel = (project: any): string | null => {
+  if (typeof project.duration === "string" && project.duration.trim()) {
+    return project.duration
+  }
+  if (typeof project.durationMonths === "number" && project.durationMonths > 0) {
+    return `${project.durationMonths} month${project.durationMonths === 1 ? "" : "s"}`
+  }
+  return null
+}
+
 const mapProjectSummary = (project: any, slug: string): CheckoutProjectSummary => ({
   title: project.title || titleizeCheckoutSlug(slug),
   mediaUrl: project.mediaUrls?.[0] || project.featuredImage || "/dashboard.png",
   teamMemberCount: getTeamMemberCount(project),
   dateRangeLabel: getDateRangeLabel(project),
   projectCost: getProjectCost(project),
+  durationLabel: getDurationLabel(project),
 })
 
 export const getCheckoutProjectSummary = async (
