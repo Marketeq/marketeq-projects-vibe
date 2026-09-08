@@ -1,7 +1,7 @@
 import { IsString, IsOptional, IsIn, IsNotEmpty } from 'class-validator';
 
 export class AddMethodDto {
-  @IsIn(['BANK_STRIPE', 'BANK_MANUAL', 'PAYPAL', 'WISE', 'PAYONEER', 'CRYPTO', 'MARKETEQ_DEBIT_CARD', 'TEQ_COIN'])
+  @IsIn(['BANK_STRIPE', 'BANK_MANUAL', 'WISE', 'PAYONEER', 'CRYPTO', 'MARKETEQ_DEBIT_CARD', 'TEQ_COIN'])
   methodType: string;
 
   // Common bank fields
@@ -49,8 +49,7 @@ export class AddMethodDto {
   @IsOptional() @IsString() bankAgencia?: string;
   @IsOptional() @IsString() bankConta?: string;
 
-  // PayPal / OAuth fields
-  @IsOptional() @IsString() paypalEmail?: string;
+  // OAuth fields
   @IsOptional() @IsString() wiseEmail?: string;
 
   // Display

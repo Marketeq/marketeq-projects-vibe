@@ -31,7 +31,6 @@ import { CryptoModule } from './crypto/crypto.module';
 import { ExecutionModule } from './execution/execution.module';
 import { CardModule } from './card/card.module';
 import { BankModule } from './bank/bank.module';
-import { PaypalModule } from './paypal/paypal.module';
 import { KycModule } from './kyc/kyc.module';
 import { PauseModule } from './pause/pause.module';
 
@@ -94,7 +93,6 @@ import { PauseModule } from './pause/pause.module';
     ExecutionModule,
     CardModule,
     BankModule,
-    PaypalModule,
     KycModule,
     PauseModule,
   ],

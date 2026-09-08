@@ -367,7 +367,7 @@ export class ProxyController {
     } else if (prefix === 'v1' && (segments[1] === 'deposit-methods')) {
       prefix = 'deposit-methods'
     } else if (prefix === 'v1' && segments[1] === 'oauth') {
-      // /v1/oauth/:provider/callback (PayPal/Wise/Payoneer OAuth redirect
+      // /v1/oauth/:provider/callback (Wise/Payoneer OAuth redirect
       // target) lives in payout-service. Without this branch it silently
       // fell through to the 'v1' default (transaction-service) and 404'd,
       // so the OAuth callback that actually persists tokens never ran.
