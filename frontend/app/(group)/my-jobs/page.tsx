@@ -877,10 +877,10 @@ export default function MyJobsPage() {
                       <div className="space-y-3">
                         {jobProgressByTab[
                           tab.value as keyof typeof jobProgressByTab
-                        ].map((job) => (
+                        ].map((job, index) => (
                           <Card
                             key={job.id}
-                            className="overflow-hidden"
+                            className={`overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(index)}`}
                           >
                             <div className="w-full p-5">
                               <div className="flex items-start justify-between gap-3">
