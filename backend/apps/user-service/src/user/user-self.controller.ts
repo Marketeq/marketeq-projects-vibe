@@ -24,6 +24,7 @@ import { UpdatePhoneDto } from './dtos/update-phone.dto';
 import { UpdateCurrencyDto } from './dtos/update-currency.dto';
 import { UpdateActiveRoleDto } from './dtos/update-active-role.dto';
 import { R2Service } from '../storage/r2.service';
+import { normaliseRasterImage } from '../storage/image-upload.util';
 
 const ALLOWED_AVATAR_MIME_TYPES = new Set([
   'image/jpeg',
@@ -157,6 +158,17 @@ export class UserSelfController {
     // From here on, treat the detected type as authoritative — overwrite the
     // multer-reported mimetype so downstream storage uses what the bytes say.
     file.mimetype = detectedMimeType;
+
+    // Re-encode before storing. Phone photographs carry EXIF, and EXIF
+    // routinely carries GPS coordinates — an avatar is public-facing, so
+    // storing the file as uploaded publishes wherever the photo was taken.
+    // Re-encoding drops EXIF, applies the orientation tag first so portrait
+    // photos are not left sideways, enforces the minimum dimension, and caps
+    // the maximum so a 4000px phone photo is not served as an avatar.
+    // Rejections here are caller errors and surface as 400.
+    const normalised = await normaliseRasterImage(file.buffer, detectedMimeType);
+    file.buffer = normalised.buffer;
+    file.size = normalised.buffer.length;
 
     // Storage is optional in local/dev environments: if R2 is not fully wired
     // up we log a warning and return a null URL so the caller can proceed

@@ -1,4 +1,6 @@
+import { BadRequestException } from '@nestjs/common';
 import * as sanitizeHtml from 'sanitize-html';
+import * as sharp from 'sharp';
 
 /**
  * Shared validation for user-supplied image uploads.
@@ -187,4 +189,116 @@ export function sanitizeSvg(buffer: Buffer): Buffer | null {
 
   if (!/<svg[\s>]/i.test(cleaned)) return null;
   return Buffer.from(cleaned, 'utf8');
+}
+
+// ---------------------------------------------------------------------------
+// Raster normalisation
+// ---------------------------------------------------------------------------
+
+/** Smallest usable profile photo. Below this the avatar is visibly degraded. */
+export const MIN_AVATAR_DIMENSION = 200;
+
+/**
+ * Largest dimension kept. An avatar is never displayed above a few hundred
+ * pixels, so anything beyond this is bytes nobody sees — and a modern phone
+ * photo is routinely 4000px wide.
+ */
+export const MAX_AVATAR_DIMENSION = 1024;
+
+export interface NormalisedImage {
+  buffer: Buffer;
+  width: number;
+  height: number;
+}
+
+/**
+ * Re-encodes an uploaded raster image so that what we store is what we intend
+ * to store.
+ *
+ * **Why this exists:** phone photographs carry EXIF, and EXIF routinely carries
+ * GPS coordinates. An avatar is a public-facing image, so storing the file as
+ * uploaded means publishing the location where the photo was taken — often
+ * somebody's home. Sharp does not copy metadata unless asked to, so re-encoding
+ * through it drops EXIF, ICC and every other ancillary chunk.
+ *
+ * **`.rotate()` is not optional.** Orientation lives *in* the EXIF we are about
+ * to discard. Stripping metadata without first applying it leaves portrait
+ * photographs stored sideways — the classic version of this bug. Called with no
+ * argument, `rotate()` means "apply the EXIF orientation now"; the tag is then
+ * gone and the pixels are already correct.
+ *
+ * Animated GIF and WebP are decoded with `animated: true` so re-encoding does
+ * not silently flatten them to a single frame.
+ *
+ * Throws `BadRequestException` for an image below the minimum dimension, or one
+ * sharp cannot decode — both are caller errors, not server faults.
+ */
+export async function normaliseRasterImage(
+  buffer: Buffer,
+  mimeType: string,
+  maxDimension: number = MAX_AVATAR_DIMENSION,
+  minDimension: number = MIN_AVATAR_DIMENSION,
+): Promise<NormalisedImage> {
+  const animated = mimeType === 'image/gif' || mimeType === 'image/webp';
+
+  let pipeline: sharp.Sharp;
+  let meta: sharp.Metadata;
+  try {
+    pipeline = sharp(buffer, { animated });
+    meta = await pipeline.metadata();
+  } catch {
+    throw new BadRequestException('That image could not be read.');
+  }
+
+  // For an animated image `height` is the height of the whole filmstrip;
+  // pageHeight is one frame. Compare the frame, not the strip.
+  const width = meta.width ?? 0;
+  const height = meta.pageHeight ?? meta.height ?? 0;
+
+  if (width < minDimension || height < minDimension) {
+    throw new BadRequestException(
+      `Image must be at least ${minDimension}x${minDimension} pixels. This one is ${width}x${height}.`,
+    );
+  }
+
+  // rotate() before resize so the orientation tag is honoured while it still
+  // exists. No withMetadata() call anywhere below — that is what drops EXIF.
+  let out = sharp(buffer, { animated }).rotate();
+
+  if (width > maxDimension || height > maxDimension) {
+    out = out.resize({
+      width: maxDimension,
+      height: maxDimension,
+      fit: 'inside',
+      withoutEnlargement: true,
+    });
+  }
+
+  // Re-encode in the format it arrived as. Changing container here would
+  // invalidate the extension the storage layer derives from the mime type.
+  switch (mimeType) {
+    case 'image/jpeg':
+      out = out.jpeg({ quality: 88 });
+      break;
+    case 'image/png':
+      out = out.png({ compressionLevel: 9 });
+      break;
+    case 'image/webp':
+      out = out.webp({ quality: 88 });
+      break;
+    case 'image/gif':
+      out = out.gif();
+      break;
+    default:
+      throw new BadRequestException('Unsupported image format.');
+  }
+
+  const normalised = await out.toBuffer();
+  const finalMeta = await sharp(normalised, { animated }).metadata();
+
+  return {
+    buffer: normalised,
+    width: finalMeta.width ?? width,
+    height: finalMeta.pageHeight ?? finalMeta.height ?? height,
+  };
 }
