@@ -53,6 +53,8 @@ export interface IndustryPayload {
 }
 
 export interface UserProfilePayload {
+  /** Profile photo; the client company logo reuses this field. */
+  avatarUrl?: string | null
   /** Settings > IP Restrictions master switch. */
   ipRestrictionEnabled?: boolean
   firstName?: string

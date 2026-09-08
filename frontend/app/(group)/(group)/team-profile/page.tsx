@@ -1920,7 +1920,9 @@ function TeamProfileContent() {
                 <Tabs
                   className="scroll-mt-[137.5px] w-full"
                   id="offers"
-                  onValueChange={setOfferTab}
+                  onValueChange={(value) =>
+                    setOfferTab(value as (typeof OFFER_TABS)[number])
+                  }
                   value={offerTab}
                 >
                   {/* 13126:30230 — gap-[24px] */}
