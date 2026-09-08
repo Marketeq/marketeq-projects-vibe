@@ -49,7 +49,7 @@ import {
 import { GridVertical2 } from "@blend-metrics/icons/special"
 import { AnimatePresence, motion } from "framer-motion"
 import { useMount, useTimeoutFn, useToggle } from "react-use"
-import { Pagination } from "swiper/modules"
+import { Mousewheel, Pagination } from "swiper/modules"
 import { Swiper as SwiperRoot, SwiperSlide } from "swiper/react"
 import { Swiper } from "swiper/types"
 import { ROLE } from "@/types/user"
@@ -319,19 +319,6 @@ export const RightDrawer = ({
               Sep 2024
             </span>
           </div>
-          <div className="flex flex-col items-start gap-y-[5px]">
-            <span className="inline-block text-sm leading-[16.94px] text-dark-blue-400">
-              Hourly Rate
-            </span>
-            <Button
-              className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
-              visual="gray"
-              variant="link"
-              onClick={() => setMoreInfoOpen(true)}
-            >
-              Edit
-            </Button>
-          </div>
         </div>
 
         <Tasks />
@@ -452,19 +439,6 @@ export const RightSidebar = ({
             <span className="text-[11px] leading-6 text-dark-blue-400 font-semibold">
               Sep 2024
             </span>
-          </div>
-          <div className="flex flex-col items-start gap-y-[5px]">
-            <span className="inline-block text-sm leading-[16.94px] text-dark-blue-400">
-              Hourly Rate
-            </span>
-            <Button
-              className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
-              visual="gray"
-              variant="link"
-              onClick={() => setMoreInfoOpen(true)}
-            >
-              Edit
-            </Button>
           </div>
         </div>
       </div>
@@ -1096,10 +1070,10 @@ const RecentListingsTableRow = ({ listing }: { listing: MyListing }) => {
       className="hover:bg-gray-50 cursor-pointer"
       onClick={() => router.push(`/my-listings/${listing.id}`)}
     >
-      <td className="px-6 py-4">
+      <td className="px-6 py-4 max-w-[260px]">
         <NextLink
           href={`/my-listings/${listing.id}`}
-          className="text-sm font-semibold text-dark-blue-400 hover:underline"
+          className="text-sm font-semibold text-dark-blue-400 hover:underline truncate block"
         >
           {listing.title}
         </NextLink>
@@ -1537,6 +1511,8 @@ export const RecommendedForYou = () => {
                 slidesPerView="auto"
                 spaceBetween={12}
                 onInit={setCarousel}
+                modules={[Mousewheel]}
+                mousewheel={{ forceToAxis: true }}
                 className="avatar-carousel"
               >
                 {visible.map((project) => (
