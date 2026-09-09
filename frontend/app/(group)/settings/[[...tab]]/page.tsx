@@ -12,6 +12,10 @@ import { useRefreshUser } from "../hooks/use-refresh-user"
 import { useCompanyInfo } from "../hooks/use-company-info"
 import { useClientIp } from "../hooks/use-client-ip"
 import { useAllowedIps } from "../hooks/use-allowed-ips"
+import {
+  fingerprintFailureMessage,
+  promptForFingerprint,
+} from "@/lib/webauthn"
 import AllowedIpsAPI from "@/service/http/allowed-ips"
 import { AuthAPI } from "@/service/http/auth"
 import { ClientAPI } from "@/service/http/client"
@@ -160,6 +164,27 @@ import {
 
 // Cap on how many IPs one dialog can add before "Add More" greys out.
 const MAX_IP_ROWS = 10
+
+/**
+ * What to say after an add or a CSV import.
+ *
+ * An address can now be left out for two different reasons — it was already on
+ * the list, or an entry already on the list covers it — and they need saying
+ * separately. "Skipped 3" over a table that grew by none reads as a glitch;
+ * naming the reason is what makes it actionable.
+ */
+const summariseIpImport = (
+  added: number,
+  skipped: number,
+  overlapping: number
+): string => {
+  const notes: string[] = []
+  if (skipped > 0) notes.push(`skipped ${skipped} already on your list`)
+  if (overlapping > 0) notes.push(`skipped ${overlapping} overlapping an existing entry`)
+  return notes.length > 0
+    ? `Added ${added}, ${notes.join(", ")}`
+    : "Successfully added IP addresses"
+}
 
 // Current session first, then most recently active — the ordering
 // ActiveSessionsModal already uses. Shared so the initial load and the refetch
@@ -688,6 +713,8 @@ export default function SettingsPage() {
     next: false,
     confirm: false,
   })
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [isSavingPassword, setIsSavingPassword] = useState(false)
 
   const passwordRequirements = [
     { label: "At least 8 characters", met: passwordForm.next.length >= 8 },
@@ -712,31 +739,100 @@ export default function SettingsPage() {
   const [isDiscardOpen, setIsDiscardOpen] = useState(false)
   const [isFingerprintOpen, setIsFingerprintOpen] = useState(false)
   const [acceptsFingerprintTerms, setAcceptsFingerprintTerms] = useState(false)
+  const [fingerprintError, setFingerprintError] = useState<string | null>(null)
+  const [isEnrollingFingerprint, setIsEnrollingFingerprint] = useState(false)
 
   const [isFingerprintEnabled, setIsFingerprintEnabled] = useState(false)
 
   const closeFingerprint = () => {
     setAcceptsFingerprintTerms(false)
+    setFingerprintError(null)
     setIsFingerprintOpen(false)
   }
 
-  const handleEnableFingerprint = () => {
-    setIsFingerprintEnabled(true)
-    setSavedAlertMessage("Successfully enabled fingerprint login")
-    setIsSavedAlertMounted(true)
-    closeFingerprint()
+  /**
+   * Actually prompts the device's sensor before turning the setting on.
+   *
+   * The dialog says "Confirm your fingerprint on your device" and used to turn
+   * the setting on without asking anything, so a device with no sensor at all
+   * still reported success.
+   *
+   * Note what this still is not: the credential is not stored or verified
+   * server-side, so this switch does not yet let anyone sign in with a
+   * fingerprint. See lib/webauthn.ts.
+   */
+  const handleEnableFingerprint = async () => {
+    if (isEnrollingFingerprint) return
+
+    setIsEnrollingFingerprint(true)
+    setFingerprintError(null)
+    try {
+      await promptForFingerprint({
+        id: user?.id ?? "unknown",
+        name: user?.email ?? user?.username ?? "Marketeq user",
+        displayName:
+          [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
+          user?.username ||
+          "Marketeq user",
+      })
+      setIsFingerprintEnabled(true)
+      setSavedAlertMessage("Successfully enabled fingerprint login")
+      setIsSavedAlertMounted(true)
+      closeFingerprint()
+    } catch (failure) {
+      // Stays open on failure: the person is mid-task and the usual fix is to
+      // try the scan again, not to start over.
+      setFingerprintError(fingerprintFailureMessage(failure))
+    } finally {
+      setIsEnrollingFingerprint(false)
+    }
   }
 
   const closeUpdatePassword = () => {
     setPasswordForm({ current: "", next: "", confirm: "" })
     setVisiblePasswords({ current: false, next: false, confirm: false })
+    setPasswordError(null)
     setIsUpdatePasswordOpen(false)
   }
 
-  const handlePasswordSave = () => {
-    setSavedAlertMessage("Your password has been updated")
-    setIsSavedAlertMounted(true)
-    closeUpdatePassword()
+  /**
+   * Only reports success once the server has confirmed it. The screen used to
+   * announce "Your password has been updated" without calling anything, which
+   * told someone their password had changed when it had not.
+   *
+   * A failure leaves the form open with what they typed intact — clearing it
+   * would make them retype a password they got right to fix the one they got
+   * wrong.
+   */
+  const handlePasswordSave = async () => {
+    if (!canSavePassword || isSavingPassword) return
+
+    setIsSavingPassword(true)
+    setPasswordError(null)
+    try {
+      await AuthAPI.ChangePassword({
+        currentPassword: passwordForm.current,
+        newPassword: passwordForm.next,
+      })
+      setSavedAlertMessage("Your password has been updated")
+      setIsSavedAlertMounted(true)
+      closeUpdatePassword()
+    } catch (error: any) {
+      const raw =
+        error?.response?.data?.errors?.message ||
+        error?.response?.data?.message ||
+        error?.message
+      // ValidationPipe returns an array of messages; everything else is one
+      // finished sentence already, so it is surfaced as the server wrote it
+      // rather than wrapped in "Please try again" — retrying does not help an
+      // account that signs in with a social provider.
+      setPasswordError(
+        (Array.isArray(raw) ? raw.join(". ") : raw) ||
+          "Something went wrong. Please try again."
+      )
+    } finally {
+      setIsSavingPassword(false)
+    }
   }
 
   const [showPasswordModal, setShowPasswordModal] = useState(false)
@@ -1326,9 +1422,18 @@ export default function SettingsPage() {
         await updateAllowedIp(editingIpId, updated)
         setSavedAlertMessage("Successfully updated IP address")
       } else {
-        const { added, skipped } = await addAllowedIps(entries)
-        // Nothing new means every address was already on the list. Saying so
-        // beats a success alert over a table that did not change.
+        const { added, skipped, overlapping } = await addAllowedIps(entries)
+        // Nothing new means every address was either already on the list or
+        // covered by an entry that is. Saying so beats a success alert over a
+        // table that did not change.
+        if (added === 0 && overlapping.length > 0) {
+          setIpSaveError(
+            overlapping.length === 1
+              ? `${overlapping[0].address} overlaps ${overlapping[0].conflictsWith}, which is already on your list`
+              : `${overlapping.length} addresses overlap entries already on your list`
+          )
+          return
+        }
         if (added === 0 && skipped.length > 0) {
           setIpSaveError(
             skipped.length === 1
@@ -1338,9 +1443,7 @@ export default function SettingsPage() {
           return
         }
         setSavedAlertMessage(
-          skipped.length > 0
-            ? `Added ${added}, skipped ${skipped.length} already on your list`
-            : "Successfully added IP addresses"
+          summariseIpImport(added, skipped.length, overlapping.length)
         )
       }
     } catch (err: any) {
@@ -1496,16 +1599,14 @@ export default function SettingsPage() {
     if (csvEntries.length === 0 || csvStatus !== "done") return
     setIpSaveError(null)
     try {
-      const { added, skipped } = await addAllowedIps(
+      const { added, skipped, overlapping } = await addAllowedIps(
         csvEntries.map((entry) => ({
           address: entry.address,
           description: entry.description,
         }))
       )
       setSavedAlertMessage(
-        skipped.length > 0
-          ? `Added ${added}, skipped ${skipped.length} already on your list`
-          : "Successfully added IP addresses"
+        summariseIpImport(added, skipped.length, overlapping.length)
       )
     } catch (err: any) {
       setIpSaveError(
@@ -2540,6 +2641,12 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
+                  {passwordError && (
+                    <p className="w-full text-xs font-medium text-error-500">
+                      {passwordError}
+                    </p>
+                  )}
+
                   <div className="flex w-full justify-end gap-x-3">
                     <Button
                       variant="outlined"
@@ -2556,7 +2663,7 @@ export default function SettingsPage() {
                     <Button
                       size="sm"
                       onClick={handlePasswordSave}
-                      disabled={!canSavePassword}
+                      disabled={!canSavePassword || isSavingPassword}
                     >
                       Save Changes
                     </Button>
@@ -2614,9 +2721,13 @@ export default function SettingsPage() {
                         </Button>
                         <Button
                           size="lg"
+                          // Saving is a real request now, so it can only be
+                          // offered when the form is actually complete —
+                          // otherwise this closes and silently does nothing.
+                          disabled={!canSavePassword || isSavingPassword}
                           onClick={() => {
                             setIsDiscardOpen(false)
-                            handlePasswordSave()
+                            void handlePasswordSave()
                           }}
                         >
                           Save & Exit
@@ -2674,23 +2785,33 @@ export default function SettingsPage() {
                       </div>
                     </div>
 
-                    <div className="flex w-full items-start justify-center gap-x-3">
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        size="sm"
-                        onClick={closeFingerprint}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={!acceptsFingerprintTerms}
-                        onClick={handleEnableFingerprint}
-                        leftIcon={<Check className="size-[15px]" />}
-                      >
-                        Enable Fingerprint Login
-                      </Button>
+                    <div className="flex w-full flex-col items-center gap-3">
+                      {fingerprintError && (
+                        <p className="w-full text-center text-xs font-medium text-error-500">
+                          {fingerprintError}
+                        </p>
+                      )}
+
+                      <div className="flex w-full items-start justify-center gap-x-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={closeFingerprint}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={
+                            !acceptsFingerprintTerms || isEnrollingFingerprint
+                          }
+                          onClick={handleEnableFingerprint}
+                          leftIcon={<Check className="size-[15px]" />}
+                        >
+                          Enable Fingerprint Login
+                        </Button>
+                      </div>
                     </div>
                   </DialogContent>
                 </Dialog>
