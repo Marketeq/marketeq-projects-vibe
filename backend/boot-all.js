@@ -19,7 +19,11 @@
  *   Tier 2 (active):   48 MB heap      (notification, search, contracts, etc.)
  *   Tier 3 (dormant):  48 MB heap      (admin, billing, wallet, etc.)
  *   Gateway:           96 MB heap
- *   Total heap: ~1.6 GB, actual RSS ~3.2 GB with Node overhead (29 processes)
+ *   Total heap: ~2.0 GB across 32 processes (31 services + gateway).
+ *
+ * Raise a service above 48 MB only against a known payload size, and record the
+ * reason next to it — see portfolio-service, which OOM'd at 48 MB because its
+ * schemaJson cap alone is 2 MB. These are ceilings, not reservations.
  */
 
 const { spawn } = require('child_process');
