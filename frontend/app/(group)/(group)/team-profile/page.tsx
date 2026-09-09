@@ -1995,6 +1995,7 @@ function TeamProfileContent() {
                           {visibleOffers.map((offer) => (
                             <ListingCard
                               budget={offer.budget}
+                              collaborators={[]}
                               description={offer.description}
                               duration={offer.duration}
                               id={offer.id}
@@ -2017,6 +2018,7 @@ function TeamProfileContent() {
                             {extraOffers.map((offer) => (
                               <ListingCard
                                 budget={offer.budget}
+                                collaborators={[]}
                                 description={offer.description}
                                 duration={offer.duration}
                                 id={offer.id}

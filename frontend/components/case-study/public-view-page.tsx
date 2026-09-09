@@ -361,6 +361,7 @@ function CarouselSection({
                 duration={item.duration}
                 rating={item.rating}
                 reviewCount={item.reviewCount}
+                collaborators={[]}
                 href="#"
               />
             </CarouselItem>

@@ -1028,6 +1028,7 @@ export default function MyJobsPage() {
                       budget="$90,200"
                       duration="Full-Time"
                       cardVariant="job-grid"
+                      collaborators={[]}
                     />
                   ))}
                 </div>

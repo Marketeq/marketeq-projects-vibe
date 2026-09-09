@@ -40,6 +40,7 @@ export interface ServiceCard {
   views90d?: number
   adminBoost?: number
   featured?: boolean
+  collaborators?: string[]
 }
 
 export interface TeamCard {

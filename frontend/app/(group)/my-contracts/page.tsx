@@ -1,7 +1,9 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { cn } from "@/utils/functions"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
@@ -10,22 +12,35 @@ import {
   endContract as apiEndContract,
   getClientContracts,
   getTalentContracts,
-  respondToContract,
 } from "@/src/lib/api/contracts"
 import {
+  ArrowLeft,
   Briefcase,
   Calendar,
+  Copy01,
   Download01,
+  File02,
   FileCheck02,
   FilterLines,
   HelpCircle,
+  LifeBuoy01,
+  LinkExternal01,
+  List,
+  Mail01,
   Monitor,
   MoreHorizontal,
+  Pause,
+  Edit03,
+  Play,
   Plus,
+  RefreshCcw01,
+  Repeat01,
   Search,
-  SwitchVertical01,
+  Trash01,
   User,
   Users,
+  Users01,
+  XClose,
 } from "@blend-metrics/icons"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
@@ -36,12 +51,23 @@ import {
   AvatarImage,
   Badge,
   Button,
+  Dialog,
+  DialogContent,
+  DialogClose,
+  DialogTitle,
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
   IconButton,
   Input,
+  Label,
   Progress,
   Tabs,
   TabsList,
@@ -528,7 +554,17 @@ export default function MyContractsPage() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<"all" | "active" | "pending">("all")
   const [viewMode, setViewMode] = useState<ViewMode>("grouped")
-  const [typeFilter, setTypeFilter] = useState<"all" | ContractType>("all")
+  const [statusFilter, setStatusFilter] = useState<Set<ContractStatus>>(new Set())
+  const [contractTypeFilter, setContractTypeFilter] = useState<Set<ContractType>>(new Set())
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<Set<string>>(new Set())
+  const [lastActivityFilter, setLastActivityFilter] = useState<string | null>(null)
+  const [endingInFilter, setEndingInFilter] = useState<string | null>(null)
+  const [startDateFilter, setStartDateFilter] = useState("")
+  const [endDateFilter, setEndDateFilter] = useState("")
+
+  const toggleStatus = (s: ContractStatus) => setStatusFilter(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n })
+  const toggleContractType = (t: ContractType) => setContractTypeFilter(prev => { const n = new Set(prev); n.has(t) ? n.delete(t) : n.add(t); return n })
+  const togglePaymentStatus = (p: string) => setPaymentStatusFilter(prev => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n })
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState<SortOption>("recent")
   const [contracts, setContracts] = useState<Contract[]>(sampleContracts)
@@ -577,8 +613,21 @@ export default function MyContractsPage() {
         c.status !== "Canceled"
       )
         return false
-      // Type filter
-      if (typeFilter !== "all" && c.type !== typeFilter) return false
+      // Contract type filter
+      if (contractTypeFilter.size > 0 && !contractTypeFilter.has(c.type)) return false
+      // Status filter
+      if (statusFilter.size > 0 && !statusFilter.has(c.status)) return false
+      // Payment status filter (future data field)
+      // Last activity filter
+      if (lastActivityFilter === "today") {
+        if (!c.updatedAt.toLowerCase().includes("hour") && !c.updatedAt.toLowerCase().includes("just")) return false
+      } else if (lastActivityFilter === "7days") {
+        if (!c.updatedAt.toLowerCase().includes("hour") && !c.updatedAt.toLowerCase().includes("day")) return false
+      } else if (lastActivityFilter === "none") {
+        if (!c.lastActivity.toLowerCase().includes("no update")) return false
+      }
+      // Ending in filter
+      if (endingInFilter === "today" && c.endDate !== new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })) return false
       // Search
       if (searchQuery) {
         const q = searchQuery.toLowerCase()
@@ -609,7 +658,7 @@ export default function MyContractsPage() {
     })
 
     return results
-  }, [activeTab, typeFilter, searchQuery, sortBy])
+  }, [activeTab, contractTypeFilter, statusFilter, paymentStatusFilter, lastActivityFilter, endingInFilter, searchQuery, sortBy])
 
   // Group contracts by groupId for grouped view
   const grouped = useMemo(() => {
@@ -640,9 +689,11 @@ export default function MyContractsPage() {
   ).length
 
   const [showSearch, setShowSearch] = useState(false)
+  const [newContractOpen, setNewContractOpen] = useState(false)
 
   return (
     <AuthenticatedRoute>
+      <NewContractModal open={newContractOpen} onClose={() => setNewContractOpen(false)} />
       <div className="flex bg-gray-50 min-h-screen">
         <LeftSidebar />
 
@@ -659,23 +710,25 @@ export default function MyContractsPage() {
             </div>
             <div className="flex items-center gap-6">
               <Button
-                variant="ghost"
+                variant="link"
                 visual="gray"
                 size="sm"
-                leftIcon={<HelpCircle className="size-[15px]" />}
+                className="text-gray-500 hover:text-gray-600"
+                leftIcon={<HelpCircle className="size-4" />}
               >
-                Get help
+                Get Help
               </Button>
               <div className="flex items-center gap-3">
                 <Button
                   variant="outlined"
                   visual="gray"
                   size="sm"
+                  className="bg-white"
                   leftIcon={<Search className="size-[15px]" />}
                 >
                   Browse Marketplace
                 </Button>
-                <Button size="sm" leftIcon={<Plus className="size-[15px]" />}>
+                <Button size="sm" leftIcon={<Plus className="size-[15px]" />} onClick={() => setNewContractOpen(true)}>
                   New Contract
                 </Button>
               </div>
@@ -703,13 +756,13 @@ export default function MyContractsPage() {
                   onValueChange={(val) => setActiveTab(val as "all" | "active" | "pending")}
                   unanimated
                 >
-                  <TabsList className="px-0 pt-0 justify-start">
+                  <TabsList className="px-0 pt-0 justify-start border-b-0">
                     <TabsTrigger value="all" className="pb-[11px]">
                       All
                       <Badge
                         visual={activeTab === "all" ? "primary" : "gray"}
                         size="sm"
-                        className="h-5 px-2"
+                        className={activeTab === "all" ? "h-5 px-2 font-bold" : "h-5 px-2 font-bold text-gray-500"}
                       >
                         {allCount}
                       </Badge>
@@ -719,7 +772,7 @@ export default function MyContractsPage() {
                       <Badge
                         visual={activeTab === "active" ? "primary" : "gray"}
                         size="sm"
-                        className="h-5 px-2"
+                        className={activeTab === "active" ? "h-5 px-2 font-bold" : "h-5 px-2 font-bold text-gray-500"}
                       >
                         {activeCount}
                       </Badge>
@@ -729,7 +782,7 @@ export default function MyContractsPage() {
                       <Badge
                         visual={activeTab === "pending" ? "primary" : "gray"}
                         size="sm"
-                        className="h-5 px-2"
+                        className={activeTab === "pending" ? "h-5 px-2 font-bold" : "h-5 px-2 font-bold text-gray-500"}
                       >
                         {pendingCount}
                       </Badge>
@@ -743,28 +796,120 @@ export default function MyContractsPage() {
                 <div className="flex items-center gap-1">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" visual="gray" size="sm" className="gap-2">
+                      <Button variant="ghost" visual="gray" size="sm" className="gap-2 text-gray-500">
                         Filters
                         <FilterLines className="size-[15px]" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setTypeFilter("all")}>All Types</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setTypeFilter("project")}>Projects</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setTypeFilter("service")}>Services</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setTypeFilter("team")}>Teams</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setTypeFilter("individual")}>Individual</DropdownMenuItem>
+                    <DropdownMenuContent align="end" className="w-[180px]">
+                      <DropdownMenuLabel className="px-3 py-2.5 text-[13px] font-bold text-gray-900">Filter by</DropdownMenuLabel>
+
+                      {/* Status */}
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>Status</DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-[180px] py-[4px]">
+                          <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200">
+                            <Button variant="link" visual="gray" className="text-[12px]" onClick={() => setStatusFilter(new Set(["Active","Pending","Paused","Completed","Ended","Canceled","Disputed"] as ContractStatus[]))}>Select All</Button>
+                            {statusFilter.size > 0 && <Button variant="link" visual="primary" className="text-[12px]" onClick={() => setStatusFilter(new Set())}>Clear</Button>}
+                          </div>
+                          {(["Active","Pending","Paused","Completed","Ended","Canceled"] as ContractStatus[]).map(s => (
+                            <DropdownMenuCheckboxItem key={s} checked={statusFilter.has(s)} onCheckedChange={() => toggleStatus(s)} onSelect={e => e.preventDefault()}>{s}</DropdownMenuCheckboxItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+
+                      {/* Contract type */}
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>Contract type</DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-[180px] py-[4px]">
+                          <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200">
+                            <Button variant="link" visual="gray" className="text-[12px]" onClick={() => setContractTypeFilter(new Set(["project","service","team","individual"] as ContractType[]))}>Select All</Button>
+                            {contractTypeFilter.size > 0 && <Button variant="link" visual="primary" className="text-[12px]" onClick={() => setContractTypeFilter(new Set())}>Clear</Button>}
+                          </div>
+                          {([["project","Project"],["service","Service"],["team","Team"],["individual","Individual"]] as [ContractType,string][]).map(([val,label]) => (
+                            <DropdownMenuCheckboxItem key={val} checked={contractTypeFilter.has(val)} onCheckedChange={() => toggleContractType(val)} onSelect={e => e.preventDefault()}>{label}</DropdownMenuCheckboxItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+
+                      {/* Date */}
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>Date</DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-[260px] py-[4px]">
+                          <div className="px-3 py-3 flex flex-col gap-4">
+                            <div className="flex flex-col gap-1.5">
+                              <Label className="text-[12px] font-medium text-gray-500">Contract start date</Label>
+                              <Input type="date" value={startDateFilter} onChange={e => setStartDateFilter(e.target.value)} className="h-9 text-[13px]" />
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              <Label className="text-[12px] font-medium text-gray-500">Contract end date</Label>
+                              <Input type="date" value={endDateFilter} onChange={e => setEndDateFilter(e.target.value)} className="h-9 text-[13px]" />
+                            </div>
+                          </div>
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+
+                      {/* Last activity */}
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>Last activity</DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-[180px] py-[4px]">
+                          {([["today","Today"],["7days","Last 7 days"],["30days","Last 30 days"],["none","No recent activity"]] as [string,string][]).map(([val,label]) => (
+                            <DropdownMenuItem key={val} className={lastActivityFilter === val ? "bg-gray-100 text-gray-900" : ""} onClick={() => setLastActivityFilter(lastActivityFilter === val ? null : val)}>{label}</DropdownMenuItem>
+                          ))}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setLastActivityFilter(null)}>Custom...</DropdownMenuItem>
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+
+                      {/* Ending in */}
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>Ending in</DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-[180px] py-[4px]">
+                          {([["today","Today"],["7days","7 days"],["30days","30 days"],["30plus","30+ days"]] as [string,string][]).map(([val,label]) => (
+                            <DropdownMenuItem key={val} className={endingInFilter === val ? "bg-gray-100 text-gray-900" : ""} onClick={() => setEndingInFilter(endingInFilter === val ? null : val)}>{label}</DropdownMenuItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+
+                      {/* Payment status */}
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>Payment status</DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-[180px] py-[4px]">
+                          <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200">
+                            <Button variant="link" visual="gray" className="text-[12px]" onClick={() => setPaymentStatusFilter(new Set(["pending","scheduled","paid","overdue"]))}>Select All</Button>
+                            {paymentStatusFilter.size > 0 && <Button variant="link" visual="primary" className="text-[12px]" onClick={() => setPaymentStatusFilter(new Set())}>Clear</Button>}
+                          </div>
+                          {(["Pending","Scheduled","Paid","Overdue"]).map(s => (
+                            <DropdownMenuCheckboxItem key={s} checked={paymentStatusFilter.has(s.toLowerCase())} onCheckedChange={() => togglePaymentStatus(s.toLowerCase())} onSelect={e => e.preventDefault()}>{s}</DropdownMenuCheckboxItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+
+                      {/* Action required */}
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>Action required</DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-[180px] py-[4px]">
+                          <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200">
+                            <Button variant="link" visual="gray" className="text-[12px]">Select All</Button>
+                          </div>
+                          <DropdownMenuItem onSelect={e => e.preventDefault()}>Awaiting acceptance</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={e => e.preventDefault()}>Payment due</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={e => e.preventDefault()}>Review pending</DropdownMenuItem>
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+
                     </DropdownMenuContent>
                   </DropdownMenu>
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" visual="gray" size="sm" className="gap-2">
+                      <Button variant="ghost" visual="gray" size="sm" className="gap-2 text-gray-500">
                         Recent Activity
-                        <SwitchVertical01 className="size-4" />
+                        <img src="/icons/sort.svg" alt="" className="size-4 shrink-0" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align="end" className="w-[180px]">
+                      <DropdownMenuLabel className="px-3 py-2.5 text-[13px] font-bold text-gray-900">Sort by</DropdownMenuLabel>
                       <DropdownMenuItem onClick={() => setSortBy("recent")}>Recent Activity</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setSortBy("milestone")}>Next Milestone</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setSortBy("az")}>A → Z</DropdownMenuItem>
@@ -776,14 +921,22 @@ export default function MyContractsPage() {
                 {/* Vertical divider */}
                 <div className="h-[21px] w-px bg-gray-200 shrink-0" />
 
-                <IconButton
-                  variant="ghost"
-                  visual="gray"
-                  size="sm"
-                  className="rounded-full size-9"
-                >
-                  <Download01 className="size-[15px]" />
-                </IconButton>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <IconButton
+                      variant="ghost"
+                      visual="gray"
+                      size="sm"
+                      className="rounded-full size-9 text-gray-500"
+                    >
+                      <Download01 className="size-[15px]" />
+                    </IconButton>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" sideOffset={4}>
+                    <DropdownMenuItem>CSV</DropdownMenuItem>
+                    <DropdownMenuItem>PDF</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
                 {/* Group / Individual toggle */}
                 <ToggleGroupRoot
@@ -792,7 +945,7 @@ export default function MyContractsPage() {
                     const val = details.value[0] as ViewMode | undefined
                     if (val) setViewMode(val)
                   }}
-                  className="rounded-[8px] bg-gray-100 border-gray-200 p-1 gap-0"
+                  className="rounded-[8px] bg-gray-100 border-gray-200 p-1 gap-0 overflow-visible"
                 >
                   <ToggleGroupItem
                     value="grouped"
@@ -881,7 +1034,7 @@ function ContractsView({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out">
       <table className="w-full">
         <thead>
           <tr className="border-b border-gray-100">
@@ -1000,7 +1153,7 @@ function ContractCard({
             Add Team Member
           </Button>
           {/* More actions */}
-          <ContractActions contract={contract} />
+          <ContractActions contract={contract} viewMode="grouped" />
         </div>
       </div>
 
@@ -1119,9 +1272,9 @@ function ContractRow({ contract }: { contract: Contract }) {
     <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
       <td className="px-4 py-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-dark-blue-400 truncate max-w-[240px]">
+          <Link href={`/active-project/${contract.id}?title=${encodeURIComponent(contract.title)}&group=${encodeURIComponent(contract.groupName)}`} className="text-sm font-semibold text-dark-blue-400 truncate max-w-[240px] hover:underline cursor-pointer block">
             {contract.title}
-          </p>
+          </Link>
           <p className="text-xs text-gray-400">{contract.groupName}</p>
         </div>
       </td>
@@ -1174,27 +1327,370 @@ function ContractRow({ contract }: { contract: Contract }) {
         <span className="text-xs text-gray-400">{contract.lastActivity}</span>
       </td>
       <td className="px-4 py-3">
-        <ContractActions contract={contract} />
+        <ContractActions contract={contract} viewMode="individual" />
       </td>
     </tr>
   )
 }
 
-function ContractActions({ contract }: { contract: Contract }) {
+function PostJobIcon({ className }: { className?: string }) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M15.9999 20.9998V4.99977C15.9999 4.46934 15.7892 3.96063 15.4141 3.58556C15.039 3.21048 14.5303 2.99977 13.9999 2.99977H9.99989C9.46946 2.99977 8.96075 3.21048 8.58568 3.58556C8.21061 3.96063 7.99989 4.46934 7.99989 4.99977V20.9998M3.99989 6.99977H19.9999C21.1045 6.99977 21.9999 7.8952 21.9999 8.99977V18.9998C21.9999 20.1043 21.1045 20.9998 19.9999 20.9998H3.99989C2.89532 20.9998 1.99989 20.1043 1.99989 18.9998V8.99977C1.99989 7.8952 2.89532 6.99977 3.99989 6.99977Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function SendOfferIcon({ className }: { className?: string }) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M14.0005 11H8.00054M10.0005 15H8.00054M16.0005 7.00001H8.00054M20.0005 6.80001V17.2C20.0005 18.8802 20.0005 19.7202 19.6736 20.362C19.3859 20.9265 18.927 21.3854 18.3625 21.673C17.7208 22 16.8807 22 15.2005 22H8.80054C7.12038 22 6.2803 22 5.63857 21.673C5.07408 21.3854 4.61514 20.9265 4.32752 20.362C4.00054 19.7202 4.00054 18.8802 4.00054 17.2V6.80001C4.00054 5.11985 4.00054 4.27977 4.32752 3.63803C4.61514 3.07355 5.07408 2.61461 5.63857 2.32699C6.2803 2.00001 7.12038 2.00001 8.80054 2.00001H15.2005C16.8807 2.00001 17.7208 2.00001 18.3625 2.32699C18.927 2.61461 19.3859 3.07355 19.6736 3.63803C20.0005 4.27977 20.0005 5.11985 20.0005 6.80001Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function BrowseMarketplaceIcon({ className }: { className?: string }) {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M22.0009 11.9998C22.0009 17.5226 17.5237 21.9998 12.0009 21.9998M22.0009 11.9998C22.0009 6.47695 17.5237 1.9998 12.0009 1.9998M22.0009 11.9998H2.00087M12.0009 21.9998C6.47802 21.9998 2.00087 17.5226 2.00087 11.9998M12.0009 21.9998C14.5021 19.2614 15.9236 15.7078 16.0009 11.9998C15.9236 8.29183 14.5021 4.73815 12.0009 1.9998M12.0009 21.9998C9.49959 19.2614 8.07812 15.7078 8.00087 11.9998C8.07812 8.29183 9.49959 4.73815 12.0009 1.9998M2.00087 11.9998C2.00087 6.47695 6.47802 1.9998 12.0009 1.9998" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function NewContractModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const router = useRouter()
+  const [selected, setSelected] = useState<"post-job" | "send-offer" | "browse" | null>(null)
+
+  const options = [
+    {
+      id: "post-job" as const,
+      Icon: PostJobIcon,
+      title: "Post a job",
+      description:
+        "Create a job post and let qualified talent apply. Best when you want to compare applicants before hiring.",
+      href: "/my-jobs",
+    },
+    {
+      id: "send-offer" as const,
+      Icon: SendOfferIcon,
+      title: "Send an offer",
+      description:
+        "Search for a specific talent and send them a contract offer directly. Best when you already know who you want to hire.",
+      href: "/inbox",
+    },
+    {
+      id: "browse" as const,
+      Icon: BrowseMarketplaceIcon,
+      title: "Browse the Marketplace",
+      description:
+        "Explore available talent, compare profiles, and send an offer when you find the right fit.",
+      href: "/",
+    },
+  ]
+
+  const handleContinue = () => {
+    const opt = options.find((o) => o.id === selected)
+    if (!opt) return
+    onClose()
+    router.push(opt.href)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="p-0 gap-0 max-w-[582px] w-[582px] overflow-hidden rounded-xl">
+        {/* Header */}
+        <div className="flex items-center gap-4 px-5 py-5">
+          <DialogTitle className="flex-1 text-[20px] font-bold text-dark-blue-400 leading-normal">
+            How do you want to create this contact?
+          </DialogTitle>
+          <DialogClose asChild>
+            <IconButton variant="ghost" visual="gray" size="sm" className="shrink-0 rounded-[8px]">
+              <XClose className="size-5" />
+            </IconButton>
+          </DialogClose>
+        </div>
+
+        {/* Options */}
+        <div className="flex flex-col gap-[10px] px-5 pt-[6px] pb-[6px]">
+          {options.map(({ id, Icon, title, description }) => {
+            const isSelected = selected === id
+            return (
+              <Button
+                key={id}
+                variant="ghost"
+                visual="gray"
+                className={cn(
+                  "flex items-start gap-x-4 p-6 rounded-[8px] text-left w-full h-auto justify-start",
+                  "shadow-[0px_1px_4px_0px_rgba(0,0,0,0.03)]",
+                  isSelected
+                    ? "border-2 border-primary-500 bg-transparent hover:bg-transparent"
+                    : "border border-gray-200 bg-transparent hover:border-gray-300 hover:bg-transparent"
+                )}
+                onClick={() => setSelected(id)}
+              >
+                <Icon
+                  className={cn(
+                    "size-6 shrink-0",
+                    isSelected ? "text-primary-500" : "text-dark-blue-400"
+                  )}
+                />
+                <div className="flex flex-col gap-[6px] flex-1 min-w-0">
+                  <span
+                    className={cn(
+                      "text-[16px] font-semibold leading-normal whitespace-normal",
+                      isSelected ? "text-primary-500" : "text-dark-blue-400"
+                    )}
+                  >
+                    {title}
+                  </span>
+                  <span className="text-[15px] font-normal leading-5 text-gray-500 whitespace-normal">
+                    {description}
+                  </span>
+                </div>
+              </Button>
+            )
+          })}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-7 px-5 py-[14px]">
+          <Button variant="link" visual="gray" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" className="py-[10px] px-4 w-[108px] h-auto" disabled={!selected} onClick={handleContinue}>
+            Continue
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+type ActionItem = { label: string; icon: React.ComponentType<{ className?: string }>; onClick?: () => void; destructive?: boolean } | "sep"
+
+import type React from "react"
+
+const ACTION_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  "Manage members":    Users01,
+  "Manage member":     Users01,
+  "Manage contractor": Users01,
+  "View members":      Users01,
+  "View team members": Users01,
+  "View profile":      User,
+  "Pause project":     Pause,
+  "Pause service":     Pause,
+  "Pause team":        Pause,
+  "Pause contract":    Pause,
+  "Resume project":    Play,
+  "Resume service":    Play,
+  "Resume team":       Play,
+  "Resume contract":   Play,
+  "Rename project":    Edit03,
+  "Rename service":    Edit03,
+  "Rename team":       Edit03,
+  "Rename contract":   Edit03,
+  "Create similar":    Copy01,
+  "Change to service": RefreshCcw01,
+  "Change to project": RefreshCcw01,
+  "Restart project":   Repeat01,
+  "View invites":      Mail01,
+  "View offer":        File02,
+  "Add tasks":         List,
+  "Ask a question":    HelpCircle,
+  "Get help":          LifeBuoy01,
+  "View listing":      LinkExternal01,
+  "View team":         LinkExternal01,
+  "View job":          LinkExternal01,
+  "End contract":      Trash01,
+  "Move to group":     ArrowLeft,
+  "Move member":       ArrowLeft,
+  "Rehire team":       Repeat01,
+  "Rehire":            Repeat01,
+}
+
+function ContractActions({ contract, viewMode }: { contract: Contract; viewMode: ViewMode }) {
+  const { user } = useAuth()
+  const router = useRouter()
+  const isClient = user?.accountType === "CLIENT"
+  const isGrouped = viewMode === "grouped"
+  const { status, type } = contract
+
+  const isActive = status === "Active" || status === "Disputed"
+  const isPending = status === "Pending"
+  const isPaused = status === "Paused"
+  const isCompleted = status === "Completed" || status === "Ended"
+  const isCanceled = status === "Canceled"
+  const isTerminal = isCompleted || isCanceled
+
   const handleEndContract = async () => {
-    const result = await apiEndContract(contract.id, {
-      reasonCode: "Service no longer needed",
-      notes: "",
-    })
+    const result = await apiEndContract(contract.id, { reasonCode: "Service no longer needed", notes: "" })
     if (result) window.location.reload()
   }
 
-  const handleRejectContract = async () => {
-    const result = await respondToContract(contract.id, {
-      accepted: false,
-      talentId: contract.talentName,
+  const viewLabel = type === "team" ? "View team" : type === "individual" ? "View job" : "View listing"
+
+  const navRoutes: Record<string, string> = {
+    "Ask a question":    "/inbox",
+    "Get help":          "/settings",
+    "Add tasks":         `/active-project/${contract.id}`,
+    "View members":      `/active-project/${contract.id}`,
+    "View team members": `/active-project/${contract.id}`,
+    "Manage members":    `/active-project/${contract.id}`,
+    "Manage member":     `/active-project/${contract.id}`,
+    "Manage contractor": `/active-project/${contract.id}`,
+    "View team":         "/my-teams",
+    "View offer":        "/inbox",
+    "View invites":      "/inbox",
+    // "View listing" needs the listing slug from the API — not available yet
+    // "View job" needs the job slug from the API — not available yet
+    // "View profile" needs the talent's profile slug — not available yet
+  }
+
+  const items: ActionItem[] = []
+  const add = (...labels: string[]) =>
+    labels.forEach(l => {
+      const route = navRoutes[l]
+      items.push({ label: l, icon: ACTION_ICONS[l] ?? HelpCircle, onClick: route ? () => router.push(route) : undefined })
     })
-    if (result) window.location.reload()
+  const sep = () => items.push("sep")
+  const tail = () => { sep(); add("Ask a question", "Get help", viewLabel) }
+  const endItem: ActionItem = { label: "End contract", icon: Trash01, onClick: handleEndContract, destructive: true }
+
+  if (isGrouped) {
+    if (type === "project") {
+      isTerminal ? add("View members") : add("Manage members")
+      if (isActive) {
+        add("Pause project")
+        if (isClient) add("Create similar", "Change to service")
+        add("Rename project")
+      } else if (isPending) {
+        add("View invites")
+        if (isClient) add("Create similar", "Change to service")
+        add("Rename project")
+      } else if (isPaused) {
+        if (isClient) add("Resume project", "Create similar", "Change to service")
+        add("Rename project")
+      } else if (isCompleted) {
+        if (isClient) add("Restart project", "Rehire team", "Create similar")
+        add("Rename project")
+      } else if (isCanceled) {
+        if (isClient) add("Rehire team", "Create similar")
+        add("Rename project")
+      }
+    } else if (type === "service") {
+      isTerminal ? add("View members") : add("Manage members")
+      if (isActive) {
+        add("Pause service")
+        if (isClient) add("Change to project", "Create similar")
+        add("Rename service")
+      } else if (isPending) {
+        add("View invites")
+        if (isClient) add("Change to project", "Create similar")
+        add("Rename service")
+      } else if (isPaused) {
+        if (isClient) add("Resume service", "Create similar", "Change to project")
+        add("Rename service")
+      } else if (isTerminal) {
+        if (isClient) add("Rehire team", "Create similar")
+        add("Rename service")
+      }
+    } else if (type === "team") {
+      isTerminal ? add("View members") : add("Manage members")
+      if (isActive) {
+        add("Pause team")
+        if (isClient) add("Add tasks")
+        add("Rename team")
+      } else if (isPending) {
+        add("View invites")
+        if (isClient) add("Add tasks")
+        add("Rename team")
+      } else if (isPaused) {
+        if (isClient) add("Resume team", "Add tasks")
+        add("Rename team")
+      } else if (isTerminal) {
+        if (isClient) add("Rehire team")
+        add("Rename team")
+      }
+    } else {
+      // individual - group view
+      isTerminal ? add("View profile") : add("Manage contractor")
+      if (isActive) {
+        add("Move to group", "Pause contract", "Rename contract")
+        if (isClient) add("Add tasks")
+      } else if (isPending) {
+        add("View offer", "Rename contract")
+      } else if (isPaused) {
+        add("Move to group")
+        if (isClient) add("Resume contract")
+        add("Rename contract")
+        if (isClient) add("Add tasks")
+      } else if (isTerminal) {
+        add("Rename contract")
+        if (isClient) add("Rehire")
+      }
+    }
+    tail()
+    if (type === "individual" && isClient && !isTerminal) items.push(endItem)
+  } else {
+    // individual view (table rows)
+    if (type === "project") {
+      isTerminal ? add("View profile") : add("Manage member")
+      if (isActive) {
+        add("Move member", "Pause contract", "Rename project")
+      } else if (isPending) {
+        add("View offer", "Rename project")
+      } else if (isPaused) {
+        if (isClient) add("Resume contract")
+        add("Move member", "Rename project")
+      } else if (isCompleted) {
+        add("Rename project")
+        if (isClient) add("Rehire")
+      } else if (isCanceled) {
+        add("Rename contract")
+        if (isClient) add("Rehire")
+      }
+    } else if (type === "service") {
+      isTerminal ? add("View profile") : add("Manage member")
+      if (isActive) add("Move member", "Pause contract")
+      else if (isPending) add("View offer")
+      else if (isPaused) {
+        add("Move member")
+        if (isClient) add("Resume contract")
+      } else if (isTerminal) {
+        if (isClient) add("Rehire")
+      }
+    } else if (type === "team") {
+      isTerminal ? add("View profile") : add("Manage member")
+      if (isActive) add("Move member", "Pause team", "Add tasks")
+      else if (isPending) add("View offer", "Add tasks")
+      else if (isPaused) {
+        add("Move member")
+        if (isClient) add("Resume contract")
+        add("Add tasks")
+      } else if (isTerminal) {
+        if (isClient) add("Rehire")
+      }
+    } else {
+      // individual - individual view
+      isTerminal ? add("View profile") : add("Manage contractor")
+      if (isActive) {
+        add("Move to group", "Pause contract", "Rename contract")
+        if (isClient) add("Add tasks")
+      } else if (isPending) {
+        add("View offer", "Rename contract")
+        if (isClient) add("Add tasks")
+      } else if (isPaused) {
+        add("Move to group")
+        if (isClient) add("Resume contract")
+        add("Rename contract")
+        if (isClient) add("Add tasks")
+      } else if (isTerminal) {
+        add("Rename contract")
+        if (isClient) add("Rehire")
+      }
+    }
+    tail()
+    if (isClient && !isTerminal) items.push(endItem)
   }
 
   return (
@@ -1205,28 +1701,19 @@ function ContractActions({ contract }: { contract: Contract }) {
         </IconButton>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem>View Details</DropdownMenuItem>
-        {contract.status === "Active" && (
-          <>
-            <DropdownMenuItem>View Milestones</DropdownMenuItem>
+        {items.map((item, i) =>
+          item === "sep" ? (
+            <DropdownMenuSeparator key={i} />
+          ) : (
             <DropdownMenuItem
-              className="text-red-600"
-              onClick={handleEndContract}
+              key={i}
+              className={item.destructive ? "text-red-600 focus:text-red-600 gap-2" : "gap-2"}
+              onClick={item.onClick}
             >
-              End Contract
+              <item.icon className={`size-4 shrink-0 ${item.destructive ? "text-red-500" : "text-gray-500"}`} />
+              {item.label}
             </DropdownMenuItem>
-          </>
-        )}
-        {contract.status === "Pending" && (
-          <DropdownMenuItem
-            className="text-red-600"
-            onClick={handleRejectContract}
-          >
-            Cancel
-          </DropdownMenuItem>
-        )}
-        {contract.status === "Ended" && (
-          <DropdownMenuItem>Leave Review</DropdownMenuItem>
+          )
         )}
       </DropdownMenuContent>
     </DropdownMenu>
