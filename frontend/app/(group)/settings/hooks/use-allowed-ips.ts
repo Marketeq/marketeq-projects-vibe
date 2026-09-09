@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import AllowedIpsAPI, {
   type AllowedIp,
   type AllowedIpInput,
+  type OverlappingAllowedIp,
 } from "@/service/http/allowed-ips"
 
 /** The shape the IP Restrictions table renders. */
@@ -73,12 +74,23 @@ export function useAllowedIps(enabled: boolean) {
    * 200-row import something the user has to diff by hand.
    */
   const addMany = useCallback(
-    async (inputs: AllowedIpInput[]): Promise<{ added: number; skipped: string[] }> => {
-      if (inputs.length === 0) return { added: 0, skipped: [] }
+    async (
+      inputs: AllowedIpInput[]
+    ): Promise<{
+      added: number
+      skipped: string[]
+      overlapping: OverlappingAllowedIp[]
+    }> => {
+      if (inputs.length === 0)
+        return { added: 0, skipped: [], overlapping: [] }
       const res = await AllowedIpsAPI.createMany(inputs)
       const created = (res.data?.created ?? []).map(toEntry)
       setEntries((prev) => [...created, ...prev])
-      return { added: created.length, skipped: res.data?.skipped ?? [] }
+      return {
+        added: created.length,
+        skipped: res.data?.skipped ?? [],
+        overlapping: res.data?.overlapping ?? [],
+      }
     },
     []
   )
