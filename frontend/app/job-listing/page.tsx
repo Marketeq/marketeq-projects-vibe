@@ -208,6 +208,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogOverlay,
   DialogTitle,
   DialogTrigger,
   DisclosureContent,
@@ -228,6 +229,9 @@ import {
   RadioGroup,
   ScrollArea,
   ScrollBar,
+  SearchField,
+  SearchFieldButton,
+  SearchFieldInput,
   Select,
   SelectContent,
   SelectItem,
@@ -11993,36 +11997,36 @@ const ProjectScopeEditStep = ({
   setProgress,
   jobListingId,
 }: ProgressProps & { jobListingId?: string | null }) => {
-  const { toggleValidation } = useStepContext();
-  const { projectScopeMethods } = useProjectScopeContext();
-  const [projectScopeState, setProjectScopeState] = projectScopeMethods;
+  const { toggleValidation } = useStepContext()
+  const { projectScopeMethods } = useProjectScopeContext()
+  const [projectScopeState, setProjectScopeState] = projectScopeMethods
   const [phases, setPhases] = useState<Phase[]>(() =>
     projectScopeEditPhases.map((phase, phaseIndex) =>
-      createProjectScopePhase(phase, phaseIndex),
-    ),
-  );
+      createProjectScopePhase(phase, phaseIndex)
+    )
+  )
   const [expandedPhaseNames, setExpandedPhaseNames] = useState(() => [
     ...projectScopeEditPhases,
-  ]);
-  const [searchValue, setSearchValue] = useState("");
-  const [activeRoleKey, setActiveRoleKey] = useState<string | null>(null);
-  const [draftRole, setDraftRole] = useState("");
+  ])
+  const [searchValue, setSearchValue] = useState("")
+  const [activeRoleKey, setActiveRoleKey] = useState<string | null>(null)
+  const [draftRole, setDraftRole] = useState("")
   const [draftSchedule, setDraftSchedule] =
-    useState<JobListingWorkSchedule>("full_time");
-  const [draftCustomHours, setDraftCustomHours] = useState("15");
-  const [draftCustomFrequency, setDraftCustomFrequency] = useState("per_week");
-  const [assistantMessage, setAssistantMessage] = useState("");
-  const [assistantResult, setAssistantResult] = useState("");
-  const [isAssistantLoading, setIsAssistantLoading] = useState(false);
-  const didGenerateInitialScopeRef = useRef(false);
-  const didApplyPersistedScopeRef = useRef(false);
-  const skipNextProjectScopeSaveRef = useRef(false);
-  const lastSavedProjectScopeSignatureRef = useRef("");
-  const [budgetAmount, setBudgetAmount] = useState(5000);
-  const [projectTimelineMonths, setProjectTimelineMonths] = useState(3);
-  const [budgetFrequency, setBudgetFrequency] = useState("week");
-  const [budgetTooltipOpen, setBudgetTooltipOpen] = useState(false);
-  const normalizedSearchValue = normalizeSearchText(searchValue);
+    useState<JobListingWorkSchedule>("full_time")
+  const [draftCustomHours, setDraftCustomHours] = useState("15")
+  const [draftCustomFrequency, setDraftCustomFrequency] = useState("per_week")
+  const [assistantMessage, setAssistantMessage] = useState("")
+  const [assistantResult, setAssistantResult] = useState("")
+  const [isAssistantLoading, setIsAssistantLoading] = useState(false)
+  const didGenerateInitialScopeRef = useRef(false)
+  const didApplyPersistedScopeRef = useRef(false)
+  const skipNextProjectScopeSaveRef = useRef(false)
+  const lastSavedProjectScopeSignatureRef = useRef("")
+  const [budgetAmount, setBudgetAmount] = useState(5000)
+  const [projectTimelineMonths, setProjectTimelineMonths] = useState(3)
+  const [budgetFrequency, setBudgetFrequency] = useState("week")
+  const [budgetTooltipOpen, setBudgetTooltipOpen] = useState(false)
+  const normalizedSearchValue = normalizeSearchText(searchValue)
   const visiblePhases = normalizedSearchValue
     ? phases.filter((phase) => {
         const phaseText = normalizeSearchText(
@@ -12036,42 +12040,42 @@ const ProjectScopeEditStep = ({
               formatProjectRowDuration(row),
               formatProjectRowSchedule(row),
             ]) ?? []),
-          ].join(" "),
-        );
+          ].join(" ")
+        )
 
-        return phaseText.includes(normalizedSearchValue);
+        return phaseText.includes(normalizedSearchValue)
       })
-    : phases;
+    : phases
 
   const isScopeValid = phases.some(
-    (phase) => phase.phaseName?.trim() && (phase.rows ?? []).length > 0,
-  );
+    (phase) => phase.phaseName?.trim() && (phase.rows ?? []).length > 0
+  )
 
   useEffect(() => {
-    if (didApplyPersistedScopeRef.current) return;
+    if (didApplyPersistedScopeRef.current) return
 
     const persistedPhases = Array.isArray(projectScopeState)
       ? projectScopeState.filter(
-          (phase) => phase?.phaseName?.trim() && (phase.rows ?? []).length > 0,
+          (phase) => phase?.phaseName?.trim() && (phase.rows ?? []).length > 0
         )
-      : [];
+      : []
 
-    if (persistedPhases.length === 0) return;
+    if (persistedPhases.length === 0) return
 
-    didApplyPersistedScopeRef.current = true;
-    didGenerateInitialScopeRef.current = true;
-    skipNextProjectScopeSaveRef.current = true;
-    setPhases(persistedPhases);
+    didApplyPersistedScopeRef.current = true
+    didGenerateInitialScopeRef.current = true
+    skipNextProjectScopeSaveRef.current = true
+    setPhases(persistedPhases)
     setExpandedPhaseNames(
       persistedPhases
         .map((phase) => phase.phaseName)
-        .filter((name): name is string => Boolean(name)),
-    );
-  }, [projectScopeState]);
+        .filter((name): name is string => Boolean(name))
+    )
+  }, [projectScopeState])
 
   useEffect(() => {
-    if (!jobListingId || didGenerateInitialScopeRef.current) return;
-    didGenerateInitialScopeRef.current = true;
+    if (!jobListingId || didGenerateInitialScopeRef.current) return
+    didGenerateInitialScopeRef.current = true
 
     const generateScope = async () => {
       try {
@@ -12079,37 +12083,37 @@ const ProjectScopeEditStep = ({
           workType: "project",
           durationMonths: projectTimelineMonths,
           budgetUsdCents: budgetAmount * 100,
-        });
+        })
         const generatedPhases = createPhasesFromGeneratedScope(
-          response?.data?.scope,
-        );
+          response?.data?.scope
+        )
 
         if (generatedPhases.length > 0) {
-          setPhases(generatedPhases);
+          setPhases(generatedPhases)
           setExpandedPhaseNames(
-            generatedPhases.map((phase) => phase.phaseName ?? ""),
-          );
+            generatedPhases.map((phase) => phase.phaseName ?? "")
+          )
         }
       } catch (error) {
-        console.error("Failed to generate project scope", error);
+        console.error("Failed to generate project scope", error)
       }
-    };
+    }
 
-    void generateScope();
-  }, [budgetAmount, jobListingId, projectTimelineMonths]);
+    void generateScope()
+  }, [budgetAmount, jobListingId, projectTimelineMonths])
 
   const updatePhase = (phaseName: string, nextValues: Partial<Phase>) => {
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
-        phase.phaseName !== phaseName ? phase : { ...phase, ...nextValues },
-      ),
-    );
-  };
+        phase.phaseName !== phaseName ? phase : { ...phase, ...nextValues }
+      )
+    )
+  }
 
   const updateRow = (
     phaseName: string,
     rowId: string,
-    nextValues: Partial<PhaseRow>,
+    nextValues: Partial<PhaseRow>
   ) => {
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
@@ -12118,21 +12122,21 @@ const ProjectScopeEditStep = ({
           : {
               ...phase,
               rows: (phase.rows ?? []).map((row) =>
-                row.id === rowId ? { ...row, ...nextValues } : row,
+                row.id === rowId ? { ...row, ...nextValues } : row
               ),
-            },
-      ),
-    );
-  };
+            }
+      )
+    )
+  }
 
   const addPhase = () => {
-    const nextPhaseName = `Phase ${phases.length + 1} Research`;
+    const nextPhaseName = `Phase ${phases.length + 1} Research`
     setPhases((currentPhases) => [
       ...currentPhases,
       createProjectScopePhase(nextPhaseName, currentPhases.length),
-    ]);
-    setExpandedPhaseNames((currentNames) => [...currentNames, nextPhaseName]);
-  };
+    ])
+    setExpandedPhaseNames((currentNames) => [...currentNames, nextPhaseName])
+  }
 
   const addTask = (phaseName: string) => {
     setPhases((currentPhases) =>
@@ -12153,20 +12157,20 @@ const ProjectScopeEditStep = ({
                   workSchedule: "full_time",
                 },
               ],
-            },
-      ),
-    );
+            }
+      )
+    )
     setExpandedPhaseNames((currentNames) =>
       currentNames.includes(phaseName)
         ? currentNames
-        : [...currentNames, phaseName],
-    );
-  };
+        : [...currentNames, phaseName]
+    )
+  }
 
   const addProjectQualityTask = () => {
-    const targetPhaseName = phases[0]?.phaseName;
+    const targetPhaseName = phases[0]?.phaseName
 
-    if (!targetPhaseName) return false;
+    if (!targetPhaseName) return false
 
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
@@ -12175,7 +12179,7 @@ const ProjectScopeEditStep = ({
           : {
               ...phase,
               rows: (phase.rows ?? []).some(
-                (row) => row.task === "Quality Review",
+                (row) => row.task === "Quality Review"
               )
                 ? phase.rows
                 : [
@@ -12190,70 +12194,70 @@ const ProjectScopeEditStep = ({
                       workSchedule: "full_time",
                     },
                   ],
-            },
-      ),
-    );
+            }
+      )
+    )
     setExpandedPhaseNames((currentNames) =>
       currentNames.includes(targetPhaseName)
         ? currentNames
-        : [...currentNames, targetPhaseName],
-    );
+        : [...currentNames, targetPhaseName]
+    )
 
-    return true;
-  };
+    return true
+  }
 
   const applyProjectAssistantFallback = (message: string) => {
-    const normalizedMessage = normalizeSearchText(message);
+    const normalizedMessage = normalizeSearchText(message)
 
-    if (!normalizedMessage) return false;
+    if (!normalizedMessage) return false
 
     if (normalizedMessage.includes("budget")) {
       setBudgetAmount((currentAmount) => {
-        const nextAmount = Math.max(1000, Math.round(currentAmount * 0.8));
+        const nextAmount = Math.max(1000, Math.round(currentAmount * 0.8))
         setAssistantResult(
-          `Applied: budget reduced to $${nextAmount.toLocaleString()} per ${budgetFrequency}.`,
-        );
-        return nextAmount;
-      });
-      return true;
+          `Applied: budget reduced to $${nextAmount.toLocaleString()} per ${budgetFrequency}.`
+        )
+        return nextAmount
+      })
+      return true
     } else if (
       normalizedMessage.includes("timeline") ||
       normalizedMessage.includes("shorten")
     ) {
       setProjectTimelineMonths((currentMonths) => {
-        const nextMonths = Math.max(1, currentMonths - 1);
+        const nextMonths = Math.max(1, currentMonths - 1)
         setAssistantResult(
-          `Applied: project timeline shortened to ${nextMonths} ${nextMonths === 1 ? "month" : "months"}.`,
-        );
-        return nextMonths;
-      });
-      return true;
+          `Applied: project timeline shortened to ${nextMonths} ${nextMonths === 1 ? "month" : "months"}.`
+        )
+        return nextMonths
+      })
+      return true
     } else if (
       normalizedMessage.includes("quality") ||
       normalizedMessage.includes("scope") ||
       normalizedMessage.includes("improve")
     ) {
-      const didAddTask = addProjectQualityTask();
+      const didAddTask = addProjectQualityTask()
       setAssistantResult(
         didAddTask
           ? "Applied: added a Quality Review task to the first phase."
-          : "No available phase found to update.",
-      );
-      return true;
+          : "No available phase found to update."
+      )
+      return true
     } else {
       setAssistantResult(
-        "Try one of the suggested actions: reduce the budget, shorten the timeline, or improve scope quality.",
-      );
+        "Try one of the suggested actions: reduce the budget, shorten the timeline, or improve scope quality."
+      )
     }
 
-    return false;
-  };
+    return false
+  }
 
   const buildProjectAssistantScope = () => ({
     phases: phases.map((phase, phaseIndex) => {
-      const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`;
+      const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`
       const { phaseType, durationDays, recurrenceSchedule, recurrenceCount } =
-        getJobListingPhaseFields(phase, phaseName, phases, phaseIndex);
+        getJobListingPhaseFields(phase, phaseName, phases, phaseIndex)
 
       return {
         phaseName,
@@ -12271,16 +12275,16 @@ const ProjectScopeEditStep = ({
           customFrequency: row.customFrequency,
           estimatedHours: toEstimatedHours(row),
         })),
-      };
+      }
     }),
-  });
+  })
 
   const applyGeneratedProjectScope = (generatedScope: any) => {
     const generatedPhases = Array.isArray(generatedScope?.phases)
       ? generatedScope.phases
-      : [];
+      : []
 
-    if (!generatedPhases.length) return false;
+    if (!generatedPhases.length) return false
 
     const nextPhases: Phase[] = generatedPhases.map(
       (phase: any, phaseIndex: number) => ({
@@ -12302,96 +12306,96 @@ const ProjectScopeEditStep = ({
             workSchedule: task?.workSchedule ?? "full_time",
             customHours: task?.customHours ?? undefined,
             customFrequency: task?.customFrequency ?? undefined,
-          }),
+          })
         ),
-      }),
-    );
+      })
+    )
 
-    setPhases(nextPhases);
+    setPhases(nextPhases)
     setExpandedPhaseNames(
       nextPhases
         .map((phase) => phase.phaseName)
-        .filter((name): name is string => Boolean(name)),
-    );
-    return true;
-  };
+        .filter((name): name is string => Boolean(name))
+    )
+    return true
+  }
 
   const runProjectAssistant = async (message: string) => {
-    if (!message.trim()) return;
+    if (!message.trim()) return
 
     if (!jobListingId) {
-      applyProjectAssistantFallback(message);
-      setAssistantMessage("");
-      return;
+      applyProjectAssistantFallback(message)
+      setAssistantMessage("")
+      return
     }
 
-    setIsAssistantLoading(true);
+    setIsAssistantLoading(true)
     try {
       const response = await JobListingAPI.SmartAssistant(jobListingId, {
         mode: "scope",
         command: message,
         currentScope: buildProjectAssistantScope(),
         workType: "project",
-      });
-      const data = response?.data ?? {};
+      })
+      const data = response?.data ?? {}
 
       if (data.aiStatus === "AI_UNAVAILABLE") {
-        applyProjectAssistantFallback(message);
+        applyProjectAssistantFallback(message)
         setAssistantResult(
-          data.message ?? "Smart Assistant is temporarily unavailable.",
-        );
-        return;
+          data.message ?? "Smart Assistant is temporarily unavailable."
+        )
+        return
       }
 
       if (applyGeneratedProjectScope(data.updatedScope)) {
         setAssistantResult(
-          data.summary ?? "Applied: Smart Assistant updated the project scope.",
-        );
+          data.summary ?? "Applied: Smart Assistant updated the project scope."
+        )
       } else {
         setAssistantResult(
-          data.summary ?? "Smart Assistant did not return an updated scope.",
-        );
+          data.summary ?? "Smart Assistant did not return an updated scope."
+        )
       }
     } catch (error: any) {
-      applyProjectAssistantFallback(message);
+      applyProjectAssistantFallback(message)
       setAssistantResult(
         error?.response?.data?.message ||
           error?.message ||
-          "Smart Assistant is temporarily unavailable.",
-      );
+          "Smart Assistant is temporarily unavailable."
+      )
     } finally {
-      setAssistantMessage("");
-      setIsAssistantLoading(false);
+      setAssistantMessage("")
+      setIsAssistantLoading(false)
     }
-  };
+  }
 
   const removePhase = (phaseName: string) => {
     setPhases((currentPhases) =>
       currentPhases.length <= 1
         ? currentPhases
-        : currentPhases.filter((phase) => phase.phaseName !== phaseName),
-    );
+        : currentPhases.filter((phase) => phase.phaseName !== phaseName)
+    )
     setExpandedPhaseNames((currentNames) =>
-      currentNames.filter((name) => name !== phaseName),
-    );
-  };
+      currentNames.filter((name) => name !== phaseName)
+    )
+  }
 
   const togglePhase = (phaseName: string) => {
     setExpandedPhaseNames((currentNames) =>
       currentNames.includes(phaseName)
         ? currentNames.filter((name) => name !== phaseName)
-        : [...currentNames, phaseName],
-    );
-  };
+        : [...currentNames, phaseName]
+    )
+  }
 
   const openRoleEditor = (phaseName: string, row: PhaseRow) => {
-    const key = `${phaseName}-${row.id}`;
-    setActiveRoleKey(key);
-    setDraftRole(row.role ?? "");
-    setDraftSchedule(row.workSchedule ?? "full_time");
-    setDraftCustomHours(String(row.customHours ?? row.duration?.value ?? 15));
-    setDraftCustomFrequency(row.customFrequency ?? "per_week");
-  };
+    const key = `${phaseName}-${row.id}`
+    setActiveRoleKey(key)
+    setDraftRole(row.role ?? "")
+    setDraftSchedule(row.workSchedule ?? "full_time")
+    setDraftCustomHours(String(row.customHours ?? row.duration?.value ?? 15))
+    setDraftCustomFrequency(row.customFrequency ?? "per_week")
+  }
 
   const saveRoleEditor = (phaseName: string, rowId: string) => {
     updateRow(phaseName, rowId, {
@@ -12403,35 +12407,35 @@ const ProjectScopeEditStep = ({
           : undefined,
       customFrequency:
         draftSchedule === "custom" ? draftCustomFrequency : undefined,
-    });
-    setActiveRoleKey(null);
-  };
+    })
+    setActiveRoleKey(null)
+  }
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(isScopeValid);
-  }, [isScopeValid]);
+    toggleValidation(isScopeValid)
+  }, [isScopeValid])
 
   useEffect(() => {
-    setProgress?.(22.5);
-  }, [setProgress]);
+    setProgress?.(22.5)
+  }, [setProgress])
 
   useEffect(() => {
-    setProjectScopeState(phases);
-  }, [phases, setProjectScopeState]);
+    setProjectScopeState(phases)
+  }, [phases, setProjectScopeState])
 
   useEffect(() => {
-    if (!jobListingId || !isScopeValid) return;
+    if (!jobListingId || !isScopeValid) return
 
-    const payload = buildProjectAssistantScope();
-    const signature = JSON.stringify(payload);
+    const payload = buildProjectAssistantScope()
+    const signature = JSON.stringify(payload)
 
     if (skipNextProjectScopeSaveRef.current) {
-      skipNextProjectScopeSaveRef.current = false;
-      lastSavedProjectScopeSignatureRef.current = signature;
-      return;
+      skipNextProjectScopeSaveRef.current = false
+      lastSavedProjectScopeSignatureRef.current = signature
+      return
     }
 
-    if (signature === lastSavedProjectScopeSignatureRef.current) return;
+    if (signature === lastSavedProjectScopeSignatureRef.current) return
 
     const timeout = window.setTimeout(() => {
       const saveScope = async () => {
@@ -12439,18 +12443,18 @@ const ProjectScopeEditStep = ({
           await JobListingAPI.ApplyGeneratedScope(jobListingId, {
             hasScope: true,
             phases: payload.phases,
-          });
-          lastSavedProjectScopeSignatureRef.current = signature;
+          })
+          lastSavedProjectScopeSignatureRef.current = signature
         } catch (error) {
-          console.error("Failed to save project job listing scope", error);
+          console.error("Failed to save project job listing scope", error)
         }
-      };
+      }
 
-      void saveScope();
-    }, 700);
+      void saveScope()
+    }, 700)
 
-    return () => window.clearTimeout(timeout);
-  }, [phases, isScopeValid, jobListingId]);
+    return () => window.clearTimeout(timeout)
+  }, [phases, isScopeValid, jobListingId])
 
   return (
     <ScrollArea
@@ -12506,9 +12510,7 @@ const ProjectScopeEditStep = ({
                           <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
                           <div className="flex h-[186px] w-[182.55px] shrink-0 items-center">
                             <div>
-                              <p>
-                                Your budget updates automatically based on:
-                              </p>
+                              <p>Your budget updates automatically based on:</p>
                               <ul className="my-4 list-disc pl-5">
                                 <li>Tasks</li>
                                 <li>Roles</li>
@@ -12628,98 +12630,134 @@ const ProjectScopeEditStep = ({
             </div>
 
             <div className="mt-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="inline-flex rounded-[5px] border border-gray-300 bg-white shadow-xs">
+              <div className="mx-auto flex h-9 w-[254px] shrink-0 items-center p-0 shadow-xs md:mx-0">
                 <Button
-                  className="h-10 rounded-r-none border-0"
+                  className="h-9 w-[123px] rounded-l-[5px] rounded-r-none border-y border-l border-r-0 border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 capitalize text-gray-800 shadow-none"
                   variant="outlined"
                   visual="gray"
                   onClick={() =>
                     setExpandedPhaseNames(
                       phases
                         .map((phase) => phase.phaseName)
-                        .filter((name): name is string => Boolean(name)),
+                        .filter((name): name is string => Boolean(name))
                     )
                   }
                 >
-                  <ChevronDown className="size-4" />
-                  Expand all
+                  <ChevronsDown className="size-[15px] shrink-0 text-gray-500" />
+                  <span className="h-5 w-[72px] shrink-0 text-center">
+                    Expand All
+                  </span>
                 </Button>
                 <Button
-                  className="h-10 rounded-l-none border-y-0 border-r-0"
+                  className="h-9 w-[131px] rounded-l-none rounded-r-[5px] border border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-none"
                   variant="outlined"
                   visual="gray"
                   onClick={() => setExpandedPhaseNames([])}
                 >
-                  <ChevronDown className="size-4 rotate-180" />
-                  Collapse All
+                  <ChevronsUp className="size-[15px] shrink-0 text-gray-500" />
+                  <span className="h-5 w-20 shrink-0 text-center">
+                    Collapse All
+                  </span>
                 </Button>
               </div>
               <div className="flex flex-col gap-3 md:flex-row">
-                <div className="relative w-full md:w-[250px]">
-                  <SearchMd className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-                  <Input
-                    className="h-10 pl-9"
+                <SearchField className="h-9 w-full shrink-0 md:w-[223px]">
+                  <SearchFieldButton className="left-2.5 size-4 text-gray-400">
+                    <SearchMd className="size-4" />
+                  </SearchFieldButton>
+                  <SearchFieldInput
+                    className="h-9 w-[223px] rounded-[5px] py-2.5 pl-[34px] pr-3 text-sm leading-5 text-gray-500 placeholder:text-gray-500 placeholder:opacity-50"
                     placeholder="Find a phase or task"
                     value={searchValue}
                     onChange={(event) => setSearchValue(event.target.value)}
                   />
-                </div>
+                </SearchField>
                 <Button
-                  className="h-10"
+                  className="h-9 w-[124px] shrink-0 rounded-[5px] border border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-none"
                   variant="outlined"
                   visual="gray"
                   onClick={addPhase}
                 >
-                  <Plus className="size-4" />
-                  Add Phase
+                  <Plus className="size-[15px] shrink-0 text-gray-500" />
+                  <span className="h-5 w-[73px] shrink-0 text-center">
+                    Add Phase
+                  </span>
                 </Button>
               </div>
             </div>
 
             <div className="mt-6 space-y-3">
               {visiblePhases.map((phase, phaseIndex) => {
-                const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`;
-                const isExpanded = expandedPhaseNames.includes(phaseName);
+                const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`
+                const isExpanded = expandedPhaseNames.includes(phaseName)
+                const phaseNameParts = phaseName.split(" ")
+                const phasePrimaryName = `Phase ${
+                  projectScopePhaseLabels[phaseIndex] ?? phaseIndex + 1
+                }`
+                const phaseSecondaryName =
+                  phaseNameParts[0] === "Phase"
+                    ? phaseNameParts.slice(2).join(" ")
+                    : phaseName
 
                 return (
                   <div
                     key={phaseName}
-                    className="rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
+                    className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
                   >
-                    <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                      <div className="flex min-w-0 items-center gap-x-4">
-                        <Button
-                          variant="link"
-                          type="button"
-                          aria-label={
-                            isExpanded
-                              ? `Collapse ${phaseName}`
-                              : `Expand ${phaseName}`
-                          }
-                          className="text-inherit"
-                          onClick={() => togglePhase(phaseName)}
-                        >
-                          <ChevronDown
-                            className={cn(
-                              "size-5 text-gray-500",
-                              isExpanded && "rotate-180",
-                            )}
-                          />
-                        </Button>
-                        <Input
-                          className="h-9 border-0 bg-transparent px-0 text-lg leading-7 font-semibold text-gray-black shadow-none"
-                          value={phaseName}
-                          onChange={(event) =>
-                            updatePhase(phaseName, {
-                              phaseName: event.target.value,
-                            })
-                          }
-                        />
+                    <div className="flex h-14 items-center justify-center gap-4 border-b border-gray-200 p-3">
+                      <div className="flex h-8 min-w-0 flex-1 flex-col items-start justify-end gap-1 self-stretch p-0">
+                        <div className="flex h-8 w-[219px] shrink-0 items-center gap-2 p-0">
+                          <Button
+                            variant="link"
+                            type="button"
+                            aria-label={
+                              isExpanded
+                                ? `Collapse ${phaseName}`
+                                : `Expand ${phaseName}`
+                            }
+                            className="size-8 rounded-[5px] p-1.5 text-inherit"
+                            onClick={() => togglePhase(phaseName)}
+                          >
+                            <ChevronDown
+                              className={cn(
+                                "size-5 text-gray-500",
+                                !isExpanded && "rotate-180"
+                              )}
+                            />
+                          </Button>
+                          <div className="flex h-7 w-[179px] shrink-0 items-center gap-1.5 p-0">
+                            <span className="inline-flex h-7 w-[94px] shrink-0 items-center whitespace-nowrap text-lg font-semibold leading-7 text-gray-black">
+                              {phasePrimaryName}
+                            </span>
+                            {phaseSecondaryName ? (
+                              <span className="inline-flex h-5 w-[79px] shrink-0 items-center whitespace-nowrap text-lg font-light leading-5 text-gray-600">
+                                {phaseSecondaryName}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-x-3">
-                        <span className="hidden items-center gap-x-2 text-sm leading-5 font-semibold text-dark-blue-400 md:inline-flex">
-                          <Clock className="size-4 text-success-500" />
-                          {getPhaseDayRangeLabel(phases, phaseIndex)}
+                      <div className="flex items-center gap-3 self-stretch">
+                        <span className="hidden h-4 w-[93px] shrink-0 items-center gap-2 whitespace-nowrap text-[13px] font-semibold leading-4 text-[#122A4B] md:inline-flex">
+                          {getPhaseDayRangeLabel(phases, phaseIndex)
+                            .split(" - ")
+                            .map((label, index, labels) => (
+                              <React.Fragment key={`${phaseName}-${label}`}>
+                                <span
+                                  className={cn(
+                                    "flex h-4 shrink-0 items-center whitespace-nowrap",
+                                    index === 0 ? "w-[34px]" : "w-9"
+                                  )}
+                                >
+                                  {label}
+                                </span>
+                                {index < labels.length - 1 ? (
+                                  <span className="flex h-4 w-[7px] shrink-0 items-center justify-center text-center">
+                                    -
+                                  </span>
+                                ) : null}
+                              </React.Fragment>
+                            ))}
                         </span>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -12727,8 +12765,9 @@ const ProjectScopeEditStep = ({
                               variant="ghost"
                               visual="gray"
                               aria-label={`Open actions for ${phaseName}`}
+                              className="h-[23px] w-[27px] rounded-[5px] px-1.5 py-1"
                             >
-                              <MoreHorizontal className="size-4" />
+                              <MoreHorizontal className="size-[15px] text-gray-500" />
                             </IconButton>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
@@ -12755,249 +12794,294 @@ const ProjectScopeEditStep = ({
                           variant="outlined"
                           visual="gray"
                           aria-label={`Add task to ${phaseName}`}
+                          className="size-8 rounded-[5px] border-gray-300 bg-white p-2 shadow-[0px_1px_4px_rgba(0,0,0,0.03)]"
                           onClick={() => addTask(phaseName)}
                         >
-                          <Plus className="size-4" />
+                          <Plus className="size-3 text-gray-500" />
                         </IconButton>
                       </div>
                     </div>
 
                     {isExpanded ? (
                       <>
-                        <div className="grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] gap-x-6 border-b border-gray-200 bg-gray-50 px-6 py-3 text-xs leading-[18px] font-semibold text-gray-600">
-                          <span>Task Name</span>
-                          <span>Role</span>
-                          <span>Location</span>
-                          <span>Experience</span>
-                          <span>Duration</span>
+                        <div className="grid h-11 w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] border-b border-gray-200 bg-gray-50 text-xs font-medium leading-[18px] text-gray-600">
+                          {[
+                            "Task Name",
+                            "Role",
+                            "Location",
+                            "Experience",
+                            "Duration",
+                          ].map((header) => (
+                            <span
+                              key={header}
+                              className="flex h-11 items-center gap-3 self-stretch border-b border-gray-200 bg-gray-50 px-6 py-3"
+                            >
+                              <span className="h-[18px] shrink-0">
+                                {header}
+                              </span>
+                            </span>
+                          ))}
                         </div>
                         {(phase.rows ?? []).map((row) => {
-                          const roleKey = `${phaseName}-${row.id}`;
-                          const isRoleOpen = activeRoleKey === roleKey;
+                          const roleKey = `${phaseName}-${row.id}`
+                          const isRoleOpen = activeRoleKey === roleKey
 
                           return (
                             <div
                               key={row.id}
-                              className="relative grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] items-center gap-x-6 border-b border-gray-200 px-6 py-4 last:border-b-0"
+                              className="relative grid h-[72px] w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] items-center border-b border-gray-200 last:border-b-0"
                             >
-                              <Input
-                                className="h-8 border-0 bg-transparent px-0 text-sm leading-5 font-semibold text-gray-black shadow-none"
-                                value={row.task}
-                                onChange={(event) =>
-                                  updateRow(phaseName, row.id, {
-                                    task: event.target.value,
-                                  })
-                                }
-                              />
-                              <div>
+                              <div className="flex h-[72px] w-[240px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
+                                <Input
+                                  className="h-5 min-w-0 shrink-0 rounded-none border-0 bg-transparent p-0 text-sm font-semibold leading-5 text-gray-black shadow-none focus:border-transparent focus:ring-0"
+                                  style={{
+                                    width: `${Math.min(Math.max(row.task.length, 1), 22)}ch`,
+                                  }}
+                                  value={row.task}
+                                  onChange={(event) =>
+                                    updateRow(phaseName, row.id, {
+                                      task: event.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+                              <div className="flex h-[72px] w-[240px] shrink-0 flex-col items-start gap-1 self-stretch px-6 py-4">
                                 <Button
                                   variant="link"
                                   type="button"
-                                  className="justify-start text-left text-sm font-normal leading-5 text-gray-600 hover:no-underline"
+                                  className="h-[17px] w-[83px] justify-start p-0 text-left text-sm font-normal leading-[17px] text-gray-600 hover:no-underline"
                                   onClick={() => openRoleEditor(phaseName, row)}
                                 >
                                   {row.role}
                                 </Button>
-                                <p className="text-xs leading-[18px] text-gray-400">
+                                <p className="h-[18px] w-[50px] text-xs font-normal leading-[18px] text-gray-400">
                                   {formatProjectRowSchedule(row)}
                                 </p>
                               </div>
-                              <CountriesCombobox
-                                value={row.location}
-                                onValueChange={(location) =>
-                                  updateRow(phaseName, row.id, { location })
-                                }
-                                placeholder="Location"
-                                triggerClassName="h-7 rounded-[5px] border-dashed border-gray-300 bg-gray-50 px-2 text-xs leading-[18px] text-gray-700"
-                              />
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="outlined"
-                                    visual="gray"
-                                    type="button"
-                                    className="h-7 w-max gap-x-1 border-dashed border-gray-300 bg-gray-50 px-2 text-xs font-normal leading-[18px] text-gray-700 shadow-none"
-                                    rightIcon={<ChevronDown className="size-3" />}
-                                  >
-                                    {row.experience}
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start">
-                                  {EXPERIENCE_LEVELS.map((experience) => (
-                                    <DropdownMenuItem
-                                      key={experience}
-                                      onSelect={() =>
-                                        updateRow(phaseName, row.id, {
-                                          experience,
-                                        })
+                              <div className="flex h-[72px] w-[135.33px] shrink-0 items-start self-stretch px-3 py-4">
+                                <CountriesCombobox
+                                  value={row.location}
+                                  onValueChange={(location) =>
+                                    updateRow(phaseName, row.id, { location })
+                                  }
+                                  placeholder="Location"
+                                  triggerClassName="h-7 rounded-[5px] border-dashed border-gray-300 bg-gray-50 px-[5px] pr-2 text-xs leading-[18px] text-gray-700"
+                                />
+                              </div>
+                              <div className="flex h-[72px] w-[135.33px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="outlined"
+                                      visual="gray"
+                                      type="button"
+                                      className="h-7 w-max gap-x-1.5 rounded-[5px] border-dashed border-gray-300 bg-gray-50 px-2 py-[5px] text-xs font-medium leading-[18px] text-gray-700 shadow-none"
+                                      rightIcon={
+                                        <ChevronDown className="size-[15px]" />
                                       }
                                     >
-                                      {experience}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                              <Input
-                                className="h-8 w-[92px] border-0 bg-transparent px-0 text-sm leading-5 text-gray-500 shadow-none"
-                                value={formatProjectRowDuration(row)}
-                                onChange={(event) => {
-                                  const [value, type = "hours"] =
-                                    event.target.value.split(/\s+/);
-                                  updateRow(phaseName, row.id, {
-                                    duration: {
-                                      value: Number(value) || 1,
-                                      type: DURATION_TYPE.includes(
-                                        type as (typeof DURATION_TYPE)[number],
-                                      )
-                                        ? (type as (typeof DURATION_TYPE)[number])
-                                        : "hours",
-                                    },
-                                  });
-                                }}
-                              />
+                                      {row.experience}
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="start">
+                                    {EXPERIENCE_LEVELS.map((experience) => (
+                                      <DropdownMenuItem
+                                        key={experience}
+                                        onSelect={() =>
+                                          updateRow(phaseName, row.id, {
+                                            experience,
+                                          })
+                                        }
+                                      >
+                                        {experience}
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                              <div className="flex h-[72px] w-[135.33px] shrink-0 items-start self-stretch px-6 py-4">
+                                <Input
+                                  className="h-5 w-[59px] rounded-none border-0 bg-transparent p-0 text-sm font-normal leading-5 text-gray-600 opacity-65 shadow-none focus:border-transparent focus:ring-0"
+                                  value={formatProjectRowDuration(row)}
+                                  onChange={(event) => {
+                                    const [value, type = "hours"] =
+                                      event.target.value.split(/\s+/)
+                                    updateRow(phaseName, row.id, {
+                                      duration: {
+                                        value: Number(value) || 1,
+                                        type: DURATION_TYPE.includes(
+                                          type as (typeof DURATION_TYPE)[number]
+                                        )
+                                          ? (type as (typeof DURATION_TYPE)[number])
+                                          : "hours",
+                                      },
+                                    })
+                                  }}
+                                />
+                              </div>
 
                               {isRoleOpen ? (
-                                <div className="absolute left-[185px] top-[-22px] z-10 w-[280px] rounded-[5px] border border-gray-200 bg-white p-4 shadow-lg">
-                                  <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                    Role
-                                  </Label>
-                                  <Input
-                                    className="mt-1.5 h-9 text-sm leading-5"
-                                    value={draftRole}
-                                    onChange={(event) =>
-                                      setDraftRole(event.target.value)
+                                <Dialog
+                                  open={isRoleOpen}
+                                  onOpenChange={(open) => {
+                                    if (!open) {
+                                      setActiveRoleKey(null)
                                     }
-                                  />
-                                  <div className="mt-4">
-                                    <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                      Work Schedule
-                                    </Label>
-                                    <Select
-                                      value={draftSchedule}
-                                      onValueChange={(value) =>
-                                        setDraftSchedule(
-                                          value as JobListingWorkSchedule,
-                                        )
-                                      }
-                                    >
-                                      <SelectTrigger className="mt-1.5 h-9 w-full px-3 text-sm leading-5 text-gray-700">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent className="w-[248px]">
-                                        {[
-                                          {
-                                            value: "full_time" as const,
-                                            label: "Full-time",
-                                          },
-                                          {
-                                            value: "part_time" as const,
-                                            label: "Part-time",
-                                          },
-                                          {
-                                            value: "custom" as const,
-                                            label: "Custom",
-                                          },
-                                        ].map((schedule) => (
-                                          <SelectItem
-                                            key={schedule.value}
-                                            value={schedule.value}
-                                          >
-                                            {schedule.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  {draftSchedule === "custom" ? (
-                                    <div className="mt-4">
-                                      <div className="flex items-center justify-between gap-x-3">
-                                        <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                          Estimated hours
+                                  }}
+                                >
+                                  <DialogContent
+                                    variant="unanimated"
+                                    accessibilityTitle="Edit role"
+                                    dialogOverlay={
+                                      <DialogOverlay className="bg-[#101828]/20" />
+                                    }
+                                    className="left-1/2 top-1/2 flex w-[371px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col items-start gap-8 rounded-xl bg-white p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                                  >
+                                    <div className="flex w-[323px] flex-col items-start gap-3">
+                                      <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+                                        <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                                          Role
                                         </Label>
-                                        <IconButton
-                                          className="size-7 text-gray-500"
-                                          type="button"
-                                          variant="ghost"
-                                          visual="gray"
-                                          aria-label="Clear custom schedule"
-                                          onClick={() => {
-                                            setDraftCustomHours("");
-                                            setDraftCustomFrequency("per_week");
-                                            setDraftSchedule("full_time");
-                                          }}
-                                        >
-                                          <X className="size-4" />
-                                        </IconButton>
-                                      </div>
-                                      <div className="mt-1.5 grid grid-cols-[1fr_64px_1fr]">
                                         <Input
-                                          className="h-9 rounded-r-none text-sm leading-5"
-                                          value={draftCustomHours}
+                                          className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs focus:ring-0"
+                                          value={draftRole}
                                           onChange={(event) =>
-                                            setDraftCustomHours(
-                                              event.target.value,
-                                            )
+                                            setDraftRole(event.target.value)
                                           }
                                         />
-                                        <span className="inline-flex h-9 items-center justify-center border-y border-gray-300 bg-white text-sm leading-5 text-gray-500">
-                                          hours
-                                        </span>
+                                      </div>
+                                      <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+                                        <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                                          Work Schedule
+                                        </Label>
                                         <Select
-                                          value={draftCustomFrequency}
-                                          onValueChange={
-                                            setDraftCustomFrequency
+                                          value={draftSchedule}
+                                          onValueChange={(value) =>
+                                            setDraftSchedule(
+                                              value as JobListingWorkSchedule
+                                            )
                                           }
                                         >
-                                          <SelectTrigger className="h-9 min-w-[112px] rounded-l-none px-3 text-sm leading-5 text-dark-blue-400">
+                                          <SelectTrigger className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs">
                                             <SelectValue />
                                           </SelectTrigger>
-                                          <SelectContent className="min-w-[112px]">
+                                          <SelectContent className="w-[323px]">
                                             {[
-                                              "per_day",
-                                              "per_week",
-                                              "per_month",
-                                              "per_quarter",
-                                              "per_year",
-                                            ].map((frequency) => (
+                                              {
+                                                value: "full_time" as const,
+                                                label: "Full-time",
+                                              },
+                                              {
+                                                value: "part_time" as const,
+                                                label: "Part-time",
+                                              },
+                                              {
+                                                value: "custom" as const,
+                                                label: "Custom",
+                                              },
+                                            ].map((schedule) => (
                                               <SelectItem
-                                                key={frequency}
-                                                value={frequency}
+                                                key={schedule.value}
+                                                value={schedule.value}
                                               >
-                                                {frequency.replace("_", " ")}
+                                                {schedule.label}
                                               </SelectItem>
                                             ))}
                                           </SelectContent>
                                         </Select>
                                       </div>
+                                      {draftSchedule === "custom" ? (
+                                        <div className="flex h-[70px] w-[323px] shrink-0 items-start gap-3">
+                                          <div className="flex h-[70px] w-[155.5px] flex-col items-start gap-1.5">
+                                            <Label className="h-5 w-[109px] whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                                              Estimated hours
+                                            </Label>
+                                            <div className="flex h-11 w-[155.5px] items-start bg-white p-0 shadow-xs">
+                                              <input
+                                                className="h-11 w-[84.5px] flex-1 rounded-l-[5px] rounded-r-none border border-gray-300 bg-white px-3.5 py-2.5 text-base font-normal leading-6 text-gray-black shadow-none outline-none focus:border-gray-300 focus:outline-none"
+                                                value={draftCustomHours}
+                                                onChange={(event) =>
+                                                  setDraftCustomHours(
+                                                    event.target.value
+                                                  )
+                                                }
+                                              />
+                                              <span className="-ml-px inline-flex h-11 w-[71px] shrink-0 items-center rounded-l-none rounded-r-[5px] border border-gray-300 bg-white px-3.5 py-2.5 text-base font-normal leading-6 text-gray-500">
+                                                <span className="h-6 w-[43px] shrink-0">
+                                                  hours
+                                                </span>
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <div className="flex h-[70px] w-[155.5px] flex-col items-start gap-1.5 pt-[26px]">
+                                            <Select
+                                              value={draftCustomFrequency}
+                                              onValueChange={
+                                                setDraftCustomFrequency
+                                              }
+                                            >
+                                              <SelectTrigger className="h-11 w-[155.5px] rounded-[5px] border-gray-300 bg-white py-2.5 pl-3.5 pr-3 text-base font-normal leading-6 text-gray-black shadow-xs">
+                                                <SelectValue />
+                                              </SelectTrigger>
+                                              <SelectContent className="h-[118px] w-[156px] rounded-[5px] border border-gray-100 bg-white p-0 shadow-[0px_4px_19px_rgba(0,0,0,0.04)] [&>div]:h-[118px] [&>div]:overflow-y-scroll [&>div]:py-0 [&>div]:scrollbar-thin [&>div]:scrollbar-thumb-gray-200 [&>div]:scrollbar-track-transparent [&>div]:[scrollbar-gutter:stable]">
+                                                {[
+                                                  "per_day",
+                                                  "per_week",
+                                                  "per_month",
+                                                  "per_quarter",
+                                                  "per_year",
+                                                ].map((frequency) => (
+                                                  <SelectItem
+                                                    key={frequency}
+                                                    value={frequency}
+                                                    className="h-[34px] w-[156px] rounded-none px-3 py-2.5 text-[13px] font-medium leading-[13px] text-gray-500 focus:bg-gray-50 focus:text-gray-black data-[state=checked]:bg-gray-50 data-[state=checked]:text-gray-black [&>span:first-child]:hidden"
+                                                  >
+                                                    {frequency.replace(
+                                                      "_",
+                                                      " "
+                                                    )}
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                        </div>
+                                      ) : null}
                                     </div>
-                                  ) : null}
-                                  <div className="mt-4 grid grid-cols-2 gap-2">
-                                    <Button
-                                      type="button"
-                                      variant="outlined"
-                                      visual="gray"
-                                      onClick={() => setActiveRoleKey(null)}
-                                    >
-                                      Cancel
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      onClick={() =>
-                                        saveRoleEditor(phaseName, row.id)
-                                      }
-                                    >
-                                      Done
-                                    </Button>
-                                  </div>
-                                </div>
+                                    <div className="flex h-9 w-[323px] shrink-0 items-start gap-3">
+                                      <Button
+                                        type="button"
+                                        variant="outlined"
+                                        visual="gray"
+                                        className="h-9 w-[155.5px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-xs"
+                                        onClick={() => setActiveRoleKey(null)}
+                                      >
+                                        <span className="h-5 w-12 text-center">
+                                          Cancel
+                                        </span>
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        className="h-9 w-[155.5px] rounded-[5px] bg-primary-500 px-[14px] py-2 text-sm font-semibold leading-5 text-white shadow-xs"
+                                        onClick={() =>
+                                          saveRoleEditor(phaseName, row.id)
+                                        }
+                                      >
+                                        <span className="h-5 w-9 text-center">
+                                          Done
+                                        </span>
+                                      </Button>
+                                    </div>
+                                  </DialogContent>
+                                </Dialog>
                               ) : null}
                             </div>
-                          );
+                          )
                         })}
                       </>
                     ) : null}
                   </div>
-                );
+                )
               })}
               {visiblePhases.length === 0 ? (
                 <div className="rounded-lg border border-gray-200 bg-white px-6 py-8 text-center text-sm leading-5 text-gray-500 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
@@ -13045,7 +13129,7 @@ const ProjectScopeEditStep = ({
                       item === "Shorten the project timeline" &&
                         "w-[253px] justify-start bg-white",
                       item === "Improve scope quality" &&
-                        "w-[214px] justify-start bg-white",
+                        "w-[214px] justify-start bg-white"
                     )}
                     variant="outlined"
                     visual="gray"
@@ -13129,8 +13213,8 @@ const ProjectScopeEditStep = ({
         </div>
       </div>
     </ScrollArea>
-  );
-};
+  )
+}
 
 const finalReviewRoles = [
   "Front-End Developer",
@@ -13138,15 +13222,15 @@ const finalReviewRoles = [
   "UX Designer",
   "Q/A Engineer",
   "Project Manager",
-];
+]
 
-const finalReviewSkills = ["HTML5", "CSS3", "Bootstrap", "JavaScript", "WCAG"];
+const finalReviewSkills = ["HTML5", "CSS3", "Bootstrap", "JavaScript", "WCAG"]
 
 const finalReviewRichTextEditorClassName =
-  "mt-3 rounded-lg border border-gray-300 bg-white transition-colors focus-within:border-primary-500";
+  "mt-3 rounded-lg border border-gray-300 bg-white transition-colors focus-within:border-primary-500"
 
 const finalReviewRichTextEditorContentClassName =
-  "min-h-[330px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-dark-blue-400 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[302px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7";
+  "min-h-[330px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-dark-blue-400 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[302px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
 
 const ndaPreviewSections = [
   {
@@ -13169,69 +13253,69 @@ const ndaPreviewSections = [
     title: "Duration",
     body: "Confidentiality obligations continue after the job ends unless the information becomes public through no fault of the receiving party.",
   },
-];
+]
 
 const NDA_OFF_WARNING =
-  "Without an NDA, your scope and team details will be publicly visible to all talent on Marketeq.";
+  "Without an NDA, your scope and team details will be publicly visible to all talent on Marketeq."
 
 const INHERITED_NDA_MESSAGE =
-  "NDA settings are inherited from the parent contract.";
+  "NDA settings are inherited from the parent contract."
 
 const NdaPreviewDialog = ({
   trigger,
   ndaDocumentId,
 }: {
-  trigger: React.ReactNode;
-  ndaDocumentId?: string | null;
+  trigger: React.ReactNode
+  ndaDocumentId?: string | null
 }) => {
-  const [open, setOpen] = useState(false);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [open, setOpen] = useState(false)
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open || !ndaDocumentId) {
-      return;
+      return
     }
 
-    let cancelled = false;
+    let cancelled = false
 
     const loadPreview = async () => {
-      setIsLoading(true);
-      setErrorMessage(null);
+      setIsLoading(true)
+      setErrorMessage(null)
 
       try {
-        const response = await LegalAPI.GetNdaPreview(ndaDocumentId);
-        const nextPdfUrl = response?.data?.pdfUrl;
+        const response = await LegalAPI.GetNdaPreview(ndaDocumentId)
+        const nextPdfUrl = response?.data?.pdfUrl
 
         if (!cancelled) {
-          setPdfUrl(typeof nextPdfUrl === "string" ? nextPdfUrl : null);
+          setPdfUrl(typeof nextPdfUrl === "string" ? nextPdfUrl : null)
           if (!nextPdfUrl) {
-            setErrorMessage("The NDA preview file is not available yet.");
+            setErrorMessage("The NDA preview file is not available yet.")
           }
         }
       } catch (error: any) {
         if (!cancelled) {
-          setPdfUrl(null);
+          setPdfUrl(null)
           setErrorMessage(
             error?.response?.data?.message ||
               error?.message ||
-              "Unable to load the NDA preview.",
-          );
+              "Unable to load the NDA preview."
+          )
         }
       } finally {
         if (!cancelled) {
-          setIsLoading(false);
+          setIsLoading(false)
         }
       }
-    };
+    }
 
-    void loadPreview();
+    void loadPreview()
 
     return () => {
-      cancelled = true;
-    };
-  }, [open, ndaDocumentId]);
+      cancelled = true
+    }
+  }, [open, ndaDocumentId])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -13300,60 +13384,60 @@ const NdaPreviewDialog = ({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-};
+  )
+}
 
 const renderNdaPreviewDialog = (
   trigger: React.ReactNode,
-  ndaDocumentId?: string | null,
-) => <NdaPreviewDialog trigger={trigger} ndaDocumentId={ndaDocumentId} />;
+  ndaDocumentId?: string | null
+) => <NdaPreviewDialog trigger={trigger} ndaDocumentId={ndaDocumentId} />
 
 const useDynamicFinalReviewSkills = () => {
-  const [skills, setSkills] = useState(finalReviewSkills);
-  const [isAddSkillDialogOpen, setAddSkillDialogOpen] = useState(false);
-  const [draftSkill, setDraftSkill] = useState("");
+  const [skills, setSkills] = useState(finalReviewSkills)
+  const [isAddSkillDialogOpen, setAddSkillDialogOpen] = useState(false)
+  const [draftSkill, setDraftSkill] = useState("")
 
   const addSkill = () => {
-    setDraftSkill("");
-    setAddSkillDialogOpen(true);
-  };
+    setDraftSkill("")
+    setAddSkillDialogOpen(true)
+  }
 
   const closeAddSkillDialog = () => {
-    setAddSkillDialogOpen(false);
-    setDraftSkill("");
-  };
+    setAddSkillDialogOpen(false)
+    setDraftSkill("")
+  }
 
   const saveSkill = () => {
-    const nextSkill = draftSkill.trim();
+    const nextSkill = draftSkill.trim()
 
-    if (!nextSkill) return;
+    if (!nextSkill) return
 
     setSkills((currentSkills) =>
       currentSkills.some(
-        (skill) => skill.toLowerCase() === nextSkill.toLowerCase(),
+        (skill) => skill.toLowerCase() === nextSkill.toLowerCase()
       )
         ? currentSkills
-        : [...currentSkills, nextSkill],
-    );
-    closeAddSkillDialog();
-  };
+        : [...currentSkills, nextSkill]
+    )
+    closeAddSkillDialog()
+  }
 
   const removeSkill = (skillToRemove: string) => {
     setSkills((currentSkills) =>
-      currentSkills.filter((skill) => skill !== skillToRemove),
-    );
-  };
+      currentSkills.filter((skill) => skill !== skillToRemove)
+    )
+  }
 
   const addSkillDialog = (
     <Dialog
       open={isAddSkillDialogOpen}
       onOpenChange={(isOpen) => {
         if (isOpen) {
-          setAddSkillDialogOpen(true);
-          return;
+          setAddSkillDialogOpen(true)
+          return
         }
 
-        closeAddSkillDialog();
+        closeAddSkillDialog()
       }}
     >
       <DialogContent className="w-[410px] max-w-[calc(100vw-32px)]">
@@ -13376,8 +13460,8 @@ const useDynamicFinalReviewSkills = () => {
             onChange={(event) => setDraftSkill(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
-                event.preventDefault();
-                saveSkill();
+                event.preventDefault()
+                saveSkill()
               }
             }}
           />
@@ -13401,10 +13485,10 @@ const useDynamicFinalReviewSkills = () => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
+  )
 
-  return { skills, setSkills, addSkill, removeSkill, addSkillDialog };
-};
+  return { skills, setSkills, addSkill, removeSkill, addSkillDialog }
+}
 
 const FinalReviewRichTextField = ({
   title,
@@ -13413,24 +13497,24 @@ const FinalReviewRichTextField = ({
   counterLabel,
   onChange,
 }: {
-  title: string;
-  initialValue?: string;
-  placeholder: string;
-  counterLabel?: string;
-  onChange?: (value: string) => void;
+  title: string
+  initialValue?: string
+  placeholder: string
+  counterLabel?: string
+  onChange?: (value: string) => void
 }) => {
-  const [value, setValue] = useState(initialValue);
+  const [value, setValue] = useState(initialValue)
 
   useEffect(() => {
-    setValue(initialValue);
-  }, [initialValue]);
+    setValue(initialValue)
+  }, [initialValue])
 
-  const characterCount = getRichTextCharacterCount(value);
+  const characterCount = getRichTextCharacterCount(value)
 
   const handleChange = (html: string) => {
-    setValue(html);
-    onChange?.(html);
-  };
+    setValue(html)
+    onChange?.(html)
+  }
 
   return (
     <>
@@ -13453,8 +13537,8 @@ const FinalReviewRichTextField = ({
         onBlur={handleChange}
       />
     </>
-  );
-};
+  )
+}
 
 const FinalReviewTextSection = ({
   title,
@@ -13463,11 +13547,11 @@ const FinalReviewTextSection = ({
   onChange,
   children,
 }: {
-  title: string;
-  initialValue?: string;
-  placeholder: string;
-  onChange?: (value: string) => void;
-  children?: React.ReactNode;
+  title: string
+  initialValue?: string
+  placeholder: string
+  onChange?: (value: string) => void
+  children?: React.ReactNode
 }) => (
   <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
     <FinalReviewRichTextField
@@ -13478,7 +13562,7 @@ const FinalReviewTextSection = ({
     />
     {children}
   </div>
-);
+)
 
 const useFinalReviewSmartAssistant = ({
   jobListingId,
@@ -13486,34 +13570,34 @@ const useFinalReviewSmartAssistant = ({
   getValue,
   onApply,
 }: {
-  jobListingId?: string | null;
-  ensureJobListingDraft?: EnsureJobListingDraft;
-  getValue: (field: SmartAssistantEditableField) => string;
-  onApply: (field: SmartAssistantEditableField, value: string) => void;
+  jobListingId?: string | null
+  ensureJobListingDraft?: EnsureJobListingDraft
+  getValue: (field: SmartAssistantEditableField) => string
+  onApply: (field: SmartAssistantEditableField, value: string) => void
 }) => {
-  const [message, setMessage] = useState("");
-  const [result, setResult] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState("")
+  const [result, setResult] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
 
   const run = useCallback(
     async (command: string, field: SmartAssistantEditableField) => {
-      const trimmedCommand = command.trim();
+      const trimmedCommand = command.trim()
 
       if (!trimmedCommand) {
-        return;
+        return
       }
 
-      setIsLoading(true);
-      setResult("");
+      setIsLoading(true)
+      setResult("")
 
       try {
-        const listingId = jobListingId ?? (await ensureJobListingDraft?.());
+        const listingId = jobListingId ?? (await ensureJobListingDraft?.())
 
         if (!listingId) {
           setResult(
-            "Smart Assistant needs a saved job draft first. The draft service is currently unavailable; please try again in a moment.",
-          );
-          return;
+            "Smart Assistant needs a saved job draft first. The draft service is currently unavailable; please try again in a moment."
+          )
+          return
         }
 
         const response = await JobListingAPI.SmartAssistant(listingId, {
@@ -13521,46 +13605,46 @@ const useFinalReviewSmartAssistant = ({
           command: trimmedCommand,
           field,
           currentValue: getValue(field),
-        });
+        })
         const data = response.data as {
-          aiStatus?: "OK" | "AI_UNAVAILABLE";
-          updatedValue?: string;
-          suggestions?: string[];
-          message?: string;
-        };
+          aiStatus?: "OK" | "AI_UNAVAILABLE"
+          updatedValue?: string
+          suggestions?: string[]
+          message?: string
+        }
 
         if (data.aiStatus === "AI_UNAVAILABLE") {
           setResult(
-            data.message ?? "Smart Assistant is temporarily unavailable.",
-          );
-          return;
+            data.message ?? "Smart Assistant is temporarily unavailable."
+          )
+          return
         }
 
         if (data.updatedValue) {
           const updatedValue = clampSmartAssistantFieldValue(
             field,
-            data.updatedValue,
-          );
-          onApply(field, updatedValue);
+            data.updatedValue
+          )
+          onApply(field, updatedValue)
           setResult(
             field === "title"
               ? `Suggested title: ${updatedValue}`
-              : "Smart Assistant updated this section.",
-          );
-          setMessage("");
-          return;
+              : "Smart Assistant updated this section."
+          )
+          setMessage("")
+          return
         }
 
-        setResult("Smart Assistant did not return an update for this section.");
+        setResult("Smart Assistant did not return an update for this section.")
       } catch (error) {
-        console.error("Smart Assistant field edit failed", error);
-        setResult("Smart Assistant is temporarily unavailable.");
+        console.error("Smart Assistant field edit failed", error)
+        setResult("Smart Assistant is temporarily unavailable.")
       } finally {
-        setIsLoading(false);
+        setIsLoading(false)
       }
     },
-    [ensureJobListingDraft, getValue, jobListingId, onApply],
-  );
+    [ensureJobListingDraft, getValue, jobListingId, onApply]
+  )
 
   return {
     message,
@@ -13568,32 +13652,32 @@ const useFinalReviewSmartAssistant = ({
     result,
     isLoading,
     run,
-  };
-};
+  }
+}
 
 const resolveFinalReviewAssistantField = (
-  command: string,
+  command: string
 ): SmartAssistantEditableField => {
-  const normalized = command.toLowerCase();
+  const normalized = command.toLowerCase()
 
   if (
     /\b(title|project title|service title|headline|name)\b/.test(normalized)
   ) {
-    return "title";
+    return "title"
   }
 
   if (
     /\b(overview|summary|description|intro|introduction)\b/.test(normalized)
   ) {
-    return "overview";
+    return "overview"
   }
 
   if (/\b(benefit|benefits|why join|value proposition)\b/.test(normalized)) {
-    return "benefits";
+    return "benefits"
   }
 
-  return "responsibilities";
-};
+  return "responsibilities"
+}
 
 const useRoleDescriptionPersistence = ({
   jobListingId,
@@ -13605,39 +13689,39 @@ const useRoleDescriptionPersistence = ({
   skills,
   onLoad,
 }: {
-  jobListingId?: string | null;
-  ensureJobListingDraft?: EnsureJobListingDraft;
-  roleTitle: string;
-  overview?: string;
-  benefits?: string;
-  responsibilities?: string;
-  skills?: string[];
+  jobListingId?: string | null
+  ensureJobListingDraft?: EnsureJobListingDraft
+  roleTitle: string
+  overview?: string
+  benefits?: string
+  responsibilities?: string
+  skills?: string[]
   onLoad?: (draft: {
-    overview?: string;
-    benefits?: string;
-    responsibilities?: string;
-    skills?: string[];
-  }) => void;
+    overview?: string
+    benefits?: string
+    responsibilities?: string
+    skills?: string[]
+  }) => void
 }) => {
-  const loadedKeyRef = useRef("");
-  const lastSavedPayloadRef = useRef("");
-  const [loadedPersistenceKey, setLoadedPersistenceKey] = useState("");
+  const loadedKeyRef = useRef("")
+  const lastSavedPayloadRef = useRef("")
+  const [loadedPersistenceKey, setLoadedPersistenceKey] = useState("")
 
   useEffect(() => {
-    const listingId = jobListingId;
-    const loadKey = listingId && roleTitle ? `${listingId}:${roleTitle}` : "";
-    if (!listingId || !roleTitle || loadedKeyRef.current === loadKey) return;
-    loadedKeyRef.current = loadKey;
-    setLoadedPersistenceKey("");
+    const listingId = jobListingId
+    const loadKey = listingId && roleTitle ? `${listingId}:${roleTitle}` : ""
+    if (!listingId || !roleTitle || loadedKeyRef.current === loadKey) return
+    loadedKeyRef.current = loadKey
+    setLoadedPersistenceKey("")
 
     const loadRoleDescription = async () => {
       try {
-        const response = await JobListingAPI.GetRoleDescriptions(listingId);
-        const descriptions = Array.isArray(response?.data) ? response.data : [];
+        const response = await JobListingAPI.GetRoleDescriptions(listingId)
+        const descriptions = Array.isArray(response?.data) ? response.data : []
         const description = descriptions.find(
-          (item: any) => item?.roleTitle === roleTitle,
-        );
-        if (!description) return;
+          (item: any) => item?.roleTitle === roleTitle
+        )
+        if (!description) return
 
         const loadedPayload = {
           overview: description.overview ?? undefined,
@@ -13646,82 +13730,78 @@ const useRoleDescriptionPersistence = ({
           skills: Array.isArray(description.skills)
             ? description.skills
             : undefined,
-        };
+        }
         lastSavedPayloadRef.current = JSON.stringify({
           roleTitle,
           payload: loadedPayload,
-        });
-        onLoad?.(loadedPayload);
+        })
+        onLoad?.(loadedPayload)
       } catch (error) {
-        console.error("Failed to load role description", error);
+        console.error("Failed to load role description", error)
       } finally {
-        setLoadedPersistenceKey(loadKey);
+        setLoadedPersistenceKey(loadKey)
       }
-    };
+    }
 
-    void loadRoleDescription();
-  }, [jobListingId, onLoad, roleTitle]);
+    void loadRoleDescription()
+  }, [jobListingId, onLoad, roleTitle])
 
   useEffect(() => {
-    if (!roleTitle) return;
+    if (!roleTitle) return
 
     const payload = {
       overview,
       benefits,
       responsibilities,
       skills,
-    };
+    }
     const serializedPayload = JSON.stringify({
       roleTitle,
       payload,
-    });
+    })
     const loadKey =
-      jobListingId && roleTitle ? `${jobListingId}:${roleTitle}` : "";
+      jobListingId && roleTitle ? `${jobListingId}:${roleTitle}` : ""
 
-    if (loadKey && loadedPersistenceKey !== loadKey) return;
+    if (loadKey && loadedPersistenceKey !== loadKey) return
 
-    if (serializedPayload === lastSavedPayloadRef.current) return;
+    if (serializedPayload === lastSavedPayloadRef.current) return
 
     const previousPayload = lastSavedPayloadRef.current
       ? JSON.parse(lastSavedPayloadRef.current)
-      : null;
+      : null
     const textSignature = JSON.stringify({
       overview,
       benefits,
       responsibilities,
-    });
+    })
     const previousTextSignature = JSON.stringify({
       overview: previousPayload?.payload?.overview,
       benefits: previousPayload?.payload?.benefits,
       responsibilities: previousPayload?.payload?.responsibilities,
-    });
+    })
     const skillsChanged =
       JSON.stringify(skills ?? []) !==
-      JSON.stringify(previousPayload?.payload?.skills ?? []);
-    const textChanged = textSignature !== previousTextSignature;
-    const saveDelay = textChanged && !skillsChanged ? 500 : 0;
+      JSON.stringify(previousPayload?.payload?.skills ?? [])
+    const textChanged = textSignature !== previousTextSignature
+    const saveDelay = textChanged && !skillsChanged ? 500 : 0
 
     const timeout = window.setTimeout(() => {
       const saveRoleDescription = async () => {
         try {
-          const listingId = jobListingId ?? (await ensureJobListingDraft?.());
-          if (!listingId) return;
+          const listingId = jobListingId ?? (await ensureJobListingDraft?.())
+          if (!listingId) return
 
-          await JobListingAPI.SaveRoleDescription(
-            listingId,
-            roleTitle,
-            payload,
-          );
-          lastSavedPayloadRef.current = serializedPayload;
+          await JobListingAPI.SaveRoleDescription(listingId, roleTitle, payload)
+          lastSavedPayloadRef.current = serializedPayload
         } catch (error) {
-          console.error("Failed to save role description", error);
+          console.error("Failed to save role description", error)
         }
-      };
+      }
 
-      void saveRoleDescription();
-    }, saveDelay);
+      void saveRoleDescription()
+    }, saveDelay)
 
-    return () => window.clearTimeout(timeout);
+    return () => window.clearTimeout(timeout)
   }, [
     benefits,
     ensureJobListingDraft,
@@ -13731,8 +13811,8 @@ const useRoleDescriptionPersistence = ({
     responsibilities,
     roleTitle,
     skills,
-  ]);
-};
+  ])
+}
 
 const ReviewEditableTags = ({
   fieldName,
@@ -13742,18 +13822,18 @@ const ReviewEditableTags = ({
   fallbackOptions,
   max,
 }: {
-  fieldName: "industry" | "languages";
-  label: string;
-  addLabel: string;
-  autocompleteType: string;
-  fallbackOptions: string[];
-  max: number;
+  fieldName: "industry" | "languages"
+  label: string
+  addLabel: string
+  autocompleteType: string
+  fallbackOptions: string[]
+  max: number
 }) => {
-  const methods = useProjectInfoContext();
-  const values = useWatch({ control: methods.control, name: fieldName }) ?? [];
-  const [isEditing, setIsEditing] = useState(false);
-  const [options, setOptions] = useState<string[]>(fallbackOptions);
-  const requestRef = useRef(0);
+  const methods = useProjectInfoContext()
+  const values = useWatch({ control: methods.control, name: fieldName }) ?? []
+  const [isEditing, setIsEditing] = useState(false)
+  const [options, setOptions] = useState<string[]>(fallbackOptions)
+  const requestRef = useRef(0)
 
   const updateValues = useCallback(
     (nextValues: string[]) => {
@@ -13761,51 +13841,51 @@ const ReviewEditableTags = ({
         shouldDirty: true,
         shouldTouch: true,
         shouldValidate: true,
-      });
-      methods.clearErrors(fieldName);
-      void methods.trigger(fieldName);
+      })
+      methods.clearErrors(fieldName)
+      void methods.trigger(fieldName)
     },
-    [fieldName, max, methods],
-  );
+    [fieldName, max, methods]
+  )
 
   const removeValue = useCallback(
     (value: string) => {
-      updateValues(values.filter((item) => item !== value));
+      updateValues(values.filter((item) => item !== value))
     },
-    [updateValues, values],
-  );
+    [updateValues, values]
+  )
 
   const loadOptions = useCallback(
     async (query: string) => {
-      const requestId = requestRef.current + 1;
-      requestRef.current = requestId;
+      const requestId = requestRef.current + 1
+      requestRef.current = requestId
 
       try {
         const response = await AutocompleteAPI.getByType(
           autocompleteType,
-          query,
-        );
-        if (requestRef.current !== requestId) return;
+          query
+        )
+        if (requestRef.current !== requestId) return
 
         const nextOptions = Array.isArray(response?.data)
           ? getUniqueOptions(
               response.data
                 .map((item: AutocompleteTypeSuggestion) =>
-                  normalizeAutocompleteLabel(item),
+                  normalizeAutocompleteLabel(item)
                 )
-                .filter(Boolean),
+                .filter(Boolean)
             )
-          : [];
+          : []
 
-        setOptions(nextOptions.length ? nextOptions : fallbackOptions);
+        setOptions(nextOptions.length ? nextOptions : fallbackOptions)
       } catch {
         if (requestRef.current === requestId) {
-          setOptions(fallbackOptions);
+          setOptions(fallbackOptions)
         }
       }
     },
-    [autocompleteType, fallbackOptions],
-  );
+    [autocompleteType, fallbackOptions]
+  )
 
   return (
     <div>
@@ -13887,13 +13967,13 @@ const ReviewEditableTags = ({
         </TagsInputRoot>
       )}
     </div>
-  );
-};
+  )
+}
 
 const ReviewEditableTitle = ({ label }: { label: string }) => {
-  const methods = useProjectInfoContext();
-  const value = useWatch({ control: methods.control, name: "title" }) ?? "";
-  const titleHasError = methods.getFieldState("title").invalid;
+  const methods = useProjectInfoContext()
+  const value = useWatch({ control: methods.control, name: "title" }) ?? ""
+  const titleHasError = methods.getFieldState("title").invalid
 
   const updateTitle = useCallback(
     (nextTitle: string) => {
@@ -13901,13 +13981,13 @@ const ReviewEditableTitle = ({ label }: { label: string }) => {
         shouldDirty: true,
         shouldTouch: true,
         shouldValidate: false,
-      });
+      })
       if (methods.getFieldState("title").error?.type === "manual") {
-        methods.clearErrors("title");
+        methods.clearErrors("title")
       }
     },
-    [methods],
-  );
+    [methods]
+  )
 
   return (
     <div>
@@ -13930,8 +14010,8 @@ const ReviewEditableTitle = ({ label }: { label: string }) => {
         )}
       />
     </div>
-  );
-};
+  )
+}
 
 const FinalServiceReviewStep = ({
   setProgress,
@@ -13939,42 +14019,42 @@ const FinalServiceReviewStep = ({
   jobListingId,
   ensureJobListingDraft,
 }: ProgressProps & {
-  ndaDocumentId?: string | null;
-  jobListingId?: string | null;
-  ensureJobListingDraft?: EnsureJobListingDraft;
+  ndaDocumentId?: string | null
+  jobListingId?: string | null
+  ensureJobListingDraft?: EnsureJobListingDraft
 }) => {
-  const { toggleValidation } = useStepContext();
-  const { details, setDetails } = useJobListingDraftContext();
-  const projectInfoMethods = useProjectInfoContext();
-  const { projectScopeMethods } = useProjectScopeContext();
-  const [projectScopeState] = projectScopeMethods;
+  const { toggleValidation } = useStepContext()
+  const { details, setDetails } = useJobListingDraftContext()
+  const projectInfoMethods = useProjectInfoContext()
+  const { projectScopeMethods } = useProjectScopeContext()
+  const [projectScopeState] = projectScopeMethods
   const roleOptions = useMemo(
     () => getScopeRoleOptions(projectScopeState),
-    [projectScopeState],
-  );
+    [projectScopeState]
+  )
   const [ndaChoice, setNdaChoice] = useState<"yes" | "no">(
-    details.ndaEnabled === true ? "yes" : "no",
-  );
-  const [selectedRole, setSelectedRole] = useState(roleOptions[0]);
-  const [responsibilities, setResponsibilities] = useState("");
-  const didGenerateRoleDescriptionsRef = useRef(false);
+    details.ndaEnabled === true ? "yes" : "no"
+  )
+  const [selectedRole, setSelectedRole] = useState(roleOptions[0])
+  const [responsibilities, setResponsibilities] = useState("")
+  const didGenerateRoleDescriptionsRef = useRef(false)
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
-    useDynamicFinalReviewSkills();
+    useDynamicFinalReviewSkills()
   const getAssistantValue = useCallback(
     (field: SmartAssistantEditableField) => {
-      if (field === "title") return projectInfoMethods.getValues("title") ?? "";
-      if (field === "overview") return details.description ?? "";
-      if (field === "benefits") return details.successCriteria ?? "";
-      if (field === "responsibilities") return responsibilities;
-      return "";
+      if (field === "title") return projectInfoMethods.getValues("title") ?? ""
+      if (field === "overview") return details.description ?? ""
+      if (field === "benefits") return details.successCriteria ?? ""
+      if (field === "responsibilities") return responsibilities
+      return ""
     },
     [
       details.description,
       details.successCriteria,
       projectInfoMethods,
       responsibilities,
-    ],
-  );
+    ]
+  )
   const applyAssistantValue = useCallback(
     (field: SmartAssistantEditableField, value: string) => {
       if (field === "title") {
@@ -13982,53 +14062,53 @@ const FinalServiceReviewStep = ({
           shouldDirty: true,
           shouldTouch: true,
           shouldValidate: true,
-        });
+        })
       } else if (field === "overview") {
-        setDetails((current) => ({ ...current, description: value }));
+        setDetails((current) => ({ ...current, description: value }))
       } else if (field === "benefits") {
-        setDetails((current) => ({ ...current, successCriteria: value }));
+        setDetails((current) => ({ ...current, successCriteria: value }))
       } else if (field === "responsibilities") {
-        setResponsibilities(value);
+        setResponsibilities(value)
       }
     },
-    [projectInfoMethods, setDetails],
-  );
+    [projectInfoMethods, setDetails]
+  )
   const serviceAssistant = useFinalReviewSmartAssistant({
     jobListingId,
     ensureJobListingDraft,
     getValue: getAssistantValue,
     onApply: applyAssistantValue,
-  });
+  })
   useEffect(() => {
     if (!roleOptions.includes(selectedRole)) {
-      setSelectedRole(roleOptions[0]);
+      setSelectedRole(roleOptions[0])
     }
-  }, [roleOptions, selectedRole]);
+  }, [roleOptions, selectedRole])
   const loadSavedRoleDescription = useCallback(
     (draft: {
-      overview?: string;
-      benefits?: string;
-      responsibilities?: string;
-      skills?: string[];
+      overview?: string
+      benefits?: string
+      responsibilities?: string
+      skills?: string[]
     }) => {
       if (draft.overview !== undefined) {
-        setDetails((current) => ({ ...current, description: draft.overview }));
+        setDetails((current) => ({ ...current, description: draft.overview }))
       }
       if (draft.benefits !== undefined) {
         setDetails((current) => ({
           ...current,
           successCriteria: draft.benefits,
-        }));
+        }))
       }
       if (draft.responsibilities !== undefined) {
-        setResponsibilities(draft.responsibilities);
+        setResponsibilities(draft.responsibilities)
       }
       if (draft.skills) {
-        setSkills(draft.skills);
+        setSkills(draft.skills)
       }
     },
-    [setDetails, setSkills],
-  );
+    [setDetails, setSkills]
+  )
   useRoleDescriptionPersistence({
     jobListingId,
     ensureJobListingDraft,
@@ -14038,12 +14118,12 @@ const FinalServiceReviewStep = ({
     responsibilities,
     skills,
     onLoad: loadSavedRoleDescription,
-  });
+  })
 
   useEffect(() => {
-    if (!jobListingId || didGenerateRoleDescriptionsRef.current) return;
-    if (responsibilities) return;
-    didGenerateRoleDescriptionsRef.current = true;
+    if (!jobListingId || didGenerateRoleDescriptionsRef.current) return
+    if (responsibilities) return
+    didGenerateRoleDescriptionsRef.current = true
 
     const generateRoleDescriptions = async () => {
       try {
@@ -14053,37 +14133,37 @@ const FinalServiceReviewStep = ({
             workType: "service",
             description: details.description ?? "",
             roles: roleOptions.map((roleTitle) => ({ roleTitle })),
-          },
-        );
-        const descriptions = response?.data?.roleDescriptions;
+          }
+        )
+        const descriptions = response?.data?.roleDescriptions
         const description = Array.isArray(descriptions)
           ? descriptions.find((item: any) => item?.roleTitle === selectedRole)
-          : null;
+          : null
 
         if (description?.overview) {
           setDetails((current) => ({
             ...current,
             description: description.overview,
-          }));
+          }))
         }
         if (description?.benefits) {
           setDetails((current) => ({
             ...current,
             successCriteria: description.benefits,
-          }));
+          }))
         }
         if (description?.responsibilities) {
-          setResponsibilities(description.responsibilities);
+          setResponsibilities(description.responsibilities)
         }
         if (Array.isArray(description?.skills)) {
-          setSkills(description.skills);
+          setSkills(description.skills)
         }
       } catch (error) {
-        console.error("Failed to generate role descriptions", error);
+        console.error("Failed to generate role descriptions", error)
       }
-    };
+    }
 
-    void generateRoleDescriptions();
+    void generateRoleDescriptions()
   }, [
     details.description,
     jobListingId,
@@ -14092,20 +14172,20 @@ const FinalServiceReviewStep = ({
     selectedRole,
     setDetails,
     setSkills,
-  ]);
+  ])
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(true);
-  }, []);
+    toggleValidation(true)
+  }, [])
 
   useEffect(() => {
-    setProgress?.(17.5);
-  }, [setProgress]);
+    setProgress?.(17.5)
+  }, [setProgress])
   useEffect(() => {
     if (details.ndaEnabled === undefined) {
-      setDetails((current) => ({ ...current, ndaEnabled: false }));
+      setDetails((current) => ({ ...current, ndaEnabled: false }))
     }
-  }, [details.ndaEnabled, setDetails]);
+  }, [details.ndaEnabled, setDetails])
 
   return (
     <ScrollArea
@@ -14179,14 +14259,14 @@ const FinalServiceReviewStep = ({
                     className={cn(
                       "h-9 rounded-full border-gray-300 bg-white px-4 text-sm leading-5 text-dark-blue-400 shadow-none",
                       ndaChoice === option.value &&
-                        "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50",
+                        "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50"
                     )}
                     onClick={() => {
-                      setNdaChoice(option.value);
+                      setNdaChoice(option.value)
                       setDetails((current) => ({
                         ...current,
                         ndaEnabled: option.value === "yes",
-                      }));
+                      }))
                     }}
                   >
                     {option.label}
@@ -14206,7 +14286,7 @@ const FinalServiceReviewStep = ({
                     >
                       View NDA
                     </Button>,
-                    ndaDocumentId,
+                    ndaDocumentId
                   )}
                 </div>
               ) : (
@@ -14251,7 +14331,7 @@ const FinalServiceReviewStep = ({
                       className={cn(
                         "h-8 rounded-full border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-none",
                         selectedRole === role &&
-                          "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50",
+                          "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50"
                       )}
                       onClick={() => setSelectedRole(role)}
                     >
@@ -14345,7 +14425,7 @@ const FinalServiceReviewStep = ({
                     onClick={() =>
                       serviceAssistant.run(
                         item,
-                        field as SmartAssistantEditableField,
+                        field as SmartAssistantEditableField
                       )
                     }
                   >
@@ -14381,8 +14461,8 @@ const FinalServiceReviewStep = ({
                       serviceAssistant.run(
                         serviceAssistant.message,
                         resolveFinalReviewAssistantField(
-                          serviceAssistant.message,
-                        ),
+                          serviceAssistant.message
+                        )
                       )
                     }
                   >
@@ -14395,8 +14475,8 @@ const FinalServiceReviewStep = ({
         </div>
       </div>
     </ScrollArea>
-  );
-};
+  )
+}
 
 const FinalProjectReviewStep = ({
   setProgress,
@@ -14404,42 +14484,42 @@ const FinalProjectReviewStep = ({
   jobListingId,
   ensureJobListingDraft,
 }: ProgressProps & {
-  ndaDocumentId?: string | null;
-  jobListingId?: string | null;
-  ensureJobListingDraft?: EnsureJobListingDraft;
+  ndaDocumentId?: string | null
+  jobListingId?: string | null
+  ensureJobListingDraft?: EnsureJobListingDraft
 }) => {
-  const { toggleValidation } = useStepContext();
-  const { details, setDetails } = useJobListingDraftContext();
-  const projectInfoMethods = useProjectInfoContext();
-  const { projectScopeMethods } = useProjectScopeContext();
-  const [projectScopeState] = projectScopeMethods;
+  const { toggleValidation } = useStepContext()
+  const { details, setDetails } = useJobListingDraftContext()
+  const projectInfoMethods = useProjectInfoContext()
+  const { projectScopeMethods } = useProjectScopeContext()
+  const [projectScopeState] = projectScopeMethods
   const roleOptions = useMemo(
     () => getScopeRoleOptions(projectScopeState),
-    [projectScopeState],
-  );
+    [projectScopeState]
+  )
   const [ndaChoice, setNdaChoice] = useState<"yes" | "no">(
-    details.ndaEnabled === true ? "yes" : "no",
-  );
-  const [selectedRole, setSelectedRole] = useState(roleOptions[0]);
-  const [responsibilities, setResponsibilities] = useState("");
-  const didGenerateRoleDescriptionsRef = useRef(false);
+    details.ndaEnabled === true ? "yes" : "no"
+  )
+  const [selectedRole, setSelectedRole] = useState(roleOptions[0])
+  const [responsibilities, setResponsibilities] = useState("")
+  const didGenerateRoleDescriptionsRef = useRef(false)
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
-    useDynamicFinalReviewSkills();
+    useDynamicFinalReviewSkills()
   const getAssistantValue = useCallback(
     (field: SmartAssistantEditableField) => {
-      if (field === "title") return projectInfoMethods.getValues("title") ?? "";
-      if (field === "overview") return details.description ?? "";
-      if (field === "benefits") return details.successCriteria ?? "";
-      if (field === "responsibilities") return responsibilities;
-      return "";
+      if (field === "title") return projectInfoMethods.getValues("title") ?? ""
+      if (field === "overview") return details.description ?? ""
+      if (field === "benefits") return details.successCriteria ?? ""
+      if (field === "responsibilities") return responsibilities
+      return ""
     },
     [
       details.description,
       details.successCriteria,
       projectInfoMethods,
       responsibilities,
-    ],
-  );
+    ]
+  )
   const applyAssistantValue = useCallback(
     (field: SmartAssistantEditableField, value: string) => {
       if (field === "title") {
@@ -14447,53 +14527,53 @@ const FinalProjectReviewStep = ({
           shouldDirty: true,
           shouldTouch: true,
           shouldValidate: true,
-        });
+        })
       } else if (field === "overview") {
-        setDetails((current) => ({ ...current, description: value }));
+        setDetails((current) => ({ ...current, description: value }))
       } else if (field === "benefits") {
-        setDetails((current) => ({ ...current, successCriteria: value }));
+        setDetails((current) => ({ ...current, successCriteria: value }))
       } else if (field === "responsibilities") {
-        setResponsibilities(value);
+        setResponsibilities(value)
       }
     },
-    [projectInfoMethods, setDetails],
-  );
+    [projectInfoMethods, setDetails]
+  )
   const projectAssistant = useFinalReviewSmartAssistant({
     jobListingId,
     ensureJobListingDraft,
     getValue: getAssistantValue,
     onApply: applyAssistantValue,
-  });
+  })
   useEffect(() => {
     if (!roleOptions.includes(selectedRole)) {
-      setSelectedRole(roleOptions[0]);
+      setSelectedRole(roleOptions[0])
     }
-  }, [roleOptions, selectedRole]);
+  }, [roleOptions, selectedRole])
   const loadSavedRoleDescription = useCallback(
     (draft: {
-      overview?: string;
-      benefits?: string;
-      responsibilities?: string;
-      skills?: string[];
+      overview?: string
+      benefits?: string
+      responsibilities?: string
+      skills?: string[]
     }) => {
       if (draft.overview !== undefined) {
-        setDetails((current) => ({ ...current, description: draft.overview }));
+        setDetails((current) => ({ ...current, description: draft.overview }))
       }
       if (draft.benefits !== undefined) {
         setDetails((current) => ({
           ...current,
           successCriteria: draft.benefits,
-        }));
+        }))
       }
       if (draft.responsibilities !== undefined) {
-        setResponsibilities(draft.responsibilities);
+        setResponsibilities(draft.responsibilities)
       }
       if (draft.skills) {
-        setSkills(draft.skills);
+        setSkills(draft.skills)
       }
     },
-    [setDetails, setSkills],
-  );
+    [setDetails, setSkills]
+  )
   useRoleDescriptionPersistence({
     jobListingId,
     ensureJobListingDraft,
@@ -14503,12 +14583,12 @@ const FinalProjectReviewStep = ({
     responsibilities,
     skills,
     onLoad: loadSavedRoleDescription,
-  });
+  })
 
   useEffect(() => {
-    if (!jobListingId || didGenerateRoleDescriptionsRef.current) return;
-    if (responsibilities) return;
-    didGenerateRoleDescriptionsRef.current = true;
+    if (!jobListingId || didGenerateRoleDescriptionsRef.current) return
+    if (responsibilities) return
+    didGenerateRoleDescriptionsRef.current = true
 
     const generateRoleDescriptions = async () => {
       try {
@@ -14518,37 +14598,37 @@ const FinalProjectReviewStep = ({
             workType: "project",
             description: details.description ?? "",
             roles: roleOptions.map((roleTitle) => ({ roleTitle })),
-          },
-        );
-        const descriptions = response?.data?.roleDescriptions;
+          }
+        )
+        const descriptions = response?.data?.roleDescriptions
         const description = Array.isArray(descriptions)
           ? descriptions.find((item: any) => item?.roleTitle === selectedRole)
-          : null;
+          : null
 
         if (description?.overview) {
           setDetails((current) => ({
             ...current,
             description: description.overview,
-          }));
+          }))
         }
         if (description?.benefits) {
           setDetails((current) => ({
             ...current,
             successCriteria: description.benefits,
-          }));
+          }))
         }
         if (description?.responsibilities) {
-          setResponsibilities(description.responsibilities);
+          setResponsibilities(description.responsibilities)
         }
         if (Array.isArray(description?.skills)) {
-          setSkills(description.skills);
+          setSkills(description.skills)
         }
       } catch (error) {
-        console.error("Failed to generate role descriptions", error);
+        console.error("Failed to generate role descriptions", error)
       }
-    };
+    }
 
-    void generateRoleDescriptions();
+    void generateRoleDescriptions()
   }, [
     details.description,
     jobListingId,
@@ -14557,20 +14637,20 @@ const FinalProjectReviewStep = ({
     selectedRole,
     setDetails,
     setSkills,
-  ]);
+  ])
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(true);
-  }, []);
+    toggleValidation(true)
+  }, [])
 
   useEffect(() => {
-    setProgress?.(17.5);
-  }, [setProgress]);
+    setProgress?.(17.5)
+  }, [setProgress])
   useEffect(() => {
     if (details.ndaEnabled === undefined) {
-      setDetails((current) => ({ ...current, ndaEnabled: false }));
+      setDetails((current) => ({ ...current, ndaEnabled: false }))
     }
-  }, [details.ndaEnabled, setDetails]);
+  }, [details.ndaEnabled, setDetails])
 
   return (
     <ScrollArea
@@ -14644,14 +14724,14 @@ const FinalProjectReviewStep = ({
                     className={cn(
                       "h-9 rounded-full border-gray-300 bg-white px-4 text-sm leading-5 text-dark-blue-400 shadow-none",
                       ndaChoice === option.value &&
-                        "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50",
+                        "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50"
                     )}
                     onClick={() => {
-                      setNdaChoice(option.value);
+                      setNdaChoice(option.value)
                       setDetails((current) => ({
                         ...current,
                         ndaEnabled: option.value === "yes",
-                      }));
+                      }))
                     }}
                   >
                     {option.label}
@@ -14671,7 +14751,7 @@ const FinalProjectReviewStep = ({
                     >
                       View NDA
                     </Button>,
-                    ndaDocumentId,
+                    ndaDocumentId
                   )}
                 </div>
               ) : (
@@ -14716,7 +14796,7 @@ const FinalProjectReviewStep = ({
                       className={cn(
                         "h-8 rounded-full border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-none",
                         selectedRole === role &&
-                          "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50",
+                          "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50"
                       )}
                       onClick={() => setSelectedRole(role)}
                     >
@@ -14810,7 +14890,7 @@ const FinalProjectReviewStep = ({
                     onClick={() =>
                       projectAssistant.run(
                         item,
-                        field as SmartAssistantEditableField,
+                        field as SmartAssistantEditableField
                       )
                     }
                   >
@@ -14846,8 +14926,8 @@ const FinalProjectReviewStep = ({
                       projectAssistant.run(
                         projectAssistant.message,
                         resolveFinalReviewAssistantField(
-                          projectAssistant.message,
-                        ),
+                          projectAssistant.message
+                        )
                       )
                     }
                   >
@@ -14860,8 +14940,8 @@ const FinalProjectReviewStep = ({
         </div>
       </div>
     </ScrollArea>
-  );
-};
+  )
+}
 
 const ServiceScopeEditStep = ({
   setProgress,
