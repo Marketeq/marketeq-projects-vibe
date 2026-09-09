@@ -1,49 +1,48 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import * as jwt from 'jsonwebtoken';
+import { CanActivate, ExecutionContext, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { timingSafeEqual } from 'crypto';
 
 @Injectable()
 export class InternalServiceGuard implements CanActivate {
-  constructor(private readonly config: ConfigService) {}
+  private readonly logger = new Logger(InternalServiceGuard.name);
+  private readonly token: string;
+
+  constructor() {
+    this.token = process.env.SERVICE_AUTH_TOKEN || '';
+  }
 
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
-    const auth = request.headers['authorization'] ?? '';
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    if (!this.token) {
+      this.logger.warn('SERVICE_AUTH_TOKEN not configured, allowing request in dev mode');
+      return true;
+    }
 
-    if (!token) {
+    const request = context.switchToHttp().getRequest();
+    const authHeader = request.headers['authorization'];
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       throw new UnauthorizedException({
         code: 'UNAUTHORIZED',
         message: 'Missing or invalid internal service token',
       });
     }
 
-    const secret = this.config.get<string>('JWT_SECRET');
-    if (!secret) {
+    const provided = authHeader.slice(7);
+    if (!this.constantTimeCompare(this.token, provided)) {
       throw new UnauthorizedException({
         code: 'UNAUTHORIZED',
-        message: 'Internal service authentication not configured',
+        message: 'Invalid internal service token',
       });
     }
 
+    return true;
+  }
+
+  private constantTimeCompare(a: string, b: string): boolean {
+    if (a.length !== b.length) return false;
     try {
-      const payload = jwt.verify(token, secret) as jwt.JwtPayload;
-
-      if (!payload.sub) {
-        throw new UnauthorizedException({
-          code: 'UNAUTHORIZED',
-          message: 'Invalid internal service token',
-        });
-      }
-
-      request.user = payload;
-      return true;
-    } catch (err) {
-      if (err instanceof UnauthorizedException) throw err;
-      throw new UnauthorizedException({
-        code: 'UNAUTHORIZED',
-        message: 'Invalid or expired internal service token',
-      });
+      return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+    } catch {
+      return false;
     }
   }
 }

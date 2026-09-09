@@ -20,7 +20,9 @@ const verifyAccessToken = (token: string) => {
 
   const secret = process.env.JWT_SECRET;
   if (secret) {
-    return jwt.verify(token, secret) as Record<string, unknown>;
+    return jwt.verify(token, secret, {
+      algorithms: ['HS256'],
+    }) as Record<string, unknown>;
   }
 
   throw new UnauthorizedException('JWT verifier is not configured');
