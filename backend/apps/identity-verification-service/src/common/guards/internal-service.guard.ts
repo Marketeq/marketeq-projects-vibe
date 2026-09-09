@@ -8,6 +8,15 @@ export class InternalServiceGuard implements CanActivate {
 
   constructor() {
     this.token = process.env.SERVICE_AUTH_TOKEN || '';
+
+    // resume-parsing-service carries the same dev-mode fallback below, but is
+    // backstopped by config.schema.ts throwing when the token is missing in
+    // production. This service has no config validation, so the check lives
+    // here instead — without it, an unset variable silently opens
+    // /v1/internal/identity-verification/status/:userId for any userId.
+    if (!this.token && process.env.NODE_ENV === 'production') {
+      throw new Error('SERVICE_AUTH_TOKEN is required in production');
+    }
   }
 
   canActivate(context: ExecutionContext): boolean {
