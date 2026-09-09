@@ -766,6 +766,115 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * Changes the password of an already-signed-in user.
+   *
+   * Distinct from resetPassword, which authenticates with an emailed token
+   * because the person cannot sign in. Here they are signed in, so the proof
+   * required is their current password.
+   *
+   * Everything after that check mirrors reset — reuse check, history write and
+   * trim, bumped passwordResetVersion — so the two cannot drift into different
+   * rules about what a valid password is or how far back reuse is remembered.
+   *
+   * Bumping passwordResetVersion invalidates any outstanding reset link: if
+   * somebody requested a reset and then remembered their password, the old
+   * link must stop working.
+   *
+   * **Other sessions are deliberately left signed in.** Revoking them is
+   * defensible and common, but it signs the person out of every other device
+   * without warning and no decision covers it. Devices already offers an
+   * explicit control. Flagged rather than chosen silently.
+   */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+    ipAddress = '',
+  ): Promise<{ success: true }> {
+    // Same limiter as reset. This endpoint verifies a secret, so it is a
+    // guessing surface even though the caller is already authenticated.
+    this.enforcePasswordResetRateLimit(
+      `change-password:user:${userId}`,
+      'AUTH_CHANGE_PASSWORD_LIMIT',
+      10,
+      'AUTH_CHANGE_PASSWORD_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'username', 'password', 'provider', 'hasPassword', 'passwordResetVersion'],
+    });
+    if (!user) {
+      throw new UnauthorizedException('Account not found');
+    }
+
+    // An OAuth-only account has no password to verify. Say so plainly rather
+    // than reporting a mismatch against something that does not exist.
+    if (!user.password || !user.hasPassword) {
+      throw new BadRequestException(
+        'This account signs in with a social provider and has no password to change.',
+      );
+    }
+
+    const matches = await bcrypt.compare(currentPassword, user.password);
+    if (!matches) {
+      this.logger.warn(
+        `changePassword: wrong current password for userId=${userId} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
+      // Q32: specific about what failed, and never blaming the person.
+      throw new BadRequestException('That does not match your current password.');
+    }
+
+    if (currentPassword === newPassword) {
+      throw new BadRequestException(
+        'Your new password must be different from your current one.',
+      );
+    }
+
+    await this.assertPasswordNotReused(user, newPassword);
+
+    const nextResetVersion = randomUUID();
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await this.userRepository.manager.transaction(async (manager) => {
+      const updateResult = await manager.getRepository(User).update(
+        { id: user.id },
+        {
+          password: hashedPassword,
+          hasPassword: true,
+          passwordResetVersion: nextResetVersion,
+        },
+      );
+      if (!updateResult.affected) {
+        throw new UnauthorizedException('Account not found');
+      }
+
+      await manager.getRepository(PasswordHistory).save({
+        userId: user.id,
+        passwordHash: hashedPassword,
+      });
+
+      const staleHistory = await manager.getRepository(PasswordHistory).find({
+        where: { userId: user.id },
+        order: { createdAt: 'DESC' },
+        skip: PASSWORD_HISTORY_LIMIT,
+      });
+      if (staleHistory.length) {
+        await manager
+          .getRepository(PasswordHistory)
+          .delete(staleHistory.map((entry) => entry.id));
+      }
+    });
+
+    this.logger.log(
+      `changePassword: password changed for userId=${user.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
+
+    return { success: true };
+  }
+
   private async assertPasswordNotReused(
     user: Pick<User, 'id' | 'password'>,
     newPassword: string,

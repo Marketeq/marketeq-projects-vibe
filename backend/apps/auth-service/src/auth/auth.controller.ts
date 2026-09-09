@@ -31,6 +31,7 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { LinkedInLoginDto } from './dto/linkedin-login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { VerifyTwoFactorDto, TwoFactorVerifyLoginDto, GenerateSmsTwoFactorDto, ResendTwoFactorDto } from './dto/two-factor.dto';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
@@ -234,6 +235,33 @@ export class AuthController {
     const result = await this.authService.resetPassword(dto, ipAddress, userAgent);
     this.setAuthCookies(res, result);
     return result;
+  }
+
+  /**
+   * Changes the password of a signed-in user.
+   *
+   * Separate from reset-password: that one authenticates with an emailed token
+   * because the person cannot sign in. This one is guarded, and the proof is
+   * their current password.
+   *
+   * No cookies are set. The caller's session stays valid, so there is nothing
+   * to re-issue — and re-issuing would sign them out of the tab they are
+   * standing in.
+   */
+  @ApiOperation({ summary: 'Change password for the signed-in user' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
+  @Patch('change-password')
+  @HttpCode(HttpStatus.OK)
+  changePassword(@Body() dto: ChangePasswordDto, @Req() req: Request) {
+    const { ipAddress } = extractRequestMeta(req);
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.changePassword(
+      userId,
+      dto.currentPassword,
+      dto.newPassword,
+      ipAddress,
+    );
   }
 
   @ApiOperation({ summary: 'Login using Google' })
