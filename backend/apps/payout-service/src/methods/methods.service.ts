@@ -530,6 +530,30 @@ export class MethodsService {
           };
         }
 
+        // Real Stripe external_account for the 4 non-US regions verified
+        // (live, against Stripe's test API) to actually accept a recipient
+        // Connect account: SEPA/IBAN, GB, IN, AU. Without this, the local
+        // micro-deposit check below could mark the method "verified" while
+        // stripeConnectAccountId/stripeExternalAccountId stayed null forever
+        // — bank-payout-executor.service.ts requires both and fails closed
+        // with ERR_CONNECT_ACCOUNT_NOT_ATTACHED, so the method would never
+        // actually be payable despite showing as verified.
+        //
+        // Deliberately NOT extended to JP or the generic SWIFT-catchall
+        // region here — JP was tested live and rejected by Stripe
+        // ("not supported for accounts using the recipient service
+        // agreement"), and SWIFT-catchall has no country-specific Stripe
+        // format to map onto. Both keep today's existing local-only
+        // behavior unchanged pending a separate decision.
+        const region = this.bankValidator.detectRegion(method.bankCountry ?? '');
+        if (region === 'SEPA' || region === 'GB' || region === 'IN' || region === 'AU') {
+          const attached = await this.stripeProvider.attachInternationalBankAsExternalAccount(method, region, dto);
+          await this.methodRepo.update(method.id, {
+            stripeConnectAccountId: attached.connectAccountId,
+            stripeExternalAccountId: attached.externalAccountId,
+          } as any);
+        }
+
         const amount1 = Math.floor(Math.random() * 99) + 1;
         const amount2 = Math.floor(Math.random() * 99) + 1;
         const manualVerify = this.verifyRepo.create({

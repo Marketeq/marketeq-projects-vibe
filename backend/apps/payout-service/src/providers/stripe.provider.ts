@@ -513,6 +513,123 @@ export class StripeProvider {
     return { connectAccountId, externalAccountId: externalAccount.id };
   }
 
+  // ─── International BANK_MANUAL: real Stripe external_account ─
+  // Separate from getOrCreateConnectAccount() (US-only, shared across
+  // BANK_STRIPE/BANK_MANUAL-US/WISE/PAYONEER) — that method hardcodes
+  // country: 'US' and must never change. A non-US Connect account requires
+  // its own country at creation (Stripe rejects attaching a GB/DE/IN/AU
+  // bank_account to a US-country account: "Invalid bank country ... There
+  // are no valid countries that you are able to use for this currency"),
+  // and non-US accounts additionally require tos_acceptance.service_agreement
+  // = 'recipient' (verified live against Stripe's test API — omitting it
+  // fails with "you must either specify the recipient service agreement...").
+  //
+  // Reuse is scoped to (contractorId, country) via existing BANK_MANUAL rows
+  // for that same country, never touching a row created for a different
+  // country or for BANK_STRIPE/WISE/PAYONEER — a contractor with both a US
+  // and a UK bank method needs two separate Connect accounts, one per
+  // country, since Stripe ties the account's country to what it can accept.
+  private async getOrCreateConnectAccountForCountry(contractorId: string, country: string): Promise<string> {
+    if (!this.stripe || !this.isRealStripeKey()) {
+      return `acct_mock_${country.toLowerCase()}_${contractorId.slice(0, 8)}`;
+    }
+
+    const existing = await this.methodRepo
+      .createQueryBuilder('m')
+      .where('m.contractor_id = :contractorId', { contractorId })
+      .andWhere('m.method_type = :methodType', { methodType: MethodType.BANK_MANUAL })
+      .andWhere('m.bank_country = :country', { country })
+      .andWhere("m.stripe_connect_account_id LIKE 'acct\\_%' ESCAPE '\\'")
+      .andWhere("m.stripe_connect_account_id NOT LIKE 'acct\\_mock%' ESCAPE '\\'")
+      .orderBy('m.created_at', 'DESC')
+      .getOne();
+    if (existing?.stripeConnectAccountId) return existing.stripeConnectAccountId;
+
+    const account = await this.stripe.accounts.create({
+      type: 'custom',
+      country,
+      business_type: 'individual',
+      capabilities: { transfers: { requested: true } },
+      tos_acceptance: { service_agreement: 'recipient' },
+      metadata: { contractorId },
+    });
+    return account.id;
+  }
+
+  // Countries verified live against Stripe's test API to actually accept an
+  // external_account under the recipient service agreement (see
+  // methods.service.ts's createVerification() BANK_MANUAL branch for what
+  // still deliberately falls back to the local-only flow: JP was tested and
+  // rejected — "Your bank is not supported for accounts using the recipient
+  // service agreement" — and the generic SWIFT-catchall region has no
+  // country-specific Stripe format to map onto at all).
+  private buildInternationalBankAccountPayload(
+    region: 'SEPA' | 'GB' | 'IN' | 'AU', dto: any, accountHolderName: string,
+  ): Record<string, any> {
+    const country = dto.bankCountry.toUpperCase();
+    switch (region) {
+      case 'SEPA':
+        // Raw IBAN as account_number, no separate routing_number — verified
+        // live (DE/IBAN) that Stripe accepts this directly.
+        return {
+          object: 'bank_account', country, currency: (dto.bankCurrency || 'EUR').toLowerCase(),
+          account_holder_name: accountHolderName, account_number: dto.bankIban,
+        };
+      case 'GB':
+        return {
+          object: 'bank_account', country: 'GB', currency: 'gbp',
+          account_holder_name: accountHolderName, account_number: dto.bankAccountNumber,
+          routing_number: dto.bankSortCode,
+        };
+      case 'IN':
+        return {
+          object: 'bank_account', country: 'IN', currency: 'inr',
+          account_holder_name: accountHolderName, account_number: dto.bankAccountNumber,
+          routing_number: dto.bankIfscCode,
+        };
+      case 'AU':
+        return {
+          object: 'bank_account', country: 'AU', currency: 'aud',
+          account_holder_name: accountHolderName, account_number: dto.bankAccountNumber,
+          routing_number: dto.bankBsbNumber,
+        };
+    }
+  }
+
+  // Called from createVerification()'s BANK_MANUAL branch for the 4 regions
+  // above, immediately at add-method time (no SetupIntent/requires_action
+  // wait — Stripe validates and attaches synchronously for these, same as
+  // createExternalAccountFromRouting's Wise/Payoneer path). The existing
+  // Marketeq-managed micro-deposit ownership check (PS-06 §6) still runs
+  // unchanged on top of this — this only fixes the method actually being
+  // payable once that ownership check passes.
+  async attachInternationalBankAsExternalAccount(
+    method: DepositMethod, region: 'SEPA' | 'GB' | 'IN' | 'AU', dto: any,
+  ): Promise<{ connectAccountId: string; externalAccountId: string }> {
+    const country = dto.bankCountry.toUpperCase();
+    const connectAccountId = await this.getOrCreateConnectAccountForCountry(method.contractorId, country);
+
+    if (!this.stripe || !this.isRealStripeKey()) {
+      return { connectAccountId, externalAccountId: `ba_mock_${Date.now()}` };
+    }
+
+    const accountHolderName = dto.bankAccountName || method.nickname || 'Account Holder';
+    let externalAccount: any;
+    try {
+      externalAccount = await this.stripe.accounts.createExternalAccount(
+        connectAccountId,
+        { external_account: this.buildInternationalBankAccountPayload(region, dto, accountHolderName) },
+        { idempotencyKey: `extaccount-${method.id}` },
+      );
+    } catch (err: any) {
+      this.logger.warn(`Stripe external_account attach failed (international, ${region}) for account ${connectAccountId}: ${err?.message}`);
+      throw new PayoutError('We could not verify your bank account details with our payment processor. Please double-check the details and try again.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_STRIPE_CONNECT_EXTERNAL_ACCOUNT_FAILED');
+    }
+
+    return { connectAccountId, externalAccountId: externalAccount.id };
+  }
+
   // ─── PS-08: BANK_MANUAL/US real ACH micro-deposits ────────────
   // Stripe's us_bank_account payment method type only exists for US
   // accounts — there is no equivalent ACH micro-deposit mechanism for any
