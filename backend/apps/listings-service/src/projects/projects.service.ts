@@ -174,8 +174,9 @@ export class ProjectsService {
       this.repo.manager.query<Array<{
         id: string; firstName: string; lastName: string; username: string | null;
         avatarUrl: string | null; recentJobTitle: string | null; location: string | null;
+        rate: number | null; rateMin: number | null; rateMax: number | null;
       }>>(
-        `SELECT id::text, "firstName", "lastName", username, "avatarUrl", "recentJobTitle", location
+        `SELECT id::text, "firstName", "lastName", username, "avatarUrl", "recentJobTitle", location, rate, "rateMin", "rateMax"
          FROM user_service.users WHERE id = ANY($1::uuid[])`,
         [visibleIds],
       ),
@@ -213,6 +214,7 @@ export class ProjectsService {
         avatarUrl: u.avatarUrl ?? null,
         role: u.recentJobTitle ?? 'Team Member',
         location: u.location ?? null,
+        rate: u.rate ?? u.rateMin ?? null,
         isLead: u.id === String(project.userId),
         isOnline: false,
         skills: skillsByUser.get(u.id) ?? [],
@@ -526,6 +528,8 @@ export class ProjectsService {
       status: project.status,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
+      projectDatePublished: project.projectDatePublished ?? null,
+      durationMonths: project.durationMonths ?? null,
       budget,
       priceMin: budget,
       budgetUsdCents: budget != null ? Math.round(budget * 100) : null,
