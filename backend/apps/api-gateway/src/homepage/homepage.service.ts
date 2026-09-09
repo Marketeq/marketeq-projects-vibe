@@ -721,6 +721,7 @@ export class HomepageService {
       skills: raw.skills ?? [],
       tags: raw.tags ?? [],
       createdAt: raw.createdAt,
+      collaborators: raw.teamAvatars ?? raw.collaborators ?? [],
       ...this.extractScoring(raw),
     };
   }
