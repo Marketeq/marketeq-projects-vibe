@@ -49,7 +49,11 @@ const SERVICES = [
   { name: 'favorites-service',          port: '3012', dir: 'apps/favorites-service',          maxOldSpaceMb: 48 },
   { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service',        maxOldSpaceMb: 48 },
   { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service', maxOldSpaceMb: 48 },
-  { name: 'portfolio-service',          port: '3015', dir: 'apps/portfolio-service',          maxOldSpaceMb: 48 },
+  // 128MB, not the 48MB default: case studies accept a 2MB schemaJson
+  // (MAX_SCHEMA_JSON_BYTES) which expands roughly 10x once parsed into V8 objects,
+  // and publish additionally holds the compiled htmlPublished string alongside it.
+  // At 48MB this OOM'd ("Reached heap limit") under normal editing on 2026-09-09.
+  { name: 'portfolio-service',          port: '3015', dir: 'apps/portfolio-service',          maxOldSpaceMb: 128 },
   { name: 'autocomplete-service',       port: '3016', dir: 'apps/autocomplete-service',       maxOldSpaceMb: 48 },
   { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service',      maxOldSpaceMb: 48 },
   { name: 'transaction-service',        port: '3018', dir: 'apps/transaction-service',        maxOldSpaceMb: 48 },
