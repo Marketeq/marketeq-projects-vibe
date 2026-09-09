@@ -151,6 +151,15 @@
         "tsConfigPath": "apps/browsing-history-service/tsconfig.app.json"
       }
     },
+    "identity-verification-service": {
+      "type": "application",
+      "root": "apps/identity-verification-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/identity-verification-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/identity-verification-service/tsconfig.app.json"
+      }
+    },
     "invitations-service": {
       "type": "application",
       "root": "apps/invitations-service",

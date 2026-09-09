@@ -15,8 +15,6 @@ import {
 import {
   Briefcase,
   Calendar,
-  ChevronDown,
-  Copy,
   Download01,
   FileCheck02,
   FilterLines,
@@ -528,7 +526,7 @@ function mapApiContract(c: ApiContract): Contract {
 
 export default function MyContractsPage() {
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState<"active" | "pending">("active")
+  const [activeTab, setActiveTab] = useState<"all" | "active" | "pending">("all")
   const [viewMode, setViewMode] = useState<ViewMode>("grouped")
   const [typeFilter, setTypeFilter] = useState<"all" | ContractType>("all")
   const [searchQuery, setSearchQuery] = useState("")
@@ -632,6 +630,7 @@ export default function MyContractsPage() {
     return Array.from(map.values())
   }, [filtered])
 
+  const allCount = contracts.length
   const activeCount = contracts.filter(
     (c) =>
       c.status === "Active" || c.status === "Ended" || c.status === "Disputed"
@@ -641,7 +640,6 @@ export default function MyContractsPage() {
   ).length
 
   const [showSearch, setShowSearch] = useState(false)
-  const [filterCount] = useState(3)
 
   return (
     <AuthenticatedRoute>
@@ -659,26 +657,28 @@ export default function MyContractsPage() {
                 You have {contracts.length} contracts in total
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-6">
               <Button
                 variant="ghost"
                 visual="gray"
                 size="sm"
-                leftIcon={<HelpCircle className="size-4" />}
+                leftIcon={<HelpCircle className="size-[15px]" />}
               >
                 Get help
               </Button>
-              <Button
-                variant="outlined"
-                visual="gray"
-                size="sm"
-                leftIcon={<Copy className="size-4" />}
-              >
-                Browse Contracts
-              </Button>
-              <Button size="sm" leftIcon={<Plus className="size-4" />}>
-                New Contract
-              </Button>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  leftIcon={<Search className="size-[15px]" />}
+                >
+                  Browse Marketplace
+                </Button>
+                <Button size="sm" leftIcon={<Plus className="size-[15px]" />}>
+                  New Contract
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -687,141 +687,102 @@ export default function MyContractsPage() {
             {/* Tabs + filter actions on same visual row */}
             <div className="flex items-end justify-between">
               {/* Left: search icon + tab triggers */}
-              <div className="flex items-center gap-1">
+              <div className="flex items-end gap-3">
                 <IconButton
                   variant="ghost"
                   visual="gray"
-                  size="sm"
+                  size="md"
+                  className="rounded-full size-10 shrink-0"
                   onClick={() => setShowSearch(!showSearch)}
                 >
-                  <Search className="size-4" />
+                  <Search className="size-[18px]" />
                 </IconButton>
 
                 <Tabs
                   value={activeTab}
-                  onValueChange={(val) => setActiveTab(val as "active" | "pending")}
+                  onValueChange={(val) => setActiveTab(val as "all" | "active" | "pending")}
                   unanimated
                 >
-                  <TabsList className="px-0 pt-0 gap-0">
-                    <TabsTrigger value="active">
+                  <TabsList className="px-0 pt-0 justify-start">
+                    <TabsTrigger value="all" className="pb-[11px]">
+                      All
+                      <Badge
+                        visual={activeTab === "all" ? "primary" : "gray"}
+                        size="sm"
+                        className="h-5 px-2"
+                      >
+                        {allCount}
+                      </Badge>
+                    </TabsTrigger>
+                    <TabsTrigger value="active" className="pb-[11px]">
                       Active
-                      <Badge visual={activeTab === "active" ? "primary" : "gray"} size="sm" className="ml-1.5">
+                      <Badge
+                        visual={activeTab === "active" ? "primary" : "gray"}
+                        size="sm"
+                        className="h-5 px-2"
+                      >
                         {activeCount}
                       </Badge>
                     </TabsTrigger>
-                    <TabsTrigger value="pending">
+                    <TabsTrigger value="pending" className="pb-[11px]">
                       Pending
-                      <Badge visual={activeTab === "pending" ? "primary" : "gray"} size="sm" className="ml-1.5">
+                      <Badge
+                        visual={activeTab === "pending" ? "primary" : "gray"}
+                        size="sm"
+                        className="h-5 px-2"
+                      >
                         {pendingCount}
                       </Badge>
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      visual="gray"
-                      size="sm"
-                      className="gap-1"
-                    >
-                      More
-                      <ChevronDown className="size-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
-                    <DropdownMenuItem onClick={() => setTypeFilter("all")}>
-                      All Types
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTypeFilter("project")}>
-                      Projects
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTypeFilter("service")}>
-                      Services
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTypeFilter("team")}>
-                      Teams
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setTypeFilter("individual")}
-                    >
-                      Individual
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </div>
 
-              {/* Right: Filters, Recent Activity, Download, Group/Individual toggle */}
-              <div className="flex items-center gap-2 pb-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      visual="gray"
-                      size="sm"
-                      className="gap-1.5"
-                    >
-                      <FilterLines className="size-4" />
-                      Filters
-                      {filterCount > 0 && (
-                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-gray-100 px-1.5 text-[11px] font-medium text-gray-600">
-                          {filterCount}
-                        </span>
-                      )}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setTypeFilter("all")}>
-                      All Types
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTypeFilter("project")}>
-                      Projects
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTypeFilter("service")}>
-                      Services
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setTypeFilter("team")}>
-                      Teams
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setTypeFilter("individual")}
-                    >
-                      Individual
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+              {/* Right: Filters, Recent Activity, divider, Download, Group/Individual toggle */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" visual="gray" size="sm" className="gap-2">
+                        Filters
+                        <FilterLines className="size-[15px]" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setTypeFilter("all")}>All Types</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setTypeFilter("project")}>Projects</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setTypeFilter("service")}>Services</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setTypeFilter("team")}>Teams</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setTypeFilter("individual")}>Individual</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
 
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      visual="gray"
-                      size="sm"
-                      className="gap-1.5"
-                    >
-                      <SwitchVertical01 className="size-4" />
-                      Recent Activity
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => setSortBy("recent")}>
-                      Recent Activity
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSortBy("milestone")}>
-                      Next Milestone
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSortBy("az")}>
-                      A → Z
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSortBy("za")}>
-                      Z → A
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" visual="gray" size="sm" className="gap-2">
+                        Recent Activity
+                        <SwitchVertical01 className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setSortBy("recent")}>Recent Activity</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy("milestone")}>Next Milestone</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy("az")}>A → Z</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setSortBy("za")}>Z → A</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
 
-                <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full focus:bg-transparent focus:shadow-none data-[state=open]:bg-gray-100" onPointerDown={(e) => e.preventDefault()}>
-                  <Download01 className="size-4" />
+                {/* Vertical divider */}
+                <div className="h-[21px] w-px bg-gray-200 shrink-0" />
+
+                <IconButton
+                  variant="ghost"
+                  visual="gray"
+                  size="sm"
+                  className="rounded-full size-9"
+                >
+                  <Download01 className="size-[15px]" />
                 </IconButton>
 
                 {/* Group / Individual toggle */}
@@ -831,10 +792,20 @@ export default function MyContractsPage() {
                     const val = details.value[0] as ViewMode | undefined
                     if (val) setViewMode(val)
                   }}
-                  className="ml-1"
+                  className="rounded-[8px] bg-gray-100 border-gray-200 p-1 gap-0"
                 >
-                  <ToggleGroupItem value="grouped">Group</ToggleGroupItem>
-                  <ToggleGroupItem value="individual">Individual</ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="grouped"
+                    className="rounded-[6px] h-auto py-2 px-3 bg-transparent data-[state=on]:bg-white data-[state=on]:shadow-sm data-[state=on]:text-gray-700"
+                  >
+                    Group
+                  </ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="individual"
+                    className="rounded-[6px] h-auto py-[7px] px-3 bg-transparent data-[state=on]:bg-white data-[state=on]:shadow-sm data-[state=on]:text-gray-700"
+                  >
+                    Individual
+                  </ToggleGroupItem>
                 </ToggleGroupRoot>
               </div>
             </div>

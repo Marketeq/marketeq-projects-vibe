@@ -50,6 +50,7 @@ RUN npx nest build content-moderation-service
 RUN npx nest build contracts-service
 RUN npx nest build earnings-service
 RUN npx nest build favorites-service
+RUN npx nest build identity-verification-service
 RUN npx nest build invitations-service
 RUN npx nest build legal-service
 RUN npx nest build listings-service
