@@ -2,6 +2,27 @@
 
 # CLAUDE.md
 
+## 🛑 PIXEL PERFECT — MANDATORY DEFINITION (read before every Figma task)
+
+**Pixel perfect means zero visual or structural deviation from the Figma design.**
+
+### What it requires — no exceptions:
+1. **Every spacing value is exact.** `padding: 11px` in Figma → `pb-[11px]`, not `pb-2` (8px). `gap: 12px` → `gap-3`, not `gap-2`.
+2. **Every color is exact.** Figma hex `#306CFE` → must render as `#306CFE`. Design system token `primary-500` is only acceptable if its value IS `#306CFE`. Verify it.
+3. **Every font size, weight, line-height is exact.** `14px / 600 / 20px` → `text-[14px] font-semibold leading-5`.
+4. **Every border radius, shadow, size is exact.** `border-radius: 5px` → `rounded-[5px]`, not `rounded`. `size: 40px` → `size-[40px]` or `size-10` (they are equal — verify).
+5. **Design system components override with className.** When a design system component has hardcoded defaults that conflict with Figma (e.g. `pb-2` instead of `pb-[11px]`), override them via `className` using `twMerge`. If a variant conflicts, use `variant="unstyled"` and apply all classes manually.
+6. **Never eyeball or approximate.** Open Figma Dev Mode, read the exact CSS property values, paste them. Do not substitute "close enough" values.
+7. **Verify in browser.** After implementing, take a screenshot and compare side-by-side with the Figma. If anything is off by even 1px, fix it before declaring done.
+
+### What pixel perfect is NOT:
+- Adding the right components with wrong spacing/sizing
+- "Close enough" padding (8px when Figma says 11px)
+- Using a rounded value when Figma says a specific decimal
+- Saying it's done without visually verifying in the browser
+
+**Violation = redo from scratch against the Figma. No partial credit.**
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## 🛑 Code Review SOP + DevOps SOP (MANDATORY reading before any PR work)

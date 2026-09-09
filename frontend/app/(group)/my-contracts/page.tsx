@@ -703,31 +703,34 @@ export default function MyContractsPage() {
                   onValueChange={(val) => setActiveTab(val as "all" | "active" | "pending")}
                   unanimated
                 >
-                  <TabsList className="px-0 pt-0 gap-4">
-                    <TabsTrigger
-                      value="all"
-                      className="gap-2 pb-[11px] pt-px px-1 capitalize data-[state=active]:border-b-2 data-[state=active]:border-[#306cfe] data-[state=active]:text-[#306cfe] data-[state=inactive]:text-gray-500"
-                    >
+                  <TabsList className="px-0 pt-0 justify-start">
+                    <TabsTrigger value="all" className="pb-[11px]">
                       All
-                      <Badge visual={activeTab === "all" ? "primary" : "gray"} size="sm" className="ml-0">
+                      <Badge
+                        visual={activeTab === "all" ? "primary" : "gray"}
+                        size="sm"
+                        className="h-5 px-2"
+                      >
                         {allCount}
                       </Badge>
                     </TabsTrigger>
-                    <TabsTrigger
-                      value="active"
-                      className="gap-2 pb-[11px] pt-px px-1 capitalize data-[state=active]:border-b-2 data-[state=active]:border-[#306cfe] data-[state=active]:text-[#306cfe] data-[state=inactive]:text-gray-500"
-                    >
+                    <TabsTrigger value="active" className="pb-[11px]">
                       Active
-                      <Badge visual={activeTab === "active" ? "primary" : "gray"} size="sm" className="ml-0">
+                      <Badge
+                        visual={activeTab === "active" ? "primary" : "gray"}
+                        size="sm"
+                        className="h-5 px-2"
+                      >
                         {activeCount}
                       </Badge>
                     </TabsTrigger>
-                    <TabsTrigger
-                      value="pending"
-                      className="gap-2 pb-[11px] pt-px px-1 capitalize data-[state=active]:border-b-2 data-[state=active]:border-[#306cfe] data-[state=active]:text-[#306cfe] data-[state=inactive]:text-gray-500"
-                    >
+                    <TabsTrigger value="pending" className="pb-[11px]">
                       Pending
-                      <Badge visual={activeTab === "pending" ? "primary" : "gray"} size="sm" className="ml-0">
+                      <Badge
+                        visual={activeTab === "pending" ? "primary" : "gray"}
+                        size="sm"
+                        className="h-5 px-2"
+                      >
                         {pendingCount}
                       </Badge>
                     </TabsTrigger>
@@ -789,9 +792,20 @@ export default function MyContractsPage() {
                     const val = details.value[0] as ViewMode | undefined
                     if (val) setViewMode(val)
                   }}
+                  className="rounded-[8px] bg-gray-100 border-gray-200 p-1 gap-0"
                 >
-                  <ToggleGroupItem value="grouped">Group</ToggleGroupItem>
-                  <ToggleGroupItem value="individual">Individual</ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="grouped"
+                    className="rounded-[6px] h-auto py-2 px-3 bg-transparent data-[state=on]:bg-white data-[state=on]:shadow-sm data-[state=on]:text-gray-700"
+                  >
+                    Group
+                  </ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="individual"
+                    className="rounded-[6px] h-auto py-[7px] px-3 bg-transparent data-[state=on]:bg-white data-[state=on]:shadow-sm data-[state=on]:text-gray-700"
+                  >
+                    Individual
+                  </ToggleGroupItem>
                 </ToggleGroupRoot>
               </div>
             </div>
