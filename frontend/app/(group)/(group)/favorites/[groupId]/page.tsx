@@ -613,6 +613,7 @@ export default function FavoriteGroupDetailPage() {
                   }
                   rating={item.rating}
                   reviewCount={item.reviewCount}
+                  collaborators={[]}
                   optionsSlot={
                     <ItemDropdown
                       onRemove={() => setPendingRemoveId(fav.id)}
@@ -660,6 +661,7 @@ export default function FavoriteGroupDetailPage() {
                   mediaUrl={
                     item.mediaUrls?.[0] || item.coverImage || item.thumbnail
                   }
+                  collaborators={[]}
                   budget={
                     isService
                       ? item.priceMin
