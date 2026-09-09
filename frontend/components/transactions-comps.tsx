@@ -11326,12 +11326,14 @@ export const PayoutsTab = ({
     setMonthlySummaryError(false)
     payoutFetch(`/payouts/summary`)
       .then(async (res) => {
-        if (!res.ok) throw new Error("failed")
+        if (!res.ok) {
+          setMonthlySummaryError(true)
+          return null
+        }
         return res.json()
       })
-      .then(setMonthlySummary)
-      .catch((e) => {
-        console.error("Failed to fetch monthly payout summary", e)
+      .then((data) => { if (data) setMonthlySummary(data) })
+      .catch(() => {
         setMonthlySummaryError(true)
       })
   }, [])

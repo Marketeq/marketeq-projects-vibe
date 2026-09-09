@@ -15,6 +15,8 @@ import { PublishRichTextImageController } from './controllers/publish-rich-text-
 import { ClientIpController } from './controllers/client-ip.controller'
 import { HomepageModule } from './homepage/homepage.module'
 import { BlogModule } from './blog/blog.module'
+import { CheckoutDraftController } from './checkout-draft/checkout-draft.controller'
+import { CheckoutDraftGatewayService } from './checkout-draft/checkout-draft.service'
 import { JwtStrategy } from './guards/jwt-auth.guard'
 import { CsrfOriginMiddleware } from './middleware/csrf-origin.middleware'
 import { JwtMiddleware } from './middleware/jwt.middleware'
@@ -61,7 +63,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
       },
     }),
   ],
-  providers: [ProxyService, JwtStrategy],
+  providers: [ProxyService, JwtStrategy, CheckoutDraftGatewayService],
   controllers: [
     TalentUploadController,
     ResumeUploadController,
@@ -70,6 +72,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
     ClientIpController,
     PublishMediaController,
     PublishRichTextImageController,
+    CheckoutDraftController,
     ProxyController,
   ],
 })

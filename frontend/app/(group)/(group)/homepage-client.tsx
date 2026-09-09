@@ -501,6 +501,7 @@ function renderServiceCarousel(item: ServiceCard) {
       }
       rating={item.rating}
       reviewCount={item.reviewCount}
+      collaborators={item.collaborators ?? []}
       favoriteSlot={<FavoriteButton />}
     />
   )

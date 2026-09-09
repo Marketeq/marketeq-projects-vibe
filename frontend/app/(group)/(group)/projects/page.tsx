@@ -858,6 +858,7 @@ export default function Projects() {
                               rating={4.9}
                               reviewCount={5}
                               href="#"
+                              collaborators={[]}
                               favoriteSlot={
                                 <FavoriteRoot>
                                   {({ pressed }) => (

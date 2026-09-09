@@ -11,7 +11,9 @@ import { InstallmentPayment } from './checkout/entities/installment-payment.enti
 import { SavedBankAccount } from './checkout/entities/saved-bank-account.entity';
 import { WireTransfer } from './checkout/entities/wire-transfer.entity';
 import { StripeMetadata } from './checkout/entities/stripe-metadata.entity';
+import { CheckoutDraft } from './checkout/entities/checkout-draft.entity';
 import { CheckoutService } from './checkout/checkout.service';
+import { CheckoutDraftService } from './checkout/checkout-draft.service';
 import { CheckoutController } from './checkout/checkout.controller';
 import { UcheckoutUserviceController } from './checkout-service.controller';
 import { UcheckoutUserviceService } from './checkout-service.service';
@@ -29,6 +31,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
         CheckoutSession, Wallet, GiftCard,
         WalletTransaction, PaymentFailure, InstallmentPayment,
         SavedBankAccount, WireTransfer, StripeMetadata,
+        CheckoutDraft,
       ],
       synchronize: false,
       migrationsRun: true,
@@ -39,6 +42,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
       CheckoutSession, Wallet, GiftCard,
       WalletTransaction, PaymentFailure, InstallmentPayment,
       SavedBankAccount, WireTransfer, StripeMetadata,
+      CheckoutDraft,
     ]),
     ...(process.env.RABBITMQ_URL
       ? [ClientsModule.register([
@@ -55,6 +59,6 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
       : []),
   ],
   controllers: [CheckoutController, UcheckoutUserviceController],
-  providers: [CheckoutService, UcheckoutUserviceService, StripeService, JwtAuthGuard],
+  providers: [CheckoutService, CheckoutDraftService, UcheckoutUserviceService, StripeService, JwtAuthGuard],
 })
 export class CheckoutServiceModule {}
