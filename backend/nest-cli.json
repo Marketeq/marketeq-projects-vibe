@@ -142,6 +142,15 @@
         "tsConfigPath": "apps/favorites-service/tsconfig.app.json"
       }
     },
+    "browsing-history-service": {
+      "type": "application",
+      "root": "apps/browsing-history-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/browsing-history-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/browsing-history-service/tsconfig.app.json"
+      }
+    },
     "invitations-service": {
       "type": "application",
       "root": "apps/invitations-service",
@@ -290,6 +299,15 @@
       "sourceRoot": "apps/resume-parsing-service/src",
       "compilerOptions": {
         "tsConfigPath": "apps/resume-parsing-service/tsconfig.app.json"
+      }
+    },
+    "location-service": {
+      "type": "application",
+      "root": "apps/location-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/location-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/location-service/tsconfig.app.json"
       }
     }
   }

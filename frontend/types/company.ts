@@ -4,6 +4,12 @@ export interface Company {
   domain?: string
   logoUrl?: string
   ownerUserId: string
+  industry?: string
+  businessType?: string
+  companySize?: string
+  annualRevenue?: string
+  phone?: string
+  timeZone?: string
   createdAt?: string
   updatedAt?: string
 }
@@ -25,11 +31,26 @@ export interface CreateCompanyDto {
   name: string
   domain?: string
   logoUrl?: string
+  industry?: string
+  businessType?: string
+  companySize?: string
+  annualRevenue?: string
+  phone?: string
+  timeZone?: string
 }
 
 export interface UpdateCompanyDto {
   name?: string
+  /** Company website. Accepted by create from the start; update gained it so
+   *  Settings > Company Info can correct a website after registration. */
+  domain?: string
   logoUrl?: string
+  industry?: string
+  businessType?: string
+  companySize?: string
+  annualRevenue?: string
+  phone?: string
+  timeZone?: string
 }
 
 export interface UpdateCompanyMemberDto {

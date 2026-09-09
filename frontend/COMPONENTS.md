@@ -79,6 +79,27 @@ Internal padding of cards, panels, and content widgets.
 | `p-4` | 16px | Compact cards, modals, dialog content |
 | `p-3` | 12px | Tight widget padding (message input area, inline tools) |
 
+### Card Corners & Shadow (do not improvise these)
+
+Every card, panel and widget corner is **8px** — `rounded-lg`. Do not reach for
+`rounded-[8px]`, `rounded-md`, or any other arbitrary radius; `rounded-lg`
+already resolves to 8px and is the only class to use for a card corner.
+
+| Value | Pixels | When to use |
+|-------|--------|-------------|
+| `rounded-lg` | 8px | Every card, panel, widget and listing card |
+| `rounded-[6px]` | 6px | Media/thumbnail wells **inside** a card |
+| `rounded-full` | — | Avatars, pills, icon buttons |
+
+Card shadow is `shadow-xs` = `0px 1px 4px 0px rgba(0,0,0,0.03)`, defined in
+`tailwind.config.ts`. Use the class, not an inline `shadow-[...]` value.
+
+**When a child sits flush against a card edge** — a media panel down the left
+of a list card, a footer strip — give that child the matching corner
+(`rounded-l-lg`, `rounded-b-lg`). `overflow-hidden` on the parent alone leaves
+the child's own border cutting straight across the curve, which reads as a
+broken corner.
+
 ### Grid Gaps (Between Cards in Grids)
 
 | Value | Pixels | When to use |
@@ -787,6 +808,30 @@ These are reusable composed modules built from base UI components. Located at `f
 - **File**: `listing-card.tsx`
 - **Import**: `import { ... } from "@/components/listing-card"`
 - **Exports**: Project/service listing card
+
+### TeamCardLandscape — MASTER team card, list view
+- **File**: `team-card-landscape.tsx`
+- **Import**: `import { TeamCardLandscape } from "@/components/team-card-landscape"`
+- **Exports**: `TeamCardLandscape`, `TeamCardLandscapeProps`
+- **Storybook**: `stories/team-card-landscape.stories.tsx` (`Cards/Team Card Landscape`)
+- **Figma**: card `13290:20976` (Component 1035); avatar cluster `13491:46526`
+- **Use for**: every team row in **list view**. Grid view is
+  `ListingCard kind="team"`. `ListingCard` has no `layout="list"` for teams —
+  only projects and services take it — so team rows come from here. Do not
+  fork this or hand-roll a team row anywhere.
+- **Key Props**: `id`, `name`, `handle?`, `tagline?` (team type, not a
+  description — it is one capitalised line), `experience?`, `locations?`,
+  `rate?`, `rating?`, `projectCount?` (renders as "N reviews"), `skills?`,
+  `memberAvatars?`, `memberCount?` (whole roster, drives the "+N" bubble),
+  `previousClientLogos?`, `href?`, `isOwner?`, `isSaved?`, `onSaveClick?`,
+  `onLeaveClick?`
+- **Avatar cluster**: one variant per member count (1 = 50×50 … 6 = 128×140,
+  6-plus-overflow = 140×140). Always sits in a 140×140 frame anchored
+  **bottom-left**, never centred or top-left. The "+N" bubble appears only once
+  all six seats are filled.
+- **No card hover.** The only hovers are the team name (underline) and the
+  footer skill links (60% → full opacity).
+- **Used by**: `/my-teams`, Browsing History list view
 
 ### ListingCardCompact
 - **File**: `listing-card-compact.tsx`

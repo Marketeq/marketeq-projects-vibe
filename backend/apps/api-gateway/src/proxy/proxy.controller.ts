@@ -19,6 +19,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   search: 'search',
   algolia: 'algolia',
   favorites: 'favorites',
+  'browsing-history': 'browsingHistory',
   portfolio: 'portfolio',
   'case-studies': 'portfolio',  // portfolio-service's case-study builder API
   media: 'portfolio',           // portfolio-service's R2 presigned media upload/delete
@@ -64,6 +65,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   legal: 'legal',                  // legal-service NDA, documents, acceptance
   nda: 'legal',                    // legal-service NDA endpoints
   resume: 'users',                  // resume upload/parse lives in user-service
+  'dashboard-tasks': 'users',       // personal to-do tasks live in user-service
 }
 
 const USER_SERVICE_V1_RESOURCES = new Set([
@@ -203,6 +205,7 @@ export class ProxyController {
       'contracts-service': process.env.CONTRACTS_SERVICE_URL || 'http://localhost:3010',
       'offer-service': process.env.OFFER_SERVICE_URL || 'http://localhost:3011',
       'favorites-service': process.env.FAVORITES_SERVICE_URL || 'http://localhost:3012',
+      'browsing-history-service': process.env.BROWSING_HISTORY_SERVICE_URL || 'http://localhost:3034',
       'invitations-service': process.env.INVITATIONS_SERVICE_URL || 'http://localhost:3013',
       'content-moderation-service': process.env.MODERATION_SERVICE_URL || 'http://localhost:3014',
       'portfolio-service': process.env.PORTFOLIO_SERVICE_URL || 'http://localhost:3015',
@@ -347,7 +350,8 @@ export class ProxyController {
       prefix === 'v1' &&
       (segments[1] === 'projects' ||
         segments[1] === 'services' ||
-        segments[1] === 'recently-viewed')
+        segments[1] === 'recently-viewed' ||
+        segments[1] === 'my-teams')
     ) {
       prefix = 'listings'
     } else if (prefix === 'v1' && (segments[1] === 'threads' || segments[1] === 'messages')) {
@@ -363,7 +367,7 @@ export class ProxyController {
     } else if (prefix === 'v1' && (segments[1] === 'deposit-methods')) {
       prefix = 'deposit-methods'
     } else if (prefix === 'v1' && segments[1] === 'oauth') {
-      // /v1/oauth/:provider/callback (PayPal/Wise/Payoneer OAuth redirect
+      // /v1/oauth/:provider/callback (Wise/Payoneer OAuth redirect
       // target) lives in payout-service. Without this branch it silently
       // fell through to the 'v1' default (transaction-service) and 404'd,
       // so the OAuth callback that actually persists tokens never ran.

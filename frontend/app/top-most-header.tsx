@@ -20,6 +20,7 @@ import NotificationsAPI, {
   isTransientNotificationsApiError,
 } from "@/service/http/notifications"
 import { UserAPI } from "@/service/http/user"
+import { persistActiveRole } from "@/src/lib/api/active-role"
 import { getContract, respondToContract } from "@/src/lib/api/contracts"
 import { jobDetailsUrl } from "@/src/lib/listing-urls"
 import { cn } from "@/utils/functions"
@@ -33,6 +34,7 @@ import {
   Bell,
   Briefcase02,
   ChevronDown,
+  ClockRewind,
   CoinStack,
   FileCheck02,
   LayoutGrid02,
@@ -51,6 +53,7 @@ import {
 } from "@blend-metrics/icons"
 import { createPortal } from "react-dom"
 import { ROLE } from "@/types/user"
+import { AuthModal } from "@/components/auth/auth-modal"
 import {
   CounterOfferDialog,
   type CounterOfferSubmissionData,
@@ -63,7 +66,6 @@ import {
   OfferFlowDialog,
   type OfferFlowDialogVariant,
 } from "@/components/offer-flow-dialog"
-import { AuthModal } from "@/components/auth/auth-modal"
 import { ThreeHorizontalLines } from "@/components/three-horizontal-lines"
 import {
   Avatar,
@@ -97,7 +99,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui"
-import { persistActiveRole } from "@/src/lib/api/active-role"
 import { ScrollBar } from "@/components/ui"
 
 const OFFER_NOTIFICATION_EVENT = "contract.offer.received"
@@ -486,6 +487,10 @@ const Notifications = () => {
     UiNotificationItem[]
   >([])
   const [unreadBadgeCount, setUnreadBadgeCount] = useState(0)
+  // Snapshot of unread count captured when the panel opens. The bell badge
+  // (unreadBadgeCount) clears to 0 immediately on open, but the tab counter
+  // needs to stay visible so users can see how many notifications were new.
+  const [panelTabCount, setPanelTabCount] = useState(0)
   const {
     threads: inboxThreads,
     totalUnread: inboxTotalUnread,
@@ -567,12 +572,19 @@ const Notifications = () => {
   }, [loadNotifications])
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setPanelTabCount(0)
+      return
+    }
     let cancelled = false
 
     void (async () => {
       const unread = await loadNotifications(false)
-      if (cancelled || unread === 0) return
+      if (cancelled) return
+      // Capture before clearing so the tab counter stays visible while the
+      // panel is open, even though the bell badge clears to 0 immediately.
+      setPanelTabCount(unread)
+      if (unread === 0) return
       await markAllNotificationsRead()
     })()
 
@@ -1046,7 +1058,7 @@ const Notifications = () => {
               <TabsTrigger value="Notifications">
                 Notifications
                 <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-                  {unreadBadgeCount}
+                  {panelTabCount}
                 </span>
               </TabsTrigger>
               <TabsTrigger value="Messages">
@@ -1117,9 +1129,7 @@ const Notifications = () => {
                           </div>
                         )
                       }
-                      return inboxThreads
-                        .slice(0, 8)
-                        .map(renderInboxThreadItem)
+                      return inboxThreads.slice(0, 8).map(renderInboxThreadItem)
                     })()}
                   </div>
                 </ScrollArea>
@@ -1534,7 +1544,11 @@ const SearchBar = () => {
               />
             </div>
             <span className="w-px h-4 shrink-0 inline-block bg-gray-200" />
-            <Listbox className="w-auto" value={state} onChange={handleCategoryChange}>
+            <Listbox
+              className="w-auto"
+              value={state}
+              onChange={handleCategoryChange}
+            >
               <ListboxButton
                 className="p-0 border-0 text-[11px] leading-[16.67px] lg:text-sm lg:leading-5 font-semibold gap-x-[6.67px] lg:gap-x-1.5 w-auto h-auto rounded-none hover:ring-0 focus:ring-0"
                 placeholder="View All"
@@ -1637,6 +1651,7 @@ const HAS_SIDEBAR_NAV = [
   "/client-dashboard",
   "/inbox",
   "/earnings",
+  "/my-teams",
   "/my-listings",
   "/my-contracts",
   "/my-jobs",
@@ -1654,10 +1669,10 @@ const HAS_SECONDARY_NAV = [
   "/",
   "/talent-profile",
   "/client-profile",
-  "/my-team",
+  "/my-network",
   "/favorite-projects",
   "/favorite-talent",
-  "/browser-history",
+  "/browsing-history",
   "/search",
   "/talent-search",
   "/projects",
@@ -1676,33 +1691,45 @@ export const TopMostHeader = ({
 }) => {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = React.useState(false)
-  const [secondaryNavHidden, setSecondaryNavHidden] = React.useState(false)
-  const { authModalOpen, authModalView, openAuthModal, closeAuthModal } = useAuth()
+  // null = no secondary nav shell mounted on this route.
+  const [navState, setNavState] = React.useState<"visible" | "hidden" | null>(
+    null
+  )
+  const { authModalOpen, authModalView, openAuthModal, closeAuthModal } =
+    useAuth()
 
   const router = useRouter()
   const { logoutHandler, user, setUser } = useAuth()
 
-  // Job details pages use the same marketplace secondary nav shell as the
-  // homepage/category surfaces, so the primary header must coordinate with it.
-  const hasSecondaryNav =
+  // The secondary nav shell publishes `data-secondary-nav` on <html> while it is
+  // mounted and removes it on unmount, so the DOM is the authority on whether a
+  // route actually has one. The route list below is only a first-paint hint for
+  // the frame before this effect runs -- a page missing from it (every new page
+  // under the marketplace layout) still resolves correctly.
+  const routeHint =
     HAS_SECONDARY_NAV.includes(pathname) ||
+    pathname === "/favorites" ||
+    pathname.startsWith("/favorites/") ||
     pathname.startsWith("/c/") ||
     pathname.startsWith("/project-details/") ||
     pathname.startsWith("/job-details/")
 
-  // Listen for secondary nav visibility changes
   React.useEffect(() => {
-    if (!hasSecondaryNav) return
-    const observer = new MutationObserver(() => {
+    const read = () => {
       const val = document.documentElement.dataset.secondaryNav
-      setSecondaryNavHidden(val === "hidden")
-    })
+      setNavState(val === "hidden" ? "hidden" : val ? "visible" : null)
+    }
+    read()
+    const observer = new MutationObserver(read)
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-secondary-nav"],
     })
     return () => observer.disconnect()
-  }, [hasSecondaryNav])
+  }, [pathname])
+
+  const hasSecondaryNav = navState !== null || routeHint
+  const secondaryNavHidden = navState === "hidden"
 
   if (pathname.startsWith(ONBOARDING)) {
     return null
@@ -1760,247 +1787,256 @@ export const TopMostHeader = ({
 
         <div className="flex items-center">
           {user ? (
-          <>
-          <div className="flex items-center gap-x-1">
-            <InviteWindowTrigger asChild>
-              <IconButton
-                className="rounded-full"
-                size="md"
-                variant="ghost"
-                visual="gray"
-              >
-                <Plus className="size-[18px]" />
-              </IconButton>
-            </InviteWindowTrigger>
-            <Notifications />
-            <IconButton
-              className="rounded-full lg:hidden"
-              size="md"
-              variant="ghost"
-              visual="gray"
-            >
-              <ThreeHorizontalLines className="text-dark-blue-400" />
-            </IconButton>
-          </div>
-
-          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-            <DropdownMenuTrigger className="hidden lg:inline-flex items-center gap-x-2 px-3 py-1.5 rounded-[8px] hover:bg-gray-100 focus-visible:outline-none">
-              <div className="inline-flex items-center gap-x-2">
-                <Avatar>
-                  <AvatarImage
-                    src={user?.avatarUrl ?? ""}
-                    alt={user?.firstName ?? "User"}
-                  />
-                  <AvatarFallback suppressHydrationWarning>
-                    {user?.firstName?.[0]?.toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex flex-col text-left">
-                  <span
-                    className="text-xs font-semibold leading-[15px] text-gray-700"
-                    suppressHydrationWarning
+            <>
+              <div className="flex items-center gap-x-1">
+                <InviteWindowTrigger asChild>
+                  <IconButton
+                    className="rounded-full"
+                    size="md"
+                    variant="ghost"
+                    visual="gray"
                   >
-                    {`${user?.firstName || ""} ${user?.lastName || ""}`.trim()}
-                  </span>
-                  <span
-                    className="text-[9px] leading-[14px] text-gray-500"
-                    suppressHydrationWarning
-                  >
-                    {user?.email}
-                  </span>
-                </div>
+                    <Plus className="size-[18px]" />
+                  </IconButton>
+                </InviteWindowTrigger>
+                <Notifications />
+                <IconButton
+                  className="rounded-full lg:hidden"
+                  size="md"
+                  variant="ghost"
+                  visual="gray"
+                >
+                  <ThreeHorizontalLines className="text-dark-blue-400" />
+                </IconButton>
               </div>
 
-              <ChevronDown className="size-4 shrink-0" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-[278px]">
-              <DropdownMenuLabel className="font-normal" size="md">
-                <div className="flex flex-col gap-y-2">
-                  <div className="flex flex-col">
-                    <span className="text-xs leading-5 text-gray-700">
-                      User ID: 2459749
-                    </span>
-                    <span
-                      className="text-[13px] leading-5 text-primary-500"
-                      suppressHydrationWarning
-                    >
-                      {user?.email}
-                    </span>
+              <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+                <DropdownMenuTrigger className="hidden lg:inline-flex items-center gap-x-2 px-3 py-1.5 rounded-[8px] hover:bg-gray-100 focus-visible:outline-none">
+                  <div className="inline-flex items-center gap-x-2">
+                    <Avatar>
+                      <AvatarImage
+                        src={user?.avatarUrl ?? ""}
+                        alt={user?.firstName ?? "User"}
+                      />
+                      <AvatarFallback suppressHydrationWarning>
+                        {user?.firstName?.[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col text-left">
+                      <span
+                        className="text-xs font-semibold leading-[15px] text-gray-700"
+                        suppressHydrationWarning
+                      >
+                        {`${user?.firstName || ""} ${user?.lastName || ""}`.trim()}
+                      </span>
+                      <span
+                        className="text-[9px] leading-[14px] text-gray-500"
+                        suppressHydrationWarning
+                      >
+                        {user?.email}
+                      </span>
+                    </div>
                   </div>
 
-                  <Button
-                    className="w-full"
-                    onClick={() => {
+                  <ChevronDown className="size-4 shrink-0" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-[278px]">
+                  <DropdownMenuLabel className="font-normal" size="md">
+                    <div className="flex flex-col gap-y-2">
+                      <div className="flex flex-col">
+                        <span className="text-xs leading-5 text-gray-700">
+                          User ID: 2459749
+                        </span>
+                        <span
+                          className="text-[13px] leading-5 text-primary-500"
+                          suppressHydrationWarning
+                        >
+                          {user?.email}
+                        </span>
+                      </div>
+
+                      <Button
+                        className="w-full"
+                        onClick={() => {
+                          setMenuOpen(false)
+                          router.push("/settings")
+                        }}
+                      >
+                        My Account
+                      </Button>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => {
                       setMenuOpen(false)
-                      router.push("/settings")
+                      // A client account sees the client profile; the talent
+                      // profile is only for talent accounts.
+                      router.push(
+                        resolveDashboardRole(user) === ROLE.CLIENT
+                          ? "/client-profile"
+                          : "/talent-profile"
+                      )
                     }}
                   >
-                    My Account
-                  </Button>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={() => {
-                  setMenuOpen(false)
-                  // A client account sees the client profile; the talent
-                  // profile is only for talent accounts.
-                  router.push(
-                    resolveDashboardRole(user) === ROLE.CLIENT
-                      ? "/client-profile"
-                      : "/talent-profile"
-                  )
-                }}
-              >
-                <User className="size-4" />
-                My Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => {
-                  setMenuOpen(false)
-                  router.push(
-                    user?.accountType === "TALENT"
-                      ? "/talent-dashboard"
-                      : "/client-dashboard"
-                  )
-                }}
-              >
-                <LayoutGrid02 className="size-4" />
-                My Dashboard
-              </DropdownMenuItem>
-              {user?.accountType === "TALENT" && (
-                <DropdownMenuItem
-                  onSelect={() => {
-                    setMenuOpen(false)
-                    router.push("/my-listings")
-                  }}
-                >
-                  <List className="size-4" />
-                  My Listings
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem
-                onSelect={() => {
-                  setMenuOpen(false)
-                  router.push("/my-contracts")
-                }}
-              >
-                <FileCheck02 className="size-4" />
-                My Contracts
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => {
-                  setMenuOpen(false)
-                  router.push("/my-team")
-                }}
-              >
-                <Users className="size-4" />
-                My Team
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => {
-                  setMenuOpen(false)
-                  router.push("/favorites")
-                }}
-              >
-                <Star className="size-4" />
-                My Favorites
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => {
-                  setMenuOpen(false)
-                  router.push("/settings?tab=billing-overview")
-                }}
-              >
-                <CoinStack className="size-4" />
-                Billing
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => {
-                  setMenuOpen(false)
-                  router.push("/settings?tab=personal-info")
-                }}
-              >
-                <Settings className="size-4" />
-                Settings
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={async () => {
-                  setMenuOpen(false)
-                  const isTalent =
-                    user?.accountType?.toUpperCase() === "TALENT" ||
+                    <User className="size-4" />
+                    My Profile
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setMenuOpen(false)
+                      router.push(
+                        user?.accountType === "TALENT"
+                          ? "/talent-dashboard"
+                          : "/client-dashboard"
+                      )
+                    }}
+                  >
+                    <LayoutGrid02 className="size-4" />
+                    My Dashboard
+                  </DropdownMenuItem>
+                  {user?.accountType === "TALENT" && (
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setMenuOpen(false)
+                        router.push("/my-listings")
+                      }}
+                    >
+                      <List className="size-4" />
+                      My Listings
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setMenuOpen(false)
+                      router.push("/my-contracts")
+                    }}
+                  >
+                    <FileCheck02 className="size-4" />
+                    My Contracts
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setMenuOpen(false)
+                      router.push("/my-network")
+                    }}
+                  >
+                    <Users className="size-4" />
+                    My Network
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setMenuOpen(false)
+                      router.push("/favorites")
+                    }}
+                  >
+                    <Star className="size-4" />
+                    My Favorites
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setMenuOpen(false)
+                      router.push("/browsing-history")
+                    }}
+                  >
+                    <ClockRewind className="size-4" />
+                    Browsing History
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setMenuOpen(false)
+                      router.push("/settings?tab=billing-overview")
+                    }}
+                  >
+                    <CoinStack className="size-4" />
+                    Billing
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setMenuOpen(false)
+                      router.push("/settings?tab=personal-info")
+                    }}
+                  >
+                    <Settings className="size-4" />
+                    Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={async () => {
+                      setMenuOpen(false)
+                      const isTalent =
+                        user?.accountType?.toUpperCase() === "TALENT" ||
+                        user?.userType?.toLowerCase() === "talent" ||
+                        user?.role?.toUpperCase() === "TALENT"
+                      const newType = isTalent ? "client" : "talent"
+                      const newRole =
+                        newType === "talent" ? ROLE.TALENT : ROLE.CLIENT
+                      // Optimistically update local user so the dropdown label flips immediately,
+                      // even if the backend doesn't accept the userType change.
+                      const updatedUser = user
+                        ? {
+                            ...user,
+                            userType: newType,
+                            accountType: newRole,
+                            activeRole: newRole,
+                            role: newRole,
+                          }
+                        : null
+                      setUser((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              userType: newType,
+                              accountType: newRole,
+                              activeRole: newRole,
+                              role: newRole,
+                            }
+                          : prev
+                      )
+                      if (user?.id) {
+                        UserAPI.updateProfile(user.id, {
+                          userType: newType,
+                        }).catch(() => {})
+                        // Persist the active role so it survives a reload.
+                        // `accountType` only ever lived in memory, so after a
+                        // refresh the app fell back to inferring from `role` and
+                        // showed the wrong role's features.
+                        persistActiveRole(newRole).catch(() => {})
+                      }
+                      // Check if the user needs onboarding for the target role
+                      const needsOnboarding =
+                        newType === "client"
+                          ? !hasCompletedClientOnboarding(updatedUser)
+                          : !hasCompletedTalentOnboarding(updatedUser)
+                      const destination = needsOnboarding
+                        ? `/onboarding/${newType}`
+                        : newType === "client"
+                          ? "/client-dashboard"
+                          : "/talent-dashboard"
+                      router.push(destination)
+                    }}
+                  >
+                    <Repeat className="size-4" />
+                    {user?.accountType?.toUpperCase() === "TALENT" ||
                     user?.userType?.toLowerCase() === "talent" ||
                     user?.role?.toUpperCase() === "TALENT"
-                  const newType = isTalent ? "client" : "talent"
-                  const newRole =
-                    newType === "talent" ? ROLE.TALENT : ROLE.CLIENT
-                  // Optimistically update local user so the dropdown label flips immediately,
-                  // even if the backend doesn't accept the userType change.
-                  const updatedUser = user
-                    ? {
-                        ...user,
-                        userType: newType,
-                        accountType: newRole,
-                        activeRole: newRole,
-                        role: newRole,
-                      }
-                    : null
-                  setUser((prev) =>
-                    prev
-                      ? {
-                          ...prev,
-                          userType: newType,
-                          accountType: newRole,
-                          activeRole: newRole,
-                          role: newRole,
-                        }
-                      : prev
-                  )
-                  if (user?.id) {
-                    UserAPI.updateProfile(user.id, { userType: newType }).catch(
-                      () => {}
-                    )
-                    // Persist the active role so it survives a reload.
-                    // `accountType` only ever lived in memory, so after a
-                    // refresh the app fell back to inferring from `role` and
-                    // showed the wrong role's features.
-                    persistActiveRole(newRole).catch(() => {})
-                  }
-                  // Check if the user needs onboarding for the target role
-                  const needsOnboarding =
-                    newType === "client"
-                      ? !hasCompletedClientOnboarding(updatedUser)
-                      : !hasCompletedTalentOnboarding(updatedUser)
-                  const destination = needsOnboarding
-                    ? `/onboarding/${newType}`
-                    : newType === "client"
-                      ? "/client-dashboard"
-                      : "/talent-dashboard"
-                  router.push(destination)
-                }}
-              >
-                <Repeat className="size-4" />
-                {user?.accountType?.toUpperCase() === "TALENT" ||
-                user?.userType?.toLowerCase() === "talent" ||
-                user?.role?.toUpperCase() === "TALENT"
-                  ? "Switch to Client"
-                  : "Switch to Talent"}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <div className="grid grid-cols-2 gap-x-[9px]">
-                <DropdownMenuItem>
-                  <LifeBuoy className="size-4" />
-                  Help Center
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => logoutHandler()}>
-                  <LogOut className="size-4" />
-                  Log out
-                </DropdownMenuItem>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          </>
+                      ? "Switch to Client"
+                      : "Switch to Talent"}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <div className="grid grid-cols-2 gap-x-[9px]">
+                    <DropdownMenuItem>
+                      <LifeBuoy className="size-4" />
+                      Help Center
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => logoutHandler()}>
+                      <LogOut className="size-4" />
+                      Log out
+                    </DropdownMenuItem>
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
           ) : (
             <div className="flex items-center gap-x-5">
               <Button
@@ -2030,7 +2066,9 @@ export const TopMostHeader = ({
 
       <AuthModal
         open={authModalOpen}
-        onOpenChange={(open) => { if (!open) closeAuthModal() }}
+        onOpenChange={(open) => {
+          if (!open) closeAuthModal()
+        }}
         defaultView={authModalView}
       />
     </div>

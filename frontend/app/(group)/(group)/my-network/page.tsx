@@ -37,6 +37,7 @@ import {
   Star,
   Trash2,
   User01,
+  X,
 } from "@blend-metrics/icons"
 import {
   SortingState,
@@ -144,6 +145,8 @@ interface TalentMember {
   localTime: string
   rate: string
   skills: string[]
+  email?: string
+  company?: string
   /** Bucket from contracts-service. Drives the Status column and badge. */
   status: TalentNetworkStatus
 }
@@ -247,7 +250,7 @@ function buildAccountColumns(
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <IconButton
-                className="text-gray-400"
+                className="rounded-full text-gray-400"
                 visual="gray"
                 variant="ghost"
               >
@@ -309,7 +312,7 @@ const AccountMembersTable = ({
 
   return (
     <Table>
-      <TableHeader>
+      <TableHeader className="[&_tr]:border-t-0">
         {table.getHeaderGroups().map((headerGroup) => (
           <TableRow key={headerGroup.id}>
             {headerGroup.headers.map((header) => (
@@ -342,7 +345,7 @@ const AccountMembersTable = ({
       </TableHeader>
       <TableBody>
         {table.getRowModel().rows.map((row) => (
-          <TableRow key={row.id}>
+          <TableRow key={row.id} className="hover:bg-transparent">
             {row.getVisibleCells().map((cell) => (
               <TableCell key={cell.id}>
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -438,7 +441,7 @@ const talentColumns = [
     cell: ({ row }) => (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <IconButton className="text-gray-400" visual="gray" variant="ghost">
+          <IconButton className="rounded-full text-gray-400" visual="gray" variant="ghost">
             <MoreHorizontal className="size-5" />
           </IconButton>
         </DropdownMenuTrigger>
@@ -473,7 +476,7 @@ const TalentNetworkTable = ({ data }: { data: TalentMember[] }) => {
 
   return (
     <Table>
-      <TableHeader>
+      <TableHeader className="[&_tr]:border-t-0">
         {table.getHeaderGroups().map((headerGroup) => (
           <TableRow key={headerGroup.id}>
             {headerGroup.headers.map((header) => (
@@ -506,7 +509,7 @@ const TalentNetworkTable = ({ data }: { data: TalentMember[] }) => {
       </TableHeader>
       <TableBody>
         {table.getRowModel().rows.map((row) => (
-          <TableRow key={row.id}>
+          <TableRow key={row.id} className="hover:bg-transparent">
             {row.getVisibleCells().map((cell) => (
               <TableCell key={cell.id}>
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -896,6 +899,8 @@ export default function MyTeam() {
   const searchParams = useSearchParams()
   const [value, setValue] = useState([GRID_LAYOUT])
   const isGrid = getFirstItem(value) === GRID_LAYOUT
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
   const [talentMembers, setTalentMembers] = useState<TalentMember[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [favoritedItems, setFavoritedItems] = useState<Set<string>>(new Set())
@@ -919,7 +924,7 @@ export default function MyTeam() {
     params.delete("inviteAccepted")
     params.delete("company")
     const query = params.toString()
-    router.replace(query ? `/my-team?${query}` : "/my-team", { scroll: false })
+    router.replace(query ? `/my-network?${query}` : "/my-network", { scroll: false })
     // Only ever fires once per navigation into this page, deliberately not
     // re-run on every searchParams change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1196,6 +1201,24 @@ export default function MyTeam() {
     loadFavorites()
   }, [])
 
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+  const filteredTalentMembers = normalizedQuery
+    ? talentMembers.filter(
+        (m) =>
+          m.name?.toLowerCase().includes(normalizedQuery) ||
+          m.email?.toLowerCase().includes(normalizedQuery) ||
+          m.company?.toLowerCase().includes(normalizedQuery)
+      )
+    : talentMembers
+  const filteredTeamMembers = normalizedQuery
+    ? teamMembers.filter(
+        (m) =>
+          m.name?.toLowerCase().includes(normalizedQuery) ||
+          m.email?.toLowerCase().includes(normalizedQuery) ||
+          m.company?.toLowerCase().includes(normalizedQuery)
+      )
+    : teamMembers
+
   return (
     <div className="p-3.5 md:p-6 lg:py-[100px] lg:px-[200px]">
       <div className="md:hidden items-center flex flex-row-reverse justify-between">
@@ -1217,35 +1240,60 @@ export default function MyTeam() {
       </div>
 
       <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400 xs:max-md:mt-6">
-        My Team
+        My Network
       </h1>
 
       <Tabs className="mt-7 lg:mt-[19px]" defaultValue="Talent Network">
         <div className="border-b h-10 lg:h-[60px] flex items-end justify-between border-gray-200">
-          <div className="items-end inline-flex gap-x-3 lg:gap-x-3.5">
-            <Button
-              className="text-gray-500"
-              variant="ghost"
-              visual="gray"
-              size="md"
-            >
-              <SearchMd className="size-[18px]" />
-            </Button>
+          <div className={cn("items-end inline-flex gap-x-3 lg:gap-x-3.5", isSearchOpen && "min-w-0 flex-1")}>
+            {isSearchOpen ? (
+              <div className="flex w-full items-center gap-3 border-b-2 border-primary-500 py-2.5 pr-3">
+                <SearchMd className="size-[18px] shrink-0 text-primary-500" />
+                <input
+                  autoFocus
+                  type="text"
+                  className="h-5 min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-normal text-gray-500 placeholder:text-gray-500 placeholder:opacity-50 focus:outline-none focus:ring-0"
+                  placeholder="Type to search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="shrink-0 text-gray-500 opacity-50 hover:opacity-100"
+                  onClick={() => { setIsSearchOpen(false); setSearchQuery("") }}
+                  aria-label="Close search"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            ) : (
+              <Button
+                className="text-gray-500"
+                variant="ghost"
+                visual="gray"
+                size="md"
+                onClick={() => setIsSearchOpen(true)}
+              >
+                <SearchMd className="size-[18px]" />
+              </Button>
+            )}
 
-            <TabsList className="flex justify-start border-b-0 px-0">
-              <TabsTrigger
-                className="xs:max-lg:text-xs xs:max-lg:leading-5"
-                value="Talent Network"
-              >
-                Talent Network
-              </TabsTrigger>
-              <TabsTrigger
-                className="xs:max-lg:text-xs xs:max-lg:leading-5"
-                value="External Team"
-              >
-                External Team
-              </TabsTrigger>
-            </TabsList>
+            {!isSearchOpen && (
+              <TabsList className="flex justify-start border-b-0 px-0">
+                <TabsTrigger
+                  className="xs:max-lg:text-xs xs:max-lg:leading-5"
+                  value="Talent Network"
+                >
+                  Talent Network
+                </TabsTrigger>
+                <TabsTrigger
+                  className="xs:max-lg:text-xs xs:max-lg:leading-5"
+                  value="External Team"
+                >
+                  External Team
+                </TabsTrigger>
+              </TabsList>
+            )}
           </div>
 
           <div className="hidden items-center gap-x-6 self-start md:flex">
@@ -1346,7 +1394,7 @@ export default function MyTeam() {
                 </div>
               </div>
             )
-          ) : talentMembers.length === 0 ? (
+          ) : filteredTalentMembers.length === 0 ? (
             <EmptyState
               icon={User01}
               title="Your talent network is empty"
@@ -1363,9 +1411,9 @@ export default function MyTeam() {
           ) : isGrid ? (
             <div
               className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 pt-3.5 lg:pt-6"
-              key={talentMembers.map((member) => member.id).join(",")}
+              key={filteredTalentMembers.map((member) => member.id).join(",")}
             >
-              {talentMembers.map((member, index) => (
+              {filteredTalentMembers.map((member, index) => (
                 <div
                   key={member.id}
                   className={`animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(
@@ -1405,8 +1453,8 @@ export default function MyTeam() {
             </div>
           ) : (
             <div className="pt-3.5 lg:pt-6">
-              <div className="rounded-lg border border-gray-200 bg-white shadow-xs">
-                <TalentNetworkTable data={talentMembers} />
+              <div className="rounded-lg border border-gray-200 bg-white shadow-xs overflow-hidden">
+                <TalentNetworkTable data={filteredTalentMembers} />
               </div>
             </div>
           )}
@@ -1432,7 +1480,7 @@ export default function MyTeam() {
                 ))}
               </div>
             </div>
-          ) : teamMembers.length === 0 ? (
+          ) : filteredTeamMembers.length === 0 ? (
             <EmptyState
               icon={User01}
               title="No external team members yet"
@@ -1449,9 +1497,9 @@ export default function MyTeam() {
           ) : isGrid ? (
             <div
               className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 pt-3.5 lg:pt-6"
-              key={teamMembers.map((member) => member.id).join(",")}
+              key={filteredTeamMembers.map((member) => member.id).join(",")}
             >
-              {teamMembers.map((member, index) => (
+              {filteredTeamMembers.map((member, index) => (
                 <div
                   key={member.id}
                   className={`flex h-full animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(
@@ -1469,9 +1517,9 @@ export default function MyTeam() {
             </div>
           ) : (
             <div className="pt-3.5 lg:pt-6">
-              <div className="rounded-lg border border-gray-200 bg-white shadow-xs">
+              <div className="rounded-lg border border-gray-200 bg-white shadow-xs overflow-hidden">
                 <AccountMembersTable
-                  data={teamMembers}
+                  data={filteredTeamMembers}
                   onResend={handleResend}
                   onCancel={handleCancel}
                   onEdit={setEditingMember}

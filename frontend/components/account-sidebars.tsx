@@ -61,7 +61,8 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
         {section.items.map((item) => {
           const Icon = item.icon
 
-          const isActive = pathname === item.href || pathname?.startsWith(item.href + "/")
+          const isActive =
+            pathname === item.href || pathname?.startsWith(item.href + "/")
 
           return (
             <NextLink
@@ -69,7 +70,12 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
               className={linkClass(item.href)}
               href={item.href}
             >
-              <Icon className={cn("size-[18px]", isActive ? "text-primary-500" : "text-dark-blue-400/50")} />
+              <Icon
+                className={cn(
+                  "size-[18px]",
+                  isActive ? "text-primary-500" : "text-dark-blue-400/50"
+                )}
+              />
               {item.label}
               {item.badge && (
                 <Badge
@@ -96,8 +102,8 @@ const buildTalentSections = (inboxBadge?: string): SidebarSection[] => [
       { href: "/my-listings", label: "My Listings", icon: Search },
       { href: "/my-contracts", label: "My Contracts", icon: FileCheck02 },
       { href: "/my-jobs", label: "My Jobs", icon: Briefcase },
-      { href: "/my-team", label: "My Teams", icon: Users },
-      { href: "/earnings", label: "Transactions", icon: CurrencyDollar },
+      { href: "/my-teams", label: "My Teams", icon: Users },
+      { href: "/earnings", label: "Financials", icon: CurrencyDollar },
       { href: "/reports", label: "Reports", icon: BarChartSquare02 },
     ],
   },
@@ -124,7 +130,6 @@ const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
       { href: "/client-dashboard", label: "Home", icon: Home03 },
       { href: "/my-contracts", label: "My Contracts", icon: FileCheck02 },
       { href: "/my-jobs", label: "My Jobs", icon: Briefcase },
-      { href: "/my-team", label: "My Team", icon: Users },
       { href: "/stats", label: "Stats & Trends", icon: BarChartSquare02 },
     ],
   },
@@ -155,6 +160,17 @@ export const TalentAccountSidebar = () => {
   return (
     <div className={sidebarFrameClass}>
       {renderSections(sections, pathname)}
+      <div className="border-t border-gray-200 pt-5 px-3">
+        <p className="text-xs text-gray-500 leading-4">
+          Get the right talent for your next project.
+        </p>
+        <NextLink
+          href="/"
+          className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
+        >
+          Browse the Marketplace
+        </NextLink>
+      </div>
     </div>
   )
 }
@@ -178,6 +194,17 @@ export const ClientAccountSidebar = () => {
         <Sidebar className="size-[15px]" />
       </IconButton>
       {renderSections(sections, pathname)}
+      <div className="border-t border-gray-200 pt-5 px-3">
+        <p className="text-xs text-gray-500 leading-4">
+          Get the right talent for your next project.
+        </p>
+        <NextLink
+          href="/"
+          className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
+        >
+          Browse the Marketplace
+        </NextLink>
+      </div>
     </div>
   )
 }

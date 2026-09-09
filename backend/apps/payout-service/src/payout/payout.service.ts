@@ -8,7 +8,7 @@ import { InjectQueue }         from '@nestjs/bull';
 import { Queue }               from 'bull';
 import { createHash } from 'crypto';
 
-import { PayoutRequest, PayoutStatus, PayoutTrigger } from '../entities/payout-request.entity';
+import { PayoutRequest, PayoutStatus, PayoutTrigger, PayoutSpeed } from '../entities/payout-request.entity';
 import { DepositMethod, VerificationStatus, MethodType } from '../entities/deposit-method.entity';
 import { MagicLinkToken }     from '../entities/magic-link-token.entity';
 import { PayoutSchedule }     from '../entities/payout-schedule.entity';
@@ -22,6 +22,7 @@ import { PayoutError }        from '../common/errors/payout.error';
 import { ValidateAmountDto, ValidateAmountResponseDto } from './dto/validate-amount.dto';
 import { InitiatePayoutDto, InitiatePayoutResponseDto } from './dto/initiate-payout.dto';
 import { VerifyResponseDto }  from './dto/verify-response.dto';
+import { PayoutPublisher }    from '../publishers/payout.publisher';
 
 const INSTANT_FEE = '1.75';
 
@@ -47,6 +48,7 @@ export class PayoutService {
     private readonly magicLinkService: MagicLinkService,
     private readonly rateLimitService: WithdrawalRateLimitService,
     private readonly kycGateService: KycGateService,
+    private readonly publisher: PayoutPublisher,
     @InjectQueue('payout-processing') private readonly queue: Queue,
   ) {
     this.payoutMinimum = parseFloat(this.config.get('PAYOUT_MINIMUM_USD', '50'));
@@ -234,6 +236,12 @@ export class PayoutService {
       throw new PayoutError('This deposit method has not been verified yet.',
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_METHOD_UNVERIFIED');
     }
+    // PS-09 v2.0 §11: a manual withdrawal to a method whose OAuth token
+    // refresh has failed must be blocked until the contractor re-authorizes.
+    if ((method as any).reauthRequired) {
+      throw new PayoutError('Your Wise/Payoneer connection needs to be re-authorized before you can withdraw to this method.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_METHOD_REAUTH_REQUIRED', { depositMethodId: method.id });
+    }
     if (method.methodType === MethodType.TEQ_COIN && !this.config.get('FEATURE_TEQ_COIN_ENABLED', false)) {
       throw new PayoutError('This payout method is not currently available.',
         HttpStatus.BAD_REQUEST, 'ERR_PAYOUT_METHOD_UNAVAILABLE');
@@ -261,6 +269,7 @@ export class PayoutService {
         status: PayoutStatus.PENDING_VERIFICATION,
         amountUsd: dto.amountUsd, feeUsd, netAmountUsd,
         currency: 'USD',
+        speed: dto.speed as PayoutSpeed,
       });
       (req as any).depositMethodId = dto.depositMethodId;
       await em.save(req);
@@ -277,7 +286,7 @@ export class PayoutService {
 
     const rawToken = await this.magicLinkService.generateAndStore(request.id, contractorId);
     const expiresAt = new Date(Date.now() + this.magicLinkService.getTtlMs());
-    this.magicLinkService.publishMagicLinkEvent(request, rawToken, contractorEmail).catch(err =>
+    this.magicLinkService.publishMagicLinkEvent(request, rawToken, contractorEmail, dto.redirectUrl).catch(err =>
       this.logger.error('Magic link send failed', err.message),
     );
 
@@ -355,6 +364,37 @@ export class PayoutService {
 
     if (request.status !== PayoutStatus.PENDING_VERIFICATION) {
       return { payoutRequestId: request.id, status: request.status };
+    }
+
+    // Instant hold: debit available_balance the moment the withdrawal is
+    // confirmed, rather than waiting for the provider's completion webhook
+    // (which can take minutes to days). Placed before the QUEUED transaction
+    // commits below so a hold failure (insufficient balance, race with
+    // another concurrent withdrawal) fails the request instead of leaving a
+    // QUEUED payout with no funds actually reserved for it.
+    const held = await this.earningsClient.holdBalance(request.contractorId, request.amountUsd);
+    if (!held) {
+      await this.dataSource.transaction(async (em) => {
+        await em.update(MagicLinkToken, mlToken.id, { isUsed: true, usedAt: new Date() });
+        await em.update(PayoutRequest, request.id, {
+          status: PayoutStatus.FAILED,
+          failureReason: 'Your available balance is insufficient for this withdrawal.',
+          failedAt: new Date(),
+        });
+        await this.auditService.log({
+          contractorId: request.contractorId,
+          payoutRequestId: request.id,
+          actorType: 'contractor', actorId: request.contractorId,
+          action: 'withdrawal.hold_failed',
+          previousStatus: PayoutStatus.PENDING_VERIFICATION,
+          newStatus: PayoutStatus.FAILED,
+        });
+      });
+      return {
+        payoutRequestId: request.id,
+        status: PayoutStatus.FAILED,
+        message: 'Your available balance is insufficient for this withdrawal.',
+      };
     }
 
     await this.dataSource.transaction(async (em) => {
@@ -440,6 +480,21 @@ export class PayoutService {
           await job.remove();
           break;
         }
+      }
+
+      // A hold was only ever placed if this request went through magic-link
+      // verification (verifiedAt gets set there, right before holdBalance is
+      // called) — QUEUED alone isn't enough to infer that. Scheduled payouts
+      // (schedule-execution.cron.ts) are created directly at QUEUED and never
+      // hold, so refunding them unconditionally here would credit balance
+      // that was never debited. Only restore when verifiedAt is set.
+      if (request.verifiedAt) {
+        await this.publisher.publishPayoutFailed({
+          contractorId, payoutRequestId: request.id,
+          amount: request.amountUsd, currency: request.currency ?? 'USD',
+          methodType: 'CANCELLED', reason: 'Withdrawal cancelled by contractor.',
+          failedAt: new Date().toISOString(),
+        });
       }
     }
 
@@ -701,7 +756,6 @@ export class PayoutService {
     [MethodType.TEQ_COIN]: 0,
     [MethodType.MARKETEQ_DEBIT_CARD]: 1,
     [MethodType.BANK_STRIPE]: 2,
-    [MethodType.PAYPAL]: 1,
     [MethodType.WISE]: 2,
     [MethodType.PAYONEER]: 2,
     [MethodType.BANK_MANUAL]: 3,
@@ -723,8 +777,21 @@ export class PayoutService {
     if (TERMINAL.has(r.status)) return null;
     const methodType = r.depositMethod?.methodType;
     if (!methodType) return null;
-    const days = PayoutService.ARRIVAL_BUSINESS_DAYS[methodType] ?? 3;
     const from = r.processingAt ?? r.queuedAt ?? r.createdAt;
+
+    // Stripe's real Instant Payouts method (bank-payout-executor.service.ts)
+    // is the only rail this system actually requests as instant from the
+    // provider — matches the "15 minutes" promised at checkout. Every other
+    // method's executor has no instant code path regardless of what speed
+    // was selected, so estimating 15 minutes there would just repeat the
+    // exact mismatch this fixes: fee charged, no real speed change.
+    if (r.speed === PayoutSpeed.INSTANT && methodType === MethodType.BANK_STRIPE) {
+      const arrival = new Date(from);
+      arrival.setUTCMinutes(arrival.getUTCMinutes() + 30);
+      return arrival.toISOString();
+    }
+
+    const days = PayoutService.ARRIVAL_BUSINESS_DAYS[methodType] ?? 3;
     return this.addBusinessDays(from, days).toISOString();
   }
 
@@ -792,7 +859,8 @@ export class PayoutService {
   // Figma "Your withdrawal was declined — reserve balance is too low": an
   // ad-hoc withdrawal previously had no reserve awareness at all (reserveUsd
   // on payout_schedules only applied to the scheduled-payout engine's own
-  // calculatePayoutAmount() in schedule.service.ts). A contractor could
+  // reserve deduction in schedule-execution.cron.ts's processSchedule()).
+  // A contractor could
   // withdraw their entire available balance manually, silently defeating the
   // reserve they configured. This enforces the same floor for ad-hoc
   // withdrawals, with an explicit, one-time bypass (ignoreReserve) rather

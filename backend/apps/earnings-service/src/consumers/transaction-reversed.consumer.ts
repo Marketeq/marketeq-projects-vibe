@@ -1,4 +1,4 @@
-import { Injectable }                              from '@nestjs/common';
+import { Controller }                              from '@nestjs/common';
 import { Ctx, MessagePattern, Payload, RmqContext } from '@nestjs/microservices';
 import { InjectRepository }                       from '@nestjs/typeorm';
 import { Repository, DataSource }                 from 'typeorm';
@@ -9,7 +9,7 @@ import { BalanceSnapshot }                        from '../entities/balance-snap
 import { EarningsPublisher }                      from '../publishers/earnings.publisher';
 import { CacheService }                           from '../cache/cache.service';
 
-@Injectable()
+@Controller()
 export class TransactionReversedConsumer extends BaseConsumer {
   constructor(
     config: ConfigService,

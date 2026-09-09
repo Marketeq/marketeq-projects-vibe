@@ -1,4 +1,4 @@
-import { Injectable }                              from '@nestjs/common';
+import { Controller }                              from '@nestjs/common';
 import { Ctx, MessagePattern, Payload, RmqContext } from '@nestjs/microservices';
 import { InjectRepository }                       from '@nestjs/typeorm';
 import { Repository }                             from 'typeorm';
@@ -6,7 +6,7 @@ import { ConfigService }                          from '@nestjs/config';
 import { BaseConsumer }                            from './base.consumer';
 import { ContractLabelCache }                     from '../entities/contract-label-cache.entity';
 
-@Injectable()
+@Controller()
 export class ContractActivatedConsumer extends BaseConsumer {
   constructor(
     config: ConfigService,

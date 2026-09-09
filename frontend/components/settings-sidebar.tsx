@@ -28,6 +28,9 @@ import NextLink from "@/components/next-link"
 import { Badge } from "@/components/ui"
 import { ComponentType } from "react"
 
+// Module-level so it survives component remounts triggered by router.push
+let savedScrollTop = 0
+
 type SidebarItem = {
   href: string
   label: string
@@ -107,7 +110,7 @@ const buildSections = (role: string | null): SidebarSection[] => {
     { label: "Account", items: accountItems },
     { label: "Sign In & Security", items: signInSecurityItems },
     { label: "Billing", items: billingItems },
-    { label: "Team Management", items: teamManagementItems },
+    ...(isClient ? [{ label: "Team Management", items: teamManagementItems }] : []),
     { label: "Integrations", items: integrationsItems },
     { label: "Access Management", items: accessManagementItems },
   ]
@@ -130,10 +133,18 @@ export default function SettingsSidebar({
   const scrollRef = useRef<HTMLDivElement>(null)
   const [isScrolled, setIsScrolled] = useState(false)
 
+  // Restore scroll position after re-render (router.push remounts the page)
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const onScroll = () => setIsScrolled(el.scrollTop > 0)
+    if (savedScrollTop > 0) {
+      el.scrollTop = savedScrollTop
+      setIsScrolled(savedScrollTop > 0)
+    }
+    const onScroll = () => {
+      savedScrollTop = el.scrollTop
+      setIsScrolled(el.scrollTop > 0)
+    }
     el.addEventListener("scroll", onScroll, { passive: true })
     return () => el.removeEventListener("scroll", onScroll)
   }, [])
@@ -169,7 +180,7 @@ export default function SettingsSidebar({
         isScrolled ? "mx-0" : "mx-[15px]"
       )} />
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto pt-5 px-[15px] pb-[15px] space-y-6">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto pt-5 px-[15px] pb-[15px] space-y-6 scrollbar-thin scrollbar-thumb-transparent hover:scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
       {sections.map((section) => (
         <div key={section.label} className="flex flex-col gap-y-2">
           <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">

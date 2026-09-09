@@ -53,9 +53,18 @@ export interface IndustryPayload {
 }
 
 export interface UserProfilePayload {
+  /** Profile photo; the client company logo reuses this field. */
+  avatarUrl?: string | null
+  /** Settings > IP Restrictions master switch. */
+  ipRestrictionEnabled?: boolean
+  /** Empty string clears the avatar. Not null — the DTO validates @IsString(),
+   *  so null is rejected outright. */
+  avatarUrl?: string
   firstName?: string
   lastName?: string
   username?: string
+  phone?: string
+  language?: string
   bio?: string
   overview?: string
   location?: string
@@ -86,6 +95,9 @@ export interface UserProfilePayload {
   // Client company profile — collected by the client "Complete My Profile"
   // steps. `teamName` is the company name; the logo reuses `avatarUrl`.
   teamName?: string
+  /** Department — Personal Info's "What team do you work on?". Distinct from
+   *  `teamName`, which is the client's company name. */
+  department?: string
   companyWebsite?: string
   workplaceValues?: string[]
 }

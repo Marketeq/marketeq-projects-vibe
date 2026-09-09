@@ -117,7 +117,7 @@ export const InvitationsAPI = {
     return res.data
   },
 
-  shareProjectLink: (dto) => {
+  shareProjectLink: (dto: Parameters<InvitationsAPIType["shareProjectLink"]>[0]) => {
     return AxiosRequest.post(`${INVITATIONS_BASE}/share-link`, dto)
   },
 }

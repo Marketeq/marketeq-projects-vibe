@@ -81,17 +81,24 @@ const PUBLIC_PATTERNS = [
   // Enumerated rather than a /v1/webhooks/* wildcard so that adding a new
   // route under this namespace does not silently make it unauthenticated.
   /^\/v1\/webhooks\/(?:stripe|ramp)$/,
-  // PayPal/Wise/Payoneer redirect the browser here straight from the
+  // Wise/Payoneer redirect the browser here straight from the
   // provider's own login page — there's no Marketeq session cookie to send,
   // same reasoning as the webhooks entry above. payout-service's own
   // @Public() on this route is powerless against this upstream gateway check.
-  /^\/v1\/oauth\/(?:paypal|wise|payoneer)\/callback$/,
+  /^\/v1\/oauth\/(?:wise|payoneer)\/callback$/,
   // Renders the invite banner / accept-invite flow before the visitor is
   // signed in. The route is already @Public() in invitations-service, but
   // that decorator is powerless against this upstream gateway check, same as
   // the webhooks/oauth-callback entries above.
   /^\/v1\/invitations\/preview$/,
   /^\/invitations\/preview$/,
+  // Confirming a notification email change. The token in the link is the
+  // proof, and the link is opened from an inbox — often on a device with no
+  // Marketeq session — so requiring one would make it unclickable. Already
+  // @Public() in notification-service, which is powerless against this
+  // upstream check, same as the entries above. Both prefixes because the
+  // frontend base URL carries an /api segment.
+  /^(?:\/api)?\/v1\/notifications\/preferences\/email\/verify$/,
 ]
 
 function isPublic(path: string): boolean {

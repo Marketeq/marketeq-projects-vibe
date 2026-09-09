@@ -1,9 +1,37 @@
+# ── Workspace manifests ─────────────────────────────────────────────────────
+# npm ci is by far the most expensive layer in this build — 421s of a 13m
+# deploy, measured on Render 2026-09-04. It only needs the workspace graph
+# (root package.json + package-lock.json + every apps/*/ and shared/
+# package.json), never the source, so it is given exactly that and nothing
+# else. This stage's own COPY is still invalidated by any edit, but the
+# manifest set it emits is byte-identical unless a package.json or the lock
+# file actually changed, and BuildKit keys the COPY --from below on that
+# content — so an ordinary code change now reuses the cached install.
+#
+# Collected with find rather than by listing each package: five apps
+# (category, resume-parsing, tax, wallet, wire-review) deliberately have no
+# package.json, and a hand-maintained list here would be one more place a new
+# service has to be registered — the exact gap that shipped browsing-history
+# without a build (#574) and without a lock entry (#573).
+FROM node:20-alpine AS manifests
+WORKDIR /src
+COPY . .
+RUN mkdir -p /manifests && \
+    cp package.json package-lock.json /manifests/ && \
+    find apps shared -maxdepth 2 -name package.json \
+      -exec sh -c 'mkdir -p "/manifests/${1%/*}" && cp "$1" "/manifests/$1"' _ {} \;
+
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+COPY --from=manifests /manifests/ ./
+RUN npm ci --include=dev --legacy-peer-deps
+
+# Source lands after the install so it cannot invalidate it. node_modules and
+# dist are both in .dockerignore, so this never overwrites what npm ci just
+# produced.
 COPY . .
 RUN find . -name '*.tsbuildinfo' -delete && rm -rf dist
-RUN npm ci --include=dev --legacy-peer-deps
 
 # Build all NestJS services one per RUN layer so Docker reclaims memory
 # between each compilation. Prevents OOM on memory-limited builders.
@@ -15,6 +43,7 @@ RUN npx nest build api-gateway
 RUN npx nest build auth-service
 RUN npx nest build autocomplete-service
 RUN npx nest build billing-service
+RUN npx nest build browsing-history-service
 RUN npx nest build category-service
 RUN npx nest build checkout-service
 RUN npx nest build content-moderation-service

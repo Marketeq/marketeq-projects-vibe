@@ -10,7 +10,7 @@ import {
   useState,
 } from "react"
 import { useAuth } from "@/contexts/auth"
-import { apiFetch } from "@/src/lib/api"
+import { ApiError, apiFetch } from "@/src/lib/api"
 import * as Ably from "ably"
 
 // Global presence channel — every authenticated client joins on mount and
@@ -23,6 +23,12 @@ const PRESENCE_CHANNEL = "presence:online"
 // presence dot offline/online. When a member disappears from the channel,
 // keep them in `onlineIds` for this long before actually marking offline.
 const OFFLINE_GRACE_MS = 10_000
+const isExpectedRealtimeUnavailable = (err: unknown) => {
+  const message = err instanceof Error ? err.message : String(err)
+  return /realtime token unavailable|connection to server unavailable|connection closed/i.test(
+    message
+  )
+}
 
 interface OnlineUsersContextValue {
   isOnline: (userId: string | null | undefined) => boolean
@@ -62,6 +68,14 @@ export function OnlineUsersProvider({ children }: { children: ReactNode }) {
           }
           callback(null, tokenDetails)
         } catch (err) {
+          // apiFetch already refreshed once and that refresh failed, so the
+          // session is over. Handing Ably a retryable error makes it reconnect
+          // and re-auth every ~15s forever against a dead session; close instead.
+          if (err instanceof ApiError && err.status === 401) {
+            callback("Session expired", null)
+            client.close()
+            return
+          }
           callback(err instanceof Error ? err.message : String(err), null)
         }
       },
@@ -127,7 +141,7 @@ export function OnlineUsersProvider({ children }: { children: ReactNode }) {
         entered = true
         await sync()
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && !isExpectedRealtimeUnavailable(err)) {
           console.warn("[useOnlineUsers] enter failed:", err)
         }
       }

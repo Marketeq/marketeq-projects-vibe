@@ -6,6 +6,8 @@ import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { ROLE } from "@/types/user"
 import { UserAPI } from "@/service/http/user"
+import { getClientContracts } from "@/src/lib/api/contracts"
+import type { ContractStatus as ApiContractStatus } from "@/src/lib/api/contracts"
 import { cn } from "@/utils/functions"
 import {
   ArrowRight,
@@ -20,7 +22,6 @@ import {
   Phone,
   UserCircle,
   MapPin,
-  MoreHorizontal,
   Plus,
   Share06,
   Star,
@@ -94,13 +95,36 @@ interface Project {
   team: { image: string; alternativeText: string }[]
   status: string
   nextMilestone: string
+  /** Contract id and group, for the contract details link. */
+  contractId?: string
+  groupName?: string
 }
 
-const TableRow = ({ team, nextMilestone, projectName, status }: Project) => {
+const TableRow = ({
+  team,
+  nextMilestone,
+  projectName,
+  status,
+  contractId,
+  groupName,
+}: Project) => {
+  // Same target My Contracts uses for a contract title.
+  const detailsHref = contractId
+    ? `/active-project/${contractId}?title=${encodeURIComponent(
+        projectName
+      )}&group=${encodeURIComponent(groupName ?? projectName)}`
+    : "/my-contracts"
+
   return (
     <tr className="first:pt-3 last:pb-3">
-      <td className="px-6 py-3.5 text-sm leading-5 font-semibold text-dark-blue-400 inline-block truncate">
-        {projectName}
+      <td className="max-w-[260px] px-6 py-3.5 text-sm leading-5 font-semibold text-dark-blue-400">
+        <NextLink
+          href={detailsHref}
+          className="block truncate hover:underline"
+          title={projectName}
+        >
+          {projectName}
+        </NextLink>
       </td>
       <td className="px-6 py-2">
         <TooltipProvider>
@@ -151,34 +175,206 @@ const TableRow = ({ team, nextMilestone, projectName, status }: Project) => {
         </TooltipProvider>
       </td>
       <td className="px-6 py-[13px] items-center">
-        {status === "In Progress" ? (
+        {status === "In Progress" || status === "Active" ? (
           <Badge visual="success">{status}</Badge>
         ) : (
           <Badge visual="gray">{status}</Badge>
         )}
       </td>
       <td className="pl-6 pr-8 py-3.5">
-        <div className="gap-x-14 flex items-center justify-between">
-          <span className="text-sm whitespace-nowrap leading-5 text-gray-500">
-            {nextMilestone}
-          </span>
-          <Button
-            className="h-auto px-1.5 py-1 text-dark-blue-400"
-            visual="gray"
-            variant="ghost"
-          >
-            <MoreHorizontal className="size-[15px]" />
-          </Button>
-        </div>
+        <span className="text-sm whitespace-nowrap leading-5 text-gray-500">
+          {nextMilestone}
+        </span>
       </td>
     </tr>
   )
 }
 
+/**
+ * Recent Contracts data.
+ *
+ * Reads the same `getClientContracts` endpoint the My Contracts page uses, so
+ * the dashboard and that page agree. Talent names/avatars are resolved from
+ * the user profile because a contract only carries `talentId`. Nothing is
+ * invented: an unresolved talent falls back to the avatar initial, never to a
+ * placeholder name or photo.
+ */
+const RECENT_CONTRACTS_LIMIT = 5
+
+const CONTRACT_STATUS_LABEL: Record<ApiContractStatus, string> = {
+  ACTIVE: "Active",
+  PENDING: "Pending",
+  ENDED: "Ended",
+  CANCELED: "Canceled",
+  DISPUTED: "Disputed",
+}
+
+/**
+ * Mirrors the seed My Contracts falls back to when the contracts service
+ * returns nothing, so the dashboard and that page show the same contracts
+ * instead of the dashboard sitting empty beside a populated list.
+ */
+const SAMPLE_RECENT_CONTRACTS: Project[] = [
+  {
+    projectName:
+      "Redesigning and Optimizing Website for Enhanced User Experience.",
+    contractId: "c1",
+    groupName: "Website Redesign",
+    team: [
+      { image: "/man.jpg", alternativeText: "Sarah Chen" },
+      { image: "/images/avatar-1.png", alternativeText: "Alex Rivera" },
+      { image: "/images/avatar-2.png", alternativeText: "Jordan Lee" },
+      { image: "/man.jpg", alternativeText: "Chris Patel" },
+      { image: "/images/avatar-1.png", alternativeText: "Dana Kim" },
+      { image: "/images/avatar-2.png", alternativeText: "Nina Torres" },
+      { image: "/man.jpg", alternativeText: "Leo Park" },
+      { image: "/images/avatar-1.png", alternativeText: "Mia Johnson" },
+    ],
+    status: "Active",
+    nextMilestone: "$85/hr",
+  },
+  {
+    projectName: "Frontend Developer for Mobile App",
+    contractId: "c2",
+    groupName: "Website Redesign",
+    team: [{ image: "/man.jpg", alternativeText: "Alex Rivera" }],
+    status: "Active",
+    nextMilestone: "$95/hr",
+  },
+  {
+    projectName: "QA Engineer for Mobile App",
+    contractId: "c3",
+    groupName: "Website Redesign",
+    team: [{ image: "/man.jpg", alternativeText: "Jordan Lee" }],
+    status: "Pending",
+    nextMilestone: "$70/hr",
+  },
+  {
+    projectName:
+      "Redesigning and Optimizing Website for Enhanced User Experience.",
+    contractId: "c4",
+    groupName: "Website Services",
+    team: [
+      { image: "/man.jpg", alternativeText: "Chris Patel" },
+      { image: "/images/avatar-1.png", alternativeText: "Dana Kim" },
+      { image: "/images/avatar-2.png", alternativeText: "Sarah Chen" },
+      { image: "/man.jpg", alternativeText: "Alex Rivera" },
+      { image: "/images/avatar-1.png", alternativeText: "Jordan Lee" },
+      { image: "/images/avatar-2.png", alternativeText: "Nina Torres" },
+      { image: "/man.jpg", alternativeText: "Leo Park" },
+      { image: "/images/avatar-1.png", alternativeText: "Mia Johnson" },
+    ],
+    status: "Active",
+    nextMilestone: "$1,200/mo",
+  },
+  {
+    projectName: "Content Writer for SEO",
+    contractId: "c5",
+    groupName: "Website Services",
+    team: [{ image: "/man.jpg", alternativeText: "Dana Kim" }],
+    status: "Active",
+    nextMilestone: "$50/hr",
+  },
+]
+
+const useRecentContracts = (): Project[] => {
+  const { user } = useAuth()
+  const [rows, setRows] = useState<Project[]>(SAMPLE_RECENT_CONTRACTS)
+
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const contracts = await getClientContracts(user.id)
+        if (cancelled || !contracts.length) return
+
+        const recent = [...contracts]
+          .sort(
+            (a, b) =>
+              new Date(b.updatedAt ?? b.createdAt).getTime() -
+              new Date(a.updatedAt ?? a.createdAt).getTime()
+          )
+          .slice(0, RECENT_CONTRACTS_LIMIT)
+
+        // A contract carries one talent; the team is everyone contracted
+        // under the same group, which is what My Contracts shows per group.
+        const byGroup = new Map<string, string[]>()
+        for (const c of contracts) {
+          if (!c.talentId) continue
+          const members = byGroup.get(c.groupId) ?? []
+          if (!members.includes(c.talentId)) members.push(c.talentId)
+          byGroup.set(c.groupId, members)
+        }
+
+        // One lookup per distinct talent, not per contract.
+        const talentIds = Array.from(
+          new Set(
+            recent.flatMap(
+              (c) => byGroup.get(c.groupId) ?? [c.talentId].filter(Boolean)
+            )
+          )
+        )
+        const talents = new Map<string, { name: string; avatar: string }>()
+        await Promise.all(
+          talentIds.map(async (id) => {
+            try {
+              const res = await UserAPI.getProfile(id)
+              const p = res?.data
+              if (!p) return
+              const name =
+                [p.firstName, p.lastName].filter(Boolean).join(" ") ||
+                p.username ||
+                ""
+              if (name || p.avatarUrl) {
+                talents.set(id, { name, avatar: p.avatarUrl ?? "" })
+              }
+            } catch {
+              // Leave the talent unresolved; the row still renders.
+            }
+          })
+        )
+
+        if (cancelled) return
+        setRows(
+          recent.map((c) => {
+            const members = byGroup.get(c.groupId) ?? [c.talentId]
+            return {
+              projectName: c.title,
+              contractId: c.id,
+              groupName: c.title,
+              team: members.filter(Boolean).map((id) => {
+                const talent = talents.get(id)
+                return {
+                  image: talent?.avatar ?? "",
+                  alternativeText: talent?.name || "Team member",
+                }
+              }),
+              status: CONTRACT_STATUS_LABEL[c.status] ?? "Active",
+              nextMilestone: c.rate ? `$${c.rate}/hr` : "",
+            }
+          })
+        )
+      } catch {
+        // Contracts service unavailable — keep the seed, same as My Contracts.
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
+
+  return rows
+}
+
 const Table = () => {
+  const contracts = useRecentContracts()
+
   return (
     <>
-      <div className="overflow-x-auto scrollbar-none">
+      <div className="overflow-x-hidden">
         <table className="table-auto border-collapse w-full">
           <thead>
             <tr>
@@ -186,7 +382,7 @@ const Table = () => {
                 Contract Name
               </th>
               <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
-                Talent
+                Team
               </th>
               <th className="text-xs leading-[18px] font-medium text-dark-blue-400 whitespace-nowrap py-3 px-6 text-left border-b border-gray-200">
                 Status
@@ -198,14 +394,20 @@ const Table = () => {
           </thead>
 
           <tbody>
-            <tr>
-              <td
-                colSpan={4}
-                className="px-6 py-10 text-center text-sm text-gray-400"
-              >
-                No contracts yet.
-              </td>
-            </tr>
+            {contracts.length ? (
+              contracts.map((contract, index) => (
+                <TableRow key={index} {...contract} />
+              ))
+            ) : (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="px-6 py-10 text-center text-sm text-gray-400"
+                >
+                  No contracts yet.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -556,7 +758,7 @@ const Content = ({
 }: { profile?: DashboardProfile | null } & ProfileCtaHandlers) => {
   const [isOpen, toggleIsOpen] = useToggle(false)
   return (
-    <div className="flex-auto pt-3.5 px-3.5 md:pt-6 md:px-6 min-[1024px]:px-8 min-[1200px]:pl-[248px] min-[1024px]:pt-8 min-[1200px]:pr-[50px]">
+    <div className="flex-auto pt-3.5 px-3.5 md:pt-6 md:px-6 min-[1024px]:px-8 min-[1200px]:pl-[274px] min-[1024px]:pt-[50px] min-[1200px]:pr-[50px]">
       <div className="flex min-[1440px]:gap-x-8 justify-center overflow-hidden">
         <div className="xs:max-[1440px]:flex-auto min-[1440px]:max-w-[1024px] space-y-3 md:space-y-5 min-w-0">
           <Welcome onOpenProfile={toggleIsOpen} user={profile} />

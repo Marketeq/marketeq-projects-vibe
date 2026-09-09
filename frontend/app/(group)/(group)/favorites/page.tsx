@@ -1,9 +1,22 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { UserAPI } from "@/service/http/user"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import { favoriteGroupUrl } from "@/src/lib/listing-urls"
+import {
+  FAVORITE_TABS,
+  type FavoriteTab,
+  isFavoriteTab,
+} from "@/src/lib/favorites-tabs"
+import { useFavoriteCounts } from "./favorites-counts"
+import { FavoriteGroupCardSkeleton } from "./favorites-skeletons"
+import {
+  FavoritesHeader,
+  GRID_LAYOUT,
+  LIST_LAYOUT,
+} from "./favorites-header"
 import {
   type FavoriteGroup as FavGroup,
   type Favorite,
@@ -78,8 +91,6 @@ import {
   TabsTrigger,
 } from "@/components/ui"
 
-const GRID_LAYOUT = "GRID"
-const LIST_LAYOUT = "LIST"
 
 /* ─── Project Group Cards ─── */
 
@@ -114,7 +125,7 @@ const ProjectGroupCard = ({
   const available = group.favorites
     .map((f) => itemMeta[f.itemId]?.mediaUrl)
     .filter(Boolean) as string[]
-  const href = `/favorites/${group.id}?name=${encodeURIComponent(group.name)}&type=${itemType}`
+  const href = favoriteGroupUrl(group.id, group.name, itemType)
 
   return (
     <article
@@ -192,7 +203,7 @@ const ProjectGroupListCard = ({
   const available = group.favorites
     .map((f) => itemMeta[f.itemId]?.mediaUrl)
     .filter(Boolean) as string[]
-  const href = `/favorites/${group.id}?name=${encodeURIComponent(group.name)}&type=${itemType}`
+  const href = favoriteGroupUrl(group.id, group.name, itemType)
 
   return (
     <div
@@ -203,16 +214,18 @@ const ProjectGroupListCard = ({
         router.push(href)
       }}
     >
-      <div className="py-3.5 lg:py-[16.5px] space-y-0.5 pl-5">
+      {/* The bar beside this is flex-auto, so without a floor here it squeezed
+          this column and wrapped "Created Sep 2026" onto two lines. */}
+      <div className="py-3.5 lg:py-[16.5px] space-y-0.5 pl-5 md:w-[124px] md:shrink-0 lg:w-[140px]">
         <h1 className="text-[11px] leading-[13.31px] lg:text-base lg:leading-[19.36px] font-bold text-dark-blue-400 line-clamp-2">
           {group.name}
         </h1>
-        <p className="text-[9px] leading-[10.89px] lg:text-sm lg:leading-[16.94px] font-light text-[#585C65]">
+        <p className="whitespace-nowrap text-[9px] leading-[10.89px] lg:text-sm lg:leading-[16.94px] font-light text-[#585C65]">
           {formatGroupDate(group.createdAt)}
         </p>
       </div>
 
-      <div className="flex relative xs:max-md:border-t xs:max-md:bg-gray-50 border-gray-200 h-[35px] md:h-[55px] lg:h-[72px] items-center flex-auto md:pl-5 isolate">
+      <div className="flex relative xs:max-md:border-t xs:max-md:bg-gray-50 md:bg-gray-100 border-gray-200 h-[35px] md:h-[55px] lg:h-[72px] items-center flex-auto md:pl-5 isolate">
         <div className="md:py-[4.53px] lg:py-[10.59px]">
           <div className="inline-flex absolute xs:max-md:-top-[22.5px] xs:max-md:right-3.5 md:relative z-10 flex-col shrink-0 size-[45px] lg:size-[50px] rounded-full justify-center items-center bg-white border-[.74px] lg:border-[.82px] border-gray-200 shadow-[0px_1.64px_4.1px_0px_theme(colors.black/.04)]">
             <span className="text-[12.01px] leading-[14.54px] lg:text-sm lg:leading-[16.94px] font-semibold text-dark-blue-400">
@@ -223,7 +236,7 @@ const ProjectGroupListCard = ({
             </span>
           </div>
         </div>
-        <div className="relative flex flex-auto self-stretch md:-left-[25px] overflow-hidden">
+        <div className="relative flex flex-auto self-stretch md:-left-[25px] overflow-hidden bg-gray-100">
           {Array.from({ length: 4 }).map((_, i) =>
             available[i] ? (
               <motion.div
@@ -255,7 +268,7 @@ const ProjectGroupListCard = ({
       </div>
 
       <div
-        className="justify-end py-2.5 space-y-1 pl-5 pr-2.5 lg:flex hidden"
+        className="justify-end py-2.5 space-y-1 pl-5 pr-2.5 lg:flex hidden bg-gray-100"
         data-dropdown-zone
       >
         <CardDropdown
@@ -305,7 +318,7 @@ const TalentCard = ({
   // Rotation angles for circular layout: positions around the circle
   const avatarRotationAngles = [-135, -90, -45, 0]
   const savedRotationAngle = -180
-  const href = `/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=talent`
+  const href = favoriteGroupUrl(groupId, groupName, "talent")
 
   // Staggered entrance: same motion as before, but delay order is reversed so
   // the cascade starts from the lower slot and rises upward.
@@ -462,7 +475,7 @@ const TalentCardLandscapeRow = ({
         <div className="md:contents flex items-center justify-between">
           <div className="xs:max-md:flex xs:max-md:flex-col xs:max-md:gap-y-1 md:flex-auto md:pl-6 lg:pl-[25px] md:py-3 lg:py-[25px] md:last:pr-3 lg:last:pr-[25px]">
             <NextLink
-              href={`/favorites/${groupId}?name=${encodeURIComponent(groupName)}&type=talent`}
+              href={favoriteGroupUrl(groupId, groupName, "talent")}
               className="text-sm leading-[15.73px] lg:text-base font-bold inline-block lg:leading-[19.07px] text-dark-blue-400 hover:underline line-clamp-2"
             >
               {groupName}
@@ -491,7 +504,7 @@ const TalentCardLandscapeRow = ({
         <div className="md:contents flex items-center justify-between">
           <div className="md:flex-auto md:pl-6 lg:pl-[25px] md:py-3 lg:py-[25px] md:last:pr-3 lg:last:pr-[25px]">
             <div className="flex items-center gap-x-3">
-              <div className="flex flex-col">
+              <div className="flex flex-col items-start">
                 <span className="text-xs leading-[14.52px] lg:text-base font-semibold inline-block lg:leading-[19.07px] text-dark-blue-400">
                   {talents.length}
                 </span>
@@ -597,7 +610,7 @@ const CardDropdown = ({
 
   const groupUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/favorites/${actions.groupId}?name=${encodeURIComponent(actions.groupName)}`
+      ? `${window.location.origin}${favoriteGroupUrl(actions.groupId, actions.groupName, "project")}`
       : ""
 
   return (
@@ -687,7 +700,7 @@ const InlineDropdown = ({
 
   const groupUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/favorites/${actions.groupId}?name=${encodeURIComponent(actions.groupName)}`
+      ? `${window.location.origin}${favoriteGroupUrl(actions.groupId, actions.groupName, "project")}`
       : ""
 
   return (
@@ -922,7 +935,7 @@ function titleCase(str: string): string {
   return str.replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-const NewGroupModal = ({
+export const NewGroupModal = ({
   onCreated,
   existingNames,
   activeTab,
@@ -1128,7 +1141,23 @@ function EmptyState({
 
 export default function FavoritesPage() {
   const [value, setValue] = useState([GRID_LAYOUT])
-  const [activeTab, setActiveTab] = useState("Projects")
+  const searchParams = useSearchParams()
+  const tabRouter = useRouter()
+  // `?tab=` is the source of truth for the selected tab, so the URL always
+  // shows the tab you are on, survives a reload, and can be shared or linked
+  // to from the group pages.
+  const activeTab: FavoriteTab = (() => {
+    const requested = searchParams?.get("tab")
+    if (!requested) return "Projects"
+    // "Talent Network" was this tab's old label; keep old links working.
+    if (requested === "Talent Network") return "Talent"
+    return isFavoriteTab(requested) ? requested : "Projects"
+  })()
+  const setActiveTab = (tab: FavoriteTab) => {
+    tabRouter.replace(`/favorites?tab=${encodeURIComponent(tab)}`, {
+      scroll: false,
+    })
+  }
   const [projectGroups, setProjectGroups] = useState<FavGroup[]>([])
   const [serviceGroups, setServiceGroups] = useState<FavGroup[]>([])
   const [talentFavorites, setTalentFavorites] = useState<Favorite[]>([])
@@ -1276,9 +1305,35 @@ export default function FavoritesPage() {
     ),
   ]
 
-  const sortedProjectGroups = sortGroups(projectGroups, sortBy)
-  const sortedServiceGroups = sortGroups(serviceGroups, sortBy)
-  const sortedSampleGroups = [...sampleGroups].sort((a, b) => {
+  // Publish the counts this screen already derived, so moving into a group
+  // page does not refetch them.
+  const { counts: tabCounts, publishCounts } = useFavoriteCounts()
+  const projectCount = projectGroups.flatMap((g) => g.favorites).length
+  const serviceCount = serviceGroups.flatMap((g) => g.favorites).length
+  useEffect(() => {
+    // Only once this screen's own groups have arrived. Publishing while it is
+    // still loading pushes zeros over the counts already in the provider, so
+    // coming back from a group page made the tab numbers tick from 0 again.
+    if (isLoading) return
+    publishCounts({ Projects: projectCount, Services: serviceCount })
+  }, [isLoading, projectCount, serviceCount, publishCounts])
+
+  // Search matches the group page: the button toggles an input in place of
+  // the tabs, and it filters the groups on this screen by name.
+  const [showSearch, setShowSearch] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const matchesSearch = (name: string) =>
+    !searchQuery || name.toLowerCase().includes(searchQuery.toLowerCase())
+
+  const sortedProjectGroups = sortGroups(projectGroups, sortBy).filter((g) =>
+    matchesSearch(g.name)
+  )
+  const sortedServiceGroups = sortGroups(serviceGroups, sortBy).filter((g) =>
+    matchesSearch(g.name)
+  )
+  const sortedSampleGroups = [...sampleGroups]
+    .filter((g) => matchesSearch(g.name))
+    .sort((a, b) => {
     switch (sortBy) {
       case "newest":
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -1308,11 +1363,15 @@ export default function FavoritesPage() {
             value={value}
             onValueChange={(details) => setValue(details.value)}
           >
-            <ToggleGroupItem value={GRID_LAYOUT}>
-              <Grid className="size-4 lg:size-6" />
+            <ToggleGroupItem
+              value={GRID_LAYOUT}
+            >
+              <Grid className="size-[18px]" />
             </ToggleGroupItem>
-            <ToggleGroupItem value={LIST_LAYOUT}>
-              <List className="size-4 lg:size-6" />
+            <ToggleGroupItem
+              value={LIST_LAYOUT}
+            >
+              <List className="size-[18px]" />
             </ToggleGroupItem>
           </ToggleGroupRoot>
         </div>
@@ -1324,79 +1383,27 @@ export default function FavoritesPage() {
         />
       </div>
 
-      <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400 xs:max-md:mt-6">
-        My Favorites
-      </h1>
-
-      <Tabs
-        className="mt-7 lg:mt-[19px]"
-        value={activeTab}
-        onValueChange={setActiveTab}
+      <FavoritesHeader
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        counts={tabCounts}
+        showSearch={showSearch}
+        onToggleSearch={() => setShowSearch(!showSearch)}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search groups..."
+        sortSlot={<SortDropdown value={sortBy} onChange={setSortBy} />}
+        layout={value}
+        onLayoutChange={setValue}
+        newGroupSlot={
+          <NewGroupModal
+            onCreated={handleGroupCreated}
+            existingNames={allGroupNames}
+            activeTab={activeTab}
+          />
+        }
       >
-        <div className="border-b h-[60px] flex items-end justify-between border-gray-200">
-          <div className="items-end inline-flex gap-x-3">
-            <Button
-              className="text-gray-500"
-              variant="ghost"
-              visual="gray"
-              size="md"
-            >
-              <SearchMd className="size-[18px]" />
-            </Button>
-
-            <TabsList className="flex justify-start border-b-0 px-0">
-              <TabsTrigger
-                className="xs:max-lg:text-xs xs:max-lg:leading-5"
-                value="Projects"
-              >
-                Projects{" "}
-                {projectGroups.flatMap((g) => g.favorites).length > 0 &&
-                  `(${projectGroups.flatMap((g) => g.favorites).length})`}
-              </TabsTrigger>
-              <TabsTrigger
-                className="xs:max-lg:text-xs xs:max-lg:leading-5"
-                value="Services"
-              >
-                Services{" "}
-                {serviceGroups.flatMap((g) => g.favorites).length > 0 &&
-                  `(${serviceGroups.flatMap((g) => g.favorites).length})`}
-              </TabsTrigger>
-              <TabsTrigger
-                className="xs:max-lg:text-xs xs:max-lg:leading-5"
-                value="Talent Network"
-              >
-                Talent Network
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
-          <div className="hidden items-center gap-x-3 lg:gap-x-6 self-start md:flex">
-            <div className="flex items-center gap-x-3 lg:gap-x-3.5">
-              <SortDropdown value={sortBy} onChange={setSortBy} />
-
-              <ToggleGroupRoot
-                value={value}
-                onValueChange={(details) => setValue(details.value)}
-              >
-                <ToggleGroupItem value={GRID_LAYOUT}>
-                  <Grid className="size-4 lg:size-6" />
-                </ToggleGroupItem>
-                <ToggleGroupItem value={LIST_LAYOUT}>
-                  <List className="size-4 lg:size-6" />
-                </ToggleGroupItem>
-              </ToggleGroupRoot>
-            </div>
-
-            <NewGroupModal
-              onCreated={handleGroupCreated}
-              existingNames={allGroupNames}
-              activeTab={activeTab}
-            />
-          </div>
-        </div>
-
-        {/* Talent Network Tab */}
-        <TabsContent value="Talent Network">
+        <TabsContent value="Talent">
           <div className="pt-[14px] lg:pt-6">
             {sortedSampleGroups.length === 0 ? (
               <EmptyState
@@ -1446,13 +1453,8 @@ export default function FavoritesPage() {
         <TabsContent value="Projects">
           {isLoading ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
-              {Array(8)
-                .fill(0)
-                .map((_, i) => (
-                  <div
-                    key={i}
-                    className="bg-white border rounded-lg h-[300px] animate-pulse"
-                  />
+              {Array.from({ length: 8 }).map((_, i) => (
+                  <FavoriteGroupCardSkeleton key={i} />
                 ))}
             </div>
           ) : projectGroups.length === 0 ? (
@@ -1499,13 +1501,8 @@ export default function FavoritesPage() {
         <TabsContent value="Services">
           {isLoading ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
-              {Array(8)
-                .fill(0)
-                .map((_, i) => (
-                  <div
-                    key={i}
-                    className="bg-white border rounded-lg h-[300px] animate-pulse"
-                  />
+              {Array.from({ length: 8 }).map((_, i) => (
+                  <FavoriteGroupCardSkeleton key={i} />
                 ))}
             </div>
           ) : serviceGroups.length === 0 ? (
@@ -1549,7 +1546,38 @@ export default function FavoritesPage() {
             </div>
           )}
         </TabsContent>
-      </Tabs>
+
+        {/* Teams Tab */}
+        <TabsContent value="Teams">
+          <div className="pt-[14px] lg:pt-6">
+            <EmptyState
+              icon={Users}
+              title="No favorite teams yet"
+              description="Save teams you want to work with again and they will show up here, grouped however you like."
+              action={
+                <NextLink href="/teams">
+                  <Button>Browse Teams</Button>
+                </NextLink>
+              }
+            />
+          </div>
+        </TabsContent>
+
+        {/* Jobs Tab */}
+        <TabsContent value="Jobs">
+          <div className="pt-[14px] lg:pt-6">
+            <EmptyState
+              title="No favorite jobs yet"
+              description="Save jobs you are interested in and they will show up here, grouped however you like."
+              action={
+                <NextLink href="/find-jobs">
+                  <Button>Browse Jobs</Button>
+                </NextLink>
+              }
+            />
+          </div>
+        </TabsContent>
+      </FavoritesHeader>
     </div>
     </AuthenticatedRoute>
   )

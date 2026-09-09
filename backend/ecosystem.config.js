@@ -39,11 +39,12 @@ module.exports = {
     svc('api-gateway', 4000),
     svc('auth-service', 3001),
     { ...svc('user-service', 3002), node_args: '--max-old-space-size=1024' },
-    svc('listings-service', 3004, { LISTINGS_DATABASE_SYNCHRONIZE: 'false' }),
+    svc('listings-service', 3004, { LISTINGS_DATABASE_SYNCHRONIZE: 'true' }),
     svc('checkout-service', 3009),
     svcNested('messaging-service', 3005),
     svcNested('notification-service', 3006),
     svcNested('favorites-service', 3012),
+    svcNested('browsing-history-service', 3034),
     svc('contracts-service', 3010),
     svc('time-tracking-service', 3017),
     svcNested('invitations-service', 3013),
@@ -69,6 +70,7 @@ module.exports = {
     // exist in this file, where payout-service is on 3022. Moving this to
     // 3033 breaks resume parsing under PM2 -- the gateway keeps calling 3028.
     svc('resume-parsing-service', 3028),
+    svc('location-service', 3030),
     {
       name: 'cms-service',
       script: npmLauncher,

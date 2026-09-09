@@ -23,6 +23,7 @@ import { AffiliatedTeamModule } from './affiliated-teams/affiliated-teams.module
 import { FavoritesModule } from './favorites/favorites.module';
 import { TeamsModule } from './teams/teams.module';
 import { CompaniesModule } from './companies/companies.module';
+import { AllowedIpsModule } from './allowed-ips/allowed-ips.module';
 import { UserMangementModule } from './user-mangement/user-mangement.module';
 import { OffersModule } from './offers/offers.modules';
 import { HireRequestsModule } from './hire-requests/hire-requests.module';
@@ -34,6 +35,7 @@ import { UserKeysModule } from './user-keys/user-keys.module';
 import { BlockedUsersModule } from './blocked-users/blocked-users.module';
 import { ReportsModule } from './reports/reports.module';
 import { ResumeModule } from './resume/resume.module';
+import { DashboardTasksModule } from './dashboard-tasks/dashboard-tasks.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -75,6 +77,7 @@ import { ResumeModule } from './resume/resume.module';
     TalentModule,
     TeamsModule,
     CompaniesModule,
+    AllowedIpsModule,
     SimilarProfileModule,
     AffiliatedTeamModule,
     FavoritesModule,
@@ -89,6 +92,7 @@ import { ResumeModule } from './resume/resume.module';
     BlockedUsersModule,
     ReportsModule,
     ResumeModule,
+    DashboardTasksModule,
   ],
   controllers: [HealthController],
   providers: [

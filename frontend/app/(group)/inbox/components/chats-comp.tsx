@@ -33,6 +33,7 @@ import {
   Calendar,
   ChevronDown,
   Clock,
+  CornerUpLeft,
   Briefcase,
   DollarSign,
   Edit05,
@@ -247,9 +248,15 @@ const formatDateSeparator = (iso: string): string => {
   return format(d, "MMM d, yyyy")
 }
 
-const DateSeparator = ({ label }: { label: string }) => (
+const DateSeparator = ({
+  label,
+  className = "",
+}: {
+  label: string
+  className?: string
+}) => (
   <div
-    className="flex items-center gap-x-3 py-1"
+    className={`flex items-center gap-x-3 py-1 ${className}`}
     role="separator"
     aria-label={label}
   >
@@ -318,6 +325,7 @@ export interface OfferNotificationMessageData {
   jobListingId: string
   createdAt: string
   actorId: string
+  threadId?: string
   senderDisplayName: string
   senderUsername: string
   senderAvatarSrc?: string
@@ -890,6 +898,61 @@ export function Chats({
     lastTypedAtRef.current = Date.now()
   }, [])
 
+  const renderOfferMessageHoverActions = (
+    messageText = "",
+    senderId = currentUser?.id ?? ""
+  ) => (
+    <div className="absolute right-3 top-2 z-10 inline-flex items-center gap-x-0.5 rounded-full bg-primary-25 opacity-0 transition duration-300 group-hover:opacity-100 group-focus-within:opacity-100 [&+*]:pr-24">
+      <button
+        type="button"
+        aria-label="Reply to message"
+        className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 focus-visible:outline-none"
+        onClick={() => {
+          setReplyingTo({
+            id: `offer-event:${senderId}:${messageText}`,
+            threadId: selectedConversation?.id ?? "",
+            senderId,
+            content: messageText,
+            createdAt: new Date().toISOString(),
+            messageType: "text",
+            status: "sent",
+          } as Message)
+          requestAnimationFrame(() => composerRef.current?.focus())
+        }}
+      >
+        <CornerUpLeft className="size-4" />
+      </button>
+      <EmojiPicker
+        side="top"
+        align="end"
+        onEmojiSelect={handleEmojiSelect}
+      >
+        <button
+          type="button"
+          aria-label="React to message"
+          className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 focus-visible:outline-none"
+        >
+          <Smile className="size-4" />
+        </button>
+      </EmojiPicker>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label="More message options"
+          className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-primary-50 hover:text-dark-blue-400 focus-visible:outline-none"
+        >
+          <MoreHorizontal className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="bottom" align="end" className="min-w-0 w-auto">
+          <DropdownMenuItem
+            onSelect={() => navigator.clipboard.writeText(messageText)}
+          >
+            Copy message
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+
   const handleGifSelect = async (gif: TenorGif) => {
     if (!selectedConversation) return
     const url = gif.media?.[0]?.gif?.url
@@ -915,23 +978,6 @@ export function Chats({
       console.error("Send GIF failed", err)
     }
   }
-
-  // Auto-grow the composer to fit its content (Figma: composer expands as
-  // the user types multi-line, then caps at max-height with internal scroll).
-  // When empty, clear the inline height so the CSS `min-h-[36px]` rules the
-  // box — otherwise an empty textarea's scrollHeight (which includes extra
-  // browser padding) would lock the field at a taller-than-default size on
-  // mount and after every send.
-  useEffect(() => {
-    const ta = composerRef.current
-    if (!ta) return
-    if (!textareaValue) {
-      ta.style.height = ""
-      return
-    }
-    ta.style.height = "auto"
-    ta.style.height = `${ta.scrollHeight}px`
-  }, [textareaValue])
 
   // Reset per-conversation state when switching conversations,
   // then restore any persisted draft for this thread (Doc 05 EC-3.3).
@@ -1412,9 +1458,11 @@ export function Chats({
         item.senderUsername.replace(/^@/, "").toLowerCase() ===
           (receiverUser?.username ?? "").replace(/^@/, "").toLowerCase())
   )
-  const visibleDisplayedMessages = isSeededOfferConversation
-    ? []
-    : displayedMessages
+  const visibleDisplayedMessages =
+    isSeededOfferConversation &&
+    selectedConversation?.id.startsWith("offer-notifications-")
+      ? []
+      : displayedMessages
   const localMessageById = useMemo(
     () => new Map(localMsgs.map((m) => [m.id, m])),
     [localMsgs]
@@ -1717,7 +1765,8 @@ export function Chats({
           createdAt: msg.createdAt,
           attachments: msg.attachments,
         })
-      } catch {
+      } catch (error) {
+        console.error("Message send failed", error)
         setLocalMsgs((prev) =>
           prev.map((m) =>
             m.id === tempId ? { ...m, status: "failed-send" } : m
@@ -1922,7 +1971,12 @@ export function Chats({
 
       if (!currentUser?.id) return
       const content = textareaValue.trim()
-      const replyToId = replyingTo?.id
+      // Offer/event cards are notification-backed rather than persisted chat
+      // messages. They can still show the normal reply context in the composer,
+      // but their synthetic IDs must not be sent as message foreign keys.
+      const replyToId = replyingTo?.id.startsWith("offer-event:")
+        ? undefined
+        : replyingTo?.id
       const tempId = `tmp-${
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
@@ -2861,11 +2915,14 @@ export function Chats({
                 return (
                   <React.Fragment key={m.id ?? i}>
                     {showDate && (
-                      <DateSeparator label={formatDateSeparator(m.createdAt)} />
+                      <DateSeparator
+                        label={formatDateSeparator(m.createdAt)}
+                        className="order-last"
+                      />
                     )}
                     <div
                       data-message-id={m.id}
-                      className={`flex rounded-lg ${
+                      className={`order-last flex rounded-lg ${
                         m.senderId === currentUser.id
                           ? "justify-end"
                           : "justify-start"
@@ -3090,7 +3147,13 @@ export function Chats({
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex w-[449px] max-w-[calc(100%-48px)] flex-col items-start gap-2">
-                          <article className="flex w-full flex-col items-start gap-4 rounded-xl rounded-bl-none bg-primary-25 px-5 pb-5 pt-2.5">
+                          <article className="group relative flex w-full flex-col items-start gap-4 rounded-xl rounded-bl-none bg-primary-25 px-5 pb-5 pt-2.5">
+                            {renderOfferMessageHoverActions(
+                              item.body,
+                              item.clientPerspective
+                                ? currentUser?.id
+                                : item.actorId
+                            )}
                             <div className="text-sm leading-[17px] text-dark-blue-400">
                               <span className="font-bold">
                                 {item.senderDisplayName}
@@ -3157,7 +3220,11 @@ export function Chats({
                     ) : null}
                     {isClientSentTalentCounter ? (
                       <div className="flex w-full justify-end">
-                        <article className="flex w-[388px] max-w-[calc(100%-48px)] flex-col items-start gap-2 rounded-xl rounded-br-none bg-primary-25 p-5">
+                        <article className="group relative flex w-[388px] max-w-[calc(100%-48px)] flex-col items-start gap-2 rounded-xl rounded-br-none bg-primary-25 p-5">
+                          {renderOfferMessageHoverActions(
+                            item.body,
+                            item.clientPerspective ? currentUser?.id : item.actorId
+                          )}
                           <div className="text-sm leading-[17px] text-dark-blue-400">
                             <span className="font-bold">You</span>{" "}
                             {currentUser.username ? (
@@ -3230,12 +3297,16 @@ export function Chats({
                       >
                         <article
                           className={cn(
-                            "flex w-full flex-col items-start gap-4 rounded-xl bg-primary-25 px-5 pb-5 pt-2.5",
+                            "group relative flex w-full flex-col items-start gap-4 rounded-xl bg-primary-25 px-5 pb-5 pt-2.5",
                             item.clientPerspective
                               ? "h-[256px] rounded-br-none"
                               : "h-[248px] rounded-bl-none"
                           )}
                         >
+                          {renderOfferMessageHoverActions(
+                            item.body,
+                            item.clientPerspective ? currentUser?.id : item.actorId
+                          )}
                           <div className="flex h-[70px] w-full flex-col gap-2">
                             <div className="text-sm leading-[17px] text-dark-blue-400">
                               <span className="font-bold">
@@ -3474,20 +3545,15 @@ export function Chats({
                               </div>
                               <div className="h-[22px] w-px shrink-0 bg-gray-200" />
                               <div
-                                className={cn(
-                                  "flex items-center justify-center gap-1.5 whitespace-nowrap",
-                                  isTalentOffer ? "min-w-[120px]" : "w-[120px]"
-                                )}
+                                className="flex w-[120px] min-w-0 items-center justify-center gap-1.5 whitespace-nowrap"
                               >
-                                <span className="flex items-center gap-1">
+                                <span className="flex shrink-0 items-center gap-1">
                                   <UserIcon className="size-3 shrink-0 text-primary-400" />
                                   <span>Role</span>
                                 </span>
                                 <span
-                                  className={cn(
-                                    "font-semibold text-dark-blue-400",
-                                    !isTalentOffer && "truncate"
-                                  )}
+                                  className="min-w-0 truncate font-semibold text-dark-blue-400"
+                                  title={item.role}
                                 >
                                   {item.role}
                                 </span>
@@ -3529,7 +3595,13 @@ export function Chats({
                           isExpiredOffer) &&
                         declinedOfferCard?.contractId !== item.contractId ? (
                           <div className="mt-4 flex w-full justify-end">
-                            <article className="flex w-[449px] max-w-[calc(100%-48px)] flex-col items-start gap-2 rounded-xl rounded-br-none bg-primary-25 p-5">
+                            <article className="group relative flex w-[449px] max-w-[calc(100%-48px)] flex-col items-start gap-2 rounded-xl rounded-br-none bg-primary-25 p-5">
+                              {renderOfferMessageHoverActions(
+                                item.body,
+                                item.clientPerspective
+                                  ? currentUser?.id
+                                  : item.actorId
+                              )}
                               <div className="text-sm leading-[17px] text-dark-blue-400">
                                 <span className="font-bold">
                                   {isAcceptedOffer ||
@@ -3707,7 +3779,13 @@ export function Chats({
                               </AvatarFallback>
                             </Avatar>
                             <div className="flex min-w-0 flex-col items-start gap-2">
-                              <article className="flex w-[449px] max-w-[calc(100%-48px)] flex-col items-start gap-2 rounded-xl rounded-bl-none bg-primary-25 p-5">
+                              <article className="group relative flex w-[449px] max-w-[calc(100%-48px)] flex-col items-start gap-2 rounded-xl rounded-bl-none bg-primary-25 p-5">
+                                {renderOfferMessageHoverActions(
+                                  item.body,
+                                  item.clientPerspective
+                                    ? currentUser?.id
+                                    : item.actorId
+                                )}
                                 <div className="text-sm leading-[17px] text-dark-blue-400">
                                   <span className="font-bold">
                                     {item.senderDisplayName}
@@ -3760,7 +3838,13 @@ export function Chats({
                         !dismissedExpiredOfferActions.includes(item.id) ? (
                           <div className="mt-4 flex w-full items-end self-start">
                             <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
-                              <article className="flex w-full flex-col items-start gap-3 rounded-xl rounded-bl-none bg-primary-25 p-5">
+                              <article className="group relative flex w-full flex-col items-start gap-3 rounded-xl rounded-bl-none bg-primary-25 p-5">
+                                {renderOfferMessageHoverActions(
+                                  item.body,
+                                  item.clientPerspective
+                                    ? currentUser?.id
+                                    : item.actorId
+                                )}
                                 <div className="flex w-full items-center gap-2 text-sm leading-[17px] text-dark-blue-400">
                                   <span className="font-bold">{item.senderDisplayName}</span>
                                   <span className="text-xs font-normal">
@@ -3827,7 +3911,13 @@ export function Chats({
                               </AvatarFallback>
                             </Avatar>
                             <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
-                              <article className="flex w-full flex-col items-start gap-3 rounded-xl rounded-bl-none bg-primary-25 p-5">
+                              <article className="group relative flex w-full flex-col items-start gap-3 rounded-xl rounded-bl-none bg-primary-25 p-5">
+                                {renderOfferMessageHoverActions(
+                                  item.body,
+                                  item.clientPerspective
+                                    ? currentUser?.id
+                                    : item.actorId
+                                )}
                                 <div className="flex w-full items-center gap-2 text-sm leading-[17px] text-dark-blue-400">
                                   <span className="font-bold">
                                     {item.senderDisplayName}
@@ -3962,7 +4052,13 @@ export function Chats({
                               </AvatarFallback>
                             </Avatar>
                             <div className="flex w-[449px] max-w-[calc(100%-48px)] flex-col items-start gap-2">
-                              <article className="flex w-full flex-col items-start gap-4 rounded-xl rounded-bl-none bg-primary-25 px-5 pb-5 pt-2.5">
+                              <article className="group relative flex w-full flex-col items-start gap-4 rounded-xl rounded-bl-none bg-primary-25 px-5 pb-5 pt-2.5">
+                                {renderOfferMessageHoverActions(
+                                  item.body,
+                                  item.clientPerspective
+                                    ? currentUser?.id
+                                    : item.actorId
+                                )}
                               <div className="text-sm leading-[17px] text-dark-blue-400">
                               <span className="font-bold">
                                 {item.senderDisplayName}
@@ -4088,7 +4184,13 @@ export function Chats({
                               </AvatarFallback>
                             </Avatar>
                             <div className="flex w-[449px] max-w-[calc(100%-48px)] flex-col items-start gap-2">
-                              <article className="flex w-full flex-col items-start gap-2 rounded-xl rounded-bl-none bg-primary-25 p-5">
+                              <article className="group relative flex w-full flex-col items-start gap-2 rounded-xl rounded-bl-none bg-primary-25 p-5">
+                                {renderOfferMessageHoverActions(
+                                  item.body,
+                                  item.clientPerspective
+                                    ? currentUser?.id
+                                    : item.actorId
+                                )}
                                 <div className="text-sm leading-[17px] text-dark-blue-400">
                                   <span className="font-bold">
                                     {item.senderDisplayName}
@@ -4149,7 +4251,8 @@ export function Chats({
                 (item) => item.id === withdrawnTalentCounterOfferMessage.id
               ) && (
                 <div className="order-last flex justify-end rounded-lg">
-                  <article className="flex w-[349px] max-w-[calc(100%-60px)] flex-col items-start gap-4 rounded-xl rounded-br-none bg-primary-25 p-5">
+                  <article className="group relative flex w-[349px] max-w-[calc(100%-60px)] flex-col items-start gap-4 rounded-xl rounded-br-none bg-primary-25 p-5">
+                    {renderOfferMessageHoverActions("Withdrew the counter offer")}
                     <div className="text-sm leading-[17px] text-dark-blue-400">
                       <span className="font-bold">You</span>{" "}
                       {currentUser.username ? (
@@ -4211,7 +4314,8 @@ export function Chats({
                 (item) => item.id === withdrawnClientOfferMessage.id
               ) && (
                 <div className="flex justify-end rounded-lg">
-                  <article className="flex w-[349px] max-w-[calc(100%-60px)] flex-col items-start gap-4 rounded-xl bg-primary-25 p-5">
+                  <article className="group relative flex w-[349px] max-w-[calc(100%-60px)] flex-col items-start gap-4 rounded-xl bg-primary-25 p-5">
+                    {renderOfferMessageHoverActions("Withdrew the offer")}
                     <div className="text-sm leading-[17px] text-dark-blue-400">
                       <span className="font-bold">You</span>{" "}
                       {currentUser.username ? (
@@ -4258,7 +4362,8 @@ export function Chats({
                 (item) => item.id === acceptedCounterOfferMessage.id
               ) && (
                 <div className="order-last flex w-full justify-end rounded-lg">
-                  <article className="flex w-full flex-col items-start gap-3 rounded-xl bg-primary-25 p-5">
+                  <article className="group relative flex w-full flex-col items-start gap-3 rounded-xl bg-primary-25 p-5">
+                    {renderOfferMessageHoverActions("Accepted the counter offer")}
                     <div className="text-sm leading-[17px] text-dark-blue-400">
                       <span className="font-bold">You</span>{" "}
                       {currentUser.username ? (
@@ -4313,7 +4418,7 @@ export function Chats({
                       <div className="flex h-[22px] w-full items-center justify-between gap-3 text-xs leading-[15px] text-gray-500">
                         <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><DollarSign className="size-3 shrink-0 text-primary-400" />Offer Rate <strong className="text-base text-dark-blue-400">{acceptedCounterOfferMessage.offerRate}</strong></span>
                         <div className="h-[22px] w-px shrink-0 bg-gray-200" />
-                        <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><UserIcon className="size-3 shrink-0 text-primary-400" />Role <strong className="truncate text-dark-blue-400">{acceptedCounterOfferMessage.role}</strong></span>
+                        <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><UserIcon className="size-3 shrink-0 text-primary-400" /><span className="shrink-0">Role</span> <strong className="min-w-0 truncate text-dark-blue-400" title={acceptedCounterOfferMessage.role}>{acceptedCounterOfferMessage.role}</strong></span>
                         <div className="h-[22px] w-px shrink-0 bg-gray-200" />
                         <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><Calendar className="size-3 shrink-0 text-primary-400" />Duration <strong className="text-dark-blue-400">{acceptedCounterOfferMessage.duration}</strong></span>
                         <div className="h-[22px] w-px shrink-0 bg-gray-200" />
@@ -4330,7 +4435,8 @@ export function Chats({
                 (item) => item.id === declinedCounterOfferMessage.id
               ) && (
                 <div className="order-last flex justify-end rounded-lg">
-                  <article className="flex w-[449px] max-w-[calc(100%-60px)] flex-col items-start gap-4 rounded-xl bg-primary-25 p-5">
+                  <article className="group relative flex w-[449px] max-w-[calc(100%-60px)] flex-col items-start gap-4 rounded-xl bg-primary-25 p-5">
+                    {renderOfferMessageHoverActions("Declined the counter offer")}
                     <div className="text-sm leading-[17px] text-dark-blue-400">
                       <span className="font-bold">You</span>{" "}
                       {currentUser.username ? (
@@ -4386,7 +4492,8 @@ export function Chats({
                     key={`${sentOffer.id}-${sentOffer.event}-${index}`}
                     className="flex justify-end rounded-lg"
                   >
-                    <article className="flex h-[256px] w-full flex-col items-start gap-4 rounded-xl rounded-br-none bg-primary-25 px-5 pb-5 pt-2.5">
+                    <article className="group relative flex h-[256px] w-full flex-col items-start gap-4 rounded-xl rounded-br-none bg-primary-25 px-5 pb-5 pt-2.5">
+                      {renderOfferMessageHoverActions(sentOffer.body)}
                       <div className="flex h-[70px] w-full flex-col gap-2">
                         <div className="text-sm leading-[17px] text-dark-blue-400">
                           <span className="font-bold">
@@ -4439,7 +4546,7 @@ export function Chats({
                         <div className="flex h-[22px] w-full items-center justify-between gap-3 text-xs leading-[15px] text-gray-500">
                           <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><DollarSign className="size-3 shrink-0 text-primary-400" />Offer Rate <strong className="text-base text-dark-blue-400">{sentOffer.offerRate}</strong></span>
                           <div className="h-[22px] w-px shrink-0 bg-gray-200" />
-                          <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><UserIcon className="size-3 shrink-0 text-primary-400" />Role <strong className="truncate text-dark-blue-400">{sentOffer.role}</strong></span>
+                          <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><UserIcon className="size-3 shrink-0 text-primary-400" /><span className="shrink-0">Role</span> <strong className="min-w-0 truncate text-dark-blue-400" title={sentOffer.role}>{sentOffer.role}</strong></span>
                           <div className="h-[22px] w-px shrink-0 bg-gray-200" />
                           <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><Calendar className="size-3 shrink-0 text-primary-400" />Duration <strong className="text-dark-blue-400">{sentOffer.duration}</strong></span>
                           <div className="h-[22px] w-px shrink-0 bg-gray-200" />
@@ -4454,7 +4561,8 @@ export function Chats({
               acceptedOfferCard &&
               conversationOfferContractIds.has(acceptedOfferCard.contractId) && (
                 <div className="order-last flex justify-end rounded-lg">
-                  <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                  <article className="group relative flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                    {renderOfferMessageHoverActions("Accepted the offer")}
                     <div className="text-sm leading-[16.94px] text-dark-blue-400">
                       <span className="font-bold">Me</span>{" "}
                       {currentUser.username ? (
@@ -4517,7 +4625,8 @@ export function Chats({
                     counterOfferCard.contractId && "order-last"
                 )}
               >
-                <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                <article className="group relative flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                  {renderOfferMessageHoverActions("Declined the offer")}
                   <div className="text-sm leading-[16.94px] text-dark-blue-400">
                     <span className="font-bold">You</span>{" "}
                     {currentUser.username ? (
@@ -4583,7 +4692,8 @@ export function Chats({
               declinedOfferCard &&
               conversationOfferContractIds.has(declinedOfferCard.contractId) && (
                 <div className="flex justify-end rounded-lg">
-                  <article className="flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                  <article className="group relative flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                    {renderOfferMessageHoverActions("Sent a counter offer")}
                     <div className="text-sm leading-[16.94px] text-dark-blue-400">
                       <span className="font-bold">You</span>{" "}
                       {currentUser.username ? (
@@ -5112,7 +5222,7 @@ export function Chats({
                       : "Send message..."
               }
               disabled={counterpartDeleted}
-              className={`w-full resize-none py-1.5 leading-5 h-9 max-h-32 overflow-y-auto ${
+              className={`w-full h-9 min-h-9 max-h-9 resize-none overflow-y-auto py-1.5 leading-5 ${
                 editingMessage
                   ? "pr-[120px] ring-1 ring-primary-500 border-primary-500 focus:ring-primary-500 focus:border-primary-500"
                   : "pr-11"

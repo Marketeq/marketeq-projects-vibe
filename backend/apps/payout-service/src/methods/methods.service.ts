@@ -142,14 +142,14 @@ export class MethodsService {
       };
     }
 
-    // PAYPAL/WISE/PAYONEER: real OAuth — delegate entirely to OAuthService,
+    // WISE/PAYONEER: real OAuth — delegate entirely to OAuthService,
     // which creates the pending DepositMethod itself, stores OAuth state in
     // Redis, and builds a real provider authorize URL from the configured
     // client_id/redirect_uri/scopes. The block below (which used to build a
     // fabricated, non-functional "authorize" URL with no client_id or
     // redirect_uri — connecting an account was never actually possible)
-    // must never run for these three method types.
-    if (dto.methodType === 'PAYPAL' || dto.methodType === 'WISE' || dto.methodType === 'PAYONEER') {
+    // must never run for these method types.
+    if (dto.methodType === 'WISE' || dto.methodType === 'PAYONEER') {
       const result = await this.oauthService.initiateOAuth(contractorId, dto.methodType as MethodType);
       return {
         depositMethodId: result.depositMethodId,
@@ -542,7 +542,7 @@ export class MethodsService {
         return { type: 'micro_deposit', message: 'Two small deposits will arrive in your account within 2 business days.', expiresAt: manualVerify.expiresAt!.toISOString(), maxAttempts: 3 };
       }
 
-      // PAYPAL/WISE/PAYONEER no longer reach this method — addMethod()
+      // WISE/PAYONEER no longer reach this method — addMethod()
       // routes them to OAuthService.initiateOAuth() before createVerification()
       // is ever called, since that's the real, credential-backed OAuth flow.
 
@@ -580,13 +580,12 @@ export class MethodsService {
       cryptoCurrency: m.cryptoCurrency,
       walletAddressLast6: m.walletAddressLast6,
       conversionDisplay: m.conversionDisplay,
-      // paypalEmail/wiseAccountId/payoneerPayeeId predate the real OAuth
-      // wiring and are only ever set by the old fake dev-mode manual-entry
-      // path (since removed from the frontend) — the real OAuth callback
+      // wiseAccountId/payoneerPayeeId predate the real OAuth wiring and are
+      // only ever set by the old fake dev-mode manual-entry path (since
+      // removed from the frontend) — the real OAuth callback
       // (oauth.service.ts's handleCallback) only ever populates the generic
-      // accountEmail/accountIdentifier, uniformly across all three
-      // providers, so fall back to those.
-      paypalEmail: m.paypalEmail ?? (m.methodType === MethodType.PAYPAL ? m.accountEmail : null),
+      // accountEmail/accountIdentifier, uniformly across both providers,
+      // so fall back to those.
       wiseAccountId: m.wiseAccountId ?? (m.methodType === MethodType.WISE ? (m.accountEmail ?? m.accountIdentifier) : null),
       payoneerPayeeId: m.payoneerPayeeId ?? (m.methodType === MethodType.PAYONEER ? (m.accountEmail ?? m.accountIdentifier) : null),
     };

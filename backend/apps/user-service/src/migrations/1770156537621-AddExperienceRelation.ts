@@ -17,12 +17,12 @@ export class AddExperienceRelation1770156537621 implements MigrationInterface {
                 SELECT c.udt_name
                 INTO created_type
                 FROM information_schema.columns c
-                WHERE c.table_schema = 'public'
+                WHERE c.table_schema = current_schema()
                   AND c.table_name = 'screenshots'
                   AND c.column_name = 'createdAt';
 
                 IF created_type IS NULL THEN
-                    ALTER TABLE "screenshots" ADD COLUMN "createdAt" TIMESTAMP NOT NULL DEFAULT now();
+                    ALTER TABLE "screenshots" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP NOT NULL DEFAULT now();
                 ELSIF created_type = 'timestamptz' THEN
                     ALTER TABLE "screenshots"
                     ALTER COLUMN "createdAt" TYPE TIMESTAMP
@@ -36,12 +36,12 @@ export class AddExperienceRelation1770156537621 implements MigrationInterface {
                 SELECT c.udt_name
                 INTO updated_type
                 FROM information_schema.columns c
-                WHERE c.table_schema = 'public'
+                WHERE c.table_schema = current_schema()
                   AND c.table_name = 'screenshots'
                   AND c.column_name = 'updatedAt';
 
                 IF updated_type IS NULL THEN
-                    ALTER TABLE "screenshots" ADD COLUMN "updatedAt" TIMESTAMP NOT NULL DEFAULT now();
+                    ALTER TABLE "screenshots" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP NOT NULL DEFAULT now();
                 ELSIF updated_type = 'timestamptz' THEN
                     ALTER TABLE "screenshots"
                     ALTER COLUMN "updatedAt" TYPE TIMESTAMP
@@ -79,12 +79,12 @@ export class AddExperienceRelation1770156537621 implements MigrationInterface {
                 SELECT c.udt_name
                 INTO updated_type
                 FROM information_schema.columns c
-                WHERE c.table_schema = 'public'
+                WHERE c.table_schema = current_schema()
                   AND c.table_name = 'screenshots'
                   AND c.column_name = 'updatedAt';
 
                 IF updated_type IS NULL THEN
-                    ALTER TABLE "screenshots" ADD COLUMN "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now();
+                    ALTER TABLE "screenshots" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now();
                 ELSIF updated_type = 'timestamp' THEN
                     ALTER TABLE "screenshots"
                     ALTER COLUMN "updatedAt" TYPE TIMESTAMP WITH TIME ZONE
@@ -98,12 +98,12 @@ export class AddExperienceRelation1770156537621 implements MigrationInterface {
                 SELECT c.udt_name
                 INTO created_type
                 FROM information_schema.columns c
-                WHERE c.table_schema = 'public'
+                WHERE c.table_schema = current_schema()
                   AND c.table_name = 'screenshots'
                   AND c.column_name = 'createdAt';
 
                 IF created_type IS NULL THEN
-                    ALTER TABLE "screenshots" ADD COLUMN "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now();
+                    ALTER TABLE "screenshots" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now();
                 ELSIF created_type = 'timestamp' THEN
                     ALTER TABLE "screenshots"
                     ALTER COLUMN "createdAt" TYPE TIMESTAMP WITH TIME ZONE

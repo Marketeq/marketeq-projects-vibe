@@ -92,6 +92,19 @@ export class User {
   @Column({ nullable: true })
   teamName?: string;
 
+  // Personal Info's "What team do you work on?" — a department (Engineering,
+  // Design, Marketing...). Deliberately NOT `teamName`, which above holds the
+  // client's company name; writing one to the other overwrites Company Info.
+  @Column({ nullable: true })
+  department?: string;
+
+  // Settings > IP Restrictions master switch. Nullable rather than defaulted:
+  // null means "never touched the screen", which is not the same as having
+  // deliberately switched restriction off, and only the former should be safe
+  // to change the default of later.
+  @Column({ name: 'ip_restriction_enabled', type: 'boolean', nullable: true })
+  ipRestrictionEnabled?: boolean | null;
+
   // Client company profile. `teamName` above is the company name; these two
   // carry the rest of what the client "Complete My Profile" steps collect.
   // Kept on the user row so a single getProfile call returns the whole

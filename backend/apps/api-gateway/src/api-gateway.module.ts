@@ -12,6 +12,7 @@ import { UserAvatarUploadController } from './controllers/user-avatar-upload.con
 import { CompanyLogoUploadController } from './controllers/company-logo-upload.controller'
 import { PublishMediaController } from './controllers/publish-media.controller'
 import { PublishRichTextImageController } from './controllers/publish-rich-text-image.controller'
+import { ClientIpController } from './controllers/client-ip.controller'
 import { HomepageModule } from './homepage/homepage.module'
 import { BlogModule } from './blog/blog.module'
 import { JwtStrategy } from './guards/jwt-auth.guard'
@@ -66,6 +67,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
     ResumeUploadController,
     UserAvatarUploadController,
     CompanyLogoUploadController,
+    ClientIpController,
     PublishMediaController,
     PublishRichTextImageController,
     ProxyController,

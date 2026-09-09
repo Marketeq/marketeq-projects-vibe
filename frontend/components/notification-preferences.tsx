@@ -12,10 +12,13 @@ import type {
 import { useNotificationPreferences } from "@/src/hooks/useNotificationPreferences"
 import { useToast } from "@/components/ui"
 import ResetDefaultsModal from "./notifications/modals/reset-defaults-modal"
+import BrowserAlertsModal from "./notifications/modals/browser-alerts-modal"
 import NotificationCategoriesList from "./notifications/notification-categories-list"
-import NotificationCategoryDetail from "./notifications/notification-category-detail"
 import NotificationGlobalChannels from "./notifications/notification-global-channels"
 import { EMPTY_CHANNELS } from "./notifications/shared"
+
+// Inbox gates the rest: every other category depends on it being on.
+const INBOX_CATEGORY_ID = "inbox"
 
 const defaultGlobalChannels: GlobalChannelPrefs = {
   inApp: { enabled: true, bell: true, popup: true, browser: false },
@@ -39,6 +42,7 @@ export default function NotificationPreferences() {
 
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
   const [resetOpen, setResetOpen] = useState(false)
+  const [inboxAlertsOpen, setInboxAlertsOpen] = useState(false)
   const [resetLoading, setResetLoading] = useState(false)
 
   const globalChannels: GlobalChannelPrefs =
@@ -73,24 +77,14 @@ export default function NotificationPreferences() {
   }
 
   const handleToggleGlobalChannel = (channel: ChannelKey, next: boolean) => {
+    // Only the global flag. Switching one off used to also write `false` into
+    // every category and every item, which was both unnecessary and lossy:
+    // dispatch already refuses the channel when the global flag is off, and
+    // switching it back on restored nothing — so one off/on round trip left the
+    // switch reading "on" while every category had silently stopped using it.
+    // The per-category selections are the user's; the global flag gates them
+    // without overwriting them.
     update({ channels: { [channel]: { enabled: next } } })
-    if (!next) {
-      const categoriesPatch: Record<
-        string,
-        { channels: Partial<ScopedChannelState> }
-      > = {}
-      const notificationsPatch: Record<
-        string,
-        { channels: Partial<ScopedChannelState> }
-      > = {}
-      for (const category of catalog) {
-        categoriesPatch[category.id] = { channels: { [channel]: false } }
-        for (const item of category.notifications) {
-          notificationsPatch[item.id] = { channels: { [channel]: false } }
-        }
-      }
-      update({ categories: categoriesPatch, notifications: notificationsPatch })
-    }
   }
 
   const handleSetBrowserAlerts = (enabled: boolean) => {
@@ -121,28 +115,72 @@ export default function NotificationPreferences() {
     const category = catalog.find((c) => c.id === categoryId)
     if (!category) return
 
-    update({
-      categories: {
-        [categoryId]: { enabled: nextEnabled, channels: nextChannels },
-      },
-      notifications: Object.fromEntries(
-        category.notifications.map((item) => [
-          item.id,
-          { enabled: nextEnabled, channels: nextChannels },
-        ])
-      ),
-    })
+    // Inbox is the master. Switching it off silences everything, and switching
+    // any other category on requires Inbox to be on for anything to arrive —
+    // so it comes on with it.
+    const isInbox = categoryId === INBOX_CATEGORY_ID
+    const inboxWasEnabled = getCategoryState(INBOX_CATEGORY_ID).enabled
+
+    const affected =
+      isInbox && !nextEnabled
+        ? catalog // switching Inbox off switches every category off
+        : catalog.filter(
+            (c) =>
+              c.id === categoryId ||
+              (!isInbox && nextEnabled && c.id === INBOX_CATEGORY_ID)
+          )
+
+    const categoriesPatch: Record<
+      string,
+      { enabled: boolean; channels: ScopedChannelState }
+    > = {}
+    const notificationsPatch: Record<
+      string,
+      { enabled: boolean; channels: ScopedChannelState }
+    > = {}
+
+    for (const affectedCategory of affected) {
+      categoriesPatch[affectedCategory.id] = {
+        enabled: nextEnabled,
+        channels: nextChannels,
+      }
+      for (const item of affectedCategory.notifications) {
+        notificationsPatch[item.id] = {
+          enabled: nextEnabled,
+          channels: nextChannels,
+        }
+      }
+    }
+
+    update({ categories: categoriesPatch, notifications: notificationsPatch })
+
+    // Inbox going from off to on is what prompts for browser alerts — whether
+    // it was switched directly or pulled on by another category.
+    if (nextEnabled && !inboxWasEnabled && INBOX_CATEGORY_ID in categoriesPatch) {
+      setInboxAlertsOpen(true)
+    }
   }
 
   const handleToggleCategoryChannel = (
     categoryId: string,
     channel: ChannelKey
   ) => {
-    if (!globalChannels[channel].enabled) return
     const current = getCategoryState(categoryId)
+    const nextEnabled = !current.channels[channel]
+
+    // Selecting a channel for a category turns the channel itself on if it was
+    // off, the same way enabling any category pulls Inbox on. Without this the
+    // switch would refuse to move: a channel the account has switched off
+    // delivers nothing, so the category could never show it as selected.
+    const channelsPatch =
+      nextEnabled && !globalChannels[channel].enabled
+        ? { [channel]: { enabled: true } }
+        : undefined
+
     update({
+      ...(channelsPatch ? { channels: channelsPatch } : {}),
       categories: {
-        [categoryId]: { channels: { [channel]: !current.channels[channel] } },
+        [categoryId]: { channels: { [channel]: nextEnabled } },
       },
     })
   }
@@ -222,7 +260,6 @@ export default function NotificationPreferences() {
     )
   }
 
-  const selectedCategory = catalog.find((c) => c.id === expandedCategory)
 
   return (
     <>
@@ -230,50 +267,43 @@ export default function NotificationPreferences() {
         <p className="text-xs text-gray-400 mb-2 text-right">Saving…</p>
       )}
 
-      {selectedCategory ? (
-        <NotificationCategoryDetail
-          category={selectedCategory}
-          categoryState={getCategoryState(selectedCategory.id)}
-          globalChannels={globalChannels}
+      {/* The categories now expand in place rather than replacing the screen,
+          so the channels card and the list stay mounted throughout. */}
+      <div className="space-y-6">
+        <NotificationGlobalChannels
+          channels={globalChannels}
           accountEmail={accountEmail}
           accountPhone={accountPhone}
-          getItemState={(notificationId) =>
-            getItemState(selectedCategory.id, notificationId)
-          }
-          onBack={() => setExpandedCategory(null)}
-          onToggleCategoryMaster={() =>
-            handleToggleCategoryMaster(selectedCategory.id)
-          }
-          onToggleCategoryChannel={(channel) =>
-            handleToggleCategoryChannel(selectedCategory.id, channel)
-          }
-          onToggleItemEnabled={(notificationId) =>
-            handleToggleItemEnabled(selectedCategory.id, notificationId)
-          }
-          onToggleItemChannel={(notificationId, channel) =>
-            handleToggleItemChannel(notificationId, channel)
-          }
+          onToggleChannel={handleToggleGlobalChannel}
+          onSetBrowserAlerts={handleSetBrowserAlerts}
+          onSetEmailAddress={handleSetEmailAddress}
+          onSetAccountPhone={handleSetAccountPhone}
         />
-      ) : (
-        <div className="space-y-6">
-          <NotificationGlobalChannels
-            channels={globalChannels}
-            accountEmail={accountEmail}
-            accountPhone={accountPhone}
-            onToggleChannel={handleToggleGlobalChannel}
-            onSetBrowserAlerts={handleSetBrowserAlerts}
-            onSetEmailAddress={handleSetEmailAddress}
-            onSetAccountPhone={handleSetAccountPhone}
-          />
 
-          <NotificationCategoriesList
-            catalog={catalog}
-            getCategoryState={getCategoryState}
-            onSelect={setExpandedCategory}
-            onRequestReset={() => setResetOpen(true)}
-          />
-        </div>
-      )}
+        <NotificationCategoriesList
+          catalog={catalog}
+          getCategoryState={getCategoryState}
+          expandedCategory={expandedCategory}
+          onToggleExpanded={(categoryId) =>
+            setExpandedCategory((current) =>
+              current === categoryId ? null : categoryId
+            )
+          }
+          onToggleCategoryMaster={handleToggleCategoryMaster}
+          onToggleCategoryChannel={handleToggleCategoryChannel}
+          onRequestReset={() => setResetOpen(true)}
+        />
+      </div>
+
+      <BrowserAlertsModal
+        open={inboxAlertsOpen}
+        mode="enable"
+        onOpenChange={setInboxAlertsOpen}
+        onConfirm={() => {
+          handleSetBrowserAlerts(true)
+          setInboxAlertsOpen(false)
+        }}
+      />
 
       <ResetDefaultsModal
         open={resetOpen}

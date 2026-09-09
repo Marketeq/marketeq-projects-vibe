@@ -1307,13 +1307,34 @@ function Default() {
   const { toggle: openInviteWindow } = useInviteWindowStore()
   const router = useRouter()
   const pathname = usePathname()
+
+  // Dynamic back label derived from the previous page in history
+  const [backLabel, setBackLabel] = useState("Back")
+  useEffect(() => {
+    try {
+      const ref = document.referrer
+      if (!ref) return
+      const refPath = new URL(ref).pathname
+      const pathMap: Record<string, string> = {
+        "/my-listings": "Back to Listings",
+        "/settings": "Back to Settings",
+        "/client-dashboard": "Back to Dashboard",
+        "/talent-dashboard": "Back to Dashboard",
+        "/my-network": "Back to My Network",
+        "/my-teams": "Back to My Teams",
+        "/browse": "Back to Browse",
+        "/search": "Back to Search",
+        "/messages": "Back to Messages",
+        "/active-project": "Back to Project",
+      }
+      const match = Object.entries(pathMap).find(([key]) => refPath.startsWith(key))
+      if (match) setBackLabel(match[1])
+    } catch {
+      // ignore — referrer may be empty or cross-origin
+    }
+  }, [])
   const handleShareProfile = () => {
-    const base =
-      typeof window !== "undefined" ? window.location.origin : ""
-    const url = profile?.username
-      ? `${base}/talent-profile?username=${encodeURIComponent(profile.username)}`
-      : `${base}/talent-profile`
-    openInviteWindow(true, "Share Profile", url)
+    openInviteWindow(true, "Share Profile")
   }
   const searchParams = useSearchParams()
   const usernameParam = searchParams.get("username")
@@ -2943,16 +2964,16 @@ function Default() {
             className="max-w-[1440px] mx-auto px-[100px] scroll-mt-[137.5px]"
             id="portfolio"
           >
-            {/* Back to Listings — top left, above the sidebar and content */}
+            {/* Back link — dynamic label based on where the user navigated from */}
             {isClientProfile && (
               <Button
                 className="group gap-2 text-sm font-semibold text-dark-blue-400"
                 variant="link"
                 visual="gray"
-                onClick={() => router.push("/my-listings")}
+                onClick={() => router.back()}
               >
                 <ArrowLeft className="size-[15px] transition duration-300 group-hover:-translate-x-[4px]" />{" "}
-                Back to Listings
+                {backLabel}
               </Button>
             )}
             <div className="pt-6 flex gap-x-8">

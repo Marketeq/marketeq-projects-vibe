@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useAuth } from "@/contexts/auth"
-import { apiFetch } from "@/src/lib/api"
+import { ApiError, apiFetch } from "@/src/lib/api"
 import * as Ably from "ably"
 
 export interface EarningsRealtimeEvent {
@@ -57,6 +57,14 @@ export function useEarningsChannel(handlers: EarningsChannelHandlers) {
           }
           cb(null, details)
         } catch (err) {
+          // apiFetch already refreshed once and that refresh failed, so the
+          // session is over. Handing Ably a retryable error makes it reconnect
+          // and re-auth every ~15s forever against a dead session; close instead.
+          if (err instanceof ApiError && err.status === 401) {
+            cb("Session expired", null)
+            client.close()
+            return
+          }
           cb(err instanceof Error ? err.message : String(err), null)
         }
       },

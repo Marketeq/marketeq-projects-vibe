@@ -358,7 +358,7 @@ const MethodStep = ({
   )
 }
 
-// US-46: bank-manual only — Stripe FC/PayPal/Wise/Payoneer all redirect to an
+// US-46: bank-manual only — Stripe FC/Wise/Payoneer all redirect to an
 // external hosted flow regardless of where the "Add" trigger lives, so an
 // in-page modal genuinely keeps the contractor in-flow only for the manual
 // bank-details path. A manually-added account also isn't instantly verified
@@ -635,6 +635,8 @@ function TransferFundsInner() {
     try {
       const res = await payoutFetch(`${PAYOUT_SERVICE_URL}/payouts/${result.payoutRequestId}/resend-verification`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ redirectUrl: `${window.location.origin}/verify-withdrawal` }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -803,7 +805,10 @@ function TransferFundsInner() {
       const res = await payoutFetch(`${PAYOUT_SERVICE_URL}/payouts/initiate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountUsd: amount, speed, depositMethodId: methodId, idempotencyKey, ignoreReserve }),
+        body: JSON.stringify({
+          amountUsd: amount, speed, depositMethodId: methodId, idempotencyKey, ignoreReserve,
+          redirectUrl: `${window.location.origin}/verify-withdrawal`,
+        }),
       })
       const data = await res.json()
       if (!res.ok) {

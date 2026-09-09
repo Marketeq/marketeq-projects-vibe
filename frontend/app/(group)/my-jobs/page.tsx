@@ -787,7 +787,7 @@ export default function MyJobsPage() {
         <div className="flex min-h-screen bg-gray-50">
           <LeftSidebar />
 
-          <div className="flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6">
+          <div className="flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px]">
             <ClientMyJobsView />
           </div>
         </div>
@@ -800,7 +800,7 @@ export default function MyJobsPage() {
       <div className="flex min-h-screen bg-gray-50">
         <LeftSidebar />
 
-        <div className="flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6">
+        <div className="flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px]">
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
             <div className="min-w-0 space-y-6">
               <Card className="overflow-hidden rounded-xl border-primary-100 bg-primary-50">
@@ -882,10 +882,10 @@ export default function MyJobsPage() {
                       <div className="space-y-3">
                         {jobProgressByTab[
                           tab.value as keyof typeof jobProgressByTab
-                        ].map((job) => (
+                        ].map((job, index) => (
                           <Card
                             key={job.id}
-                            className="overflow-hidden"
+                            className={`overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(index)}`}
                           >
                             <div className="w-full p-5">
                               <div className="flex items-start justify-between gap-3">

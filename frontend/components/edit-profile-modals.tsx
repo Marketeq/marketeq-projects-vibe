@@ -2087,7 +2087,7 @@ export const AvailabilityDialog = ({
               </IconButton>
             </div>
 
-            <div className="mt-8">
+            <div className="mt-8 pb-6">
                 <div className="space-y-1.5">
                   <Label size="sm" htmlFor="availability">
                     What&apos;s your availability?
