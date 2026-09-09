@@ -71,6 +71,11 @@ const SERVICES = [
   // resume upload was POSTing to payout-service).
   { name: 'resume-parsing-service',     port: '3033', dir: 'apps/resume-parsing-service',     maxOldSpaceMb: 96 },
   { name: 'browsing-history-service',   port: '3034', dir: 'apps/browsing-history-service',   maxOldSpaceMb: 48 },
+  // 3035, not the 3019 used in ecosystem.config.js: CMS_SERVICE_URL below is
+  // already pointing at 3019, and homepage.service.ts / blog-backfill.service.ts
+  // read it. Putting a live service there would turn a clean connection-refused
+  // (which falls back to static defaults) into 404s from the wrong service.
+  { name: 'identity-verification-service', port: '3035', dir: 'apps/identity-verification-service', maxOldSpaceMb: 48 },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway', maxOldSpaceMb: 96 };
@@ -114,6 +119,7 @@ const gatewayEnv = {
   // its hardcoded http://localhost:3028 default — payout-service in this file.
   RESUME_PARSING_SERVICE_URL:     'http://localhost:3033',
   BROWSING_HISTORY_SERVICE_URL:   'http://localhost:3034',
+  IDENTITY_VERIFICATION_SERVICE_URL: 'http://localhost:3035',
 };
 
 // svc.portKey allows services that read a non-standard env var for their port
