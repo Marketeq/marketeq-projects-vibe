@@ -501,6 +501,7 @@ function renderServiceCarousel(item: ServiceCard) {
       }
       rating={item.rating}
       reviewCount={item.reviewCount}
+      collaborators={item.collaborators ?? []}
       favoriteSlot={<FavoriteButton />}
     />
   )
@@ -795,6 +796,9 @@ function GridSectionView({ section }: { section: HomepageSection }) {
 // ── Section renderer ────────────────────────────────────────────────────────
 
 function HomepageSectionRenderer({ section }: { section: HomepageSection }) {
+  // Teams sections are hidden from the homepage per product decision.
+  if (section.blocks.every((b) => b.entity === "teams")) return null
+
   // Tabbed section: any block carries a tabSlug
   const isTabbed = section.blocks.some((b) => b.tabSlug)
   if (isTabbed) return <TabbedSectionView section={section} />

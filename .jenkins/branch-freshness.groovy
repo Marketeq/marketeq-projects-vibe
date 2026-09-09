@@ -88,30 +88,6 @@ pipeline {
                         echo "PR touches ${m['PRFILES']} file(s); '${baseRef}' changed ${m['BASEFILES']} file(s) since the merge base"
                         echo "Overlap: ${overlapCount} file(s) ${hasOverlap ? '-- ' + overlapFiles : ''}"
 
-                        // AUTO-UPDATE (SOP 1.11): if the branch is behind but nothing
-                        // conflicts, bring it current automatically. This uses GitHub's
-                        // "Update branch", which is a MERGE commit -- every one of the
-                        // author's commits survives and nothing is force-pushed. We never
-                        // rebase and never resolve a conflict on the author's behalf.
-                        if (behindBy > 0 && !hasOverlap) {
-                            echo "Branch is ${behindBy} behind with no same-line conflicts -- updating it automatically."
-                            def updRc = sh(returnStatus: true, script: """
-                                code=\$(curl -s -o upd.json -w '%{http_code}' -X PUT \
-                                  -H "Authorization: token \$GH_TOKEN" \
-                                  -H "Accept: application/vnd.github+json" \
-                                  "https://api.github.com/repos/${REPO}/pulls/${prNum}/update-branch")
-                                echo "update-branch -> HTTP \$code"
-                                [ "\$code" = "202" ]
-                            """)
-                            if (updRc == 0) {
-                                echo "Branch updated. It is now current with ${baseRef}."
-                                postStatus(baseRef, headSha, 'success',
-                                    "Was ${behindBy} behind, updated automatically - now current with ${baseRef}")
-                                return
-                            }
-                            echo "Automatic update did not apply; reporting instead."
-                        }
-
                         // Decision logic -- SOP 3.6: a branch must be at ZERO commits
                         // behind before merge, so any distance >= 1 blocks. Overlap is
                         // now LINE-level: same file AND same line ranges on both sides is

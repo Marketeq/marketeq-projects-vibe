@@ -487,6 +487,10 @@ const Notifications = () => {
     UiNotificationItem[]
   >([])
   const [unreadBadgeCount, setUnreadBadgeCount] = useState(0)
+  // Snapshot of unread count captured when the panel opens. The bell badge
+  // (unreadBadgeCount) clears to 0 immediately on open, but the tab counter
+  // needs to stay visible so users can see how many notifications were new.
+  const [panelTabCount, setPanelTabCount] = useState(0)
   const {
     threads: inboxThreads,
     totalUnread: inboxTotalUnread,
@@ -568,12 +572,19 @@ const Notifications = () => {
   }, [loadNotifications])
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setPanelTabCount(0)
+      return
+    }
     let cancelled = false
 
     void (async () => {
       const unread = await loadNotifications(false)
-      if (cancelled || unread === 0) return
+      if (cancelled) return
+      // Capture before clearing so the tab counter stays visible while the
+      // panel is open, even though the bell badge clears to 0 immediately.
+      setPanelTabCount(unread)
+      if (unread === 0) return
       await markAllNotificationsRead()
     })()
 
@@ -1046,15 +1057,19 @@ const Notifications = () => {
             <TabsList className="w-full">
               <TabsTrigger value="Notifications">
                 Notifications
-                <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-                  {unreadBadgeCount}
-                </span>
+                {panelTabCount > 0 && (
+                  <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
+                    {panelTabCount}
+                  </span>
+                )}
               </TabsTrigger>
               <TabsTrigger value="Messages">
                 Messages
-                <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-                  {inboxTotalUnread > 99 ? "99+" : inboxTotalUnread}
-                </span>
+                {inboxTotalUnread > 0 && (
+                  <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
+                    {inboxTotalUnread > 99 ? "99+" : inboxTotalUnread}
+                  </span>
+                )}
               </TabsTrigger>
             </TabsList>
 
@@ -1118,7 +1133,7 @@ const Notifications = () => {
                           </div>
                         )
                       }
-                      return inboxThreads.slice(0, 8).map(renderInboxThreadItem)
+                      return inboxThreads.filter(t => t.lastMessageAt).slice(0, 8).map(renderInboxThreadItem)
                     })()}
                   </div>
                 </ScrollArea>

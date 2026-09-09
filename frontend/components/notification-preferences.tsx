@@ -77,24 +77,14 @@ export default function NotificationPreferences() {
   }
 
   const handleToggleGlobalChannel = (channel: ChannelKey, next: boolean) => {
+    // Only the global flag. Switching one off used to also write `false` into
+    // every category and every item, which was both unnecessary and lossy:
+    // dispatch already refuses the channel when the global flag is off, and
+    // switching it back on restored nothing — so one off/on round trip left the
+    // switch reading "on" while every category had silently stopped using it.
+    // The per-category selections are the user's; the global flag gates them
+    // without overwriting them.
     update({ channels: { [channel]: { enabled: next } } })
-    if (!next) {
-      const categoriesPatch: Record<
-        string,
-        { channels: Partial<ScopedChannelState> }
-      > = {}
-      const notificationsPatch: Record<
-        string,
-        { channels: Partial<ScopedChannelState> }
-      > = {}
-      for (const category of catalog) {
-        categoriesPatch[category.id] = { channels: { [channel]: false } }
-        for (const item of category.notifications) {
-          notificationsPatch[item.id] = { channels: { [channel]: false } }
-        }
-      }
-      update({ categories: categoriesPatch, notifications: notificationsPatch })
-    }
   }
 
   const handleSetBrowserAlerts = (enabled: boolean) => {

@@ -7,6 +7,7 @@ import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import data from "@/public/mock/projects.json"
 import { ProjectAPI } from "@/service/http/project"
 import { UserAPI } from "@/service/http/user"
+import { DashboardTasksAPI } from "@/service/http/dashboard-tasks"
 import {
   type MyListing,
   formatActivityDate,
@@ -49,7 +50,7 @@ import {
 import { GridVertical2 } from "@blend-metrics/icons/special"
 import { AnimatePresence, motion } from "framer-motion"
 import { useMount, useTimeoutFn, useToggle } from "react-use"
-import { Pagination } from "swiper/modules"
+import { Mousewheel, Pagination } from "swiper/modules"
 import { Swiper as SwiperRoot, SwiperSlide } from "swiper/react"
 import { Swiper } from "swiper/types"
 import { ROLE } from "@/types/user"
@@ -319,19 +320,6 @@ export const RightDrawer = ({
               Sep 2024
             </span>
           </div>
-          <div className="flex flex-col items-start gap-y-[5px]">
-            <span className="inline-block text-sm leading-[16.94px] text-dark-blue-400">
-              Hourly Rate
-            </span>
-            <Button
-              className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
-              visual="gray"
-              variant="link"
-              onClick={() => setMoreInfoOpen(true)}
-            >
-              Edit
-            </Button>
-          </div>
         </div>
 
         <Tasks />
@@ -453,19 +441,6 @@ export const RightSidebar = ({
               Sep 2024
             </span>
           </div>
-          <div className="flex flex-col items-start gap-y-[5px]">
-            <span className="inline-block text-sm leading-[16.94px] text-dark-blue-400">
-              Hourly Rate
-            </span>
-            <Button
-              className="text-[11px] leading-6 text-dark-blue-400 underline hover:text-primary-500"
-              visual="gray"
-              variant="link"
-              onClick={() => setMoreInfoOpen(true)}
-            >
-              Edit
-            </Button>
-          </div>
         </div>
       </div>
 
@@ -518,26 +493,9 @@ export const Editable = ({
 }
 
 interface Task {
-  id: string | number
+  id: string
   done: boolean
   value: string
-}
-
-const TASKS_STORAGE_KEY = "marketeq-dashboard-tasks"
-
-const loadTasks = (): Task[] => {
-  try {
-    const saved = localStorage.getItem(TASKS_STORAGE_KEY)
-    return saved ? JSON.parse(saved) : []
-  } catch {
-    return []
-  }
-}
-
-const saveTasks = (tasks: Task[]) => {
-  try {
-    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks))
-  } catch {}
 }
 
 export const Tasks = () => {
@@ -545,61 +503,55 @@ export const Tasks = () => {
   const [shouldClearAll, toggleShouldClearAll] = useToggle(false)
 
   React.useEffect(() => {
-    setTasks(loadTasks())
+    DashboardTasksAPI.list().then(setTasks).catch(() => {})
   }, [])
-
-  React.useEffect(() => {
-    saveTasks(tasks)
-  }, [tasks])
 
   React.useEffect(() => {
     if (shouldClearAll) {
       const timeoutId = setTimeout(() => {
-        setTasks((prev) => prev.filter((task) => !task.done))
+        const doneTasks = tasks.filter((t) => t.done)
+        setTasks((prev) => prev.filter((t) => !t.done))
         toggleShouldClearAll(false)
+        doneTasks.forEach((t) => DashboardTasksAPI.delete(t.id).catch(() => {}))
       }, ONE_SECOND * 6)
 
       return () => {
         clearTimeout(timeoutId)
       }
     }
-  }, [shouldClearAll, toggleShouldClearAll])
+  }, [shouldClearAll, tasks, toggleShouldClearAll])
 
   const addTask = () => {
-    setTasks((prev) => [...prev, { id: getId(), value: "", done: false }])
+    const tempId = getId().toString()
+    setTasks((prev) => [...prev, { id: tempId, value: "", done: false }])
+    DashboardTasksAPI.create({ value: "", sortOrder: tasks.length })
+      .then((saved) => {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === tempId ? { ...t, id: saved.id } : t))
+        )
+      })
+      .catch(() => {
+        setTasks((prev) => prev.filter((t) => t.id !== tempId))
+      })
   }
 
-  const onDoneChange = ({ id, done }: { id: Task["id"]; done: boolean }) => {
+  const onDoneChange = ({ id, done }: { id: string; done: boolean }) => {
     setTasks((prev) =>
-      prev.reduce(
-        (previousValue, currentValue) =>
-          currentValue.id === id
-            ? [...previousValue, { ...currentValue, done }]
-            : [...previousValue, currentValue],
-        [] as Task[]
-      )
+      prev.map((t) => (t.id === id ? { ...t, done } : t))
     )
+    DashboardTasksAPI.update(id, { done }).catch(() => {})
   }
 
-  const onEditableChange = ({
-    value,
-    id,
-  }: {
-    value: string
-    id: Task["id"]
-  }) => {
+  const onEditableChange = ({ value, id }: { value: string; id: string }) => {
     setTasks((prev) =>
-      prev.reduce(
-        (previousValue, currentValue) =>
-          currentValue.id === id
-            ? [...previousValue, { ...currentValue, value }]
-            : [...previousValue, currentValue],
-        [] as Task[]
-      )
+      prev.map((t) => (t.id === id ? { ...t, value } : t))
     )
+    DashboardTasksAPI.update(id, { value }).catch(() => {})
   }
-  const onRemove = (id: Task["id"]) => {
-    setTasks((prev) => prev.filter((task) => task.id !== id))
+
+  const onRemove = (id: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== id))
+    DashboardTasksAPI.delete(id).catch(() => {})
   }
 
   const undoneTasks = tasks.filter((task) => !task.done)
@@ -1096,10 +1048,10 @@ const RecentListingsTableRow = ({ listing }: { listing: MyListing }) => {
       className="hover:bg-gray-50 cursor-pointer"
       onClick={() => router.push(`/my-listings/${listing.id}`)}
     >
-      <td className="px-6 py-4">
+      <td className="px-6 py-4 max-w-[260px]">
         <NextLink
           href={`/my-listings/${listing.id}`}
-          className="text-sm font-semibold text-dark-blue-400 hover:underline"
+          className="text-sm font-semibold text-dark-blue-400 hover:underline truncate block"
         >
           {listing.title}
         </NextLink>
@@ -1220,7 +1172,7 @@ const GETTING_STARTED_STEPS = [
   {
     title: "Set Up Payments",
     description:
-      "Connect a payout method so you're ready to get paid when contracts come in. Choose from bank transfer, PayPal, Wise, Payoneer, or crypto.",
+      "Connect a payout method so you're ready to get paid when contracts come in. Choose from bank transfer, Wise, Payoneer, or crypto.",
     cta: "Set Up Payments",
     href: "#",
     time: "3 min",
@@ -1537,6 +1489,8 @@ export const RecommendedForYou = () => {
                 slidesPerView="auto"
                 spaceBetween={12}
                 onInit={setCarousel}
+                modules={[Mousewheel]}
+                mousewheel={{ forceToAxis: true }}
                 className="avatar-carousel"
               >
                 {visible.map((project) => (

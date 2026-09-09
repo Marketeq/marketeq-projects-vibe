@@ -70,6 +70,8 @@ module.exports = {
     // exist in this file, where payout-service is on 3022. Moving this to
     // 3033 breaks resume parsing under PM2 -- the gateway keeps calling 3028.
     svc('resume-parsing-service', 3028),
+    svc('location-service', 3030),
+    svc('identity-verification-service', 3019),
     {
       name: 'cms-service',
       script: npmLauncher,

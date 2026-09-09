@@ -1920,7 +1920,9 @@ function TeamProfileContent() {
                 <Tabs
                   className="scroll-mt-[137.5px] w-full"
                   id="offers"
-                  onValueChange={setOfferTab}
+                  onValueChange={(value) =>
+                    setOfferTab(value as (typeof OFFER_TABS)[number])
+                  }
                   value={offerTab}
                 >
                   {/* 13126:30230 — gap-[24px] */}
@@ -1993,6 +1995,7 @@ function TeamProfileContent() {
                           {visibleOffers.map((offer) => (
                             <ListingCard
                               budget={offer.budget}
+                              collaborators={[]}
                               description={offer.description}
                               duration={offer.duration}
                               id={offer.id}
@@ -2015,6 +2018,7 @@ function TeamProfileContent() {
                             {extraOffers.map((offer) => (
                               <ListingCard
                                 budget={offer.budget}
+                                collaborators={[]}
                                 description={offer.description}
                                 duration={offer.duration}
                                 id={offer.id}

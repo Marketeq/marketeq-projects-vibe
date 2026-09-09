@@ -65,6 +65,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   legal: 'legal',                  // legal-service NDA, documents, acceptance
   nda: 'legal',                    // legal-service NDA endpoints
   resume: 'users',                  // resume upload/parse lives in user-service
+  'dashboard-tasks': 'users',       // personal to-do tasks live in user-service
 }
 
 const USER_SERVICE_V1_RESOURCES = new Set([
@@ -374,7 +375,7 @@ export class ProxyController {
     } else if (prefix === 'v1' && (segments[1] === 'deposit-methods')) {
       prefix = 'deposit-methods'
     } else if (prefix === 'v1' && segments[1] === 'oauth') {
-      // /v1/oauth/:provider/callback (PayPal/Wise/Payoneer OAuth redirect
+      // /v1/oauth/:provider/callback (Wise/Payoneer OAuth redirect
       // target) lives in payout-service. Without this branch it silently
       // fell through to the 'v1' default (transaction-service) and 404'd,
       // so the OAuth callback that actually persists tokens never ran.

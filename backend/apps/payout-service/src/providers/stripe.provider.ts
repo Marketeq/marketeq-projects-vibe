@@ -45,7 +45,13 @@ export class StripeProvider {
   private initStripe() {
     try {
       const Stripe = require('stripe');
-      this.stripe = new Stripe(this.secretKey, { apiVersion: '2024-06-20', typescript: true });
+      // PS-33 §9/§10: pin to a specific API version deliberately (via env,
+      // not left to drift to Stripe's account default) so an upgrade is a
+      // conscious, tested change rather than a silent behavior shift.
+      this.stripe = new Stripe(this.secretKey, {
+        apiVersion: this.config.get('STRIPE_API_VERSION', '2024-06-20'),
+        typescript: true,
+      });
       this.logger.log('Stripe SDK initialized');
     } catch {
       this.logger.warn('Stripe SDK not available — running in stub mode');
@@ -393,9 +399,16 @@ export class StripeProvider {
 
     let externalAccount: any;
     try {
+      // PS-33 §6: idempotency key pattern is extaccount-{depositMethodId},
+      // but no deposit_methods row exists yet on the instant-verify path
+      // (finaliseBankStripe creates it right after this call). setupIntentId
+      // is unique per verification attempt and known at every call site, so
+      // it serves the same dedup purpose — a retried callback for the same
+      // SetupIntent must not attach a second external_account.
       externalAccount = await this.stripe.accounts.createExternalAccount(
         connectAccountId,
         { external_account: token.id },
+        { idempotencyKey: `extaccount-${setupIntentId}` },
       );
     } catch (err: any) {
       this.logger.warn(`Stripe external_account attach failed for account ${connectAccountId}: ${err?.message}`);
@@ -444,6 +457,60 @@ export class StripeProvider {
       metadata: { contractorId },
     });
     return account.id;
+  }
+
+  // ─── PS-09 v2.0 §8: Connect external_account from a raw routing +
+  // account number ──────────────────────────────────────────────
+  // Used by OAuthService.handleCallback() after retrieving a contractor's
+  // Wise/Payoneer US routing + account number via fetchBankingDetails() —
+  // this is the step that lets Stripe ACH funds directly to the
+  // contractor's Wise or Payoneer balance without Marketeq ever calling the
+  // Wise/Payoneer Payouts API. Unlike attachVerifiedBankAsExternalAccount
+  // (BANK_STRIPE/BANK_MANUAL, which goes through a confirmed SetupIntent +
+  // token), Wise/Payoneer never hand payout-service a SetupIntent — the
+  // routing/account number is all the provider API returns — so the
+  // external_account is created directly from those raw values, per
+  // PS-09 §8's documented createExternalAccount() shape.
+  async createExternalAccountFromRouting(params: {
+    contractorId: string;
+    depositMethodId: string;
+    routingNumber: string;
+    accountNumber: string;
+    accountHolderName: string;
+  }): Promise<{ connectAccountId: string; externalAccountId: string }> {
+    const connectAccountId = await this.getOrCreateConnectAccount(params.contractorId);
+
+    if (!this.stripe || !this.isRealStripeKey()) {
+      return { connectAccountId, externalAccountId: `ba_mock_${Date.now()}` };
+    }
+
+    let externalAccount: any;
+    try {
+      // PS-33 §6: extaccount-{depositMethodId} — prevents a network-error
+      // retry of this same OAuth callback from attaching a second
+      // external_account for the same deposit method.
+      externalAccount = await this.stripe.accounts.createExternalAccount(
+        connectAccountId,
+        {
+          external_account: {
+            object: 'bank_account',
+            country: 'US',
+            currency: 'usd',
+            routing_number: params.routingNumber,
+            account_number: params.accountNumber,
+            account_holder_name: params.accountHolderName,
+            account_holder_type: 'individual',
+          },
+        },
+        { idempotencyKey: `extaccount-${params.depositMethodId}` },
+      );
+    } catch (err: any) {
+      this.logger.warn(`Stripe external_account attach failed (routing) for account ${connectAccountId}: ${err?.message}`);
+      throw new PayoutError('We could not attach your account for payouts. Please contact support.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_STRIPE_CONNECT_EXTERNAL_ACCOUNT_FAILED');
+    }
+
+    return { connectAccountId, externalAccountId: externalAccount.id };
   }
 
   // ─── PS-08: BANK_MANUAL/US real ACH micro-deposits ────────────
@@ -631,6 +698,130 @@ export class StripeProvider {
       reason,
       failedAt: new Date().toISOString(),
     });
+
+    // PS-33 §8: certain failure codes mean the destination itself is bad
+    // (closed account, wrong routing+account combo, ACH debits blocked) —
+    // retrying the same destination will only fail again, so deactivate the
+    // method and make the contractor add a new one rather than silently
+    // re-attempting on the next payout cycle.
+    const deactivateOn = ['account_closed', 'no_account', 'debit_not_authorized'];
+    if (payout.depositMethodId && deactivateOn.includes(stripePayout.failure_code)) {
+      await this.methodRepo.update(payout.depositMethodId, {
+        isActive: false, deactivatedAt: new Date(),
+      } as any);
+      await this.auditService.log({
+        contractorId: payout.contractorId,
+        actorType: 'service', actorId: 'stripe-webhook',
+        action: 'method.deactivated',
+        metadata: { depositMethodId: payout.depositMethodId, reason: stripePayout.failure_code },
+      });
+    }
+  }
+
+  // PS-33 §5: logged for visibility only — status is already set to
+  // PROCESSING when payout-service calls stripe.payouts.create(), so this
+  // webhook (fired immediately after that call succeeds) is a confirmation,
+  // not a state transition.
+  async handlePayoutCreated(stripePayout: any) {
+    this.logger.log(`Stripe payout.created: ${stripePayout.id}`);
+  }
+
+  // PS-33 §5: metadata/status changes on an in-flight Payout. The only
+  // status this needs to react to is one payout.paid/payout.failed doesn't
+  // already cover — Stripe fires those dedicated events for the terminal
+  // transitions, so this stays log-only per the doc ("Log. Check if status
+  // changed and update payout_requests accordingly").
+  async handlePayoutUpdated(stripePayout: any) {
+    this.logger.log(`Stripe payout.updated: ${stripePayout.id} status=${stripePayout.status}`);
+  }
+
+  // PS-33 §5: a Payout cancelled before it settles — only possible while
+  // still in transit. Reverses the earnings debit the same way a failed
+  // payout does (publishPayoutFailed's consumer restores available_balance).
+  async handlePayoutCanceled(stripePayout: any) {
+    this.logger.log(`Stripe payout.canceled: ${stripePayout.id}`);
+    const payout = await this.payoutRepo.findOne({ where: { externalTransactionId: stripePayout.id } });
+    if (!payout) {
+      this.logger.warn(`payout.canceled for unknown externalTransactionId ${stripePayout.id}`);
+      return;
+    }
+
+    await this.payoutRepo.update(payout.id, {
+      status: PayoutStatus.CANCELLED,
+    });
+
+    await this.auditService.log({
+      contractorId: payout.contractorId,
+      payoutRequestId: payout.id,
+      actorType: 'service', actorId: 'stripe-webhook',
+      action: 'bank.payout.cancelled',
+      previousStatus: PayoutStatus.PROCESSING,
+      newStatus: PayoutStatus.CANCELLED,
+      metadata: { stripePayoutId: stripePayout.id },
+    });
+
+    await this.publisher.publishPayoutFailed({
+      contractorId: payout.contractorId,
+      payoutRequestId: payout.id,
+      amount: payout.amountUsd,
+      currency: 'USD',
+      methodType: 'BANK',
+      reason: 'Payout was cancelled by Stripe before settlement.',
+      failedAt: new Date().toISOString(),
+    });
+  }
+
+  // PS-33 §5: confirmation that the Transfer step (platform → connected
+  // account) landed. payout-service already stores transfer.id in
+  // providerResponse.transferId at creation time (bank-payout-executor.ts),
+  // so this is log-only.
+  async handleTransferCreated(transfer: any) {
+    this.logger.log(`Stripe transfer.created: ${transfer.id}`);
+  }
+
+  // PS-33 §5: a reversed Transfer means funds already sent to a contractor's
+  // connected account were clawed back — this always needs a human to look
+  // at it (e.g. Stripe detected fraud, or the platform account itself
+  // reversed the charge upstream). No automatic status change here; this
+  // logs loudly and records an audit entry for finance/ops to review, since
+  // there is no dedicated ops-alert channel in this service to page out to.
+  async handleTransferReversed(transfer: any) {
+    this.logger.error(`Stripe transfer.reversed: ${transfer.id} — manual finance review required`);
+    const payout = await this.payoutRepo
+      .createQueryBuilder('p')
+      .where(`p.provider_response @> :json`, { json: JSON.stringify({ transferId: transfer.id }) })
+      .getOne();
+
+    await this.auditService.log({
+      contractorId: payout?.contractorId ?? 'unknown',
+      payoutRequestId: payout?.id,
+      actorType: 'service', actorId: 'stripe-webhook',
+      action: 'bank.transfer.reversed',
+      metadata: { transferId: transfer.id, payoutRequestId: payout?.id ?? null, requiresManualReview: true },
+    });
+  }
+
+  // PS-33 §5: an external_account (bank/Wise/Payoneer routing+account) was
+  // disabled or updated — typically after a payout failure Stripe decided
+  // means the destination is no longer usable. Mark the method as needing
+  // re-verification rather than silently letting the next scheduled payout
+  // fail against it.
+  async handleExternalAccountUpdated(externalAccount: any) {
+    if (externalAccount.object !== 'bank_account' || externalAccount.status !== 'errored') return;
+
+    const method = await this.methodRepo.findOne({
+      where: { stripeExternalAccountId: externalAccount.id, isActive: true },
+    });
+    if (!method) return;
+
+    await this.methodRepo.update(method.id, { verificationStatus: VerificationStatus.FAILED } as any);
+    await this.auditService.log({
+      contractorId: method.contractorId,
+      actorType: 'service', actorId: 'stripe-webhook',
+      action: 'method.external_account_errored',
+      metadata: { depositMethodId: method.id, stripeExternalAccountId: externalAccount.id },
+    });
+    this.logger.warn(`account.external_account.updated: method ${method.id} marked FAILED (errored external account)`);
   }
 
   // Connect account lifecycle — keeps connectPayoutsEnabled/connectRequirementsDue

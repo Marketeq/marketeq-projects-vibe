@@ -102,7 +102,7 @@ interface ProjectLikeProps {
   reviewCount?: number
   status?: ListingStatus
   /** Avatar URLs to render in the bottom avatar group. Ignored if avatarsSlot is provided. */
-  collaborators?: string[]
+  collaborators: string[]
   /**
    * Custom element to render in place of the default AvatarGroup.
    * Use this when you need tooltips, custom images, or other complex behavior.

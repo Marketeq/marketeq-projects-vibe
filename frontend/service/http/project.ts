@@ -41,6 +41,9 @@ export const ProjectAPI = {
       title?: string
       shortDescription?: string
       fullDescription?: string
+      projectType?: string
+      faqs?: Array<{ question: string; answer: string }>
+      videoUrl?: string
     } = {}
   ) => {
     return AxiosRequest.post(`${LISTINGS_BASE}/publish/project/draft`, data)
@@ -54,6 +57,9 @@ export const ProjectAPI = {
       title?: string
       shortDescription?: string
       fullDescription?: string
+      projectType?: string
+      faqs?: Array<{ question: string; answer: string }>
+      videoUrl?: string
     }
   ) => {
     return AxiosRequest.put(
