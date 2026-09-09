@@ -86,6 +86,7 @@ import {
   File as FileIcon,
   HelpCircle,
   Home03,
+  Info,
   Lightbulb03,
   Lightbulb05,
   Lock01,
@@ -242,6 +243,7 @@ import {
   ToastAction,
   Toaster,
   Tooltip,
+  TooltipArrow,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
@@ -12019,6 +12021,7 @@ const ProjectScopeEditStep = ({
   const [budgetAmount, setBudgetAmount] = useState(5000);
   const [projectTimelineMonths, setProjectTimelineMonths] = useState(3);
   const [budgetFrequency, setBudgetFrequency] = useState("week");
+  const [budgetTooltipOpen, setBudgetTooltipOpen] = useState(false);
   const normalizedSearchValue = normalizeSearchText(searchValue);
   const visiblePhases = normalizedSearchValue
     ? phases.filter((phase) => {
@@ -12458,49 +12461,88 @@ const ProjectScopeEditStep = ({
       <div className="bg-gray-50 px-5 py-10 md:px-10 min-[1024px]:px-[100px] min-[1024px]:pb-5 min-[1024px]:pt-[50px]">
         <div className="mx-auto flex max-w-[1240px] flex-col gap-8 min-[1180px]:flex-row min-[1180px]:items-start">
           <div className="min-w-0 flex-auto min-[1180px]:w-[886px]">
-            <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
-              Edit your scope
-            </h1>
-            <p className="mt-4 text-sm leading-5 text-dark-blue-400">
-              Modify the table as needed manually or with the help of Smart
-              Assistant, your project plan will adjust accordingly.
-            </p>
+            <div className="flex h-20 w-full shrink-0 flex-col items-center justify-center gap-4 self-stretch p-0">
+              <h1 className="h-11 shrink-0 self-stretch text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
+                Edit your scope
+              </h1>
+              <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                Modify the table as needed manually or with the help of Smart
+                Assistant, your project plan will adjust accordingly.
+              </p>
+            </div>
 
             <div className="mt-8 grid overflow-hidden rounded-[5px] border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] md:grid-cols-2">
-              <div className="flex items-center justify-between border-b border-gray-200 px-5 py-[22px] md:border-b-0 md:border-r">
-                <div>
-                  <div className="flex items-center gap-x-2 text-sm leading-5 font-semibold text-gray-400">
-                    Budget Calculator
+              <div className="flex h-[106px] flex-1 items-center gap-6 border-b border-gray-200 p-6 md:border-b-0 md:border-r">
+                <div className="flex h-[58px] flex-1 flex-col items-start gap-2 p-0">
+                  <div className="flex h-5 shrink-0 items-center gap-2 self-stretch p-0 text-sm leading-5 font-medium text-gray-400">
+                    <span className="h-5 w-[121px] shrink-0">
+                      Budget Calculator
+                    </span>
                     <TooltipProvider>
-                      <Tooltip>
+                      <Tooltip
+                        open={budgetTooltipOpen}
+                        onOpenChange={setBudgetTooltipOpen}
+                      >
                         <TooltipTrigger asChild>
                           <Button
                             variant="link"
                             type="button"
                             aria-label="Show budget calculator details"
-                            className="text-inherit"
+                            className="size-4 p-0 text-inherit"
+                            onClick={() =>
+                              setBudgetTooltipOpen((isOpen) => !isOpen)
+                            }
                           >
-                            <HelpCircle className="size-4" />
+                            <Info className="size-4" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>
-                          Estimated budget updates from scope, schedule, and
-                          role details.
+                        <TooltipContent
+                          side="right"
+                          align="center"
+                          sideOffset={12}
+                          visual="white"
+                          className="flex h-[226px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                        >
+                          <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                          <div className="flex h-[186px] w-[182.55px] shrink-0 items-center">
+                            <div>
+                              <p>
+                                Your budget updates automatically based on:
+                              </p>
+                              <ul className="my-4 list-disc pl-5">
+                                <li>Tasks</li>
+                                <li>Roles</li>
+                                <li>Location</li>
+                                <li>Experience level</li>
+                                <li>Task duration</li>
+                              </ul>
+                              <p>
+                                Any change here updates the budget shown in the
+                                sidebar.
+                              </p>
+                            </div>
+                          </div>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <div className="mt-3 flex items-center gap-x-1 text-dark-blue-400">
-                    <span className="text-2xl leading-8 font-semibold">
+                  <div className="flex h-[30px] shrink-0 items-baseline gap-1 self-stretch p-0 text-dark-blue-400">
+                    <span className="h-[29px] w-[87px] shrink-0 text-center text-2xl font-bold leading-[29px] capitalize">
                       ${budgetAmount.toLocaleString()}
                     </span>
-                    <span className="text-sm leading-5">per</span>
+                    <span className="h-[17px] w-[23px] shrink-0 text-sm font-medium leading-[17px]">
+                      per
+                    </span>
                     <Select
                       value={budgetFrequency}
                       onValueChange={setBudgetFrequency}
                     >
-                      <SelectTrigger className="h-8 gap-x-1 border-gray-200 px-3 text-sm leading-5 font-medium text-dark-blue-400">
+                      <SelectTrigger
+                        indicator={false}
+                        className="h-[25px] w-[66px] shrink-0 gap-1 rounded border-gray-300 px-[7px] py-[5px] text-sm font-medium leading-[17px] text-dark-blue-400 shadow-xs"
+                      >
                         <SelectValue />
+                        <ChevronDown className="size-3 shrink-0 text-gray-400" />
                       </SelectTrigger>
                       <SelectContent className="w-32">
                         {["week", "month"].map((frequency) => (
@@ -12517,14 +12559,16 @@ const ProjectScopeEditStep = ({
                     src="/job-listing/money-bag.png"
                     alt=""
                     aria-hidden="true"
-                    className="size-6"
+                    className="size-8"
                   />
                 </div>
               </div>
-              <div className="flex items-center justify-between px-5 py-[22px]">
-                <div>
-                  <div className="flex items-center gap-x-2 text-sm leading-5 font-semibold text-gray-400">
-                    Project Timeline Calculator
+              <div className="flex h-[105px] flex-1 items-start gap-6 p-6">
+                <div className="flex h-[57px] flex-1 flex-col items-start gap-2 p-0">
+                  <div className="flex h-5 shrink-0 items-center gap-2 self-stretch p-0 text-sm leading-5 font-medium text-gray-400">
+                    <span className="h-5 w-[180px] shrink-0">
+                      Project Timeline Calculator
+                    </span>
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -12532,21 +12576,45 @@ const ProjectScopeEditStep = ({
                             variant="link"
                             type="button"
                             aria-label="Show timeline calculator details"
-                            className="text-inherit"
+                            className="size-4 p-0 text-inherit"
                           >
-                            <HelpCircle className="size-4" />
+                            <Info className="size-4" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>
-                          Timeline updates from phase and task durations.
+                        <TooltipContent
+                          side="right"
+                          align="center"
+                          sideOffset={12}
+                          visual="white"
+                          className="flex h-[190px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                        >
+                          <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                          <div className="flex h-[150px] w-[182.55px] shrink-0 items-center">
+                            <div>
+                              <p>The project timeline adjusts based on:</p>
+                              <ul className="my-4 list-disc pl-5">
+                                <li>Task durations</li>
+                                <li>Assigned work schedules</li>
+                                <li>Number of team members</li>
+                              </ul>
+                              <p>
+                                Any change here will update the project's total
+                                length.
+                              </p>
+                            </div>
+                          </div>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <p className="mt-3 text-2xl leading-8 font-semibold text-dark-blue-400">
-                    {projectTimelineMonths}{" "}
-                    {projectTimelineMonths === 1 ? "month" : "months"}
-                  </p>
+                  <div className="flex h-[29px] shrink-0 items-baseline gap-1 self-stretch p-0 text-dark-blue-400">
+                    <span className="h-[29px] w-4 shrink-0 text-center text-2xl font-bold leading-[29px] capitalize">
+                      {projectTimelineMonths}
+                    </span>
+                    <span className="h-[17px] w-[51px] shrink-0 text-sm font-medium leading-[17px]">
+                      {projectTimelineMonths === 1 ? "month" : "months"}
+                    </span>
+                  </div>
                 </div>
                 <div className="flex h-14 w-14 items-center justify-center gap-2 rounded-[6px] bg-primary-50">
                   <img
