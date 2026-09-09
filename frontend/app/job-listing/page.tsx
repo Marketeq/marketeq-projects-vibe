@@ -10972,6 +10972,8 @@ const projectScopeEditPhases = [
   "Phase Five Research",
 ];
 
+const projectScopePhaseLabels = ["One", "Two", "Three", "Four", "Five"];
+
 const projectScopeEditRows = [
   {
     task: "Affinity Mapping",
@@ -12706,7 +12708,7 @@ const ProjectScopeEditStep = ({
                   >
                     <div className="flex h-14 items-center justify-center gap-4 border-b border-gray-200 p-3">
                       <div className="flex h-8 min-w-0 flex-1 flex-col items-start justify-end gap-1 self-stretch p-0">
-                        <div className="flex h-8 w-[219px] shrink-0 items-center gap-2 p-0">
+                        <div className="flex h-8 min-w-0 items-center gap-2 p-0">
                           <Button
                             variant="link"
                             type="button"
@@ -12725,12 +12727,12 @@ const ProjectScopeEditStep = ({
                               )}
                             />
                           </Button>
-                          <div className="flex h-7 w-[179px] shrink-0 items-center gap-1.5 p-0">
-                            <span className="inline-flex h-7 w-[94px] shrink-0 items-center whitespace-nowrap text-lg font-semibold leading-7 text-gray-black">
+                          <div className="flex h-7 min-w-0 items-center gap-1.5 p-0">
+                            <span className="inline-flex h-7 shrink-0 items-center whitespace-nowrap text-lg font-semibold leading-7 text-gray-black">
                               {phasePrimaryName}
                             </span>
                             {phaseSecondaryName ? (
-                              <span className="inline-flex h-5 w-[79px] shrink-0 items-center whitespace-nowrap text-lg font-light leading-5 text-gray-600">
+                              <span className="inline-flex h-5 min-w-0 items-center whitespace-nowrap text-lg font-light leading-5 text-gray-600">
                                 {phaseSecondaryName}
                               </span>
                             ) : null}
