@@ -12,12 +12,14 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { CheckoutService } from "./checkout.service";
+import { CheckoutDraftService } from "./checkout-draft.service";
 import { StripeService } from "../stripe/stripe.service";
 import { JwtAuthGuard } from "../guards/jwt-auth.guard";
 import { RolesGuard } from "../guards/roles.guard";
 import { Request } from "express";
 
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
+import { FindOrCreateDraftDto } from './dto/find-or-create-draft.dto';
 import { ApplyGiftCardDto } from './dto/apply-gift-card.dto';
 import { UseWalletDto } from './dto/use-wallet.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
@@ -38,7 +40,19 @@ export class CheckoutController {
   constructor(
     private readonly checkoutService: CheckoutService,
     private readonly stripeService: StripeService,
+    private readonly checkoutDraftService: CheckoutDraftService,
   ) {}
+
+  // ─── Checkout draft (read-only for now — seeded once, never edited) ──
+
+  @Post("drafts/find-or-create")
+  @UseGuards(JwtAuthGuard)
+  findOrCreateDraft(@Body() dto: FindOrCreateDraftDto, @Req() req: any) {
+    return this.checkoutDraftService.findOrCreate(req.user.sub, dto.listingId, {
+      phases: dto.phases,
+      projectCost: dto.projectCost,
+    });
+  }
 
   // ─── Existing Endpoints (now with auth + proper DTOs) ─────────────
 

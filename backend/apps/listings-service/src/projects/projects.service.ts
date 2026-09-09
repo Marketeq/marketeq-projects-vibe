@@ -170,11 +170,11 @@ export class ProjectsService {
     const visibleIds = memberIds.filter((id) => !inactiveIds.has(id));
     if (!visibleIds.length) return [];
 
-    const [users, skillRows, langRows] = await Promise.all([
+    const [users, skillRows, langRows, experienceRows] = await Promise.all([
       this.repo.manager.query<Array<{
         id: string; firstName: string; lastName: string; username: string | null;
         avatarUrl: string | null; recentJobTitle: string | null; location: string | null;
-        rate: number | null; rateMin: number | null; rateMax: number | null;
+        rate: string | null; rateMin: number | null; rateMax: number | null;
       }>>(
         `SELECT id::text, "firstName", "lastName", username, "avatarUrl", "recentJobTitle", location, rate, "rateMin", "rateMax"
          FROM user_service.users WHERE id = ANY($1::uuid[])`,
@@ -186,6 +186,10 @@ export class ProjectsService {
       ),
       this.repo.manager.query<Array<{ userId: string; name: string }>>(
         `SELECT "userId"::text, name FROM user_service.languages WHERE "userId" = ANY($1::uuid[])`,
+        [visibleIds],
+      ),
+      this.repo.manager.query<Array<{ userId: string; startDate: string | null; endDate: string | null }>>(
+        `SELECT "userId"::text, "startDate", "endDate" FROM user_service.experience WHERE "userId" = ANY($1::uuid[])`,
         [visibleIds],
       ),
     ]);
@@ -202,6 +206,19 @@ export class ProjectsService {
       arr.push(l.name);
       langsByUser.set(l.userId, arr);
     });
+    const experienceLevelByUser = new Map<string, string | null>();
+    const experienceEntriesByUser = new Map<
+      string,
+      Array<{ startDate: string | null; endDate: string | null }>
+    >();
+    experienceRows.forEach((e) => {
+      const arr = experienceEntriesByUser.get(e.userId) ?? [];
+      arr.push({ startDate: e.startDate, endDate: e.endDate });
+      experienceEntriesByUser.set(e.userId, arr);
+    });
+    experienceEntriesByUser.forEach((entries, userId) => {
+      experienceLevelByUser.set(userId, this.resolveExperienceLevel(entries));
+    });
 
     const ownerUserId = String(project.userId ?? '');
     return users
@@ -214,7 +231,11 @@ export class ProjectsService {
         avatarUrl: u.avatarUrl ?? null,
         role: u.recentJobTitle ?? 'Team Member',
         location: u.location ?? null,
-        rate: u.rate ?? u.rateMin ?? null,
+        // `rate` is a Postgres `numeric` column — node-postgres returns those
+        // as strings (not numbers) to avoid precision loss, so coerce here
+        // rather than leaking that quirk to callers expecting a real number.
+        rate: u.rate != null ? Number(u.rate) : (u.rateMin ?? null),
+        experienceLevel: experienceLevelByUser.get(u.id) ?? null,
         isLead: u.id === String(project.userId),
         isOnline: false,
         skills: skillsByUser.get(u.id) ?? [],
@@ -225,6 +246,35 @@ export class ProjectsService {
         if (b.id === ownerUserId) return 1;
         return visibleIds.indexOf(a.id) - visibleIds.indexOf(b.id);
       });
+  }
+
+  // Total career span across a user's real work-experience rows, bucketed
+  // into the same Student/Junior/Mediator/Senior/Guru brackets the
+  // checkout page's Experience dropdown already offers (0-2/2-3/3-5/5-10/10+
+  // years) — see the Dropdown component in
+  // frontend/app/checkout/[slug]/page.tsx.
+  private resolveExperienceLevel(
+    entries: Array<{ startDate: string | null; endDate: string | null }>,
+  ): string | null {
+    const starts: number[] = [];
+    const ends: number[] = [];
+    for (const entry of entries) {
+      const start = entry.startDate ? Date.parse(entry.startDate) : NaN;
+      if (!Number.isNaN(start)) starts.push(start);
+      const end = entry.endDate ? Date.parse(entry.endDate) : NaN;
+      ends.push(Number.isNaN(end) ? Date.now() : end);
+    }
+    if (!starts.length) return null;
+
+    const earliest = Math.min(...starts);
+    const latest = Math.max(...ends);
+    const years = (latest - earliest) / (1000 * 60 * 60 * 24 * 365.25);
+
+    if (years < 2) return 'Student';
+    if (years < 3) return 'Junior';
+    if (years < 5) return 'Mediator';
+    if (years < 10) return 'Senior';
+    return 'Guru';
   }
 
   async seedFromN8n(dto: Record<string, any>) {

@@ -14,7 +14,12 @@ import {
   getCheckoutProjectSummary,
   titleizeCheckoutSlug,
   type CheckoutProjectSummary,
+  type CheckoutRawTeamMember,
 } from "@/lib/checkout/project-summary"
+import {
+  getCheckoutScopeSummary,
+  type CheckoutScopeSummary,
+} from "@/lib/checkout/scope-summary"
 import { cn } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
 import {
@@ -154,8 +159,8 @@ const Dropdown = ({
   })
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="group bg-white data-[state=open]:bg-gray-100 hover:bg-gray-100 focus-visible:outline-none px-2 py-[5px] border border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed hover:border-gray-300 hover:border-dashed border-solid rounded-[5px] inline-flex items-center gap-x-1.5">
-        <span className="text-xs leading-[18px] font-medium text-gray-700">
+      <DropdownMenuTrigger className="group max-w-full overflow-hidden bg-white data-[state=open]:bg-gray-100 hover:bg-gray-100 focus-visible:outline-none px-2 py-[5px] border border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed hover:border-gray-300 hover:border-dashed border-solid rounded-[5px] inline-flex items-center gap-x-1.5">
+        <span className="min-w-0 truncate text-xs leading-[18px] font-medium text-gray-700">
           {state ? state : placeholder}
         </span>
         <ChevronDown className="group-data-[state=open]:inline-block hidden size-[18px] shrink-0 text-gray-500" />
@@ -225,8 +230,8 @@ const PhaseDropdown = ({
   })
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="group bg-white data-[state=open]:bg-gray-100 hover:bg-gray-100 focus-visible:outline-none px-2 py-[5px] border border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed hover:border-gray-300 hover:border-dashed border-solid rounded-[5px] inline-flex items-center gap-x-1.5">
-        <span className="text-xs leading-[18px] font-medium text-gray-700">
+      <DropdownMenuTrigger className="group max-w-full overflow-hidden bg-white data-[state=open]:bg-gray-100 hover:bg-gray-100 focus-visible:outline-none px-2 py-[5px] border border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed hover:border-gray-300 hover:border-dashed border-solid rounded-[5px] inline-flex items-center gap-x-1.5">
+        <span className="min-w-0 truncate text-xs leading-[18px] font-medium text-gray-700">
           {state || "Unassigned"}
         </span>
         <ChevronDown className="group-data-[state=open]:inline-block hidden size-[18px] shrink-0 text-gray-500" />
@@ -328,6 +333,27 @@ const replacementTeamMembers: CheckoutTeamMember[] = [
   },
 ]
 
+const phaseOrdinalWords = [
+  "One",
+  "Two",
+  "Three",
+  "Four",
+  "Five",
+  "Six",
+  "Seven",
+  "Eight",
+  "Nine",
+  "Ten",
+  "Eleven",
+  "Twelve",
+]
+
+// "Phase One", "Phase Two", ... is a generated label for the phase's
+// position, not part of the scope data — phase.phaseName (e.g.
+// "Reconnaissance") is the separate, real name shown next to it.
+const getPhaseOrdinalLabel = (phaseIndex: number): string =>
+  `Phase ${phaseOrdinalWords[phaseIndex] ?? phaseIndex + 1}`
+
 const safeDecodeSlug = (value: string): string => {
   try {
     return decodeURIComponent(value)
@@ -398,6 +424,9 @@ function CheckoutPageInner() {
     React.useState(!isTalentCheckout)
   const [projectSummaryError, setProjectSummaryError] = React.useState(false)
   const [projectSummaryRetryKey, setProjectSummaryRetryKey] = React.useState(0)
+  const [scopeSummary, setScopeSummary] =
+    React.useState<CheckoutScopeSummary | null>(null)
+  const [isScopeSummaryLoading, setIsScopeSummaryLoading] = React.useState(false)
   const [isTalentProfileLoading, setIsTalentProfileLoading] =
     React.useState(isTalentCheckout)
   const [selectedRateValue, setSelectedRateValue] = React.useState(
@@ -515,6 +544,29 @@ function CheckoutPageInner() {
 
   React.useEffect(() => {
     if (isTalentCheckout) return
+    const listingId = projectSummary?.id
+    if (!listingId) return
+
+    let isActive = true
+    setIsScopeSummaryLoading(true)
+
+    const loadScopeSummary = async () => {
+      const summary = await getCheckoutScopeSummary(listingId)
+      if (isActive) {
+        setScopeSummary(summary)
+        setIsScopeSummaryLoading(false)
+      }
+    }
+
+    loadScopeSummary()
+
+    return () => {
+      isActive = false
+    }
+  }, [isTalentCheckout, projectSummary?.id])
+
+  React.useEffect(() => {
+    if (isTalentCheckout) return
     if (!projectSummary) return
 
     setTeamMembers(
@@ -524,7 +576,7 @@ function CheckoutPageInner() {
         handle: member.username ? `@${member.username}` : "",
         role: member.role || "Team Member",
         phases: "Unassigned",
-        experience: "",
+        experience: member.experienceLevel || "",
         location: member.location || "",
         rate: member.rate ? `$${member.rate}/hr` : "Rate not set",
         status: "Confirmed",
@@ -532,6 +584,46 @@ function CheckoutPageInner() {
       }))
     )
   }, [isTalentCheckout, projectSummary])
+
+  // Scope tasks only carry a role name (from the listing's scope, not a real
+  // assignment), so the actual assignee shown here is looked up from the
+  // real assigned roster (`projectSummary.team`) by matching role — the same
+  // roster the Team Members tab renders. Falls back to "Unassigned" when no
+  // team member has been assigned to that role yet.
+  const assigneeByRole = React.useMemo(() => {
+    const map = new Map<string, CheckoutRawTeamMember>()
+    for (const member of projectSummary?.teamMembers ?? []) {
+      if (member.role && !map.has(member.role.trim().toLowerCase())) {
+        map.set(member.role.trim().toLowerCase(), member)
+      }
+    }
+    return map
+  }, [projectSummary?.teamMembers])
+
+  const getTaskAssignee = (roleName: string | null) =>
+    (roleName && assigneeByRole.get(roleName.trim().toLowerCase())) || null
+
+  const getTaskAssigneeName = (roleName: string | null) =>
+    getTaskAssignee(roleName)?.name || "Unassigned"
+
+  // Real phase names from this project's own scope, so the Team Members
+  // tab's Phase dropdown offers actual phases instead of an empty list.
+  const scopePhaseNames = React.useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (scopeSummary?.phases ?? [])
+            .map((phase) => phase.phaseName)
+            .filter(Boolean)
+        )
+      ),
+    [scopeSummary?.phases]
+  )
+
+  const getTaskAssigneeHandle = (roleName: string | null) => {
+    const username = getTaskAssignee(roleName)?.username
+    return username ? `@${username}` : null
+  }
 
   const talentName = talentProfile?.firstName || fallbackTalentName
   const talentUsername = talentProfile?.username || decodedSlug
@@ -1053,8 +1145,7 @@ function CheckoutPageInner() {
             }}
             className="inline-flex items-center gap-x-1 text-sm text-gray-500 hover:text-gray-700 transition-colors duration-300 mb-6"
           >
-            <ArrowLeft className="size-4" />{" "}
-            {isTalentCheckout ? "Back to profile" : "Back to project"}
+            <ArrowLeft className="size-4" /> Back
           </button>
 
           <h1 className="text-2xl leading-[.7] font-bold text-dark-blue-400">
@@ -1379,7 +1470,7 @@ function CheckoutPageInner() {
                 </>
               ) : (
                 <>
-                  <div className="p-5 border flex items-center gap-x-3 border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                  <div className="p-5 border flex items-center gap-x-3 border-gray-200 rounded-[8px] shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                     {isProjectSummaryLoading ? (
                       <div
                         className="relative h-[92px] overflow-hidden w-[181px] rounded-md shrink-0 bg-gray-100"
@@ -1409,7 +1500,7 @@ function CheckoutPageInner() {
                             <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
                           </div>
                         ) : (
-                          <h1 className="text-sm font-medium leading-5 border-gray-800">
+                          <h1 className="text-sm font-medium leading-5 text-gray-800">
                             {checkoutProjectTitle}
                           </h1>
                         )}
@@ -1447,7 +1538,7 @@ function CheckoutPageInner() {
                           )}
                         </div>
                       </div>
-                      <div className="inline-flex flex-col items-end gap-y-[26px]">
+                      <div className="self-stretch inline-flex flex-col items-end justify-between">
                         {isProjectSummaryLoading ? (
                           <div
                             className="relative h-6 w-16 overflow-hidden rounded bg-gray-100"
@@ -1475,7 +1566,7 @@ function CheckoutPageInner() {
                             </span>
                           )}
                           {!isProjectSummaryLoading && (
-                            <span className="inline-block text-dark-blue-400 text-xs leading-none">
+                            <span className="inline-block text-[#122a4b] text-xs leading-none">
                               Project Cost
                             </span>
                           )}
@@ -1487,15 +1578,15 @@ function CheckoutPageInner() {
                   <div className="mt-6">
                     <Tabs defaultValue="Project Scope">
                       <div className="flex items-center justify-between">
-                        <TabsList className="p-1 rounded-[5px] gap-x-2 h-11 bg-white border border-gray-200">
+                        <TabsList className="h-auto items-center p-1 rounded-[5px] gap-x-2 gap-y-0 bg-white border border-gray-200">
                           <DisclosureTrigger
-                            className="focus-visible:outline-none transition duration-300 h-9 shrink-0 inline-flex items-center justify-center py-2 px-3 text-xs leading-5 font-semibold rounded-[4px] data-[state=active]:bg-gray-100 text-gray-700"
+                            className="focus-visible:outline-none transition duration-300 h-9 shrink-0 inline-flex items-center justify-center py-2 px-3 text-xs leading-5 font-semibold rounded-[4px] text-gray-700 data-[state=active]:bg-gray-100 data-[state=inactive]:rounded-[6px] data-[state=inactive]:text-gray-500"
                             value="Project Scope"
                           >
                             Project Scope
                           </DisclosureTrigger>
                           <DisclosureTrigger
-                            className="focus-visible:outline-none transition duration-300 h-9 shrink-0 inline-flex items-center justify-center py-2 px-3 text-xs leading-5 font-semibold rounded-[4px] data-[state=active]:bg-gray-100 text-gray-700"
+                            className="focus-visible:outline-none transition duration-300 h-9 shrink-0 inline-flex items-center justify-center py-2 px-3 text-xs leading-5 font-semibold rounded-[4px] text-gray-700 data-[state=active]:bg-gray-100 data-[state=inactive]:rounded-[6px] data-[state=inactive]:text-gray-500"
                             value="Team Members"
                           >
                             Team Members
@@ -1512,30 +1603,31 @@ function CheckoutPageInner() {
                         </Button>
                       </div>
                       <TabsContent value="Team Members">
-                        <div className="rounded-lg mt-6 bg-white border border-gray-200 overflow-hidden">
-                          <Table>
+                        <div className="rounded-lg mt-6 bg-white border border-gray-200 shadow-xs overflow-hidden">
+                          <Table className="table-fixed">
                             <TableHeader className="bg-gray-50 [&_tr]:border-t-0">
                               <TableRow className="hover:bg-transparent">
-                                <TableHead className="bg-gray-50 hover:text-gray-600">
+                                <TableHead className="w-[24.66%] h-11 px-6 py-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600">
                                   <span className="inline-flex items-center gap-x-1">
                                     Name <ArrowDown className="size-[15px]" />
                                   </span>
                                 </TableHead>
-                                <TableHead className="bg-gray-50 hover:text-gray-600">
+                                <TableHead className="w-[13.5%] h-11 p-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600">
                                   Phase
                                 </TableHead>
-                                <TableHead className="bg-gray-50 hover:text-gray-600">
+                                <TableHead className="w-[13.5%] h-11 p-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600">
                                   Experience
                                 </TableHead>
-                                <TableHead className="bg-gray-50 hover:text-gray-600">
+                                <TableHead className="w-[13.5%] h-11 p-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600">
                                   Location
                                 </TableHead>
-                                <TableHead className="bg-gray-50 hover:text-gray-600">
+                                <TableHead className="w-[13.5%] h-11 p-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600">
                                   Rate
                                 </TableHead>
-                                <TableHead className="bg-gray-50 hover:text-gray-600">
+                                <TableHead className="w-[13.5%] h-11 p-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600">
                                   Status
                                 </TableHead>
+                                <TableHead className="w-[7.85%] h-11 pl-3 pr-6 py-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600" />
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -1543,11 +1635,11 @@ function CheckoutPageInner() {
                                 teamMembers.map((member) => (
                                   <TableRow
                                     key={member.id}
-                                    className="hover:bg-white"
+                                    className="h-[72px] hover:bg-white"
                                   >
-                                    <TableCell className="py-4 px-6">
-                                      <span className="inline-flex items-start gap-x-2">
-                                        <Avatar size="sm">
+                                    <TableCell className="h-[72px] pl-6 pr-3 py-4 align-middle">
+                                      <span className="flex items-center gap-x-2">
+                                        <Avatar size="sm" className="shrink-0">
                                           {member.avatarSrc ? (
                                             <AvatarImage
                                               src={member.avatarSrc}
@@ -1559,25 +1651,26 @@ function CheckoutPageInner() {
                                           </AvatarFallback>
                                         </Avatar>
 
-                                        <span className="inline-flex flex-col">
-                                          <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                            {member.name}
+                                        <span className="flex min-w-0 flex-col leading-[16.263px]">
+                                          <span className="flex items-baseline gap-x-px truncate text-xs text-dark-blue-400">
+                                            <span className="font-semibold">
+                                              {member.name}
+                                            </span>
+                                            {member.handle ? (
+                                              <span className="truncate font-normal">
+                                                {member.handle}
+                                              </span>
+                                            ) : null}
                                           </span>
-                                          {member.handle ? (
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              {member.handle}
-                                            </span>
-                                          ) : (
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              {member.role}
-                                            </span>
-                                          )}
+                                          <span className="truncate text-xs font-normal text-gray-500">
+                                            {member.role}
+                                          </span>
                                         </span>
                                       </span>
                                     </TableCell>
-                                    <TableCell className="py-4 px-6">
+                                    <TableCell className="h-[72px] p-3 align-middle">
                                       <PhaseDropdown
-                                        options={[]}
+                                        options={scopePhaseNames}
                                         value={member.phases}
                                         onValueChange={(value) =>
                                           setTeamMembers((current) =>
@@ -1590,27 +1683,28 @@ function CheckoutPageInner() {
                                         }
                                       />
                                     </TableCell>
-                                    <TableCell className="py-4 px-6">
+                                    <TableCell className="h-[72px] p-3 align-middle">
                                       <Dropdown
                                         defaultValue={member.experience}
+                                        placeholder="None"
                                       />
                                     </TableCell>
-                                    <TableCell className="py-4 px-6">
+                                    <TableCell className="h-[72px] p-3 align-middle">
                                       <CountriesCombobox
-                                        triggerClassName="group border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed data-[state=open]:bg-gray-100 hover:border-gray-300 hover:border-dashed bg-white hover:bg-gray-100 border-solid"
+                                        triggerClassName="group max-w-full overflow-hidden border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed data-[state=open]:bg-gray-100 hover:border-gray-300 hover:border-dashed bg-white hover:bg-gray-100 border-solid"
                                         defaultValue={member.location}
                                       />
                                     </TableCell>
-                                    <TableCell className="py-4 px-6">
+                                    <TableCell className="h-[72px] p-3 align-middle">
                                       <span className="whitespace-nowrap inline-block text-sm leading-5 text-gray-600">
                                         {member.rate}
                                       </span>
                                     </TableCell>
-                                    <TableCell className="py-4 px-6">
+                                    <TableCell className="h-[72px] p-3 align-middle">
                                       {renderTeamMemberStatus(member)}
                                     </TableCell>
 
-                                    <TableCell className="py-4 px-6">
+                                    <TableCell className="h-[72px] pl-3 pr-6 py-4 align-middle">
                                       {renderTeamMemberActions(member)}
                                     </TableCell>
                                   </TableRow>
@@ -1808,9 +1902,159 @@ function CheckoutPageInner() {
                       </TabsContent>
                       <TabsContent value="Project Scope">
                         <div className="mt-6">
-                          <p className="text-sm font-light text-dark-blue-400">
-                            Project scope unavailable.
-                          </p>
+                          {isScopeSummaryLoading ? (
+                            <div className="space-y-3" aria-hidden="true">
+                              <div className="relative h-14 overflow-hidden rounded-lg bg-gray-100">
+                                <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                              </div>
+                              <div className="relative h-14 overflow-hidden rounded-lg bg-gray-100">
+                                <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                              </div>
+                              <div className="relative h-14 overflow-hidden rounded-lg bg-gray-100">
+                                <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                              </div>
+                            </div>
+                          ) : scopeSummary && scopeSummary.phases.length > 0 ? (
+                            <Accordion
+                              type="multiple"
+                              defaultValue={scopeSummary.phases.map((phase) => phase.id)}
+                              className="flex-auto space-y-3"
+                            >
+                              {scopeSummary.phases.map((phase, phaseIndex) => {
+                                // Dummy 7-day-per-phase timeline (no real start/end
+                                // dates exist yet): phase N spans Day (8N+1) - Day (8N+8).
+                                const phaseStartDay = phaseIndex * 8 + 1
+                                const phaseEndDay = phaseStartDay + 7
+
+                                return (
+                                <AccordionItem
+                                  key={phase.id}
+                                  value={phase.id}
+                                  className="overflow-hidden rounded-lg border border-gray-200 shadow-xs bg-white"
+                                >
+                                  <div className="flex items-center justify-between gap-x-4 border-b border-gray-200 p-3">
+                                    <div className="inline-flex items-center gap-x-2">
+                                      <AccordionTrigger asChild>
+                                        <IconButton
+                                          variant="ghost"
+                                          visual="gray"
+                                          className="size-8"
+                                        >
+                                          <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                                        </IconButton>
+                                      </AccordionTrigger>
+
+                                      <span className="inline-flex items-center gap-x-1.5 text-base md:text-[18px] whitespace-nowrap">
+                                        <span className="font-semibold leading-7 text-gray-900">
+                                          {getPhaseOrdinalLabel(phaseIndex)}
+                                        </span>
+                                        <span className="font-light leading-5 text-gray-600">
+                                          {phase.phaseName}
+                                        </span>
+                                      </span>
+                                    </div>
+
+                                    <div className="inline-flex items-center gap-x-8">
+                                      <span className="inline-flex items-center gap-x-2 text-[13px] font-semibold leading-none text-[#122a4b]">
+                                        <span>Day {phaseStartDay}</span>
+                                        <span>-</span>
+                                        <span>Day {phaseEndDay}</span>
+                                      </span>
+
+                                      <Button
+                                        variant="outlined"
+                                        visual="gray"
+                                        className="bg-white"
+                                        onClick={() => setCheckoutExitDialog("add-task")}
+                                      >
+                                        <Plus className="size-[15px]" />
+                                        Add task
+                                      </Button>
+                                    </div>
+                                  </div>
+
+                                  <DisclosureContent>
+                                    <Table className="table-fixed">
+                                        <TableHeader className="bg-gray-50 [&_tr]:border-y-0 [&_tr]:border-b">
+                                          <TableRow className="hover:bg-transparent">
+                                            <TableHead className="w-[22.93%] h-[44px] px-6 py-3 text-xs leading-[18px] font-medium text-gray-600 hover:text-gray-600">
+                                              Task
+                                            </TableHead>
+                                            <TableHead className="w-[40.52%] h-[44px] px-6 py-3 text-xs leading-[18px] font-medium text-gray-600 hover:text-gray-600">
+                                              Description
+                                            </TableHead>
+                                            <TableHead className="w-[23.30%] h-[44px] px-6 py-3 text-xs leading-[18px] font-medium text-gray-600 hover:text-gray-600">
+                                              Assignee
+                                            </TableHead>
+                                            <TableHead className="w-[13.26%] h-[44px] px-6 py-3 text-xs leading-[18px] font-medium text-gray-600 hover:text-gray-600">
+                                              Duration
+                                            </TableHead>
+                                          </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                          {phase.tasks.map((task) => (
+                                            <TableRow
+                                              key={task.id}
+                                              className="h-[72px] hover:bg-white"
+                                            >
+                                              <TableCell className="h-[72px] px-6 py-4 align-middle">
+                                                <span className="block truncate text-sm leading-5 font-semibold text-gray-900">
+                                                  {task.title}
+                                                </span>
+                                              </TableCell>
+                                              <TableCell className="h-[72px] px-6 py-4 align-middle">
+                                                <span className="line-clamp-2 text-sm leading-5 font-normal text-gray-600">
+                                                  {task.description || "No description provided"}
+                                                </span>
+                                              </TableCell>
+                                              <TableCell className="h-[72px] px-6 py-4 align-middle">
+                                                <span className="flex items-center gap-x-2">
+                                                  <Avatar size="sm" className="shrink-0">
+                                                    {getTaskAssignee(task.roleName)?.avatarUrl ? (
+                                                      <AvatarImage
+                                                        src={getTaskAssignee(task.roleName)!.avatarUrl!}
+                                                        alt={getTaskAssigneeName(task.roleName)}
+                                                      />
+                                                    ) : null}
+                                                    <AvatarFallback>
+                                                      {getTaskAssigneeName(task.roleName)
+                                                        .slice(0, 1)
+                                                        .toUpperCase()}
+                                                    </AvatarFallback>
+                                                  </Avatar>
+                                                  <span className="flex min-w-0 flex-col leading-[16.263px]">
+                                                    <span className="truncate text-xs font-semibold text-gray-900">
+                                                      {getTaskAssigneeName(task.roleName)}
+                                                    </span>
+                                                    {getTaskAssigneeHandle(task.roleName) ? (
+                                                      <span className="truncate text-xs font-normal text-gray-500">
+                                                        {getTaskAssigneeHandle(task.roleName)}
+                                                      </span>
+                                                    ) : null}
+                                                  </span>
+                                                </span>
+                                              </TableCell>
+                                              <TableCell className="h-[72px] px-6 py-4 align-middle">
+                                                <span className="text-sm leading-5 text-nowrap font-normal text-gray-600">
+                                                  {task.estimatedHours
+                                                    ? `${task.estimatedHours} hours`
+                                                    : "Duration unavailable"}
+                                                </span>
+                                              </TableCell>
+                                            </TableRow>
+                                          ))}
+                                        </TableBody>
+                                    </Table>
+                                  </DisclosureContent>
+                                </AccordionItem>
+                                )
+                              })}
+                            </Accordion>
+                          ) : (
+                            <p className="text-sm font-light text-dark-blue-400">
+                              Project scope unavailable.
+                            </p>
+                          )}
                         </div>
                       </TabsContent>
                     </Tabs>
@@ -1819,8 +2063,8 @@ function CheckoutPageInner() {
               )}
             </div>
             <div className="w-[305px] shrink-0 bg-white">
-              <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,0.02)]">
-                <h1 className="text-base font-semibold leading-none text-dark-blue-400">
+              <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_2.5px_0px_rgba(16,24,40,0.02)]">
+                <h1 className="text-base font-semibold leading-[normal] text-dark-blue-400">
                   Price Details
                 </h1>
 
@@ -2079,7 +2323,7 @@ function CheckoutPageInner() {
                     size="md"
                     onClick={continueToPaymentDetails}
                   >
-                    {isTalentCheckout ? "Proceed to Payment" : "Continue"}
+                    Proceed to Payment
                   </Button>
                 </div>
 
@@ -2119,7 +2363,7 @@ function CheckoutPageInner() {
                 </div>
 
                 <div className="mt-[21.33px] flex items-center justify-center">
-                  <Button variant="link" visual="gray">
+                  <Button variant="link" visual="gray" className="text-xs">
                     Add Gift Card / Promo Code
                   </Button>
                 </div>
