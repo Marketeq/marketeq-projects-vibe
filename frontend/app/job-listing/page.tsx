@@ -12457,7 +12457,7 @@ const ProjectScopeEditStep = ({
     >
       <div className="bg-gray-50 px-5 py-10 md:px-10 min-[1024px]:px-[100px] min-[1024px]:pb-5 min-[1024px]:pt-[50px]">
         <div className="mx-auto flex max-w-[1240px] flex-col gap-8 min-[1180px]:flex-row min-[1180px]:items-start">
-          <div className="min-w-0 flex-auto min-[1180px]:w-[887px]">
+          <div className="min-w-0 flex-auto min-[1180px]:w-[886px]">
             <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
               Edit your scope
             </h1>
@@ -12939,21 +12939,30 @@ const ProjectScopeEditStep = ({
             </div>
           </div>
 
-          <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
-            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
+          <div className="flex h-[654px] w-full shrink-0 flex-col rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1180px]:w-[322px] self-start">
+            <div className="flex h-12 shrink-0 self-stretch items-start justify-between gap-2 border-b border-gray-200 px-5 py-3">
+              <h2 className="h-6 flex-1 text-base leading-6 font-semibold text-dark-blue-400">
                 Smart Assistant
               </h2>
-              <Copy className="size-5 text-gray-400" />
+              <img
+                src="/job-listing/smart-assistant-robot.png"
+                alt=""
+                aria-hidden="true"
+                width={20}
+                height={20}
+                className="size-5 shrink-0"
+              />
             </div>
-            <div className="p-5">
-              <h3 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                What do you want to do?
-              </h3>
-              <p className="text-sm leading-5 text-dark-blue-400">
-                Here are some suggestions:
-              </p>
-              <div className="mt-4 space-y-3">
+            <div className="flex h-[486px] shrink-0 grow flex-col items-start gap-4 self-stretch px-5 pt-5">
+              <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
+                <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
+                  What do you want to do?
+                </h3>
+                <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                  Here are some suggestions:
+                </p>
+              </div>
+              <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
                 {[
                   "Reduce the budget",
                   "Shorten the project timeline",
@@ -12961,13 +12970,56 @@ const ProjectScopeEditStep = ({
                 ].map((item) => (
                   <Button
                     key={item}
-                    className="h-10 rounded-full"
+                    className={cn(
+                      "h-10 rounded-full py-2.5 pl-4 pr-6 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                      item === "Reduce the budget" &&
+                        "w-full max-w-[195px] justify-start bg-white",
+                      item === "Shorten the project timeline" &&
+                        "w-[253px] justify-start bg-white",
+                      item === "Improve scope quality" &&
+                        "w-[214px] justify-start bg-white",
+                    )}
                     variant="outlined"
                     visual="gray"
                     onClick={() => runProjectAssistant(item)}
                   >
-                    <Copy className="size-4 text-gray-400" />
-                    {item}
+                    {item === "Reduce the budget" ? (
+                      <>
+                        <img
+                          src="/job-listing/smart-assistant-money-bag.png"
+                          alt=""
+                          aria-hidden="true"
+                          width={20}
+                          height={20}
+                          className="size-5 shrink-0"
+                        />
+                        <span className="h-5 w-[127px] shrink-0">{item}</span>
+                      </>
+                    ) : item === "Shorten the project timeline" ? (
+                      <>
+                        <img
+                          src="/job-listing/smart-assistant-timeline.png"
+                          alt=""
+                          aria-hidden="true"
+                          width={20}
+                          height={20}
+                          className="size-5 shrink-0"
+                        />
+                        <span className="h-5 w-[185px] shrink-0">{item}</span>
+                      </>
+                    ) : (
+                      <>
+                        <img
+                          src="/job-listing/smart-assistant-target.png"
+                          alt=""
+                          aria-hidden="true"
+                          width={20}
+                          height={20}
+                          className="size-5 shrink-0"
+                        />
+                        <span className="h-5 w-[146px] shrink-0">{item}</span>
+                      </>
+                    )}
                   </Button>
                 ))}
               </div>
@@ -12976,17 +13028,27 @@ const ProjectScopeEditStep = ({
                   {assistantResult}
                 </p>
               ) : null}
-              <div className="mt-[310px] rounded-[5px] border border-gray-300 bg-white p-3 shadow-xs">
+            </div>
+            <div className="flex h-[120px] w-[322px] shrink-0 flex-col items-start gap-2 self-stretch p-5">
+              <div className="flex h-20 w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3">
                 <Textarea
-                  className="h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-gray-500 shadow-none focus:border-transparent focus:ring-0"
+                  className="h-5 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-gray-500 shadow-none focus:border-transparent focus:ring-0"
                   placeholder="I want to change..."
                   value={assistantMessage}
                   onChange={(event) => setAssistantMessage(event.target.value)}
                 />
-                <div className="flex items-center justify-between">
-                  <RefreshCcw05 className="size-4 text-gray-400" />
+                <div className="flex h-6 w-[260px] shrink-0 self-stretch items-center justify-between gap-2 p-0">
+                  <img
+                    src="/job-listing/smart-assistant-wand.png"
+                    alt=""
+                    aria-hidden="true"
+                    width={20}
+                    height={20}
+                    className="size-5 shrink-0"
+                  />
                   <Button
-                    className="size-8 rounded-full p-0"
+                    className="size-6 rounded-full p-1 opacity-50 shadow-none"
+                    aria-label="Send message to Smart Assistant"
                     disabled={!assistantMessage.trim() || isAssistantLoading}
                     onClick={() => runProjectAssistant(assistantMessage)}
                   >
