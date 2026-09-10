@@ -204,6 +204,11 @@ import {
   Badge,
   Button,
   Card,
+  Combobox,
+  ComboboxInput,
+  ComboboxOption,
+  ComboboxOptions,
+  ComboboxTrigger,
   Dialog,
   DialogClose,
   DialogContent,
@@ -12056,6 +12061,14 @@ const ProjectScopeEditStep = ({
   const [searchValue, setSearchValue] = useState("")
   const [activeRoleKey, setActiveRoleKey] = useState<string | null>(null)
   const [draftRole, setDraftRole] = useState("")
+  const [roleAutocompleteOptions, setRoleAutocompleteOptions] = useState<
+    string[]
+  >([])
+  const [isRoleAutocompleteOpen, setRoleAutocompleteOpen] = useState(false)
+  const roleAutocompleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  )
+  const roleAutocompleteRequestIdRef = useRef(0)
   const [draftSchedule, setDraftSchedule] =
     useState<JobListingWorkSchedule>("full_time")
   const [draftCustomHours, setDraftCustomHours] = useState("15")
@@ -12102,6 +12115,57 @@ const ProjectScopeEditStep = ({
     () => getProjectTimelineMonthsFromScope(phases),
     [phases]
   )
+
+  useEffect(() => {
+    const query = draftRole.trim()
+
+    if (roleAutocompleteTimerRef.current) {
+      clearTimeout(roleAutocompleteTimerRef.current)
+    }
+
+    if (!activeRoleKey || !query) {
+      setRoleAutocompleteOptions([])
+      setRoleAutocompleteOpen(false)
+      return
+    }
+
+    roleAutocompleteTimerRef.current = setTimeout(async () => {
+      const currentRequestId = ++roleAutocompleteRequestIdRef.current
+
+      try {
+        const response = await AutocompleteAPI.getByType(
+          "job_titles",
+          query,
+          10
+        )
+        if (currentRequestId !== roleAutocompleteRequestIdRef.current) return
+
+        const apiValues: AutocompleteTypeSuggestion[] = Array.isArray(
+          response?.data
+        )
+          ? response.data
+          : []
+        const options = getUniqueOptions(
+          apiValues.map((item) => normalizeAutocompleteLabel(item))
+        ).filter(
+          (option) => option.toLowerCase() !== query.toLowerCase()
+        )
+
+        setRoleAutocompleteOptions(options)
+        setRoleAutocompleteOpen(options.length > 0)
+      } catch {
+        if (currentRequestId !== roleAutocompleteRequestIdRef.current) return
+        setRoleAutocompleteOptions([])
+        setRoleAutocompleteOpen(false)
+      }
+    }, 250)
+
+    return () => {
+      if (roleAutocompleteTimerRef.current) {
+        clearTimeout(roleAutocompleteTimerRef.current)
+      }
+    }
+  }, [activeRoleKey, draftRole])
 
   useEffect(() => {
     let cancelled = false
@@ -12494,6 +12558,8 @@ const ProjectScopeEditStep = ({
     const key = `${phaseName}-${row.id}`
     setActiveRoleKey(key)
     setDraftRole(row.role ?? "")
+    setRoleAutocompleteOptions([])
+    setRoleAutocompleteOpen(false)
     setDraftSchedule(row.workSchedule ?? "full_time")
     setDraftCustomHours(String(row.customHours ?? row.duration?.value ?? 15))
     setDraftCustomFrequency(row.customFrequency ?? "per_week")
@@ -12511,6 +12577,7 @@ const ProjectScopeEditStep = ({
         draftSchedule === "custom" ? draftCustomFrequency : undefined,
     })
     setActiveRoleKey(null)
+    setRoleAutocompleteOpen(false)
   }
 
   useIsomorphicLayoutEffect(() => {
@@ -13094,7 +13161,7 @@ const ProjectScopeEditStep = ({
                                 >
                                   {row.role}
                                 </Button>
-                                <p className="h-[18px] w-[50px] text-xs font-normal leading-[18px] text-gray-400">
+                                <p className="h-[18px] shrink-0 whitespace-nowrap text-xs font-normal leading-[18px] text-gray-400">
                                   {formatProjectRowSchedule(row)}
                                 </p>
                               </div>
@@ -13182,13 +13249,65 @@ const ProjectScopeEditStep = ({
                                         <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
                                           Role
                                         </Label>
-                                        <Input
-                                          className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs focus:ring-0"
+                                        <Combobox
+                                          className="w-[323px]"
                                           value={draftRole}
-                                          onChange={(event) =>
-                                            setDraftRole(event.target.value)
-                                          }
-                                        />
+                                          onChange={(value) => {
+                                            setDraftRole(String(value ?? ""))
+                                            setRoleAutocompleteOpen(false)
+                                          }}
+                                          nullable
+                                        >
+                                          <ComboboxTrigger>
+                                            <ComboboxInput
+                                              className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs focus:ring-0 ui-open:pl-[14px]"
+                                              value={draftRole}
+                                              onChange={(event) =>
+                                                setDraftRole(
+                                                  event.target.value
+                                                )
+                                              }
+                                              onClick={() =>
+                                                setRoleAutocompleteOpen(
+                                                  roleAutocompleteOptions.length >
+                                                    0
+                                                )
+                                              }
+                                              onFocus={() =>
+                                                setRoleAutocompleteOpen(
+                                                  roleAutocompleteOptions.length >
+                                                    0
+                                                )
+                                              }
+                                              onBlur={() =>
+                                                setTimeout(
+                                                  () =>
+                                                    setRoleAutocompleteOpen(
+                                                      false
+                                                    ),
+                                                  150
+                                                )
+                                              }
+                                            />
+                                          </ComboboxTrigger>
+
+                                          {isRoleAutocompleteOpen ? (
+                                            <ComboboxOptions className="h-[120px] w-[323px] overflow-hidden">
+                                              <ScrollArea viewportClassName="h-[120px]">
+                                                {roleAutocompleteOptions.map(
+                                                  (option) => (
+                                                    <ComboboxOption
+                                                      key={option}
+                                                      value={option}
+                                                    >
+                                                      {option}
+                                                    </ComboboxOption>
+                                                  )
+                                                )}
+                                              </ScrollArea>
+                                            </ComboboxOptions>
+                                          ) : null}
+                                        </Combobox>
                                       </div>
                                       <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
                                         <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
@@ -15258,6 +15377,14 @@ const ServiceScopeEditStep = ({
     string | null
   >(null);
   const [draftServiceRole, setDraftServiceRole] = useState("");
+  const [serviceRoleAutocompleteOptions, setServiceRoleAutocompleteOptions] =
+    useState<string[]>([]);
+  const [isServiceRoleAutocompleteOpen, setServiceRoleAutocompleteOpen] =
+    useState(false);
+  const serviceRoleAutocompleteTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  const serviceRoleAutocompleteRequestIdRef = useRef(0);
   const [draftServiceSchedule, setDraftServiceSchedule] =
     useState<JobListingWorkSchedule>("full_time");
   const [draftServiceCustomHours, setDraftServiceCustomHours] = useState("15");
@@ -15287,6 +15414,61 @@ const ServiceScopeEditStep = ({
         return phaseText.includes(normalizedSearchValue);
       })
     : phases;
+
+  useEffect(() => {
+    const query = draftServiceRole.trim();
+
+    if (serviceRoleAutocompleteTimerRef.current) {
+      clearTimeout(serviceRoleAutocompleteTimerRef.current);
+    }
+
+    if (!activeServiceRoleKey || !query) {
+      setServiceRoleAutocompleteOptions([]);
+      setServiceRoleAutocompleteOpen(false);
+      return;
+    }
+
+    serviceRoleAutocompleteTimerRef.current = setTimeout(async () => {
+      const currentRequestId = ++serviceRoleAutocompleteRequestIdRef.current;
+
+      try {
+        const response = await AutocompleteAPI.getByType(
+          "job_titles",
+          query,
+          10,
+        );
+        if (currentRequestId !== serviceRoleAutocompleteRequestIdRef.current) {
+          return;
+        }
+
+        const apiValues: AutocompleteTypeSuggestion[] = Array.isArray(
+          response?.data,
+        )
+          ? response.data
+          : [];
+        const options = getUniqueOptions(
+          apiValues.map((item) => normalizeAutocompleteLabel(item)),
+        ).filter(
+          (option) => option.toLowerCase() !== query.toLowerCase(),
+        );
+
+        setServiceRoleAutocompleteOptions(options);
+        setServiceRoleAutocompleteOpen(options.length > 0);
+      } catch {
+        if (currentRequestId !== serviceRoleAutocompleteRequestIdRef.current) {
+          return;
+        }
+        setServiceRoleAutocompleteOptions([]);
+        setServiceRoleAutocompleteOpen(false);
+      }
+    }, 250);
+
+    return () => {
+      if (serviceRoleAutocompleteTimerRef.current) {
+        clearTimeout(serviceRoleAutocompleteTimerRef.current);
+      }
+    };
+  }, [activeServiceRoleKey, draftServiceRole]);
 
   useEffect(() => {
     if (didApplyPersistedScopeRef.current) return;
@@ -15365,6 +15547,8 @@ const ServiceScopeEditStep = ({
 
     setActiveServiceRoleKey(key);
     setDraftServiceRole(row.role ?? "");
+    setServiceRoleAutocompleteOptions([]);
+    setServiceRoleAutocompleteOpen(false);
     setDraftServiceSchedule(row.workSchedule ?? "full_time");
     setDraftServiceCustomHours(
       String(row.customHours ?? (Number(durationValue) || 15)),
@@ -15388,6 +15572,7 @@ const ServiceScopeEditStep = ({
         : {}),
     });
     setActiveServiceRoleKey(null);
+    setServiceRoleAutocompleteOpen(false);
   };
 
   const updatePhaseRecurrence = (
@@ -16237,13 +16422,65 @@ const ServiceScopeEditStep = ({
                                   <Label className="text-xs leading-[18px] text-dark-blue-400">
                                     Role
                                   </Label>
-                                  <Input
-                                    className="mt-1.5 h-9 text-sm leading-5"
+                                  <Combobox
+                                    className="mt-1.5 w-full"
                                     value={draftServiceRole}
-                                    onChange={(event) =>
-                                      setDraftServiceRole(event.target.value)
-                                    }
-                                  />
+                                    onChange={(value) => {
+                                      setDraftServiceRole(String(value ?? ""));
+                                      setServiceRoleAutocompleteOpen(false);
+                                    }}
+                                    nullable
+                                  >
+                                    <ComboboxTrigger>
+                                      <ComboboxInput
+                                        className="h-9 text-sm leading-5 ui-open:pl-3"
+                                        value={draftServiceRole}
+                                        onChange={(event) =>
+                                          setDraftServiceRole(
+                                            event.target.value,
+                                          )
+                                        }
+                                        onClick={() =>
+                                          setServiceRoleAutocompleteOpen(
+                                            serviceRoleAutocompleteOptions.length >
+                                              0,
+                                          )
+                                        }
+                                        onFocus={() =>
+                                          setServiceRoleAutocompleteOpen(
+                                            serviceRoleAutocompleteOptions.length >
+                                              0,
+                                          )
+                                        }
+                                        onBlur={() =>
+                                          setTimeout(
+                                            () =>
+                                              setServiceRoleAutocompleteOpen(
+                                                false,
+                                              ),
+                                            150,
+                                          )
+                                        }
+                                      />
+                                    </ComboboxTrigger>
+
+                                    {isServiceRoleAutocompleteOpen ? (
+                                      <ComboboxOptions className="h-[120px] overflow-hidden">
+                                        <ScrollArea viewportClassName="h-[120px]">
+                                          {serviceRoleAutocompleteOptions.map(
+                                            (option) => (
+                                              <ComboboxOption
+                                                key={option}
+                                                value={option}
+                                              >
+                                                {option}
+                                              </ComboboxOption>
+                                            ),
+                                          )}
+                                        </ScrollArea>
+                                      </ComboboxOptions>
+                                    ) : null}
+                                  </Combobox>
                                   <div className="mt-4">
                                     <Label className="text-xs leading-[18px] text-dark-blue-400">
                                       Work Schedule
@@ -16916,6 +17153,14 @@ const TeamRoles = ({
   );
   const [activeRoleIndex, setActiveRoleIndex] = useState<number | null>(null);
   const [draftRoleTitle, setDraftRoleTitle] = useState("");
+  const [teamRoleAutocompleteOptions, setTeamRoleAutocompleteOptions] =
+    useState<string[]>([]);
+  const [isTeamRoleAutocompleteOpen, setTeamRoleAutocompleteOpen] =
+    useState(false);
+  const teamRoleAutocompleteTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  const teamRoleAutocompleteRequestIdRef = useRef(0);
   const [rows, setRows] = useState<TeamRoleRow[]>(() => {
     const scopedRows = projectScopeState?.[0]?.rows ?? [];
 
@@ -16944,20 +17189,81 @@ const TeamRoles = ({
       ),
     );
   };
+  useEffect(() => {
+    const query = draftRoleTitle.trim();
+
+    if (teamRoleAutocompleteTimerRef.current) {
+      clearTimeout(teamRoleAutocompleteTimerRef.current);
+    }
+
+    if (!roleDialogMode || !query) {
+      setTeamRoleAutocompleteOptions([]);
+      setTeamRoleAutocompleteOpen(false);
+      return;
+    }
+
+    teamRoleAutocompleteTimerRef.current = setTimeout(async () => {
+      const currentRequestId = ++teamRoleAutocompleteRequestIdRef.current;
+
+      try {
+        const response = await AutocompleteAPI.getByType(
+          "job_titles",
+          query,
+          10,
+        );
+        if (currentRequestId !== teamRoleAutocompleteRequestIdRef.current) {
+          return;
+        }
+
+        const apiValues: AutocompleteTypeSuggestion[] = Array.isArray(
+          response?.data,
+        )
+          ? response.data
+          : [];
+        const options = getUniqueOptions(
+          apiValues.map((item) => normalizeAutocompleteLabel(item)),
+        ).filter(
+          (option) => option.toLowerCase() !== query.toLowerCase(),
+        );
+
+        setTeamRoleAutocompleteOptions(options);
+        setTeamRoleAutocompleteOpen(options.length > 0);
+      } catch {
+        if (currentRequestId !== teamRoleAutocompleteRequestIdRef.current) {
+          return;
+        }
+        setTeamRoleAutocompleteOptions([]);
+        setTeamRoleAutocompleteOpen(false);
+      }
+    }, 250);
+
+    return () => {
+      if (teamRoleAutocompleteTimerRef.current) {
+        clearTimeout(teamRoleAutocompleteTimerRef.current);
+      }
+    };
+  }, [draftRoleTitle, roleDialogMode]);
+
   const closeRoleDialog = () => {
     setRoleDialogMode(null);
     setActiveRoleIndex(null);
     setDraftRoleTitle("");
+    setTeamRoleAutocompleteOptions([]);
+    setTeamRoleAutocompleteOpen(false);
   };
   const openAddRoleDialog = () => {
     setRoleDialogMode("add");
     setActiveRoleIndex(null);
     setDraftRoleTitle("");
+    setTeamRoleAutocompleteOptions([]);
+    setTeamRoleAutocompleteOpen(false);
   };
   const openRenameRoleDialog = (rowIndex: number) => {
     setRoleDialogMode("rename");
     setActiveRoleIndex(rowIndex);
     setDraftRoleTitle(rows[rowIndex]?.role ?? "");
+    setTeamRoleAutocompleteOptions([]);
+    setTeamRoleAutocompleteOpen(false);
   };
   const saveRoleDialog = () => {
     const role = draftRoleTitle.trim();
@@ -17359,18 +17665,55 @@ const TeamRoles = ({
             <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
               Role title
             </Label>
-            <Input
-              className="mt-2 h-11"
-              placeholder="e.g. Front-End Developer"
+            <Combobox
+              className="mt-2 w-full"
               value={draftRoleTitle}
-              onChange={(event) => setDraftRoleTitle(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  saveRoleDialog();
-                }
+              onChange={(value) => {
+                setDraftRoleTitle(String(value ?? ""));
+                setTeamRoleAutocompleteOpen(false);
               }}
-            />
+              nullable
+            >
+              <ComboboxTrigger>
+                <ComboboxInput
+                  className="h-11 ui-open:pl-3"
+                  placeholder="e.g. Front-End Developer"
+                  value={draftRoleTitle}
+                  onChange={(event) => setDraftRoleTitle(event.target.value)}
+                  onClick={() =>
+                    setTeamRoleAutocompleteOpen(
+                      teamRoleAutocompleteOptions.length > 0,
+                    )
+                  }
+                  onFocus={() =>
+                    setTeamRoleAutocompleteOpen(
+                      teamRoleAutocompleteOptions.length > 0,
+                    )
+                  }
+                  onBlur={() =>
+                    setTimeout(() => setTeamRoleAutocompleteOpen(false), 150)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      saveRoleDialog();
+                    }
+                  }}
+                />
+              </ComboboxTrigger>
+
+              {isTeamRoleAutocompleteOpen ? (
+                <ComboboxOptions className="h-[120px] overflow-hidden">
+                  <ScrollArea viewportClassName="h-[120px]">
+                    {teamRoleAutocompleteOptions.map((option) => (
+                      <ComboboxOption key={option} value={option}>
+                        {option}
+                      </ComboboxOption>
+                    ))}
+                  </ScrollArea>
+                </ComboboxOptions>
+              ) : null}
+            </Combobox>
           </div>
           <DialogFooter className="mt-8 grid grid-cols-2 gap-3">
             <Button
