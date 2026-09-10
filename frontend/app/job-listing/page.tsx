@@ -12062,11 +12062,13 @@ const ProjectScopeEditStep = ({
   const [draftCustomFrequency, setDraftCustomFrequency] = useState("per_week")
   const [assistantMessage, setAssistantMessage] = useState("")
   const [assistantResult, setAssistantResult] = useState("")
+  const [assistantLastPrompt, setAssistantLastPrompt] = useState("")
   const [isAssistantLoading, setIsAssistantLoading] = useState(false)
   const didGenerateInitialScopeRef = useRef(false)
   const didApplyPersistedScopeRef = useRef(false)
   const skipNextProjectScopeSaveRef = useRef(false)
   const lastSavedProjectScopeSignatureRef = useRef("")
+  const assistantUndoSnapshotRef = useRef<Phase[] | null>(null)
   const [budgetAmount, setBudgetAmount] = useState(5000)
   const [isBudgetStale, setIsBudgetStale] = useState(false)
   const [budgetRefreshKey, setBudgetRefreshKey] = useState(0)
@@ -12402,10 +12404,14 @@ const ProjectScopeEditStep = ({
   }
 
   const runProjectAssistant = async (message: string) => {
-    if (!message.trim()) return
+    const prompt = message.trim()
+    if (!prompt) return
+
+    assistantUndoSnapshotRef.current = phases
+    setAssistantLastPrompt(prompt)
 
     if (!jobListingId) {
-      applyProjectAssistantFallback(message)
+      applyProjectAssistantFallback(prompt)
       setAssistantMessage("")
       return
     }
@@ -12414,14 +12420,14 @@ const ProjectScopeEditStep = ({
     try {
       const response = await JobListingAPI.SmartAssistant(jobListingId, {
         mode: "scope",
-        command: message,
+        command: prompt,
         currentScope: buildProjectAssistantScope(),
         workType: "project",
       })
       const data = response?.data ?? {}
 
       if (data.aiStatus === "AI_UNAVAILABLE") {
-        applyProjectAssistantFallback(message)
+        applyProjectAssistantFallback(prompt)
         setAssistantResult(
           data.message ?? "Smart Assistant is temporarily unavailable."
         )
@@ -12438,7 +12444,7 @@ const ProjectScopeEditStep = ({
         )
       }
     } catch (error: any) {
-      applyProjectAssistantFallback(message)
+      applyProjectAssistantFallback(prompt)
       setAssistantResult(
         error?.response?.data?.message ||
           error?.message ||
@@ -12448,6 +12454,21 @@ const ProjectScopeEditStep = ({
       setAssistantMessage("")
       setIsAssistantLoading(false)
     }
+  }
+
+  const undoProjectAssistant = () => {
+    if (!assistantUndoSnapshotRef.current) return
+
+    const snapshot = assistantUndoSnapshotRef.current
+    setPhases(snapshot)
+    setExpandedPhaseNames(
+      snapshot
+        .map((phase) => phase.phaseName)
+        .filter((name): name is string => Boolean(name))
+    )
+    assistantUndoSnapshotRef.current = null
+    setAssistantResult("")
+    setAssistantLastPrompt("")
   }
 
   const removePhase = (phaseName: string) => {
@@ -13395,9 +13416,49 @@ const ProjectScopeEditStep = ({
                 ))}
               </div>
               {assistantResult ? (
-                <p className="mt-4 rounded-[5px] bg-primary-50 p-3 text-sm leading-5 text-dark-blue-400">
-                  {assistantResult}
-                </p>
+                <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
+                  {assistantLastPrompt ? (
+                    <div className="flex w-[282px] justify-end">
+                      <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base font-normal leading-6 text-dark-blue-400">
+                        {assistantLastPrompt}
+                      </p>
+                    </div>
+                  ) : null}
+                  <div className="text-base font-normal leading-6 text-dark-blue-400">
+                    <p>Here&apos;s what we&apos;ve updated:</p>
+                    <ul className="list-disc pl-5">
+                      {assistantResult
+                        .split(/\n+/)
+                        .map((line) => line.replace(/^[-•]\s*/, "").trim())
+                        .filter(Boolean)
+                        .map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                    </ul>
+                  </div>
+                  <div className="flex h-10 items-start gap-2">
+                    <Button
+                      type="button"
+                      className="h-10 rounded-[5px] bg-primary-50 px-4 py-2.5 text-sm font-semibold leading-5 text-primary-500 shadow-none"
+                      disabled={isAssistantLoading || !assistantLastPrompt}
+                      onClick={() => runProjectAssistant(assistantLastPrompt)}
+                    >
+                      <RefreshCcw05 className="size-4 shrink-0" />
+                      Retry
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outlined"
+                      visual="gray"
+                      className="h-10 rounded-[5px] border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold leading-5 text-gray-800 shadow-xs"
+                      disabled={!assistantUndoSnapshotRef.current}
+                      onClick={undoProjectAssistant}
+                    >
+                      <ArrowUpLeft className="size-4 shrink-0" />
+                      Undo
+                    </Button>
+                  </div>
+                </div>
               ) : null}
             </div>
             <div className="flex h-[120px] w-[322px] shrink-0 flex-col items-start gap-2 self-stretch p-5">
