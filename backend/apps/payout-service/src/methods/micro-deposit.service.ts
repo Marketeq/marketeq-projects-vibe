@@ -121,6 +121,16 @@ export class MicroDepositService {
       await this.applySuccess(verification);
       return { verified: true, depositMethodId: verification.depositMethodId };
     } catch (err) {
+      // Stripe's own documented 10/11 (SM33CC) and 40/41 (SM44DD) codes
+      // simulate a specific terminal state directly on the first submission
+      // — not a wrong-amount attempt that erodes the normal 3-strikes
+      // counter — so these jump straight to LOCKED/EXPIRED.
+      if (err instanceof PayoutError && err.errorCode === 'ERR_SIMULATED_TOO_MANY_ATTEMPTS') {
+        await this.applyDirectLock(verification);
+      }
+      if (err instanceof PayoutError && err.errorCode === 'ERR_SIMULATED_TIMEOUT') {
+        await this.applyDirectExpire(verification);
+      }
       if (err instanceof PayoutError) throw err; // e.g. ERR_STRIPE_NOT_CONFIGURED
       await this.applyFailure(verification); // throws ERR_VERIFICATION_AMOUNTS_INCORRECT / LOCKED
       return { verified: false, depositMethodId: verification.depositMethodId }; // unreachable
@@ -144,6 +154,53 @@ export class MicroDepositService {
       metadata: { depositMethodId: verification.depositMethodId, type: 'micro_deposit' },
     });
     this.logger.log(`Micro-deposit verified: method ${verification.depositMethodId}`);
+  }
+
+  // ─── Simulated SM33CC (10/11) — jump straight to LOCKED ───────
+  // Unlike applyFailure's 3-strikes lockout, Stripe's documented "exceeding
+  // verification attempts" code simulates the locked outcome directly on
+  // whichever attempt submits it — it isn't itself a failed attempt to count.
+  private async applyDirectLock(verification: DepositMethodVerification): Promise<never> {
+    const lockedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await this.dataSource.transaction(async (em) => {
+      await em.update(DepositMethodVerification, verification.id, {
+        status: VerificationStatus.LOCKED as any, lockedUntil,
+      });
+      await em.update(DepositMethod, verification.depositMethodId, {
+        verificationStatus: VerificationStatus.LOCKED,
+      });
+    });
+    await this.auditService.log({
+      contractorId: verification.contractorId,
+      actorType: 'contractor', actorId: verification.contractorId,
+      action: 'method.verification.locked',
+      metadata: { depositMethodId: verification.depositMethodId, reason: 'stripe_test_code_SM33CC' },
+    });
+    throw new PayoutError(
+      `Too many failed attempts. You can try again after ${lockedUntil.toISOString()}.`,
+      HttpStatus.TOO_MANY_REQUESTS, 'ERR_VERIFICATION_LOCKED',
+      { lockedUntil });
+  }
+
+  // ─── Simulated SM44DD (40/41) — jump straight to EXPIRED ──────
+  private async applyDirectExpire(verification: DepositMethodVerification): Promise<never> {
+    await this.dataSource.transaction(async (em) => {
+      await em.update(DepositMethodVerification, verification.id, {
+        status: VerificationStatus.EXPIRED as any,
+      });
+      await em.update(DepositMethod, verification.depositMethodId, {
+        verificationStatus: VerificationStatus.EXPIRED,
+      });
+    });
+    await this.auditService.log({
+      contractorId: verification.contractorId,
+      actorType: 'contractor', actorId: verification.contractorId,
+      action: 'method.verification.expired',
+      metadata: { depositMethodId: verification.depositMethodId, reason: 'stripe_test_code_SM44DD' },
+    });
+    throw new PayoutError(
+      'The verification window for this account has expired. Please remove this account and add it again.',
+      HttpStatus.GONE, 'ERR_VERIFICATION_EXPIRED');
   }
 
   // ─── Apply failure ────────────────────────────────────────────

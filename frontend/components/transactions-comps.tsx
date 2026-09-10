@@ -2554,15 +2554,43 @@ export const OverviewTab = ({
           const identifier =
             addForm.bankAccountNumber || addForm.bankClabe || addForm.bankIban
           const last4 = identifier.slice(-4)
-          setMicroAmounts({ amount1: "", amount2: "" })
-          setVerifyState({
-            methodId: data.depositMethodId,
-            displayLabel: data.displayLabel ?? "••••" + last4,
-            bankName: addForm.bankAccountName || "",
-            step: "instructions",
-            source: "manual",
-          })
+          const displayLabel = data.displayLabel ?? "••••" + last4
+          const bankName = addForm.bankAccountName || ""
           setShowAddMethod(false)
+          // Stripe can resolve a us_bank_account SetupIntent straight to
+          // "succeeded" with no real micro-deposits ever queued (see
+          // stripe.provider.ts's createMicrodepositSetupIntent) — showing
+          // the "we sent two deposits, check back in 2 days" screen here
+          // would be false: nothing was sent, the account is already
+          // verified. Mirrors the Stripe FC instant path's verifying ->
+          // success sequence instead of the microdeposit "instructions" step.
+          if (data.verification?.type === "instant") {
+            setVerifyState({
+              methodId: data.depositMethodId,
+              displayLabel,
+              bankName,
+              step: "verifying",
+              source: "manual",
+            })
+            await new Promise((r) => setTimeout(r, 1500))
+            setVerifyState({
+              methodId: data.depositMethodId,
+              displayLabel,
+              bankName,
+              step: "success",
+              source: "manual",
+            })
+            fetchMethods()
+          } else {
+            setMicroAmounts({ amount1: "", amount2: "" })
+            setVerifyState({
+              methodId: data.depositMethodId,
+              displayLabel,
+              bankName,
+              step: "instructions",
+              source: "manual",
+            })
+          }
         }
       } else {
         toast({
