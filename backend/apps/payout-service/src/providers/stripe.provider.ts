@@ -272,6 +272,8 @@ export class StripeProvider {
       stripeAccountId: fcAccountId,
       stripeExternalAccountId: attached.externalAccountId,
       stripeConnectAccountId: attached.connectAccountId,
+      connectPayoutsEnabled: attached.connectPayoutsEnabled,
+      connectRequirementsDue: attached.connectRequirementsDue,
       bankAccountName: usBank.bank_name,
       bankAccountLast4: usBank.last4,
       bankCountry: 'US',
@@ -368,7 +370,12 @@ export class StripeProvider {
   // connected account.
   private async attachVerifiedBankAsExternalAccount(
     contractorId: string, setupIntentId: string, confirmedSetupIntent?: any,
-  ): Promise<{ connectAccountId: string; externalAccountId: string }> {
+  ): Promise<{
+    connectAccountId: string;
+    externalAccountId: string;
+    connectPayoutsEnabled: boolean;
+    connectRequirementsDue: string[] | null;
+  }> {
     const setupIntent = confirmedSetupIntent
       ?? await this.stripe.setupIntents.retrieve(setupIntentId, { expand: ['payment_method'] });
     const paymentMethod = setupIntent.payment_method;
@@ -377,7 +384,8 @@ export class StripeProvider {
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_STRIPE_ACH_VERIFICATION_INCOMPLETE');
     }
 
-    const connectAccountId = await this.getOrCreateConnectAccount(contractorId);
+    const connect = await this.getOrCreateConnectAccount(contractorId);
+    const connectAccountId = connect.accountId;
 
     // customer belongs in params (alongside bank_account), not options —
     // options is Stripe request config (stripeAccount/idempotencyKey/etc).
@@ -416,7 +424,12 @@ export class StripeProvider {
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_STRIPE_CONNECT_EXTERNAL_ACCOUNT_FAILED');
     }
 
-    return { connectAccountId, externalAccountId: externalAccount.id };
+    return {
+      connectAccountId,
+      externalAccountId: externalAccount.id,
+      connectPayoutsEnabled: connect.payoutsEnabled,
+      connectRequirementsDue: connect.requirementsDue,
+    };
   }
 
   // One Connect custom account per contractor — deposit methods are
@@ -424,9 +437,13 @@ export class StripeProvider {
   // account regardless of how many bank methods they add. Looked up
   // locally (methodRepo) rather than via a Stripe-side search — the
   // Accounts API has no metadata-search endpoint the way Customers does.
-  private async getOrCreateConnectAccount(contractorId: string): Promise<string> {
+  private async getOrCreateConnectAccount(contractorId: string): Promise<{
+    accountId: string;
+    payoutsEnabled: boolean;
+    requirementsDue: string[] | null;
+  }> {
     if (!this.stripe || !this.isRealStripeKey()) {
-      return `acct_mock_${contractorId.slice(0, 8)}`;
+      return { accountId: `acct_mock_${contractorId.slice(0, 8)}`, payoutsEnabled: true, requirementsDue: null };
     }
 
     // Real Stripe Connect account IDs are always `acct_...`, never
@@ -445,7 +462,22 @@ export class StripeProvider {
       .andWhere("m.stripe_connect_account_id NOT LIKE 'acct\\_mock%' ESCAPE '\\'")
       .orderBy('m.created_at', 'DESC')
       .getOne();
-    if (existing?.stripeConnectAccountId) return existing.stripeConnectAccountId;
+    if (existing?.stripeConnectAccountId) {
+      // Re-fetch the account's live state instead of trusting whatever the
+      // last row we found happened to record. handleAccountUpdated only
+      // backfills deposit_methods rows that already exist at the moment its
+      // webhook fires (`methodRepo.update({ stripeConnectAccountId }, ...)`)
+      // — a brand-new row created here for an already-approved account (e.g.
+      // a contractor adding a second bank) would otherwise silently default
+      // to connectPayoutsEnabled: false forever, since Stripe never re-sends
+      // account.updated once payouts_enabled has already flipped true.
+      const account = await this.stripe.accounts.retrieve(existing.stripeConnectAccountId);
+      return {
+        accountId: existing.stripeConnectAccountId,
+        payoutsEnabled: !!account.payouts_enabled,
+        requirementsDue: account.requirements?.currently_due ?? null,
+      };
+    }
 
     const account = await this.stripe.accounts.create({
       type: 'custom',
@@ -456,7 +488,11 @@ export class StripeProvider {
       capabilities: { transfers: { requested: true } },
       metadata: { contractorId },
     });
-    return account.id;
+    return {
+      accountId: account.id,
+      payoutsEnabled: !!account.payouts_enabled,
+      requirementsDue: account.requirements?.currently_due ?? null,
+    };
   }
 
   // ─── PS-09 v2.0 §8: Connect external_account from a raw routing +
@@ -477,11 +513,20 @@ export class StripeProvider {
     routingNumber: string;
     accountNumber: string;
     accountHolderName: string;
-  }): Promise<{ connectAccountId: string; externalAccountId: string }> {
-    const connectAccountId = await this.getOrCreateConnectAccount(params.contractorId);
+  }): Promise<{
+    connectAccountId: string;
+    externalAccountId: string;
+    connectPayoutsEnabled: boolean;
+    connectRequirementsDue: string[] | null;
+  }> {
+    const connect = await this.getOrCreateConnectAccount(params.contractorId);
+    const connectAccountId = connect.accountId;
 
     if (!this.stripe || !this.isRealStripeKey()) {
-      return { connectAccountId, externalAccountId: `ba_mock_${Date.now()}` };
+      return {
+        connectAccountId, externalAccountId: `ba_mock_${Date.now()}`,
+        connectPayoutsEnabled: connect.payoutsEnabled, connectRequirementsDue: connect.requirementsDue,
+      };
     }
 
     let externalAccount: any;
@@ -510,7 +555,10 @@ export class StripeProvider {
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_STRIPE_CONNECT_EXTERNAL_ACCOUNT_FAILED');
     }
 
-    return { connectAccountId, externalAccountId: externalAccount.id };
+    return {
+      connectAccountId, externalAccountId: externalAccount.id,
+      connectPayoutsEnabled: connect.payoutsEnabled, connectRequirementsDue: connect.requirementsDue,
+    };
   }
 
   // ─── PS-08: BANK_MANUAL/US real ACH micro-deposits ────────────
@@ -602,6 +650,8 @@ export class StripeProvider {
     await this.methodRepo.update(method.id, {
       stripeExternalAccountId: attached.externalAccountId,
       stripeConnectAccountId: attached.connectAccountId,
+      connectPayoutsEnabled: attached.connectPayoutsEnabled,
+      connectRequirementsDue: attached.connectRequirementsDue,
     });
   }
 
@@ -698,6 +748,35 @@ export class StripeProvider {
       reason,
       failedAt: new Date().toISOString(),
     });
+
+    // By the time Stripe sends payout.failed, the platform→connected-account
+    // Transfer had already succeeded (that's what funded the Payout in the
+    // first place — see bank-payout-executor.service.ts) — so that money is
+    // now stranded in the contractor's connected account balance rather
+    // than back on the platform's own Stripe balance. Reverse it so the
+    // real Stripe balance matches what payout_requests/balance_snapshots
+    // already record as failed.
+    const transferId = (payout.providerResponse as any)?.transferId;
+    if (transferId && typeof transferId === 'string' && !transferId.startsWith('tr_stub')) {
+      try {
+        await this.stripe.transfers.createReversal(transferId, { idempotencyKey: `reversal-${payout.id}` });
+        this.logger.log(`Reversed transfer ${transferId} for failed payout ${payout.id}`);
+      } catch (err: any) {
+        // Must not block the rest of this handler — the DB-side reversal
+        // (publishPayoutFailed above) and method deactivation below still
+        // have to happen. Logged loudly since this leaves real platform
+        // funds stranded in the connected account until reversed manually.
+        this.logger.error(
+          `Failed to reverse transfer ${transferId} for payout ${payout.id} — funds remain stranded in the connected account: ${err.message}`,
+        );
+        await this.auditService.log({
+          contractorId: payout.contractorId, payoutRequestId: payout.id,
+          actorType: 'service', actorId: 'stripe-webhook',
+          action: 'bank.transfer.reversal_failed',
+          metadata: { transferId, error: err.message },
+        });
+      }
+    }
 
     // PS-33 §8: certain failure codes mean the destination itself is bad
     // (closed account, wrong routing+account combo, ACH debits blocked) —

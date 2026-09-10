@@ -241,6 +241,8 @@ export class OAuthService {
         routingNumber: bankingDetails.routingNumber,
         stripeExternalAccountId: externalAccount.externalAccountId,
         stripeConnectAccountId: externalAccount.connectAccountId,
+        connectPayoutsEnabled: externalAccount.connectPayoutsEnabled,
+        connectRequirementsDue: externalAccount.connectRequirementsDue,
         verificationStatus: VerificationStatus.VERIFIED,
         displayLabel: `${provider} (${profile.email})`,
         reauthRequired: false,
