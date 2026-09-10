@@ -41,7 +41,16 @@ const SERVICES = [
   // Tier 1 — Core (highest traffic)
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service',               maxOldSpaceMb: 96 },
   { name: 'user-service',               port: '3002', dir: 'apps/user-service',               maxOldSpaceMb: 128 },
-  { name: 'listings-service',           port: '3003', dir: 'apps/listings-service',           maxOldSpaceMb: 96 },
+  // Crash-looped at 96 MB on 2026-09-10: ten "Reached heap limit" kills between
+  // 20:51 and 22:34, with GC pinned at the ceiling and reclaiming nothing
+  // ("Mark-Compact (reduce) 95.6 (98.4) -> 94.8 (98.7) MB"). This service owns
+  // the largest schema in the monorepo (29 migrations) and hydrates whole
+  // project/publish documents, so 96 MB is under its real working set.
+  // NOTE: this raises the ceiling to stop the restart loop; it does not explain
+  // why a service that had been stable all day began exhausting the heap in a
+  // single evening. If it OOMs again at 128 MB, treat it as a leak and profile
+  // the publish path rather than raising this further.
+  { name: 'listings-service',           port: '3003', dir: 'apps/listings-service',           maxOldSpaceMb: 128 },
   { name: 'messaging-service',         port: '3005', dir: 'apps/messaging-service',         maxOldSpaceMb: 96 },
   // Tier 2 — Active
   { name: 'notification-service',       port: '3006', dir: 'apps/notification-service',       maxOldSpaceMb: 48 },
