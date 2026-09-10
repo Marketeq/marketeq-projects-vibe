@@ -210,6 +210,19 @@ It holds **even when the source looks wrong**. Inconsistent spacing, a stale cla
 
 If the source genuinely needs a change, say so in the PR or to the CTO and let them decide. Do not make it.
 
+### 1.13 Security sprint PRs are backend-only — zero frontend changes
+
+Security sprints produce backend-only code. PRs authored by security sprint engineers **must not touch any file under `frontend/`**. If they do, block the PR immediately with:
+
+> **BLOCKED — Security sprint PR contains frontend changes.**
+> Security sprints are scoped to backend only. Please remove all changes under `frontend/` and resubmit. No frontend files may be added, modified, or deleted in a security sprint PR.
+
+**Current security sprint authors:** `SomiLA1`. To add more authors, update the `SECURITY_SPRINT_AUTHORS` list in `.jenkins/sop-check.groovy` Section 10.
+
+This is non-negotiable. Even a one-line frontend change from a security sprint author is a block. The developer must split the work: backend changes in the security sprint PR, frontend changes (if any are needed) in a separate PR by a non-security-sprint engineer that goes through normal review.
+
+**Reviewers:** if the PR author is a security sprint engineer, check the file list first. If any path starts with `frontend/`, stop and block before reviewing any backend code.
+
 ### 1.10 Every blocking rule needs evidence behind it
 A rule that blocks a PR must be traceable to something factual: a named surviving caller, a failing check, a contract in `REGRESSION_MANIFEST.json`, or a specific incident in §8. Strictness with no evidence behind it produces false blocks, and false blocks cost the developer real work.
 

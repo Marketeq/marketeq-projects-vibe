@@ -11,6 +11,7 @@ pipeline {
         string(name: 'PR_BODY', defaultValue: '', description: 'Pull request body')
         string(name: 'BASE_REF', defaultValue: 'dev-main', description: 'Base branch')
         string(name: 'HEAD_SHA', defaultValue: '', description: 'Head commit SHA')
+        string(name: 'PR_AUTHOR', defaultValue: '', description: 'PR author GitHub login')
     }
     environment {
         REPO = 'Marketeq/marketeq-projects-vibe'
@@ -336,6 +337,28 @@ pipeline {
                         fi
                         if [ "$touches_local" = "1" ] && [ "${BASE_REF}" != "dev-main" ]; then
                             add ".env.local.example modified on PR targeting ${BASE_REF} (should target dev-main)"
+                        fi
+
+                        # Section 10: Security sprint PRs must be backend-only
+                        # Currently scoped to SomiLA1 only. Add more authors to the list as needed.
+                        SECURITY_SPRINT_AUTHORS="SomiLA1"
+                        IS_SECURITY_SPRINT_AUTHOR=0
+                        for sec_author in $SECURITY_SPRINT_AUTHORS; do
+                            if [ "${PR_AUTHOR}" = "$sec_author" ]; then
+                                IS_SECURITY_SPRINT_AUTHOR=1
+                                break
+                            fi
+                        done
+                        if [ "$IS_SECURITY_SPRINT_AUTHOR" = "1" ]; then
+                            FRONTEND_IN_SEC=""
+                            while IFS= read -r f; do
+                                case "$f" in
+                                    frontend/*) FRONTEND_IN_SEC="$FRONTEND_IN_SEC $f" ;;
+                                esac
+                            done <<< "$CHANGED_FILES"
+                            if [ -n "$FRONTEND_IN_SEC" ]; then
+                                add "Security sprint PR by ${PR_AUTHOR} contains frontend changes -- security sprints are backend-only. Remove all frontend/ files:$FRONTEND_IN_SEC"
+                            fi
                         fi
 
                         # Section 9: @ts-ignore without justification
