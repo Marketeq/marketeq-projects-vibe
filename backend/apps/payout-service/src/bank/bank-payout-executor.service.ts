@@ -90,6 +90,13 @@ export class BankPayoutExecutorService {
       processingAt: new Date(),
     });
 
+    // Tracks the real platform→connected-account Transfer once it succeeds,
+    // so the catch block below can reverse it if the second leg (connected
+    // account→bank payout) then fails. Declared outside the try so it
+    // survives into catch — stays null for the stub path and for any
+    // failure before the transfer itself completes.
+    let completedTransferId: string | null = null;
+
     try {
       const amountUsd = parseFloat(payout.netAmountUsd);
       const amountCents = Math.round(amountUsd * 100);
@@ -114,6 +121,7 @@ export class BankPayoutExecutorService {
           { idempotencyKey: `transfer-${payoutRequestId}` },
         );
         transferId = transfer.id;
+        completedTransferId = transfer.id;
 
         // Previously always omitted (implicit 'standard') regardless of
         // speed — a contractor who paid the instant fee still got a real
@@ -168,7 +176,38 @@ export class BankPayoutExecutorService {
 
     } catch (err: any) {
       this.logger.error(`Bank payout failed: ${payoutRequestId} — ${err.message}`);
+      if (completedTransferId) {
+        await this.reverseTransfer(completedTransferId, payoutRequestId, payout.contractorId);
+      }
       await this.failPayout(payout, err.message, err.errorCode ?? 'ERR_BANK_PAYOUT_FAILED');
+    }
+  }
+
+  // The platform→connected-account Transfer succeeded but the connected
+  // account→bank Payout call then threw (network error, Stripe rejection,
+  // etc.) — left unreversed, that money sits stranded in the contractor's
+  // connected account balance rather than back on the platform's own
+  // balance, even though payout_requests/balance_snapshots already record
+  // the payout as failed and the contractor's hold as released.
+  private async reverseTransfer(transferId: string, payoutRequestId: string, contractorId: string): Promise<void> {
+    if (!this.stripe) return;
+    try {
+      await this.stripe.transfers.createReversal(transferId, { idempotencyKey: `reversal-${payoutRequestId}` });
+      this.logger.log(`Reversed transfer ${transferId} for failed payout ${payoutRequestId}`);
+    } catch (err: any) {
+      // A reversal failure must never block failPayout from still marking
+      // the payout FAILED and releasing the contractor's balance hold —
+      // that has to happen regardless. Logged loudly (and audited) since
+      // this leaves real platform funds stranded in the connected account
+      // until someone reverses it manually.
+      this.logger.error(
+        `Failed to reverse transfer ${transferId} for payout ${payoutRequestId} — funds remain stranded in the connected account: ${err.message}`,
+      );
+      await this.auditService.log({
+        contractorId, payoutRequestId, actorType: 'service', actorId: 'payout-service',
+        action: 'bank.transfer.reversal_failed',
+        metadata: { transferId, error: err.message },
+      });
     }
   }
 
