@@ -370,7 +370,27 @@ export class StripeProvider {
     // — for every one of these accounts there were no real deposits coming
     // and no correct amounts to ever submit, so the deposit method was stuck
     // "pending" forever. Mirrors finaliseBankStripe's existing instant branch.
-    if (setupIntent.status === 'succeeded') {
+    //
+    // QA/product requirement: against a Stripe *test* key, skip this instant
+    // path entirely and fall through to the normal PENDING branch below, so
+    // manually-entered accounts — including Stripe's own documented test
+    // numbers — always go through the real micro-deposit UI (instructions ->
+    // enter amounts -> verified/locked/expired) instead of silently jumping
+    // to "verified". This is safe to do unconditionally in test mode:
+    // verifyMicrodepositAmounts() already knows how to finish an
+    // already-succeeded *test-mode* SetupIntent without calling Stripe's real
+    // verifyMicrodeposits() on it (see that method's comment), so whatever
+    // amounts the contractor submits later still verifies correctly — this
+    // only changes when the UI shows "verified", never whether it eventually
+    // does. A live key never takes this branch: real accounts Stripe verifies
+    // instantly still skip straight to "verified", matching what an actual
+    // customer sees. Toggle with STRIPE_SKIP_INSTANT_VERIFY_IN_TEST=false if a
+    // dev/staging environment genuinely needs the old shortcut back.
+    const skipInstantInTest =
+      this.secretKey.startsWith('sk_test_') &&
+      this.config.get('STRIPE_SKIP_INSTANT_VERIFY_IN_TEST', 'true') !== 'false';
+
+    if (setupIntent.status === 'succeeded' && !skipInstantInTest) {
       const attached = await this.attachVerifiedBankAsExternalAccount(method.contractorId, setupIntent.id, setupIntent);
       return {
         instant: true,
@@ -691,8 +711,8 @@ export class StripeProvider {
     }
     // Stripe's test-mode sandbox can resolve a SetupIntent straight to
     // "succeeded" before the contractor ever submits amounts (observed with
-    // the documented test account 000123456789). verifyMicrodeposits() only
-    // accepts intents still in requires_action, so calling it on an
+    // every one of Stripe's documented test account numbers). verifyMicrodeposits()
+    // only accepts intents still in requires_action, so calling it on an
     // already-succeeded intent throws — and that error would otherwise be
     // indistinguishable from a genuine wrong-amounts submission below.
     //
@@ -700,13 +720,36 @@ export class StripeProvider {
     // only for test-mode keys, so a production SetupIntent that is somehow
     // already "succeeded" here still goes through verifyMicrodeposits() (and
     // fails loudly) rather than being waved through on unchecked amounts.
+    //
+    // Product requirement: only Stripe's own documented micro-deposit
+    // descriptor-code pairs may pass here — 32/45 (SM11AA, "verifying the
+    // account" — succeeds), 10/11 (SM33CC, "exceeding verification
+    // attempts"), 40/41 (SM44DD, "microdeposit timeout"). Everything else,
+    // including the real-looking pending amounts a real customer would see,
+    // must be rejected — there is nothing behind an already-succeeded test
+    // intent to actually verify against, so accepting arbitrary amounts here
+    // would silently pass amounts that were never really "correct".
     const existing = await this.stripe.setupIntents.retrieve(setupIntentId);
     if (existing.status === 'succeeded' && !existing.livemode) {
-      this.logger.warn(
-        `verifyMicrodepositAmounts: SetupIntent ${setupIntentId} was already ` +
-        'succeeded in test mode — skipping verifyMicrodeposits() without checking ' +
-        'the submitted amounts (Stripe sandbox-only behavior, see comment above).',
-      );
+      const pair = [amount1, amount2].sort((a, b) => a - b);
+      if (pair[0] === 32 && pair[1] === 45) {
+        this.logger.log(
+          `verifyMicrodepositAmounts: SetupIntent ${setupIntentId} matched Stripe's ` +
+          'SM11AA (32/45) success code — treating as verified without a real Stripe call.',
+        );
+      } else if (pair[0] === 10 && pair[1] === 11) {
+        throw new PayoutError(
+          'Too many failed attempts.', HttpStatus.TOO_MANY_REQUESTS, 'ERR_SIMULATED_TOO_MANY_ATTEMPTS');
+      } else if (pair[0] === 40 && pair[1] === 41) {
+        throw new PayoutError(
+          'The verification window has expired.', HttpStatus.GONE, 'ERR_SIMULATED_TIMEOUT');
+      } else {
+        // Not one of Stripe's documented codes — fall through as a plain
+        // (non-PayoutError) throw so the caller's normal wrong-amounts
+        // handling applies (decrements the real attempt counter, eventually
+        // locks after 3 tries) exactly as it would for a genuine mismatch.
+        throw new Error('Submitted amounts do not match a documented Stripe test verification code.');
+      }
     } else {
       await this.stripe.setupIntents.verifyMicrodeposits(setupIntentId, { amounts: [amount1, amount2] });
     }
@@ -758,9 +801,37 @@ export class StripeProvider {
   // webhook endpoint only if that endpoint is configured (in the Stripe
   // Dashboard) to also receive Connect events — this is an operational
   // setup step, not something the code can enforce.
+  //
+  // Race condition: bank-payout-executor.service.ts calls
+  // stripe.payouts.create() and only writes externalTransactionId to the DB
+  // *after* that call resolves. In Stripe test mode, payout.paid/failed can
+  // fire (and reach us, since webhook delivery is otherwise unthrottled)
+  // before that write lands, so the externalTransactionId lookup misses on
+  // a payout that unambiguously exists. Every Stripe payout we create carries
+  // metadata.payoutRequestId (our own primary key, set at creation time —
+  // see bank-payout-executor.service.ts), so fall back to that instead of
+  // silently dropping the event; also backfill externalTransactionId so any
+  // later duplicate delivery matches on the fast path.
+  private async findPayoutForWebhook(stripePayout: any): Promise<PayoutRequest | null> {
+    let payout = await this.payoutRepo.findOne({ where: { externalTransactionId: stripePayout.id } });
+    if (payout) return payout;
+
+    const payoutRequestId = stripePayout.metadata?.payoutRequestId;
+    if (!payoutRequestId) return null;
+
+    payout = await this.payoutRepo.findOne({ where: { id: payoutRequestId } });
+    if (!payout) return null;
+
+    this.logger.warn(
+      `${stripePayout.id} not yet linked to payout ${payout.id} (externalTransactionId write lagged the webhook) — matched via metadata.payoutRequestId instead`,
+    );
+    await this.payoutRepo.update(payout.id, { externalTransactionId: stripePayout.id });
+    return payout;
+  }
+
   async handlePayoutPaid(stripePayout: any) {
     this.logger.log(`Stripe payout.paid: ${stripePayout.id}`);
-    const payout = await this.payoutRepo.findOne({ where: { externalTransactionId: stripePayout.id } });
+    const payout = await this.findPayoutForWebhook(stripePayout);
     if (!payout) {
       this.logger.warn(`payout.paid for unknown externalTransactionId ${stripePayout.id}`);
       return;
@@ -796,7 +867,7 @@ export class StripeProvider {
 
   async handlePayoutFailed(stripePayout: any) {
     this.logger.log(`Stripe payout.failed: ${stripePayout.id}`);
-    const payout = await this.payoutRepo.findOne({ where: { externalTransactionId: stripePayout.id } });
+    const payout = await this.findPayoutForWebhook(stripePayout);
     if (!payout) {
       this.logger.warn(`payout.failed for unknown externalTransactionId ${stripePayout.id}`);
       return;
@@ -900,7 +971,7 @@ export class StripeProvider {
   // payout does (publishPayoutFailed's consumer restores available_balance).
   async handlePayoutCanceled(stripePayout: any) {
     this.logger.log(`Stripe payout.canceled: ${stripePayout.id}`);
-    const payout = await this.payoutRepo.findOne({ where: { externalTransactionId: stripePayout.id } });
+    const payout = await this.findPayoutForWebhook(stripePayout);
     if (!payout) {
       this.logger.warn(`payout.canceled for unknown externalTransactionId ${stripePayout.id}`);
       return;
