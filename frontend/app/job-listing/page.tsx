@@ -11068,7 +11068,18 @@ const createServicePhasesFromPersistedJobListing = (
     );
 };
 
-const projectScopePhaseLabels = ["One", "Two", "Three", "Four", "Five"];
+const projectScopePhaseLabels = [
+  "One",
+  "Two",
+  "Three",
+  "Four",
+  "Five",
+  "Six",
+  "Seven",
+  "Eight",
+  "Nine",
+  "Ten",
+];
 
 const ExistingContractRoleInfoStep = ({ setProgress }: ProgressProps) => {
   const { toggleValidation } = useStepContext();
@@ -12598,33 +12609,39 @@ const ProjectScopeEditStep = ({
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <div className="flex h-[30px] shrink-0 items-baseline gap-1 self-stretch p-0 text-dark-blue-400">
-                    <span className="h-[29px] w-[87px] shrink-0 text-center text-2xl font-bold leading-[29px] capitalize">
-                      ${budgetAmount.toLocaleString()}
+                  {isAssistantLoading ? (
+                    <span className="relative h-10 w-full overflow-hidden rounded bg-gray-100">
+                      <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
                     </span>
-                    <span className="h-[17px] w-[23px] shrink-0 text-sm font-medium leading-[17px]">
-                      per
-                    </span>
-                    <Select
-                      value={budgetFrequency}
-                      onValueChange={setBudgetFrequency}
-                    >
-                      <SelectTrigger
-                        indicator={false}
-                        className="h-[25px] w-[66px] shrink-0 gap-1 rounded border-gray-300 px-[7px] py-[5px] text-sm font-medium leading-[17px] text-dark-blue-400 shadow-xs"
+                  ) : (
+                    <div className="flex h-[30px] shrink-0 items-baseline gap-1 self-stretch p-0 text-dark-blue-400">
+                      <span className="h-[29px] shrink-0 text-center text-2xl font-bold leading-[29px] capitalize">
+                        ${budgetAmount.toLocaleString()}
+                      </span>
+                      <span className="h-[17px] w-[23px] shrink-0 text-sm font-medium leading-[17px]">
+                        per
+                      </span>
+                      <Select
+                        value={budgetFrequency}
+                        onValueChange={setBudgetFrequency}
                       >
-                        <SelectValue />
-                        <ChevronDown className="size-3 shrink-0 text-gray-400" />
-                      </SelectTrigger>
-                      <SelectContent className="w-32">
-                        {["week", "month"].map((frequency) => (
-                          <SelectItem key={frequency} value={frequency}>
-                            {frequency}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                        <SelectTrigger
+                          indicator={false}
+                          className="h-[25px] w-[66px] shrink-0 gap-1 rounded border-gray-300 px-[7px] py-[5px] text-sm font-medium leading-[17px] text-dark-blue-400 shadow-xs"
+                        >
+                          <SelectValue />
+                          <ChevronDown className="size-3 shrink-0 text-gray-400" />
+                        </SelectTrigger>
+                        <SelectContent className="w-32">
+                          {["week", "month"].map((frequency) => (
+                            <SelectItem key={frequency} value={frequency}>
+                              {frequency}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
                 <div className="flex h-14 w-14 items-center justify-center gap-2 rounded-[6px] bg-primary-50">
                   <img
@@ -12679,14 +12696,20 @@ const ProjectScopeEditStep = ({
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <div className="flex h-[29px] shrink-0 items-baseline gap-1 self-stretch p-0 text-dark-blue-400">
-                    <span className="h-[29px] w-4 shrink-0 text-center text-2xl font-bold leading-[29px] capitalize">
-                      {projectTimelineMonths}
+                  {isAssistantLoading ? (
+                    <span className="relative h-10 w-full overflow-hidden rounded bg-gray-100">
+                      <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
                     </span>
-                    <span className="h-[17px] w-[51px] shrink-0 text-sm font-medium leading-[17px]">
-                      {projectTimelineMonths === 1 ? "month" : "months"}
-                    </span>
-                  </div>
+                  ) : (
+                    <div className="flex h-[29px] shrink-0 items-baseline gap-1 self-stretch p-0 text-dark-blue-400">
+                      <span className="h-[29px] w-4 shrink-0 text-center text-2xl font-bold leading-[29px] capitalize">
+                        {projectTimelineMonths}
+                      </span>
+                      <span className="h-[17px] w-[51px] shrink-0 text-sm font-medium leading-[17px]">
+                        {projectTimelineMonths === 1 ? "month" : "months"}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex h-14 w-14 items-center justify-center gap-2 rounded-[6px] bg-primary-50">
                   <img
@@ -12774,7 +12797,117 @@ const ProjectScopeEditStep = ({
             </div>
 
             <div className="mt-6 space-y-3">
-              {visiblePhases.map((phase, phaseIndex) => {
+              {isAssistantLoading ? (
+                <div
+                  className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
+                  aria-busy="true"
+                  aria-label="Smart Assistant is updating the scope"
+                >
+                  <div className="flex h-14 items-center justify-center gap-4 border-b border-gray-200 p-3">
+                    <div className="flex h-8 min-w-0 flex-1 flex-col items-start justify-end gap-1 self-stretch p-0">
+                      <div className="flex h-8 min-w-0 items-center gap-2 p-0">
+                        <Button
+                          variant="link"
+                          type="button"
+                          aria-label="Scope update in progress"
+                          className="size-8 rounded-[5px] p-1.5 text-inherit"
+                          disabled
+                        >
+                          <ChevronDown className="size-5 text-gray-500" />
+                        </Button>
+                        <span className="relative h-7 w-[179px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 self-stretch">
+                      <span className="relative hidden h-7 w-[120px] shrink-0 overflow-hidden rounded bg-gray-100 md:inline-flex">
+                        <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                      </span>
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        aria-label="Scope actions loading"
+                        className="h-[23px] w-[27px] rounded-[5px] px-1.5 py-1"
+                        disabled
+                      >
+                        <MoreHorizontal className="size-[15px] text-gray-500" />
+                      </IconButton>
+                      <IconButton
+                        variant="outlined"
+                        visual="gray"
+                        aria-label="Add task disabled while Smart Assistant updates"
+                        className="size-8 rounded-[5px] border-gray-300 bg-white p-2 shadow-[0px_1px_4px_rgba(0,0,0,0.03)]"
+                        disabled
+                      >
+                        <Plus className="size-3 text-gray-500" />
+                      </IconButton>
+                    </div>
+                  </div>
+
+                  <div className="grid h-11 w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] border-b border-gray-200 bg-gray-50 text-xs font-medium leading-[18px] text-gray-600">
+                    {[
+                      "Task Name",
+                      "Role",
+                      "Location",
+                      "Experience",
+                      "Duration",
+                    ].map((header) => (
+                      <span
+                        key={header}
+                        className="flex h-11 items-center gap-3 self-stretch border-b border-gray-200 bg-gray-50 px-6 py-3"
+                      >
+                        <span className="h-[18px] shrink-0">{header}</span>
+                      </span>
+                    ))}
+                  </div>
+
+                  {Array.from({ length: 4 }).map((_, rowIndex) => (
+                    <div
+                      key={rowIndex}
+                      className="grid h-[72px] w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] items-center border-b border-gray-200 last:border-b-0"
+                    >
+                      <div className="flex h-[72px] w-[240px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
+                        <span
+                          className={cn(
+                            "relative h-5 shrink-0 overflow-hidden rounded bg-gray-100",
+                            rowIndex === 0 && "w-[120px]",
+                            rowIndex === 1 && "w-[180px]",
+                            rowIndex === 2 && "w-40",
+                            rowIndex === 3 && "w-[86px]"
+                          )}
+                        >
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                      <div className="flex h-[72px] w-[240px] shrink-0 flex-col items-start gap-1 self-stretch px-6 py-4">
+                        <span className="relative h-4 w-[180px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                        <span className="relative h-4 w-[104px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                      <div className="flex h-[72px] w-[135.33px] shrink-0 items-start self-stretch px-3 py-4">
+                        <span className="relative h-7 w-[112px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                      <div className="flex h-[72px] w-[135.33px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
+                        <span className="relative h-7 w-[88px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                      <div className="flex h-[72px] w-[135.33px] shrink-0 items-start self-stretch px-6 py-4">
+                        <span className="relative h-5 w-[88px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                visiblePhases.map((phase, phaseIndex) => {
                 const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`
                 const isExpanded = expandedPhaseNames.includes(phaseName)
                 const phaseNameParts = phaseName.split(" ")
@@ -13168,8 +13301,8 @@ const ProjectScopeEditStep = ({
                     ) : null}
                   </div>
                 )
-              })}
-              {visiblePhases.length === 0 ? (
+              }))}
+              {!isAssistantLoading && visiblePhases.length === 0 ? (
                 <div className="rounded-lg border border-gray-200 bg-white px-6 py-8 text-center text-sm leading-5 text-gray-500 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                   No phase or task found.
                 </div>
