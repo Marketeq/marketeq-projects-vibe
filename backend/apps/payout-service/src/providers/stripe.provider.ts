@@ -515,11 +515,25 @@ export class StripeProvider {
     // — the actual intent of this method, one Connect account per contractor
     // — instead of silently minting a second real Connect account once a
     // mock row happens to be the newest.
+    // Every caller of getOrCreateConnectAccount() in this file is US-only
+    // (finaliseBankStripe/createMicrodepositSetupIntent's us_bank_account
+    // SetupIntent flow, createExternalAccountFromRouting's hardcoded
+    // country: 'US') — the account this method creates below is always
+    // country: 'US' too. Custom accounts are single-country, so reusing a
+    // real Connect account created for a DIFFERENT country (e.g. a
+    // contractor who also has a GB/SEPA method attached via a different
+    // flow) fails every US bank-account tokenization against it. bank_country
+    // is 'US' on every BANK_STRIPE/BANK_MANUAL-US row, but WISE/PAYONEER
+    // rows (oauth.service.ts's initiateOAuth) never set it at all — treating
+    // NULL as implicitly-US (rather than requiring an exact 'US' match)
+    // keeps those legitimate US-context accounts reusable too, while still
+    // excluding rows that explicitly recorded a different country.
     const existing = await this.methodRepo
       .createQueryBuilder('m')
       .where('m.contractor_id = :contractorId', { contractorId })
       .andWhere("m.stripe_connect_account_id LIKE 'acct\\_%' ESCAPE '\\'")
       .andWhere("m.stripe_connect_account_id NOT LIKE 'acct\\_mock%' ESCAPE '\\'")
+      .andWhere("(m.bank_country = 'US' OR m.bank_country IS NULL)")
       .orderBy('m.created_at', 'DESC')
       .getOne();
     if (existing?.stripeConnectAccountId) {
