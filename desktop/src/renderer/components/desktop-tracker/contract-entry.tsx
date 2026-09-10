@@ -135,6 +135,7 @@ function PlayWithTooltip({
   isTracking,
   size = "sm",
   label,
+  clickHint,
 }: {
   onClick?: () => void
   onSwitchContract?: () => void
@@ -143,9 +144,18 @@ function PlayWithTooltip({
   isTracking: boolean
   size?: "sm" | "xs"
   label?: string
+  /**
+   * For a ▶ that does not itself start the timer (the contract-header one,
+   * which only opens the contract's task list): text flashed on click for
+   * 2.5 s, matching the main Start button's "Please select a task first".
+   * Hover still shows the normal "Start tracking time" tooltip.
+   */
+  clickHint?: string
 }) {
   const { active: hovered, claim: show, release: hide } = useExclusiveTooltip()
   const hideTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const flashTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [flashing, setFlashing] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
   const disabled = isDifferentContract
 
@@ -163,10 +173,26 @@ function PlayWithTooltip({
     hideTimeout.current = setTimeout(() => hide(), 150)
   }
 
+  React.useEffect(() => () => {
+    if (hideTimeout.current) clearTimeout(hideTimeout.current)
+    if (flashTimeout.current) clearTimeout(flashTimeout.current)
+  }, [])
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (disabled) return
+    onClick?.()
+    if (clickHint) {
+      setFlashing(true)
+      if (flashTimeout.current) clearTimeout(flashTimeout.current)
+      flashTimeout.current = setTimeout(() => setFlashing(false), 2500)
+    }
+  }
+
   return (
     <div ref={ref} className="relative shrink-0" onMouseEnter={enter} onMouseLeave={leave}>
       <button
-        onClick={(e) => { e.stopPropagation(); if (!disabled) onClick?.() }}
+        onClick={handleClick}
         className={cn(
           "transition shrink-0",
           disabled
@@ -186,11 +212,11 @@ function PlayWithTooltip({
           <SwitchContractTooltip anchorRef={ref} onSwitch={() => { hide(); onSwitchContract?.() }} />
         </div>
       )}
-      {hovered && !disabled && tooltipText && (
-        <FixedTooltip anchorRef={ref}>
-          {tooltipText}
-        </FixedTooltip>
-      )}
+      {flashing && clickHint ? (
+        <FixedTooltip anchorRef={ref}>{clickHint}</FixedTooltip>
+      ) : hovered && !disabled && tooltipText ? (
+        <FixedTooltip anchorRef={ref}>{tooltipText}</FixedTooltip>
+      ) : null}
     </div>
   )
 }
@@ -370,6 +396,7 @@ export function ContractEntry({
           isTracking={isTracking}
           size="sm"
           label={totalHours}
+          clickHint="Please select a task first"
         />
       </div>
 

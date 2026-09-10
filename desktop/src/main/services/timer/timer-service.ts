@@ -637,6 +637,14 @@ export function createTimerService(deps: TimerServiceDeps) {
     taskId: string;
     description?: string;
   }): Promise<TimerSnapshot> {
+    // A real, mirrored task must exist before a session can open — never a raw
+    // contract id or a synthetic placeholder. Guard here, before any FSM
+    // dispatch, so a bad id leaves the machine in Idle rather than advancing to
+    // Running with no session row (see startBreak's allowance guard below).
+    if (!repos.task.findById(input.taskId)) {
+      emitError('DTT-ERR-TIMER.03', 'selected task not found');
+      return snapshot();
+    }
     await safeDispatch({
       type: 'PICK_CONTRACT',
       contractId: input.contractId,
