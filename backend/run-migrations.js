@@ -62,12 +62,16 @@ function findCompiledDataSource(serviceDir) {
     path.join(__dirname, 'dist', serviceDir, 'src', 'config', 'typeorm.config.js'),
     path.join(__dirname, 'dist', serviceDir, 'config', 'typeorm.config.js'),
     // Deliberately NOT probed: dist/<service>/typeorm.config.js at the service
-    // root. time-tracking-service has one, but its migrations glob is the
-    // cwd-relative, .ts-only 'migrations/*.ts', which matches nothing once
-    // compiled. Loading it would report "up to date (0 applied)" for a service
-    // with 12 unapplied migrations — a false clean is worse than the honest
-    // "no data-source" warning it gets today. Fix that glob to a __dirname-based
-    // '*.{ts,js}' first, then add the path here.
+    // root. time-tracking-service keeps its data-source there, but the file sits
+    // outside its tsconfig's "include": ["src/**/*"], so the build never emits
+    // it — any copy present locally is a stale artifact from an older layout,
+    // and a freshly built image has none. Probing it would therefore find
+    // nothing in production and, locally, would load a months-old config whose
+    // migrations glob resolves to nothing: "up to date (0 applied)" for a
+    // service with 12 unapplied migrations. A false clean is worse than the
+    // honest "no data-source" warning it gets today. Bringing it under the
+    // reporter means moving the config into src/ (so it is actually compiled)
+    // first — not adding a path here.
   ];
   return candidates.find((candidate) => fs.existsSync(candidate)) || null;
 }

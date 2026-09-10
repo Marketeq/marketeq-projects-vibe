@@ -26,6 +26,27 @@ import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom, defaultIfEmpty } from 'rxjs';
 import { randomUUID } from 'crypto';
 
+/**
+ * RMQ rejections are routinely not Error instances: NestJS surfaces the
+ * serialized remote payload, which has no `.message`. Reading `err.message` off
+ * one of those logged the literal string "undefined", which is exactly what
+ * `Failed to publish payout.schedule.updated: undefined` was — an error that
+ * named no cause and so was never actionable.
+ */
+function describeError(err: unknown): string {
+  // `err.name` before String(err): an Error carrying an empty message would
+  // otherwise serialize to a useless "{}", since its fields are non-enumerable.
+  if (err instanceof Error) return err.message || err.name || String(err);
+  if (typeof err === 'string') return err;
+  try {
+    // JSON.stringify returns undefined for undefined/function inputs, and
+    // throws on circular ones — both fall back to String().
+    return JSON.stringify(err) ?? String(err);
+  } catch {
+    return String(err);
+  }
+}
+
 @Injectable()
 export class PayoutPublisher {
   private readonly logger = new Logger(PayoutPublisher.name);
@@ -34,7 +55,15 @@ export class PayoutPublisher {
     @Inject('EARNINGS_RABBITMQ_CLIENT') private readonly client: ClientProxy,
   ) {}
 
-  private async emit(pattern: string, payload: object): Promise<void> {
+  /**
+   * Returns whether the publish actually succeeded, so callers can avoid
+   * announcing an event that never left. Every caller used to log
+   * "<event> emitted" unconditionally while this swallowed the failure, so a
+   * broken publish produced an ERROR and a success line for the same event in
+   * the same millisecond. On staging — where RABBITMQ_REQUIRED=false leaves RMQ
+   * unprovisioned — that made a permanently dead publish path read as healthy.
+   */
+  private async emit(pattern: string, payload: object): Promise<boolean> {
     try {
       // Every consumer in earnings-service (payout-completed.consumer.ts
       // included) is written with @MessagePattern, not @EventPattern —
@@ -51,8 +80,10 @@ export class PayoutPublisher {
       // processes the message correctly every time — defaultIfEmpty stops
       // that from being misreported as a failure below.
       await firstValueFrom(this.client.send(pattern, payload).pipe(defaultIfEmpty(null)));
-    } catch (err: any) {
-      this.logger.error(`Failed to publish ${pattern}: ${err.message}`);
+      return true;
+    } catch (err: unknown) {
+      this.logger.error(`Failed to publish ${pattern}: ${describeError(err)}`);
+      return false;
     }
   }
 
@@ -69,7 +100,7 @@ export class PayoutPublisher {
     methodType: string;
     settledAt: string;
   }): Promise<void> {
-    await this.emit('payout.completed', {
+    const ok = await this.emit('payout.completed', {
       eventId: randomUUID(),
       contractorId: payload.contractorId,
       payoutId: payload.payoutRequestId,
@@ -78,7 +109,9 @@ export class PayoutPublisher {
       methodType: payload.methodType,
       settledAt: payload.settledAt,
     });
-    this.logger.log(`payout.completed emitted for ${payload.payoutRequestId}`);
+    if (ok) {
+      this.logger.log(`payout.completed emitted for ${payload.payoutRequestId}`);
+    }
   }
 
   /**
@@ -95,7 +128,7 @@ export class PayoutPublisher {
     reason: string;
     failedAt: string;
   }): Promise<void> {
-    await this.emit('payout.failed', {
+    const ok = await this.emit('payout.failed', {
       eventId: randomUUID(),
       contractorId: payload.contractorId,
       payoutId: payload.payoutRequestId,
@@ -105,7 +138,9 @@ export class PayoutPublisher {
       failureReason: payload.reason,
       failedAt: payload.failedAt,
     });
-    this.logger.log(`payout.failed emitted for ${payload.payoutRequestId}`);
+    if (ok) {
+      this.logger.log(`payout.failed emitted for ${payload.payoutRequestId}`);
+    }
   }
 
   /**
@@ -117,11 +152,15 @@ export class PayoutPublisher {
     schedule: object;
     updatedAt: string;
   }): Promise<void> {
-    await this.emit('payout.schedule.updated', {
+    const ok = await this.emit('payout.schedule.updated', {
       eventId: randomUUID(),
       ...payload,
     });
-    this.logger.log(`payout.schedule.updated emitted for ${payload.contractorId}`);
+    if (ok) {
+      this.logger.log(
+        `payout.schedule.updated emitted for ${payload.contractorId}`,
+      );
+    }
   }
 
   /**
@@ -129,11 +168,13 @@ export class PayoutPublisher {
    * Publishes alert when default deposit method removed, pausing scheduled payouts
    */
   async publishPayoutsPaused(contractorId: string, metadata: object): Promise<void> {
-    await this.emit('payouts.paused', {
+    const ok = await this.emit('payouts.paused', {
       eventId: randomUUID(),
       contractorId,
       ...metadata,
     });
-    this.logger.log(`payouts.paused emitted for ${contractorId}`);
+    if (ok) {
+      this.logger.log(`payouts.paused emitted for ${contractorId}`);
+    }
   }
 }

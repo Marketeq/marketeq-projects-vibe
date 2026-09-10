@@ -321,8 +321,20 @@ export class HomepageService {
         config: this.transformCmsHomepage(doc),
       };
     } catch (err: any) {
+      // `err.message` is empty for several axios failure shapes (an aborted or
+      // timed-out request among them), which is why this warning printed a bare
+      // trailing colon and named no cause at all — ~23 times every 6 hours.
+      // Fall back through the fields axios actually populates.
+      const cause =
+        [
+          err?.response?.status ? `HTTP ${err.response.status}` : null,
+          err?.code,
+          err?.message,
+        ]
+          .filter(Boolean)
+          .join(' ') || `non-Error rejection: ${String(err)}`;
       this.logger.warn(
-        `CMS request failed for Homepages (variant=${variant ?? 'none'}): ${err.message}`,
+        `CMS request failed for Homepages (variant=${variant ?? 'none'}): ${cause}`,
       );
       return null;
     }
