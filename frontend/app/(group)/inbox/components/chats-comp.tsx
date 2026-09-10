@@ -375,6 +375,9 @@ const OFFER_EVENT_ACTION: Record<string, string> = {
   "offer.counter_expired": "has a counter offer that expired",
 }
 
+const offerInvitationMessage = (role: string) =>
+  `I am developing an application focused on delivering an industry-leading user experience and would like to invite you to join the project as our ${role}.`
+
 const OFFER_EVENT_STATE: Record<
   string,
   { label: string; visual: "success" | "error" | "warning" | "gray" }
@@ -3338,12 +3341,12 @@ export function Chats({
 
                             <p className="h-[34px] w-full text-sm leading-[17px] text-dark-blue-400">
                               {item.clientPerspective
-                                ? `I would like to invite you to join ${item.offerTitle} as our ${item.role}.`
+                                ? offerInvitationMessage(item.role)
                                 : isClientSentTalentCounter
                                   ? item.counterOfferMessage ||
                                     "I would like to propose updated terms for this offer."
                                 : item.seeded
-                                  ? `I would like to invite you to join ${item.offerTitle} as our ${item.role}.`
+                                  ? offerInvitationMessage(item.role)
                                   : item.body}
                             </p>
                           </div>
@@ -4051,38 +4054,110 @@ export function Chats({
                                 {item.senderDisplayName.charAt(0).toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
-                            <div className="flex w-[449px] max-w-[calc(100%-48px)] flex-col items-start gap-2">
-                              <article className="group relative flex w-full flex-col items-start gap-4 rounded-xl rounded-bl-none bg-primary-25 px-5 pb-5 pt-2.5">
+                            <div
+                              className={cn(
+                                "flex max-w-[calc(100%-48px)] flex-col items-start gap-2",
+                                item.event.includes("withdrawn")
+                                  ? "w-[361px]"
+                                  : item.event.includes("declined")
+                                    ? "w-[402px]"
+                                    : "w-[449px]"
+                              )}
+                            >
+                              <article
+                                className={cn(
+                                  "group relative flex w-full flex-col items-start rounded-xl rounded-bl-none bg-primary-25 px-5 pb-5 pt-2.5",
+                                  item.event.includes("withdrawn")
+                                    ? "h-[218px] gap-4"
+                                    : item.event.includes("declined")
+                                      ? "h-[243px] gap-4"
+                                    : item.event.includes("accepted")
+                                      ? "h-[251px] gap-6"
+                                      : "gap-4"
+                                )}
+                              >
                                 {renderOfferMessageHoverActions(
                                   item.body,
                                   item.clientPerspective
                                     ? currentUser?.id
                                     : item.actorId
                                 )}
-                              <div className="text-sm leading-[17px] text-dark-blue-400">
-                              <span className="font-bold">
-                                {item.senderDisplayName}
-                              </span>{" "}
-                              {item.senderUsername ? (
-                                <span className="text-xs font-normal leading-[15px]">
-                                  @{item.senderUsername.replace(/^@/, "")}{" "}
-                                </span>
-                              ) : null}
-                              <span className="font-semibold">
-                                {clientResponseAction}
-                              </span>
-                            </div>
-                            <p className="text-sm leading-5 text-dark-blue-400">
-                              {item.event.includes("accepted")
-                                ? "Excited to get started!"
-                                : item.event.includes("declined")
-                                  ? "Thanks, unfortunately I can’t take this on right now."
-                                : item.event.includes("counter")
-                                  ? item.counterOfferMessage ||
-                                    "I would like to increase the hourly rate if it’s ok."
-                                : item.body}
-                            </p>
-                            <Card className="flex w-full flex-col items-start gap-4 rounded-xl px-6 py-4 shadow-none hover:border-gray-200 hover:ring-0">
+                                <div
+                                  className={cn(
+                                    "flex w-full flex-col items-start",
+                                    item.event.includes("withdrawn")
+                                      ? "h-[28px] justify-end"
+                                      : item.event.includes("declined")
+                                        ? "h-[53px] gap-2"
+                                      : item.event.includes("accepted")
+                                        ? "h-[53px] gap-2"
+                                        : "gap-4"
+                                  )}
+                                >
+                                  {item.event.includes("declined") ? (
+                                    <div className="flex w-full items-start">
+                                      <div className="flex items-center gap-2 text-sm leading-[17px] text-dark-blue-400">
+                                        <span className="flex items-center gap-2">
+                                          <span className="whitespace-nowrap font-bold">
+                                            {item.senderDisplayName}
+                                          </span>
+                                          {item.senderUsername ? (
+                                            <span className="whitespace-nowrap text-xs font-normal leading-[15px]">
+                                              @{item.senderUsername.replace(/^@/, "")}
+                                            </span>
+                                          ) : null}
+                                        </span>
+                                        <span className="whitespace-nowrap font-semibold">
+                                          {clientResponseAction}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="text-sm leading-[17px] text-dark-blue-400">
+                                      <span className="font-bold">
+                                        {item.senderDisplayName}
+                                      </span>{" "}
+                                      {item.senderUsername ? (
+                                        <span className="text-xs font-normal leading-[15px]">
+                                          @{item.senderUsername.replace(/^@/, "")}{" "}
+                                        </span>
+                                      ) : null}
+                                      <span className="font-semibold">
+                                        {clientResponseAction}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {!item.event.includes("withdrawn") ? (
+                                    <p
+                                      className={cn(
+                                        "text-sm text-dark-blue-400",
+                                        item.event.includes("declined")
+                                          ? "leading-[17px]"
+                                          : "leading-5"
+                                      )}
+                                    >
+                                      {item.event.includes("accepted")
+                                        ? "Excited to get started!"
+                                        : item.event.includes("declined")
+                                          ? "Thanks, unfortunately I can’t take this on right now."
+                                        : item.event.includes("counter")
+                                          ? item.counterOfferMessage ||
+                                            "I would like to increase the hourly rate if it’s ok."
+                                        : item.body}
+                                    </p>
+                                  ) : null}
+                                </div>
+                            <Card
+                              className={cn(
+                                "flex w-full flex-col items-start gap-4 rounded-xl px-6 py-4 shadow-none hover:border-gray-200 hover:ring-0",
+                                item.event.includes("withdrawn")
+                                  ? "h-[144px] gap-4 border-primary-50 hover:border-primary-50"
+                                  : item.event.includes("declined")
+                                    ? "h-[144px] border-primary-50 hover:border-primary-50"
+                                  : item.event.includes("accepted") &&
+                                    "h-[144px] border-primary-50 hover:border-primary-50"
+                              )}
+                            >
                               <div className="flex w-full items-center justify-between gap-3">
                                 <h3 className="text-sm font-bold leading-[17px] text-dark-blue-400">
                                   {clientResponseTitle}
@@ -4094,32 +4169,41 @@ export function Chats({
                                   </Badge>
                                 ) : null}
                               </div>
-                              <p className="mt-4 text-xs font-medium leading-[15px] text-dark-blue-400">
-                                {item.offerTitle}
-                              </p>
-                              <div className="mt-2 flex items-center gap-2">
-                                <Badge variant="rounded" visual="gray" size="sm">
-                                  {item.offerType}
-                                </Badge>
-                            <span className="text-[10px] leading-4 text-gray-500">
-                                  {item.event.includes("counter") &&
-                                  item.event.includes("withdrawn")
-                                    ? "This counteroffer was withdrawn."
-                                    : item.event.includes("accepted")
-                                    ? `Starts on ${item.startDate}.`
-                                    : item.event.includes("declined")
-                                      ? "This offer is now closed."
-                                    : item.event.includes("expired")
-                                      ? `This offer expired ${item.expiresLabel}.`
-                                      : `This offer expires ${item.expiresLabel}.`}
-                                </span>
+                              <div
+                                className={cn(
+                                  "flex flex-col items-start",
+                                  "gap-2"
+                                )}
+                              >
+                                <p className="text-xs font-medium leading-[15px] text-dark-blue-400">
+                                  {item.offerTitle}
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="rounded" visual="gray" size="sm">
+                                    {item.offerType}
+                                  </Badge>
+                                  <span className="text-[10px] leading-4 text-gray-500">
+                                    {item.event.includes("counter") &&
+                                    item.event.includes("withdrawn")
+                                      ? "This counteroffer was withdrawn."
+                                      : item.event.includes("withdrawn")
+                                        ? "This offer was withdrawn."
+                                      : item.event.includes("accepted")
+                                      ? `Starts on ${item.startDate}.`
+                                      : item.event.includes("declined")
+                                        ? "This offer is now closed."
+                                      : item.event.includes("expired")
+                                        ? `This offer expired ${item.expiresLabel}.`
+                                        : `This offer expires ${item.expiresLabel}.`}
+                                  </span>
+                                </div>
                               </div>
                               <Button
                                 className={cn(
-                                  "mt-3",
                                   (item.event.includes("accepted") ||
                                     item.event.includes("declined") ||
                                     item.event.includes("counter") ||
+                                    item.event.includes("withdrawn") ||
                                     item.event.includes("expired")) &&
                                     "h-5 w-fit p-0 text-xs font-semibold leading-5 text-primary-500 no-underline hover:no-underline"
                                 )}
@@ -4128,6 +4212,7 @@ export function Chats({
                                   item.event.includes("accepted") ||
                                   item.event.includes("declined") ||
                                   item.event.includes("counter") ||
+                                  item.event.includes("withdrawn") ||
                                   item.event.includes("expired")
                                     ? "link"
                                     : undefined
@@ -4155,7 +4240,7 @@ export function Chats({
                                       item.event.includes("edited")
                                     ? "View Counter Offer"
                                   : item.event.includes("withdrawn")
-                                    ? "View Active Offer"
+                                    ? "View Details"
                                     : item.event.includes("declined") ||
                                         item.event.includes("counter") ||
                                         item.event.includes("expired")
@@ -4314,35 +4399,41 @@ export function Chats({
                 (item) => item.id === withdrawnClientOfferMessage.id
               ) && (
                 <div className="flex justify-end rounded-lg">
-                  <article className="group relative flex w-[349px] max-w-[calc(100%-60px)] flex-col items-start gap-4 rounded-xl bg-primary-25 p-5">
+                  <article className="group relative flex h-[218px] w-[361px] max-w-[calc(100%-60px)] flex-col items-start gap-4 rounded-xl rounded-br-none bg-primary-25 px-5 pb-5 pt-2.5">
                     {renderOfferMessageHoverActions("Withdrew the offer")}
-                    <div className="text-sm leading-[17px] text-dark-blue-400">
-                      <span className="font-bold">You</span>{" "}
-                      {currentUser.username ? (
-                        <span className="text-xs font-normal">
-                          @{currentUser.username.replace(/^@/, "")} {" "}
+                    <div className="flex h-7 items-end text-sm leading-[17px] text-dark-blue-400">
+                      <span className="flex items-center gap-[3px]">
+                        <span className="flex items-center gap-0.5">
+                          <span className="font-bold">You</span>
+                          {currentUser.username ? (
+                            <span className="text-xs font-normal leading-[15px]">
+                              @{currentUser.username.replace(/^@/, "")}
+                            </span>
+                          ) : null}
                         </span>
-                      ) : null}
-                      <span className="font-semibold">withdrew the offer</span>
+                        <span className="font-semibold">withdrew the offer</span>
+                      </span>
                     </div>
 
-                    <Card className="flex w-full flex-col items-start rounded-lg p-4 shadow-none hover:border-gray-200 hover:ring-0">
+                    <Card className="flex h-[144px] w-full flex-col items-start gap-4 rounded-xl border-primary-50 px-6 py-4 shadow-none hover:border-primary-50 hover:ring-0">
                       <h3 className="text-sm font-bold leading-[17px] text-dark-blue-400">
                         Offer Withdrawn
                       </h3>
-                      <p className="mt-4 text-xs font-medium leading-[15px] text-dark-blue-400">
-                        {withdrawnClientOfferMessage.offerTitle}
-                      </p>
-                      <div className="mt-2 flex items-center gap-2">
-                        <Badge variant="rounded" visual="gray" size="sm">
-                          {withdrawnClientOfferMessage.offerType}
-                        </Badge>
-                        <span className="text-[10px] leading-4 text-gray-500">
-                          This offer was withdrawn.
-                        </span>
+                      <div className="flex flex-col items-start gap-2">
+                        <p className="text-xs font-medium leading-[15px] text-dark-blue-400">
+                          {withdrawnClientOfferMessage.offerTitle}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="rounded" visual="gray" size="sm">
+                            {withdrawnClientOfferMessage.offerType}
+                          </Badge>
+                          <span className="text-[10px] leading-4 text-gray-500">
+                            This offer was withdrawn.
+                          </span>
+                        </div>
                       </div>
                       <Button
-                        className="mt-3 h-5 w-fit p-0 text-xs font-semibold leading-5 text-primary-500 no-underline hover:no-underline"
+                        className="h-5 w-fit p-0 text-xs font-semibold leading-5 text-primary-500 no-underline hover:no-underline"
                         variant="link"
                         visual="primary"
                         onClick={() =>
@@ -4692,38 +4783,49 @@ export function Chats({
               declinedOfferCard &&
               conversationOfferContractIds.has(declinedOfferCard.contractId) && (
                 <div className="flex justify-end rounded-lg">
-                  <article className="group relative flex max-w-[calc(100%-60px)] flex-col items-start gap-y-2 rounded-xl bg-primary-500/[.04] p-5 md:max-w-[640px]">
+                  <article className="group relative flex h-[243px] w-[402px] max-w-[calc(100%-60px)] flex-col items-start gap-4 rounded-xl rounded-br-none bg-primary-25 px-5 pb-5 pt-2.5">
                     {renderOfferMessageHoverActions("Sent a counter offer")}
-                    <div className="text-sm leading-[16.94px] text-dark-blue-400">
-                      <span className="font-bold">You</span>{" "}
-                      {currentUser.username ? (
-                        <span>@{currentUser.username} </span>
-                      ) : null}
-                      <span className="font-semibold">declined the offer</span>
-                    </div>
-
-                    <p className="text-sm leading-[20px] text-dark-blue-400">
-                      {declinedOfferCard.declineMessage ||
-                        "Thanks, unfortunately I can't take this on right now."}
-                    </p>
-
-                    <Card className="mt-4 w-full min-w-[320px] flex-col items-stretch justify-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
-                      <h3 className="text-base font-bold leading-[19.36px] text-dark-blue-400">
-                        Offer Declined
-                      </h3>
-                      <p className="mt-5 text-sm font-medium leading-[16.94px] text-dark-blue-400">
-                        {declinedOfferCard.offerTitle}
-                      </p>
-                      <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <Badge variant="rounded" visual="gray" size="sm">
-                          {declinedOfferCard.offerType}
-                        </Badge>
-                        <span className="text-xs leading-[14.52px] text-gray-500">
-                          This offer is now closed.
+                    <div className="flex h-[53px] w-full flex-col items-start gap-2">
+                      <div className="flex items-start text-sm leading-[17px] text-dark-blue-400">
+                        <span className="flex items-center gap-2">
+                          <span className="flex items-center gap-2">
+                            <span className="font-bold">You</span>
+                            {currentUser.username ? (
+                              <span className="text-xs font-normal leading-[15px]">
+                                @{currentUser.username.replace(/^@/, "")}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="font-semibold">
+                            declined the offer
+                          </span>
                         </span>
                       </div>
+                      <p className="text-sm leading-[17px] text-dark-blue-400">
+                        {declinedOfferCard.declineMessage ||
+                          "Thanks, unfortunately I can't take this on right now."}
+                      </p>
+                    </div>
+
+                    <Card className="flex h-[144px] w-full flex-col items-start gap-4 rounded-xl border-primary-50 px-6 py-4 shadow-none hover:border-primary-50 hover:ring-0">
+                      <h3 className="text-sm font-semibold leading-[17px] text-dark-blue-400">
+                        Offer Declined
+                      </h3>
+                      <div className="flex flex-col items-start gap-2">
+                        <p className="text-xs font-medium leading-[15px] text-dark-blue-400">
+                          {declinedOfferCard.offerTitle}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="rounded" visual="gray" size="sm">
+                            {declinedOfferCard.offerType}
+                          </Badge>
+                          <span className="text-[10px] font-medium leading-4 text-gray-500">
+                            This offer is now closed.
+                          </span>
+                        </div>
+                      </div>
                       <Button
-                        className="mt-4"
+                        className="h-5 w-fit p-0 text-xs font-semibold leading-5 text-primary-500 no-underline hover:no-underline"
                         variant="link"
                         size="sm"
                         onClick={() => setDeclinedOfferDetailsOpen(true)}

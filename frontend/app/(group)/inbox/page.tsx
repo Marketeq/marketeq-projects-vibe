@@ -288,7 +288,14 @@ export default function InboxRoot() {
                     typeof metadata.originalStartDate === "string"
                       ? metadata.originalStartDate
                       : undefined,
-                  role: offer.contractTitle.split(/\s+[—-]\s+/)[0].trim(),
+                  role:
+                    typeof metadata.role === "string" && metadata.role.trim()
+                      ? metadata.role.trim()
+                      : typeof metadata.jobTitle === "string" &&
+                          metadata.jobTitle.trim()
+                        ? metadata.jobTitle.trim()
+                        : offer.contractTitle.split(/\s+[—-]\s+/)[1]?.trim() ||
+                          "Team Member",
                   duration: `${offer.durationMonths} Month${offer.durationMonths === 1 ? "" : "s"}`,
                   schedule:
                     offer.workSchedule.type === "FULL_TIME"
