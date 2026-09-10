@@ -11052,50 +11052,7 @@ const createServicePhasesFromPersistedJobListing = (
     );
 };
 
-const projectScopeEditPhases = [
-  "Phase One Research",
-  "Phase Two Research",
-  "Phase Three Research",
-  "Phase Four Research",
-  "Phase Five Research",
-];
-
 const projectScopePhaseLabels = ["One", "Two", "Three", "Four", "Five"];
-
-const projectScopeEditRows = [
-  {
-    task: "Affinity Mapping",
-    role: "UX Designer",
-    schedule: "Full-time",
-    location: "USA",
-    experience: "Guru",
-    duration: "40 hours",
-  },
-  {
-    task: "Competitive Analysis",
-    role: "UX Designer",
-    schedule: "Full-time",
-    location: "USA",
-    experience: "Junior",
-    duration: "40 hours",
-  },
-  {
-    task: "UX Auditing",
-    role: "UX Designer",
-    schedule: "Full-time",
-    location: "India",
-    experience: "Junior",
-    duration: "40 hours",
-  },
-  {
-    task: "Card Sorting",
-    role: "UX Designer",
-    schedule: "Full-time",
-    location: "Pakistan",
-    experience: "Medior",
-    duration: "40 hours",
-  },
-];
 
 const ExistingContractRoleInfoStep = ({ setProgress }: ProgressProps) => {
   const { toggleValidation } = useStepContext();
@@ -11961,26 +11918,6 @@ const NoScopeRoleInfoStep = ({
   );
 };
 
-const createProjectScopeRow = (
-  row: (typeof projectScopeEditRows)[number],
-  idSuffix: string,
-): PhaseRow => {
-  const [durationValue, durationType = "hours"] = row.duration.split(/\s+/);
-
-  return {
-    id: `project-scope-${idSuffix}-${getId()}`,
-    task: row.task,
-    role: row.role,
-    location: row.location,
-    experience: row.experience as ExperienceLevel,
-    duration: {
-      value: Number(durationValue) || 1,
-      type: durationType as (typeof DURATION_TYPE)[number],
-    },
-    workSchedule: "full_time",
-  };
-};
-
 const formatProjectRowDuration = (row: PhaseRow) =>
   `${row.duration?.value ?? 1} ${row.duration?.type ?? "hours"}`;
 
@@ -12074,13 +12011,10 @@ const createPhasesFromPersistedJobListing = (phases: any): Phase[] => {
 
 const createProjectScopePhase = (
   phaseName: string,
-  phaseIndex: number,
 ): Phase => ({
   phaseName,
   phaseType: "setup",
-  rows: projectScopeEditRows.map((row, rowIndex) =>
-    createProjectScopeRow(row, `${phaseIndex}-${rowIndex}`),
-  ),
+  rows: [],
 });
 
 const ProjectScopeEditStep = ({
@@ -12090,14 +12024,8 @@ const ProjectScopeEditStep = ({
   const { toggleValidation } = useStepContext()
   const { projectScopeMethods } = useProjectScopeContext()
   const [projectScopeState, setProjectScopeState] = projectScopeMethods
-  const [phases, setPhases] = useState<Phase[]>(() =>
-    projectScopeEditPhases.map((phase, phaseIndex) =>
-      createProjectScopePhase(phase, phaseIndex)
-    )
-  )
-  const [expandedPhaseNames, setExpandedPhaseNames] = useState(() => [
-    ...projectScopeEditPhases,
-  ])
+  const [phases, setPhases] = useState<Phase[]>([])
+  const [expandedPhaseNames, setExpandedPhaseNames] = useState<string[]>([])
   const [searchValue, setSearchValue] = useState("")
   const [activeRoleKey, setActiveRoleKey] = useState<string | null>(null)
   const [draftRole, setDraftRole] = useState("")
@@ -12246,7 +12174,7 @@ const ProjectScopeEditStep = ({
     const nextPhaseName = `Phase ${phases.length + 1} Research`
     setPhases((currentPhases) => [
       ...currentPhases,
-      createProjectScopePhase(nextPhaseName, currentPhases.length),
+      createProjectScopePhase(nextPhaseName),
     ])
     setExpandedPhaseNames((currentNames) => [...currentNames, nextPhaseName])
   }
