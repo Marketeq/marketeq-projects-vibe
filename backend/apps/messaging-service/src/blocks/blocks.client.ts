@@ -11,6 +11,28 @@ interface ListBlockedResponse {
   blockedIds: string[];
 }
 
+/**
+ * An RMQ rejection is often not an Error: NestJS surfaces the serialized remote
+ * payload, which has no `.message`, so `(err as Error)?.message ?? err` fell
+ * through to the object itself and template-interpolated to "[object Object]".
+ * Every one of these warnings named no cause, which is why the real one — that
+ * RABBITMQ_URL is unset, so nothing consumes user_service_queue — stayed hidden
+ * behind thousands of identical lines.
+ */
+function describeError(err: unknown): string {
+  // `err.name` before String(err): an Error carrying an empty message would
+  // otherwise serialize to a useless "{}", since its fields are non-enumerable.
+  if (err instanceof Error) return err.message || err.name || String(err);
+  if (typeof err === 'string') return err;
+  try {
+    // JSON.stringify returns undefined for undefined/function inputs, and
+    // throws on circular ones — both fall back to String().
+    return JSON.stringify(err) ?? String(err);
+  } catch {
+    return String(err);
+  }
+}
+
 @Injectable()
 export class BlocksClient {
   private readonly logger = new Logger(BlocksClient.name);
@@ -31,9 +53,9 @@ export class BlocksClient {
       return result ?? { aBlockedB: false, bBlockedA: false };
     } catch (err) {
       this.logger.warn(
-        `user.blocks.get-pair-status RPC failed for (${userA}, ${userB}): ${
-          (err as Error)?.message ?? err
-        }`,
+        `user.blocks.get-pair-status RPC failed for (${userA}, ${userB}): ` +
+          `${describeError(err)} — treating the pair as unblocked, so any block ` +
+          'between these two users is NOT being enforced for this request.',
       );
       return { aBlockedB: false, bBlockedA: false };
     }
@@ -50,9 +72,9 @@ export class BlocksClient {
       return result?.blockedIds ?? [];
     } catch (err) {
       this.logger.warn(
-        `user.blocks.list-blocked RPC failed for ${userId}: ${
-          (err as Error)?.message ?? err
-        }`,
+        `user.blocks.list-blocked RPC failed for ${userId}: ` +
+          `${describeError(err)} — returning an empty block list, so this user's ` +
+          'blocks are NOT being applied for this request.',
       );
       return [];
     }
