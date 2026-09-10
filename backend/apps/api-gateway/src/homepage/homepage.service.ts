@@ -40,6 +40,25 @@ interface GetHomepageOptions {
   previewToken?: string;
 }
 
+/**
+ * axios failures do not reliably carry a `.message` — a refused or aborted
+ * request leaves it empty, which is why these CMS warnings used to end in a
+ * bare colon and name no cause at all. Fall back through the fields axios
+ * actually populates, so a dead CMS endpoint reports ECONNREFUSED rather than
+ * nothing.
+ */
+function describeHttpError(err: any): string {
+  return (
+    [
+      err?.response?.status ? `HTTP ${err.response.status}` : null,
+      err?.code,
+      err?.message,
+    ]
+      .filter(Boolean)
+      .join(' ') || `non-Error rejection: ${String(err)}`
+  );
+}
+
 @Injectable()
 export class HomepageService {
   private readonly logger = new Logger(HomepageService.name);
@@ -321,20 +340,8 @@ export class HomepageService {
         config: this.transformCmsHomepage(doc),
       };
     } catch (err: any) {
-      // `err.message` is empty for several axios failure shapes (an aborted or
-      // timed-out request among them), which is why this warning printed a bare
-      // trailing colon and named no cause at all — ~23 times every 6 hours.
-      // Fall back through the fields axios actually populates.
-      const cause =
-        [
-          err?.response?.status ? `HTTP ${err.response.status}` : null,
-          err?.code,
-          err?.message,
-        ]
-          .filter(Boolean)
-          .join(' ') || `non-Error rejection: ${String(err)}`;
       this.logger.warn(
-        `CMS request failed for Homepages (variant=${variant ?? 'none'}): ${cause}`,
+        `CMS request failed for Homepages (variant=${variant ?? 'none'}): ${describeHttpError(err)}`,
       );
       return null;
     }
@@ -505,7 +512,9 @@ export class HomepageService {
         bannerType: data.bannerType ?? 'info',
       };
     } catch (err: any) {
-      this.logger.warn(`Failed to fetch homepage banner from CMS: ${err.message}`);
+      this.logger.warn(
+        `Failed to fetch homepage banner from CMS: ${describeHttpError(err)}`,
+      );
       return null;
     }
   }
