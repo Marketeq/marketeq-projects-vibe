@@ -1,4 +1,4 @@
-import { getPublicListingsUrl } from "@/lib/runtime-urls";
+import { getPublicApiUrl, getPublicListingsUrl } from "@/lib/runtime-urls";
 import AxiosRequest from "..";
 
 const getJobListingBaseUrl = () => {
@@ -6,6 +6,7 @@ const getJobListingBaseUrl = () => {
 };
 
 const jobListingUrl = (path: string) => `${getJobListingBaseUrl()}${path}`;
+const pricingUrl = (path: string) => `${getPublicApiUrl()}${path}`;
 
 export type JobListingContractType = "new" | "existing";
 export type JobListingScopeKnowledge =
@@ -28,6 +29,7 @@ export type JobListingFrequency =
   | "per_year";
 export type JobListingPhaseType = "setup" | "recurring" | "ongoing";
 export type JobListingWorkSchedule = "full_time" | "part_time" | "custom";
+export type JobListingPricingExperience = "junior" | "mid" | "senior";
 
 export const JobListingAPI = {
   Create: (data: {
@@ -397,4 +399,13 @@ export const JobListingAPI = {
       hourlyRateHighUsdCents?: number;
     }>,
   ) => AxiosRequest.put(jobListingUrl(`/v1/job-listings/${id}/roles`), data),
+};
+
+export const JobListingPricingAPI = {
+  GetRate: (params: {
+    role?: string;
+    location?: string;
+    experience?: JobListingPricingExperience;
+    schedule?: JobListingWorkSchedule;
+  }) => AxiosRequest.get(pricingUrl("/v1/rates"), { params }),
 };

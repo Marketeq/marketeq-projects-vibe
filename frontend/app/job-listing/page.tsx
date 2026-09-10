@@ -32,6 +32,8 @@ import {
 } from "@/service/http/contracts";
 import {
   JobListingAPI,
+  JobListingPricingAPI,
+  type JobListingPricingExperience,
   type JobListingPhaseType,
   type JobListingWorkSchedule,
 } from "@/service/http/job-listing";
@@ -7413,17 +7415,40 @@ interface Phase {
 
 const getPhaseDurationInDays = (phase?: Phase) => {
   const rows = phase?.rows ?? [];
-  const durations = rows
-    .map((row) => {
-      const value = Number(row?.duration?.value);
-      const type = row?.duration?.type;
 
-      if (!Number.isFinite(value) || value <= 0 || !type) return null;
-      return durationToDays(value, type);
-    })
-    .filter((value): value is number => typeof value === "number");
+  return rows.reduce((sum, row) => {
+    const value = Number(row?.duration?.value);
+    const type = row?.duration?.type;
 
-  return durations.length ? Math.max(...durations) : 0;
+    if (!Number.isFinite(value) || value <= 0 || !type) return sum;
+
+    if (type !== "hours") {
+      return sum + durationToDays(value, type);
+    }
+
+    if (row.workSchedule === "custom") {
+      const customHours = Number(row.customHours);
+      if (!Number.isFinite(customHours) || customHours <= 0) return sum;
+
+      const frequencyDays =
+        row.customFrequency === "per_day"
+          ? 1
+          : row.customFrequency === "per_month"
+            ? 21.67
+            : row.customFrequency === "per_quarter"
+              ? 65
+              : row.customFrequency === "per_year"
+                ? 260
+                : 5;
+      const hoursPerDay = customHours / frequencyDays;
+
+      return hoursPerDay > 0 ? sum + Math.ceil(value / hoursPerDay) : sum;
+    }
+
+    const hoursPerDay = row.workSchedule === "part_time" ? 4 : 8;
+
+    return sum + Math.ceil(value / hoursPerDay);
+  }, 0);
 };
 
 const getPhaseDayRange = (phases: Phase[], phaseIndex: number) => {
@@ -7445,6 +7470,69 @@ const getPhaseDayRangeLabel = (phases: Phase[], phaseIndex: number) => {
   }
 
   return `Day ${startDay} - Day ${endDay}`;
+};
+
+const getProjectTimelineMonthsFromScope = (phases: Phase[]) => {
+  const totalDays = phases.reduce(
+    (sum, phase) => sum + getPhaseDurationInDays(phase),
+    0,
+  );
+  const totalWeeks = Math.ceil(totalDays / 5);
+
+  return totalWeeks > 0 ? Math.ceil(totalWeeks / 4.33) : 0;
+};
+
+const normalizePricingExperience = (
+  experience?: string,
+): JobListingPricingExperience | undefined => {
+  const normalized = normalizeSearchText(experience);
+  if (normalized === "junior") return "junior";
+  if (normalized === "medior" || normalized === "mid") return "mid";
+  if (normalized === "senior" || normalized === "guru") return "senior";
+  return undefined;
+};
+
+const normalizePricingLocation = (location?: string) => {
+  const normalized = normalizeSearchText(location);
+  if (normalized === "usa" || normalized === "us") return "United States";
+  return location;
+};
+
+const calculateProjectScopeBudgetUsdCents = async (phases: Phase[]) => {
+  let totalUsdCents = 0;
+  let isStale = false;
+
+  for (const phase of phases) {
+    for (const row of phase.rows ?? []) {
+      const estimatedHours = toEstimatedHours(row);
+
+      try {
+        const response = await JobListingPricingAPI.GetRate({
+          role: row.role,
+          location: normalizePricingLocation(row.location),
+          experience: normalizePricingExperience(row.experience),
+          schedule: row.workSchedule ?? "full_time",
+        });
+        const rateUsdCents = toFiniteNumber(
+          response?.data?.hourlyRateMedianUsdCents,
+        );
+
+        if (response?.data?.isStale || response?.data?.noData) {
+          isStale = true;
+        }
+
+        if (typeof rateUsdCents !== "number") {
+          continue;
+        }
+
+        totalUsdCents += Math.round(estimatedHours * rateUsdCents);
+      } catch {
+        isStale = true;
+      }
+    }
+  }
+
+  return { totalUsdCents, isStale };
 };
 
 const getPhaseSearchTargetId = (phaseIndex: number) =>
@@ -12025,7 +12113,8 @@ const ProjectScopeEditStep = ({
   const skipNextProjectScopeSaveRef = useRef(false)
   const lastSavedProjectScopeSignatureRef = useRef("")
   const [budgetAmount, setBudgetAmount] = useState(5000)
-  const [projectTimelineMonths, setProjectTimelineMonths] = useState(3)
+  const [isBudgetStale, setIsBudgetStale] = useState(false)
+  const [budgetRefreshKey, setBudgetRefreshKey] = useState(0)
   const [budgetFrequency, setBudgetFrequency] = useState("week")
   const [budgetTooltipOpen, setBudgetTooltipOpen] = useState(false)
   const normalizedSearchValue = normalizeSearchText(searchValue)
@@ -12052,6 +12141,28 @@ const ProjectScopeEditStep = ({
   const isScopeValid = phases.some(
     (phase) => phase.phaseName?.trim() && (phase.rows ?? []).length > 0
   )
+  const projectTimelineMonths = useMemo(
+    () => getProjectTimelineMonthsFromScope(phases),
+    [phases]
+  )
+
+  useEffect(() => {
+    let cancelled = false
+
+    const calculateBudget = async () => {
+      const result = await calculateProjectScopeBudgetUsdCents(phases)
+      if (cancelled) return
+
+      setBudgetAmount(Math.round(result.totalUsdCents / 100))
+      setIsBudgetStale(result.isStale)
+    }
+
+    void calculateBudget()
+
+    return () => {
+      cancelled = true
+    }
+  }, [budgetRefreshKey, phases])
 
   useEffect(() => {
     if (didApplyPersistedScopeRef.current) return
@@ -12083,7 +12194,7 @@ const ProjectScopeEditStep = ({
       try {
         const response = await JobListingAPI.GenerateScope(jobListingId, {
           workType: "project",
-          durationMonths: projectTimelineMonths,
+          durationMonths: projectTimelineMonths || 1,
           budgetUsdCents: budgetAmount * 100,
         })
         const generatedPhases = createPhasesFromGeneratedScope(
@@ -12226,13 +12337,26 @@ const ProjectScopeEditStep = ({
       normalizedMessage.includes("timeline") ||
       normalizedMessage.includes("shorten")
     ) {
-      setProjectTimelineMonths((currentMonths) => {
-        const nextMonths = Math.max(1, currentMonths - 1)
-        setAssistantResult(
-          `Applied: project timeline shortened to ${nextMonths} ${nextMonths === 1 ? "month" : "months"}.`
-        )
-        return nextMonths
-      })
+      setPhases((currentPhases) =>
+        currentPhases.map((phase) => ({
+          ...phase,
+          rows: (phase.rows ?? []).map((row) => {
+            const value = Number(row.duration?.value)
+
+            return {
+              ...row,
+              duration: {
+                value:
+                  Number.isFinite(value) && value > 1
+                    ? Math.max(1, Math.ceil(value * 0.8))
+                    : (row.duration?.value ?? 1),
+                type: row.duration?.type ?? "hours",
+              },
+            }
+          }),
+        }))
+      )
+      setAssistantResult("Applied: shortened task durations in the scope table.")
       return true
     } else if (
       normalizedMessage.includes("quality") ||
@@ -12630,6 +12754,23 @@ const ProjectScopeEditStep = ({
                 </div>
               </div>
             </div>
+            {isBudgetStale ? (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm leading-5 text-warning-700">
+                <span>
+                  Budget rates may be stale. You can continue, or refresh the
+                  estimate.
+                </span>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  onClick={() => setBudgetRefreshKey((key) => key + 1)}
+                >
+                  Refresh
+                </Button>
+              </div>
+            ) : null}
 
             <div className="mt-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="mx-auto flex h-9 w-[254px] shrink-0 items-center p-0 shadow-xs md:mx-0">
