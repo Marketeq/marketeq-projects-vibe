@@ -7498,6 +7498,15 @@ const normalizePricingLocation = (location?: string) => {
   return location;
 };
 
+const temporaryRateUsdCentsByExperience: Record<
+  JobListingPricingExperience,
+  number
+> = {
+  junior: 4_500,
+  mid: 7_500,
+  senior: 11_000,
+};
+
 const calculateProjectScopeBudgetUsdCents = async (phases: Phase[]) => {
   let totalUsdCents = 0;
   let isStale = false;
@@ -7505,19 +7514,26 @@ const calculateProjectScopeBudgetUsdCents = async (phases: Phase[]) => {
   for (const phase of phases) {
     for (const row of phase.rows ?? []) {
       const estimatedHours = toEstimatedHours(row);
+      const experience = normalizePricingExperience(row.experience);
 
       try {
         const response = await JobListingPricingAPI.GetRate({
           role: row.role,
           location: normalizePricingLocation(row.location),
-          experience: normalizePricingExperience(row.experience),
+          experience,
           schedule: row.workSchedule ?? "full_time",
         });
-        const rateUsdCents = toFiniteNumber(
+        const apiRateUsdCents = toFiniteNumber(
           response?.data?.hourlyRateMedianUsdCents,
         );
+        const rateUsdCents =
+          typeof apiRateUsdCents === "number"
+            ? apiRateUsdCents
+            : experience
+              ? temporaryRateUsdCentsByExperience[experience]
+              : undefined;
 
-        if (response?.data?.isStale || response?.data?.noData) {
+        if (response?.data?.isStale) {
           isStale = true;
         }
 
@@ -12769,6 +12785,10 @@ const ProjectScopeEditStep = ({
                   phaseNameParts[0] === "Phase"
                     ? phaseNameParts.slice(2).join(" ")
                     : phaseName
+                const { startDay, endDay } = getPhaseDayRange(
+                  phases,
+                  phaseIndex
+                )
 
                 return (
                   <div
@@ -12809,26 +12829,21 @@ const ProjectScopeEditStep = ({
                         </div>
                       </div>
                       <div className="flex items-center gap-3 self-stretch">
-                        <span className="hidden h-4 w-[93px] shrink-0 items-center gap-2 whitespace-nowrap text-[13px] font-semibold leading-4 text-[#122A4B] md:inline-flex">
-                          {getPhaseDayRangeLabel(phases, phaseIndex)
-                            .split(" - ")
-                            .map((label, index, labels) => (
-                              <React.Fragment key={`${phaseName}-${label}`}>
-                                <span
-                                  className={cn(
-                                    "flex h-4 shrink-0 items-center whitespace-nowrap",
-                                    index === 0 ? "w-[34px]" : "w-9"
-                                  )}
-                                >
-                                  {label}
-                                </span>
-                                {index < labels.length - 1 ? (
-                                  <span className="flex h-4 w-[7px] shrink-0 items-center justify-center text-center">
-                                    -
-                                  </span>
-                                ) : null}
-                              </React.Fragment>
-                            ))}
+                        <span className="hidden h-4 min-w-[93px] shrink-0 items-center gap-2 whitespace-nowrap text-[13px] font-semibold leading-4 text-[#122A4B] md:inline-flex">
+                          <span className="flex h-4 shrink-0 items-center whitespace-nowrap">
+                            Day {startDay}
+                          </span>
+                          {typeof endDay === "number" &&
+                          endDay !== startDay ? (
+                            <>
+                              <span className="flex h-4 w-[7px] shrink-0 items-center justify-center text-center">
+                                -
+                              </span>
+                              <span className="flex h-4 shrink-0 items-center whitespace-nowrap">
+                                Day {endDay}
+                              </span>
+                            </>
+                          ) : null}
                         </span>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
