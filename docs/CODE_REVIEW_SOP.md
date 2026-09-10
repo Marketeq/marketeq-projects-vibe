@@ -316,6 +316,38 @@ Run every PR through this checklist in order. A single "❌ fail" blocks the mer
 
 ---
 
+### ✅ 3.8 Security sprint PR checklist (SomiLA1 and future security sprint authors only)
+
+When the PR author is a security sprint engineer (see §1.13), run these additional checks ON TOP of the standard seven-point checklist. Security hardening is high-risk for silent breakage because the code compiles and looks correct but changes runtime behavior.
+
+- [ ] **Zero frontend files.** If any path starts with `frontend/`, stop immediately (§1.13).
+- [ ] **Guard changes do not block legitimate requests.** For every new or modified guard:
+  - Trace which endpoints use it (decorator or global registration).
+  - Confirm authenticated users with valid JWTs still pass.
+  - Confirm public endpoints (marketplace browse, health checks) are not affected.
+- [ ] **DTO validation tightening does not reject working requests.** For every new validation decorator:
+  - Check if the frontend currently sends empty strings, nulls, or optional fields for that property.
+  - A new `@IsNotEmpty()` on a field the frontend sends as `""` is a 400 error on a working form.
+  - A new `@MaxLength(N)` must be longer than any existing stored value for that column.
+- [ ] **Response shape unchanged.** For every changed service method or controller:
+  - Diff the return type / selected fields before and after.
+  - If a serialization interceptor or `@Exclude()` decorator was added, verify no fields the frontend reads were hidden.
+  - Cross-reference with `REGRESSION_MANIFEST.json` `api_contracts` section.
+- [ ] **Error shapes and status codes unchanged.** Security changes often swap error types:
+  - 401 vs 403 vs 404 matters -- the frontend handles them differently.
+  - Error response body shape (`{ message }` vs `{ error }`) must stay consistent.
+- [ ] **No encryption/hashing algorithm changes without migration.** Changing bcrypt rounds, JWT signing algorithm, or encryption method without re-processing stored data locks users out. E2EE rotation incident (2026-08-19) is precedent.
+- [ ] **Database constraints are safe.** New NOT NULL, UNIQUE, or CHECK constraints must not conflict with existing rows. Verify with: `SELECT COUNT(*) FROM table WHERE column IS NULL` (or equivalent).
+- [ ] **Middleware ordering is safe.** New global middleware (rate limiting, CORS, helmet) must not interfere with:
+  - Vercel preview URL CORS patterns
+  - File upload endpoints (multipart)
+  - WebSocket connections (Ably, messaging)
+  - Health check endpoints (must remain unauthenticated)
+
+**How breakage is caught:** The Deep Regression Check (§15) reads the `security_sprint_breakage_patterns` section of `REGRESSION_MANIFEST.json` and applies heightened scrutiny to PRs touching guard, middleware, DTO, interceptor, and encryption files. The SOP Check (§1.13) blocks frontend changes mechanically. This checklist is for the human/AI code reviewer to catch what automated checks cannot.
+
+---
+
 ## 4. Decision Matrix
 
 After the checklist, apply this matrix:

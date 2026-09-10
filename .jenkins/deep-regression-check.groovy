@@ -34,6 +34,7 @@ pipeline {
         string(name: 'PR_NUMBER', defaultValue: '', description: 'PR number')
         string(name: 'BASE_REF', defaultValue: 'dev-main', description: 'Base branch')
         string(name: 'HEAD_SHA', defaultValue: '', description: 'Head commit SHA')
+        string(name: 'PR_AUTHOR', defaultValue: '', description: 'PR author GitHub login')
     }
     environment { REPO = 'Marketeq/marketeq-projects-vibe' }
     stages {
@@ -301,6 +302,16 @@ CONFPY
                         MANIFEST=$(cat manifest.json 2>/dev/null | head -c 20000)
                         CONFLICT_HUNKS=$(cat ../conflict_hunks.txt 2>/dev/null | head -c 40000)
 
+                        # Detect security sprint author
+                        SECURITY_SPRINT_AUTHORS="SomiLA1"
+                        IS_SEC_SPRINT=""
+                        for sec_author in $SECURITY_SPRINT_AUTHORS; do
+                            if [ "${PR_AUTHOR}" = "$sec_author" ]; then
+                                IS_SEC_SPRINT="true"
+                                break
+                            fi
+                        done
+
                         # Build the prompt file
                         cat > prompt.txt << PROMPT_END
 You are the Deep Regression Detector for the Marketeq Projects platform. Your job is to catch regressions in EXISTING code before they reach production.
@@ -422,6 +433,29 @@ ${IMPORTERS}
 ${API_SHAPES}
 
 PROMPT_END
+
+                        # Append security sprint context if applicable
+                        if [ "$IS_SEC_SPRINT" = "true" ]; then
+                            cat >> prompt.txt << 'SEC_END'
+
+## SECURITY SPRINT PR -- HEIGHTENED SCRUTINY REQUIRED
+This PR is authored by a security sprint engineer. Security hardening is HIGH RISK for silent breakage. Apply these additional checks with maximum rigor:
+
+1. **Guard/middleware additions**: Every new guard or middleware must NOT block legitimate authenticated requests. Trace which endpoints are affected. Health checks MUST remain unauthenticated. Vercel preview CORS patterns MUST still work.
+
+2. **DTO validation tightening**: Every new validation decorator (@IsNotEmpty, @MaxLength, @IsEnum, new required fields) could cause 400 errors on forms that currently work. Check if the frontend sends empty strings, nulls, or omits optional fields for that property.
+
+3. **Response sanitization**: Any @Exclude() decorator, ClassSerializerInterceptor, or response DTO change could strip fields the frontend reads. Cross-check removed/hidden fields against the api_contracts in the manifest.
+
+4. **Error shape changes**: 401 vs 403 vs 404 matter. The frontend handles them differently. Changed error response bodies ({ message } vs { error }) break frontend error handlers.
+
+5. **Encryption/hashing changes**: Changing bcrypt rounds, JWT signing algorithm, or encryption keys WITHOUT migrating stored data locks users out. This repo has precedent: the E2EE key rotation incident (2026-08-19) locked the inbox for weeks.
+
+6. **Database constraints**: New NOT NULL, UNIQUE, or CHECK constraints can fail on existing rows. New indexes can change query performance.
+
+For security sprint PRs, if ANY of the above patterns are detected, report them as CRITICAL even if they look intentional. The reviewer will decide if they are safe.
+SEC_END
+                        fi
 
                         # Build API request body directly from prompt.txt (all file-based, no shell vars)
                         python3 -c "
