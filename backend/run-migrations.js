@@ -47,6 +47,42 @@ function findCompiledDataSource(serviceDir) {
     path.join(__dirname, 'dist', serviceDir, serviceDir, 'src', 'data-source.js'),
     path.join(__dirname, 'dist', serviceDir, 'config', 'data-source.js'),
     path.join(__dirname, 'dist', serviceDir, 'src', 'config', 'data-source.js'),
+    // identity-verification-service keeps its data-source and migrations under
+    // src/database/. Without this entry it was dropped by discoverServices()
+    // with no output at all, so its three migrations never ran and
+    // "identity_verification.identity_verification_profiles" was never created —
+    // the daily 09:00 Scheduler job had been failing on it unnoticed.
+    path.join(__dirname, 'dist', serviceDir, 'src', 'database', 'data-source.js'),
+    path.join(__dirname, 'dist', serviceDir, 'database', 'data-source.js'),
+    // offer-service names its CLI data-source typeorm.config.ts rather than
+    // data-source.ts. Its compiled migrations glob is __dirname-relative and so
+    // still resolves correctly under dist/, which is what makes it safe to read
+    // here — verified to yield schema "offer_service" and the two compiled
+    // migrations in dist/apps/offer-service/migrations/.
+    path.join(__dirname, 'dist', serviceDir, 'src', 'config', 'typeorm.config.js'),
+    path.join(__dirname, 'dist', serviceDir, 'config', 'typeorm.config.js'),
+    // Deliberately NOT probed: dist/<service>/typeorm.config.js at the service
+    // root. time-tracking-service has one, but its migrations glob is the
+    // cwd-relative, .ts-only 'migrations/*.ts', which matches nothing once
+    // compiled. Loading it would report "up to date (0 applied)" for a service
+    // with 12 unapplied migrations — a false clean is worse than the honest
+    // "no data-source" warning it gets today. Fix that glob to a __dirname-based
+    // '*.{ts,js}' first, then add the path here.
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
+/**
+ * A service that ships compiled migrations but exposes no data-source is a
+ * silent hole: nothing can ever apply those migrations and, before this check,
+ * nothing said so. Used to turn that into a visible warning rather than an
+ * absence. Mirrors the migration layouts actually present in this monorepo.
+ */
+function findCompiledMigrationsDir(serviceDir) {
+  const candidates = [
+    path.join(__dirname, 'dist', serviceDir, 'migrations'),
+    path.join(__dirname, 'dist', serviceDir, 'src', 'migrations'),
+    path.join(__dirname, 'dist', serviceDir, 'src', 'database', 'migrations'),
   ];
   return candidates.find((candidate) => fs.existsSync(candidate)) || null;
 }
@@ -58,12 +94,22 @@ function findCompiledDataSource(serviceDir) {
  */
 function discoverServices() {
   const distApps = path.join(__dirname, 'dist', 'apps');
-  if (!fs.existsSync(distApps)) return [];
-  return fs
+  if (!fs.existsSync(distApps)) return { services: [], orphanMigrations: [] };
+
+  const all = fs
     .readdirSync(distApps, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => `apps/${entry.name}`)
-    .filter((dir) => findCompiledDataSource(dir));
+    .map((entry) => `apps/${entry.name}`);
+
+  return {
+    services: all.filter((dir) => findCompiledDataSource(dir)),
+    // Services with migrations on disk but no data-source to run them. Most
+    // services legitimately have neither and are simply absent from both lists;
+    // it is the combination that signals a gap worth reporting.
+    orphanMigrations: all.filter(
+      (dir) => !findCompiledDataSource(dir) && findCompiledMigrationsDir(dir),
+    ),
+  };
 }
 
 /**
@@ -141,7 +187,7 @@ async function processService(serviceDir) {
 }
 
 async function main() {
-  const all = discoverServices();
+  const { services: all, orphanMigrations } = discoverServices();
   const targets =
     SELECTED.length === 1 && SELECTED[0] === 'all'
       ? all
@@ -213,6 +259,22 @@ async function main() {
         `its single "${schema}".migrations table, so each one's applied-count includes the ` +
         `others' rows and its pending list is measured against them: ${names}. ` +
         'Resolve the shared bookkeeping before applying migrations for any of them.',
+    );
+  }
+
+  // Reported after the per-service lines so it reads as a gap in the report
+  // above rather than a service result. These never reach `targets`, so before
+  // this they produced no output whatsoever — the failure mode that hid
+  // identity-verification-service's missing schema for as long as it existed.
+  if (orphanMigrations.length > 0) {
+    const names = orphanMigrations
+      .map((dir) => dir.replace(/^apps\//, ''))
+      .join(', ');
+    console.warn(
+      `[migrations] NOTE: ${orphanMigrations.length} service(s) ship compiled migrations ` +
+        `but expose no data-source, so nothing can apply them and they are absent from ` +
+        `the report above: ${names}. Add a data-source (see any service's ` +
+        'src/data-source.ts) to bring them under migration control.',
     );
   }
 
