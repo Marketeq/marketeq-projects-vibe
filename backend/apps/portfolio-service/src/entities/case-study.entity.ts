@@ -61,6 +61,16 @@ export class CaseStudy {
   @Column('jsonb', { default: () => "'[]'" })
   skills: string[];
 
+  /**
+   * Denormalized total of `case_study_likes` rows for this case study, so
+   * listing a page of case studies doesn't need a COUNT per row. The likes
+   * table is the source of truth — this is always recomputed from it inside
+   * the same transaction that adds or removes a like, never incremented
+   * blind, so the two cannot drift.
+   */
+  @Column('int', { default: 0 })
+  likesCount: number;
+
   @CreateDateColumn()
   createdAt: Date;
 

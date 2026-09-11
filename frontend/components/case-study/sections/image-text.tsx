@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Controller, useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
-import { PictureEditor } from "@/components/ui"
+import { PictureEditor, useToast } from "@/components/ui"
 import { uploadCaseStudyImage } from "@/lib/case-study-upload"
 import type { ImageTextData } from "@/lib/case-study-mapper"
 import { BlockImageToolbar } from "@/components/case-study/toolbars"
@@ -54,6 +54,7 @@ function ImageTextEdit({
   const [isImageEditOpen, setIsImageEditOpen] = useState(false)
   const title = useWatch({ control, name: "title" })
   const subTitle = useWatch({ control, name: "subTitle" })
+  const { toast } = useToast()
 
   useEffect(() => {
     onDataChange?.({
@@ -112,7 +113,14 @@ function ImageTextEdit({
                 onChange(files)
                 const file = (files as File[] | undefined)?.[0]
                 if (file instanceof File) {
-                  uploadCaseStudyImage(file).then(setImageUrl)
+                  uploadCaseStudyImage(file)
+                    .then(setImageUrl)
+                    .catch(() => {
+                      toast({
+                        title: "Couldn't upload image",
+                        description: "Please try again.",
+                      })
+                    })
                 }
               }}
               startingPoint={({ dataUrl, open, onRemove }) => (
@@ -122,7 +130,7 @@ function ImageTextEdit({
                       <img
                         src={dataUrl || imageUrl}
                         aria-label="Picture"
-                        className="size-full object-contain rounded-lg"
+                        className="size-full object-cover rounded-lg"
                         style={imageTransformStyle(imageZoom, imageRotation, imageOffsetX, imageOffsetY)}
                       />
                     </div>
@@ -161,6 +169,7 @@ function ImageTextEdit({
           initialOffsetX={imageOffsetX}
           initialOffsetY={imageOffsetY}
           aspectRatio={494 / 375}
+          objectFit="cover"
           onSave={({ zoom, rotation, offsetX, offsetY }) => {
             setImageZoom(zoom)
             setImageRotation(rotation)
@@ -194,7 +203,7 @@ function ImageTextView({ data }: { data?: Record<string, unknown> }) {
           rotation={d.imageRotation}
           offsetX={d.imageOffsetX}
           offsetY={d.imageOffsetY}
-          className="absolute inset-0 h-full w-full object-contain"
+          className="absolute inset-0 h-full w-full object-cover"
         />
       </div>
     </section>

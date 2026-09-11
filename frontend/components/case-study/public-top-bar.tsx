@@ -80,7 +80,7 @@ export function PublicTopBar({
             variant="outlined"
             className="h-auto px-[14px] py-2 border-2 border-primary-500 text-primary-500 text-xs font-semibold hover:bg-primary-25"
           >
-            <MessageSquare className="size-[15px]" /> Message me
+            <MessageSquare className="size-[15px]" /> Message Me
           </Button>
 
           <Button
