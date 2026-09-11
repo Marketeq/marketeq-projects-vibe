@@ -12303,105 +12303,6 @@ const ProjectScopeEditStep = ({
     )
   }
 
-  const addProjectQualityTask = () => {
-    const targetPhaseName = phases[0]?.phaseName
-
-    if (!targetPhaseName) return false
-
-    setPhases((currentPhases) =>
-      currentPhases.map((phase) =>
-        phase.phaseName !== targetPhaseName
-          ? phase
-          : {
-              ...phase,
-              rows: (phase.rows ?? []).some(
-                (row) => row.task === "Quality Review"
-              )
-                ? phase.rows
-                : [
-                    ...(phase.rows ?? []),
-                    {
-                      id: `project-scope-quality-task-${getId()}`,
-                      task: "Quality Review",
-                      role: "QA Engineer",
-                      location: "USA",
-                      experience: "Junior",
-                      duration: { value: 10, type: "hours" },
-                      workSchedule: "full_time",
-                    },
-                  ],
-            }
-      )
-    )
-    setExpandedPhaseNames((currentNames) =>
-      currentNames.includes(targetPhaseName)
-        ? currentNames
-        : [...currentNames, targetPhaseName]
-    )
-
-    return true
-  }
-
-  const applyProjectAssistantFallback = (message: string) => {
-    const normalizedMessage = normalizeSearchText(message)
-
-    if (!normalizedMessage) return false
-
-    if (normalizedMessage.includes("budget")) {
-      setBudgetAmount((currentAmount) => {
-        const nextAmount = Math.max(1000, Math.round(currentAmount * 0.8))
-        setAssistantResult(
-          `Applied: budget reduced to $${nextAmount.toLocaleString()} per ${budgetFrequency}.`
-        )
-        return nextAmount
-      })
-      return true
-    } else if (
-      normalizedMessage.includes("timeline") ||
-      normalizedMessage.includes("shorten")
-    ) {
-      setPhases((currentPhases) =>
-        currentPhases.map((phase) => ({
-          ...phase,
-          rows: (phase.rows ?? []).map((row) => {
-            const value = Number(row.duration?.value)
-
-            return {
-              ...row,
-              duration: {
-                value:
-                  Number.isFinite(value) && value > 1
-                    ? Math.max(1, Math.ceil(value * 0.8))
-                    : (row.duration?.value ?? 1),
-                type: row.duration?.type ?? "hours",
-              },
-            }
-          }),
-        }))
-      )
-      setAssistantResult("Applied: shortened task durations in the scope table.")
-      return true
-    } else if (
-      normalizedMessage.includes("quality") ||
-      normalizedMessage.includes("scope") ||
-      normalizedMessage.includes("improve")
-    ) {
-      const didAddTask = addProjectQualityTask()
-      setAssistantResult(
-        didAddTask
-          ? "Applied: added a Quality Review task to the first phase."
-          : "No available phase found to update."
-      )
-      return true
-    } else {
-      setAssistantResult(
-        "Try one of the suggested actions: reduce the budget, shorten the timeline, or improve scope quality."
-      )
-    }
-
-    return false
-  }
-
   const buildProjectAssistantScope = () => ({
     phases: phases.map((phase, phaseIndex) => {
       const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`
@@ -12428,45 +12329,70 @@ const ProjectScopeEditStep = ({
     }),
   })
 
-  const applyGeneratedProjectScope = (generatedScope: any) => {
-    const generatedPhases = Array.isArray(generatedScope?.phases)
-      ? generatedScope.phases
-      : []
+  const applyPersistedProjectScopeFromAssistant = (data: any) => {
+    const persistedPhases =
+      data?.listing?.phases ?? data?.jobListing?.phases ?? data?.phases
+    const nextPhases = createPhasesFromPersistedJobListing(persistedPhases)
 
-    if (!generatedPhases.length) return false
+    if (nextPhases.length > 0) {
+      skipNextProjectScopeSaveRef.current = true
+      setPhases(nextPhases)
+      setExpandedPhaseNames(
+        nextPhases
+          .map((phase) => phase.phaseName)
+          .filter((name): name is string => Boolean(name))
+      )
+    }
 
-    const nextPhases: Phase[] = generatedPhases.map(
-      (phase: any, phaseIndex: number) => ({
-        phaseName: String(phase?.phaseName ?? `Phase ${phaseIndex + 1}`),
-        phaseType: phase?.phaseType ?? "setup",
-        recurrenceSchedule: phase?.recurrenceSchedule ?? undefined,
-        recurrenceCount: phase?.recurrenceCount ?? undefined,
-        rows: (Array.isArray(phase?.tasks) ? phase.tasks : []).map(
-          (task: any, taskIndex: number) => ({
-            id: `project-ai-task-${phaseIndex}-${taskIndex}-${getId()}`,
-            task: String(task?.taskName ?? "New Task"),
-            role: String(task?.roleTitle ?? "Specialist"),
-            location: task?.location ?? "USA",
-            experience: (task?.experienceLevel ?? "Junior") as ExperienceLevel,
-            duration: {
-              value: Number(task?.estimatedHours) || 1,
-              type: "hours",
-            },
-            workSchedule: task?.workSchedule ?? "full_time",
-            customHours: task?.customHours ?? undefined,
-            customFrequency: task?.customFrequency ?? undefined,
-          })
-        ),
-      })
-    )
+    const budgetUsdCents =
+      toFiniteNumber(data?.listing?.budgetAmountUsdCents) ??
+      toFiniteNumber(data?.jobListing?.budgetAmountUsdCents) ??
+      toFiniteNumber(data?.totalBudgetUsdCents)
 
-    setPhases(nextPhases)
-    setExpandedPhaseNames(
-      nextPhases
-        .map((phase) => phase.phaseName)
-        .filter((name): name is string => Boolean(name))
-    )
-    return true
+    if (typeof budgetUsdCents === "number") {
+      setBudgetAmount(Math.round(budgetUsdCents / 100))
+      setIsBudgetStale(false)
+    }
+
+    return nextPhases.length > 0
+  }
+
+  const getProjectAssistantResultText = (
+    value: unknown,
+    fallback: string
+  ) => {
+    if (typeof value === "string") return value
+
+    if (Array.isArray(value)) {
+      return value
+        .map((item) =>
+          typeof item === "string" ? item : JSON.stringify(item)
+        )
+        .filter(Boolean)
+        .join("\n")
+    }
+
+    if (value && typeof value === "object") {
+      const objectValue = value as {
+        summary?: unknown
+        message?: unknown
+        suggestions?: unknown
+      }
+
+      if (typeof objectValue.summary === "string") return objectValue.summary
+      if (typeof objectValue.message === "string") return objectValue.message
+
+      if (Array.isArray(objectValue.suggestions)) {
+        return objectValue.suggestions
+          .map((item) =>
+            typeof item === "string" ? item : JSON.stringify(item)
+          )
+          .filter(Boolean)
+          .join("\n")
+      }
+    }
+
+    return fallback
   }
 
   const runProjectAssistant = async (message: string) => {
@@ -12477,15 +12403,16 @@ const ProjectScopeEditStep = ({
     setAssistantLastPrompt(prompt)
 
     if (!jobListingId) {
-      applyProjectAssistantFallback(prompt)
+      setAssistantResult(
+        "Smart Assistant needs a saved job draft first. Please try again in a moment."
+      )
       setAssistantMessage("")
       return
     }
 
     setIsAssistantLoading(true)
     try {
-      const response = await JobListingAPI.SmartAssistant(jobListingId, {
-        mode: "scope",
+      const response = await JobListingAPI.SmartAssistantScope(jobListingId, {
         command: prompt,
         currentScope: buildProjectAssistantScope(),
         workType: "project",
@@ -12493,24 +12420,31 @@ const ProjectScopeEditStep = ({
       const data = response?.data ?? {}
 
       if (data.aiStatus === "AI_UNAVAILABLE") {
-        applyProjectAssistantFallback(prompt)
         setAssistantResult(
-          data.message ?? "Smart Assistant is temporarily unavailable."
+          getProjectAssistantResultText(
+            data.message,
+            "Smart Assistant is temporarily unavailable."
+          )
         )
         return
       }
 
-      if (applyGeneratedProjectScope(data.updatedScope)) {
+      if (applyPersistedProjectScopeFromAssistant(data)) {
         setAssistantResult(
-          data.summary ?? "Applied: Smart Assistant updated the project scope."
+          getProjectAssistantResultText(
+            data.summary,
+            "Applied: Smart Assistant updated the project scope."
+          )
         )
       } else {
         setAssistantResult(
-          data.summary ?? "Smart Assistant did not return an updated scope."
+          getProjectAssistantResultText(
+            data.summary,
+            "Smart Assistant did not return an updated scope."
+          )
         )
       }
     } catch (error: any) {
-      applyProjectAssistantFallback(prompt)
       setAssistantResult(
         error?.response?.data?.message ||
           error?.message ||
@@ -13589,6 +13523,17 @@ const ProjectScopeEditStep = ({
                   placeholder="I want to change..."
                   value={assistantMessage}
                   onChange={(event) => setAssistantMessage(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      assistantMessage.trim() &&
+                      !isAssistantLoading
+                    ) {
+                      event.preventDefault()
+                      void runProjectAssistant(assistantMessage)
+                    }
+                  }}
                 />
                 <div className="flex h-6 w-[260px] shrink-0 self-stretch items-center justify-between gap-2 p-0">
                   <img
@@ -16666,6 +16611,17 @@ const ServiceScopeEditStep = ({
                     onChange={(event) =>
                       setAssistantMessage(event.target.value)
                     }
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === "Enter" &&
+                        !event.shiftKey &&
+                        assistantMessage.trim() &&
+                        !isAssistantLoading
+                      ) {
+                        event.preventDefault()
+                        void runServiceAssistant(assistantMessage)
+                      }
+                    }}
                   />
                   <div className="flex items-center justify-between">
                     <RefreshCcw05 className="size-4 text-gray-400" />

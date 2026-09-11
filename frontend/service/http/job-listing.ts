@@ -120,6 +120,19 @@ export const JobListingAPI = {
       data,
     ),
 
+  SmartAssistantScope: (
+    id: string,
+    data: {
+      command: string;
+      currentScope: Record<string, unknown>;
+      workType?: JobListingWorkType;
+    },
+  ) =>
+    AxiosRequest.post(
+      jobListingUrl(`/v1/job-listings/${id}/smart-assistant/scope`),
+      data,
+    ),
+
   GenerateTools: (
     id: string,
     data: {
