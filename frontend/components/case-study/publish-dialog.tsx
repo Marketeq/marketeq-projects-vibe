@@ -503,6 +503,12 @@ export function PublishDialog({
 
         <div className="shrink-0 border-t border-gray-200" />
 
+        {/*
+          Same call-site pattern as case-study-client-preview.tsx: the flex
+          column and min-height come from here so the body scrolls between
+          the header and footer, without changing the shared ScrollArea
+          primitive for its other consumers.
+        */}
         <ScrollArea
           className="flex min-h-0 flex-1 flex-col"
           viewportClassName="h-auto min-h-0 flex-1 [&>div]:h-auto"

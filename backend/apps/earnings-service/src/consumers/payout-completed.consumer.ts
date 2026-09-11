@@ -1,4 +1,4 @@
-import { Injectable }                              from '@nestjs/common';
+import { Controller }                              from '@nestjs/common';
 import { Ctx, MessagePattern, Payload, RmqContext } from '@nestjs/microservices';
 import { InjectRepository }                       from '@nestjs/typeorm';
 import { Repository, DataSource }                 from 'typeorm';
@@ -8,7 +8,7 @@ import { BalanceSnapshot }                        from '../entities/balance-snap
 import { EarningsPublisher }                      from '../publishers/earnings.publisher';
 import { CacheService }                           from '../cache/cache.service';
 
-@Injectable()
+@Controller()
 export class PayoutCompletedConsumer extends BaseConsumer {
   constructor(
     config: ConfigService,
@@ -25,7 +25,13 @@ export class PayoutCompletedConsumer extends BaseConsumer {
       try {
         if (await this.isDuplicate(d.eventId, 'payout.completed')) { ch.ack(msg); return; }
         const snapBefore = await this.bsRepo.findOne({ where: { contractorId: d.contractorId } });
-        await this.ds.query(`UPDATE balance_snapshots SET available_balance = GREATEST(0, available_balance - $1::numeric),
+        // available_balance was already debited instantly when the withdrawal
+        // was confirmed (BalanceService.holdForPayout, called from
+        // payout-service's verifyMagicLink) — completion only releases the
+        // hold and books it as paid out, it does not touch available_balance
+        // again.
+        await this.ds.query(`UPDATE balance_snapshots SET
+          pending_hold_usd = GREATEST(0, pending_hold_usd - $1::numeric),
           total_paid_out_usd = total_paid_out_usd + $1::numeric, last_debit_at = NOW(), updated_at = NOW()
           WHERE contractor_id = $2`, [d.payoutAmountUsd, d.contractorId]);
         await this.cacheService.invalidateBalance(d.contractorId);

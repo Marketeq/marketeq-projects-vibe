@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Inject,
   Injectable,
   Logger,
@@ -7,7 +8,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Not, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import { ClientProxy } from '@nestjs/microservices';
 import { Project } from './entities/project.entity';
 import { ListingStatus } from '../shared/enums/listing.enum';
@@ -20,6 +21,8 @@ import {
 } from '../project-sync/deliverables/deliverables.adapter';
 import { FAQ_ADAPTER, FaqAdapter } from '../publish/faq/faq.adapter';
 import { RelatedTermsService } from './related-terms.service';
+import { taxonomyChildren } from './related-taxonomy';
+import { ReportProjectDto } from './dto/report-project.dto';
 
 @Injectable()
 export class ProjectsService {
@@ -130,29 +133,16 @@ export class ProjectsService {
     });
     if (!item) throw new NotFoundException('Project not found');
 
-    const [
-      similarProjects,
-      projectHistoryRatings,
-      team,
-      relatedCategories,
-      relatedSkills,
-    ] = await Promise.all([
+    const [similarProjects, projectHistoryRatings, team] = await Promise.all([
       this.getSimilarProjects(item),
       this.getProjectHistoryRatings(item),
       this.resolveTeamMembers(item),
-      this.relatedTerms.relatedCategories([
-        ...(item.categories ?? []),
-        ...(item.subcategories ?? []),
-      ]),
-      this.relatedTerms.relatedSkills(this.getSkillsAndTools(item)),
     ]);
 
     return {
       ...this.shapeProject(item),
       ownerId: item.userId ? String(item.userId) : null,
       similarProjects,
-      relatedCategories,
-      relatedSkills,
       team,
       isTemporarilyUnavailable: team.length === 0,
       projectHistoryRatings,
@@ -180,12 +170,13 @@ export class ProjectsService {
     const visibleIds = memberIds.filter((id) => !inactiveIds.has(id));
     if (!visibleIds.length) return [];
 
-    const [users, skillRows, langRows] = await Promise.all([
+    const [users, skillRows, langRows, experienceRows] = await Promise.all([
       this.repo.manager.query<Array<{
         id: string; firstName: string; lastName: string; username: string | null;
         avatarUrl: string | null; recentJobTitle: string | null; location: string | null;
+        rate: string | null; rateMin: number | null; rateMax: number | null;
       }>>(
-        `SELECT id::text, "firstName", "lastName", username, "avatarUrl", "recentJobTitle", location
+        `SELECT id::text, "firstName", "lastName", username, "avatarUrl", "recentJobTitle", location, rate, "rateMin", "rateMax"
          FROM user_service.users WHERE id = ANY($1::uuid[])`,
         [visibleIds],
       ),
@@ -195,6 +186,10 @@ export class ProjectsService {
       ),
       this.repo.manager.query<Array<{ userId: string; name: string }>>(
         `SELECT "userId"::text, name FROM user_service.languages WHERE "userId" = ANY($1::uuid[])`,
+        [visibleIds],
+      ),
+      this.repo.manager.query<Array<{ userId: string; startDate: string | null; endDate: string | null }>>(
+        `SELECT "userId"::text, "startDate", "endDate" FROM user_service.experience WHERE "userId" = ANY($1::uuid[])`,
         [visibleIds],
       ),
     ]);
@@ -211,6 +206,19 @@ export class ProjectsService {
       arr.push(l.name);
       langsByUser.set(l.userId, arr);
     });
+    const experienceLevelByUser = new Map<string, string | null>();
+    const experienceEntriesByUser = new Map<
+      string,
+      Array<{ startDate: string | null; endDate: string | null }>
+    >();
+    experienceRows.forEach((e) => {
+      const arr = experienceEntriesByUser.get(e.userId) ?? [];
+      arr.push({ startDate: e.startDate, endDate: e.endDate });
+      experienceEntriesByUser.set(e.userId, arr);
+    });
+    experienceEntriesByUser.forEach((entries, userId) => {
+      experienceLevelByUser.set(userId, this.resolveExperienceLevel(entries));
+    });
 
     const ownerUserId = String(project.userId ?? '');
     return users
@@ -223,6 +231,11 @@ export class ProjectsService {
         avatarUrl: u.avatarUrl ?? null,
         role: u.recentJobTitle ?? 'Team Member',
         location: u.location ?? null,
+        // `rate` is a Postgres `numeric` column — node-postgres returns those
+        // as strings (not numbers) to avoid precision loss, so coerce here
+        // rather than leaking that quirk to callers expecting a real number.
+        rate: u.rate != null ? Number(u.rate) : (u.rateMin ?? null),
+        experienceLevel: experienceLevelByUser.get(u.id) ?? null,
         isLead: u.id === String(project.userId),
         isOnline: false,
         skills: skillsByUser.get(u.id) ?? [],
@@ -233,6 +246,35 @@ export class ProjectsService {
         if (b.id === ownerUserId) return 1;
         return visibleIds.indexOf(a.id) - visibleIds.indexOf(b.id);
       });
+  }
+
+  // Total career span across a user's real work-experience rows, bucketed
+  // into the same Student/Junior/Mediator/Senior/Guru brackets the
+  // checkout page's Experience dropdown already offers (0-2/2-3/3-5/5-10/10+
+  // years) — see the Dropdown component in
+  // frontend/app/checkout/[slug]/page.tsx.
+  private resolveExperienceLevel(
+    entries: Array<{ startDate: string | null; endDate: string | null }>,
+  ): string | null {
+    const starts: number[] = [];
+    const ends: number[] = [];
+    for (const entry of entries) {
+      const start = entry.startDate ? Date.parse(entry.startDate) : NaN;
+      if (!Number.isNaN(start)) starts.push(start);
+      const end = entry.endDate ? Date.parse(entry.endDate) : NaN;
+      ends.push(Number.isNaN(end) ? Date.now() : end);
+    }
+    if (!starts.length) return null;
+
+    const earliest = Math.min(...starts);
+    const latest = Math.max(...ends);
+    const years = (latest - earliest) / (1000 * 60 * 60 * 24 * 365.25);
+
+    if (years < 2) return 'Student';
+    if (years < 3) return 'Junior';
+    if (years < 5) return 'Mediator';
+    if (years < 10) return 'Senior';
+    return 'Guru';
   }
 
   async seedFromN8n(dto: Record<string, any>) {
@@ -344,6 +386,34 @@ export class ProjectsService {
     await this.repo.update(id, writable);
     const updated = await this.repo.findOne({ where: { id } });
     if (updated) this.emitAlgoliaUpsert(updated);
+    return this.findOne(id);
+  }
+
+  /**
+   * Claim an unowned project. The update is conditional on `userId IS NULL` so
+   * the first commit wins: a second concurrent claim matches zero rows and is
+   * rejected, rather than silently overwriting the first claimer.
+   */
+  async claim(id: string, userId: string) {
+    if (!userId) throw new ForbiddenException('Sign in to claim a project');
+
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(Project)
+      .set({ userId })
+      .where('id = :id', { id })
+      .andWhere('"userId" IS NULL')
+      .execute();
+
+    if (!result.affected) {
+      const existing = await this.repo.findOne({ where: { id } });
+      if (!existing) throw new NotFoundException('Project not found');
+      if (existing.userId === userId) return this.findOne(id);
+      throw new ConflictException('This project has just been claimed by someone else');
+    }
+
+    const claimed = await this.repo.findOne({ where: { id } });
+    if (claimed) this.emitAlgoliaUpsert(claimed);
     return this.findOne(id);
   }
 
@@ -508,6 +578,8 @@ export class ProjectsService {
       status: project.status,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
+      projectDatePublished: project.projectDatePublished ?? null,
+      durationMonths: project.durationMonths ?? null,
       budget,
       priceMin: budget,
       budgetUsdCents: budget != null ? Math.round(budget * 100) : null,
@@ -551,9 +623,18 @@ export class ProjectsService {
   }
 
 
+  async getSimilarById(id: string) {
+    const item = await this.repo.findOne({ where: { id } });
+    if (!item) return [];
+    return this.getSimilarProjects(item);
+  }
+
   private async getSimilarProjects(project: Project) {
     const published = await this.repo.find({
-      where: { status: ListingStatus.Published, listingType: 'project' },
+      where: {
+        status: ListingStatus.Published,
+        listingType: In(['project', 'service']),
+      },
       order: { featured: 'DESC', createdAt: 'DESC' },
       take: 200,
     });
@@ -721,6 +802,66 @@ export class ProjectsService {
     return project.recentQuestions ?? [];
   }
 
+  async getRelatedTerms(projectId: string) {
+    const project = await this.repo.findOne({ where: { id: projectId } });
+    if (!project) throw new NotFoundException('Project not found');
+
+    const [
+      relatedCategories,
+      relatedSkills,
+      relatedCategoryGroups,
+      relatedSkillGroups,
+    ] = await Promise.all([
+      this.relatedTerms.relatedCategories([
+        ...(project.categories ?? []),
+        ...(project.subcategories ?? []),
+      ]),
+      this.relatedTerms.relatedSkills(this.getSkillsAndTools(project)),
+      this.relatedTerms
+        .relatedCategoryGroups(project.categories ?? [])
+        .catch(() => []),
+      this.relatedTerms
+        .relatedSkillGroups(this.getSkillsAndTools(project))
+        .catch(() => []),
+    ]);
+
+    const curatedTags = (groups: Array<{ name: string; items: string[] }>) =>
+      groups.flatMap((g) => [g.name, ...(taxonomyChildren(g.name) ?? [])]);
+    const relatedSearchTags = [
+      ...curatedTags(relatedSkillGroups as Array<{ name: string; items: string[] }>),
+      ...curatedTags(relatedCategoryGroups as Array<{ name: string; items: string[] }>),
+    ];
+
+    return {
+      relatedCategories,
+      relatedSkills,
+      relatedCategoryGroups,
+      relatedSkillGroups,
+      relatedSearchTags,
+    };
+  }
+
+  async reportProject(
+    projectId: string,
+    dto: ReportProjectDto,
+    reporterId?: string,
+  ) {
+    const project = await this.repo.findOne({ where: { id: projectId } });
+    if (!project) throw new NotFoundException('Project not found');
+
+    this.logger.warn(
+      `[ProjectReport] project=${projectId} reporter=${
+        reporterId ?? 'anon'
+      } reason="${dto.reason}" attachments=${
+        dto.attachments?.length ?? 0
+      } description=${
+        dto.description ? JSON.stringify(dto.description.slice(0, 200)) : 'n/a'
+      }`,
+    );
+
+    return { success: true };
+  }
+
   async getRelatedSearches(projectId: string, limit = 60) {
     const project = await this.repo.findOne({ where: { id: projectId } });
     if (!project) throw new NotFoundException('Project not found');
@@ -731,48 +872,14 @@ export class ProjectsService {
       ...(project.programmingLanguages ?? []),
       ...(project.developmentTech ?? []),
       ...(project.subcategories ?? []),
+      ...(project.categories ?? []),
     ]
       .map((t) => t?.trim())
       .filter((t): t is string => !!t);
 
-    const ownSet = new Set(ownTerms.map((t) => t.toLowerCase()));
-
-    const related = await this.repo.find({
-      where: { status: ListingStatus.Published, listingType: 'project' },
-      select: ['skills', 'tags', 'programmingLanguages', 'developmentTech', 'subcategories'],
-      take: 200,
-    });
-
-    const freq = new Map<string, { term: string; count: number }>();
-    for (const r of related) {
-      const terms = [
-        ...(r.skills ?? []),
-        ...(r.tags ?? []),
-        ...(r.programmingLanguages ?? []),
-        ...(r.developmentTech ?? []),
-        ...(r.subcategories ?? []),
-      ]
-        .map((t) => t?.trim())
-        .filter((t): t is string => !!t);
-
-      if (!terms.some((t) => ownSet.has(t.toLowerCase()))) continue;
-
-      for (const t of terms) {
-        const key = t.toLowerCase();
-        if (ownSet.has(key)) continue;
-        const cur = freq.get(key);
-        if (cur) cur.count++;
-        else freq.set(key, { term: t, count: 1 });
-      }
-    }
-
-    const expansion = Array.from(freq.values())
-      .sort((a, b) => b.count - a.count)
-      .map((x) => x.term);
-
     const seen = new Set<string>();
     const out: string[] = [];
-    for (const t of [...ownTerms, ...expansion]) {
+    for (const t of ownTerms) {
       const key = t.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);

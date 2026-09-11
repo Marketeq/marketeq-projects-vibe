@@ -34,6 +34,20 @@ export type User = {
   customAvailability?: CustomAvailabilityDay[] | null
   recentJobTitle?: string | null
   jobTitles?: string[] | null
+  teamName?: string | null
+  /** Department from Personal Info's "What team do you work on?".
+   *  Distinct from `teamName`, which is the client's company name. */
+  department?: string | null
+  /** Settings > IP Restrictions master switch. Null until the screen is used —
+   *  which is not the same as having deliberately switched restriction off. */
+  ipRestrictionEnabled?: boolean | null
+  /** Comma-separated list of languages the user speaks. A profile attribute —
+   *  it does not switch the interface language. */
+  language?: string | null
+  /** Phone registered as the second factor. Separate from `phone`. */
+  twoFactorPhone?: string | null
+  companyWebsite?: string | null
+  workplaceValues?: string[] | null
   clientOnboardedAt?: string | Date | null
   talentOnboardedAt?: string | Date | null
   onboardedAt?: string | Date | null
@@ -123,6 +137,7 @@ export type UserProfile = User & {
   userType?: string | null
   industry?: string | null
   businessGoals?: string[] | null
+  lookingToWorkWith?: string[] | null
   totalProjectsCompleted?: number | null
   clientSuccessRating?: number | null
   repeatHireRate?: number | null

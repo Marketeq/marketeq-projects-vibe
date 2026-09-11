@@ -34,6 +34,7 @@ pipeline {
         string(name: 'PR_NUMBER', defaultValue: '', description: 'PR number')
         string(name: 'BASE_REF', defaultValue: 'dev-main', description: 'Base branch')
         string(name: 'HEAD_SHA', defaultValue: '', description: 'Head commit SHA')
+        string(name: 'PR_AUTHOR', defaultValue: '', description: 'PR author GitHub login')
     }
     environment { REPO = 'Marketeq/marketeq-projects-vibe' }
     stages {
@@ -97,6 +98,79 @@ pipeline {
                         echo '{"verdict":"SKIP","summary":"No base to diff against","regressions":[]}' > /tmp/verdict.json
                         exit 0
                     fi
+
+                    # ---- Same-line conflict extraction (SOP 5.1) ----------------
+                    # Finds lines changed by BOTH this PR and the base branch since
+                    # they diverged, and emits all three versions of each region:
+                    # the merge base, this PR's version, and the base's version.
+                    # That is what the model needs to say which side is newer and
+                    # whether either one loses behaviour the other has.
+                    cat > /tmp/conflicts.py << 'CONFPY'
+import re, subprocess, sys
+
+NL = chr(10)
+
+BASE_SHA = sys.argv[1]
+BASE_REF = "origin/" + sys.argv[2]
+
+def sh(*a):
+    try:
+        return subprocess.run(["git"] + list(a), capture_output=True, text=True,
+                              timeout=60).stdout
+    except Exception:
+        return ""
+
+def changed(rev):
+    return set(x for x in sh("diff", "--name-only", BASE_SHA, rev).split(NL) if x)
+
+def ranges(rev, path):
+    out = []
+    for line in sh("diff", "-U0", BASE_SHA, rev, "--", path).split(NL):
+        if not line.startswith("@@"):
+            continue
+        m = re.match(r"@@ -([0-9]+)(?:,([0-9]+))? ", line)
+        if not m:
+            continue
+        st = int(m.group(1)); ct = int(m.group(2) or 1)
+        out.append((st, st + ct - 1) if ct else (st, st))
+    return out
+
+def show(rev, path, lo, hi):
+    body = sh("show", "%s:%s" % (rev, path))
+    if not body:
+        return "(file absent at this revision)"
+    L = body.split(NL)
+    lo = max(1, lo - 3); hi = min(len(L), hi + 3)
+    return NL.join("%5d| %s" % (i, L[i-1]) for i in range(lo, hi+1))
+
+both = changed("HEAD") & changed(BASE_REF)
+blocks = []
+for path in sorted(both):
+    pr_r, base_r = ranges("HEAD", path), ranges(BASE_REF, path)
+    for (s1, e1) in pr_r:
+        for (s2, e2) in base_r:
+            lo, hi = max(s1, s2), min(e1, e2)
+            if lo <= hi:
+                parts = [
+                    "=== %s lines %d-%d (merge-base numbering) ===" % (path, lo, hi),
+                    "--- AT MERGE BASE (what both sides started from) ---",
+                    show(BASE_SHA, path, lo, hi),
+                    "--- THIS PR VERSION ---",
+                    show("HEAD", path, lo, hi),
+                    "--- BASE BRANCH VERSION (already merged, newer) ---",
+                    show(BASE_REF, path, lo, hi),
+                ]
+                blocks.append(NL.join(parts))
+                break
+        if len(blocks) >= 12:
+            break
+    if len(blocks) >= 12:
+        break
+
+print(NL.join(blocks) if blocks else "")
+CONFPY
+                    python3 /tmp/conflicts.py "$BASE_SHA" "${BASE_REF}" > ../conflict_hunks.txt 2>/dev/null || echo "" > ../conflict_hunks.txt
+                    echo "Same-line conflict regions: $(grep -c '^=== ' ../conflict_hunks.txt 2>/dev/null || echo 0)"
                     echo "$BASE_SHA" > ../base_sha.txt
 
                     CHANGED=$(git diff --name-only "$BASE_SHA"...HEAD 2>/dev/null || echo "")
@@ -226,13 +300,33 @@ pipeline {
                         API_SHAPES=$(cat api_shape_changes.txt 2>/dev/null | head -c 15000)
                         LAYOUT_CHANGES=$(cat layout_changes.txt 2>/dev/null | head -c 10000)
                         MANIFEST=$(cat manifest.json 2>/dev/null | head -c 20000)
+                        CONFLICT_HUNKS=$(cat ../conflict_hunks.txt 2>/dev/null | head -c 40000)
+
+                        # Detect security sprint author
+                        SECURITY_SPRINT_AUTHORS="SomiLA1"
+                        IS_SEC_SPRINT=""
+                        for sec_author in $SECURITY_SPRINT_AUTHORS; do
+                            if [ "${PR_AUTHOR}" = "$sec_author" ]; then
+                                IS_SEC_SPRINT="true"
+                                break
+                            fi
+                        done
 
                         # Build the prompt file
                         cat > prompt.txt << PROMPT_END
-You are the Deep Regression Detector for the Marketeq Projects platform. Your job is to catch EVERY regression before it reaches production. You must be thorough and paranoid.
+You are the Deep Regression Detector for the Marketeq Projects platform. Your job is to catch regressions in EXISTING code before they reach production.
+
+## THE STANDARD: better is fine, worse is not
+A change to existing code may improve it freely and owes you no justification for being an improvement. You are NOT asked to judge whether a rewrite is good, clean, or "enough" better -- you have no design file, no ticket, and no spec, so you cannot make that call. The ONLY question you answer is whether something got WORSE than the previous version: a behavior, branch, guard, null check, error path, or edge case the old code had and the new code does not. Nothing lost -> SAFE. Something lost -> report it.
+
+## SCOPE LIMITS (these bound every check below)
+- Report ONLY on code that existed BEFORE this PR. Code this PR ADDED is the developer's deliberate new work; you have no standing to judge it and must NEVER recommend removing it.
+- Every regression you report MUST quote the specific old line and the specific new line. No citation -> no report.
+- Before reporting a missing guard, validator, or handler, check for a global/framework-level equivalent (APP_GUARD, middleware, interceptor, base class). Absence at the decorator is NOT absence.
+- Do NOT report on naming, casing, style, formatting, product scope ("this isn't persisted yet"), or performance you have not measured.
 
 ## YOUR TASK
-Analyze this PR diff line-by-line. For EVERY changed line, determine if it could break existing functionality. You must check:
+For each hunk that removes or rewrites PRE-EXISTING code, list every behavior of the OLD code (each branch, null check, guard, catch, early return, edge case, side effect). For each one, name the line in the NEW code that provides it, or mark it MISSING. Report ONLY the MISSING ones. Check:
 
 ### 1. DATA FLOW REGRESSIONS (CRITICAL)
 - Does any change alter what data is returned from an API endpoint?
@@ -255,10 +349,22 @@ Analyze this PR diff line-by-line. For EVERY changed line, determine if it could
 - Has any query builder (.select, .addSelect, .leftJoin, .leftJoinAndSelect) been modified?
 - Has any TypeORM relation loading changed?
 
-### 4. LAYOUT/UI REGRESSIONS
-- Were any CSS classes, grid layouts, or HTML structure changed?
-- If this PR is supposed to "wire data" or "add content", it should ONLY replace static text with dynamic data - NO layout changes allowed.
-- Were any hover effects, transitions, or animations removed?
+### 3b. SAME-LINE CONFLICTS -- IS THE NEWER SIDE BETTER OR WORSE? (run whenever CONFLICTING REGIONS below is non-empty)
+These are lines changed by BOTH this PR and the base branch since they diverged. You get three versions of each region: the MERGE BASE both sides started from, THIS PR'S VERSION, and the BASE BRANCH'S VERSION -- which is already merged and therefore NEWER.
+
+Answer exactly two questions per region:
+
+(a) WHICH IS NEWER, AND WHAT DID IT CHANGE? The base branch version is newer by definition. State what it changed relative to the merge base.
+
+(b) IS ANYTHING LOST? Enumerate every behaviour in the NEWER (base branch) version -- each branch, null check, guard, catch, early return, edge case, side effect. For each, find it in THIS PR'S version or mark it MISSING. Then reverse it: enumerate this PR's behaviours and check them against the base version.
+- Nothing MISSING either way -> compatible, both sets of behaviour can coexist. SAFE.
+- This PR is MISSING something the newer base version has -> **this is the clobber.** A squash merge would silently delete work already on the base branch. Report CRITICAL with the exact lines from both sides.
+- The base is missing something this PR has -> that is the PR's new work. NOT a regression, do not report it.
+
+Report only what is MISSING. Do NOT judge style, naming, or which version reads better -- only whether behaviour is lost. Better is fine; worse is not. Do NOT recommend deleting either side: where two changes can coexist, both are kept, and only a genuine contradiction makes one lose, which is the author's call, not yours.
+
+### 4. LAYOUT/CSS -- DO NOT ANALYZE
+Skip layout and CSS entirely. You cannot tell whether a style change is better or worse: you do not have the design file, the mockup, or the ticket. A class change may be a deliberate fix, a design update, or collateral damage, and nothing in the diff distinguishes them. NEVER report a CSS class, spacing, grid, colour, or structural style change as a regression. Frozen-file protection is handled mechanically by the SOP check, not by you.
 
 ### 5. AUTH/SECURITY REGRESSIONS
 - Were any guards, decorators, or middleware changed?
@@ -284,7 +390,7 @@ You MUST respond with valid JSON only, no markdown fencing:
       "severity": "CRITICAL" | "HIGH" | "MEDIUM" | "LOW",
       "file": "path/to/file.ts",
       "line_range": "42-48",
-      "category": "DATA_FLOW | COMPONENT | API_CONTRACT | LAYOUT | AUTH | IMPORT | COPY",
+      "category": "DATA_FLOW | COMPONENT | API_CONTRACT | AUTH | IMPORT | COPY | SAME_LINE_CONFLICT",
       "description": "What specifically broke and why",
       "before": "What the code did before",
       "after": "What the code does now",
@@ -299,7 +405,8 @@ Rules:
 - verdict BLOCK = any CRITICAL regression found
 - verdict RISKY = HIGH or MEDIUM regressions found
 - verdict SAFE = only LOW or no regressions
-- Be PARANOID. It is better to flag a false positive than miss a real regression.
+- Do NOT prefer false positives. A false finding costs the developer real work and risks deleting good code, which is worse than a missed bug. If you cannot cite the old line and the new line, drop it.
+- Nothing lost = SAFE, even if you would have written the code differently.
 - Check EVERY line of the diff. Do not skip files.
 - If a data mapping function changes, trace the data from API to component to display.
 
@@ -312,6 +419,10 @@ ${AFFECTED_FLOWS}
 ## CHANGED FILES
 ${CHANGED_FILES}
 
+## CONFLICTING REGIONS -- same lines changed by this PR AND by the base branch
+## (empty means no same-line conflicts; skip check 3b entirely if so)
+${CONFLICT_HUNKS}
+
 ## FULL DIFF (with 10 lines of context)
 ${DIFF}
 
@@ -321,9 +432,30 @@ ${IMPORTERS}
 ## API/TYPE SHAPE CHANGES (before vs after)
 ${API_SHAPES}
 
-## LAYOUT/CSS CHANGES (should be empty if this is a data-wiring PR)
-${LAYOUT_CHANGES}
 PROMPT_END
+
+                        # Append security sprint context if applicable
+                        if [ "$IS_SEC_SPRINT" = "true" ]; then
+                            cat >> prompt.txt << 'SEC_END'
+
+## SECURITY SPRINT PR -- HEIGHTENED SCRUTINY REQUIRED
+This PR is authored by a security sprint engineer. Security hardening is HIGH RISK for silent breakage. Apply these additional checks with maximum rigor:
+
+1. **Guard/middleware additions**: Every new guard or middleware must NOT block legitimate authenticated requests. Trace which endpoints are affected. Health checks MUST remain unauthenticated. Vercel preview CORS patterns MUST still work.
+
+2. **DTO validation tightening**: Every new validation decorator (@IsNotEmpty, @MaxLength, @IsEnum, new required fields) could cause 400 errors on forms that currently work. Check if the frontend sends empty strings, nulls, or omits optional fields for that property.
+
+3. **Response sanitization**: Any @Exclude() decorator, ClassSerializerInterceptor, or response DTO change could strip fields the frontend reads. Cross-check removed/hidden fields against the api_contracts in the manifest.
+
+4. **Error shape changes**: 401 vs 403 vs 404 matter. The frontend handles them differently. Changed error response bodies ({ message } vs { error }) break frontend error handlers.
+
+5. **Encryption/hashing changes**: Changing bcrypt rounds, JWT signing algorithm, or encryption keys WITHOUT migrating stored data locks users out. This repo has precedent: the E2EE key rotation incident (2026-08-19) locked the inbox for weeks.
+
+6. **Database constraints**: New NOT NULL, UNIQUE, or CHECK constraints can fail on existing rows. New indexes can change query performance.
+
+For security sprint PRs, if ANY of the above patterns are detected, report them as CRITICAL even if they look intentional. The reviewer will decide if they are safe.
+SEC_END
+                        fi
 
                         # Build API request body directly from prompt.txt (all file-based, no shell vars)
                         python3 -c "

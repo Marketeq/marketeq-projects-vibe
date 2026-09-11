@@ -6,6 +6,16 @@ in this description. Do not delete sections — leave "N/A" if they do not
 apply.
 -->
 
+## Branch freshness
+
+<!--
+Required. A branch even one commit behind its base is stale and must not be
+pushed or merged. See AGENTS.md and docs/DEVOPS_SOP.md §1.1.
+Run: git fetch origin <base> && git rev-list --left-right --count origin/<base>...HEAD
+-->
+
+- [ ] This branch is **zero commits behind** its base (verified, not assumed)
+
 ## Summary
 
 <!-- 1-3 sentences. What does this PR do and why? -->

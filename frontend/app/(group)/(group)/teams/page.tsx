@@ -18,6 +18,7 @@ import { CategoryBanner } from "@/components/category-banner"
 import { Money } from "@/components/money"
 import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
+import { teamDetailsUrl } from "@/src/lib/listing-urls"
 import {
   SwiperContent,
   SwiperNextTrigger,
@@ -523,10 +524,15 @@ export default function Teams() {
 
                               <div className="mt-5">
                                 <h1 className="text-base leading-none text-dark-blue-400 font-bold">
-                                  Team Name{" "}
-                                  <span className="font-light text-gray-500">
-                                    @Tech Sential
-                                  </span>
+                                  <NextLink
+                                    className="focus-visible:outline-none hover:underline"
+                                    href={teamDetailsUrl(String(index))}
+                                  >
+                                    Team Name{" "}
+                                    <span className="font-light text-gray-500">
+                                      @Tech Sential
+                                    </span>
+                                  </NextLink>
                                 </h1>
                                 <h3 className="mt-0.5 text-xs font-medium text-dark-blue-400 leading-none">
                                   Development team

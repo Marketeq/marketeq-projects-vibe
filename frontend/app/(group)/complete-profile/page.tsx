@@ -9,8 +9,9 @@ import React, {
   useState,
 } from "react"
 import dynamic from "next/dynamic"
-import { useSearchParams } from "next/navigation"
-import { useAuth } from "@/contexts/auth"
+import { useRouter, useSearchParams } from "next/navigation"
+import { resolveDashboardRole, useAuth } from "@/contexts/auth"
+import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   EducationPayload,
   ExperiencePayload,
@@ -67,7 +68,7 @@ import {
 } from "react-hook-form"
 import { useToggle } from "react-use"
 import { z } from "zod"
-import { UserProfile } from "@/types/user"
+import { ROLE, UserProfile } from "@/types/user"
 import NextImage from "@/components/next-image"
 import { getCompanyBrandFromName } from "@/src/lib/certification-brand"
 import {
@@ -325,19 +326,35 @@ const RightSidebar = () => {
 export default function TalentDashboardPage() {
   return (
     <Suspense>
-      <TalentDashboard />
+      <AuthenticatedRoute>
+        <TalentDashboard />
+      </AuthenticatedRoute>
     </Suspense>
   )
 }
 
 function TalentDashboard() {
   const [isOpen, toggleIsOpen] = useToggle(false)
+  const router = useRouter()
+  const { user } = useAuth()
+  const isTalent = resolveDashboardRole(user) === ROLE.TALENT
+
+  // Complete My Profile is a talent-only workflow (AC-CMP-011). Visitors are
+  // handled by AuthenticatedRoute (sign-in); a signed-in non-talent (client) is
+  // bounced to their own dashboard and never sees the workflow.
+  useEffect(() => {
+    if (user && !isTalent) {
+      router.replace("/client-dashboard")
+    }
+  }, [user, isTalent, router])
+
+  if (user && !isTalent) return null
 
   return (
     <>
       <div className="flex bg-gray-50">
         <LeftSidebar />
-        <div className="flex-auto p-6 gap-x-8 flex justify-center min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-8 xl:pr-[50px] xl:pl-[248px] 2xl:pr-[150px] 2xl:pl-[348px] overflow-hidden">
+        <div className="flex-auto p-6 gap-x-8 flex justify-center min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px] overflow-hidden">
           <div className="max-w-[1042px] space-y-3 md:space-y-5 min-w-0">
             <Welcome onToggle={toggleIsOpen} />
 
@@ -547,6 +564,10 @@ export const StatusDialog = ({
           JOB_TITLE_RATE: {
             ...prev["JOB_TITLE_RATE"],
             finished: Boolean(p.rateMin || p.rateMax),
+          },
+          PORTFOLIO: {
+            ...prev["PORTFOLIO"],
+            finished: Boolean(p.portfolio?.length),
           },
         }))
       })
@@ -828,6 +849,7 @@ export const StatusDialog = ({
         next={next}
         previous={previous}
         userId={user?.id ?? ""}
+        progressPercent={progressPercent}
         profile={profile}
         profileLoading={profileLoading}
         profileError={profileError}

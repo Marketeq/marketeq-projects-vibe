@@ -28,6 +28,14 @@ const nextConfig = {
     root: path.join(__dirname),
   },
   images: {
+    // dicebear's avatar endpoints return SVG (fallback avatars for company
+    // members / talent with no uploaded photo); Next.js blocks SVG
+    // passthrough by default since an SVG can carry a script. Scoped to
+    // just this allowlisted host via remotePatterns above, with the CSP
+    // Next's own docs recommend as the mitigation.
+    dangerouslyAllowSVG: true,
+    contentDispositionType: "attachment",
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
     remotePatterns: [
       {
         protocol: "https",
@@ -81,6 +89,10 @@ const nextConfig = {
         protocol: "https",
         hostname: "example.com",
       },
+      {
+        protocol: "https",
+        hostname: "api.dicebear.com",
+      },
     ],
   },
   async redirects() {
@@ -88,6 +100,16 @@ const nextConfig = {
       {
         source: "/:kind(projects|teams|talent|services)/:l1/:l2/:l3",
         destination: "/search?q=:l3&category=:kind",
+        permanent: false,
+      },
+      {
+        // /my-team was renamed to /my-network on 2026-09-03. It sat one
+        // character from /my-teams (the team-profile collection), a
+        // different page entirely. Kept so existing links, bookmarks and
+        // already-sent invite emails still land. Query strings carry over
+        // automatically -- invite/setup redirects here with one.
+        source: "/my-team",
+        destination: "/my-network",
         permanent: false,
       },
     ]

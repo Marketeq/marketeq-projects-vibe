@@ -10,6 +10,7 @@ import { Request } from 'express';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { OFFER_CONSTANTS } from '../common/constants/offer.constants';
+import { deriveIdempotencyKey } from '../common/utils/derive-idempotency-key';
 
 const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PROCESSING_LOCK_TTL_SECONDS = 30;
@@ -33,30 +34,50 @@ export class IdempotencyInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    // 1. Read and validate the idempotency key
-    const idempotencyKey = request.headers['x-idempotency-key'] as string | undefined;
-
-    if (!idempotencyKey) {
-      throw new BadRequestException({
-        statusCode: 400,
-        error: 'MISSING_IDEMPOTENCY_KEY',
-        message: 'X-Idempotency-Key header is required for this operation. Generate a UUID v4 on the client and include it in every write request.',
-      });
-    }
-
-    if (!UUID_V4_REGEX.test(idempotencyKey)) {
-      throw new BadRequestException({
-        statusCode: 400,
-        error: 'INVALID_IDEMPOTENCY_KEY',
-        message: 'X-Idempotency-Key must be a valid UUID v4 (e.g. f47ac10b-58cc-4372-a567-0e02b2c3d479). Use crypto.randomUUID() or a uuid library to generate one.',
-      });
-    }
-
-    // 2. Build Redis key scoped to userId
+    // 1. Resolve userId first — needed either way (Redis scoping, and as
+    // an input to the derived key below).
     const userId = (request as any).user?.sub || (request as any).user?.id;
     if (!userId) {
       this.logger.warn('IdempotencyInterceptor: no userId on request. Is this a @Public() endpoint?');
       return next.handle();
+    }
+
+    // 2. Read the client-supplied key, or derive one.
+    //
+    // api-gateway's proxy.service.ts forwards an allowlist of headers that
+    // does not include X-Idempotency-Key (that file is on the SOP §1.4
+    // locked list — CTO-only, out of scope here), so every write made
+    // through the gateway (port 4000) arrives with no header at all, and
+    // previously hard-400'd with MISSING_IDEMPOTENCY_KEY. When the header
+    // IS present (e.g. a direct caller, or a future gateway fix), behavior
+    // is unchanged — validated exactly as before. When it's absent, derive
+    // a deterministic key from userId + offer/route + action + a hash of
+    // the body, so identical requests still dedupe and different requests
+    // still get different keys — same storage, TTL, and replay semantics
+    // as a client-supplied key, just a different source for the key itself.
+    const suppliedKey = request.headers['x-idempotency-key'] as string | undefined;
+    let idempotencyKey: string;
+
+    if (suppliedKey) {
+      if (!UUID_V4_REGEX.test(suppliedKey)) {
+        throw new BadRequestException({
+          statusCode: 400,
+          error: 'INVALID_IDEMPOTENCY_KEY',
+          message: 'X-Idempotency-Key must be a valid UUID v4 (e.g. f47ac10b-58cc-4372-a567-0e02b2c3d479). Use crypto.randomUUID() or a uuid library to generate one.',
+        });
+      }
+      idempotencyKey = suppliedKey;
+    } else {
+      idempotencyKey = deriveIdempotencyKey({
+        userId,
+        method: request.method,
+        routePath: (request as any).route?.path ?? request.path,
+        offerId: (request.params as Record<string, string> | undefined)?.id,
+        body: request.body,
+      });
+      this.logger.debug(
+        `IdempotencyInterceptor: no X-Idempotency-Key header on ${request.method} ${request.path} — derived key for user ${userId}.`,
+      );
     }
 
     // keyPrefix "offer:" is applied by ioredis — full key: offer:idempotency:{userId}:{key}

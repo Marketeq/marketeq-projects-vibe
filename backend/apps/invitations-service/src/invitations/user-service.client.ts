@@ -7,6 +7,7 @@ export type InternalUserSummary = {
   email: string;
   firstName?: string;
   lastName?: string;
+  username?: string;
   avatarUrl?: string;
   role: string;
   onboardingDismissed: boolean;
@@ -17,14 +18,34 @@ export type InternalUserSummary = {
 type SyncUserPayload = {
   id: string;
   email: string;
+  hasPassword?: boolean;
+};
+
+export type InternalCompany = {
+  id: string;
+  name: string;
+  domain?: string;
+  logoUrl?: string;
+  ownerUserId: string;
+};
+
+export type InternalCompanyMember = {
+  companyId: string;
+  userId: string;
+  role: string;
+  permissions: string[];
 };
 
 @Injectable()
 export class UserServiceClient {
   constructor(private readonly http: HttpService) {}
 
+  private get baseUrl(): string {
+    return (process.env.USER_SERVICE_URL || 'http://localhost:3002').replace(/\/+$/, '');
+  }
+
   async syncUserProfile(payload: SyncUserPayload): Promise<void> {
-    const url = `${process.env.USER_SERVICE_URL}/internal/users`;
+    const url = `${this.baseUrl}/internal/users`;
 
     await lastValueFrom(
       this.http.post(url, payload, {
@@ -40,7 +61,7 @@ export class UserServiceClient {
     userId: string;
     role: string;
   }): Promise<boolean> {
-    const url = `${process.env.USER_SERVICE_URL}/internal/teams/${params.teamId}/members`;
+    const url = `${this.baseUrl}/internal/teams/${params.teamId}/members`;
     
     try {
       const response = await lastValueFrom(this.http.post(url, {
@@ -61,7 +82,7 @@ export class UserServiceClient {
   }
 
   async getUserSummary(userId: string): Promise<InternalUserSummary> {
-    const url = `${process.env.USER_SERVICE_URL}/internal/users/${userId}/summary`;
+    const url = `${this.baseUrl}/internal/users/${userId}/summary`;
 
     try {
       const response = await lastValueFrom(
@@ -83,7 +104,7 @@ export class UserServiceClient {
   }
 
   async getUserSummaryByEmail(email: string): Promise<InternalUserSummary> {
-    const url = `${process.env.USER_SERVICE_URL}/internal/users/summary-by-email`;
+    const url = `${this.baseUrl}/internal/users/summary-by-email`;
 
     try {
       const response = await lastValueFrom(
@@ -105,8 +126,75 @@ export class UserServiceClient {
     }
   }
 
+  async getCompany(companyId: string): Promise<InternalCompany> {
+    const url = `${this.baseUrl}/internal/companies/${companyId}`;
+    const response = await lastValueFrom(
+      this.http.get(url, {
+        headers: { 'x-internal-token': process.env.INTERNAL_SERVICE_TOKEN || '' },
+      }),
+    );
+    return (response.data as { data: InternalCompany }).data;
+  }
+
+  /**
+   * Idempotent upsert of a company_users row. Throws on failure, and callers
+   * that mark an invitation accepted must not swallow this (see
+   * InvitationsService.accept).
+   */
+  async addCompanyMember(params: {
+    companyId: string;
+    userId: string;
+    role: string;
+    permissions?: string[];
+  }): Promise<InternalCompanyMember> {
+    const url = `${this.baseUrl}/internal/companies/${params.companyId}/members`;
+    const response = await lastValueFrom(
+      this.http.post(
+        url,
+        { userId: params.userId, role: params.role, permissions: params.permissions },
+        { headers: { 'x-internal-token': process.env.INTERNAL_SERVICE_TOKEN || '' } },
+      ),
+    );
+    return (response.data as { data: InternalCompanyMember }).data;
+  }
+
+  async getCompanyMemberByEmail(
+    companyId: string,
+    email: string,
+  ): Promise<InternalCompanyMember | null> {
+    const url = `${this.baseUrl}/internal/companies/member-by-email`;
+    const response = await lastValueFrom(
+      this.http.get(url, {
+        params: { companyId, email },
+        headers: { 'x-internal-token': process.env.INTERNAL_SERVICE_TOKEN || '' },
+      }),
+    );
+    return (response.data as { data: InternalCompanyMember | null }).data;
+  }
+
+  /** Roster size for the company card in the "invite accepted" email. */
+  async getCompanyMemberCount(companyId: string): Promise<number> {
+    const url = `${this.baseUrl}/internal/companies/${companyId}/member-count`;
+    const response = await lastValueFrom(
+      this.http.get(url, {
+        headers: { 'x-internal-token': process.env.INTERNAL_SERVICE_TOKEN || '' },
+      }),
+    );
+    return (response.data as { count: number }).count;
+  }
+
+  async checkCompanyMembership(companyId: string, userId: string): Promise<boolean> {
+    const url = `${this.baseUrl}/internal/companies/${companyId}/members/${userId}`;
+    const response = await lastValueFrom(
+      this.http.get(url, {
+        headers: { 'x-internal-token': process.env.INTERNAL_SERVICE_TOKEN || '' },
+      }),
+    );
+    return (response.data as { isMember: boolean }).isMember;
+  }
+
   async dismissOnboarding(userId: string): Promise<InternalUserSummary> {
-    const url = `${process.env.USER_SERVICE_URL}/internal/users/${userId}/onboarding-dismissed`;
+    const url = `${this.baseUrl}/internal/users/${userId}/onboarding-dismissed`;
 
     try {
       const response = await lastValueFrom(

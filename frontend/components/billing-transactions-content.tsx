@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useCallback } from "react"
 import { jsPDF } from "jspdf"
+import { useBillingExportStore } from "@/lib/billing-export"
 import {
   Avatar,
   AvatarFallback,
@@ -767,6 +768,106 @@ export function BillingTransactionsContent() {
     })
     return sortDirection === "desc" ? sorted.reverse() : sorted
   }, [sortColumn, sortDirection, searchValue, dateRange, selectedType, contractId, selectedPaymentMethod])
+
+  // Export the currently filtered/sorted rows. Registered into the shared billing
+  // export store so the Export dropdown in the page header can call them.
+  const EXPORT_COLUMNS: { header: string; value: (t: Transaction) => string }[] = [
+    { header: "Date", value: (t) => t.date },
+    { header: "Description", value: (t) => t.description },
+    { header: "Detail", value: (t) => t.subtitle },
+    { header: "Reference ID", value: (t) => t.referenceId ?? "" },
+    { header: "Amount", value: (t) => t.amount },
+    { header: "Status", value: (t) => t.status ?? "" },
+    { header: "Payment Method", value: (t) => `${t.paymentMethod} ${t.paymentDetail}`.trim() },
+  ]
+
+  const exportCsv = useCallback(() => {
+    const escape = (v: string) => `"${v.replace(/"/g, '""')}"`
+    const csv = [
+      EXPORT_COLUMNS.map((c) => escape(c.header)).join(","),
+      ...sortedTransactions.map((t) =>
+        EXPORT_COLUMNS.map((c) => escape(c.value(t))).join(",")
+      ),
+    ].join("\r\n")
+
+    const url = URL.createObjectURL(
+      new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" })
+    )
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `transactions-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, [sortedTransactions])
+
+  const exportPdf = useCallback(async () => {
+    const doc = new jsPDF({ unit: "pt", format: "letter", orientation: "landscape" })
+    const pageW = doc.internal.pageSize.getWidth()
+    const pageH = doc.internal.pageSize.getHeight()
+    const margin = 32
+
+    try {
+      const logo = await svgToDataUrl()
+      doc.addImage(logo, "PNG", margin, 28, 96, 14)
+    } catch {
+      // logo is decorative; the export still succeeds without it
+    }
+
+    doc.setFontSize(16).setFont("helvetica", "bold").setTextColor(26, 26, 46)
+    doc.text("Transactions", margin, 70)
+    doc.setFontSize(9).setFont("helvetica", "normal").setTextColor(107, 114, 128)
+    doc.text(
+      `${sortedTransactions.length} transaction${sortedTransactions.length === 1 ? "" : "s"} - exported ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`,
+      margin,
+      84
+    )
+
+    const widths = [86, 220, 96, 120, 78, 74, 84]
+    let y = 108
+
+    const drawHeader = () => {
+      doc.setFillColor(252, 252, 253)
+      doc.rect(margin, y - 12, pageW - margin * 2, 20, "F")
+      doc.setFontSize(8).setFont("helvetica", "bold").setTextColor(71, 84, 103)
+      let x = margin + 6
+      EXPORT_COLUMNS.forEach((c, i) => {
+        doc.text(c.header.toUpperCase(), x, y)
+        x += widths[i]
+      })
+      y += 18
+    }
+
+    drawHeader()
+    doc.setFontSize(9).setFont("helvetica", "normal").setTextColor(71, 84, 103)
+
+    sortedTransactions.forEach((t) => {
+      if (y > pageH - margin) {
+        doc.addPage()
+        y = 60
+        drawHeader()
+        doc.setFontSize(9).setFont("helvetica", "normal").setTextColor(71, 84, 103)
+      }
+      let x = margin + 6
+      EXPORT_COLUMNS.forEach((c, i) => {
+        const text = doc.splitTextToSize(c.value(t), widths[i] - 10)[0] ?? ""
+        doc.text(text, x, y)
+        x += widths[i]
+      })
+      doc.setDrawColor(234, 236, 240)
+      doc.line(margin, y + 6, pageW - margin, y + 6)
+      y += 22
+    })
+
+    doc.save(`transactions-${new Date().toISOString().slice(0, 10)}.pdf`)
+  }, [sortedTransactions])
+
+  const registerExporters = useBillingExportStore((s) => s.register)
+  React.useEffect(() => {
+    registerExporters("transactions", { exportCsv, exportPdf })
+    return () => registerExporters("transactions", null)
+  }, [registerExporters, exportCsv, exportPdf])
 
   const totalPages = Math.ceil(sortedTransactions.length / PER_PAGE)
   const paginatedTransactions = sortedTransactions.slice(

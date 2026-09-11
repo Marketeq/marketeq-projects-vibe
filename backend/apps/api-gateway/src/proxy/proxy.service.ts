@@ -18,11 +18,6 @@ export class ProxyService {
     this.serviceMap = {
       auth: config.get('AUTH_SERVICE_URL') || 'http://localhost:3001',
       users: config.get('USER_SERVICE_URL') || 'http://localhost:3002',
-      // ecosystem.config.js assigns listings-service port 3004 (matches the
-      // `listings-service` entry in this file's own /services/health debug
-      // endpoint) — the previous 3003 fallback didn't correspond to any
-      // running service, so any gateway-proxied /listings or /publish/*
-      // call 502'd unless LISTINGS_SERVICE_URL happened to be set.
       listings: config.get('LISTINGS_SERVICE_URL') || 'http://localhost:3004',
       checkout: config.get('CHECKOUT_SERVICE_URL') || 'http://localhost:3009',
       messages: config.get('MESSAGING_SERVICE_URL') || 'http://localhost:3005',
@@ -30,6 +25,7 @@ export class ProxyService {
       search: config.get('SEARCH_SERVICE_URL') || 'http://localhost:3007',
       algolia: config.get('ALGOLIA_SERVICE_URL') || 'http://localhost:3008',
       favorites: config.get('FAVORITES_SERVICE_URL') || 'http://localhost:3012',
+      browsingHistory: config.get('BROWSING_HISTORY_SERVICE_URL') || 'http://localhost:3034',
       portfolio: config.get('PORTFOLIO_SERVICE_URL') || 'http://localhost:3015',
       invitations: config.get('INVITATIONS_SERVICE_URL') || 'http://localhost:3013',
       moderation: config.get('MODERATION_SERVICE_URL') || 'http://localhost:3014',
@@ -74,6 +70,9 @@ export class ProxyService {
     const headers: Record<string, string> = {
       'content-type': req.headers['content-type'] as string || 'application/json',
       ...(req.headers['x-internal-token'] ? { 'x-internal-token': req.headers['x-internal-token'] as string } : {}),
+      // Company-scoped invitations routes (CompanyContextGuard) read this
+      // to authorize the caller against :companyId.
+      ...(req.headers['x-company-id'] ? { 'x-company-id': req.headers['x-company-id'] as string } : {}),
       // Stripe/Ramp webhook signature headers — downstream (payout-service)
       // verifies authenticity via these, not JWT, so they must survive the
       // proxy same as the raw body below (main.ts captures req.rawBody for

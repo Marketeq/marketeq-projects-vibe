@@ -1,0 +1,85 @@
+import { HttpException, HttpStatus } from '@nestjs/common';
+
+export abstract class DomainException extends HttpException {
+  abstract readonly code: string;
+  constructor(message: string, status: HttpStatus, details?: Record<string, unknown>) {
+    super({ message, details }, status);
+  }
+}
+
+export class DuplicateDocumentException extends DomainException {
+  readonly code = 'DUPLICATE_DOCUMENT';
+  constructor(details?: Record<string, unknown>) {
+    super('A document with this number is already on file under a different account.', HttpStatus.CONFLICT, details);
+  }
+}
+
+export class RetryLimitExceededException extends DomainException {
+  readonly code = 'RETRY_LIMIT_EXCEEDED';
+  constructor(details?: Record<string, unknown>) {
+    super('The maximum of three verification attempts has been reached.', HttpStatus.TOO_MANY_REQUESTS, details);
+  }
+}
+
+export class DocumentExpiredException extends DomainException {
+  readonly code = 'DOCUMENT_EXPIRED';
+  constructor(details?: Record<string, unknown>) {
+    super('This document has already expired.', HttpStatus.BAD_REQUEST, details);
+  }
+}
+
+export class VpnProxyDetectedException extends DomainException {
+  readonly code = 'VPN_PROXY_DETECTED';
+  constructor(details?: Record<string, unknown>) {
+    super('Verification cannot proceed while a VPN or proxy is detected.', HttpStatus.FORBIDDEN, details);
+  }
+}
+
+export class VendorUnavailableException extends DomainException {
+  readonly code = 'VENDOR_UNAVAILABLE';
+  constructor(details?: Record<string, unknown>) {
+    super('The verification vendor is temporarily unavailable. Try again shortly.', HttpStatus.BAD_GATEWAY, details);
+  }
+}
+
+export class ProfileNotFoundException extends DomainException {
+  readonly code = 'PROFILE_NOT_FOUND';
+  constructor(details?: Record<string, unknown>) {
+    super('No identity verification profile exists for this account yet.', HttpStatus.NOT_FOUND, details);
+  }
+}
+
+export class DocumentNotFoundException extends DomainException {
+  readonly code = 'DOCUMENT_NOT_FOUND';
+  constructor(details?: Record<string, unknown>) {
+    super('No matching document was found for this account.', HttpStatus.NOT_FOUND, details);
+  }
+}
+
+export class NoDetectedLocationException extends DomainException {
+  readonly code = 'NO_DETECTED_LOCATION';
+  constructor(details?: Record<string, unknown>) {
+    super('No detected location is available to confirm yet.', HttpStatus.CONFLICT, details);
+  }
+}
+
+export class ClassificationRequiredException extends DomainException {
+  readonly code = 'CLASSIFICATION_REQUIRED';
+  constructor(details?: Record<string, unknown>) {
+    super('Record a Temporarily Traveling classification before declaring a travel duration.', HttpStatus.CONFLICT, details);
+  }
+}
+
+export class InvalidWebhookSignatureException extends DomainException {
+  readonly code = 'INVALID_SIGNATURE';
+  constructor(details?: Record<string, unknown>) {
+    super('Webhook signature verification failed.', HttpStatus.UNAUTHORIZED, details);
+  }
+}
+
+export class UnknownVendorSessionException extends DomainException {
+  readonly code = 'UNKNOWN_VENDOR_SESSION';
+  constructor(details?: Record<string, unknown>) {
+    super('No verification attempt matches this vendor session.', HttpStatus.NOT_FOUND, details);
+  }
+}

@@ -9,10 +9,14 @@ import { ProxyController } from './proxy/proxy.controller'
 import { TalentUploadController } from './controllers/talent-upload.controller'
 import { ResumeUploadController } from './controllers/resume-upload.controller'
 import { UserAvatarUploadController } from './controllers/user-avatar-upload.controller'
+import { CompanyLogoUploadController } from './controllers/company-logo-upload.controller'
 import { PublishMediaController } from './controllers/publish-media.controller'
 import { PublishRichTextImageController } from './controllers/publish-rich-text-image.controller'
+import { ClientIpController } from './controllers/client-ip.controller'
 import { HomepageModule } from './homepage/homepage.module'
 import { BlogModule } from './blog/blog.module'
+import { CheckoutDraftController } from './checkout-draft/checkout-draft.controller'
+import { CheckoutDraftGatewayService } from './checkout-draft/checkout-draft.service'
 import { JwtStrategy } from './guards/jwt-auth.guard'
 import { CsrfOriginMiddleware } from './middleware/csrf-origin.middleware'
 import { JwtMiddleware } from './middleware/jwt.middleware'
@@ -36,7 +40,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
           : false,
       }),
     }),
-    HttpModule.register({ timeout: 30000 }),
+    HttpModule.register({ timeout: 60000 }),
     HomepageModule,
     BlogModule,
     PassportModule,
@@ -59,13 +63,16 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
       },
     }),
   ],
-  providers: [ProxyService, JwtStrategy],
+  providers: [ProxyService, JwtStrategy, CheckoutDraftGatewayService],
   controllers: [
     TalentUploadController,
     ResumeUploadController,
     UserAvatarUploadController,
+    CompanyLogoUploadController,
+    ClientIpController,
     PublishMediaController,
     PublishRichTextImageController,
+    CheckoutDraftController,
     ProxyController,
   ],
 })

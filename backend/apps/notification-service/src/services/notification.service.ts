@@ -1,4 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { createHash, randomBytes } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from '../entities/notification.entity';
@@ -18,9 +24,26 @@ import {
   buildDefaultNotificationMap,
   getAllCategoryIds,
   getAllNotificationIds,
+  resolveCategoryId,
 } from '../constants/notification-catalog';
 import { UpdatePreferencesDto } from '../dtos/update-preferences.dto';
 import { BrevoService } from '../brevo/brevo.service';
+import {
+  buildTeamInvitationEmail,
+  SocialLink,
+} from '../templates/team-invitation.template';
+import { buildInvitationAcceptedEmail } from '../templates/invitation-accepted.template';
+
+/** Public Marketeq profiles linked from the invitation email footer. These are
+ * marketing destinations, not environment config. Every environment links to
+ * the same accounts, so they default here and each one can still be
+ * overridden (or blanked out) with the matching `SOCIAL_*_URL` env var. */
+const DEFAULT_SOCIAL_URLS = {
+  facebook: 'https://www.facebook.com/marketeqdigital',
+  telegram: 'https://t.me/marketeqdigital',
+  linkedin: 'https://www.linkedin.com/company/marketeq-digital',
+  instagram: 'https://www.instagram.com/marketeqdigital',
+} as const;
 
 export interface NotificationPayload {
   recipientId: string;
@@ -64,29 +87,35 @@ export class NotificationService {
     @InjectRepository(Notification) private readonly notifRepo: Repository<Notification>,
     @InjectRepository(UserPreference) private readonly prefRepo: Repository<UserPreference>,
     private readonly ablyService: AblyNotificationsService,
-    // private readonly sendgridService: SendgridService,
     private readonly brevoService: BrevoService,
   ) {}
 
-  async dispatch(payload: NotificationPayload) {
+  /**
+   * Returns the stored notification, or null when the recipient's preferences
+   * mean there is nothing to store.
+   */
+  async dispatch(payload: NotificationPayload): Promise<Notification | null> {
     const prefs = await this.prefRepo.findOne({ where: { userId: payload.recipientId } });
     const resolved = this.resolvePreferences(prefs);
 
-    const notification = this.notifRepo.create({
-      userId: payload.recipientId,
-      title: payload.title,
-      body: payload.body,
-      link: payload.link,
-      category: payload.category,
-      event: payload.event,
-      metadata: payload.metadata,
-      origin: payload.origin || 'system',
-    });
-    const saved = await this.notifRepo.save(notification);
-
     const itemId = payload.event;
     const item = resolved.notifications[itemId];
-    const categoryPref = resolved.categories[payload.category];
+
+    // The name a publisher emits is not always the id the preference screen
+    // stores against, so resolve before looking the preference up. The stored
+    // row keeps `payload.category` untouched — that value is what the
+    // notification list filters on.
+    const categoryId = resolveCategoryId(payload.category);
+    if (!categoryId) {
+      this.logger.warn(
+        `Category "${payload.category}" (event ${payload.event}) matches no catalog id or alias; ` +
+          `this notification ignores the recipient's category preferences. ` +
+          `Add it to CATEGORY_ALIASES or emit a catalog id.`,
+      );
+    }
+    const categoryPref = categoryId
+      ? resolved.categories[categoryId]
+      : undefined;
 
     const categoryActive = categoryPref?.enabled ?? true;
     const itemActive = item?.enabled ?? true;
@@ -109,9 +138,41 @@ export class NotificationService {
       itemActive &&
       itemChannels.email;
 
-    let ablyDelivered = false;
+    // The row IS the in-app notification — the bell panel and the unread count
+    // read this table and nothing else. It used to be written before any of the
+    // checks above, so a recipient who had switched a category off, or
+    // everything off, still accumulated rows and an unread badge for it. The
+    // publisher's own suppression had the same hole: invitations-service
+    // documents having to skip the emit entirely because `delivery.inApp:false`
+    // still listed the notification and still counted it unread.
+    //
+    // Deliberately not stored-but-hidden. Hiding needs a column, a filter on
+    // every read, and a rule for what un-hides it; "In App off" has one honest
+    // meaning, which is that it does not go in the panel. Nothing is lost that
+    // the recipient asked to receive — email below is decided separately.
+    if (!inAppAllowed) {
+      this.logger.log(
+        `In-app suppressed for user ${payload.recipientId} (event ${payload.event}, ` +
+          `category ${payload.category}); not stored.`,
+      );
+    }
 
-    if (inAppAllowed) {
+    const saved = inAppAllowed
+      ? await this.notifRepo.save(
+          this.notifRepo.create({
+            userId: payload.recipientId,
+            title: payload.title,
+            body: payload.body,
+            link: payload.link,
+            category: payload.category,
+            event: payload.event,
+            metadata: payload.metadata,
+            origin: payload.origin || 'system',
+          }),
+        )
+      : null;
+
+    if (saved) {
       if (this.ablyService.isEnabled()) {
         try {
           await this.ablyService.sendInApp(payload.recipientId, {
@@ -120,34 +181,45 @@ export class NotificationService {
             body: saved.body,
             link: saved.link,
             category: saved.category,
+            event: saved.event,
+            metadata: saved.metadata,
           });
           const unreadCount = await this.getUnreadCount(payload.recipientId);
           await this.ablyService.updateBadgeCount(payload.recipientId, unreadCount);
-          ablyDelivered = true;
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
           this.logger.warn(
-            `Ably delivery failed for user ${payload.recipientId}; falling back to SMTP. Error: ${errMsg}`,
+            `Ably realtime delivery failed for user ${payload.recipientId}; ` +
+              `the notification is stored and will appear in the panel. Error: ${errMsg}`,
           );
         }
       } else {
         this.logger.warn(
-          `Ably is not configured; falling back to SMTP for user ${payload.recipientId}.`,
+          `Ably is not configured; user ${payload.recipientId} will see this in the ` +
+            `panel on next load rather than in real time.`,
         );
       }
     }
 
-    const fallbackToSmtp = inAppAllowed && !ablyDelivered;
+    // Email is decided by the Email switch alone. It used to also fire whenever
+    // realtime in-app delivery had not succeeded — including when Ably was
+    // simply not configured — which meant a recipient who had switched Email
+    // off got emailed anyway, and the settings screen was lying to them.
+    //
+    // Nothing is silently dropped by removing that: the notification is stored
+    // above whenever in-app is allowed, so a failed realtime push degrades to
+    // "appears in the panel on next load" rather than to nothing. Both branches
+    // of the Ably attempt already log which of those happened, so the flag that
+    // used to drive the fallback has gone with it.
     const recipientAddress =
       resolved.channels.email.address ?? payload.recipientEmail;
-    const shouldSendEmail =
-      (emailAllowed || fallbackToSmtp) && !!recipientAddress;
+    const shouldSendEmail = emailAllowed && !!recipientAddress;
 
     if (shouldSendEmail && recipientAddress) {
       this.logger.log(
-        `Dispatching email via Brevo: to=${recipientAddress} event=${payload.event} category=${payload.category} subject="${payload.title}"`,
+        `Dispatching email: to=${recipientAddress} event=${payload.event} category=${payload.category} subject="${payload.title}"`,
       );
-      await this.brevoService.sendNotificationEmail(
+      await this.sendEmailViaBrevo(
         recipientAddress,
         payload.title,
         payload.body,
@@ -191,7 +263,10 @@ export class NotificationService {
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    return this.notifRepo.count({ where: { userId, isRead: false } });
+    // Must match the filter getPaginatedNotifications uses, otherwise an
+    // archived-but-unread row inflates the bell badge over a list that can
+    // never show it, and the count has no way back down to zero.
+    return this.notifRepo.count({ where: { userId, isRead: false, isArchived: false } });
   }
 
   async archive(userId: string, id: string) {
@@ -242,6 +317,7 @@ export class NotificationService {
   ): Promise<UserPreference> {
     const prefs = await this.getOrCreatePreferences(userId);
     const resolved = this.resolvePreferences(prefs);
+    let pendingRequest: string | null = null;
 
     if (dto.channels) {
       const next: GlobalChannelPrefs = { ...resolved.channels };
@@ -249,14 +325,29 @@ export class NotificationService {
         next.inApp = { ...next.inApp, ...dto.channels.inApp };
       }
       if (dto.channels.email) {
+        const requested = dto.channels.email.address;
+        // Everything except the address applies straight away.
         next.email = {
           ...next.email,
           ...dto.channels.email,
-          address:
-            dto.channels.email.address === undefined
-              ? next.email.address
-              : dto.channels.email.address,
+          address: next.email.address,
         };
+
+        if (requested !== undefined) {
+          // Clearing the override, or setting it back to the address they
+          // already sign in with, needs no proof — they have already proven
+          // that one. Anything else goes to the waiting room instead of taking
+          // effect, so a redirect cannot be completed by whoever asked for it.
+          const normalised = requested?.trim().toLowerCase() || null;
+          if (normalised === null) {
+            next.email.address = null;
+            prefs.pendingEmail = null;
+            prefs.pendingEmailTokenHash = null;
+            prefs.pendingEmailExpiresAt = null;
+          } else if (normalised !== next.email.address?.toLowerCase()) {
+            pendingRequest = normalised;
+          }
+        }
       }
       if (dto.channels.sms) {
         next.sms = {
@@ -307,6 +398,10 @@ export class NotificationService {
       prefs.notifications = nextNotifications;
     }
 
+    if (pendingRequest) {
+      await this.startEmailVerification(prefs, pendingRequest);
+    }
+
     prefs.inAppEnabled = prefs.channels?.inApp.enabled ?? prefs.inAppEnabled;
     prefs.emailEnabled = prefs.channels?.email.enabled ?? prefs.emailEnabled;
     prefs.smsEnabled = prefs.channels?.sms.enabled ?? prefs.smsEnabled;
@@ -315,9 +410,129 @@ export class NotificationService {
     return prefs;
   }
 
+  /**
+   * The client's view of a preference row.
+   *
+   * An address waiting on confirmation is shown in the usual `address` field so
+   * the settings dialog reflects what was just typed — otherwise saving would
+   * look like it had failed. `addressPending` says which of the two it is:
+   * true means notifications are still going to the previous address until the
+   * link is clicked. Nothing in the UI reads that flag yet; it exists so a
+   * pending state can be designed without another backend change.
+   *
+   * Only the presentation is swapped. `prefs.channels.email.address` on disk
+   * stays the verified value, which is the one dispatch reads.
+   */
+  presentPreferences(prefs: UserPreference): UserPreference & {
+    addressPending?: boolean;
+  } {
+    if (!prefs.pendingEmail) return prefs;
+
+    const channels = prefs.channels ?? this.cloneDefaultChannels();
+    return {
+      ...prefs,
+      channels: {
+        ...channels,
+        email: { ...channels.email, address: prefs.pendingEmail },
+      },
+      addressPending: true,
+    } as UserPreference & { addressPending?: boolean };
+  }
+
+  /** How long a confirmation link stays good for. */
+  private static readonly EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  /**
+   * Records the requested address and emails it a confirmation link. Mutates
+   * `prefs` rather than saving — the caller is mid-update and saves once.
+   */
+  private async startEmailVerification(
+    prefs: UserPreference,
+    address: string,
+  ): Promise<void> {
+    const token = randomBytes(32).toString('hex');
+    prefs.pendingEmail = address;
+    prefs.pendingEmailTokenHash = this.hashToken(token);
+    prefs.pendingEmailExpiresAt = new Date(
+      Date.now() + NotificationService.EMAIL_TOKEN_TTL_MS,
+    );
+
+    const base = (process.env.API_PUBLIC_URL || '').replace(/\/$/, '');
+    const link = `${base}/v1/notifications/preferences/email/verify?token=${token}`;
+
+    // Sent to the requested address, never to the current one — the point is to
+    // prove whoever asked can read the new inbox.
+    await this.sendEmailViaBrevo(
+      address,
+      'Confirm your notification email address',
+      'Confirm this address to start receiving Marketeq notifications here. ' +
+        'Until you do, notifications keep going to your current address. ' +
+        'If you did not request this, ignore this message and nothing changes.',
+      link,
+    );
+
+    this.logger.log(
+      `Notification email change requested for user ${prefs.userId}; confirmation sent to ${address}.`,
+    );
+  }
+
+  /**
+   * Completes a change. Promotes the pending address into `channels.email`,
+   * which is the only field dispatch reads, and clears the waiting room.
+   */
+  async verifyPendingEmail(token: string): Promise<{ address: string }> {
+    if (!token?.trim()) throw new BadRequestException('Token is required');
+
+    const prefs = await this.prefRepo.findOne({
+      where: { pendingEmailTokenHash: this.hashToken(token.trim()) },
+    });
+    if (!prefs || !prefs.pendingEmail) {
+      throw new NotFoundException(
+        'That confirmation link is not valid. It may already have been used.',
+      );
+    }
+    if (
+      prefs.pendingEmailExpiresAt &&
+      prefs.pendingEmailExpiresAt.getTime() < Date.now()
+    ) {
+      // Cleared on expiry so a stale row cannot be retried indefinitely.
+      prefs.pendingEmail = null;
+      prefs.pendingEmailTokenHash = null;
+      prefs.pendingEmailExpiresAt = null;
+      await this.prefRepo.save(prefs);
+      throw new BadRequestException(
+        'That confirmation link has expired. Request the change again.',
+      );
+    }
+
+    const address = prefs.pendingEmail;
+    const channels = prefs.channels ?? this.cloneDefaultChannels();
+    channels.email = { ...channels.email, address };
+    prefs.channels = channels;
+    prefs.pendingEmail = null;
+    prefs.pendingEmailTokenHash = null;
+    prefs.pendingEmailExpiresAt = null;
+    await this.prefRepo.save(prefs);
+
+    this.logger.log(
+      `Notification email confirmed for user ${prefs.userId}; now delivering to ${address}.`,
+    );
+    return { address };
+  }
+
   async resetPreferences(userId: string): Promise<UserPreference> {
     const prefs = await this.getOrCreatePreferences(userId);
     prefs.channels = this.cloneDefaultChannels();
+    // A reset drops the override, so an unconfirmed change must go with it —
+    // otherwise a later click would apply an address the user has since
+    // reset away.
+    prefs.pendingEmail = null;
+    prefs.pendingEmailTokenHash = null;
+    prefs.pendingEmailExpiresAt = null;
     prefs.categories = buildDefaultCategoryMap();
     prefs.notifications = buildDefaultNotificationMap();
     prefs.inAppEnabled = prefs.channels.inApp.enabled;
@@ -370,42 +585,232 @@ export class NotificationService {
     };
   }
 
+  private async sendEmailViaBrevo(to: string, title: string, body: string, link?: string): Promise<void> {
+    const brevoKey = (process.env.BREVO_API_KEY ?? '').trim();
+
+    if (!brevoKey) {
+      this.logger.log(`[LOCAL DEV MOCK EMAIL] To: ${to} | Subject: "${title}" | Body: "${body}" | Link: ${link ?? 'none'}`);
+      return;
+    }
+
+    this.logger.log(`Sending email via Brevo to=${to}`);
+    await this.brevoService.sendNotificationEmail(to, title, body, link);
+  }
+
+  /** Pre-rendered branded HTML document instead of a title/body pair. */
+  private async sendHtmlViaBrevo(
+    to: string,
+    subject: string,
+    html: string,
+    text: string,
+  ): Promise<void> {
+    const brevoKey = (process.env.BREVO_API_KEY ?? '').trim();
+
+    if (!brevoKey) {
+      this.logger.log(`[LOCAL DEV MOCK EMAIL] To: ${to} | Subject: "${subject}" | Text: "${text}"`);
+      return;
+    }
+
+    this.logger.log(`Sending HTML email via Brevo to=${to}`);
+    await this.brevoService.sendHtmlEmail(to, subject, html, text);
+  }
+
+  /** Where the email image assets are served from: the wordmark at
+   * /email/marketeq-logo.png and the footer glyphs under /email/social/.
+   * Set `EMAIL_ASSET_BASE_URL` to any origin that mirrors the layout of
+   * `frontend/public/email/`; without it the R2-hosted copies below are used.
+   * Only https origins qualify. A localhost base would render as a broken
+   * image in a real inbox. */
+  private resolveEmailAssetBase(): string | undefined {
+    const base = (process.env.EMAIL_ASSET_BASE_URL?.trim() || '').replace(
+      /\/+$/,
+      '',
+    );
+    if (!base) return undefined;
+    try {
+      return new URL(base).protocol === 'https:' ? base : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The Marketeq wordmark for the email header. This is the PNG rasterised from
+   * frontend/components/icons/marketeq-logo.tsx, served by the frontend at
+   * /email/marketeq-logo.png. `EMAIL_LOGO_URL` overrides it, then
+   * `EMAIL_ASSET_BASE_URL`; otherwise the R2-hosted copy below, which is
+   * what every environment uses today. */
+  private resolveLogoUrl(): string | undefined {
+    const override = process.env.EMAIL_LOGO_URL?.trim();
+    if (override) return override;
+    const assetBase = this.resolveEmailAssetBase();
+    if (assetBase) return `${assetBase}/email/marketeq-logo.png`;
+    return 'https://pub-e9542a644f314a638feeaf72485dca6e.r2.dev/marketeq-logo.png';
+  }
+
+  /** The rocket glyph on the company card's Launch button. Same hosting
+   * story as the wordmark: `EMAIL_LAUNCH_ICON_URL` overrides, otherwise the
+   * copy the frontend serves at /email/rocket.png. Without a usable asset
+   * base the button renders label-only rather than a broken image. */
+  private resolveLaunchIconUrl(): string | undefined {
+    const override = process.env.EMAIL_LAUNCH_ICON_URL?.trim();
+    if (override) return override;
+    const assetBase = this.resolveEmailAssetBase();
+    return assetBase ? `${assetBase}/email/rocket.png` : undefined;
+  }
+
+  /** The branded footer glyphs. These are the same PNGs the frontend ships in
+   * `frontend/public/email/social/` (rasterised from the app's icon pack by
+   * frontend/scripts/rasterize-email-social-icons.mjs), hosted on the R2
+   * bucket that already serves the email wordmark so inboxes can reach them
+   * without the frontend having to be public. Overridden per icon by
+   * `SOCIAL_*_ICON_URL`, or wholesale by `EMAIL_ASSET_BASE_URL`. */
+  private static readonly DEFAULT_SOCIAL_ICON_URLS: Record<string, string> = {
+    facebook: 'https://pub-e9542a644f314a638feeaf72485dca6e.r2.dev/social/facebook.png',
+    telegram: 'https://pub-e9542a644f314a638feeaf72485dca6e.r2.dev/social/telegram.png',
+    instagram: 'https://pub-e9542a644f314a638feeaf72485dca6e.r2.dev/social/instagram.png',
+    linkedin: 'https://pub-e9542a644f314a638feeaf72485dca6e.r2.dev/social/linkedin.png',
+  };
+
+  /** Social links shown in the email footer. URLs default to the public
+   * Marketeq profiles and are overridable per environment via `SOCIAL_*_URL`;
+   * setting one to an empty string drops that icon. The `*_ICON_URL` vars
+   * point at hosted PNG glyphs (rendered at 12px); without them the icons
+   * come from `EMAIL_ASSET_BASE_URL`, and failing that from the R2-hosted
+   * `DEFAULT_SOCIAL_ICON_URLS` above. */
+  private resolveSocialLinks(): SocialLink[] {
+    const assetBase = this.resolveEmailAssetBase();
+    const icon = (name: string, override?: string): string | undefined =>
+      override?.trim() ||
+      (assetBase
+        ? `${assetBase}/email/social/${name}.png`
+        : NotificationService.DEFAULT_SOCIAL_ICON_URLS[name]);
+    const url = (override: string | undefined, fallback: string): string =>
+      override === undefined ? fallback : override.trim();
+
+    const configured: SocialLink[] = [
+      {
+        label: 'Facebook',
+        short: 'f',
+        url: url(process.env.SOCIAL_FACEBOOK_URL, DEFAULT_SOCIAL_URLS.facebook),
+        iconUrl: icon('facebook', process.env.SOCIAL_FACEBOOK_ICON_URL),
+      },
+      {
+        label: 'Telegram',
+        short: 't',
+        url: url(process.env.SOCIAL_TELEGRAM_URL, DEFAULT_SOCIAL_URLS.telegram),
+        iconUrl: icon('telegram', process.env.SOCIAL_TELEGRAM_ICON_URL),
+      },
+      {
+        label: 'LinkedIn',
+        short: 'in',
+        url: url(process.env.SOCIAL_LINKEDIN_URL, DEFAULT_SOCIAL_URLS.linkedin),
+        iconUrl: icon('linkedin', process.env.SOCIAL_LINKEDIN_ICON_URL),
+      },
+      {
+        label: 'Instagram',
+        short: 'ig',
+        url: url(
+          process.env.SOCIAL_INSTAGRAM_URL,
+          DEFAULT_SOCIAL_URLS.instagram,
+        ),
+        iconUrl: icon('instagram', process.env.SOCIAL_INSTAGRAM_ICON_URL),
+      },
+    ];
+
+    return configured.filter((link) => Boolean(link.url));
+  }
+
   async sendTeamInvitationEmail(payload: {
     to: string;
     teamName: string;
     role: string;
     acceptUrl: string;
     inviterEmail?: string;
+    inviterName?: string;
+    inviterAvatarUrl?: string;
     note?: string;
   }) {
     this.logger.log(
       `sendTeamInvitationEmail: to=${payload.to} teamName=${payload.teamName} role=${payload.role} inviter=${payload.inviterEmail ?? 'n/a'} acceptUrl=${payload.acceptUrl}`,
     );
 
-    const title = `You're invited to join ${payload.teamName}`;
-    const inviterLine = payload.inviterEmail ? ` by ${payload.inviterEmail}` : '';
-    const note = payload.note?.trim();
-    const noteLine = note ? `\n\nNote from inviter: ${note}` : '';
-    const body = `You were invited${inviterLine} as ${payload.role}.${noteLine}`;
+    const { subject, html, text } = buildTeamInvitationEmail({
+      companyName: payload.teamName,
+      inviterName: payload.inviterName,
+      inviterEmail: payload.inviterEmail,
+      inviterAvatarUrl: payload.inviterAvatarUrl,
+      note: payload.note,
+      acceptUrl: payload.acceptUrl,
+      logoUrl: this.resolveLogoUrl(),
+      supportEmail:
+        process.env.SUPPORT_EMAIL?.trim() || 'support@marketeqdigital.com',
+      socialLinks: this.resolveSocialLinks(),
+    });
 
-    // --- SendGrid logic (commented out) ---
-    // await this.sendgridService.sendNotificationEmail(
-    //   payload.to,
-    //   title,
-    //   body,
-    //   payload.acceptUrl,
-    // );
-
-    // --- Brevo logic ---
-    this.logger.log(`Sending team invitation via Brevo: to=${payload.to} subject="${title}"`);
-    await this.brevoService.sendNotificationEmail(
-      payload.to,
-      title,
-      body,
-      payload.acceptUrl,
-    );
+    await this.sendHtmlViaBrevo(payload.to, subject, html, text);
 
     this.logger.log(`Team invitation email sent successfully: to=${payload.to}`);
+    return { sent: true };
+  }
+
+  /** Sent when a user shares a project listing via email. Consumed from the
+   * notification.email.project_shared event emitted by invitations-service. */
+  async sendSharedProjectEmail(payload: {
+    to: string;
+    sharerName?: string;
+    projectTitle?: string;
+    projectUrl: string;
+    note?: string;
+  }) {
+    this.logger.log(
+      `sendSharedProjectEmail: to=${payload.to} project=${payload.projectTitle ?? 'n/a'}`,
+    );
+
+    await this.brevoService.sendShareProjectEmail(payload.to, {
+      sharerName: payload.sharerName,
+      projectTitle: payload.projectTitle,
+      projectUrl: payload.projectUrl,
+      note: payload.note,
+    });
+
+    this.logger.log(`Shared project email sent successfully: to=${payload.to}`);
+    return { sent: true };
+  }
+
+  /** Sent to the inviter once someone accepts their invitation. This is the
+   * counterpart to sendTeamInvitationEmail, which goes to the invitee. */
+  async sendInvitationAcceptedEmail(payload: {
+    to: string;
+    companyName: string;
+    companyLogoUrl?: string;
+    memberCount?: number;
+    inviteeName?: string;
+    inviteeEmail: string;
+    inviteMoreUrl: string;
+    launchUrl: string;
+  }) {
+    this.logger.log(
+      `sendInvitationAcceptedEmail: to=${payload.to} company=${payload.companyName} invitee=${payload.inviteeEmail}`,
+    );
+
+    const { subject, html, text } = buildInvitationAcceptedEmail({
+      companyName: payload.companyName,
+      companyLogoUrl: payload.companyLogoUrl,
+      memberCount: payload.memberCount,
+      inviteeName: payload.inviteeName,
+      inviteeEmail: payload.inviteeEmail,
+      inviteMoreUrl: payload.inviteMoreUrl,
+      launchUrl: payload.launchUrl,
+      launchIconUrl: this.resolveLaunchIconUrl(),
+      logoUrl: this.resolveLogoUrl(),
+      supportEmail:
+        process.env.SUPPORT_EMAIL?.trim() || 'support@marketeqdigital.com',
+      socialLinks: this.resolveSocialLinks(),
+    });
+
+    await this.sendHtmlViaBrevo(payload.to, subject, html, text);
+
+    this.logger.log(`Invitation accepted email sent successfully: to=${payload.to}`);
     return { sent: true };
   }
 }

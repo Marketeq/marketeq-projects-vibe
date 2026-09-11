@@ -1,0 +1,389 @@
+"use client"
+
+import type { ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  addFavorite,
+  findFavoriteByItemId,
+  removeFavorite,
+} from "@/src/lib/api/favorites"
+import {
+  Check,
+  Copy,
+  Edit03,
+  MarkerPin02,
+  MoreHorizontal,
+  Star,
+  Stars02,
+  Trash2,
+} from "@blend-metrics/icons"
+import NextImage from "./next-image"
+import NextLink from "./next-link"
+import {
+  Badge,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Favorite,
+  FavoriteRoot,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui"
+
+const defaultSkills = [
+  "UX Research",
+  "Web Design",
+  "Web Design",
+  "Content Design",
+  "Frontend Development",
+  "Service Design",
+  "Marketing Design",
+  "Motion Design",
+  "Interaction Design",
+  "Prototyping",
+  "User Testing",
+  "Figma",
+]
+
+export type TalentNetworkCardStatus = "active" | "pending" | "past"
+
+interface TalentNetworkStatusCardProps {
+  id?: string
+  name?: string
+  handle?: string
+  role?: string
+  photo?: string
+  rate?: string
+  experience?: string
+  country?: string
+  localTime?: string
+  rating?: number
+  projects?: number
+  allStars?: boolean
+  skills?: string[]
+  profileHref?: string
+  favoriteSlot?: ReactNode
+  isFavorited?: boolean
+  onFavoriteChange?: (favorited: boolean) => void
+  imageLoading?: "lazy" | "eager"
+  showOptionsMenu?: boolean
+  onRemove?: () => void
+  /** Bucket from contracts-service. My Team's Talent Network tab only. */
+  status: TalentNetworkCardStatus
+}
+
+/**
+ * Measures how many skill labels fit in the container
+ * while always reserving 8px gap + "More..." width at the end.
+ */
+function useVisibleSkills(skills: string[]) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [visibleCount, setVisibleCount] = useState(skills.length)
+
+  const measure = useCallback(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const GAP = 8 // gap-x-2
+    const PAD = 32 // px-4 each side
+
+    const children = Array.from(el.children) as HTMLElement[]
+    const moreEl = children[children.length - 1]
+    const moreWidth = moreEl.offsetWidth
+    const available = el.offsetWidth - PAD
+
+    let used = 0
+    let count = 0
+
+    for (let i = 0; i < skills.length; i++) {
+      const child = children[i]
+      if (!child) break
+      const w = child.scrollWidth
+      const next = used + (count > 0 ? GAP : 0) + w
+      if (next + GAP + moreWidth > available && count > 0) break
+      used = next
+      count++
+    }
+
+    setVisibleCount(count)
+  }, [skills])
+
+  useEffect(() => {
+    measure()
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [measure])
+
+  return { containerRef, visibleCount }
+}
+
+const STATUS_BADGE: Record<
+  TalentNetworkCardStatus,
+  { label: string; className?: string }
+> = {
+  active: {
+    label: "Active",
+    className: "border border-success-200 bg-success-50 text-success-700",
+  },
+  past: {
+    label: "Ended",
+    className: "border border-gray-200 bg-white text-gray-600",
+  },
+  pending: {
+    label: "Invitation pending",
+  },
+}
+
+/**
+ * Fork of TalentSearchCard's "card" variant, scoped to My Team's Talent
+ * Network tab only. TalentSearchCard itself is a shared, read-only
+ * component (frontend/components/*.tsx, per COMPONENTS.md) used across
+ * search/favorites/dashboards where a hire-status badge doesn't apply, so
+ * this stays a separate file and those surfaces are never affected.
+ */
+export const TalentNetworkStatusCard = ({
+  id,
+  name = "Ngozi",
+  handle = "@BlueberryBelle",
+  role = "Marketing Technologist",
+  photo = "/man.jpg",
+  rate = "$85 - $120",
+  experience = "5 years of experience",
+  country = "Australia",
+  localTime = "7:30pm local time",
+  rating = 4.7,
+  projects = 2,
+  allStars = true,
+  skills: skillsList = defaultSkills,
+  profileHref = "#",
+  favoriteSlot,
+  isFavorited = false,
+  onFavoriteChange,
+  imageLoading = "lazy",
+  showOptionsMenu = false,
+  onRemove,
+  status,
+}: TalentNetworkStatusCardProps) => {
+  const { containerRef, visibleCount } = useVisibleSkills(skillsList)
+  const statusBadge = STATUS_BADGE[status]
+
+  const handleFavoriteToggle = useCallback(
+    async (pressed: boolean) => {
+      if (pressed) {
+        onFavoriteChange?.(true)
+        if (id) {
+          const result = await addFavorite({
+            type: "talent",
+            itemId: String(id),
+          })
+          if (!result) {
+            onFavoriteChange?.(false)
+          }
+        }
+      } else {
+        onFavoriteChange?.(false)
+        if (id) {
+          const favorite = await findFavoriteByItemId(String(id))
+          if (favorite) {
+            const success = await removeFavorite(favorite.id)
+            if (!success) {
+              onFavoriteChange?.(true)
+            }
+          }
+        }
+      }
+    },
+    [id, onFavoriteChange]
+  )
+
+  return (
+    <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden flex flex-col min-h-[440px]">
+      <div className="p-5">
+        <div className="relative">
+          <NextLink href={profileHref} className="block">
+            <div className="relative h-[140px] overflow-hidden rounded-[6px] group">
+              <NextImage
+                src={photo}
+                sizes="25vw"
+                fill
+                loading={imageLoading}
+                className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
+                alt={name}
+              />
+            </div>
+          </NextLink>
+          <div className="flex items-center absolute px-2.5 pt-2.5 justify-between top-0 inset-x-0 pointer-events-none">
+            {allStars ? (
+              <div className="font-bold rounded-[5px] py-0.5 px-1.5 bg-black/[.57] inline-flex items-center gap-x-1 text-white text-[10px]">
+                <Stars02 /> All Stars
+              </div>
+            ) : (
+              <div />
+            )}
+
+            {showOptionsMenu ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="pointer-events-auto size-5 inline-flex items-center justify-center text-white hover:text-gray-200 focus-visible:outline-none">
+                    <MoreHorizontal className="size-5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[165px]">
+                  <DropdownMenuItem>
+                    <Edit03 className="h-4 w-4" /> Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Copy className="h-4 w-4" /> Duplicate
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem visual="destructive" onClick={onRemove}>
+                    <Trash2 className="h-4 w-4" /> Remove
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <span className="pointer-events-auto inline-block">
+                {favoriteSlot ?? (
+                  <FavoriteRoot
+                    value={isFavorited}
+                    onValueChange={handleFavoriteToggle}
+                  >
+                    {({ pressed }) => (
+                      <TooltipProvider delayDuration={75}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-block">
+                              <Favorite />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {pressed ? (
+                              <span className="inline-flex items-center gap-x-1">
+                                <Check className="size-[15px] shrink-0 text-green-500" />
+                                Saved
+                              </span>
+                            ) : (
+                              "Save to favorites"
+                            )}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </FavoriteRoot>
+                )}
+              </span>
+            )}
+          </div>
+
+          <div className="absolute grid rounded-full shrink-0 border-[2.53px] bg-white size-[29.53px] -left-[7px] -bottom-1 border-white">
+            <div className="bg-success-500 flex items-center justify-center rounded-full text-white">
+              <Check className="size-[13.97px]" />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <h1 className="text-sm font-bold leading-none text-dark-blue-400">
+            {rate}
+            <span className="text-[10px] leading-none font-light">/hr</span>
+          </h1>
+
+          <NextLink href={profileHref} className="block mt-3 hover:underline">
+            <h1 className="text-sm font-bold leading-none text-dark-blue-400">
+              {name}{" "}
+              <span className="text-[12px] text-gray-500 leading-none font-light">
+                {handle}
+              </span>
+            </h1>
+          </NextLink>
+          <h2 className="text-[12px] text-dark-blue-400 leading-none font-medium mt-0.5">
+            {role}
+          </h2>
+          <p className="text-[11px] text-dark-blue-400 leading-none font-light mt-2">
+            {experience}
+          </p>
+          <div className="flex items-center text-gray-500 gap-x-1 mt-3.5">
+            <MarkerPin02 className="size-3" />
+            <p className="text-[10px] leading-5 font-semibold">
+              {country} <span className="font-light">({localTime})</span>
+            </p>
+          </div>
+
+          <div className="mt-3.5 flex items-center gap-x-2">
+            <div className="flex items-center gap-x-2">
+              <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
+                <div className="flex items-center gap-x-[3px]">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Star
+                      key={i}
+                      className={`size-3 shrink-0 ${
+                        i <= Math.round(rating)
+                          ? "text-primary-500 fill-primary-500"
+                          : "text-gray-200 fill-gray-200"
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+              <span className="text-xs font-semibold leading-none text-dark-blue-400">
+                {rating}
+              </span>
+            </div>
+            <span className="text-xs font-semibold leading-none text-dark-blue-400">
+              {projects} Projects
+            </span>
+          </div>
+
+          <div className="mt-6 flex items-center">
+            <Badge
+              visual="gray"
+              size="sm"
+              variant="rounded"
+              className={statusBadge.className}
+            >
+              {statusBadge.label}
+            </Badge>
+          </div>
+        </div>
+      </div>
+
+      <div
+        ref={containerRef}
+        className="relative overflow-hidden mt-auto px-4 py-2.5 flex flex-wrap gap-x-2 gap-y-1 border-t border-gray-200 bg-[#122A4B]/[.02] items-center"
+      >
+        {skillsList.map((skill, index) => (
+          <span
+            key={index}
+            className="text-xs leading-5 font-semibold text-gray-500/60 hover:text-gray-500 cursor-pointer whitespace-nowrap"
+            style={
+              index >= visibleCount
+                ? {
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    visibility: "hidden",
+                    pointerEvents: "none",
+                  }
+                : undefined
+            }
+          >
+            {skill}
+          </span>
+        ))}
+        <NextLink
+          href={profileHref ? `${profileHref}#skills` : "#"}
+          className="text-xs leading-5 font-bold text-gray-500/60 hover:text-gray-500 hover:underline cursor-pointer whitespace-nowrap"
+        >
+          More...
+        </NextLink>
+      </div>
+    </article>
+  )
+}

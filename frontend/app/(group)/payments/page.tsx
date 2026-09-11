@@ -457,8 +457,18 @@ export const BillingPaymentMethodsContent = forwardRef<
   BillingPaymentMethodsContentHandle,
   {
     embedded?: boolean
+    /**
+     * Mounts only the dialogs, not the payment methods list. Lets a screen
+     * that just needs the add-payment-method flow (the client dashboard
+     * "Verify Payment Method" link) open it in place instead of navigating
+     * to billing, without duplicating the dialogs.
+     */
+    dialogsOnly?: boolean
   }
->(function BillingPaymentMethodsContent({ embedded = false }, ref) {
+>(function BillingPaymentMethodsContent(
+  { embedded = false, dialogsOnly = false },
+  ref
+) {
   const { toast } = useToast()
   const [methods, setMethods] = useState(INITIAL_PAYMENT_METHODS)
   const [selectedMethodId, setSelectedMethodId] = useState(
@@ -1099,12 +1109,12 @@ export const BillingPaymentMethodsContent = forwardRef<
 
   return (
     <>
-      {!embedded ? (
+      {dialogsOnly ? null : !embedded ? (
         <AuthenticatedRoute>
           <div className="flex h-[100dvh] overflow-hidden bg-gray-50">
             <LeftSidebar />
 
-            <div className="min-[1024px]:pl-[248px] min-[1024px]:pr-6 min-[1024px]:py-8 flex h-full flex-auto overflow-hidden p-3.5 md:p-6">
+            <div className="min-[1024px]:pl-[274px] min-[1024px]:pr-[50px] min-[1024px]:pt-[50px] min-[1024px]:pb-8 flex h-full flex-auto overflow-hidden p-3.5 md:p-6">
               <div className="mx-auto flex h-full max-h-full w-full max-w-[1160px] flex-col gap-5 overflow-hidden">
                 <BillingSectionHeader
                   title="Billing"
@@ -1284,7 +1294,7 @@ export const BillingPaymentMethodsContent = forwardRef<
         open={isAddNewPaymentMethodDialogOpen}
         onOpenChange={setIsAddNewPaymentMethodDialogOpen}
       >
-        <DialogContent className="max-w-[743px] p-0">
+        <DialogContent className="max-w-[700px] p-0">
           <div className="flex items-center justify-between border-b border-gray-200 p-3">
             <div className="flex items-center gap-x-3">
               <h2 className="text-lg font-semibold leading-7 text-dark-blue-400">
@@ -1342,7 +1352,7 @@ export const BillingPaymentMethodsContent = forwardRef<
         open={isAddCardPaymentMethodDialogOpen}
         onOpenChange={setIsAddCardPaymentMethodDialogOpen}
       >
-        <DialogContent className="max-w-[743px] p-0">
+        <DialogContent className="max-w-[700px] p-0">
           <div className="flex items-center justify-between border-b border-gray-200 p-3">
             <div className="flex items-center gap-x-3">
               <IconButton
@@ -1529,7 +1539,7 @@ export const BillingPaymentMethodsContent = forwardRef<
         open={isAddBankPaymentMethodDialogOpen}
         onOpenChange={setIsAddBankPaymentMethodDialogOpen}
       >
-        <DialogContent className="max-w-[743px] p-0">
+        <DialogContent className="max-w-[700px] p-0">
           <div className="flex items-center justify-between border-b border-gray-200 p-3">
             <div className="flex items-center gap-x-3">
               <IconButton

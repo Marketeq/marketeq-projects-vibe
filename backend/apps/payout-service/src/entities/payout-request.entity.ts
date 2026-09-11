@@ -22,6 +22,11 @@ export enum PayoutTrigger {
   SCHEDULED = 'scheduled',
 }
 
+export enum PayoutSpeed {
+  STANDARD = 'standard',
+  INSTANT  = 'instant',
+}
+
 @Entity('payout_requests')
 @Index(['contractorId', 'createdAt'])
 export class PayoutRequest {
@@ -39,6 +44,12 @@ export class PayoutRequest {
 
   @Column({ type: 'enum', enum: PayoutStatus, default: PayoutStatus.PENDING_VERIFICATION })
   status: PayoutStatus;
+
+  // 006_payout_request_speed.sql — a plain text column with a CHECK
+  // constraint, not a native Postgres enum type (unlike trigger/status
+  // above), so `type: 'varchar'` here rather than `type: 'enum'`.
+  @Column({ type: 'varchar', default: PayoutSpeed.STANDARD })
+  speed: PayoutSpeed;
 
   // --- Amounts ---
   @Column({ name: 'amount_usd', type: 'numeric', precision: 18, scale: 8 })

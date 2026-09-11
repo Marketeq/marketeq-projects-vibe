@@ -7,7 +7,10 @@ import { Invitation } from './entities/invitation.entity';
 import { InvitationsService } from './invitations/invitations.service';
 import { InvitationsController } from './invitations/invitations.controller';
 import { UserServiceClient } from './invitations/user-service.client';
-import { BrevoModule } from '../../notification-service/src/brevo/brevo.service';
+import { HealthController } from './health/health.controller';
+import { InvitationEventsService } from './invitations/invitation-events.service';
+import { CompanyInvitationsController } from './invitations/company-invitations.controller';
+import { CompanyContextGuard } from './guards/company-context.guard';
 
 @Module({
   imports: [
@@ -48,9 +51,8 @@ import { BrevoModule } from '../../notification-service/src/brevo/brevo.service'
       },
     }),
     TypeOrmModule.forFeature([Invitation]),
-    BrevoModule,
   ],
-  controllers: [InvitationsController],
-  providers: [InvitationsService, UserServiceClient],
+  controllers: [InvitationsController, CompanyInvitationsController, HealthController],
+  providers: [InvitationsService, UserServiceClient, InvitationEventsService, CompanyContextGuard],
 })
 export class InvitationsServiceModule {}

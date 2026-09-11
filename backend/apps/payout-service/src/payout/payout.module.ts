@@ -17,6 +17,7 @@ import { KycModule }       from '../kyc/kyc.module';
 import { ExecutionModule } from '../execution/execution.module';
 import { CardModule }      from '../card/card.module';
 import { BankModule }      from '../bank/bank.module';
+import { PublishersModule } from '../publishers/publishers.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { BankModule }      from '../bank/bank.module';
     ExecutionModule,
     CardModule,
     BankModule,
+    PublishersModule,
   ],
   controllers: [PayoutController],
   providers: [PayoutService, WithdrawalRateLimitService, PayoutQueueProcessor],

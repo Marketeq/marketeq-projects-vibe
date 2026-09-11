@@ -4,6 +4,11 @@ import * as React from "react"
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import { claimProject } from "@/src/lib/api/claim"
+import {
+  isTalentAccount,
+  NoTeamAssigned,
+} from "@/components/no-team-assigned"
 import { apiFetch } from "@/src/lib/api"
 import { useAblyChannel } from "@/utils/useAblyChannel"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
@@ -17,7 +22,8 @@ import {
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
-import { InviteWindow, useInviteWindowStore } from "@/components/invite-window"
+import { ShareWindow, useShareWindowStore } from "@/components/share-window"
+import { ReportWindow, useReportWindowStore } from "@/components/report-window"
 import { ListingCard } from "@/components/listing-card"
 import { projectDetailsUrl } from "@/src/lib/listing-urls"
 import { ProjectDiscoverySections } from "@/components/project-discovery-sections"
@@ -756,7 +762,7 @@ const VideoThumb = ({
 }: {
   url?: string | null
   alt: string
-}): JSX.Element | null => {
+}): React.JSX.Element | null => {
   const yt = toVideoThumb(url)
   if (yt) {
     return (
@@ -919,7 +925,8 @@ export default function ProjectDetails({
   const [askModalOpen, setAskModalOpen] = React.useState(false)
   const [lightboxOpen, setLightboxOpen] = React.useState(false)
   const [selectedMediaIndex, setSelectedMediaIndex] = React.useState(0)
-  const toggleInviteWindow = useInviteWindowStore((s) => s.toggle)
+  const toggleShareWindow = useShareWindowStore((s) => s.toggle)
+  const toggleReportWindow = useReportWindowStore((s) => s.toggle)
   const { isOnline } = useOnlineUsers()
 
   // Real online presence for the team (PL-CV-10 / doc 12): green indicator when
@@ -1671,16 +1678,18 @@ export default function ProjectDetails({
               </div>
 
               <div className="flex gap-x-[13px] items-start mt-8 relative">
-                <div className="w-[189px] h-[126px] relative overflow-hidden rounded-lg">
-                  <NextImage
-                    src={project.mediaUrls?.[0] || "/dashboard.png"}
-                    alt={project.title}
-                    sizes="25vw"
-                    loading="eager"
-                    priority
-                    fill
-                  />
-                </div>
+                {project.mediaUrls?.[0] && (
+                  <div className="w-[189px] h-[126px] relative overflow-hidden rounded-lg">
+                    <NextImage
+                      src={project.mediaUrls[0]}
+                      alt={project.title}
+                      sizes="25vw"
+                      loading="eager"
+                      priority
+                      fill
+                    />
+                  </div>
+                )}
 
                 <div className="flex flex-col items-start gap-y-3">
                   <Badge className="rounded-[5px]" visual="gray">
@@ -1866,24 +1875,10 @@ export default function ProjectDetails({
                 static /waves.png placeholder carousel so the design
                 density stays intact (saved "no-empty-swap" memory rule).
               */}
+              {mediaItems.length > 0 && (
               <Carousel className="w-full">
                 <CarouselContent className="-ml-3">
-                  {mediaItems.length === 0
-                    ? Array.from({ length: 5 }).map((_, index) => (
-                        <CarouselItem key={index} className="group basis-1/3">
-                          <div className="relative border border-gray-200 h-[150.6px] overflow-hidden rounded-lg">
-                            <NextImage
-                              className="object-cover"
-                              src="/waves.png"
-                              alt="Waves"
-                              sizes="25vw"
-                              fill
-                            />
-                            <div className="absolute inset-0 transition duration-300" />
-                          </div>
-                        </CarouselItem>
-                      ))
-                    : mediaItems.map((m, i) => (
+                  {mediaItems.map((m, i) => (
                         <CarouselItem
                           key={`${m.url}-${i}`}
                           className="group basis-1/3"
@@ -1943,6 +1938,7 @@ export default function ProjectDetails({
                 <CarouselPreviousTrigger />
                 <CarouselNextTrigger />
               </Carousel>
+              )}
 
               <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
                 <DialogContent
@@ -2063,7 +2059,7 @@ export default function ProjectDetails({
                                     <span
                                       className="pointer-events-none absolute inset-0"
                                       style={{
-                                        border: "2px solid #ffffff",
+                                        border: "2px solid #22376B",
                                         borderRadius: 8,
                                       }}
                                     />
@@ -2146,30 +2142,24 @@ export default function ProjectDetails({
                   <div>
                     <div id="section-description" className="pt-6">
                       <CollapsibleCard maxHeight={599}>
-                        <h1 className="text-2xl leading-none font-semibold text-dark-blue-400">
-                          {project.title}
-                        </h1>
-
-                        <div className="mt-6 border-t pt-6 border-gray-200">
-                          {/*
-                            project.description is HTML generated from the
-                            Payload Lexical rich-text editor by the
-                            listings-service ProjectSyncService. Editor
-                            content is admin-authored (not user-submitted)
-                            so `dangerouslySetInnerHTML` is safe here — see
-                            the lexicalToHtml() helper on the service which
-                            escapes text content before wrapping in tags.
-                          */}
-                          <div
-                            className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
-                            dangerouslySetInnerHTML={{
-                              __html:
-                                project.description ||
-                                project.summary ||
-                                "",
-                            }}
-                          />
-                        </div>
+                        {/*
+                          project.description is HTML generated from the
+                          Payload Lexical rich-text editor by the
+                          listings-service ProjectSyncService. Editor
+                          content is admin-authored (not user-submitted)
+                          so `dangerouslySetInnerHTML` is safe here — see
+                          the lexicalToHtml() helper on the service which
+                          escapes text content before wrapping in tags.
+                        */}
+                        <div
+                          className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
+                          dangerouslySetInnerHTML={{
+                            __html:
+                              project.description ||
+                              project.summary ||
+                              "",
+                          }}
+                        />
                       </CollapsibleCard>
 
                       <CollapsibleCard maxHeight={456} className="mt-6">
@@ -5405,6 +5395,8 @@ export default function ProjectDetails({
                 ) : null
               })()}
 
+              {(Array.isArray(currentTeam) && currentTeam.length > 0) ||
+              isTalentAccount(user) ? (
               <div className="flex flex-col items-start gap-y-3 mt-6">
                 <span className="inline-block text-xs font-medium text-dark-blue-400">
                   Current Team
@@ -5488,23 +5480,20 @@ export default function ProjectDetails({
                     </Tooltip>
                   </TooltipProvider>
                 ) : (
-                  <div className="flex flex-col items-start gap-y-2">
-                    <div className="flex items-center -space-x-2">
-                      {[0, 1, 2].map((i) => (
-                        <div
-                          key={i}
-                          className="size-8 rounded-full border border-dashed border-gray-300 bg-gray-100 flex items-center justify-center ring-2 ring-white"
-                        >
-                          <User01 className="size-3.5 text-gray-400" />
-                        </div>
-                      ))}
-                    </div>
-                    <span className="text-xs text-gray-400 font-extralight leading-none">
-                      No team assigned yet
-                    </span>
-                  </div>
+                  <NoTeamAssigned
+                    kind="project"
+                    onClaim={
+                      project?.id
+                        ? () => claimProject(String(project.id))
+                        : undefined
+                    }
+                    editHref={
+                      project?.id ? `/my-listings/${project.id}` : undefined
+                    }
+                  />
                 )}
               </div>
+              ) : null}
 
               <div className="mt-6 space-y-3">
                 <div className="flex items-center gap-x-[6.4px]">
@@ -5583,7 +5572,7 @@ export default function ProjectDetails({
                     size="lg"
                     variant="outlined"
                     visual="gray"
-                    onClick={() => toggleInviteWindow(true)}
+                    onClick={() => toggleShareWindow(true, project.title)}
                   >
                     <Share06 className="size-5" />
                   </IconButton>
@@ -5620,13 +5609,18 @@ export default function ProjectDetails({
               </div>
             </div>
 
-            <InviteWindow />
+            <ShareWindow />
+            <ReportWindow />
             <div className="h-[50px] rounded-b-lg bg-gray-50 flex items-center justify-evenly">
               {project.reportButtonEnabled !== false && (
                 <div
                   className="inline-flex items-center gap-x-2 cursor-pointer"
                   onClick={() => {
-                    if (!user?.id) openAuthModal("sign-in")
+                    if (!user?.id) {
+                      openAuthModal("sign-in")
+                      return
+                    }
+                    toggleReportWindow(true, project.id, project.title)
                   }}
                 >
                   <Flag className="size-[15px] text-gray-500" />
@@ -5646,7 +5640,7 @@ export default function ProjectDetails({
               {project.shareButtonEnabled !== false && (
                 <div
                   className="inline-flex items-center gap-x-2 cursor-pointer"
-                  onClick={() => toggleInviteWindow(true)}
+                  onClick={() => toggleShareWindow(true, project.title)}
                 >
                   <Share06 className="size-[15px] text-gray-500" />
                   <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">

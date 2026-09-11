@@ -621,24 +621,6 @@ function ScreenshotThumbnail({
         <span className="text-[11px] text-gray-400">{screenshot.time}</span>
         {screenshot.apps.length > 0 && <AppIcons apps={screenshot.apps} />}
       </div>
-      {/* US-84: keyboard/mouse activity icons on every tile, not just the
-          detail-drawer sidebar. */}
-      {!screenshot.isNoActivity && (screenshot.keyboardPct != null || screenshot.mousePct != null) && (
-        <div className="flex items-center gap-2 mt-0.5">
-          {screenshot.keyboardPct != null && (
-            <span className="flex items-center gap-0.5 text-[10px] text-gray-400">
-              <Keyboard01 className="size-3" />
-              {screenshot.keyboardPct}%
-            </span>
-          )}
-          {screenshot.mousePct != null && (
-            <span className="flex items-center gap-0.5 text-[10px] text-gray-400">
-              <Mouse className="size-3" />
-              {screenshot.mousePct}%
-            </span>
-          )}
-        </div>
-      )}
     </div>
   )
 }
@@ -3216,7 +3198,7 @@ export default function TimeTrackingPage() {
       <div className="flex bg-gray-50 min-h-screen">
         <LeftSidebar />
 
-        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6 overflow-hidden">
+        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px] overflow-hidden">
           {/* ── Header ── */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">

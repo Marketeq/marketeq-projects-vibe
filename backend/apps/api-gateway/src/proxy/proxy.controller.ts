@@ -19,10 +19,12 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   search: 'search',
   algolia: 'algolia',
   favorites: 'favorites',
+  'browsing-history': 'browsingHistory',
   portfolio: 'portfolio',
   'case-studies': 'portfolio',  // portfolio-service's case-study builder API
   media: 'portfolio',           // portfolio-service's R2 presigned media upload/delete
   invitations: 'invitations',
+  companies: 'users',           // company + roster CRUD lives in user-service
   moderation: 'moderation',
   autocomplete: 'autocomplete',
   suggestions: 'suggestions',
@@ -63,6 +65,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   legal: 'legal',                  // legal-service NDA, documents, acceptance
   nda: 'legal',                    // legal-service NDA endpoints
   resume: 'users',                  // resume upload/parse lives in user-service
+  'dashboard-tasks': 'users',       // personal to-do tasks live in user-service
 }
 
 const USER_SERVICE_V1_RESOURCES = new Set([
@@ -202,6 +205,7 @@ export class ProxyController {
       'contracts-service': process.env.CONTRACTS_SERVICE_URL || 'http://localhost:3010',
       'offer-service': process.env.OFFER_SERVICE_URL || 'http://localhost:3011',
       'favorites-service': process.env.FAVORITES_SERVICE_URL || 'http://localhost:3012',
+      'browsing-history-service': process.env.BROWSING_HISTORY_SERVICE_URL || 'http://localhost:3034',
       'invitations-service': process.env.INVITATIONS_SERVICE_URL || 'http://localhost:3013',
       'content-moderation-service': process.env.MODERATION_SERVICE_URL || 'http://localhost:3014',
       'portfolio-service': process.env.PORTFOLIO_SERVICE_URL || 'http://localhost:3015',
@@ -219,6 +223,9 @@ export class ProxyController {
       'wallet-service': process.env.WALLET_SERVICE_URL || 'http://localhost:3030',
       'wire-review-service': process.env.WIRE_REVIEW_SERVICE_URL || 'http://localhost:3031',
       'legal-service': process.env.LEGAL_SERVICE_URL || 'http://localhost:3032',
+      // boot-all.js runs this on 3033 and sets RESUME_PARSING_SERVICE_URL to match;
+      // the 3028 default is the ecosystem.config.js port used by local PM2.
+      'resume-parsing-service': process.env.RESUME_PARSING_SERVICE_URL || 'http://localhost:3028',
     }
 
     const results: Record<string, { status: string; code: number }> = {}
@@ -312,10 +319,30 @@ export class ProxyController {
     const segments = normalizedPath.replace(/^\//, '').split('/')
     let prefix = segments[0]
 
+    // /v1/companies/:companyId/invitations belongs to invitations-service
+    // (company-invitations.controller.ts is mounted at exactly that path),
+    // while every other /v1/companies/* route belongs to user-service's
+    // @Controller('companies'). Computed once so service selection below and
+    // the /v1-strip further down cannot disagree.
+    const isCompanyInvitationsPath =
+      segments[0] === 'v1' && segments[1] === 'companies' && segments[3] === 'invitations'
+
     // /v1/users/* → user-service
     // /v1/projects/* or /v1/services/* → listings-service
     // /v1/transactions/* or /v1/invoices/* → transaction-service (default for v1)
-    if (prefix === 'v1' && segments[1] === 'users') {
+    if (prefix === 'v1' && segments[1] === 'invitations') {
+      // invitations-service mounts @Controller(['invitations', 'v1/invitations']),
+      // so the path forwards verbatim, with no /v1 strip. Without this branch,
+      // /v1/invitations/* silently fell through to the 'v1' default
+      // (transaction-service) and 404'd, breaking accept/list/preview/
+      // resend/cancel, the entire invitation flow the frontend uses.
+      prefix = 'invitations'
+    } else if (isCompanyInvitationsPath) {
+      // Must be tested before the generic /v1/companies branch below.
+      prefix = 'invitations'
+    } else if (prefix === 'v1' && segments[1] === 'companies') {
+      prefix = 'companies'
+    } else if (prefix === 'v1' && segments[1] === 'users') {
       prefix = 'users'
     } else if (prefix === 'v1' && USER_SERVICE_V1_RESOURCES.has(segments[1])) {
       prefix = 'users'
@@ -323,7 +350,8 @@ export class ProxyController {
       prefix === 'v1' &&
       (segments[1] === 'projects' ||
         segments[1] === 'services' ||
-        segments[1] === 'recently-viewed')
+        segments[1] === 'recently-viewed' ||
+        segments[1] === 'my-teams')
     ) {
       prefix = 'listings'
     } else if (prefix === 'v1' && (segments[1] === 'threads' || segments[1] === 'messages')) {
@@ -336,10 +364,18 @@ export class ProxyController {
       // Without this branch, /v1/earnings/* silently fell through to the 'v1'
       // default (transaction-service) instead of earnings-service.
       prefix = 'earnings'
+    } else if (prefix === 'v1' && segments[1] === 'checkout') {
+      // checkout-service's controller is @Controller("v1/checkout"), so it
+      // expects the full /v1/checkout/... path unchanged. Without this
+      // branch, /v1/checkout/* silently fell through to the 'v1' default
+      // (transaction-service) and 404'd — every CheckoutAPI call from the
+      // frontend (session, wallet balance, gift cards, status, cancel) was
+      // broken through the gateway.
+      prefix = 'checkout'
     } else if (prefix === 'v1' && (segments[1] === 'deposit-methods')) {
       prefix = 'deposit-methods'
     } else if (prefix === 'v1' && segments[1] === 'oauth') {
-      // /v1/oauth/:provider/callback (PayPal/Wise/Payoneer OAuth redirect
+      // /v1/oauth/:provider/callback (Wise/Payoneer OAuth redirect
       // target) lives in payout-service. Without this branch it silently
       // fell through to the 'v1' default (transaction-service) and 404'd,
       // so the OAuth callback that actually persists tokens never ran.
@@ -388,6 +424,14 @@ export class ProxyController {
       segments[0] === 'v1' &&
       (segments[1] === 'users' || USER_SERVICE_V1_RESOURCES.has(segments[1]))
     ) {
+      downstreamPath = '/' + segments.slice(1).join('/')
+    }
+    // user-service's companies.controller.ts is @Controller('companies') with
+    // no global prefix, so /v1/companies/... must lose its /v1 exactly like
+    // /v1/users/... does. The company-scoped invitations sub-route is
+    // excluded. It goes to invitations-service, whose controller IS mounted
+    // at v1/companies/:companyId/invitations and would 404 on a stripped path.
+    if (segments[0] === 'v1' && segments[1] === 'companies' && !isCompanyInvitationsPath) {
       downstreamPath = '/' + segments.slice(1).join('/')
     }
     if (serviceName === 'checkout' && segments[0] === 'checkout') {

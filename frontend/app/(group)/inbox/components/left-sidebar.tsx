@@ -147,6 +147,7 @@ interface LeftSidebarProps {
   }
   onHighlightMessage?: (messageId: string) => void
   privateKey: CryptoKey | null
+  seededConversations?: Conversation[]
   /** Hands the parent a function that patches a conversation in this
    * sidebar's own list, so other panes (e.g. the open thread's header)
    * can update the list without waiting on a round-trip through Ably. */
@@ -164,6 +165,7 @@ const LeftSidebar = ({
   searchIndex,
   onHighlightMessage,
   privateKey,
+  seededConversations = [],
   registerPatchConversation,
 }: LeftSidebarProps) => {
   const {
@@ -532,7 +534,22 @@ const LeftSidebar = ({
         if (cancelled) return
 
         // Render list immediately with placeholders; no network/crypto blocked.
-        const placeholders = data.map((conv: Conversation) => {
+        const seededActorIds = new Set(
+          seededConversations.flatMap((conversation) =>
+            conversation.participantIds.filter((id) => id !== currentUserId)
+          )
+        )
+        const combinedData = [
+          ...seededConversations,
+          ...data.filter(
+            (conversation) =>
+              !seededActorIds.has(
+                getOtherParticipantId(conversation, currentUserId) ?? ""
+              )
+          ),
+        ]
+        const placeholders = combinedData.map((conv: Conversation) => {
+          if (conv.isOfferNotificationThread) return conv
           const lm = (conv as any).lastMessage
           let preview = ""
           const att = lm?.attachment
@@ -604,9 +621,12 @@ const LeftSidebar = ({
               : enrichIndividual(conv, privKeyRef)
           )
         )
-      } catch (err) {
+      } catch {
         if (!cancelled) {
-          console.error("[LeftSidebar] error fetching conversations:", err)
+          // Seeded offer conversations are the intentional offline/dev
+          // fallback when the messaging service is unavailable. The failure
+          // is handled here, so do not escalate it to Next's error overlay.
+          setConversations(seededConversations)
           setIsLoading(false)
         }
       }
@@ -617,7 +637,7 @@ const LeftSidebar = ({
     return () => {
       cancelled = true
     }
-  }, [currentUserId, token, initialThreadId])
+  }, [currentUserId, token, initialThreadId, seededConversations])
 
   useEffect(() => {
     if (threadsRefetchToken === 0) return

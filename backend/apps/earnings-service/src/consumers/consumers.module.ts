@@ -20,7 +20,15 @@ import { ContractLabelCache }          from '../entities/contract-label-cache.en
     ConfigModule, PublishersModule, CacheModule, InternalModule,
     TypeOrmModule.forFeature([EarningsCache, BalanceSnapshot, ContractLabelCache]),
   ],
-  providers: [
+  // These are @Controller() classes, not @Injectable() providers — NestJS's
+  // microservices layer only scans a module's `controllers` array for
+  // @MessagePattern/@EventPattern handlers (see
+  // MicroservicesModule.setupListeners, which destructures `controllers`
+  // off each module and ignores `providers` entirely). Registered as
+  // providers, none of these ever received a single RabbitMQ message —
+  // confirmed live: every publish attempt came back "unsupported message/
+  // event, Pattern: ..." regardless of what the producer side did.
+  controllers: [
     TransactionCreatedConsumer, TransactionReversedConsumer,
     PayoutCompletedConsumer, PayoutFailedConsumer, ContractActivatedConsumer,
     ScreenshotConfirmedConsumer, ManualTimeConfirmedConsumer,

@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-verification-service
+  labels:
+    app: identity-verification-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: identity-verification-service
+  template:
+    metadata:
+      labels:
+        app: identity-verification-service
+    spec:
+      containers:
+      - name: identity-verification-service
+        image: identity-verification-service:latest
+        ports:
+        - containerPort: 3019
+          name: http
+        env:
+        - name: PORT
+          value: "3019"
+        - name: NODE_ENV
+          value: "production"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: identity-verification-secrets
+              key: database-url
+        - name: RABBITMQ_URL
+          valueFrom:
+            secretKeyRef:
+              name: identity-verification-secrets
+              key: rabbitmq-url
+        - name: DIDIT_API_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: identity-verification-secrets
+              key: didit-api-base-url
+        - name: DIDIT_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: identity-verification-secrets
+              key: didit-api-key
+        - name: DIDIT_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: identity-verification-secrets
+              key: didit-webhook-secret
+        - name: R2_ACCOUNT_ID
+          valueFrom:
+            secretKeyRef:
+              name: identity-verification-secrets
+              key: r2-account-id
+        - name: R2_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: identity-verification-secrets
+              key: r2-access-key-id
+        - name: R2_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: identity-verification-secrets
+              key: r2-secret-access-key
+        - name: R2_BUCKET_NAME
+          valueFrom:
+            secretKeyRef:
+              name: identity-verification-secrets
+              key: r2-bucket-name
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3019
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3019
+          initialDelaySeconds: 5
+          periodSeconds: 5

@@ -26,6 +26,12 @@ export class Invitation {
   @Column({ name: 'team_name', nullable: true })
   teamName?: string;
 
+  /** Company (user-service) this invitation grants membership to. Nullable
+   * because pre-existing team-scoped invitations never had a company. */
+  @Index()
+  @Column({ name: 'company_id', type: 'uuid', nullable: true })
+  companyId?: string;
+
   @Index()
   @Column({ name: 'invited_email', type: 'text' })
   invitedEmail!: string;
@@ -36,18 +42,36 @@ export class Invitation {
   @Column({ type: 'text', nullable: true })
   note?: string;
 
+  /** The 30 granular permission-role ids selected in the invite dialog
+   * (select-permissions-panel.tsx), carried through to acceptance so they
+   * land on the resulting company_users row. */
+  @Column({ type: 'text', array: true, default: '{}' })
+  permissions!: string[];
+
   @Column({ type: 'enum', enumName: 'invitation_status', enum: ['pending', 'accepted', 'canceled', 'expired'], default: 'pending' })
   status!: InvitationStatus;
 
+  /** Legacy plaintext token. No longer written for new invitations, kept
+   * nullable and readable only so invitations created before the
+   * token_hash migration keep accepting. */
   @Index()
-  @Column({ type: 'text' })
-  token!: string;
+  @Column({ type: 'text', nullable: true })
+  token?: string;
+
+  /** bcrypt hash of the per-invitation secret half of the accept token
+   * (`<id>.<secret>`). Nothing derived from the secret is stored in
+   * plaintext. */
+  @Column({ name: 'token_hash', type: 'varchar', length: 255, nullable: true })
+  tokenHash?: string;
 
   @Column({ name: 'expires_at', type: 'timestamptz' })
   expiresAt!: Date;
 
   @Column({ name: 'created_by_user_id', type: 'uuid' })
   createdByUserId!: string;
+
+  @Column({ name: 'created_by_email', type: 'text', nullable: true })
+  createdByEmail?: string;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

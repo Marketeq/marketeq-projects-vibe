@@ -7,6 +7,13 @@ const config: Config = {
   testEnvironment: 'node',
   rootDir: '.',
 
+  // Needed for class-validator decorators (e.g. ListOffersQueryDto) to work
+  // when a spec instantiates/validates a DTO directly — the full app gets
+  // this for free via main.ts's early NestFactory bootstrap, but isolated
+  // unit tests never go through main.ts. No existing spec in this service
+  // imported a decorated DTO before, so this gap was never hit until now.
+  setupFiles: ['reflect-metadata'],
+
   testMatch: process.env.TEST_TYPE === 'integration'
     ? ['<rootDir>/test/integration/**/*.spec.ts']
     : ['<rootDir>/src/**/*.spec.ts', '<rootDir>/test/**/*.spec.ts', '!<rootDir>/test/integration/**/*.spec.ts'],

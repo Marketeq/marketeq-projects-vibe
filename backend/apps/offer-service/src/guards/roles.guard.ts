@@ -4,6 +4,7 @@ import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/types/user-role.enum';
+import { resolveEffectiveRole } from './party-role.util';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -17,8 +18,16 @@ export class RolesGuard implements CanActivate {
 
     if (!requiredRoles || requiredRoles.length === 0) return true;
 
-    const { user } = context.switchToHttp().getRequest();
-    const userRole = typeof user?.role === 'string' ? user.role.toUpperCase() : user?.role;
+    const request = context.switchToHttp().getRequest();
+
+    // OfferPartyGuard (when it runs first — guard order matters) derives
+    // request.partyRole from actual offer party membership, which is
+    // authoritative on routes that operate on an existing offer. Routes
+    // with no offer in scope (createOffer) have nothing to derive and
+    // fall back to the JWT's own role claim exactly as before — still
+    // broken until the upstream libs/auth gap is fixed, unchanged here on
+    // purpose (see offer-party.guard.ts's comment for the full story).
+    const userRole = resolveEffectiveRole(request.partyRole, request.user?.role);
 
     if (!userRole || !requiredRoles.includes(userRole as UserRole)) {
       throw new ForbiddenException({

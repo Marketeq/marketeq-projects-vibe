@@ -23,7 +23,7 @@ import {
   IconButton, Input, RadioGroup, RadioGroupItem,
 } from "@/components/ui"
 import { PayoneerDefault } from "@blend-metrics/icons/payment-methods"
-import { PaypalIcon, CryptoProviderIcon, formatMethodOptionLabel } from "@/components/transactions-comps"
+import { CryptoProviderIcon, formatMethodOptionLabel } from "@/components/transactions-comps"
 import { getBalance, type BalanceResponse } from "@/service/http/earnings"
 import { getPublicAuthUrl, getPublicApiUrl } from "@/lib/runtime-urls"
 
@@ -113,12 +113,6 @@ function resolveErrorMessage(data: { errorCode?: string; message?: string; avail
 
 function methodIcon(m: { methodType: string; displayLabel: string | null }) {
   switch (m.methodType) {
-    case "PAYPAL":
-      return (
-        <div className="size-10 rounded-lg border border-gray-200 bg-white flex items-center justify-center shrink-0">
-          <PaypalIcon className="w-1/2 h-1/2" />
-        </div>
-      )
     case "PAYONEER":
       return (
         <div className="size-10 flex items-center justify-center shrink-0">
@@ -191,7 +185,7 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
   const [reserveUsd, setReserveUsd] = React.useState(0)
 
   const [amount, setAmount] = React.useState("")
-  const [speed, setSpeed] = React.useState<"standard" | "instant">("standard")
+  const [speed, setSpeed] = React.useState<"standard" | "instant" | null>(null)
   const [validation, setValidation] = React.useState<ValidateAmountResponse | null>(null)
   const [validationLoading, setValidationLoading] = React.useState(false)
   const [validationError, setValidationError] = React.useState("")
@@ -222,7 +216,7 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
   const resetAll = React.useCallback(() => {
     setStep("amount")
     setAmount("")
-    setSpeed("standard")
+    setSpeed(null)
     setValidation(null)
     setValidationError("")
     setMethodId(null)
@@ -316,7 +310,11 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
     setResending(true)
     setResendMessage("")
     try {
-      const res = await payoutFetch(`${PAYOUT_SERVICE_URL}/payouts/${result.payoutRequestId}/resend-verification`, { method: "POST" })
+      const res = await payoutFetch(`${PAYOUT_SERVICE_URL}/payouts/${result.payoutRequestId}/resend-verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ redirectUrl: `${window.location.origin}/verify-withdrawal` }),
+      })
       const data = await res.json()
       if (!res.ok) {
         if (data.errorCode === "ERR_MAGIC_LINK_RESEND_COOLDOWN") {
@@ -361,8 +359,6 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
       if (!res.ok) throw new Error(data.message ?? "Failed to load payout methods")
       const verified = (data.methods ?? []).filter((m: DepositMethodSummary) => m.verificationStatus === "verified")
       setMethods(verified)
-      const def = verified.find((m: DepositMethodSummary) => m.isDefault)
-      if (def) setMethodId(def.id)
     } catch {
       setMethodsError("We couldn't load your payout methods. Please try again.")
     } finally {
@@ -422,14 +418,14 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
   React.useEffect(() => {
     if (!open) return
     const numeric = Number(amount)
-    if (!amount || isNaN(numeric) || numeric <= 0) { setValidation(null); setValidationError(""); return }
+    if (!amount || isNaN(numeric) || numeric <= 0 || !speed) { setValidation(null); setValidationError(""); return }
     const id = setTimeout(() => { revalidateAmount() }, 400)
     return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [amount, speed, open])
 
   const method = methods.find((m) => m.id === methodId) ?? null
-  const canContinueFromAmount = !!validation && validation.meetsMinimum && !validationLoading && !validationError
+  const canContinueFromAmount = !!validation && validation.meetsMinimum && !validationLoading && !validationError && !!speed
   const canContinueFromMethod = !!methodId
 
   const goToMethod = async () => {
@@ -445,14 +441,20 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
   }
 
   const submit = async () => {
-    if (!methodId || !validation) return
+    if (!methodId || !validation || !speed) return
     setSubmitting(true)
     setDeclineState(null)
     try {
       const res = await payoutFetch(`${PAYOUT_SERVICE_URL}/payouts/initiate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountUsd: amount, speed, depositMethodId: methodId, idempotencyKey, ignoreReserve }),
+        body: JSON.stringify({
+          amountUsd: amount, speed, depositMethodId: methodId, idempotencyKey, ignoreReserve,
+          // One shared backend serves dev/staging/live — tells it which
+          // frontend to point the magic-link confirmation email back at.
+          // Backend only trusts this if its origin is on FRONTEND_URL.
+          redirectUrl: `${window.location.origin}/verify-withdrawal`,
+        }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -694,7 +696,7 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
 
                 <div className="mt-6">
                   <label className="text-sm font-semibold text-dark-blue-400 block mb-2">Choose Deposit Speed</label>
-                  <RadioGroup value={speed} onValueChange={(v) => setSpeed(v as "standard" | "instant")} className="space-y-2.5">
+                  <RadioGroup value={speed ?? undefined} onValueChange={(v) => setSpeed(v as "standard" | "instant")} className="space-y-2.5">
                     <label
                       htmlFor="wf-speed-instant"
                       className={cn("flex items-center gap-x-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors",

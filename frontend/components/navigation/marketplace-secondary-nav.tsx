@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import { UserAPI } from "@/service/http/user"
+import { useTeamMemberCount } from "@/src/hooks/useTeamNetwork"
 import { ChevronDown, ChevronRight } from "@blend-metrics/icons"
 import {
   Button,
@@ -26,25 +26,16 @@ const mobileSecondaryNavItems = [
 const TeamMemberLink = () => {
   const router = useRouter()
   const { user } = useAuth()
-  const [teamCount, setTeamCount] = useState(0)
-
-  useEffect(() => {
-    if (!user?.id) return
-
-    UserAPI.listUsers(50)
-      .then((res) => {
-        const users = Array.isArray(res?.data) ? res.data : []
-        setTeamCount(users.length)
-      })
-      .catch(() => {})
-  }, [user?.id])
+  // Your team: talent you have hired, plus invited members who accepted.
+  // Counting every user row instead would report the whole platform.
+  const { count: teamCount } = useTeamMemberCount(user?.id)
 
   return (
     <Button
       className="gap-x-0.5 text-[11px] leading-6 lg:text-[13px] lg:leading-6 text-dark-blue-400"
       variant="link"
       visual="gray"
-      onClick={() => router.push("/my-team")}
+      onClick={() => router.push("/my-network")}
     >
       {teamCount} team member{teamCount !== 1 ? "s" : ""}
       <ChevronRight className="size-3 lg:size-3.5" />

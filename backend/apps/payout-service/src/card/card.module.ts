@@ -8,11 +8,13 @@ import { CardController }             from './card.controller';
 import { DepositMethod }              from '../entities/deposit-method.entity';
 import { PayoutRequest }              from '../entities/payout-request.entity';
 import { CommonModule }               from '../common/common.module';
+import { PublishersModule }           from '../publishers/publishers.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([DepositMethod, PayoutRequest]),
     CommonModule,    // KycClient
+    PublishersModule, // PayoutPublisher
   ],
   controllers: [CardController],
   providers: [CardIssuanceService, CardPayoutExecutorService],

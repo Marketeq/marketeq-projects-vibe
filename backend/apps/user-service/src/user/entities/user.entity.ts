@@ -69,6 +69,14 @@ export class User {
   @Column({ nullable: true })
   role?: string;
 
+  // Which role the account is currently acting as. An account can hold both
+  // roles (see talentOnboardedAt / clientOnboardedAt), and `role` / `userType`
+  // are single-valued profile labels that can disagree, so neither can express
+  // the active session. Previously the switcher kept this in memory only, so it
+  // was lost on reload. Nullable: absence means fall back to the old inference.
+  @Column({ type: 'text', nullable: true })
+  activeRole?: string | null;
+
   @Column({ default: 'EMAIL' })
   provider: string;
 
@@ -83,6 +91,29 @@ export class User {
 
   @Column({ nullable: true })
   teamName?: string;
+
+  // Personal Info's "What team do you work on?" — a department (Engineering,
+  // Design, Marketing...). Deliberately NOT `teamName`, which above holds the
+  // client's company name; writing one to the other overwrites Company Info.
+  @Column({ nullable: true })
+  department?: string;
+
+  // Settings > IP Restrictions master switch. Nullable rather than defaulted:
+  // null means "never touched the screen", which is not the same as having
+  // deliberately switched restriction off, and only the former should be safe
+  // to change the default of later.
+  @Column({ name: 'ip_restriction_enabled', type: 'boolean', nullable: true })
+  ipRestrictionEnabled?: boolean | null;
+
+  // Client company profile. `teamName` above is the company name; these two
+  // carry the rest of what the client "Complete My Profile" steps collect.
+  // Kept on the user row so a single getProfile call returns the whole
+  // completion state, the same way the talent steps read theirs.
+  @Column({ nullable: true })
+  companyWebsite?: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  workplaceValues?: any;
 
   @Column({ nullable: true })
   inviteCode?: string;

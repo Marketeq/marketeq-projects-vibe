@@ -12,9 +12,9 @@ import BrowserAlertsModal from "./modals/browser-alerts-modal"
 import EditEmailModal from "./modals/edit-email-modal"
 import EditPhoneModal from "./modals/edit-phone-modal"
 import {
-  SMS_ENABLED,
   channelIcons,
   channelLabels,
+  formatPhoneForDisplay,
   requestBrowserNotificationPermission,
 } from "./shared"
 
@@ -60,20 +60,28 @@ export default function NotificationGlobalChannels({
     setBrowserLoading(true)
     try {
       if (browserMode === "enable") {
+        // The preference records the choice; the browser permission decides
+        // whether we can act on it. They were tied together, so dismissing or
+        // having previously blocked the native prompt left "Browser" struck
+        // through — the click looked like it had done nothing. Saving first
+        // means the row always reflects what was asked for, and the toast
+        // carries the part the browser still has to allow.
+        onSetBrowserAlerts(true)
         const result = await requestBrowserNotificationPermission()
-        if (result !== "granted") {
+        if (result === "granted") {
+          toast({ title: "Browser alerts are now enabled", variant: "success" })
+        } else if (result === "denied") {
           toast({
             title:
-              result === "denied"
-                ? "Browser notifications are blocked — enable them in your browser settings"
-                : "Browser notification permission was dismissed",
+              "Browser alerts are on, but your browser is blocking them — allow notifications in your browser settings",
             variant: "destructive",
           })
-          setBrowserMode(null)
-          return
+        } else {
+          toast({
+            title:
+              "Browser alerts are on — allow notifications when your browser asks",
+          })
         }
-        onSetBrowserAlerts(true)
-        toast({ title: "Browser alerts are now enabled", variant: "success" })
       } else {
         onSetBrowserAlerts(false)
         toast({ title: "Browser alerts are now disabled", variant: "success" })
@@ -151,30 +159,27 @@ export default function NotificationGlobalChannels({
 
   return (
     <>
-      <div className="bg-white rounded-xl border border-gray-200">
-        <div className="p-5">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-[0px_2px_5px_rgba(0,0,0,0.04)]">
+        <div className="p-6 pb-3">
           <h3 className="text-base font-semibold text-dark-blue-400">
             Notifications by type
           </h3>
-          <p className="text-sm text-gray-500">
-            Control all notifications at once
-          </p>
         </div>
-        <div className="px-5 pb-5 space-y-2">
+        <div className="px-6 pb-6 space-y-2.5">
           {/* In App */}
           <div
             className={cn(
-              "group flex items-center gap-3 bg-gray-50 rounded-lg px-4 h-[52px]"
+              "group flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-5 h-[60px] shadow-[0px_1px_4px_rgba(0,0,0,0.03)]"
             )}
           >
             <InAppIcon />
-            <span className="text-sm font-semibold text-dark-blue-400">
+            <span className="text-sm leading-[17px] font-semibold text-dark-blue-400">
               {channelLabels.inApp}
             </span>
             <span className="flex-1" />
             <span
               className={cn(
-                "text-xs text-gray-400 group-hover:hidden",
+                "text-xs leading-[15px] text-gray-500 group-hover:hidden",
                 !channels.inApp.enabled && "opacity-50"
               )}
             >
@@ -196,15 +201,15 @@ export default function NotificationGlobalChannels({
           </div>
 
           {/* Email */}
-          <div className="group flex items-center gap-3 bg-gray-50 rounded-lg px-4 h-[52px]">
+          <div className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-5 h-[60px] shadow-[0px_1px_4px_rgba(0,0,0,0.03)]">
             <EmailIcon />
-            <span className="text-sm font-semibold text-dark-blue-400">
+            <span className="text-sm leading-[17px] font-semibold text-dark-blue-400">
               {channelLabels.email}
             </span>
             <span className="flex-1" />
             <span
               className={cn(
-                "text-xs text-gray-400 group-hover:hidden",
+                "text-xs leading-[15px] text-gray-500 group-hover:hidden",
                 !channels.email.enabled && "opacity-50"
               )}
             >
@@ -231,16 +236,50 @@ export default function NotificationGlobalChannels({
           </div>
 
           {/* SMS / Text */}
-          <div className="group flex items-center gap-3 bg-gray-50 rounded-lg px-4 h-[52px] opacity-60">
+          <div className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-5 h-[60px] shadow-[0px_1px_4px_rgba(0,0,0,0.03)]">
             <SmsIcon />
-            <span className="text-sm font-semibold text-dark-blue-400">
+            <span className="text-sm leading-[17px] font-semibold text-dark-blue-400">
               {channelLabels.sms}
             </span>
-            <span className="ml-2 inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
-              Coming soon
-            </span>
             <span className="flex-1" />
-            <Switch checked={false} disabled size="sm" />
+            <span
+              className={cn(
+                "text-xs leading-[15px] text-gray-500 group-hover:hidden",
+                !channels.sms.enabled && "opacity-50"
+              )}
+            >
+              {accountPhone
+                ? formatPhoneForDisplay(accountPhone)
+                : "Missing Phone Number"}
+            </span>
+            {/* Shown whether or not the channel is on: adding a number is the
+                prerequisite for switching it on, so it cannot be gated behind
+                the toggle the way Edit Email is. */}
+            <Button
+              type="button"
+              visual="gray"
+              variant="outlined"
+              size="sm"
+              leftIcon={
+                accountPhone ? (
+                  <Edit01 className="size-3.5" />
+                ) : (
+                  <Plus className="size-3.5" />
+                )
+              }
+              onClick={() => setEditPhoneOpen(true)}
+              className="hidden group-hover:inline-flex"
+            >
+              {accountPhone ? "Edit Phone Number" : "Add Phone Number"}
+            </Button>
+            {/* Not gated on having a number: the design shows the channel on
+                alongside "Missing Phone Number", and the row's own hover
+                button is how a number gets added. */}
+            <Switch
+              checked={channels.sms.enabled}
+              onCheckedChange={(v) => onToggleChannel("sms", v)}
+              size="sm"
+            />
           </div>
         </div>
       </div>

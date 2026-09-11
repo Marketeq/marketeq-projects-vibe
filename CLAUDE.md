@@ -2,6 +2,27 @@
 
 # CLAUDE.md
 
+## 🛑 PIXEL PERFECT — MANDATORY DEFINITION (read before every Figma task)
+
+**Pixel perfect means zero visual or structural deviation from the Figma design.**
+
+### What it requires — no exceptions:
+1. **Every spacing value is exact.** `padding: 11px` in Figma → `pb-[11px]`, not `pb-2` (8px). `gap: 12px` → `gap-3`, not `gap-2`.
+2. **Every color is exact.** Figma hex `#306CFE` → must render as `#306CFE`. Design system token `primary-500` is only acceptable if its value IS `#306CFE`. Verify it.
+3. **Every font size, weight, line-height is exact.** `14px / 600 / 20px` → `text-[14px] font-semibold leading-5`.
+4. **Every border radius, shadow, size is exact.** `border-radius: 5px` → `rounded-[5px]`, not `rounded`. `size: 40px` → `size-[40px]` or `size-10` (they are equal — verify).
+5. **Design system components override with className.** When a design system component has hardcoded defaults that conflict with Figma (e.g. `pb-2` instead of `pb-[11px]`), override them via `className` using `twMerge`. If a variant conflicts, use `variant="unstyled"` and apply all classes manually.
+6. **Never eyeball or approximate.** Open Figma Dev Mode, read the exact CSS property values, paste them. Do not substitute "close enough" values.
+7. **Verify in browser.** After implementing, take a screenshot and compare side-by-side with the Figma. If anything is off by even 1px, fix it before declaring done.
+
+### What pixel perfect is NOT:
+- Adding the right components with wrong spacing/sizing
+- "Close enough" padding (8px when Figma says 11px)
+- Using a rounded value when Figma says a specific decimal
+- Saying it's done without visually verifying in the browser
+
+**Violation = redo from scratch against the Figma. No partial credit.**
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## 🛑 Code Review SOP + DevOps SOP (MANDATORY reading before any PR work)
@@ -36,7 +57,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 7. `.github/CODEOWNERS` — directory-scoped ownership, auto-requests the right reviewers on every PR.
 
 **Post-merge enforcement (triggered on push to protected branches):**
-7. `post-merge-audit` — auto-reverts merges that bypassed SOP checks.
+7. `post-merge-audit` — opens an urgent issue (assigned to @CTorres9800) for merges that bypassed SOP checks, and publicly flags the bypass. **Report only: it never modifies code.** No workflow, script, button, or agent may remove a developer's merged code. A failing check is fixed forward. See `CODE_REVIEW_SOP.md` §1.1 and §1.9.
 8. `login-violation-alert` — opens issues when login files are merged without owner approval.
 
 **Post-deploy automation:**
@@ -245,6 +266,19 @@ CMS events use a fan-out exchange (`cms.events`); each consumer binds its own du
 - **NEVER touch billing** — the entire `frontend/app/(group)/billing/` tree is FROZEN (locked 2026-08-26). This covers `page.tsx`, `transactions/`, `invoices/`, `my-plans/`, and `payment-methods/`. Money-facing screens: layout, table columns and ordering, status badges, currency and date formatting, empty states, filters, pagination, and every string. No refactors, no cleanup, no restyling, no "improving" the copy. The ONLY permitted change is backend wiring that alters no class name, element, timing, or string. Anything else requires explicit @CTorres9800 approval.
 - **NEVER touch the onboarding flow** — the entire `frontend/app/(group)/onboarding/` tree is FROZEN (locked 2026-08-26), enforced directory-wide: new files added under that path are frozen too, so a new file is not a way around it. This covers `page.tsx` (role picker), `talent/page.tsx`, and `client/page.tsx`, and everything in them: the five talent steps and their order, the step registry and numbering, the resume upload step and its reading modal (skeletons, shimmer, extraction feed, summary rows, Done button, error states and their copy), the autofill mapping from parse result into `stepData`, the avatar empty state (initials for a known name, icon otherwise), and every validation guard and error message. No refactors, no cleanup, no restyling, no re-timing of animations, no "improving" the copy. Every value was set deliberately. The ONLY permitted change is backend wiring that alters no class name, element, timing, or string. Anything else requires explicit @CTorres9800 approval.
 - **NEVER touch the active project task screen** — `frontend/app/(group)/active-project/[id]/page.tsx` is FROZEN (locked 2026-08-22). This covers the task tables, pinned section bars and column headers, the bulk-select bar, the create/edit task dialog, the checklist, the attachments views, and the components defined in that file (`AssigneePicker`, `TaskStatusMenu`, `TaskDueDatePicker`, `SortableTaskRow`, `StickySectionBar`). No refactors, no cleanup, no restyling, no spacing tweaks. Every value in it was set deliberately, **including every transition and animation** (section collapse, folder row slide, row reveal, drag states, toast/tooltip timing) — do not retime or remove them. The ONLY permitted change is backend wiring: replacing seeded data with API calls and hooking up no-op handlers, without altering any class name, element, or transition. Anything else requires explicit @CTorres9800 approval
+- **NEVER touch the Taxes screens** — `frontend/components/settings-tax-info.tsx` and `backend/apps/user-service/src/tax-info/` are FROZEN (locked 2026-08-29), the backend enforced directory-wide. These produce real IRS documents from real taxpayer data. Covers the W-9/W-8BEN certification text and its US/non-US switching, every validation rule and message, the read-only today-only signing date, the completeness rules gating submission, TIN encryption and last-4 masking, the verified IRS PDF field maps, and the guards that refuse to emit an incomplete form or a Copy A. The field maps were derived by rendering the official forms; a plausible-looking edit writes a value into the wrong box on a government form and nothing fails. The ONLY permitted change is backend wiring that alters no class name, element, timing, string, or PDF field mapping. Anything else requires explicit @CTorres9800 approval.
+- **NEVER modify the page or component you were sent to look at** — when you are told to check another page, screen, or component (to copy it, to match a width, spacing, colour, animation, or behaviour, or just to see how it works), that source is READ-ONLY for that task. Read it, take what you need, apply it where the work belongs, and leave the source byte-for-byte unchanged. This holds whether you were told to "copy", "check", "look at", "match", or "see how X does it", and it holds even when the source looks wrong, inconsistent, or improvable — a drive-by "fix" there is an unrequested change to a working screen. If the source genuinely needs a change, say so and let @CTorres9800 decide; do not make it. Applies to every engineer and every agent working in this repo.
+- **NEVER fork or hand-roll a master listing card** — the master cards are
+  `frontend/components/listing-card.tsx` (`ListingCard`, covering project,
+  service, team and talent in grid view) and
+  `frontend/components/team-card-landscape.tsx` (`TeamCardLandscape`, the team
+  row in list view). They are locked. Do not copy one into a page, do not build
+  a page-local variant, and do not restyle them to suit one screen. Both are
+  drawn from Figma Dev Mode and carry exact values that look arbitrary but are
+  not (15.24px, 23.714px, 3.032px, the 0.571px/1.142px shadow, the avatar seat
+  coordinates) — do not round them to the nearest Tailwind step. If a screen
+  needs a variant that does not exist, stop and ask; adding one is a design
+  system decision. Data changes go through props, never by editing the card.
 - **NEVER use raw HTML elements** (`<input>`, `<textarea>`, `<select>`, `<button>`, `<label>`, `<dialog>`) when a design system component exists
 - **NEVER use arbitrary Tailwind values** (e.g., `text-[13.5px]`) when a standard Tailwind class exists
 - **NEVER build UI that is not composed from components in `frontend/COMPONENTS.md`**
@@ -281,6 +315,35 @@ scripts/convert-docs.sh                    # convert .docx → .md
 ```
 
 ## Git Workflow
+
+### 🛑 NEVER push without updating the branch first
+
+**This is absolute. It applies to every push, every time — including doc-only
+changes, one-line fixes, and the second and third push within a single session.**
+
+**A branch that is even one commit behind is stale. There is no acceptable
+number of commits to be behind other than zero.**
+
+Before every `git push`:
+
+```bash
+git fetch origin <branch>
+git rev-list --left-right --count origin/<branch>...HEAD   # left number MUST be 0
+```
+
+If the left number is not `0`, the branch is behind. Merge `origin/<branch>` in
+and resolve the conflicts **before** pushing. Never force-push past it.
+
+Why it matters: a push from a stale branch is how merged work silently
+disappears. "I fetched at the start of the session" is not updating — the branch
+can move between your first push and your next one, and a push that succeeds
+only because nobody else happened to push in that window is luck, not process.
+
+When resolving the resulting conflicts, follow the rule in `docs/CODE_REVIEW_SOP.md`:
+take the authoritative side wholesale rather than hand-blending two versions,
+then verify with `git diff <pre-merge-sha> -- <file>`.
+
+### Agent worktrees
 - Each agent works in its own worktree + branch: `agent/<service-name>`
 - After finishing: commit in worktree, then run `merge-agents.sh`
 - Branch naming: `agent/<service-name>`

@@ -1,4 +1,4 @@
-import { Injectable }                              from '@nestjs/common';
+import { Controller }                              from '@nestjs/common';
 import { Ctx, MessagePattern, Payload, RmqContext } from '@nestjs/microservices';
 import { InjectRepository }                       from '@nestjs/typeorm';
 import { Repository, DataSource }                 from 'typeorm';
@@ -8,7 +8,7 @@ import { BalanceSnapshot }                        from '../entities/balance-snap
 import { EarningsPublisher }                      from '../publishers/earnings.publisher';
 import { CacheService }                           from '../cache/cache.service';
 
-@Injectable()
+@Controller()
 export class PayoutFailedConsumer extends BaseConsumer {
   constructor(
     config: ConfigService,
@@ -25,8 +25,13 @@ export class PayoutFailedConsumer extends BaseConsumer {
       try {
         if (await this.isDuplicate(d.eventId, 'payout.failed')) { ch.ack(msg); return; }
         const snapBefore = await this.bsRepo.findOne({ where: { contractorId: d.contractorId } });
-        await this.ds.query(`UPDATE balance_snapshots SET available_balance = available_balance + $1::numeric,
-          total_paid_out_usd = GREATEST(0, total_paid_out_usd - $1::numeric), updated_at = NOW()
+        // Reverses the instant hold placed at withdrawal confirmation
+        // (BalanceService.holdForPayout) — total_paid_out_usd was never
+        // incremented for this payout (only payout.completed does that), so
+        // it isn't touched here.
+        await this.ds.query(`UPDATE balance_snapshots SET
+          available_balance = available_balance + $1::numeric,
+          pending_hold_usd = GREATEST(0, pending_hold_usd - $1::numeric), updated_at = NOW()
           WHERE contractor_id = $2`, [d.payoutAmountUsd, d.contractorId]);
         await this.cacheService.invalidateBalance(d.contractorId);
         this.logger.log(`payout.failed: ${d.payoutId} restored +${d.payoutAmountUsd}`);

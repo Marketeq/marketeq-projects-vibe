@@ -23,6 +23,11 @@ const svc = (name, port, extraEnv) => ({
   env: { PORT: port, NODE_ENV: 'development', ...extraEnv },
 });
 
+// npm-launched services: on Windows PM2 hands `npm` to Node, which then tries to
+// parse npm.cmd as JavaScript ("SyntaxError: Unexpected token ':'"). Use the .cmd
+// launcher and interpreter:'none' so PM2 execs it directly. No-op on macOS/Linux.
+const npmLauncher = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
 // Some services compile with nested paths (tsconfig rootDir differences)
 const svcNested = (name, port, extraEnv) => ({
   ...svc(name, port, extraEnv),
@@ -34,11 +39,12 @@ module.exports = {
     svc('api-gateway', 4000),
     svc('auth-service', 3001),
     { ...svc('user-service', 3002), node_args: '--max-old-space-size=1024' },
-    svc('listings-service', 3004, { LISTINGS_DATABASE_SYNCHRONIZE: 'false' }),
+    svc('listings-service', 3004, { LISTINGS_DATABASE_SYNCHRONIZE: 'true' }),
     svc('checkout-service', 3009),
     svcNested('messaging-service', 3005),
     svcNested('notification-service', 3006),
     svcNested('favorites-service', 3012),
+    svcNested('browsing-history-service', 3034),
     svc('contracts-service', 3010),
     svc('time-tracking-service', 3017),
     svcNested('invitations-service', 3013),
@@ -46,7 +52,6 @@ module.exports = {
     svc('autocomplete-service', 3016),
     svc('transaction-service', 3018),
     svc('suggestions-service', 3021),
-    svcNested('offer-service', 3025),
     svc('billing-service', 3027),
     svc('pricing-service', 3029),
     svc('portfolio-service', 3015),
@@ -54,12 +59,24 @@ module.exports = {
     svc('search-service', 3007),
     svc('earnings-service', 3026),
     svc('payout-service', 3022),
-    svc('resume-parsing-service', 3033),
+    // Port must match OFFER_SERVICE_URL in api-gateway proxy.controller.ts and the
+    // offer-service entry in boot-all.js (both 3011). It was 3025 here, so the
+    // gateway proxied /offers to a port nothing was listening on.
+    svcNested('offer-service', 3011),
+    // 3028 is correct HERE. This file is the local PM2 config, and the
+    // api-gateway defaults RESUME_PARSING_SERVICE_URL to localhost:3028 for
+    // exactly that reason (proxy.controller.ts). boot-all.js separately uses
+    // 3033 because it puts payout-service on 3028; that collision does not
+    // exist in this file, where payout-service is on 3022. Moving this to
+    // 3033 breaks resume parsing under PM2 -- the gateway keeps calling 3028.
+    svc('resume-parsing-service', 3028),
+    svc('location-service', 3030),
+    svc('identity-verification-service', 3019),
     {
       name: 'cms-service',
-      script: 'cmd',
-      args: '/c npm run start:dev',
+      script: npmLauncher,
       interpreter: 'none',
+      args: 'run start:dev',
       cwd: `${__dirname}/apps/cms-service`,
       autorestart: true,
       watch: false,
@@ -69,9 +86,9 @@ module.exports = {
     },
     {
       name: 'scheduling-service',
-      script: 'cmd',
-      args: '/c npm run start:dev',
+      script: npmLauncher,
       interpreter: 'none',
+      args: 'run start:dev',
       cwd: `${__dirname}/apps/scheduling-service`,
       autorestart: true,
       watch: false,

@@ -53,9 +53,18 @@ export interface IndustryPayload {
 }
 
 export interface UserProfilePayload {
+  /** Profile photo; the client company logo reuses this field. */
+  avatarUrl?: string | null
+  /** Settings > IP Restrictions master switch. */
+  ipRestrictionEnabled?: boolean
+  /** Empty string clears the avatar. Not null — the DTO validates @IsString(),
+   *  so null is rejected outright. */
+  avatarUrl?: string
   firstName?: string
   lastName?: string
   username?: string
+  phone?: string
+  language?: string
   bio?: string
   overview?: string
   location?: string
@@ -83,6 +92,14 @@ export interface UserProfilePayload {
   industry?: string
   businessGoals?: string[]
   gettingStartedStep?: number | null
+  // Client company profile — collected by the client "Complete My Profile"
+  // steps. `teamName` is the company name; the logo reuses `avatarUrl`.
+  teamName?: string
+  /** Department — Personal Info's "What team do you work on?". Distinct from
+   *  `teamName`, which is the client's company name. */
+  department?: string
+  companyWebsite?: string
+  workplaceValues?: string[]
 }
 
 export const UserAPI = {
@@ -90,6 +107,10 @@ export const UserAPI = {
   me: () => AxiosRequest.get(`${USER_BASE}/user/me`),
   handleSkip: (data: { role: string }) =>
     AxiosRequest.patch(`${USER_BASE}/user/onboarding-dismissed`, data),
+  // Account recovery / contact number. Served by UserSelfController, so it
+  // acts on the signed-in user and takes no id. Pass null to clear.
+  updatePhone: (phone: string | null) =>
+    AxiosRequest.patch(`${USER_BASE}/user/phone`, { phone }),
   // ES-06: Currency Settings entry point — sets the region currency
   // earnings-service falls back to USD without.
   updateCurrency: (currency: string) =>
@@ -98,6 +119,10 @@ export const UserAPI = {
   // List users
   listUsers: (limit = 50, offset = 0) =>
     AxiosRequest.get(`${USER_BASE}/v1/users?limit=${limit}&offset=${offset}`),
+
+  // Total user count. Use this instead of measuring listUsers(), which is
+  // paged, so its length plateaus at the limit rather than growing.
+  countUsers: () => AxiosRequest.get(`${USER_BASE}/v1/users/count`),
 
   // Profile
   getProfile: (userId: string) =>

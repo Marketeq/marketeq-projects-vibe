@@ -1,4 +1,4 @@
-import net from 'net';
+import * as net from 'net';
 
 const DEFAULT_RABBITMQ_PORT = 5672;
 const DEFAULT_TIMEOUT_MS = 1200;

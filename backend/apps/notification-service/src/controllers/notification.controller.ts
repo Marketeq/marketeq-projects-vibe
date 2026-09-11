@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
   Param,
   Patch,
   Post,
@@ -19,6 +20,8 @@ import { Public } from '../guards/jwt-auth.guard';
 
 @Controller('v1/notifications')
 export class NotificationController {
+  private readonly logger = new Logger(NotificationController.name);
+
   constructor(
     private readonly service: NotificationService,
     private readonly brevoService: BrevoService,
@@ -64,20 +67,45 @@ export class NotificationController {
     return this.service.delete(req.user?.sub ?? req.user?.id, id);
   }
 
+  // Both routes go through presentPreferences so an address awaiting
+  // confirmation reads back the way it was typed. Without that on the PATCH
+  // response too, saving a new address would immediately render the old one and
+  // look like the save had failed.
   @Get('preferences')
-  getPreferences(@Req() req: any) {
-    return this.service.getOrCreatePreferences(req.user?.sub ?? req.user?.id);
+  async getPreferences(@Req() req: any) {
+    return this.service.presentPreferences(
+      await this.service.getOrCreatePreferences(req.user?.sub ?? req.user?.id),
+    );
   }
 
   @Patch('preferences')
-  updatePreferences(@Req() req: any, @Body() dto: UpdatePreferencesDto) {
-    return this.service.updatePreferences(req.user?.sub ?? req.user?.id, dto);
+  async updatePreferences(@Req() req: any, @Body() dto: UpdatePreferencesDto) {
+    return this.service.presentPreferences(
+      await this.service.updatePreferences(req.user?.sub ?? req.user?.id, dto),
+    );
   }
 
   @Post('preferences/reset')
   @HttpCode(HttpStatus.OK)
   resetPreferences(@Req() req: any) {
     return this.service.resetPreferences(req.user?.sub ?? req.user?.id);
+  }
+
+  /**
+   * Confirms a notification email change.
+   *
+   * A GET so the link in the email works by being clicked, and public — the
+   * token is the proof, and requiring a session would break confirming from a
+   * phone that is not signed in. Deliberately not tied to the requesting
+   * session for the same reason.
+   *
+   * Returns JSON. The link currently lands on this response rather than a
+   * page; giving it a proper landing screen needs a design, and none exists.
+   */
+  @Public()
+  @Get('preferences/email/verify')
+  verifyEmail(@Query('token') token: string) {
+    return this.service.verifyPendingEmail(token);
   }
 
   @Get('preferences/catalog')
@@ -131,9 +159,58 @@ export class NotificationController {
       role: string;
       acceptUrl: string;
       inviterEmail?: string;
+      inviterName?: string;
+      inviterAvatarUrl?: string;
       note?: string;
     },
   ) {
     return this.service.sendTeamInvitationEmail(data);
+  }
+
+  @EventPattern('notification.email.project_shared')
+  handleSharedProjectEmail(
+    @Payload()
+    data: {
+      to: string;
+      sharerName?: string;
+      projectTitle?: string;
+      projectUrl: string;
+      note?: string;
+    },
+  ) {
+    return this.service.sendSharedProjectEmail(data);
+  }
+
+  @EventPattern('notification.email.invitation_accepted')
+  handleInvitationAcceptedEmail(
+    @Payload()
+    data: {
+      to: string;
+      companyName: string;
+      companyLogoUrl?: string;
+      memberCount?: number;
+      inviteeName?: string;
+      inviteeEmail: string;
+      inviteMoreUrl: string;
+      launchUrl: string;
+    },
+  ) {
+    return this.service.sendInvitationAcceptedEmail(data);
+  }
+
+  @EventPattern('invitation.created')
+  handleInvitationCreated(
+    @Payload()
+    data: { eventName: string; timestamp: string; data: { invitationId: string; teamId: string; companyId?: string; invitedEmail: string; role: string } },
+  ) {
+    this.logger.log(`invitation.created received: invitationId=${data.data?.invitationId} invitedEmail=${data.data?.invitedEmail}`);
+  }
+
+  @EventPattern('invitation.resent')
+  handleInvitationResent(
+    @Payload()
+    data: { eventName: string; timestamp: string; data: { invitationId: string; teamId: string; companyId?: string; invitedEmail: string } },
+  ) {
+    this.logger.log(`invitation.resent received: invitationId=${data.data?.invitationId} invitedEmail=${data.data?.invitedEmail}`);
   }
 }

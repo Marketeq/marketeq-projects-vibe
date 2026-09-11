@@ -13,7 +13,6 @@ import { ChevronDown, SearchMd } from "@blend-metrics/icons"
 import { Switch } from "@/components/ui"
 import NotificationItemRow from "./notification-item-row"
 import {
-  SMS_ENABLED,
   channelIcons,
   channelLabels,
   channelOrder,
@@ -145,7 +144,6 @@ export default function NotificationCategoryDetail({
           {byTypeOpen && (
             <div className="mt-4 space-y-2">
               {channelOrder
-                .filter((k) => SMS_ENABLED || k !== "sms")
                 .map((key) => {
                   const ChannelIcon = channelIcons[key]
                   const globalOff = !globalChannels[key].enabled

@@ -863,7 +863,7 @@ export function BillingMyPlansContent() {
                           <span className="text-sm font-semibold text-dark-blue-400">
                             {item.question}
                           </span>
-                          <ChevronDown className="mt-0.5 size-5 shrink-0 text-gray-500" />
+                          <ChevronDown className="mt-0.5 size-5 shrink-0 text-gray-500 transition-transform duration-300 group-data-[state=open]/trigger:rotate-180" />
                         </div>
                       </AccordionTrigger>
                       <AccordionContent>
@@ -960,7 +960,7 @@ export default function BillingPage() {
       <div className="flex h-[100dvh] overflow-hidden bg-gray-50">
         <LeftSidebar />
 
-        <div className="flex h-full flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[248px] min-[1024px]:pr-6">
+        <div className="flex h-full flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px]">
           <div className="mx-auto flex h-full min-w-0 max-w-[1160px] flex-1 flex-col gap-5 overflow-hidden">
             <Tabs
               value={activeTab}

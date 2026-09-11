@@ -3,15 +3,19 @@
 import * as React from "react"
 import {
   ArrowLeft,
+  ArrowUp,
   Briefcase,
   Info,
-  Repeat,
   MessageSquare,
+  Repeat,
   X,
 } from "@blend-metrics/icons"
 import NextLink from "@/components/next-link"
 import type { OfferDialogData } from "@/components/offer-dialog.types"
 import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
   Badge,
   Button,
   Checkbox,
@@ -25,7 +29,12 @@ import {
 
 export type OfferFlowDialogVariant =
   | "offer-details"
+  | "counter-offer-details"
   | "offer-details-history"
+  | "offer-accepted"
+  | "offer-declined"
+  | "offer-withdrawn"
+  | "offer-expired"
   | "accept-offer-empty"
   | "accept-offer-ready"
   | "decline-offer-empty"
@@ -42,11 +51,15 @@ interface OfferFlowDialogProps {
   selectedDeclineReason?: string
   acceptLoading?: boolean
   declineLoading?: boolean
+  declinedByViewer?: boolean
+  clientPerspective?: boolean
   onAcceptanceMessageChange?: (value: string) => void
   onTermsAcceptedChange?: (value: boolean) => void
   onDeclineMessageChange?: (value: string) => void
   onDeclineReasonChange?: (value: string) => void
   onViewJob?: () => void
+  onOfferHistory?: () => void
+  onPreviousOffer?: () => void
   onMessage?: () => void
   onCounterOffer?: () => void
   onDecline?: () => void
@@ -54,6 +67,8 @@ interface OfferFlowDialogProps {
   onBack?: () => void
   onCancelAccept?: () => void
   onCancelDecline?: () => void
+  onResend?: () => void
+  onEditTerms?: () => void
 }
 
 const DECLINE_REASONS = [
@@ -79,11 +94,15 @@ export function OfferFlowDialog({
   selectedDeclineReason,
   acceptLoading = false,
   declineLoading = false,
+  declinedByViewer = true,
+  clientPerspective = false,
   onAcceptanceMessageChange,
   onTermsAcceptedChange,
   onDeclineMessageChange,
   onDeclineReasonChange,
   onViewJob,
+  onOfferHistory,
+  onPreviousOffer,
   onMessage,
   onCounterOffer,
   onDecline,
@@ -91,12 +110,56 @@ export function OfferFlowDialog({
   onBack,
   onCancelAccept,
   onCancelDecline,
+  onResend,
+  onEditTerms,
 }: OfferFlowDialogProps) {
   const isAcceptState =
     variant === "accept-offer-empty" || variant === "accept-offer-ready"
   const isDeclineState =
     variant === "decline-offer-empty" || variant === "decline-offer-ready"
   const isHistoryState = variant === "offer-details-history"
+  const isPendingDetailsState = variant === "offer-details"
+  const isCounterDetailsState = variant === "counter-offer-details"
+  const isDeclinedTerminalState = variant === "offer-declined"
+  const isWithdrawnTerminalState = variant === "offer-withdrawn"
+  const isDetailedTerminalState =
+    isDeclinedTerminalState || isWithdrawnTerminalState
+  const terminalState =
+    variant === "offer-accepted"
+      ? {
+          title: "Offer Accepted",
+          notice: data.statusDateLabel
+            ? `This offer was accepted ${data.statusDateLabel}.`
+            : "This offer was accepted.",
+        }
+      : variant === "offer-declined"
+        ? {
+            title: declinedByViewer
+              ? "You Declined This Offer"
+              : "This Offer was Declined",
+            notice: data.statusDateLabel
+              ? declinedByViewer
+                ? `You declined this offer ${data.statusDateLabel}.`
+                : `This offer was declined ${data.statusDateLabel}.`
+              : declinedByViewer
+                ? "You declined this offer."
+                : "This offer was declined.",
+          }
+        : variant === "offer-withdrawn"
+          ? {
+              title: "This Offer Was Withdrawn",
+              notice: data.statusDateLabel
+                ? `This offer was withdrawn ${data.statusDateLabel}.`
+                : "This offer was withdrawn.",
+            }
+          : variant === "offer-expired"
+            ? {
+                title: "This Offer Expired",
+                notice: data.statusDateLabel
+                  ? `This offer expired ${data.statusDateLabel}.`
+                  : "This offer has expired.",
+              }
+            : null
   const resolvedAcceptanceMessage =
     acceptanceMessage ??
     (variant === "accept-offer-ready" ? "Excited to get started!" : "")
@@ -123,7 +186,19 @@ export function OfferFlowDialog({
           }
         }}
       >
-        <div className="pointer-events-auto w-[520px] overflow-hidden rounded-[20px] bg-white shadow-xl transition-[height,width] duration-1000 ease-out [interpolate-size:allow-keywords]">
+        <div
+          className={
+            isDeclinedTerminalState
+              ? "pointer-events-auto flex h-[608px] w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+              : isWithdrawnTerminalState
+                ? "pointer-events-auto flex h-[500px] w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+              : isCounterDetailsState
+                ? "pointer-events-auto flex h-[665px] w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+                : isPendingDetailsState
+                ? "pointer-events-auto flex h-[537px] w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+                : "pointer-events-auto w-[520px] overflow-hidden rounded-[20px] bg-white shadow-xl transition-[height,width] duration-1000 ease-out [interpolate-size:allow-keywords]"
+          }
+        >
           {isAcceptState ? (
             <>
               <div className="flex h-[60px] items-center justify-between border-b border-gray-100 px-6 py-3">
@@ -324,6 +399,522 @@ export function OfferFlowDialog({
                 </div>
               </div>
             </>
+          ) : isDetailedTerminalState ? (
+            <>
+              <div className="flex h-[60px] items-center justify-between border-b border-gray-200 p-3">
+                <DialogTitle
+                  className={`text-[18px] font-bold leading-[22px] capitalize text-dark-blue-400 ${isWithdrawnTerminalState ? "pl-3" : ""}`}
+                >
+                  {isWithdrawnTerminalState
+                    ? "This Offer Was Withdrawn"
+                    : declinedByViewer
+                      ? "You Declined This Offer"
+                      : "This Offer was Declined"}
+                </DialogTitle>
+
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="md">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <div className="flex flex-1 flex-col gap-6 overflow-hidden px-6 py-6">
+                <div className="flex items-start gap-6">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="rounded" visual="gray" size="sm">
+                        {data.offerType}
+                      </Badge>
+                      <span className="text-sm font-medium leading-[18px] text-gray-400">
+                        {isWithdrawnTerminalState
+                          ? `Expired on ${data.statusDateLabel || data.receivedLabel}`
+                          : `Received on ${data.receivedLabel}`}
+                      </span>
+                    </div>
+
+                    <div className="text-[16px] font-medium leading-6 text-dark-blue-400">
+                      {data.offerTitle}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-sm font-medium leading-[22px] text-dark-blue-400">
+                      <span className="shrink-0 whitespace-nowrap">
+                        {isWithdrawnTerminalState
+                          ? "Sent to"
+                          : declinedByViewer
+                            ? "Offer from"
+                            : "Sent to"}
+                      </span>
+                      <span className="inline-flex min-w-0 items-center gap-0.5">
+                        <Avatar
+                          size="xs"
+                          className="h-[18px] w-[18px] border border-gray-200"
+                        >
+                          <AvatarImage
+                            src={data.senderAvatarSrc}
+                            alt={data.senderDisplayName}
+                          />
+                          <AvatarFallback>
+                            {data.senderDisplayName.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate text-dark-blue-400">
+                          {data.senderDisplayName.split(/\s+/)[0]}
+                          <span className="text-primary-500">
+                            {data.senderUsername ||
+                              `@${data.senderDisplayName.replace(/\s+/g, "")}`}
+                          </span>
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    className="w-[104px] px-2"
+                    leftIcon={<MessageSquare className="h-4 w-4 shrink-0" />}
+                    onClick={onMessage}
+                  >
+                    Message
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-[162px_1fr] gap-6 border-y border-gray-100 py-6">
+                  <div className="space-y-4">
+                    <div className="text-[15px] font-semibold leading-6 text-dark-blue-400">
+                      Offer Rate
+                    </div>
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Role
+                    </div>
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Contract Duration
+                    </div>
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Work Schedule
+                    </div>
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Start Date
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="text-[16px] font-semibold leading-[18px] text-dark-blue-400">
+                      {data.offerRate}
+                    </div>
+                    <div className="text-sm font-medium leading-[22px] text-dark-blue-400">
+                      {data.role}
+                    </div>
+                    <div className="text-sm font-medium leading-[22px] text-dark-blue-400">
+                      {data.duration}
+                    </div>
+                    <div className="flex items-center gap-1 text-dark-blue-400">
+                      <span className="text-sm font-medium leading-[18px]">
+                        {data.schedule.startsWith("Full Time")
+                          ? "Full Time"
+                          : data.schedule.startsWith("Part Time")
+                            ? "Part Time"
+                            : data.schedule}
+                      </span>
+                      {data.schedule.startsWith("Full Time") ? (
+                        <span className="text-xs font-normal leading-[18px]">
+                          over 30 hrs/week
+                        </span>
+                      ) : data.schedule.startsWith("Part Time") ? (
+                        <span className="text-xs font-normal leading-[18px]">
+                          up to 30 hrs/week
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="text-sm font-medium leading-[22px] text-dark-blue-400">
+                      {data.startDate}
+                    </div>
+                  </div>
+                </div>
+
+                {isWithdrawnTerminalState ? null : (
+                  <div className="rounded-lg bg-gray-50 p-4">
+                    <div className="text-sm font-medium leading-6 text-dark-blue-400">
+                      Reason
+                    </div>
+                    <div className="text-sm leading-6 text-dark-blue-400">
+                      {data.statusReason || "No reason was provided."}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div
+                className={
+                  isWithdrawnTerminalState
+                    ? "mx-6 flex h-[60px] items-center border-t border-gray-100"
+                    : "flex h-[60px] items-center border-t border-gray-200 p-3"
+                }
+              >
+                <div
+                  className={
+                    isWithdrawnTerminalState
+                      ? "flex w-full items-center gap-6"
+                      : "relative -top-2 flex w-full items-center gap-6"
+                  }
+                >
+                  <div className="flex min-w-0 flex-1 items-start gap-2 text-xs font-medium leading-[15px] text-gray-500">
+                    <Info className="size-3.5 shrink-0" />
+                    <span>
+                      {isWithdrawnTerminalState
+                        ? "You can resend this offer or edit the terms before sending."
+                        : declinedByViewer
+                          ? "Want to revisit this? Ask the client to see if the role is still open."
+                          : "You can resend this offer or edit the terms before sending."}
+                    </span>
+                  </div>
+                  {!isWithdrawnTerminalState && declinedByViewer ? (
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      className="w-20"
+                      onClick={onMessage}
+                    >
+                      Ask Now
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      {isWithdrawnTerminalState ? (
+                        <>
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            size="sm"
+                            className="w-[84px]"
+                            onClick={onEditTerms}
+                          >
+                            Edit Offer
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            size="sm"
+                            className="w-[105px]"
+                            onClick={onResend}
+                          >
+                            Resend Offer
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            size="sm"
+                            className="w-[84px]"
+                            onClick={onResend}
+                          >
+                            Resend
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            visual="gray"
+                            size="sm"
+                            className="w-[105px]"
+                            onClick={onEditTerms}
+                          >
+                            Edit Terms
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : isCounterDetailsState ? (
+            <>
+              <div className="flex h-[60px] items-center justify-between border-b border-gray-200 p-3">
+                <DialogTitle className="pl-3 text-[18px] font-bold leading-[22px] text-dark-blue-400">
+                  Counter offer from{" "}
+                  <span className="text-primary-500">
+                    {data.senderUsername || `@${data.senderDisplayName.replace(/\s+/g, "")}`}
+                  </span>
+                </DialogTitle>
+
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="md">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <div className="flex h-[545px] flex-col gap-6 p-6">
+                <div className="flex h-[82px] items-start gap-6">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="rounded" visual="gray" size="sm">
+                        {data.offerType}
+                      </Badge>
+                      <span className="text-sm font-medium leading-[18px] text-gray-400">
+                        Received on {data.receivedLabel}
+                      </span>
+                    </div>
+                    <div className="truncate text-[16px] font-medium leading-6 text-dark-blue-400">
+                      {data.offerTitle}
+                    </div>
+                    <Button
+                      variant="link"
+                      visual="primary"
+                      className="h-5 gap-2 text-xs"
+                      leftIcon={<Briefcase className="size-[15px]" />}
+                      onClick={onViewJob}
+                    >
+                      View Job
+                    </Button>
+                  </div>
+
+                  {clientPerspective ? (
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      className="w-[104px] px-2"
+                      leftIcon={<MessageSquare className="size-[15px]" />}
+                      onClick={onMessage}
+                    >
+                      Message
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      className="w-[104px] px-2"
+                      leftIcon={<Repeat className="size-[15px]" />}
+                      onClick={onOfferHistory}
+                    >
+                      Offer History
+                    </Button>
+                  )}
+                </div>
+
+                <div className="border-t border-gray-100" />
+
+                <div className="grid h-44 grid-cols-[162px_1fr] gap-6">
+                  <div className="space-y-4">
+                    <div className="text-[15px] font-semibold leading-6 text-dark-blue-400">Rate</div>
+                    <div className="text-sm leading-[22px] text-gray-500">Role</div>
+                    <div className="text-sm leading-[22px] text-gray-500">Contract Duration</div>
+                    <div className="text-sm leading-[22px] text-gray-500">Work Schedule</div>
+                    <div className="text-sm leading-[22px] text-gray-500">Start Date</div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="relative flex items-center gap-1.5 leading-[18px]">
+                      <ArrowUp className="absolute -left-5 size-3.5 text-success-400" />
+                      <span className="text-sm font-bold text-dark-blue-400">{data.offerRate}</span>
+                      {data.originalOfferRate ? (
+                        <span className="text-xs font-medium text-gray-400">(was {data.originalOfferRate})</span>
+                      ) : null}
+                    </div>
+                    <div className="text-sm font-medium leading-[18px] text-dark-blue-500">{data.role}</div>
+                    <div className="text-sm font-medium leading-[18px] text-dark-blue-500">{data.duration}</div>
+                    <div className="flex items-center gap-1 text-dark-blue-500">
+                      <span className="text-sm font-medium leading-[18px]">
+                        {data.schedule.startsWith("Full Time") ? "Full Time" : data.schedule.startsWith("Part Time") ? "Part Time" : data.schedule}
+                      </span>
+                      {data.schedule.startsWith("Full Time") ? (
+                        <span className="text-xs leading-[18px]">over 30 hrs/week</span>
+                      ) : data.schedule.startsWith("Part Time") ? (
+                        <span className="text-xs leading-[18px]">up to 30 hrs/week</span>
+                      ) : null}
+                    </div>
+                    <div className="text-sm font-medium leading-[18px] text-dark-blue-500">{data.startDate}</div>
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-100" />
+
+                <div className="h-[81px] rounded-lg bg-gray-50 p-4">
+                  <div className="text-sm font-medium leading-6 text-dark-blue-400">Message</div>
+                  <div className="truncate text-sm leading-4 text-dark-blue-400">
+                    {data.message || "No message was provided."}
+                  </div>
+                </div>
+
+                <div className="flex h-[38px] items-start gap-1 text-xs font-medium leading-[19px] text-gray-400">
+                  <Info className="mt-[3px] size-3.5 shrink-0" />
+                  <span>
+                    This counteroffer expires {data.expiresLabel}. If you decline, your original offer stays active unless it expires.
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex h-[60px] items-center gap-3 border-t border-gray-200 p-3">
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  onClick={clientPerspective ? onCounterOffer : onPreviousOffer}
+                >
+                  {clientPerspective ? "Counter Offer" : "Previous Offer"}
+                </Button>
+                <div className="flex flex-1 justify-end gap-3">
+                  <Button variant="ghost" visual="gray" size="sm" disabled={declineLoading} onClick={onDecline}>
+                    {declineLoading ? "Declining..." : "Decline"}
+                  </Button>
+                  <Button size="sm" disabled={acceptLoading} onClick={onAccept}>
+                    {acceptLoading ? "Accepting..." : "Accept Offer"}
+                  </Button>
+                </div>
+              </div>
+            </>
+          ) : isPendingDetailsState ? (
+            <>
+              <div className="flex h-[60px] items-center justify-between border-b border-gray-200 p-3">
+                <DialogTitle className="pl-3 text-[18px] font-bold leading-[22px] text-dark-blue-400">
+                  Offer from{" "}
+                  <span className="text-primary-500">
+                    {data.senderUsername ||
+                      `@${data.senderDisplayName.replace(/\s+/g, "")}`}
+                  </span>
+                </DialogTitle>
+
+                <DialogClose asChild>
+                  <IconButton variant="ghost" visual="gray" size="md">
+                    <X className="size-5" />
+                  </IconButton>
+                </DialogClose>
+              </div>
+
+              <div className="flex flex-1 flex-col gap-6 p-6">
+                <div className="h-[78px]">
+                  <div className="flex h-[50px] items-start justify-between gap-6">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="rounded" visual="gray" size="sm">
+                          {data.offerType}
+                        </Badge>
+                        <span className="text-sm font-medium leading-[18px] text-gray-400">
+                          Received on {data.receivedLabel}
+                        </span>
+                      </div>
+                      <div className="truncate text-[16px] font-medium leading-6 text-dark-blue-400">
+                        {data.offerTitle}
+                      </div>
+                    </div>
+
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      className="w-[104px] px-3"
+                      leftIcon={<MessageSquare className="size-4 shrink-0" />}
+                      onClick={onMessage}
+                    >
+                      Message
+                    </Button>
+                  </div>
+
+                  <Button
+                    variant="link"
+                    visual="primary"
+                    className="h-5 gap-2 text-xs"
+                    leftIcon={<Briefcase className="size-4" />}
+                    onClick={onViewJob}
+                  >
+                    View Job
+                  </Button>
+                </div>
+
+                <div className="border-t border-gray-100" />
+
+                <div className="grid h-44 grid-cols-[162px_1fr] gap-6">
+                  <div className="space-y-4">
+                    <div className="text-[15px] font-semibold leading-6 text-dark-blue-500">
+                      Offer Rate
+                    </div>
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Role
+                    </div>
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Contract Duration
+                    </div>
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Work Schedule
+                    </div>
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Start Date
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="text-[16px] font-semibold leading-[18px] text-dark-blue-500">
+                      {data.offerRate}
+                    </div>
+                    <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
+                      {data.role}
+                    </div>
+                    <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
+                      {data.duration}
+                    </div>
+                    <div className="flex items-center gap-1 text-dark-blue-500">
+                      <span className="text-sm font-medium leading-[18px]">
+                        {data.schedule.startsWith("Full Time")
+                          ? "Full Time"
+                          : data.schedule.startsWith("Part Time")
+                            ? "Part Time"
+                            : data.schedule}
+                      </span>
+                      {data.schedule.startsWith("Full Time") ? (
+                        <span className="text-xs font-normal leading-[18px]">
+                          over 30 hrs/week
+                        </span>
+                      ) : data.schedule.startsWith("Part Time") ? (
+                        <span className="text-xs font-normal leading-[18px]">
+                          up to 30 hrs/week
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
+                      {data.startDate}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-100" />
+
+                <p className="text-xs font-medium leading-[19px] text-gray-400">
+                  This offer expires {data.expiresLabel}
+                </p>
+
+                <div className="flex h-9 items-start gap-3">
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    className="w-[109px]"
+                    onClick={onCounterOffer}
+                  >
+                    Counter Offer
+                  </Button>
+                  <div className="flex flex-1 items-center justify-end gap-3">
+                    <Button
+                      variant="ghost"
+                      visual="gray"
+                      size="sm"
+                      className="w-[105px]"
+                      disabled={declineLoading}
+                      onClick={onDecline}
+                    >
+                      {declineLoading ? "Declining..." : "Decline Offer"}
+                    </Button>
+                    <Button size="sm" className="w-[103px]" onClick={onAccept}>
+                      Accept Offer
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </>
           ) : (
             <>
               <div className="flex h-[60px] items-center justify-between border-b border-gray-100 px-6 py-3">
@@ -340,10 +931,16 @@ export function OfferFlowDialog({
                   ) : null}
 
                   <DialogTitle className="text-[18px] font-semibold leading-7 text-dark-blue-400">
-                    Offer from{" "}
-                    <span className="text-primary-500">
-                      {data.senderUsername}
-                    </span>
+                    {terminalState ? (
+                      terminalState.title
+                    ) : (
+                      <>
+                        Offer from{" "}
+                        <span className="text-primary-500">
+                          {data.senderUsername}
+                        </span>
+                      </>
+                    )}
                   </DialogTitle>
                 </div>
 
@@ -446,33 +1043,48 @@ export function OfferFlowDialog({
                 </div>
 
                 <div className="space-y-6">
-                  <p className="text-sm leading-6 text-gray-400">
-                    This offer expires {data.expiresLabel}
-                  </p>
-
-                  <div className="flex items-center justify-between gap-3">
-                    {isHistoryState ? null : (
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        onClick={onCounterOffer}
-                      >
-                        Counter Offer
-                      </Button>
-                    )}
-
-                    <div className="flex items-center gap-3">
-                      <Button
-                        variant="ghost"
-                        visual="gray"
-                        disabled={declineLoading}
-                        onClick={onDecline}
-                      >
-                        {declineLoading ? "Declining..." : "Decline Offer"}
-                      </Button>
-                      <Button onClick={onAccept}>Accept Offer</Button>
+                  {terminalState ? (
+                    <div className="space-y-2">
+                      <p className="text-sm leading-6 text-gray-400">
+                        {terminalState.notice}
+                      </p>
+                      {data.statusReason ? (
+                        <p className="text-sm leading-6 text-gray-400">
+                          {data.statusReason}
+                        </p>
+                      ) : null}
                     </div>
-                  </div>
+                  ) : (
+                    <p className="text-sm leading-6 text-gray-400">
+                      This offer expires {data.expiresLabel}
+                    </p>
+                  )}
+
+                  {terminalState ? null : (
+                    <div className="flex items-center justify-between gap-3">
+                      {isHistoryState ? null : (
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          onClick={onCounterOffer}
+                        >
+                          Counter Offer
+                        </Button>
+                      )}
+
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="ghost"
+                          visual="gray"
+                          disabled={declineLoading}
+                          onClick={onDecline}
+                        >
+                          {declineLoading ? "Declining..." : "Decline Offer"}
+                        </Button>
+                        <Button onClick={onAccept}>Accept Offer</Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </>

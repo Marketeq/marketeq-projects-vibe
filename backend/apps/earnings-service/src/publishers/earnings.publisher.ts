@@ -85,7 +85,7 @@ export interface BalanceUpdatedPayload {
   availableBalance:   string;
   previousBalance:    string;
   delta:              string;
-  mutationType:       'credit' | 'debit' | 'reversal' | 'payout_completed' | 'payout_failed';
+  mutationType:       'credit' | 'debit' | 'reversal' | 'payout_completed' | 'payout_failed' | 'payout_hold';
   sourceEventId:      string;
   sourceRoutingKey:   string;
   displayCurrency:    string;

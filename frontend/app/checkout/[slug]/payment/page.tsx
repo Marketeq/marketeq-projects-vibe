@@ -1315,6 +1315,16 @@ export default function PaymentPage() {
   const stripeCardExpiryMountRef = React.useRef<HTMLDivElement | null>(null)
   const stripeCardCvcMountRef = React.useRef<HTMLDivElement | null>(null)
   const [isStripeReady, setIsStripeReady] = React.useState(false)
+  // Stripe.js is fetched from js.stripe.com at runtime. That request can fail
+  // for reasons that have nothing to do with our code — an ad blocker or
+  // privacy extension (js.stripe.com is on several common filter lists), a
+  // corporate firewall, or a dropped connection. Without this state the
+  // rejection was unhandled: the card fields stayed permanently blank with no
+  // explanation and the only trace was a console error.
+  const [stripeLoadFailed, setStripeLoadFailed] = React.useState(false)
+  // Bumping this re-runs the init effect so Retry actually re-attempts the
+  // script fetch. Safe because stripe-js nulls its cached promise on error.
+  const [stripeLoadAttempt, setStripeLoadAttempt] = React.useState(0)
   const [stripeCardFieldErrors, setStripeCardFieldErrors] = React.useState<
     Partial<Record<StripeCardField, string>>
   >({})
@@ -2148,7 +2158,9 @@ export default function PaymentPage() {
 
       if (!stripe || !card) {
         setPaymentError(
-          "Secure card entry is still loading. Please wait a moment and try again."
+          stripeLoadFailed
+            ? "Secure card entry couldn't load. An ad blocker or privacy extension is the usual cause — allow js.stripe.com and try again, or use another payment method."
+            : "Secure card entry is still loading. Please wait a moment and try again."
         )
         return
       }
@@ -2639,6 +2651,8 @@ export default function PaymentPage() {
 
     let isActive = true
 
+    setStripeLoadFailed(false)
+
     const initializeStripeElements = async () => {
       const stripe = await loadStripe(stripePublishableKey)
       if (!stripe || !isActive) return
@@ -2727,7 +2741,15 @@ export default function PaymentPage() {
       )
     }
 
-    initializeStripeElements()
+    // loadStripe rejects with "Failed to load Stripe.js" when the
+    // js.stripe.com script tag fires its error event. Surface it instead of
+    // leaving an unhandled rejection and a silently dead payment form.
+    initializeStripeElements().catch((error) => {
+      if (!isActive) return
+      console.error("Stripe.js failed to load", error)
+      setStripeLoadFailed(true)
+      setIsStripeReady(false)
+    })
 
     return () => {
       isActive = false
@@ -2743,7 +2765,7 @@ export default function PaymentPage() {
         stripeRef.current = null
       }
     }
-  }, [paymentMethod])
+  }, [paymentMethod, stripeLoadAttempt])
 
   const handleCustomBalanceSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -6160,6 +6182,33 @@ export default function PaymentPage() {
                       <Lock className="size-4" /> Your payment is secure. Your
                       card details will not be shared.
                     </p>
+
+                    {stripeLoadFailed && (
+                      <div
+                        role="alert"
+                        className="mt-4 rounded-md border border-error-200 bg-error-50 px-3 py-2 text-sm text-error-500"
+                      >
+                        <p className="font-medium">
+                          Secure card entry couldn&apos;t load.
+                        </p>
+                        <p className="mt-1 font-normal">
+                          We couldn&apos;t reach Stripe to load the card form.
+                          An ad blocker or privacy extension is the usual
+                          cause — allow js.stripe.com and try again, or use
+                          another payment method below.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="link"
+                          className="mt-2 h-auto p-0 text-sm"
+                          onClick={() =>
+                            setStripeLoadAttempt((attempt) => attempt + 1)
+                          }
+                        >
+                          Try again
+                        </Button>
+                      </div>
+                    )}
 
                     <div className="mt-6 space-y-3">
                       <div className="space-y-1.5">

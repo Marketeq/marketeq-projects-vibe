@@ -70,6 +70,8 @@ function VerifyWithdrawal() {
       const res = await fetch(`${PAYOUT_SERVICE_URL}/payouts/${id}/resend-verification`, {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ redirectUrl: `${window.location.origin}/verify-withdrawal` }),
       })
       if (res.ok) { setResendResult("sent"); return }
       const data = await res.json().catch(() => ({}))
