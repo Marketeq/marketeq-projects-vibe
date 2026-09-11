@@ -385,6 +385,8 @@ const getShortHandle = (handle?: string | null) => {
   return `@${normalizedHandle.slice(0, 6)}`
 }
 
+const getFirstName = (name: string) => name.trim().split(/\s+/)[0] || name
+
 const renderRate = (rate?: string | null) => {
   if (!rate || rate === "Rate not set") {
     return (
@@ -473,6 +475,15 @@ function CheckoutPageInner() {
   } | null>(null)
   const [teamMembers, setTeamMembers] = React.useState<CheckoutTeamMember[]>(
     []
+  )
+  const [teamNameSortAsc, setTeamNameSortAsc] = React.useState(true)
+  const sortedTeamMembers = React.useMemo(
+    () =>
+      [...teamMembers].sort((a, b) => {
+        const compare = getFirstName(a.name).localeCompare(getFirstName(b.name))
+        return teamNameSortAsc ? compare : -compare
+      }),
+    [teamMembers, teamNameSortAsc]
   )
   const [selectedReplacementId, setSelectedReplacementId] = React.useState<
     string | null
@@ -618,8 +629,10 @@ function CheckoutPageInner() {
   const getTaskAssignee = (roleName: string | null) =>
     (roleName && assigneeByRole.get(roleName.trim().toLowerCase())) || null
 
-  const getTaskAssigneeName = (roleName: string | null) =>
-    getTaskAssignee(roleName)?.name || "Unassigned"
+  const getTaskAssigneeName = (roleName: string | null) => {
+    const name = getTaskAssignee(roleName)?.name
+    return name ? getFirstName(name) : "Unassigned"
+  }
 
   // Real phase names from this project's own scope, so the Team Members
   // tab's Phase dropdown offers actual phases instead of an empty list.
@@ -1646,9 +1659,19 @@ function CheckoutPageInner() {
                             <TableHeader className="bg-gray-50 [&_tr]:border-t-0">
                               <TableRow className="hover:bg-transparent">
                                 <TableHead className="w-[24.66%] h-11 px-6 py-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600">
-                                  <span className="inline-flex items-center gap-x-1">
-                                    Name <ArrowDown className="size-[15px]" />
-                                  </span>
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center gap-x-1 focus-visible:outline-none"
+                                    onClick={() => setTeamNameSortAsc((current) => !current)}
+                                  >
+                                    Name{" "}
+                                    <ArrowDown
+                                      className={cn(
+                                        "size-[15px] transition-transform duration-200",
+                                        !teamNameSortAsc && "rotate-180"
+                                      )}
+                                    />
+                                  </button>
                                 </TableHead>
                                 <TableHead className="w-[13.5%] h-11 p-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600">
                                   Phase
@@ -1670,7 +1693,7 @@ function CheckoutPageInner() {
                             </TableHeader>
                             <TableBody>
                               {teamMembers.length > 0 ? (
-                                teamMembers.map((member) => (
+                                sortedTeamMembers.map((member) => (
                                   <TableRow
                                     key={member.id}
                                     className="h-[72px] hover:bg-white"
@@ -1685,14 +1708,14 @@ function CheckoutPageInner() {
                                             />
                                           ) : null}
                                           <AvatarFallback>
-                                            {member.name.slice(0, 1)}
+                                            {getFirstName(member.name).slice(0, 1)}
                                           </AvatarFallback>
                                         </Avatar>
 
                                         <span className="flex min-w-0 flex-col leading-[16.263px]">
                                           <span className="flex items-baseline gap-x-px truncate text-xs text-dark-blue-400">
                                             <span className="font-semibold">
-                                              {member.name}
+                                              {getFirstName(member.name)}
                                             </span>
                                             {member.handle ? (
                                               <span className="truncate font-normal">
@@ -2089,9 +2112,17 @@ function CheckoutPageInner() {
                               })}
                             </Accordion>
                           ) : (
-                            <p className="text-sm font-light text-dark-blue-400">
-                              Project scope unavailable.
-                            </p>
+                            <div className="space-y-3" aria-hidden="true">
+                              <div className="relative h-14 overflow-hidden rounded-lg bg-gray-100">
+                                <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                              </div>
+                              <div className="relative h-14 overflow-hidden rounded-lg bg-gray-100">
+                                <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                              </div>
+                              <div className="relative h-14 overflow-hidden rounded-lg bg-gray-100">
+                                <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                              </div>
+                            </div>
                           )}
                         </div>
                       </TabsContent>
