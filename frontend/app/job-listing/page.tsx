@@ -12054,6 +12054,15 @@ type ProjectAssistantHistoryItem = {
   prompt: string
   result?: string
   status: "pending" | "success" | "error"
+  listingBefore?: ProjectAssistantListingSnapshot
+  listingAfter?: ProjectAssistantListingSnapshot
+}
+
+type ProjectAssistantListingSnapshot = {
+  phases: Phase[]
+  budgetAmount: number
+  isBudgetStale: boolean
+  timelineMonths: number
 }
 
 const ProjectScopeEditStep = ({
@@ -12091,7 +12100,8 @@ const ProjectScopeEditStep = ({
   const didApplyPersistedScopeRef = useRef(false)
   const skipNextProjectScopeSaveRef = useRef(false)
   const lastSavedProjectScopeSignatureRef = useRef("")
-  const assistantUndoSnapshotRef = useRef<Phase[] | null>(null)
+  const assistantUndoSnapshotRef =
+    useRef<ProjectAssistantListingSnapshot | null>(null)
   const [budgetAmount, setBudgetAmount] = useState(5000)
   const [isBudgetStale, setIsBudgetStale] = useState(false)
   const [budgetRefreshKey, setBudgetRefreshKey] = useState(0)
@@ -12313,11 +12323,16 @@ const ProjectScopeEditStep = ({
     )
   }
 
-  const buildProjectAssistantScope = () => ({
-    phases: phases.map((phase, phaseIndex) => {
+  const buildProjectAssistantScopeFromPhases = (sourcePhases: Phase[]) => ({
+    phases: sourcePhases.map((phase, phaseIndex) => {
       const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`
       const { phaseType, durationDays, recurrenceSchedule, recurrenceCount } =
-        getJobListingPhaseFields(phase, phaseName, phases, phaseIndex)
+        getJobListingPhaseFields(
+          phase,
+          phaseName,
+          sourcePhases,
+          phaseIndex
+        )
 
       return {
         phaseName,
@@ -12339,6 +12354,47 @@ const ProjectScopeEditStep = ({
     }),
   })
 
+  const buildProjectAssistantScope = () =>
+    buildProjectAssistantScopeFromPhases(phases)
+
+  const getProjectAssistantListingSnapshot = (
+    sourcePhases: Phase[] = phases,
+    sourceBudgetAmount: number = budgetAmount,
+    sourceIsBudgetStale: boolean = isBudgetStale
+  ): ProjectAssistantListingSnapshot => ({
+    phases: sourcePhases,
+    budgetAmount: sourceBudgetAmount,
+    isBudgetStale: sourceIsBudgetStale,
+    timelineMonths: getProjectTimelineMonthsFromScope(sourcePhases),
+  })
+
+  const restoreProjectAssistantListingSnapshot = (
+    snapshot: ProjectAssistantListingSnapshot
+  ) => {
+    skipNextProjectScopeSaveRef.current = true
+    setPhases(snapshot.phases)
+    setExpandedPhaseNames(
+      snapshot.phases
+        .map((phase) => phase.phaseName)
+        .filter((name): name is string => Boolean(name))
+    )
+    setBudgetAmount(snapshot.budgetAmount)
+    setIsBudgetStale(snapshot.isBudgetStale)
+  }
+
+  const persistProjectAssistantListingSnapshot = async (
+    snapshot: ProjectAssistantListingSnapshot
+  ) => {
+    if (!jobListingId) return
+
+    const payload = buildProjectAssistantScopeFromPhases(snapshot.phases)
+
+    await JobListingAPI.ApplyGeneratedScope(jobListingId, {
+      hasScope: true,
+      phases: payload.phases,
+    })
+  }
+
   const applyPersistedProjectScopeFromAssistant = (data: any) => {
     const persistedPhases =
       data?.listing?.phases ?? data?.jobListing?.phases ?? data?.phases
@@ -12359,12 +12415,23 @@ const ProjectScopeEditStep = ({
       toFiniteNumber(data?.jobListing?.budgetAmountUsdCents) ??
       toFiniteNumber(data?.totalBudgetUsdCents)
 
+    const nextBudgetAmount =
+      typeof budgetUsdCents === "number"
+        ? Math.round(budgetUsdCents / 100)
+        : budgetAmount
+
     if (typeof budgetUsdCents === "number") {
-      setBudgetAmount(Math.round(budgetUsdCents / 100))
+      setBudgetAmount(nextBudgetAmount)
       setIsBudgetStale(false)
     }
 
     return nextPhases.length > 0
+      ? getProjectAssistantListingSnapshot(
+          nextPhases,
+          nextBudgetAmount,
+          typeof budgetUsdCents === "number" ? false : isBudgetStale
+        )
+      : null
   }
 
   const getProjectAssistantResultText = (
@@ -12405,7 +12472,10 @@ const ProjectScopeEditStep = ({
     return fallback
   }
 
-  const startProjectAssistantHistoryItem = (prompt: string) => {
+  const startProjectAssistantHistoryItem = (
+    prompt: string,
+    listingBefore: ProjectAssistantListingSnapshot
+  ) => {
     const historyId = `project-assistant-history-${getId()}`
 
     setAssistantHistory((currentHistory) =>
@@ -12415,6 +12485,7 @@ const ProjectScopeEditStep = ({
           id: historyId,
           prompt,
           status: "pending" as const,
+          listingBefore,
         },
       ].slice(-20)
     )
@@ -12427,13 +12498,14 @@ const ProjectScopeEditStep = ({
     prompt: string,
     result: string,
     status: Exclude<ProjectAssistantHistoryItem["status"], "pending"> =
-      "success"
+      "success",
+    listingAfter?: ProjectAssistantListingSnapshot
   ) => {
     setAssistantResult(result)
     setAssistantLastPrompt(prompt)
     setAssistantHistory((currentHistory) =>
       currentHistory.map((item) =>
-        item.id === id ? { ...item, result, status } : item
+        item.id === id ? { ...item, result, status, listingAfter } : item
       )
     )
   }
@@ -12442,9 +12514,10 @@ const ProjectScopeEditStep = ({
     const prompt = message.trim()
     if (!prompt) return
 
-    assistantUndoSnapshotRef.current = phases
+    const listingBefore = getProjectAssistantListingSnapshot()
+    assistantUndoSnapshotRef.current = listingBefore
     setAssistantLastPrompt(prompt)
-    const historyId = startProjectAssistantHistoryItem(prompt)
+    const historyId = startProjectAssistantHistoryItem(prompt, listingBefore)
     setAssistantMessage("")
 
     if (!jobListingId) {
@@ -12479,14 +12552,18 @@ const ProjectScopeEditStep = ({
         return
       }
 
-      if (applyPersistedProjectScopeFromAssistant(data)) {
+      const listingAfter = applyPersistedProjectScopeFromAssistant(data)
+
+      if (listingAfter) {
         completeProjectAssistantHistoryItem(
           historyId,
           prompt,
           getProjectAssistantResultText(
             data.summary,
             "Applied: Smart Assistant updated the project scope."
-          )
+          ),
+          "success",
+          listingAfter
         )
       } else {
         completeProjectAssistantHistoryItem(
@@ -12513,19 +12590,48 @@ const ProjectScopeEditStep = ({
     }
   }
 
-  const undoProjectAssistant = () => {
+  const undoProjectAssistant = async () => {
     if (!assistantUndoSnapshotRef.current) return
 
     const snapshot = assistantUndoSnapshotRef.current
-    setPhases(snapshot)
-    setExpandedPhaseNames(
-      snapshot
-        .map((phase) => phase.phaseName)
-        .filter((name): name is string => Boolean(name))
-    )
-    assistantUndoSnapshotRef.current = null
-    setAssistantResult("")
-    setAssistantLastPrompt("")
+    setIsAssistantLoading(true)
+
+    try {
+      restoreProjectAssistantListingSnapshot(snapshot)
+      await persistProjectAssistantListingSnapshot(snapshot)
+      assistantUndoSnapshotRef.current = null
+      setAssistantResult("")
+      setAssistantLastPrompt("")
+    } catch (error: any) {
+      setAssistantResult(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Unable to save the restored scope."
+      )
+    } finally {
+      setIsAssistantLoading(false)
+    }
+  }
+
+  const restoreProjectAssistantHistoryItem = async (
+    item: ProjectAssistantHistoryItem
+  ) => {
+    if (!item.listingAfter) return
+
+    setIsAssistantLoading(true)
+
+    try {
+      restoreProjectAssistantListingSnapshot(item.listingAfter)
+      await persistProjectAssistantListingSnapshot(item.listingAfter)
+    } catch (error: any) {
+      setAssistantResult(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Unable to save the restored scope."
+      )
+    } finally {
+      setIsAssistantLoading(false)
+    }
   }
 
   const removePhase = (phaseName: string) => {
@@ -13531,6 +13637,10 @@ const ProjectScopeEditStep = ({
                 <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
                   {assistantHistory.map((item, itemIndex) => {
                     const isLatest = itemIndex === assistantHistory.length - 1
+                    const canRestore =
+                      !isLatest &&
+                      item.status === "success" &&
+                      Boolean(item.listingAfter)
                     const resultLines = (item.result ?? "")
                       .split(/\n+/)
                       .map((line) => line.replace(/^[-•]\s*/, "").trim())
@@ -13562,6 +13672,21 @@ const ProjectScopeEditStep = ({
                             )}
                           </div>
                         ) : null}
+                        {canRestore ? (
+                          <Button
+                            type="button"
+                            variant="outlined"
+                            visual="gray"
+                            className="h-7 w-[136px] rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs"
+                            disabled={isAssistantLoading}
+                            onClick={() =>
+                              void restoreProjectAssistantHistoryItem(item)
+                            }
+                          >
+                            <ArrowUpLeft className="size-3 shrink-0" />
+                            Restore This Version
+                          </Button>
+                        ) : null}
                         {isLatest && item.status !== "pending" ? (
                           <div className="flex h-10 items-start gap-2">
                             <Button
@@ -13573,17 +13698,19 @@ const ProjectScopeEditStep = ({
                               <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
                               Retry
                             </Button>
-                            <Button
-                              type="button"
-                              variant="outlined"
-                              visual="gray"
-                              className="h-7 w-[62px] rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs"
-                              disabled={!assistantUndoSnapshotRef.current}
-                              onClick={undoProjectAssistant}
-                            >
-                              <ArrowUpLeft className="size-3 shrink-0" />
-                              Undo
-                            </Button>
+                            {item.status === "success" ? (
+                              <Button
+                                type="button"
+                                variant="outlined"
+                                visual="gray"
+                                className="h-7 w-[62px] rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs"
+                                disabled={!assistantUndoSnapshotRef.current}
+                                onClick={() => void undoProjectAssistant()}
+                              >
+                                <ArrowUpLeft className="size-3 shrink-0" />
+                                Undo
+                              </Button>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
