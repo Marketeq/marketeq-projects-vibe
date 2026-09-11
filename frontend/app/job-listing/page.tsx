@@ -12217,12 +12217,14 @@ const ProjectScopeEditStep = ({
           workType: "project",
           durationMonths: projectTimelineMonths || 1,
           budgetUsdCents: budgetAmount * 100,
+          apply: true,
         })
         const generatedPhases = createPhasesFromGeneratedScope(
           response?.data?.scope
         )
 
         if (generatedPhases.length > 0) {
+          skipNextProjectScopeSaveRef.current = true
           setPhases(generatedPhases)
           setExpandedPhaseNames(
             generatedPhases.map((phase) => phase.phaseName ?? "")
@@ -15494,12 +15496,14 @@ const ServiceScopeEditStep = ({
         const response = await JobListingAPI.GenerateScope(jobListingId, {
           workType: "service",
           budgetUsdCents: budgetAmount * 100,
+          apply: true,
         });
         const generatedPhases = createServicePhasesFromGeneratedScope(
           response?.data?.scope,
         );
 
         if (generatedPhases.length > 0) {
+          skipNextServiceScopeSaveRef.current = true;
           setPhases(generatedPhases);
           setExpandedPhaseNames(generatedPhases.map((phase) => phase.name));
         }

@@ -147,6 +147,7 @@ export const JobListingAPI = {
       durationMonths?: number;
       hiringType?: JobListingHiringType;
       minimalInput?: boolean;
+      apply?: boolean;
     },
   ) =>
     AxiosRequest.post(
