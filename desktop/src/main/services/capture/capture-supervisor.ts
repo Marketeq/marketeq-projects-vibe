@@ -40,6 +40,13 @@ function loadElectron(): ElectronIpcSurface | null {
   }
 }
 
+/**
+ * Safety bound for the DB poll: an open session row older than this is treated
+ * as a crash leftover, never as "the timer is running". Mirrors the window the
+ * timer's own restart recovery uses; this module can't import services/timer/.
+ */
+const OPEN_SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000; // 8 hours
+
 interface Deps {
   logger: Logger;
   screenshotService: ScreenshotService;
@@ -164,11 +171,18 @@ export function createCaptureSupervisor(deps: Deps): CaptureSupervisor {
 
   function findOpenSessionId(): string | null {
     try {
+      // Only an open session that belongs to THIS device and started within
+      // the recovery window counts as "the timer is running". A stale or
+      // foreign row is a crash leftover — ignoring it keeps capture off.
       const row = deps.db
-        .prepare<[], { id: string }>(
-          `SELECT id FROM session WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1`,
+        .prepare<[number], { id: string }>(
+          `SELECT id FROM session
+             WHERE ended_at IS NULL
+               AND device_id = (SELECT id FROM device_self LIMIT 1)
+               AND started_at >= ?
+             ORDER BY started_at DESC LIMIT 1`,
         )
-        .get();
+        .get(Date.now() - OPEN_SESSION_MAX_AGE_MS);
       return row?.id ?? null;
     } catch (err) {
       log.debug({ err }, 'findOpenSessionId failed');

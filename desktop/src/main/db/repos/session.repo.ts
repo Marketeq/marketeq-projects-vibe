@@ -79,6 +79,40 @@ export function createSessionRepo(db: DbHandle) {
       });
     },
 
+    /**
+     * Crash-recovery sweep: close every session a previous process left open
+     * (ended_at IS NULL). A raw local UPDATE — not an FSM transition, never a
+     * DELETE. Mirrors closeActive's time_entry close, minus the per-session
+     * filter. Deliberately does NOT rewrite billable_seconds — whatever was
+     * persisted stays. Returns the rows that were open (id + synced_at) so the
+     * caller can decide whether a backend session.close must be enqueued.
+     */
+    closeAllOpen(input: {
+      endedAt: number;
+      reason: SessionRow['end_reason'];
+    }): Array<{ id: string; synced_at: number | null }> {
+      return tx(db, () => {
+        const open = many(
+          db,
+          SessionRow,
+          `SELECT * FROM session WHERE ended_at IS NULL`,
+        ).map((r) => ({ id: r.id, synced_at: r.synced_at }));
+        run(
+          db,
+          `UPDATE session SET ended_at = ?, end_reason = ?, updated_at = ?
+             WHERE ended_at IS NULL`,
+          [input.endedAt, input.reason, input.endedAt],
+        );
+        run(
+          db,
+          `UPDATE time_entry SET ended_at = ?, duration_seconds = CAST((? - started_at) / 1000 AS INTEGER)
+             WHERE ended_at IS NULL`,
+          [input.endedAt, input.endedAt],
+        );
+        return open;
+      });
+    },
+
     listForUser(userId: string, limit = 200): SessionRow[] {
       return many(
         db,

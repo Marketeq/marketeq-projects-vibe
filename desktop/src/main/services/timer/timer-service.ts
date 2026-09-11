@@ -56,8 +56,6 @@ import type {
 
 const MAX_SESSION_SEC = 14 * 60 * 60; // 14 hours
 const MAX_BREAK_SEC = 4 * 60 * 60; // 4 hours
-/** Sessions older than this on crash recovery are force-stopped (doc 05 CRASH.01). */
-const CRASH_RECOVERY_CUTOFF_MS = 8 * 60 * 60 * 1000; // 8 hours
 
 // -----------------------------------------------------------------------------
 // IPC channel names — exported so the preload + renderer can reference them.
@@ -699,71 +697,39 @@ export function createTimerService(deps: TimerServiceDeps) {
   }
 
   // ---------------------------------------------------------------------------
-  // Restart recovery (doc 20 §"Recovery on restart")
+  // Restart recovery (doc 01 §18, doc 05 DTT-EDGE-CRASH.*)
   // ---------------------------------------------------------------------------
 
-  function restoreFromDb(): TimerSnapshot {
-    const userId = deps.getUserId?.() ?? repos.user.findFirst()?.id ?? null;
-    if (!userId) return snapshot();
-    const open = repos.session.findActive(userId);
-    if (!open) return snapshot();
-
-    // Phase 8: crash recovery cutoff — if the session is older than the
-    // threshold, force-stop it rather than resuming (doc 05 DTT-EDGE-CRASH.01).
-    const sessionAge = Date.now() - open.started_at;
-    if (sessionAge > CRASH_RECOVERY_CUTOFF_MS) {
+  function restoreFromDb(): {
+    snapshot: TimerSnapshot;
+    closed: Array<{ id: string; wasSynced: boolean }>;
+  } {
+    // After an unclean restart, never silently resume or bill (doc 01 §18,
+    // doc 20). A graceful quit closes the session via APP_QUIT; anything still
+    // open here is a crash / force-kill leftover. Close every one of them and
+    // leave the FSM Idle so the user can start fresh. Rows, time entries and
+    // screenshots are kept — only ended_at/end_reason are set. The
+    // Recover/Discard prompt (DTT Epic W) is separate feature work.
+    const rows = repos.session.closeAllOpen({
+      endedAt: Date.now(),
+      reason: 'crash_recover',
+    });
+    if (rows.length > 0) {
       logger.warn(
-        { sessionId: open.id, ageHours: Math.round(sessionAge / 3600000) },
-        'stale session found during crash recovery — force-stopping',
+        { count: rows.length },
+        'crash recovery: swept orphaned open session(s)',
       );
-      repos.session.closeActive({
-        id: open.id,
-        endedAt: Date.now(),
-        reason: 'crash_recover',
-        billableSeconds: open.billable_seconds,
-      });
       emit(TIMER_CHANNELS.error, {
         code: 'DTT-ERR-SYS.03',
-        message: 'A stale session was recovered and closed after an unexpected restart.',
+        message:
+          `Recovered from an unexpected restart — ${rows.length} unfinished ` +
+          `session(s) were closed. Start the timer again to continue tracking.`,
       });
-      return snapshot();
     }
-
-    // Rehydrate into Paused, not Running — doc 20 never silently bills the
-    // user after a crash. The renderer will show "Resume" and let the user
-    // confirm.
-    logger.info({ sessionId: open.id }, 'restoring open session into Paused');
-    activeSessionId = open.id as SessionId;
-    pickedContract = {
-      contractId: open.contract_id as ContractId,
-      taskId: open.task_id as TaskId,
+    return {
+      snapshot: snapshot(),
+      closed: rows.map((r) => ({ id: r.id, wasSynced: r.synced_at != null })),
     };
-    sessionStartedAt = open.started_at;
-    accumulatedRunningSec = open.billable_seconds;
-    // Drive the machine: Idle -> Counting -> Running -> Paused.
-    machine.send(
-      { type: 'PICK_CONTRACT', contractId: open.contract_id, taskId: open.task_id },
-      ctx(),
-    );
-    // Can't use our dispatchInternal because that re-opens a session row.
-    // Simulate by directly updating FSM to Running then Paused without effects.
-    // We use the raw transition() sequence, bypassing open_session handler.
-    const afterStart = transition('Counting', { type: 'START' }, ctx());
-    // skip the open_session effect — it's already in DB
-    for (const eff of afterStart.effects) {
-      if (eff.kind === 'audit') {
-        writeAudit(db, {
-          from: eff.from,
-          to: eff.to,
-          event: eff.event,
-          sessionId: activeSessionId,
-        });
-      }
-    }
-    machine.send({ type: 'START' }, ctx());
-    // Now pause.
-    dispatchInternal({ type: 'PAUSE' });
-    return snapshot();
   }
 
   // ---------------------------------------------------------------------------
