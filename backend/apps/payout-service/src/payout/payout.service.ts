@@ -540,14 +540,25 @@ export class PayoutService {
     // Figma "Next Payout" card's blue status label (e.g. "Processing...") —
     // reflects whatever payout request is actually in flight right now, not a
     // fabricated value. Null when nothing has been initiated for the next cycle yet.
+    //
+    // Must require dm.isActive: a payout can be deactivated on its deposit
+    // method (PS-33 §8, e.g. a bank rejection with failure_code
+    // account_closed/no_account/debit_not_authorized) while the payout row
+    // itself is still stuck in a non-terminal status — its own terminal
+    // transition depends on a Stripe webhook that may never arrive (same
+    // class of gap as the connect_payouts_enabled/transfer-reversal fixes
+    // above). Without this filter, a contractor whose only payout method has
+    // been deactivated still sees "Processing..." indefinitely, which is
+    // inconsistent with their actual (methodless) payout-method state.
     const NON_TERMINAL = [
       PayoutStatus.PENDING_VERIFICATION, PayoutStatus.AWAITING_EDD,
       PayoutStatus.QUEUED, PayoutStatus.PROCESSING,
     ];
     const inFlight = await this.payoutRepo.createQueryBuilder('p')
-      .leftJoinAndSelect('p.depositMethod', 'dm')
+      .innerJoinAndSelect('p.depositMethod', 'dm')
       .where('p.contractorId = :contractorId', { contractorId })
       .andWhere('p.status IN (:...statuses)', { statuses: NON_TERMINAL })
+      .andWhere('dm.isActive = true')
       .orderBy('p.createdAt', 'DESC')
       .getOne();
 

@@ -1057,15 +1057,19 @@ const Notifications = () => {
             <TabsList className="w-full">
               <TabsTrigger value="Notifications">
                 Notifications
-                <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-                  {panelTabCount}
-                </span>
+                {panelTabCount > 0 && (
+                  <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
+                    {panelTabCount}
+                  </span>
+                )}
               </TabsTrigger>
               <TabsTrigger value="Messages">
                 Messages
-                <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-                  {inboxTotalUnread > 99 ? "99+" : inboxTotalUnread}
-                </span>
+                {inboxTotalUnread > 0 && (
+                  <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
+                    {inboxTotalUnread > 99 ? "99+" : inboxTotalUnread}
+                  </span>
+                )}
               </TabsTrigger>
             </TabsList>
 
@@ -1129,7 +1133,7 @@ const Notifications = () => {
                           </div>
                         )
                       }
-                      return inboxThreads.slice(0, 8).map(renderInboxThreadItem)
+                      return inboxThreads.filter(t => t.lastMessageAt).slice(0, 8).map(renderInboxThreadItem)
                     })()}
                   </div>
                 </ScrollArea>

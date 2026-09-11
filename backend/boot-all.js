@@ -19,7 +19,11 @@
  *   Tier 2 (active):   48 MB heap      (notification, search, contracts, etc.)
  *   Tier 3 (dormant):  48 MB heap      (admin, billing, wallet, etc.)
  *   Gateway:           96 MB heap
- *   Total heap: ~1.6 GB, actual RSS ~3.2 GB with Node overhead (29 processes)
+ *   Total heap: ~2.0 GB across 32 processes (31 services + gateway).
+ *
+ * Raise a service above 48 MB only against a known payload size, and record the
+ * reason next to it — see portfolio-service, which OOM'd at 48 MB because its
+ * schemaJson cap alone is 2 MB. These are ceilings, not reservations.
  */
 
 const { spawn } = require('child_process');
@@ -37,7 +41,16 @@ const SERVICES = [
   // Tier 1 — Core (highest traffic)
   { name: 'auth-service',               port: '3001', dir: 'apps/auth-service',               maxOldSpaceMb: 96 },
   { name: 'user-service',               port: '3002', dir: 'apps/user-service',               maxOldSpaceMb: 128 },
-  { name: 'listings-service',           port: '3003', dir: 'apps/listings-service',           maxOldSpaceMb: 96 },
+  // Crash-looped at 96 MB on 2026-09-10: ten "Reached heap limit" kills between
+  // 20:51 and 22:34, with GC pinned at the ceiling and reclaiming nothing
+  // ("Mark-Compact (reduce) 95.6 (98.4) -> 94.8 (98.7) MB"). This service owns
+  // the largest schema in the monorepo (29 migrations) and hydrates whole
+  // project/publish documents, so 96 MB is under its real working set.
+  // NOTE: this raises the ceiling to stop the restart loop; it does not explain
+  // why a service that had been stable all day began exhausting the heap in a
+  // single evening. If it OOMs again at 128 MB, treat it as a leak and profile
+  // the publish path rather than raising this further.
+  { name: 'listings-service',           port: '3003', dir: 'apps/listings-service',           maxOldSpaceMb: 128 },
   { name: 'messaging-service',         port: '3005', dir: 'apps/messaging-service',         maxOldSpaceMb: 96 },
   // Tier 2 — Active
   { name: 'notification-service',       port: '3006', dir: 'apps/notification-service',       maxOldSpaceMb: 48 },
@@ -49,7 +62,11 @@ const SERVICES = [
   { name: 'favorites-service',          port: '3012', dir: 'apps/favorites-service',          maxOldSpaceMb: 48 },
   { name: 'invitations-service',        port: '3013', dir: 'apps/invitations-service',        maxOldSpaceMb: 48 },
   { name: 'content-moderation-service', port: '3014', dir: 'apps/content-moderation-service', maxOldSpaceMb: 48 },
-  { name: 'portfolio-service',          port: '3015', dir: 'apps/portfolio-service',          maxOldSpaceMb: 48 },
+  // 128MB, not the 48MB default: case studies accept a 2MB schemaJson
+  // (MAX_SCHEMA_JSON_BYTES) which expands roughly 10x once parsed into V8 objects,
+  // and publish additionally holds the compiled htmlPublished string alongside it.
+  // At 48MB this OOM'd ("Reached heap limit") under normal editing on 2026-09-09.
+  { name: 'portfolio-service',          port: '3015', dir: 'apps/portfolio-service',          maxOldSpaceMb: 128 },
   { name: 'autocomplete-service',       port: '3016', dir: 'apps/autocomplete-service',       maxOldSpaceMb: 48 },
   { name: 'time-tracking-service',      port: '3017', dir: 'apps/time-tracking-service',      maxOldSpaceMb: 48 },
   { name: 'transaction-service',        port: '3018', dir: 'apps/transaction-service',        maxOldSpaceMb: 48 },

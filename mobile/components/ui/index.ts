@@ -1,0 +1,21 @@
+// Mobile Design System — barrel export
+// RULE: Every screen MUST import from here. No bare RN primitives in screens.
+
+export { Button } from "./button"
+export { IconButton } from "./icon-button"
+export { Input } from "./input"
+export { Textarea } from "./textarea"
+export { Avatar } from "./avatar"
+export { Badge } from "./badge"
+export { Label } from "./label"
+export { Card } from "./card"
+export { Dialog } from "./dialog"
+export { Checkbox } from "./checkbox"
+export { Switch } from "./switch"
+export { Tabs } from "./tabs"
+export { Select } from "./select"
+export { Skeleton } from "./skeleton"
+export { Spinner } from "./spinner"
+export { Toast } from "./toast"
+export { Divider } from "./divider"
+export { EmptyState } from "./empty-state"

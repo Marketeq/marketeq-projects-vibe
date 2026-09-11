@@ -521,6 +521,34 @@ export class MethodsService {
             method, dto.bankAccountNumber, dto.bankRoutingNumber,
             dto.bankAccountName || method.nickname || 'Account Holder',
           );
+
+          // Stripe can resolve a us_bank_account SetupIntent straight to
+          // "succeeded" with no real micro-deposits ever queued — every one
+          // of Stripe's documented test account numbers behaves this way,
+          // and Stripe does the same for real accounts it can verify
+          // instantly. Without this branch the method stayed PENDING
+          // forever: the contractor was told to wait for deposits that were
+          // never coming, with no correct amounts to ever submit.
+          if (result.instant) {
+            await this.methodRepo.update(method.id, {
+              stripeExternalAccountId: result.externalAccountId,
+              stripeConnectAccountId: result.connectAccountId,
+              connectPayoutsEnabled: result.connectPayoutsEnabled,
+              connectRequirementsDue: result.connectRequirementsDue,
+              verificationStatus: VerificationStatus.VERIFIED,
+            } as any);
+            await this.auditService.log({
+              contractorId: method.contractorId, actorType: 'contractor', actorId: method.contractorId,
+              action: 'method.verified',
+              metadata: { methodId: method.id, methodType: 'BANK_MANUAL', isInstant: true },
+            });
+            return {
+              type: 'instant',
+              verified: true,
+              message: 'Your bank account has been verified.',
+            };
+          }
+
           return {
             type: 'micro_deposit',
             message: result.mode === 'stripe'
