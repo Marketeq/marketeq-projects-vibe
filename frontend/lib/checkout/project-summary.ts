@@ -12,6 +12,11 @@ export type CheckoutRawTeamMember = {
   isLead: boolean
 }
 
+export type CheckoutFaq = {
+  question: string
+  answer: string
+}
+
 export type CheckoutProjectSummary = {
   id: string | null
   title: string
@@ -21,6 +26,7 @@ export type CheckoutProjectSummary = {
   projectCost: number | null
   durationLabel: string | null
   teamMembers: CheckoutRawTeamMember[]
+  faqs: CheckoutFaq[]
 }
 
 export const titleizeCheckoutSlug = (value: string): string =>
@@ -84,9 +90,55 @@ const monthYearFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
 })
 
+
+const getScopeDurationDays = (project: any): number => {
+  const phases = Array.isArray(project.scope) ? project.scope : []
+  if (!phases.length) return 0
+
+  let totalDays = 0
+  for (const phase of phases) {
+    const taskDurations = ((phase.tasks ?? phase.rows ?? []) as any[])
+      .map((task: any) => {
+        const dur = task.duration
+        if (dur && typeof dur === "object") {
+          const val = Number(dur.value) || 0
+          if (val > 0) {
+            if (dur.type === "weeks") return val * 7
+            if (dur.type === "months") return val * 30
+            if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+            return val
+          }
+        }
+        if (typeof dur === "string" && dur.trim()) {
+          const [rv, ru] = dur.trim().split(/\s+/)
+          const v = Number(rv) || 0
+          const u = (ru || "days").toLowerCase()
+          if (v > 0) {
+            if (u.startsWith("week")) return v * 7
+            if (u.startsWith("month")) return v * 30
+            if (u.startsWith("hour")) return Math.max(1, Math.ceil(v / 24))
+            return v
+          }
+        }
+        // Fall back to estimatedHours at 40 hrs/week.
+        const hrs = Number(task.estimatedHours) || 0
+        return hrs > 0 ? Math.max(1, Math.round((hrs * 7) / 40)) : 0
+      })
+      .filter((d: number) => d > 0)
+    if (taskDurations.length > 0) {
+      totalDays += Math.max(...taskDurations)
+    }
+  }
+
+  return totalDays
+}
+
 const getDuration = (
   project: any
 ): { amount: number; unit: "day" | "week" | "month" } | null => {
+  const scopeDays = getScopeDurationDays(project)
+  if (scopeDays > 0) return { amount: scopeDays, unit: "day" }
+
   if (typeof project.duration === "string") {
     const match = project.duration.match(/(\d+)\s*(day|week|month)/i)
     if (match) {
@@ -128,6 +180,13 @@ const getDateRangeLabel = (project: any): string => {
 }
 
 const getDurationLabel = (project: any): string | null => {
+  const scopeDays = getScopeDurationDays(project)
+  if (scopeDays > 0) {
+    // Checkout always shows duration in weeks (unlike my-listings, which
+    // tiers between days/weeks/months).
+    const weeks = Math.max(1, Math.ceil(scopeDays / 7))
+    return `${weeks} Week${weeks !== 1 ? "s" : ""}`
+  }
   if (typeof project.duration === "string" && project.duration.trim()) {
     return project.duration
   }
@@ -135,6 +194,16 @@ const getDurationLabel = (project: any): string | null => {
     return `${project.durationMonths} month${project.durationMonths === 1 ? "" : "s"}`
   }
   return null
+}
+
+const getFaqs = (project: any): CheckoutFaq[] => {
+  if (!Array.isArray(project.faqs)) return []
+  return project.faqs
+    .map((faq: any) => ({
+      question: typeof faq?.question === "string" ? faq.question.trim() : "",
+      answer: typeof faq?.answer === "string" ? faq.answer.trim() : "",
+    }))
+    .filter((faq: CheckoutFaq) => faq.question && faq.answer)
 }
 
 const mapProjectSummary = (project: any, slug: string): CheckoutProjectSummary => ({
@@ -146,6 +215,7 @@ const mapProjectSummary = (project: any, slug: string): CheckoutProjectSummary =
   projectCost: getProjectCost(project),
   durationLabel: getDurationLabel(project),
   teamMembers: getTeamMembers(project),
+  faqs: getFaqs(project),
 })
 
 export const getCheckoutProjectSummary = async (
