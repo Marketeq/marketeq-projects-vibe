@@ -51,6 +51,13 @@ class ScopeSeedPhaseDto {
 }
 
 export class FindOrCreateDraftDto {
+  // Supplied by the gateway (already resolved from the caller's own JWT
+  // validation) rather than derived from a forwarded user token here — see
+  // InternalTokenGuard.
+  @IsString()
+  @IsNotEmpty()
+  clientId: string;
+
   @IsString()
   @IsNotEmpty()
   listingId: string;

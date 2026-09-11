@@ -13,6 +13,7 @@ export class CheckoutDraftGatewayService {
   private readonly logger = new Logger(CheckoutDraftGatewayService.name);
   private readonly listingsUrl: string;
   private readonly checkoutUrl: string;
+  private readonly internalServiceToken: string | undefined;
 
   constructor(
     private readonly http: HttpService,
@@ -22,6 +23,7 @@ export class CheckoutDraftGatewayService {
       config.get<string>('LISTINGS_SERVICE_URL') || 'http://localhost:3004';
     this.checkoutUrl =
       config.get<string>('CHECKOUT_SERVICE_URL') || 'http://localhost:3009';
+    this.internalServiceToken = config.get<string>('INTERNAL_SERVICE_TOKEN');
   }
 
   async getListingSummary(listingId: string, clientId: string) {
@@ -35,6 +37,11 @@ export class CheckoutDraftGatewayService {
           listingId,
           phases: project.scope ?? [],
           projectCost: project.budget ?? null,
+        },
+        {
+          headers: this.internalServiceToken
+            ? { 'x-internal-token': this.internalServiceToken }
+            : {},
         },
       ),
     );

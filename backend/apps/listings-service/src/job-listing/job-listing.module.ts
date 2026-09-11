@@ -40,6 +40,7 @@ import { JobListingOwnerGuard } from './guards/job-listing-owner.guard';
 // ── External ─────────────────────────────────────────────────────────────────
 import { AlgoliaService } from '../algolia/algolia.service';
 import { UserProfileModule } from '../shared/user-profile/user-profile.module';
+import { RoleRateModule } from '../shared/pricing/role-rate.module';
 
 import { IdentityGateModule } from '../identity-gate/identity-gate.module';
 
@@ -60,7 +61,6 @@ import { IdentityGateModule } from '../identity-gate/identity-gate.module';
     ]),
 
     // HttpModule is needed by:
-    //   - JobListingBudgetService  (pricing-service rate lookup)
     //   - JobListingScopeService   (contracts-service inherited scope)
     //   - JobListingAiService      (Groq API calls)
     //   - AlgoliaService           (algolia-service HTTP calls)
@@ -69,6 +69,8 @@ import { IdentityGateModule } from '../identity-gate/identity-gate.module';
     // UserProfileClient.hydrateTeam() — resolves assignedUserId on role rows
     // into real name/avatar/skills for the frontend, same as publish/services.
     UserProfileModule,
+    // RoleRateService (pricing-service rate lookup, used by JobListingBudgetService)
+    RoleRateModule,
 
     // G5: RosterGateService (last known gate state) for the non-owner roster rule.
     IdentityGateModule,

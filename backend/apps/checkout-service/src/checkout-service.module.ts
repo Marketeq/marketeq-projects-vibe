@@ -19,6 +19,7 @@ import { UcheckoutUserviceController } from './checkout-service.controller';
 import { UcheckoutUserviceService } from './checkout-service.service';
 import { StripeService } from './stripe/stripe.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { InternalTokenGuard } from './guards/internal-token.guard';
 
 @Module({
   imports: [
@@ -59,6 +60,6 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
       : []),
   ],
   controllers: [CheckoutController, UcheckoutUserviceController],
-  providers: [CheckoutService, CheckoutDraftService, UcheckoutUserviceService, StripeService, JwtAuthGuard],
+  providers: [CheckoutService, CheckoutDraftService, UcheckoutUserviceService, StripeService, JwtAuthGuard, InternalTokenGuard],
 })
 export class CheckoutServiceModule {}

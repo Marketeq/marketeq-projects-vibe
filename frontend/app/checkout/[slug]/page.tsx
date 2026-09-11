@@ -390,6 +390,14 @@ const renderRate = (rate?: string | null) => {
     return (
       <span className="inline-flex h-5 items-center whitespace-nowrap text-sm leading-5 font-normal text-[#475467]">
         --
+  // The backend (projects.service.ts resolveTeamMembers) already resolves a
+  // missing profile rate through pricing-service before this ever renders —
+  // a still-missing rate here means no data was available at all, so show
+  // that honestly instead of inventing a number.
+  if (!rate) {
+    return (
+      <span className="inline-flex h-5 items-center whitespace-nowrap text-sm font-normal leading-5 text-[#475467]">
+        Rate not set
       </span>
     )
   }
@@ -585,7 +593,7 @@ function CheckoutPageInner() {
         phases: "Unassigned",
         experience: member.experienceLevel || "",
         location: member.location || "",
-        rate: member.rate ? `$${member.rate}/hr` : "Rate not set",
+        rate: member.rate ? `$${member.rate}/hr` : "",
         status: "Confirmed",
         avatarSrc: member.avatarUrl || "",
       }))

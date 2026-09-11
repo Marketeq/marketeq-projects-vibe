@@ -15,6 +15,7 @@ import { CheckoutService } from "./checkout.service";
 import { CheckoutDraftService } from "./checkout-draft.service";
 import { StripeService } from "../stripe/stripe.service";
 import { JwtAuthGuard } from "../guards/jwt-auth.guard";
+import { InternalTokenGuard } from "../guards/internal-token.guard";
 import { RolesGuard } from "../guards/roles.guard";
 import { Request } from "express";
 
@@ -45,10 +46,15 @@ export class CheckoutController {
 
   // ─── Checkout draft (read-only for now — seeded once, never edited) ──
 
+  // Called only by the gateway's CheckoutDraftController, which has already
+  // authenticated the end user via its own JwtAuthGuard — so this endpoint
+  // trusts the gateway (via INTERNAL_SERVICE_TOKEN) and takes clientId
+  // straight from the request body instead of re-deriving it from a
+  // forwarded user JWT.
   @Post("drafts/find-or-create")
-  @UseGuards(JwtAuthGuard)
-  findOrCreateDraft(@Body() dto: FindOrCreateDraftDto, @Req() req: any) {
-    return this.checkoutDraftService.findOrCreate(req.user.sub, dto.listingId, {
+  @UseGuards(InternalTokenGuard)
+  findOrCreateDraft(@Body() dto: FindOrCreateDraftDto) {
+    return this.checkoutDraftService.findOrCreate(dto.clientId, dto.listingId, {
       phases: dto.phases,
       projectCost: dto.projectCost,
     });
