@@ -30,6 +30,8 @@ import { CreateRoleRowDto } from "../dto/create-role-row.dto";
 import {
   ShortenSelectedTextDto,
   SmartAssistantDto,
+  SmartAssistantScopeDto,
+  SmartAssistantFieldDto,
 } from "../dto/smart-assistant.dto";
 import {
   ApplyGeneratedScopeDto,
@@ -688,7 +690,7 @@ export class JobListingController {
   @HttpCode(HttpStatus.OK)
   smartAssistantScope(
     @Param("id") id: string,
-    @Body() dto: SmartAssistantDto,
+    @Body() dto: SmartAssistantScopeDto,
   ): Promise<any> {
     return this.smartAssistant(id, { ...dto, mode: "scope" });
   }
@@ -698,7 +700,7 @@ export class JobListingController {
   @HttpCode(HttpStatus.OK)
   smartAssistantField(
     @Param("id") id: string,
-    @Body() dto: SmartAssistantDto,
+    @Body() dto: SmartAssistantFieldDto,
   ): Promise<any> {
     return this.smartAssistant(id, { ...dto, mode: "field" });
   }

@@ -154,11 +154,9 @@ import { Prettify } from "@/types/core";
 import { CreateProjectType } from "@/types/project";
 import { Spinner } from "@/components/ui/spinner/spinner";
 import { GripVertical2 } from "@/components/icons/grip-vertical-2";
-import { Network } from "@/components/icons/network";
 import { Network1 } from "@/components/icons/network-1";
 import { Network2 } from "@/components/icons/network-2";
 import { Network3 } from "@/components/icons/network-3";
-import { Network4 } from "@/components/icons/network-4";
 import {
   CountriesCombobox,
   OwnCombobox,
@@ -2088,13 +2086,10 @@ const durationToDays = (
   if (type === "hours") return Math.max(1, Math.ceil(value / 24));
   return value;
 };
-const EXPERIENCE_LEVELS = [
-  "Student",
-  "Junior",
-  "Medior",
-  "Senior",
-  "Guru",
-] as const;
+// Collapsed to the 3 levels pricing-service's rate lookup understands
+// (junior/mid/senior) — Step 4's budget calculator and price guide only
+// resolve real rate data for these three.
+const EXPERIENCE_LEVELS = ["Junior", "Mid", "Senior"] as const;
 type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number];
 
 const taskFormSchema = z.object({
@@ -7199,26 +7194,18 @@ const Dropdown = ({
           <DropdownMenuRadioItem
             className="gap-x-2"
             hideIndicator={false}
-            value="Student"
-          >
-            <Network />
-            Student (0 - 2 years)
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem
-            className="gap-x-2"
-            hideIndicator={false}
             value="Junior"
           >
             <Network1 />
-            Junior (2 - 3 years)
+            Junior (0 - 3 years)
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem
             className="gap-x-2"
             hideIndicator={false}
-            value="Medior"
+            value="Mid"
           >
             <Network2 />
-            Medior (3 - 5 years)
+            Mid (3 - 7 years)
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem
             className="gap-x-2"
@@ -7226,16 +7213,7 @@ const Dropdown = ({
             value="Senior"
           >
             <Network3 />
-            Senior (5 - 10 years)
-          </DropdownMenuRadioItem>
-
-          <DropdownMenuRadioItem
-            className="gap-x-2"
-            hideIndicator={false}
-            value="Guru"
-          >
-            <Network4 />
-            Guru (10+ years)
+            Senior (7+ years)
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
@@ -10703,7 +10681,7 @@ const teamRoleRows: TeamRoleRow[] = [
     role: "UX Designer",
     assignee: "Unassigned Member",
     location: "India",
-    experience: "Guru",
+    experience: "Senior",
     schedule: "Full-time",
     length: "6 months",
     estimate: "$40 - $80",
@@ -10723,7 +10701,7 @@ const teamRoleRows: TeamRoleRow[] = [
     role: "Business Analyst",
     assignee: "Nana @nana_ba03",
     location: "USA",
-    experience: "Guru",
+    experience: "Senior",
     schedule: "Part-time",
     length: "2 months",
     estimate: "$25 - $40",
@@ -10795,7 +10773,7 @@ const serviceScopePhases = [
         task: "Account Setup",
         role: "UX Designer",
         location: "USA",
-        experience: "Guru",
+        experience: "Senior",
         duration: "40 hours",
       },
       {
@@ -10821,14 +10799,14 @@ const serviceScopePhases = [
         task: "Content Writing",
         role: "Copywriter",
         location: "India",
-        experience: "Guru",
+        experience: "Senior",
         duration: "40 hours",
       },
       {
         task: "Visual Assets",
         role: "Designer",
         location: "Pakistan",
-        experience: "Medior",
+        experience: "Mid",
         duration: "30 hours",
       },
     ],

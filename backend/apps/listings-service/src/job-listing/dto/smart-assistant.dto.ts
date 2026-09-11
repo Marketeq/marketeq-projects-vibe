@@ -47,6 +47,57 @@ export class SmartAssistantDto {
   context?: string;
 }
 
+// Body shape for the dedicated POST :id/smart-assistant/scope route. The
+// route path itself fixes the mode — the controller injects mode: 'scope'
+// after validation — so, unlike SmartAssistantDto, this never needs to guess
+// mode from the body and never validates the field-mode-only properties.
+export class SmartAssistantScopeDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  command: string;
+
+  @IsOptional()
+  @IsObject()
+  currentScope?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsIn(['project', 'service'])
+  workType?: 'project' | 'service';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  context?: string;
+}
+
+// Body shape for the dedicated POST :id/smart-assistant/field route. Same
+// rationale as SmartAssistantScopeDto above, for the field-mode-only fields.
+export class SmartAssistantFieldDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  command: string;
+
+  @IsString()
+  @IsIn(['title', 'overview', 'benefits', 'responsibilities'])
+  field: string;
+
+  @IsString()
+  @MaxLength(10000)
+  currentValue: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  roleTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  context?: string;
+}
+
 export class ShortenSelectedTextDto {
   @IsString()
   @IsNotEmpty()

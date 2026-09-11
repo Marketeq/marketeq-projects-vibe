@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import * as jwt from 'jsonwebtoken';
 import { JobListingPhase } from '../entities/job-listing-phase.entity';
 import { JobListingTask } from '../entities/job-listing-task.entity';
 import { JobListing } from '../entities/job-listing.entity';
@@ -18,6 +19,124 @@ const HOURS_PER_WEEK: Record<string, number> = {
 };
 
 const WORKING_DAYS_PER_WEEK = 5;
+
+// ── normalizeExperienceLevel ──────────────────────────────────────────────
+// pricing-service only understands junior/mid/senior (GetRatesQueryDto).
+// Step 4's own experience picker now only offers those three, but older
+// listings (or tasks created via the shared scope-builder component, which
+// still uses the 5-level Student/Junior/Medior/Senior/Guru scale) may still
+// carry a legacy value — collapse those down instead of 400ing.
+// Same mapping as publish.service.ts's signInternalToken-adjacent EXP map;
+// kept local here rather than shared to avoid a cross-file dependency for
+// two small lookup tables.
+const EXPERIENCE_LEVEL_MAP: Record<string, string> = {
+  student: 'junior',
+  junior:  'junior',
+  medior:  'mid',
+  mid:     'mid',
+  senior:  'senior',
+  guru:    'senior',
+};
+
+function normalizeExperienceLevel(experienceLevel: string | null): string | undefined {
+  if (!experienceLevel) return undefined;
+  const key = experienceLevel.toLowerCase();
+  return EXPERIENCE_LEVEL_MAP[key] ?? key;
+}
+
+// ── normalizeLocation ─────────────────────────────────────────────────────
+// pricing-service only understands 8 broad regions (GetRatesQueryDto's
+// @IsIn list). Step 4's location field is CountriesCombobox — 56 individual
+// countries (frontend/components/own-combobox.tsx's COUNTRY_CODES) — so a
+// raw country name 400s against pricing-service every time except "Canada",
+// which happens to collide with a region name.
+//
+// Bucketing follows the same rate-tier groupings hourlyRateForTask already
+// uses for its static-fallback multipliers (../../shared/utils/pricing.ts)
+// — this isn't a new taxonomy, just making that existing grouping explicit
+// and complete for all 56 CountriesCombobox countries. Judgment calls, since
+// pricing-service has no matching region for these at all:
+//   - Australia / New Zealand → United States (hourlyRateForTask already
+//     rate-tiers them with US/UK/Canada as developed anglophone markets;
+//     there's no "Oceania" region to put them in instead)
+//   - Japan / South Korea / China → Southeast Asia (hourlyRateForTask
+//     explicitly rate-tiers "east asia" the same as Southeast Asia)
+//   - Israel → Southeast Asia (hourlyRateForTask explicitly rate-tiers
+//     "middle east" the same as Southeast Asia)
+//   - Nigeria / Kenya / South Africa / Egypt → South Asia (pricing-service
+//     has no Africa region at all; hourlyRateForTask's Africa multiplier,
+//     0.25, is numerically identical to its South Asia multiplier, so this
+//     is the closest existing rate tier, not a geographic claim)
+// If any of these read wrong for the business, they're isolated in this one
+// map — easy to revisit without touching the lookup logic around it.
+const COUNTRY_TO_REGION: Record<string, string> = {
+  'United States': 'United States',
+  'Canada': 'Canada',
+  'United Kingdom': 'United Kingdom',
+  'Australia': 'United States',
+  'New Zealand': 'United States',
+
+  'Germany': 'Western Europe',
+  'France': 'Western Europe',
+  'Spain': 'Western Europe',
+  'Italy': 'Western Europe',
+  'Netherlands': 'Western Europe',
+  'Sweden': 'Western Europe',
+  'Norway': 'Western Europe',
+  'Denmark': 'Western Europe',
+  'Finland': 'Western Europe',
+  'Switzerland': 'Western Europe',
+  'Austria': 'Western Europe',
+  'Belgium': 'Western Europe',
+  'Ireland': 'Western Europe',
+  'Portugal': 'Western Europe',
+  'Greece': 'Western Europe',
+
+  'Ukraine': 'Eastern Europe',
+  'Poland': 'Eastern Europe',
+  'Romania': 'Eastern Europe',
+  'Czech Republic': 'Eastern Europe',
+  'Hungary': 'Eastern Europe',
+  'Turkey': 'Eastern Europe',
+  'Russia': 'Eastern Europe',
+  'Estonia': 'Eastern Europe',
+  'Latvia': 'Eastern Europe',
+  'Lithuania': 'Eastern Europe',
+  'Croatia': 'Eastern Europe',
+  'Serbia': 'Eastern Europe',
+  'Bulgaria': 'Eastern Europe',
+
+  'Brazil': 'Latin America',
+  'Mexico': 'Latin America',
+  'Argentina': 'Latin America',
+  'Colombia': 'Latin America',
+  'Chile': 'Latin America',
+
+  'India': 'South Asia',
+  'Pakistan': 'South Asia',
+  'Bangladesh': 'South Asia',
+  'Sri Lanka': 'South Asia',
+  'Nigeria': 'South Asia',
+  'Kenya': 'South Asia',
+  'South Africa': 'South Asia',
+  'Egypt': 'South Asia',
+
+  'Philippines': 'Southeast Asia',
+  'Thailand': 'Southeast Asia',
+  'Vietnam': 'Southeast Asia',
+  'Indonesia': 'Southeast Asia',
+  'Malaysia': 'Southeast Asia',
+  'Singapore': 'Southeast Asia',
+  'Japan': 'Southeast Asia',
+  'South Korea': 'Southeast Asia',
+  'China': 'Southeast Asia',
+  'Israel': 'Southeast Asia',
+};
+
+function normalizeLocation(location: string | null): string | undefined {
+  if (!location) return undefined;
+  return COUNTRY_TO_REGION[location];
+}
 
 // ── Frequency label → number of working days in that period ─────────────────
 // Used to convert custom hours (e.g. "15 hours per week") into a daily rate.
@@ -138,9 +257,10 @@ export class JobListingBudgetService {
           {
             params: {
               role:       roleTitle,
-              location:   location       ?? undefined,
-              experience: experienceLevel ?? undefined,
+              location:   normalizeLocation(location),
+              experience: normalizeExperienceLevel(experienceLevel),
             },
+            headers: { Authorization: `Bearer ${this.signInternalToken()}` },
           },
         ),
       );
@@ -160,11 +280,19 @@ export class JobListingBudgetService {
     const fallbackLocation = location ?? popularRegionForRole(roleTitle);
     const fallbackRate = hourlyRateForTask({
       roleName: roleTitle,
-      experienceLevel: experienceLevel ?? 'Medior',
+      experienceLevel: experienceLevel ?? 'Mid',
       location: fallbackLocation,
     });
     // hourlyRateForTask returns dollars — convert to USD cents
     return fallbackRate * 100;
+  }
+
+  // Signs a short-lived internal token for pricing-service's InternalJwtGuard.
+  // Same pattern as publish.service.ts's signInternalToken() — HS256 with the
+  // shared JWT_SECRET, sub identifies the calling service.
+  private signInternalToken(): string {
+    const secret = this.config.get<string>('JWT_SECRET') ?? '';
+    return jwt.sign({ sub: 'listings-service' }, secret, { expiresIn: '5m' });
   }
 
   // ── calculateTotalBudget ────────────────────────────────────────────────────
