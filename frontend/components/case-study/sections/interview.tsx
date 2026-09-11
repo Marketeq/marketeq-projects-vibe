@@ -132,9 +132,11 @@ function InterviewEdit({
 
 function InterviewView({ data }: { data?: Record<string, unknown> }) {
   const d = data ?? {}
-  const items = Array.isArray(d.items)
-    ? (d.items as { questionHtml: string; answerHtml: string }[])
-    : []
+  // Entries can be null/undefined in case studies saved before the
+  // editor seeded new items — drop the holes rather than crash.
+  const items = (
+    Array.isArray(d.items) ? (d.items as ({ questionHtml: string; answerHtml: string } | null | undefined)[]) : []
+  ).filter((item): item is { questionHtml: string; answerHtml: string } => Boolean(item))
   return (
     <section>
       <Html

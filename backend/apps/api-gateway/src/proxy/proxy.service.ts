@@ -18,7 +18,12 @@ export class ProxyService {
     this.serviceMap = {
       auth: config.get('AUTH_SERVICE_URL') || 'http://localhost:3001',
       users: config.get('USER_SERVICE_URL') || 'http://localhost:3002',
-      listings: config.get('LISTINGS_SERVICE_URL') || 'http://localhost:3003',
+      // ecosystem.config.js assigns listings-service port 3004 (matches the
+      // `listings-service` entry in this file's own /services/health debug
+      // endpoint) — the previous 3003 fallback didn't correspond to any
+      // running service, so any gateway-proxied /listings or /publish/*
+      // call 502'd unless LISTINGS_SERVICE_URL happened to be set.
+      listings: config.get('LISTINGS_SERVICE_URL') || 'http://localhost:3004',
       checkout: config.get('CHECKOUT_SERVICE_URL') || 'http://localhost:3009',
       messages: config.get('MESSAGING_SERVICE_URL') || 'http://localhost:3005',
       notifications: config.get('NOTIFICATION_SERVICE_URL') || 'http://localhost:3006',

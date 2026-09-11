@@ -447,10 +447,10 @@ export function PublishDialog({
         <div className="p-6 space-y-6">
           {/* Cover image */}
           <div>
-            <label className="block text-sm font-medium text-gray-900">
+            <label className="block text-sm font-medium text-dark-blue-400">
               Cover Image
             </label>
-            <div className="group relative mt-2 h-[200px] w-[290px] overflow-hidden rounded-lg border-2 border-primary-500 bg-primary-50">
+            <div className="group relative mt-2 h-[200px] w-[290px] overflow-hidden rounded-lg border-2 border-transparent bg-gray-100 transition duration-200 hover:border-primary-500 hover:bg-primary-50">
               {coverImage ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -461,7 +461,7 @@ export function PublishDialog({
                 />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <Image01 className="h-[76px] w-[84px] text-primary-300 opacity-50" />
+                  <Image01 className="h-[76px] w-[84px] text-gray-300 opacity-50" />
                 </div>
               )}
 

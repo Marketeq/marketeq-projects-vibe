@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { PictureEditor } from "@/components/ui"
+import { PictureEditor, useToast } from "@/components/ui"
 import { uploadCaseStudyImage } from "@/lib/case-study-upload"
 import type { PersonasData } from "@/lib/case-study-mapper"
 import { BlockImageToolbar } from "@/components/case-study/toolbars"
@@ -49,6 +49,7 @@ function PersonasEdit({
     (initialData?.imageOffsetY as number) ?? 50
   )
   const [isImageEditOpen, setIsImageEditOpen] = useState(false)
+  const { toast } = useToast()
 
   useEffect(() => {
     onDataChange?.({
@@ -74,7 +75,14 @@ function PersonasEdit({
           onValueChange={(files) => {
             const file = (files as File[] | undefined)?.[0]
             if (file instanceof File) {
-              uploadCaseStudyImage(file).then(setImageUrl)
+              uploadCaseStudyImage(file)
+                .then(setImageUrl)
+                .catch(() => {
+                  toast({
+                    title: "Couldn't upload image",
+                    description: "Please try again.",
+                  })
+                })
             }
           }}
           startingPoint={({ dataUrl, open, onRemove }) => (

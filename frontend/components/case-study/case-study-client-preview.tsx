@@ -36,6 +36,13 @@ export function CaseStudyClientPreview({
 }) {
   const [blocks, setBlocks] = useState<CaseStudyBlock[]>([])
   const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  // The skills chosen in the publish dialog, persisted on the case study
+  // itself (case_studies.skills) — not the talent's profile skills. These
+  // are what the collaborate card lists under "Related Skills".
+  const [skills, setSkills] = useState<string[]>([])
+  const [liked, setLiked] = useState(false)
+  const [likesCount, setLikesCount] = useState(0)
   const composeRef = useRef<HTMLTextAreaElement>(null)
   const engagedRef = useRef(false)
 
@@ -46,12 +53,51 @@ export function CaseStudyClientPreview({
         if (cancelled) return
         setBlocks(data.schemaJson?.blocks ?? [])
         setTitle(data.title)
+        setDescription(data.description ?? "")
+        setSkills(data.skills ?? [])
+        setLikesCount(data.likesCount ?? 0)
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
   }, [caseStudyId])
+
+  // Whether THIS viewer already liked it — the case study record itself only
+  // carries the total, so the heart's own on/off state needs its own read.
+  // Silent on failure: the heart just starts unfilled, and the toggle below
+  // still reports the authoritative state back from the server.
+  useEffect(() => {
+    let cancelled = false
+    CaseStudyAPI.GetLikeState(caseStudyId)
+      .then(({ data }) => {
+        if (cancelled) return
+        setLiked(Boolean(data?.liked))
+        setLikesCount(data?.likesCount ?? 0)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [caseStudyId])
+
+  // Optimistic: the heart fills the instant it is clicked, then both values
+  // are replaced by whatever the server actually recorded. On failure the
+  // optimistic guess is rolled back rather than left lying.
+  const handleToggleLike = async () => {
+    const previousLiked = liked
+    const previousCount = likesCount
+    setLiked(!previousLiked)
+    setLikesCount(previousCount + (previousLiked ? -1 : 1))
+    try {
+      const { data } = await CaseStudyAPI.ToggleLike(caseStudyId)
+      setLiked(Boolean(data?.liked))
+      setLikesCount(data?.likesCount ?? 0)
+    } catch {
+      setLiked(previousLiked)
+      setLikesCount(previousCount)
+    }
+  }
 
   // Background engagement timer — the 60s follow-up action itself is a
   // separate, not-yet-decided product step (deferred on purpose); this only
@@ -72,8 +118,12 @@ export function CaseStudyClientPreview({
         style={{ maxWidth: PREVIEW_WIDTH }}
       >
         <ClientViewTopBar
+          title={title}
           talentProfile={talentProfile}
           isSelfPreview={isSelfPreview}
+          liked={liked}
+          likesCount={likesCount}
+          onToggleLike={handleToggleLike}
           onMessage={() => composeRef.current?.focus()}
           onClose={onClose}
         />
@@ -85,9 +135,10 @@ export function CaseStudyClientPreview({
           scrollBar={<ScrollBar className="w-4 px-1 bg-gray-50" />}
         >
           <div className="px-[100px] py-[100px] flex flex-col gap-[100px]">
-            <CaseStudyViewer title={title} blocks={blocks} />
+            <CaseStudyViewer title={title} description={description} blocks={blocks} />
             <ClientViewCollaborateCard
               talentProfile={talentProfile}
+              caseStudySkills={skills}
               isSelfPreview={isSelfPreview}
               composeRef={composeRef}
             />

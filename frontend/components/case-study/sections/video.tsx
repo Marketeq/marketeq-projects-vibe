@@ -15,6 +15,7 @@ import {
   EditablePreview,
   EditableRoot,
   PictureEditor,
+  useToast,
 } from "@/components/ui"
 import { uploadCaseStudyImage } from "@/lib/case-study-upload"
 import type { VideoData } from "@/lib/case-study-mapper"
@@ -44,6 +45,7 @@ function VideoEdit({
   )
   const [caption, setCaption] = useState((initialData?.caption as string) ?? "")
   const [open, setOpen] = useState(false)
+  const { toast } = useToast()
 
   useEffect(() => {
     onDataChange?.({ posterUrl: posterUrl ?? "", videoUrl, caption })
@@ -57,7 +59,14 @@ function VideoEdit({
           onValueChange={(files) => {
             const file = (files as File[] | undefined)?.[0]
             if (file instanceof File) {
-              uploadCaseStudyImage(file).then(setPosterUrl)
+              uploadCaseStudyImage(file)
+                .then(setPosterUrl)
+                .catch(() => {
+                  toast({
+                    title: "Couldn't upload image",
+                    description: "Please try again.",
+                  })
+                })
             }
           }}
           startingPoint={({ dataUrl, open: openPicker, style, onRemove, onEdit }) => (
