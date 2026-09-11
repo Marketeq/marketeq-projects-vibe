@@ -1079,7 +1079,11 @@ export default function SettingsPage() {
     null
   )
   const [isAuthenticatorBusy, setIsAuthenticatorBusy] = useState(false)
-  const [isAuthenticatorEnabled, setIsAuthenticatorEnabled] = useState(false)
+
+  // Derived, not local state: enrolment lives on the account, so a local flag
+  // reads false again on every reload and the badge disappears even though the
+  // authenticator is still enrolled. `user` is refreshed from the server.
+  const isAuthenticatorEnabled = user?.twoFactorEnabled ?? false
 
   /**
    * The QR is minted server-side and the secret stored encrypted against the
@@ -1091,6 +1095,17 @@ export default function SettingsPage() {
     setAuthenticatorCode("")
     setAuthenticatorError(null)
     setAuthenticatorQr(null)
+
+    // Generating again would rotate the stored secret and invalidate the
+    // authenticator already enrolled, so the server refuses it. Say so here
+    // rather than spending a request to be told.
+    if (isAuthenticatorEnabled) {
+      setAuthenticatorError(
+        "An authenticator app is already enrolled on this account."
+      )
+      return
+    }
+
     setIsAuthenticatorBusy(true)
     try {
       const res = await AuthAPI.GenerateTwoFactor()
@@ -1114,9 +1129,13 @@ export default function SettingsPage() {
     setIsAuthenticatorBusy(true)
     try {
       await AuthAPI.EnableTwoFactor({ code: authenticatorCode, method: "totp" })
-      setIsAuthenticatorEnabled(true)
+      // Mirrors what TwoFactorSetupModal does after a successful enable, so
+      // the badge updates immediately rather than waiting for a refetch.
+      setUser((prev) =>
+        prev ? { ...prev, twoFactorEnabled: true, twoFactorMethod: "totp" } : prev
+      )
       setIsAuthenticatorOpen(false)
-      setSavedAlertMessage("Successfully enabled app authenticator")
+      setSavedAlertMessage("Successfully added app authenticator")
       setIsSavedAlertMounted(true)
     } catch (error) {
       const message = (error as any)?.response?.data?.message
@@ -1742,24 +1761,28 @@ export default function SettingsPage() {
     setCsvProgress(0)
     setCsvStatus("uploading")
 
+    // Nothing is uploaded at this point — the file is read locally and parsed
+    // in the browser, and only reaches the server when the import is
+    // confirmed. The old ramp was a timer pretending to be a transfer, so it
+    // could show 100% for a file that failed to parse. FileReader reports the
+    // read for real; for a local file that is near-instant, which is the
+    // honest answer.
     const reader = new FileReader()
-    reader.onloadend = () =>
+    reader.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        setCsvProgress(Math.round((event.loaded / event.total) * 100))
+      }
+    }
+    reader.onloadend = () => {
       setCsvEntries(parseIpCsv(String(reader.result ?? "")))
+      setCsvProgress(100)
+    }
+    reader.onerror = () => {
+      setCsvProgress(0)
+      setCsvStatus("idle")
+      setIpSaveError("That file could not be read.")
+    }
     reader.readAsText(file)
-
-    // Reading a local file finishes instantly, so there is no real transfer to
-    // report yet. This ramp stands in for upload progress until the IP backend
-    // exists and can report it for real.
-    csvTimerRef.current = setInterval(() => {
-      setCsvProgress((prev) => {
-        const next = prev + 10
-        if (next >= 100 && csvTimerRef.current) {
-          clearInterval(csvTimerRef.current)
-          csvTimerRef.current = null
-        }
-        return Math.min(next, 100)
-      })
-    }, 150)
   }, [])
 
   const removeCsvEntry = (id: string) =>
@@ -1799,11 +1822,14 @@ export default function SettingsPage() {
     if (csvEntries.length === 0 || csvStatus !== "done") return
     setIpSaveError(null)
     try {
+      // Sent in chunks of 500, so this is real completion, not a timer.
+      setCsvProgress(0)
       const { added, skipped, overlapping } = await addAllowedIps(
         csvEntries.map((entry) => ({
           address: entry.address,
           description: entry.description,
-        }))
+        })),
+        setCsvProgress
       )
       setSavedAlertMessage(
         summariseIpImport(added, skipped.length, overlapping.length)
@@ -1851,7 +1877,18 @@ export default function SettingsPage() {
     setIsSaving(true)
     try {
       if (avatarFile) {
-        await ClientAPI.UploadAvatar(avatarFile)
+        const uploadRes = await ClientAPI.UploadAvatar(avatarFile)
+        // The endpoint answers 201 even when object storage is unconfigured,
+        // because a missing bucket must not block onboarding. `stored` is how
+        // it says the image was discarded. Without this check the rest of the
+        // save succeeds, the photo shows from the local preview, and it is
+        // silently gone on the next load with nothing to explain why.
+        const stored = (uploadRes as any)?.data?.stored
+        if (stored === false) {
+          throw new Error(
+            "Your photo could not be saved because file storage is not configured. Everything else on this form was saved."
+          )
+        }
         setAvatarFile(null)
       }
 
@@ -3913,6 +3950,13 @@ export default function SettingsPage() {
                             height={206}
                             className="h-[206px] w-[208px] object-contain"
                           />
+                        ) : authenticatorError ? (
+                          // Without this the slot spins forever on a failed
+                          // generate, which reads as a hang rather than a
+                          // refusal. The reason renders below the pin input.
+                          <span className="flex size-12 items-center justify-center rounded-[28px] border-8 border-error-50 bg-error-100">
+                            <AlertCircle className="size-6 text-error-500" />
+                          </span>
                         ) : (
                           <Spinner
                             size={32}

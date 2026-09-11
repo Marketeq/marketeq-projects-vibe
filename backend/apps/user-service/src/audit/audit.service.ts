@@ -11,6 +11,15 @@ export const AUDIT_ACTIONS = {
   ALLOWED_IP_REMOVED: 'allowed_ip.removed',
   IP_RESTRICTION_ENABLED: 'ip_restriction.enabled',
   IP_RESTRICTION_DISABLED: 'ip_restriction.disabled',
+
+  // Q75 asked for more than the allow-list. These are the security-relevant
+  // changes this service owns: the account's contact number, the public-facing
+  // avatar, and the company record a client's colleagues are attached to.
+  // Password and session events live in auth-service and are not recorded yet.
+  PHONE_CHANGED: 'profile.phone_changed',
+  AVATAR_CHANGED: 'profile.avatar_changed',
+  COMPANY_CREATED: 'company.created',
+  COMPANY_UPDATED: 'company.updated',
 } as const;
 
 /** Who is acting, and from where. Assembled in the controller. */

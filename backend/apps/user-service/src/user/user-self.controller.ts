@@ -25,6 +25,12 @@ import { UpdateCurrencyDto } from './dtos/update-currency.dto';
 import { UpdateActiveRoleDto } from './dtos/update-active-role.dto';
 import { R2Service } from '../storage/r2.service';
 import { normaliseRasterImage } from '../storage/image-upload.util';
+import {
+  AuditService,
+  AUDIT_ACTIONS,
+  AuditContext,
+} from '../audit/audit.service';
+import { resolveCallerIp } from '../allowed-ips/caller-ip.util';
 
 const ALLOWED_AVATAR_MIME_TYPES = new Set([
   'image/jpeg',
@@ -96,7 +102,18 @@ export class UserSelfController {
   constructor(
     private readonly userService: UserService,
     private readonly r2Service: R2Service,
+    private readonly audit: AuditService,
   ) {}
+
+  /** Same shape allowed-ips uses, so every audit row reads alike. */
+  private auditContext(user: JwtUser, req: Request): AuditContext {
+    const ua = req.headers['user-agent'];
+    return {
+      actorUserId: user.sub,
+      ipAddress: resolveCallerIp(req),
+      userAgent: Array.isArray(ua) ? ua[0] : (ua ?? null),
+    };
+  }
 
   @ApiOperation({ summary: 'Get current user' })
   @Get('me')
@@ -135,8 +152,9 @@ export class UserSelfController {
   )
   async uploadAvatar(
     @CurrentUser() user: JwtUser,
+    @Req() req: Request,
     @UploadedFile() file?: Express.Multer.File,
-  ): Promise<{ url: string | null }> {
+  ): Promise<{ url: string | null; stored: boolean }> {
     if (!file) {
       throw new BadRequestException('Avatar file is required');
     }
@@ -178,10 +196,18 @@ export class UserSelfController {
     // partially-filled .env degrades gracefully instead of 500ing out of
     // getClient() mid-upload.
     if (!this.r2Service.isConfigured()) {
+      // `stored` exists because a bare 201 with a null url reads as success.
+      // The image is discarded here and avatarUrl is never written, so a
+      // caller that only checks the status code reports a save that did not
+      // happen — and then cannot explain why the photo is gone on reload.
+      // Naming the missing variables turns an evening of frontend debugging
+      // into a one-line env fix.
       this.logger.warn(
-        'Skipping avatar upload: Cloudflare R2 is not fully configured',
+        'Skipping avatar upload: Cloudflare R2 is not fully configured. ' +
+          'Set CLOUDFLARE_R2_BUCKET, CLOUDFLARE_R2_ACCESS_KEY_ID and ' +
+          'CLOUDFLARE_R2_SECRET_ACCESS_KEY. The image was discarded.',
       );
-      return { url: null };
+      return { url: null, stored: false };
     }
 
     const resolved = await this.userService.getUserByClaims(user);
@@ -193,7 +219,14 @@ export class UserSelfController {
     }
 
     await this.userService.updateAvatarUrl(resolved.id, url);
-    return { url };
+    // No URL in the metadata: the trail records that the public face of the
+    // account changed, not a copy of the image location.
+    await this.audit.record(
+      AUDIT_ACTIONS.AVATAR_CHANGED,
+      resolved.id,
+      this.auditContext(user, req),
+    );
+    return { url, stored: true };
   }
 
   @ApiOperation({ summary: 'Update the current user phone number' })
@@ -201,12 +234,21 @@ export class UserSelfController {
   async updatePhone(
     @CurrentUser() user: JwtUser,
     @Body() dto: UpdatePhoneDto,
+    @Req() req: Request,
   ) {
     if (!('phone' in dto)) {
       throw new BadRequestException('phone field is required (string or null)');
     }
     const resolved = await this.userService.getUserByClaims(user);
     const updated = await this.userService.updatePhone(resolved.id, dto.phone ?? null);
+    // The number itself is not recorded — only whether one is now set. A
+    // security trail should not become a second store of contact details.
+    await this.audit.record(
+      AUDIT_ACTIONS.PHONE_CHANGED,
+      resolved.id,
+      this.auditContext(user, req),
+      { cleared: (dto.phone ?? null) === null },
+    );
     return { id: updated.id, phone: updated.phone ?? null };
   }
 

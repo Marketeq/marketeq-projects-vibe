@@ -23,7 +23,20 @@ export const RASTER_IMAGE_MIME_TYPES = new Set([
 export const SVG_MIME_TYPE = 'image/svg+xml';
 
 /** Company logos are small; well under the 5MB avatar ceiling. */
-export const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+export const MAX_LOGO_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Logos are normalised like avatars — same EXIF strip, same re-encode — but
+ * deliberately keep no minimum dimension.
+ *
+ * An avatar is a square portrait, so 200x200 is a reasonable floor. A logo is
+ * often a wide wordmark (600x80) or a small mark, and any floor applied here
+ * would start rejecting uploads that succeed today. Passing 1 keeps the
+ * privacy fix additive: metadata is dropped and oversized files are scaled
+ * down, but nothing that works now begins to fail.
+ */
+export const MAX_LOGO_DIMENSION = 1024;
+export const MIN_LOGO_DIMENSION = 1;
 
 /**
  * Inspect the leading bytes of an uploaded buffer against the well-known image
