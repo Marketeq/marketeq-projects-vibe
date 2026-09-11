@@ -12049,6 +12049,13 @@ const createProjectScopePhase = (
   rows: [],
 });
 
+type ProjectAssistantHistoryItem = {
+  id: string
+  prompt: string
+  result?: string
+  status: "pending" | "success" | "error"
+}
+
 const ProjectScopeEditStep = ({
   setProgress,
   jobListingId,
@@ -12076,6 +12083,9 @@ const ProjectScopeEditStep = ({
   const [assistantMessage, setAssistantMessage] = useState("")
   const [assistantResult, setAssistantResult] = useState("")
   const [assistantLastPrompt, setAssistantLastPrompt] = useState("")
+  const [assistantHistory, setAssistantHistory] = useState<
+    ProjectAssistantHistoryItem[]
+  >([])
   const [isAssistantLoading, setIsAssistantLoading] = useState(false)
   const didGenerateInitialScopeRef = useRef(false)
   const didApplyPersistedScopeRef = useRef(false)
@@ -12395,18 +12405,55 @@ const ProjectScopeEditStep = ({
     return fallback
   }
 
+  const startProjectAssistantHistoryItem = (prompt: string) => {
+    const historyId = `project-assistant-history-${getId()}`
+
+    setAssistantHistory((currentHistory) =>
+      [
+        ...currentHistory,
+        {
+          id: historyId,
+          prompt,
+          status: "pending" as const,
+        },
+      ].slice(-20)
+    )
+
+    return historyId
+  }
+
+  const completeProjectAssistantHistoryItem = (
+    id: string,
+    prompt: string,
+    result: string,
+    status: Exclude<ProjectAssistantHistoryItem["status"], "pending"> =
+      "success"
+  ) => {
+    setAssistantResult(result)
+    setAssistantLastPrompt(prompt)
+    setAssistantHistory((currentHistory) =>
+      currentHistory.map((item) =>
+        item.id === id ? { ...item, result, status } : item
+      )
+    )
+  }
+
   const runProjectAssistant = async (message: string) => {
     const prompt = message.trim()
     if (!prompt) return
 
     assistantUndoSnapshotRef.current = phases
     setAssistantLastPrompt(prompt)
+    const historyId = startProjectAssistantHistoryItem(prompt)
+    setAssistantMessage("")
 
     if (!jobListingId) {
-      setAssistantResult(
-        "Smart Assistant needs a saved job draft first. Please try again in a moment."
+      completeProjectAssistantHistoryItem(
+        historyId,
+        prompt,
+        "Smart Assistant needs a saved job draft first. Please try again in a moment.",
+        "error"
       )
-      setAssistantMessage("")
       return
     }
 
@@ -12420,38 +12467,48 @@ const ProjectScopeEditStep = ({
       const data = response?.data ?? {}
 
       if (data.aiStatus === "AI_UNAVAILABLE") {
-        setAssistantResult(
+        completeProjectAssistantHistoryItem(
+          historyId,
+          prompt,
           getProjectAssistantResultText(
             data.message,
             "Smart Assistant is temporarily unavailable."
-          )
+          ),
+          "error"
         )
         return
       }
 
       if (applyPersistedProjectScopeFromAssistant(data)) {
-        setAssistantResult(
+        completeProjectAssistantHistoryItem(
+          historyId,
+          prompt,
           getProjectAssistantResultText(
             data.summary,
             "Applied: Smart Assistant updated the project scope."
           )
         )
       } else {
-        setAssistantResult(
+        completeProjectAssistantHistoryItem(
+          historyId,
+          prompt,
           getProjectAssistantResultText(
             data.summary,
             "Smart Assistant did not return an updated scope."
-          )
+          ),
+          "error"
         )
       }
     } catch (error: any) {
-      setAssistantResult(
+      completeProjectAssistantHistoryItem(
+        historyId,
+        prompt,
         error?.response?.data?.message ||
           error?.message ||
-          "Smart Assistant is temporarily unavailable."
+          "Smart Assistant is temporarily unavailable.",
+        "error"
       )
     } finally {
-      setAssistantMessage("")
       setIsAssistantLoading(false)
     }
   }
@@ -13400,7 +13457,7 @@ const ProjectScopeEditStep = ({
                 className="size-5 shrink-0"
               />
             </div>
-            <div className="flex h-[486px] shrink-0 grow flex-col items-start gap-4 self-stretch px-5 pt-5">
+            <div className="flex h-[486px] shrink-0 grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
               <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
                 <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
                   What do you want to do?
@@ -13470,49 +13527,68 @@ const ProjectScopeEditStep = ({
                   </Button>
                 ))}
               </div>
-              {assistantResult ? (
+              {assistantHistory.length > 0 ? (
                 <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
-                  {assistantLastPrompt ? (
-                    <div className="flex w-[282px] justify-end">
-                      <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base font-normal leading-6 text-dark-blue-400">
-                        {assistantLastPrompt}
-                      </p>
-                    </div>
-                  ) : null}
-                  <div className="text-base font-normal leading-6 text-dark-blue-400">
-                    <p>Here&apos;s what we&apos;ve updated:</p>
-                    <ul className="list-disc pl-5">
-                      {assistantResult
-                        .split(/\n+/)
-                        .map((line) => line.replace(/^[-•]\s*/, "").trim())
-                        .filter(Boolean)
-                        .map((line) => (
-                          <li key={line}>{line}</li>
-                        ))}
-                    </ul>
-                  </div>
-                  <div className="flex h-10 items-start gap-2">
-                    <Button
-                      type="button"
-                      className="h-10 rounded-[5px] bg-primary-50 px-4 py-2.5 text-sm font-semibold leading-5 text-primary-500 shadow-none"
-                      disabled={isAssistantLoading || !assistantLastPrompt}
-                      onClick={() => runProjectAssistant(assistantLastPrompt)}
-                    >
-                      <RefreshCcw05 className="size-4 shrink-0" />
-                      Retry
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outlined"
-                      visual="gray"
-                      className="h-10 rounded-[5px] border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold leading-5 text-gray-800 shadow-xs"
-                      disabled={!assistantUndoSnapshotRef.current}
-                      onClick={undoProjectAssistant}
-                    >
-                      <ArrowUpLeft className="size-4 shrink-0" />
-                      Undo
-                    </Button>
-                  </div>
+                  {assistantHistory.map((item, itemIndex) => {
+                    const isLatest = itemIndex === assistantHistory.length - 1
+                    const resultLines = (item.result ?? "")
+                      .split(/\n+/)
+                      .map((line) => line.replace(/^[-•]\s*/, "").trim())
+                      .filter(Boolean)
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex w-[282px] flex-col items-start gap-6 self-stretch"
+                      >
+                        <div className="flex w-[282px] justify-end">
+                          <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base font-normal leading-6 text-dark-blue-400">
+                            {item.prompt}
+                          </p>
+                        </div>
+                        {item.status !== "pending" ? (
+                          <div className="text-base font-normal leading-6 text-dark-blue-400">
+                            {item.status === "error" ? (
+                              <p>{item.result}</p>
+                            ) : (
+                              <>
+                                <p>Here&apos;s what we&apos;ve updated:</p>
+                                <ul className="list-disc pl-5">
+                                  {resultLines.map((line) => (
+                                    <li key={`${item.id}-${line}`}>{line}</li>
+                                  ))}
+                                </ul>
+                              </>
+                            )}
+                          </div>
+                        ) : null}
+                        {isLatest && item.status !== "pending" ? (
+                          <div className="flex h-10 items-start gap-2">
+                            <Button
+                              type="button"
+                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none"
+                              disabled={isAssistantLoading || !item.prompt}
+                              onClick={() => runProjectAssistant(item.prompt)}
+                            >
+                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              Retry
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outlined"
+                              visual="gray"
+                              className="h-7 w-[62px] rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs"
+                              disabled={!assistantUndoSnapshotRef.current}
+                              onClick={undoProjectAssistant}
+                            >
+                              <ArrowUpLeft className="size-3 shrink-0" />
+                              Undo
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
                 </div>
               ) : null}
             </div>
