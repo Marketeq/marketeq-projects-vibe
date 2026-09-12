@@ -375,6 +375,9 @@ const OFFER_EVENT_ACTION: Record<string, string> = {
   "offer.counter_expired": "has a counter offer that expired",
 }
 
+const offerInvitationMessage = (role: string) =>
+  `I am developing an application focused on delivering an industry-leading user experience and would like to invite you to join the project as our ${role}.`
+
 const OFFER_EVENT_STATE: Record<
   string,
   { label: string; visual: "success" | "error" | "warning" | "gray" }
@@ -3338,12 +3341,12 @@ export function Chats({
 
                             <p className="h-[34px] w-full text-sm leading-[17px] text-dark-blue-400">
                               {item.clientPerspective
-                                ? `I would like to invite you to join ${item.offerTitle} as our ${item.role}.`
+                                ? offerInvitationMessage(item.role)
                                 : isClientSentTalentCounter
                                   ? item.counterOfferMessage ||
                                     "I would like to propose updated terms for this offer."
                                 : item.seeded
-                                  ? `I would like to invite you to join ${item.offerTitle} as our ${item.role}.`
+                                  ? offerInvitationMessage(item.role)
                                   : item.body}
                             </p>
                           </div>
@@ -3505,7 +3508,7 @@ export function Chats({
                               ) : null}
                             </div>
 
-                            <div className="h-px w-full bg-gray-100" />
+                            <div className="h-px w-full shrink-0 bg-gray-100" />
                             <div
                               className={cn(
                                 "flex h-[22px] w-full items-center justify-between gap-4 text-xs leading-[15px] text-gray-500",
