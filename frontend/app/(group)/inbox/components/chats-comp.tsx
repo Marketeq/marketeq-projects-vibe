@@ -3508,7 +3508,7 @@ export function Chats({
                               ) : null}
                             </div>
 
-                            <div className="h-px w-full bg-gray-100" />
+                            <div className="h-px w-full shrink-0 bg-gray-100" />
                             <div
                               className={cn(
                                 "flex h-[22px] w-full items-center justify-between gap-4 text-xs leading-[15px] text-gray-500",
@@ -4505,7 +4505,7 @@ export function Chats({
                         </Button>
                       </div>
 
-                      <div className="h-px w-full bg-gray-100" />
+                      <div className="h-px w-full shrink-0 bg-gray-100" />
                       <div className="flex h-[22px] w-full items-center justify-between gap-3 text-xs leading-[15px] text-gray-500">
                         <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><DollarSign className="size-3 shrink-0 text-primary-400" />Offer Rate <strong className="text-base text-dark-blue-400">{acceptedCounterOfferMessage.offerRate}</strong></span>
                         <div className="h-[22px] w-px shrink-0 bg-gray-200" />
@@ -4633,7 +4633,7 @@ export function Chats({
                           </Button>
                         </div>
 
-                        <div className="h-px w-full bg-gray-100" />
+                        <div className="h-px w-full shrink-0 bg-gray-100" />
                         <div className="flex h-[22px] w-full items-center justify-between gap-3 text-xs leading-[15px] text-gray-500">
                           <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><DollarSign className="size-3 shrink-0 text-primary-400" />Offer Rate <strong className="text-base text-dark-blue-400">{sentOffer.offerRate}</strong></span>
                           <div className="h-[22px] w-px shrink-0 bg-gray-200" />

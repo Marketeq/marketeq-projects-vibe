@@ -294,7 +294,7 @@ export default function InboxRoot() {
                       : typeof metadata.jobTitle === "string" &&
                           metadata.jobTitle.trim()
                         ? metadata.jobTitle.trim()
-                        : offer.contractTitle.split(/\s+[—-]\s+/)[1]?.trim() ||
+                        : offer.contractTitle.split(/\s+[—-]\s+/)[0].trim() ||
                           "Team Member",
                   duration: `${offer.durationMonths} Month${offer.durationMonths === 1 ? "" : "s"}`,
                   schedule:
@@ -443,7 +443,15 @@ export default function InboxRoot() {
                       ? metadata.originalStartDate
                       : undefined,
                   role:
-                    typeof metadata.role === "string" ? metadata.role : "Role",
+                    typeof metadata.role === "string" && metadata.role.trim()
+                      ? metadata.role.trim()
+                      : typeof metadata.jobTitle === "string" &&
+                          metadata.jobTitle.trim()
+                        ? metadata.jobTitle.trim()
+                        : typeof metadata.contractTitle === "string"
+                          ? metadata.contractTitle.split(/\s+[—-]\s+/)[0].trim() ||
+                            "Team Member"
+                          : "Team Member",
                   duration:
                     typeof metadata.duration === "string"
                       ? metadata.duration
