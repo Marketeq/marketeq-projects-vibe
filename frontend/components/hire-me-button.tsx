@@ -925,7 +925,12 @@ export function OfferDialog({
     (isStepThree
       ? Boolean(
           schedule &&
-          selectedContractId &&
+          // BTB-262: selectedContractId is only ever set when there was a
+          // list to choose from (or edit mode's static placeholder). On the
+          // T1-10 fallthrough (no existing contracts, isStepThree entered via
+          // !hasExistingContracts) it stays null forever, so requiring it
+          // unconditionally made this permanently false for that route.
+          (!hasExistingContracts || Boolean(selectedContractId)) &&
           selectedRate &&
           selectedDuration &&
           selectedStartDateAction &&
