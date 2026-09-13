@@ -56,6 +56,10 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   useToast,
 } from "@/components/ui"
 
@@ -2751,6 +2755,34 @@ export function OfferDialog({
 
 export function HireMeButton({ profile, buttonProps }: HireMeButtonProps) {
   const [open, setOpen] = React.useState(false)
+
+  // BTB-261: `profile && !profile.availability`, not `!profile?.availability`
+  // — the latter is also true while profile is still undefined during load,
+  // which would flash the button disabled before the real value is known.
+  const isUnavailable = Boolean(profile && !profile.availability)
+
+  if (isUnavailable) {
+    return (
+      <TooltipProvider delayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {/* A natively disabled button swallows pointer events, so the
+            tooltip trigger has to be this wrapping span, not the button
+            itself — same pattern as HideToggle in recent-questions-manager.tsx. */}
+            <span className="inline-flex">
+              <Button {...buttonProps} disabled aria-disabled="true">
+                <Plus className="size-[15px]" />
+                Hire Me
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            This talent is not currently available for hire.
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
 
   return (
     <OfferDialog
