@@ -30,6 +30,7 @@ import {
 import { OfferHistoryService } from '../offer-history/offer-history.service';
 import { OfferTermsSnapshot } from '../offer-history/entities/offer-history-event.entity';
 import { normalizeDateOnly } from '../common/utils/normalize-date-only';
+import { calculateExpiresAt } from '../scheduler/ttl.helper';
 
 @Injectable()
 export class CounterOffersService {
@@ -80,8 +81,7 @@ export class CounterOffersService {
       `, [offerId]);
 
       // Step B: Create the new counter offer.
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 14); // 14-day TTL
+      const expiresAt = calculateExpiresAt();
 
       const insertResult = await em.query(`
         INSERT INTO offer_service.counter_offers (
@@ -222,10 +222,10 @@ export class CounterOffersService {
       // Restore parent offer to PENDING.
       const offerResult = await em.query(`
         UPDATE offer_service.offers
-          SET status = 'PENDING', updated_at = NOW()
+          SET status = 'PENDING', updated_at = NOW(), expires_at = $2, warning_sent_at = NULL
         WHERE id = $1 AND status = 'COUNTERED'
         RETURNING *
-      `, [offerId]);
+      `, [offerId, calculateExpiresAt().toISOString()]);
 
       const offerRows = Array.isArray(offerResult[0]) ? offerResult[0] : offerResult;
       const restoredOffer = offerRows.length > 0 ? this.mapRawToOffer(offerRows[0]) : offer;
@@ -278,10 +278,10 @@ export class CounterOffersService {
 
       const offerResult = await em.query(`
         UPDATE offer_service.offers
-          SET status = 'PENDING', updated_at = NOW()
+          SET status = 'PENDING', updated_at = NOW(), expires_at = $2, warning_sent_at = NULL
         WHERE id = $1 AND status = 'COUNTERED'
         RETURNING *
-      `, [offerId]);
+      `, [offerId, calculateExpiresAt().toISOString()]);
 
       const offerRows = Array.isArray(offerResult[0]) ? offerResult[0] : offerResult;
       const restoredOffer = offerRows.length > 0 ? this.mapRawToOffer(offerRows[0]) : offer;
@@ -363,7 +363,7 @@ export class CounterOffersService {
   }
 
   // ============================================================
-  // editCO() — SUBMITTER edits their own PENDING CO (in-place, no TTL reset)
+  // editCO() — SUBMITTER edits their own PENDING CO (in-place, resets TTL)
   // ============================================================
 
   async edit(offerId: string, id: string, userId: string, dto: any): Promise<CounterOffer> {
@@ -375,9 +375,13 @@ export class CounterOffersService {
 
     const previousTerms = this.termsFromCO(co);
 
-    const setParts: string[] = ['updated_at = NOW()'];
-    const values: unknown[] = [id];
-    let paramIdx = 2;
+    const setParts: string[] = [
+      'updated_at = NOW()',
+      'expires_at = $2',
+      'warning_sent_at = NULL',
+    ];
+    const values: unknown[] = [id, calculateExpiresAt().toISOString()];
+    let paramIdx = 3;
 
     const editableFields: Record<string, string> = {
       rate: 'rate', currencyCode: 'currency_code', durationMonths: 'duration_months',
