@@ -81,6 +81,11 @@ export function getDefaultJobTitle(
   return (
     jobTitles?.find((job: any) => job.isDefault || job.saveAsDefault)?.jobTitle ||
     jobTitles?.[0]?.jobTitle ||
+    // GET /talent/users/:username (how this modal seeds and refetches the
+    // profile) never loads jobTitles, so both rungs above are always
+    // undefined here — recentJobTitle is a plain column on users and is the
+    // only rung left that can carry a real title on username-reached profiles.
+    profile?.recentJobTitle ||
     legacyRole ||
     fallback
   )
