@@ -7475,10 +7475,101 @@ const normalizePricingExperience = (
   return undefined;
 };
 
+// Mirrors backend/apps/listings-service/src/job-listing/services/
+// job-listing-budget.service.ts's COUNTRY_TO_REGION — pricing-service only
+// understands these 8 regions, not the 56 real countries CountriesCombobox
+// offers, so a raw country name (e.g. "India") 400s. Duplicated here (not
+// imported — separate deployable frontend/backend, no shared package)
+// because this screen calls pricing-service directly via the gateway
+// instead of going through job-listing-budget.service.ts. Keep in sync if
+// that map changes.
+const COUNTRY_TO_REGION: Record<string, string> = {
+  "United States": "United States",
+  Canada: "Canada",
+  "United Kingdom": "United Kingdom",
+  Australia: "United States",
+  "New Zealand": "United States",
+
+  Germany: "Western Europe",
+  France: "Western Europe",
+  Spain: "Western Europe",
+  Italy: "Western Europe",
+  Netherlands: "Western Europe",
+  Sweden: "Western Europe",
+  Norway: "Western Europe",
+  Denmark: "Western Europe",
+  Finland: "Western Europe",
+  Switzerland: "Western Europe",
+  Austria: "Western Europe",
+  Belgium: "Western Europe",
+  Ireland: "Western Europe",
+  Portugal: "Western Europe",
+  Greece: "Western Europe",
+
+  Ukraine: "Eastern Europe",
+  Poland: "Eastern Europe",
+  Romania: "Eastern Europe",
+  "Czech Republic": "Eastern Europe",
+  Hungary: "Eastern Europe",
+  Turkey: "Eastern Europe",
+  Russia: "Eastern Europe",
+  Estonia: "Eastern Europe",
+  Latvia: "Eastern Europe",
+  Lithuania: "Eastern Europe",
+  Croatia: "Eastern Europe",
+  Serbia: "Eastern Europe",
+  Bulgaria: "Eastern Europe",
+
+  Brazil: "Latin America",
+  Mexico: "Latin America",
+  Argentina: "Latin America",
+  Colombia: "Latin America",
+  Chile: "Latin America",
+
+  India: "South Asia",
+  Pakistan: "South Asia",
+  Bangladesh: "South Asia",
+  "Sri Lanka": "South Asia",
+  Nigeria: "South Asia",
+  Kenya: "South Asia",
+  "South Africa": "South Asia",
+  Egypt: "South Asia",
+
+  Philippines: "Southeast Asia",
+  Thailand: "Southeast Asia",
+  Vietnam: "Southeast Asia",
+  Indonesia: "Southeast Asia",
+  Malaysia: "Southeast Asia",
+  Singapore: "Southeast Asia",
+  Japan: "Southeast Asia",
+  "South Korea": "Southeast Asia",
+  China: "Southeast Asia",
+  Israel: "Southeast Asia",
+};
+
+const COUNTRY_TO_REGION_LOWER: Record<string, string> = Object.fromEntries(
+  Object.entries(COUNTRY_TO_REGION).map(([country, region]) => [
+    country.toLowerCase(),
+    region,
+  ]),
+);
+
+// "usa"/"us" aren't real country names (the actual entry is "United
+// States") but were already special-cased here before this fix — kept for
+// backward compatibility with anything already relying on that shorthand.
+const LOCATION_ALIASES: Record<string, string> = {
+  usa: "united states",
+  us: "united states",
+  uk: "united kingdom",
+};
+
 const normalizePricingLocation = (location?: string) => {
   const normalized = normalizeSearchText(location);
-  if (normalized === "usa" || normalized === "us") return "United States";
-  return location;
+  if (!normalized) return undefined;
+  const aliased = LOCATION_ALIASES[normalized] ?? normalized;
+  // No match -> omit location rather than send pricing-service a raw
+  // country/city string it will always 400 on.
+  return COUNTRY_TO_REGION_LOWER[aliased];
 };
 
 const temporaryRateUsdCentsByExperience: Record<

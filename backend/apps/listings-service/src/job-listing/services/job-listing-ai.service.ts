@@ -2,6 +2,21 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
+import { COUNTRY_TO_REGION } from "./job-listing-budget.service";
+
+// The 56 countries job-listing-budget.service.ts's normalizeLocation() can
+// actually resolve to a pricing-service region. Reused here (not
+// re-typed) so the AI is asked for exactly what the rate lookup can consume
+// — a real country, never a bare region name like "Eastern Europe", which
+// normalizeLocation() has no way to map back to itself.
+const VALID_COUNTRIES = Object.keys(COUNTRY_TO_REGION);
+const VALID_COUNTRIES_PROMPT_LIST = VALID_COUNTRIES.join(", ");
+// lowercase -> canonical casing, so a model reply like "united states" still
+// gets stored/displayed as "United States" (Step 4's country picker matches
+// on exact casing), not just accepted as "close enough" for the rate lookup.
+const VALID_COUNTRIES_CANONICAL: Record<string, string> = Object.fromEntries(
+  VALID_COUNTRIES.map((c) => [c.toLowerCase(), c]),
+);
 
 interface GroqMessage {
   role: "system" | "user" | "assistant";
@@ -313,9 +328,17 @@ export class JobListingAiService {
         typeof task.roleTitle === "string" && task.roleTitle.trim()
           ? task.roleTitle.trim()
           : "Specialist",
+      // Coerce to one of the 56 countries job-listing-budget.service.ts's
+      // normalizeLocation() can actually resolve — same enforcement
+      // experienceLevel already gets below. The prompt asks for one of
+      // these, but models don't always comply exactly (wrong casing, or a
+      // region name instead of a country), so fall back to "United States"
+      // rather than let a stray value quietly go un-priced or, worse, show
+      // up unmatched in Step 4's country picker.
       location:
-        typeof task.location === "string" && task.location.trim()
-          ? task.location.trim()
+        typeof task.location === "string" &&
+        VALID_COUNTRIES_CANONICAL[task.location.trim().toLowerCase()]
+          ? VALID_COUNTRIES_CANONICAL[task.location.trim().toLowerCase()]
           : "United States",
       experienceLevel,
       workSchedule,
@@ -606,8 +629,7 @@ export class JobListingAiService {
               '"workSchedule": "full_time|part_time", "estimatedHours": number }] }] }. ' +
               "Maximum 10 phases. Maximum 16 tasks per phase. " +
               "experienceLevel must be one of: junior, mid, senior. " +
-              "location must be one of: United States, Canada, United Kingdom, " +
-              "Western Europe, Eastern Europe, Latin America, South Asia, Southeast Asia. " +
+              `location must be one of these countries: ${VALID_COUNTRIES_PROMPT_LIST}. ` +
               "estimatedHours must be a positive number. Do not include markdown or prose.",
           },
           {

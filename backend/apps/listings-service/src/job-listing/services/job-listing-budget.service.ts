@@ -69,7 +69,10 @@ function normalizeExperienceLevel(experienceLevel: string | null): string | unde
 //     is the closest existing rate tier, not a geographic claim)
 // If any of these read wrong for the business, they're isolated in this one
 // map — easy to revisit without touching the lookup logic around it.
-const COUNTRY_TO_REGION: Record<string, string> = {
+// Exported so job-listing-ai.service.ts can build its "pick a country" prompt
+// instruction and validate AI output from this exact same list — one source
+// of truth instead of a third hardcoded copy.
+export const COUNTRY_TO_REGION: Record<string, string> = {
   'United States': 'United States',
   'Canada': 'Canada',
   'United Kingdom': 'United Kingdom',
@@ -133,9 +136,16 @@ const COUNTRY_TO_REGION: Record<string, string> = {
   'Israel': 'Southeast Asia',
 };
 
+// Lowercase-keyed copy so lookups tolerate minor casing drift (e.g. an LLM
+// emitting "united states" instead of "United States") instead of silently
+// falling through to "omitted".
+const COUNTRY_TO_REGION_LOWER: Record<string, string> = Object.fromEntries(
+  Object.entries(COUNTRY_TO_REGION).map(([country, region]) => [country.toLowerCase(), region]),
+);
+
 function normalizeLocation(location: string | null): string | undefined {
   if (!location) return undefined;
-  return COUNTRY_TO_REGION[location];
+  return COUNTRY_TO_REGION_LOWER[location.toLowerCase()];
 }
 
 // ── Frequency label → number of working days in that period ─────────────────
