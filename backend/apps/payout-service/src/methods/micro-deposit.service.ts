@@ -244,24 +244,66 @@ export class MicroDepositService {
       ],
     });
 
+    // deposit_method_id is nullable (see DepositMethodVerification), so a row
+    // can carry a null one. Passing that straight to em.update() made TypeORM
+    // throw "Empty criteria(s) are not allowed for the update method", and
+    // because nothing caught it the throw escaped the whole cron: every later
+    // row went unexpired and the magic-link cleanup below never ran at all.
+    // One malformed row must not cost the rest of the sweep, so each row is
+    // now isolated and the orphan case expires the verification on its own.
+    let succeeded = 0;
+    const failed: string[] = [];
+
     for (const v of expired) {
-      await this.dataSource.transaction(async (em) => {
-        await em.update(DepositMethodVerification, v.id, {
-          status: VerificationStatus.EXPIRED as any,
+      try {
+        await this.dataSource.transaction(async (em) => {
+          await em.update(DepositMethodVerification, v.id, {
+            status: VerificationStatus.EXPIRED as any,
+          });
+          if (v.depositMethodId) {
+            await em.update(DepositMethod, v.depositMethodId, {
+              verificationStatus: VerificationStatus.EXPIRED,
+            });
+          }
         });
-        await em.update(DepositMethod, v.depositMethodId, {
-          verificationStatus: VerificationStatus.EXPIRED,
-        });
-      });
-      this.logger.log(`Verification expired: method ${v.depositMethodId}`);
+        succeeded++;
+        if (v.depositMethodId) {
+          this.logger.log(`Verification expired: method ${v.depositMethodId}`);
+        } else {
+          this.logger.warn(
+            `Verification ${v.id} expired but has no deposit_method_id — ` +
+            `orphaned row, no method status to update`,
+          );
+        }
+      } catch (err: unknown) {
+        failed.push(v.id);
+        this.logger.error(
+          `Failed to expire verification ${v.id} ` +
+          `(method ${v.depositMethodId ?? 'none'}): ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
 
-    // Cleanup expired magic link tokens
-    await this.mlTokenRepo.update(
-      { isUsed: false, expiresAt: LessThan(now) } as any,
-      { isUsed: true },
-    );
+    // Cleanup expired magic link tokens. Kept outside the loop's failure path
+    // so a bad verification row can no longer suppress it.
+    try {
+      await this.mlTokenRepo.update(
+        { isUsed: false, expiresAt: LessThan(now) } as any,
+        { isUsed: true },
+      );
+    } catch (err: unknown) {
+      this.logger.error(
+        `Magic link token cleanup failed: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
 
-    if (expired.length > 0) this.logger.log(`Expired ${expired.length} stale verifications`);
+    if (succeeded > 0) this.logger.log(`Expired ${succeeded} stale verifications`);
+    if (failed.length > 0) {
+      this.logger.error(
+        `${failed.length} verification(s) could not be expired: ${failed.join(', ')}`,
+      );
+    }
   }
 }
