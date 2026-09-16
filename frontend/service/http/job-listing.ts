@@ -106,6 +106,15 @@ export const JobListingAPI = {
           command: string;
           currentScope: Record<string, unknown>;
           workType: JobListingWorkType;
+          // Current total budget in USD cents, as already computed for the
+          // on-screen budget figure — passed through so the backend doesn't
+          // repeat the same pricing-service rate lookups just to give the
+          // Smart Assistant a reduction target.
+          currentTotalBudgetUsdCents?: number;
+          // Current total project timeline in working days, as already
+          // computed for the on-screen timeline figure — same rationale as
+          // currentTotalBudgetUsdCents, for "shorten the timeline" commands.
+          currentTotalTimelineDays?: number;
         }
       | {
           mode: "field";
@@ -126,6 +135,8 @@ export const JobListingAPI = {
       command: string;
       currentScope: Record<string, unknown>;
       workType?: JobListingWorkType;
+      currentTotalBudgetUsdCents?: number;
+      currentTotalTimelineDays?: number;
     },
   ) =>
     AxiosRequest.post(

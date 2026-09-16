@@ -1,9 +1,11 @@
 import {
   IsIn,
   IsNotEmpty,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
+  Min,
   MaxLength,
   ValidateIf,
 } from 'class-validator';
@@ -25,6 +27,25 @@ export class SmartAssistantDto {
   @ValidateIf((dto) => (dto.mode ?? (dto.field === 'scope' ? 'scope' : 'field')) === 'scope' && dto.workType !== undefined)
   @IsIn(['project', 'service'])
   workType?: 'project' | 'service';
+
+  // The UI already computes the scope's current total budget (it calls the
+  // same pricing-service rate lookups to render the budget figure on
+  // screen), so the client passes it here instead of the server repeating
+  // those lookups itself just to give the Smart Assistant a reduction
+  // target. Advisory context for the AI's prompt only — never persisted,
+  // never trusted for anything financial.
+  @ValidateIf((dto) => (dto.mode ?? (dto.field === 'scope' ? 'scope' : 'field')) === 'scope' && dto.currentTotalBudgetUsdCents !== undefined)
+  @IsNumber()
+  @Min(0)
+  currentTotalBudgetUsdCents?: number;
+
+  // Same rationale as currentTotalBudgetUsdCents, for "shorten the
+  // timeline" commands — the UI already computes this to render the
+  // on-screen timeline figure.
+  @ValidateIf((dto) => (dto.mode ?? (dto.field === 'scope' ? 'scope' : 'field')) === 'scope' && dto.currentTotalTimelineDays !== undefined)
+  @IsNumber()
+  @Min(0)
+  currentTotalTimelineDays?: number;
 
   @ValidateIf((dto) => (dto.mode ?? (dto.field === 'scope' ? 'scope' : 'field')) === 'field')
   @IsString()
@@ -64,6 +85,18 @@ export class SmartAssistantScopeDto {
   @IsOptional()
   @IsIn(['project', 'service'])
   workType?: 'project' | 'service';
+
+  // See SmartAssistantDto's field of the same name for the rationale — the
+  // UI already has this figure, so it's passed rather than recomputed.
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  currentTotalBudgetUsdCents?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  currentTotalTimelineDays?: number;
 
   @IsOptional()
   @IsString()

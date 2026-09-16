@@ -148,6 +148,21 @@ function normalizeLocation(location: string | null): string | undefined {
   return COUNTRY_TO_REGION_LOWER[location.toLowerCase()];
 }
 
+// ── REGION_TO_COUNTRIES ──────────────────────────────────────────────────
+// The reverse of COUNTRY_TO_REGION — every real country grouped under its
+// region tag. Derived, not hand-maintained, so it can never drift out of
+// sync with the forward map. Used by job-listing-ai.service.ts's Smart
+// Assistant: when the AI decides a task should move to a different region
+// for cost reasons, the UI's location field still needs one specific real
+// country (Step 4's CountriesCombobox has no "region" option), so a country
+// gets picked from this list for whichever region the AI chose.
+export const REGION_TO_COUNTRIES: Record<string, string[]> = Object.entries(
+  COUNTRY_TO_REGION,
+).reduce<Record<string, string[]>>((byRegion, [country, region]) => {
+  (byRegion[region] ??= []).push(country);
+  return byRegion;
+}, {});
+
 // ── Frequency label → number of working days in that period ─────────────────
 // Used to convert custom hours (e.g. "15 hours per week") into a daily rate.
 const FREQUENCY_TO_DAYS: Record<string, number> = {
@@ -218,18 +233,29 @@ export function assignTaskDays(phases: JobListingPhase[]): JobListingPhase[] {
   return phases;
 }
 
-// ── calculateProjectDurationWeeks ────────────────────────────────────────────
-// Sums working days across all tasks in all phases and converts to weeks.
-// This is the read-only value shown in the Timeline Calculator panel.
-// The client cannot set it directly — it changes only when tasks change.
-export function calculateProjectDurationWeeks(phases: JobListingPhase[]): number {
+// ── calculateTotalWorkingDays ─────────────────────────────────────────────
+// Sums working days across every task in every phase. Tasks are fully
+// sequential (see assignTaskDays above) — there is no parallelism modeled,
+// so this sum IS the project's total timeline in working days. Pure and
+// synchronous (no pricing-service lookup, unlike calculateTotalBudget), so
+// it's cheap enough to call unconditionally as a fallback when the client
+// doesn't supply its own already-computed figure (mirrors the frontend's
+// getProjectTimelineDaysFromScope in job-listing/page.tsx).
+export function calculateTotalWorkingDays(phases: JobListingPhase[]): number {
   let totalWorkingDays = 0;
   for (const phase of phases) {
     for (const task of phase.tasks) {
       totalWorkingDays += calculateTaskDurationDays(task);
     }
   }
-  return Math.ceil(totalWorkingDays / 5);
+  return totalWorkingDays;
+}
+
+// ── calculateProjectDurationWeeks ────────────────────────────────────────────
+// This is the read-only value shown in the Timeline Calculator panel.
+// The client cannot set it directly — it changes only when tasks change.
+export function calculateProjectDurationWeeks(phases: JobListingPhase[]): number {
+  return Math.ceil(calculateTotalWorkingDays(phases) / 5);
 }
 
 @Injectable()

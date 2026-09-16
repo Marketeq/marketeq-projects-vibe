@@ -7455,11 +7455,11 @@ const getPhaseDayRangeLabel = (phases: Phase[], phaseIndex: number) => {
   return `Day ${startDay} - Day ${endDay}`;
 };
 
+const getProjectTimelineDaysFromScope = (phases: Phase[]) =>
+  phases.reduce((sum, phase) => sum + getPhaseDurationInDays(phase), 0);
+
 const getProjectTimelineMonthsFromScope = (phases: Phase[]) => {
-  const totalDays = phases.reduce(
-    (sum, phase) => sum + getPhaseDurationInDays(phase),
-    0,
-  );
+  const totalDays = getProjectTimelineDaysFromScope(phases);
   const totalWeeks = Math.ceil(totalDays / 5);
 
   return totalWeeks > 0 ? Math.ceil(totalWeeks / 4.33) : 0;
@@ -12165,6 +12165,7 @@ const ProjectScopeEditStep = ({
     ProjectAssistantHistoryItem[]
   >([])
   const [isAssistantLoading, setIsAssistantLoading] = useState(false)
+  const assistantChatScrollRef = useRef<HTMLDivElement | null>(null)
   const didGenerateInitialScopeRef = useRef(false)
   const didApplyPersistedScopeRef = useRef(false)
   const skipNextProjectScopeSaveRef = useRef(false)
@@ -12579,6 +12580,19 @@ const ProjectScopeEditStep = ({
     )
   }
 
+  useEffect(() => {
+    const latestHistoryItem = assistantHistory[assistantHistory.length - 1]
+    if (!latestHistoryItem || latestHistoryItem.status === "pending") return
+
+    window.requestAnimationFrame(() => {
+      const scrollContainer = assistantChatScrollRef.current
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      })
+    })
+  }, [assistantHistory])
+
   const runProjectAssistant = async (message: string) => {
     const prompt = message.trim()
     if (!prompt) return
@@ -12605,6 +12619,8 @@ const ProjectScopeEditStep = ({
         command: prompt,
         currentScope: buildProjectAssistantScope(),
         workType: "project",
+        currentTotalBudgetUsdCents: Math.round(budgetAmount * 100),
+        currentTotalTimelineDays: getProjectTimelineDaysFromScope(phases),
       })
       const data = response?.data ?? {}
 
@@ -13632,7 +13648,10 @@ const ProjectScopeEditStep = ({
                 className="size-5 shrink-0"
               />
             </div>
-            <div className="flex h-[486px] shrink-0 grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+            <div
+              ref={assistantChatScrollRef}
+              className="flex h-[486px] shrink-0 grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
+            >
               <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
                 <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
                   What do you want to do?
@@ -16157,6 +16176,7 @@ const ServiceScopeEditStep = ({
         command: message,
         currentScope: buildServiceAssistantScope(),
         workType: "service",
+        currentTotalBudgetUsdCents: Math.round(budgetAmount * 100),
       });
       const data = response?.data ?? {};
 
