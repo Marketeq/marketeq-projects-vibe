@@ -244,13 +244,19 @@ export class MicroDepositService {
       ],
     });
 
-    // deposit_method_id is nullable (see DepositMethodVerification), so a row
-    // can carry a null one. Passing that straight to em.update() made TypeORM
-    // throw "Empty criteria(s) are not allowed for the update method", and
-    // because nothing caught it the throw escaped the whole cron: every later
-    // row went unexpired and the magic-link cleanup below never ran at all.
-    // One malformed row must not cost the rest of the sweep, so each row is
-    // now isolated and the orphan case expires the verification on its own.
+    // A null deposit_method_id is a normal, expected state here, not corrupt
+    // data: migration 002 drops NOT NULL precisely because Stripe Financial
+    // Connections creates the verification row before the deposit_method row
+    // exists (the session is created before OAuth completes, PS-05). Any FC
+    // session the contractor abandons therefore reaches this sweep with a null
+    // method — so this path is guaranteed to be hit, not a rare edge case.
+    //
+    // Passing that null straight to em.update() made TypeORM throw "Empty
+    // criteria(s) are not allowed for the update method", and because nothing
+    // caught it the throw escaped the whole cron: every later row went
+    // unexpired and the magic-link cleanup below never ran at all. Expiring
+    // the verification and skipping the method update is the correct handling
+    // for an abandoned session — there is no method row to mark yet.
     let succeeded = 0;
     const failed: string[] = [];
 
@@ -270,9 +276,11 @@ export class MicroDepositService {
         if (v.depositMethodId) {
           this.logger.log(`Verification expired: method ${v.depositMethodId}`);
         } else {
-          this.logger.warn(
-            `Verification ${v.id} expired but has no deposit_method_id — ` +
-            `orphaned row, no method status to update`,
+          // Routine, so logged at the same level as the normal case: an
+          // abandoned Stripe FC session has no method row to mark yet.
+          this.logger.log(
+            `Verification ${v.id} expired with no deposit_method_id ` +
+            `(unconsummated session) — nothing to update on the method`,
           );
         }
       } catch (err: unknown) {
