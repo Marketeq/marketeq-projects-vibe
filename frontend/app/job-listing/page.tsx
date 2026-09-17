@@ -13288,9 +13288,98 @@ const ProjectScopeEditStep = ({
                               key={header}
                               className="flex h-11 items-center gap-3 self-stretch border-b border-gray-200 bg-gray-50 px-6 py-3"
                             >
-                              <span className="h-[18px] shrink-0">
-                                {header}
-                              </span>
+                              {header === "Role" ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="h-[18px] shrink-0 cursor-default">
+                                        {header}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="right"
+                                      align="center"
+                                      sideOffset={12}
+                                      visual="white"
+                                      className="flex w-[222px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                    >
+                                      <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                      Defines the type of specialist needed for
+                                      this task. Used to match talent and
+                                      generate the job description.
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : header === "Location" ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="h-[18px] shrink-0 cursor-default">
+                                        {header}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="right"
+                                      align="center"
+                                      sideOffset={12}
+                                      visual="white"
+                                      className="flex h-[94px] w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                    >
+                                      <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                      Influences team coordination and affects
+                                      how the budget is estimated.
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : header === "Experience" ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="h-[18px] shrink-0 cursor-default">
+                                        {header}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="left"
+                                      align="center"
+                                      sideOffset={12}
+                                      visual="white"
+                                      className="flex h-28 w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                    >
+                                      <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                      Helps determine the level of skill needed.
+                                      Impacts estimated delivery time and team
+                                      composition.
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : header === "Duration" ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="h-[18px] shrink-0 cursor-default">
+                                        {header}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="left"
+                                      align="center"
+                                      sideOffset={12}
+                                      visual="white"
+                                      className="flex h-[94px] w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                    >
+                                      <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                      Estimated hours to complete the task.
+                                      Directly affects the project&apos;s timeline
+                                      and budget.
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : (
+                                <span className="h-[18px] shrink-0">
+                                  {header}
+                                </span>
+                              )}
                             </span>
                           ))}
                         </div>
