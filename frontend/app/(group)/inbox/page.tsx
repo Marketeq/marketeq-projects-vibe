@@ -850,6 +850,9 @@ export default function InboxRoot() {
             counterOfferCard={counterOfferCard}
             declinedOfferCard={declinedOfferCard}
             offerNotificationMessages={offerNotificationMessages}
+            onOfferUpdateRequested={() =>
+              setOfferNotificationRefreshToken((value) => value + 1)
+            }
           />
 
           {rightSidebarOpen && (
