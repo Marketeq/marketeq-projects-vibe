@@ -12174,7 +12174,6 @@ const ProjectScopeEditStep = ({
     useRef<ProjectAssistantListingSnapshot | null>(null)
   const [budgetAmount, setBudgetAmount] = useState(5000)
   const [isBudgetStale, setIsBudgetStale] = useState(false)
-  const [budgetRefreshKey, setBudgetRefreshKey] = useState(0)
   const [budgetFrequency, setBudgetFrequency] = useState("week")
   const [budgetTooltipOpen, setBudgetTooltipOpen] = useState(false)
   const normalizedSearchValue = normalizeSearchText(searchValue)
@@ -12273,7 +12272,7 @@ const ProjectScopeEditStep = ({
     return () => {
       cancelled = true
     }
-  }, [budgetRefreshKey, phases])
+  }, [phases])
 
   useEffect(() => {
     if (didApplyPersistedScopeRef.current) return
@@ -12993,24 +12992,6 @@ const ProjectScopeEditStep = ({
                 </div>
               </div>
             </div>
-            {isBudgetStale ? (
-              <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm leading-5 text-warning-700">
-                <span>
-                  Budget rates may be stale. You can continue, or refresh the
-                  estimate.
-                </span>
-                <Button
-                  type="button"
-                  variant="outlined"
-                  visual="gray"
-                  size="sm"
-                  onClick={() => setBudgetRefreshKey((key) => key + 1)}
-                >
-                  Refresh
-                </Button>
-              </div>
-            ) : null}
-
             <div className="mt-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="mx-auto flex h-9 w-[254px] shrink-0 items-center p-0 shadow-xs md:mx-0">
                 <Button
@@ -13650,7 +13631,7 @@ const ProjectScopeEditStep = ({
             </div>
             <div
               ref={assistantChatScrollRef}
-              className="flex h-[486px] shrink-0 grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
+              className="flex h-[466px] shrink-0 grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
             >
               <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
                 <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
@@ -13807,10 +13788,10 @@ const ProjectScopeEditStep = ({
                 </div>
               ) : null}
             </div>
-            <div className="flex h-[120px] w-[322px] shrink-0 flex-col items-start gap-2 self-stretch p-5">
-              <div className="flex h-20 w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
+            <div className="flex h-[140px] w-[322px] shrink-0 flex-col items-start gap-2 self-stretch p-5">
+              <div className="flex h-[100px] w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
                 <Textarea
-                  className="h-5 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-gray-500 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-gray-400 focus:ring-0"
+                  className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-gray-500 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-gray-400 focus:ring-0"
                   placeholder="I want to change..."
                   value={assistantMessage}
                   onChange={(event) => setAssistantMessage(event.target.value)}
@@ -13836,7 +13817,7 @@ const ProjectScopeEditStep = ({
                     className="size-5 shrink-0"
                   />
                   <Button
-                    className="size-6 rounded-full p-1 opacity-50 shadow-none"
+                    className="size-6 rounded-full p-1 shadow-none"
                     aria-label="Send message to Smart Assistant"
                     disabled={!assistantMessage.trim() || isAssistantLoading}
                     onClick={() => runProjectAssistant(assistantMessage)}
