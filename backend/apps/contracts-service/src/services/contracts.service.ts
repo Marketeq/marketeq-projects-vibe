@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -22,33 +23,43 @@ export class ContractsService {
     private readonly reviewsClient: ReviewsClient,
     private readonly notificationsClient: NotificationsClient,
   ) {}
-  async endContract(id: string, dto: EndContractDto) {
+  async endContract(id: string, dto: EndContractDto, requesterId: string) {
     // 1. Fetch contract
     const contract = await this.findContractById(id);
     if (!contract) {
       throw new NotFoundException('Contract not found');
     }
+
+    // 2. Ownership. Only the contract's own client may end it — My Contracts
+    // offers this action to clients alone (its `endItem` is gated on
+    // `isClient`), so restricting to clientId matches what the UI already
+    // allows and takes nothing away from talent. Checked before any
+    // side-effecting call below: ending is destructive and irreversible.
+    if (contract.clientId !== requesterId) {
+      throw new ForbiddenException('You may only end your own contracts');
+    }
+
     if (contract.status !== ContractStatus.ACTIVE) {
       throw new BadRequestException('Contract is not active');
     }
 
-    // 2. Call Billing Service to finalize the invoice/credits
+    // 3. Call Billing Service to finalize the invoice/credits
     const billingResult = await this.billingClient.finalizeContract(
       contract.id,
     );
 
-    // 3. Update the contract status to ENDED
+    // 4. Update the contract status to ENDED
     contract.status = ContractStatus.ENDED;
     contract.endAtISO = new Date().toISOString();
     await this.contractRepository.save(contract);
 
-    // 4. Trigger reviews service
+    // 5. Trigger reviews service
     const reviewsResult = await this.reviewsClient.triggerReview(
       contract.id,
       contract.talentId,
       contract.clientId,
     );
-    // 5. Send notifications
+    // 6. Send notifications
     await this.notificationsClient.notifyContractEnded(
       contract,
       dto.reasonCode,

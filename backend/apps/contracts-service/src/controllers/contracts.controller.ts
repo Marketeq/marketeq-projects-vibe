@@ -45,10 +45,20 @@ export class ContractsController {
     return { ok: true };
   }
 
-  // End a single contract
+  // End a single contract. Identity comes from req.user, never the body or a
+  // path param — the caller must be the contract's own client. Until now this
+  // route took only the id, so any authenticated user who had a contract id
+  // could end someone else's contract, which finalizes billing, triggers the
+  // reviews service and notifies both parties. Same ownership rule as
+  // `client/:clientId` below; enforced in the service, which already loads the
+  // contract and so can compare without a second read.
   @Put(':id/end')
-  async endContract(@Param('id') id: string, @Body() dto: EndContractDto) {
-    return this.contractsService.endContract(id, dto);
+  async endContract(
+    @Param('id') id: string,
+    @Body() dto: EndContractDto,
+    @Req() req: Request & { user: { sub: string } },
+  ) {
+    return this.contractsService.endContract(id, dto, req.user.sub);
   }
 
   // Accept/Reject flow for talent
