@@ -1526,7 +1526,7 @@ export default function JobDetailsPage({
                     </span>
                   </span>
                   <NextLink
-                    href={`/checkout/${slug}`}
+                      href={`/checkout/${slug}/project-details`}
                     className="shrink-0 whitespace-nowrap text-[12px] font-medium leading-6 text-primary-500 hover:underline"
                   >
                     View Details

@@ -1,1 +1,30 @@
-export { default } from "../../../checkout/[slug]/confirmation/page"
+import { redirect } from "next/navigation"
+
+type ConfirmationPageProps = {
+  params: Promise<{ slug: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}
+
+export default async function TalentCheckoutConfirmationPage({
+  params,
+  searchParams,
+}: ConfirmationPageProps) {
+  const [{ slug }, confirmationParams] = await Promise.all([
+    params,
+    searchParams,
+  ])
+  const nextSearchParams = new URLSearchParams()
+
+  Object.entries(confirmationParams).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => nextSearchParams.append(key, item))
+    } else if (value !== undefined) {
+      nextSearchParams.set(key, value)
+    }
+  })
+
+  const query = nextSearchParams.toString()
+  redirect(
+    `/talent-checkout/${encodeURIComponent(slug)}/success${query ? `?${query}` : ""}`
+  )
+}

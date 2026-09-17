@@ -1065,7 +1065,7 @@ export default function PaymentPage() {
     offerRates.find((rate) => rate.value === selectedRateValue) ||
     offerRates.find((rate) => rate.value === "web-development") ||
     offerRates[0]
-  // See checkout/[slug]/page.tsx — a custom rate has no offerRates tile, so
+  // See checkout/[slug]/project-details/page.tsx — a custom rate has no offerRates tile, so
   // it travels as its own param and wins over the tile price here.
   const customRateParam = Number(searchParams.get("customRate"))
   const hourlyRate =
@@ -2008,11 +2008,11 @@ export default function PaymentPage() {
     )
   }, [])
 
-  const navigateToConfirmation = () => {
+  const navigateToReview = () => {
     const nextSearchParams = new URLSearchParams(searchParams.toString())
     const nextUrl = nextSearchParams.toString()
-      ? `${basePath}/${safeSlugSegment}/confirmation?${nextSearchParams.toString()}`
-      : `${basePath}/${safeSlugSegment}/confirmation`
+      ? `${basePath}/${safeSlugSegment}/review?${nextSearchParams.toString()}`
+      : `${basePath}/${safeSlugSegment}/review`
     router.push(nextUrl)
   }
 
@@ -2249,7 +2249,7 @@ export default function PaymentPage() {
           ])
         }
 
-        navigateToConfirmation()
+        navigateToReview()
       } catch (error) {
         setPaymentError(
           error instanceof Error
@@ -2264,7 +2264,7 @@ export default function PaymentPage() {
 
     setIsProcessing(true)
     setTimeout(() => {
-      navigateToConfirmation()
+      navigateToReview()
       setIsProcessing(false)
     }, 1500)
   }
@@ -2447,7 +2447,7 @@ export default function PaymentPage() {
             `${walletLabel} is authorized and applied to this order`
           )
           window.setTimeout(() => setSavedCardNotification(""), 5000)
-          navigateToConfirmation()
+          navigateToReview()
         } catch (error) {
           if (!hasCompletedPaymentRequest) {
             event.complete("fail")
@@ -2544,7 +2544,7 @@ export default function PaymentPage() {
       const nextSearchParams = new URLSearchParams(searchParams.toString())
       nextSearchParams.set("paymentMethod", "klarna")
       nextSearchParams.set("paymentIntentId", intent.paymentIntentId)
-      const returnUrl = `${window.location.origin}${basePath}/${safeSlugSegment}/confirmation?${nextSearchParams.toString()}`
+      const returnUrl = `${window.location.origin}${basePath}/${safeSlugSegment}/review?${nextSearchParams.toString()}`
 
       const result = await stripe.confirmKlarnaPayment(intent.clientSecret, {
         payment_method: {
@@ -2576,7 +2576,7 @@ export default function PaymentPage() {
         subtitle: `4 interest-free payments of ${currencyWithCentsFormatter.format(totalAmountToBePaid / 4)}`,
       }
       saveFullPaymentMethod(method)
-      navigateToConfirmation()
+      navigateToReview()
     } catch (error) {
       const message =
         error instanceof Error
@@ -4689,7 +4689,9 @@ export default function PaymentPage() {
               size="md"
               variant="link"
               visual="gray"
-              onClick={() => router.push(`${basePath}/${safeSlugSegment}`)}
+              onClick={() =>
+                router.push(`${basePath}/${safeSlugSegment}/project-details`)
+              }
             >
               <ArrowLeft className="size-[15px] group-hover:-translate-x-1 transition duration-300" />{" "}
               Back

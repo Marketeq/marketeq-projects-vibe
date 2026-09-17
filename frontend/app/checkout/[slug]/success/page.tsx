@@ -435,7 +435,7 @@ export default function ConfirmationPage() {
       offerRates.find((rate) => rate.value === selectedRateValue) ||
       offerRates.find((rate) => rate.value === "web-development") ||
       offerRates[0]
-    // See checkout/[slug]/page.tsx — a custom rate has no offerRates tile,
+  // See checkout/[slug]/project-details/page.tsx — a custom rate has no offerRates tile,
     // so it travels as its own param and wins over the tile price here.
     const customRateParam = Number(searchParams.get("customRate"))
     const hourlyRate =
@@ -627,7 +627,7 @@ export default function ConfirmationPage() {
                       variant="link"
                       onClick={() =>
                         router.push(
-                          `${basePath}/${slug}/confirmation?${searchParams.toString()}`
+                          `${basePath}/${slug}/review?${searchParams.toString()}`
                         )
                       }
                     >
@@ -665,7 +665,7 @@ export default function ConfirmationPage() {
                     visual="primary"
                     onClick={() =>
                       router.push(
-                        `${basePath}/${slug}?${searchParams.toString()}`
+                        `${basePath}/${slug}/project-details?${searchParams.toString()}`
                       )
                     }
                   >
@@ -1138,7 +1138,7 @@ export default function ConfirmationPage() {
                     variant="link"
                     onClick={() =>
                       router.push(
-                        `${basePath}/${slug}/confirmation?${searchParams.toString()}`
+                        `${basePath}/${slug}/review?${searchParams.toString()}`
                       )
                     }
                   >

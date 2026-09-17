@@ -196,7 +196,7 @@ export default function CheckoutMemberProfilePage() {
   }, [notice])
 
   const returnToCheckout = () => {
-    router.push(`/checkout/${encodeURIComponent(slug)}`)
+    router.push(`/checkout/${encodeURIComponent(slug)}/project-details`)
   }
 
   const showNotice = (message: string) => {
@@ -204,7 +204,9 @@ export default function CheckoutMemberProfilePage() {
   }
 
   const handleHire = () => {
-    router.push(`/talent-checkout/${encodeURIComponent(profile.username)}`)
+    router.push(
+      `/talent-checkout/${encodeURIComponent(profile.username)}/project-details`
+    )
   }
 
   const handleSave = () => {
