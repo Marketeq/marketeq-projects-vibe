@@ -873,7 +873,16 @@ export class StripeProvider {
       return;
     }
 
-    const reason = stripePayout.failure_message ?? 'Bank payout failed.';
+    // PS-24 §12: contractor-facing copy for the two most common ACH
+    // return reasons — was Stripe's raw failure_message verbatim before,
+    // which is developer-facing text ("The bank account has been closed."),
+    // not the reviewed contractor copy this doc specifies.
+    const achFailureCopy: Record<string, string> = {
+      invalid_account_number: 'The bank returned an error for this account number. Please check your details or contact your bank.',
+      invalid_account_number_length: 'The bank returned an error for this account number. Please check your details or contact your bank.',
+      account_frozen: 'Your bank account is frozen and can\'t receive transfers. Please contact your bank.',
+    };
+    const reason = achFailureCopy[stripePayout.failure_code] ?? stripePayout.failure_message ?? 'Bank payout failed.';
     await this.payoutRepo.update(payout.id, {
       status: PayoutStatus.FAILED,
       failedAt: new Date(),
@@ -890,6 +899,42 @@ export class StripeProvider {
       newStatus: PayoutStatus.FAILED,
       metadata: { stripePayoutId: stripePayout.id, failureCode: stripePayout.failure_code },
     });
+
+    // PS-39 §5: R02 (account closed), R03 (no account), R10 (unauthorized)
+    // mean the bank account itself is dead or the contractor never
+    // authorized this account — retrying against it will only fail again.
+    // Deactivate so the method drops out of the verified list and the
+    // contractor is prompted to add a new one, instead of every future
+    // scheduled/manual payout to it silently failing the same way.
+    //
+    // Stripe's payout.failure_code is its own semantic enum, not a literal
+    // NACHA R-code — confirmed against Stripe's Payout object reference
+    // (docs.stripe.com/api/payouts/object#payout_object-failure_code).
+    // account_closed/no_account map directly to R02/R03; debit_not_authorized
+    // is the closest Stripe equivalent to R10 (Stripe merges "not authorized"
+    // into the general debit-not-approved code rather than exposing a
+    // separate unauthorized-debit reason).
+    // account_frozen (PS-24 §12 ERR_ACH_ACCOUNT_FROZEN / R16) added — also a
+    // dead end, not something a retry or contractor edit resolves.
+    // invalid_account_number (R04) deliberately excluded: PS-24's own
+    // recovery CTA for that one is "re-enter bank details," implying a
+    // fixable typo, not an account to abandon.
+    const deactivateCodes = ['account_closed', 'no_account', 'debit_not_authorized', 'account_frozen'];
+    if (deactivateCodes.includes(stripePayout.failure_code)) {
+      await this.methodRepo.update(
+        { id: payout.depositMethodId } as any,
+        { isActive: false, deactivatedAt: new Date(), verificationStatus: VerificationStatus.FAILED },
+      );
+      await this.auditService.log({
+        contractorId: payout.contractorId,
+        payoutRequestId: payout.id,
+        actorType: 'service',
+        actorId: 'stripe-webhook',
+        action: 'method.deactivated',
+        metadata: { depositMethodId: payout.depositMethodId, achReturnCode: stripePayout.failure_code },
+      });
+      this.logger.warn(`Deposit method ${payout.depositMethodId} deactivated — ACH return ${stripePayout.failure_code}`);
+    }
 
     await this.publisher.publishPayoutFailed({
       contractorId: payout.contractorId,
@@ -935,7 +980,7 @@ export class StripeProvider {
     // retrying the same destination will only fail again, so deactivate the
     // method and make the contractor add a new one rather than silently
     // re-attempting on the next payout cycle.
-    const deactivateOn = ['account_closed', 'no_account', 'debit_not_authorized'];
+    const deactivateOn = ['account_closed', 'no_account', 'debit_not_authorized', 'account_frozen'];
     if (payout.depositMethodId && deactivateOn.includes(stripePayout.failure_code)) {
       await this.methodRepo.update(payout.depositMethodId, {
         isActive: false, deactivatedAt: new Date(),
@@ -1072,6 +1117,94 @@ export class StripeProvider {
         connectRequirementsDue: account.requirements?.currently_due ?? null,
       },
     );
+
+    // PS-34 §4.3: international BANK_MANUAL methods (UK/SEPA/AU/CA) sit in
+    // PENDING after StripeProvider.submitDob() until this webhook reports
+    // whether Stripe activated transfers outright or escalated to
+    // government ID + selfie. US methods reach VERIFIED through the
+    // micro-deposit/instant-verification path in methods.service.ts instead
+    // and are unaffected — this only ever touches rows still PENDING.
+    const transfers = account.capabilities?.transfers;
+    if (transfers === 'active') {
+      const result = await this.methodRepo.update(
+        {
+          stripeConnectAccountId: account.id,
+          methodType: MethodType.BANK_MANUAL,
+          verificationStatus: VerificationStatus.PENDING,
+        } as any,
+        { verificationStatus: VerificationStatus.VERIFIED },
+      );
+      if (result.affected) {
+        this.logger.log(`account.updated: transfers active — ${result.affected} method(s) on ${account.id} marked VERIFIED`);
+      }
+      return;
+    }
+
+    if (transfers === 'pending' || transfers === 'inactive') {
+      const requirements: string[] = account.requirements?.currently_due ?? [];
+      const needsId = requirements.some(
+        (r) => r.includes('proof_of_liveness') || r.includes('id_number') || r.includes('document'),
+      );
+      if (needsId) {
+        const result = await this.methodRepo.update(
+          {
+            stripeConnectAccountId: account.id,
+            methodType: MethodType.BANK_MANUAL,
+            verificationStatus: VerificationStatus.PENDING,
+          } as any,
+          { verificationStatus: VerificationStatus.PENDING_ADDITIONAL_KYC },
+        );
+        if (result.affected) {
+          this.logger.log(`account.updated: Stripe escalated ${account.id} to government ID + selfie — ${result.affected} method(s) marked PENDING_ADDITIONAL_KYC`);
+        }
+      }
+    }
+  }
+
+  // ─── PS-34 §4.2: Submit DOB to unlock cross-border transfers ────
+  // UK/SEPA/AU/CA BANK_MANUAL methods need the account holder's date of
+  // birth on file before Stripe will activate the transfers capability.
+  // NOT CURRENTLY CALLED — this method and the account.updated escalation
+  // handling above are ready infrastructure, wired for the day PS-33/PS-34
+  // specify how to attach a non-US bank_account as a Stripe external_account
+  // (sort_code/IBAN/BSB per country — PS-33 §3.4 only documents the US
+  // routing_number case). Until that's specified, methods.service.ts keeps
+  // these countries on the interim micro-deposit flow rather than calling
+  // this against a connected account that was never given a real external
+  // bank account to activate transfers for. Never marks the method VERIFIED
+  // itself — Stripe may activate transfers immediately or escalate to ID
+  // verification, and only the account.updated webhook (handleAccountUpdated
+  // above) knows which happened.
+  async submitDob(params: {
+    contractorStripeAccountId: string;
+    dateOfBirth: { day: number; month: number; year: number };
+    legalFirstName: string;
+    legalLastName: string;
+  }): Promise<void> {
+    if (!this.stripe || !this.isRealStripeKey()) {
+      this.logger.log(`[STUB] submitDob for ${params.contractorStripeAccountId} — no real Stripe key configured`);
+      return;
+    }
+
+    const persons = await this.stripe.accounts.listPersons(params.contractorStripeAccountId);
+    const person = persons.data[0];
+    if (!person) {
+      throw new PayoutError(
+        'No person found on connected account — onboarding may be incomplete.',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'ERR_STRIPE_PERSON_NOT_FOUND',
+      );
+    }
+
+    await this.stripe.accounts.updatePerson(params.contractorStripeAccountId, person.id, {
+      dob: {
+        day: params.dateOfBirth.day,
+        month: params.dateOfBirth.month,
+        year: params.dateOfBirth.year,
+      },
+      first_name: params.legalFirstName,
+      last_name: params.legalLastName,
+    });
   }
 
   // ─── Session restart ──────────────────────────────────────────
