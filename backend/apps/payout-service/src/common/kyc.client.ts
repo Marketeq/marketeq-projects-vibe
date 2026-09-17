@@ -23,6 +23,13 @@ export interface KycStatusResponse {
   // behavior for the already-integrated fields is unchanged.
   status?: 'not_started' | 'in_review' | 'approved' | 'rejected';
   rejectionReason?: string;
+  // PS-16 §2: OFAC sanctions-list flag. Optional — kyc-identity-service's
+  // gate-status response does not include this field today (confirmed: its
+  // response type has no ofacFlagged property), so it reads as undefined
+  // and pause-status.service.ts's OFAC_FLAG condition never fires until
+  // kyc-identity-service adds it. Reading it here rather than guessing a
+  // screening result payout-service has no data to compute itself.
+  ofacFlagged?: boolean;
 }
 
 @Injectable()
