@@ -6604,15 +6604,13 @@ export function Chats({
             variant="unanimated"
             className="pointer-events-none inset-0 flex max-w-none items-center justify-center bg-transparent p-0 shadow-none"
           >
-            <div className={`pointer-events-auto flex w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl ${selectedNotificationOffer.withdrawnByViewer || selectedNotificationOfferIsClientDeclined ? "h-[608px]" : "h-[500px]"}`}>
+            <div className={`pointer-events-auto flex w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl ${selectedNotificationOfferIsClientWithdrawn || selectedNotificationOfferIsClientDeclined ? "h-[608px]" : "h-[500px]"}`}>
               <div className="flex h-[60px] items-center border-b border-gray-200 p-3">
                 <DialogTitle className="flex-1 pl-3 text-[18px] font-bold leading-[22px] text-dark-blue-400">
                   {selectedNotificationOfferIsClientDeclined
                     ? "Your offer was declined"
-                    : selectedNotificationOffer.withdrawnByViewer
-                    ? "You withdrew this offer"
                     : selectedNotificationOfferIsClientWithdrawn
-                    ? "This Offer Was Withdrawn"
+                    ? "You withdrew this offer"
                     : selectedNotificationOfferIsClientExpired
                       ? "This Offer Expired"
                       : "This Offer Was Accepted"}
@@ -6631,7 +6629,7 @@ export function Chats({
                         {selectedNotificationOfferData.offerType}
                       </Badge>
                       <span className="text-sm font-medium leading-[18px] text-gray-400">
-                        {selectedNotificationOfferIsClientDeclined ? "Declined" : selectedNotificationOffer.withdrawnByViewer ? "Withdrawn" : "Expired"} on {selectedNotificationOfferData.expiresLabel}
+                        {selectedNotificationOfferIsClientDeclined ? "Declined" : selectedNotificationOfferIsClientWithdrawn ? "Withdrawn" : "Expired"} on {selectedNotificationOfferData.expiresLabel}
                       </span>
                     </div>
                     <div className="text-[16px] font-medium leading-6 text-dark-blue-400">
@@ -6678,7 +6676,7 @@ export function Chats({
                   </div>
                 </div>
                 <div className="border-t border-gray-100" />
-                {selectedNotificationOffer.withdrawnByViewer ? (
+                {selectedNotificationOfferIsClientWithdrawn ? (
                   <div className="h-[84px] rounded-lg bg-gray-50 p-4">
                     <div className="text-sm font-medium leading-6 text-dark-blue-400">Message</div>
                     <div className="text-sm leading-6 text-gray-400">

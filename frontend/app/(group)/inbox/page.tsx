@@ -319,10 +319,19 @@ export default function InboxRoot() {
                   seeded: metadata.seeded === true,
                   clientPerspective: metadata.clientPerspective === true,
                   withdrawnByViewer: metadata.withdrawnByViewer === true,
+                  // No backend producer writes offer notification metadata,
+                  // so metadata.withdrawalMessage is always undefined for a
+                  // real withdrawn offer — fall back to the real offer's own
+                  // withdrawalMessage (already fetched above) before giving
+                  // up to undefined, so the "No message was sent." fallback
+                  // only fires when the message is genuinely absent.
                   withdrawalMessage:
-                    typeof metadata.withdrawalMessage === "string"
+                    typeof metadata.withdrawalMessage === "string" &&
+                    metadata.withdrawalMessage.trim()
                       ? metadata.withdrawalMessage
-                      : undefined,
+                      : typeof offer.withdrawalMessage === "string"
+                        ? offer.withdrawalMessage
+                        : undefined,
                   declineReason:
                     typeof metadata.declineReason === "string"
                       ? metadata.declineReason
