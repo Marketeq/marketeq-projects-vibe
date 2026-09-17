@@ -33,6 +33,47 @@ import { randomUUID } from 'crypto';
  * `Failed to publish payout.schedule.updated: undefined` was — an error that
  * named no cause and so was never actionable.
  */
+/**
+ * A broker that is down rejects with a connection-level code rather than an
+ * application error, and NestJS surfaces it as a plain object
+ * (`{"err":{"code":"ECONNREFUSED"},"url":"amqp://..."}`) as often as an Error —
+ * so both shapes have to be read. Only these are worth a second attempt: an
+ * application-level rejection will fail identically however many times it is
+ * resent, and retrying it would just delay the caller.
+ */
+const CONNECTION_ERROR_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ENOTFOUND',
+  'EHOSTUNREACH',
+  'ETIMEDOUT',
+  'EPIPE',
+]);
+
+function isConnectionError(err: unknown): boolean {
+  if (err == null || typeof err !== 'object') return false;
+  const code = (err as any).code ?? (err as any).err?.code;
+  if (typeof code === 'string' && CONNECTION_ERROR_CODES.has(code)) return true;
+  // amqplib also closes the channel with a bare message on an abrupt drop.
+  const message = err instanceof Error ? err.message : (err as any).message;
+  return typeof message === 'string' && /connection closed|channel closed|socket closed/i.test(message);
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The dropped-event log line is the last record that the event was owed, so it
+ * must never be the thing that throws. JSON.stringify raises on a circular
+ * payload; falling back keeps the log line intact.
+ */
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function describeError(err: unknown): string {
   // `err.name` before String(err): an Error carrying an empty message would
   // otherwise serialize to a useless "{}", since its fields are non-enumerable.
@@ -63,28 +104,69 @@ export class PayoutPublisher {
    * the same millisecond. On staging — where RABBITMQ_REQUIRED=false leaves RMQ
    * unprovisioned — that made a permanently dead publish path read as healthy.
    */
+  /**
+   * A dropped payout.completed is not recoverable from what this used to log.
+   * The payout is already marked COMPLETED and audited in this service by the
+   * time the publish is attempted (see StripeProvider.handlePayoutPaid), so a
+   * lost event leaves earnings-service never debiting the balance, with the two
+   * services silently disagreeing about real money. Two changes make that
+   * survivable without a new table (payout-service has no migrations that run):
+   * a short bounded retry so a momentary broker drop no longer costs the event,
+   * and the full payload on the final failure so it can be replayed by hand.
+   */
+  private static readonly MAX_ATTEMPTS = 3;
+  private static readonly RETRY_DELAYS_MS = [300, 900];
+
   private async emit(pattern: string, payload: object): Promise<boolean> {
-    try {
-      // Every consumer in earnings-service (payout-completed.consumer.ts
-      // included) is written with @MessagePattern, not @EventPattern —
-      // NestJS's RMQ server treats those as two different wire packet
-      // types, and only send() produces the one @MessagePattern matches.
-      // emit() looked like the semantically-right fire-and-forget choice,
-      // but it actually gets NACK'd with "unsupported event" and dropped —
-      // confirmed live against earnings-service's own logs. send() still
-      // resolves once the handler returns (its Promise<void> becomes the
-      // reply), so this behaves as fire-and-wait-for-ack rather than truly
-      // fire-and-forget, which is fine here. In practice the reply
-      // Observable completes without ever emitting a value (confirmed live,
-      // including in a standalone test client) even though the consumer
-      // processes the message correctly every time — defaultIfEmpty stops
-      // that from being misreported as a failure below.
-      await firstValueFrom(this.client.send(pattern, payload).pipe(defaultIfEmpty(null)));
-      return true;
-    } catch (err: unknown) {
-      this.logger.error(`Failed to publish ${pattern}: ${describeError(err)}`);
-      return false;
+    let lastErr: unknown;
+
+    for (let attempt = 1; attempt <= PayoutPublisher.MAX_ATTEMPTS; attempt++) {
+      try {
+        // Every consumer in earnings-service (payout-completed.consumer.ts
+        // included) is written with @MessagePattern, not @EventPattern —
+        // NestJS's RMQ server treats those as two different wire packet
+        // types, and only send() produces the one @MessagePattern matches.
+        // emit() looked like the semantically-right fire-and-forget choice,
+        // but it actually gets NACK'd with "unsupported event" and dropped —
+        // confirmed live against earnings-service's own logs. send() still
+        // resolves once the handler returns (its Promise<void> becomes the
+        // reply), so this behaves as fire-and-wait-for-ack rather than truly
+        // fire-and-forget, which is fine here. In practice the reply
+        // Observable completes without ever emitting a value (confirmed live,
+        // including in a standalone test client) even though the consumer
+        // processes the message correctly every time — defaultIfEmpty stops
+        // that from being misreported as a failure below.
+        await firstValueFrom(this.client.send(pattern, payload).pipe(defaultIfEmpty(null)));
+        if (attempt > 1) {
+          this.logger.log(`Published ${pattern} on attempt ${attempt}`);
+        }
+        return true;
+      } catch (err: unknown) {
+        lastErr = err;
+
+        // Anything that is not a broker connection failure is deterministic:
+        // stop immediately rather than making the caller wait out the backoff
+        // for an outcome that cannot change.
+        if (!isConnectionError(err) || attempt === PayoutPublisher.MAX_ATTEMPTS) break;
+
+        const delay = PayoutPublisher.RETRY_DELAYS_MS[attempt - 1];
+        this.logger.warn(
+          `Publish of ${pattern} failed (attempt ${attempt}/${PayoutPublisher.MAX_ATTEMPTS}): ` +
+          `${describeError(err)} — retrying in ${delay}ms`,
+        );
+        await sleep(delay);
+      }
     }
+
+    this.logger.error(`Failed to publish ${pattern}: ${describeError(lastErr)}`);
+    // Logged separately so the replayable body survives even if the line above
+    // is what gets truncated or alert-matched. This is the only remaining
+    // record that the event was owed.
+    this.logger.error(
+      `DROPPED EVENT — ${pattern} was never delivered and must be replayed manually: ` +
+      `${safeStringify(payload)}`,
+    );
+    return false;
   }
 
   /**

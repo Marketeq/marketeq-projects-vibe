@@ -9,6 +9,7 @@ import {
   EditablePreview,
   EditableRoot,
   PictureEditor,
+  useToast,
 } from "@/components/ui"
 import { Plus } from "@blend-metrics/icons"
 import { uploadCaseStudyImage } from "@/lib/case-study-upload"
@@ -37,6 +38,7 @@ function GalleryEdit({
   const [active, setActive] = useState(0)
   const [caption, setCaption] = useState((initialData?.caption as string) ?? "")
   const [isImageEditOpen, setIsImageEditOpen] = useState(false)
+  const { toast } = useToast()
 
   useEffect(() => {
     onDataChange?.({
@@ -79,13 +81,20 @@ function GalleryEdit({
             onValueChange={(files) => {
               const file = (files as File[] | undefined)?.[0]
               if (file instanceof File) {
-                uploadCaseStudyImage(file).then((url) => {
-                  setImages((prev) => {
-                    const next = [...prev]
-                    next[active] = { url }
-                    return next
+                uploadCaseStudyImage(file)
+                  .then((url) => {
+                    setImages((prev) => {
+                      const next = [...prev]
+                      next[active] = { url }
+                      return next
+                    })
                   })
-                })
+                  .catch(() => {
+                    toast({
+                      title: "Couldn't upload image",
+                      description: "Please try again.",
+                    })
+                  })
               }
             }}
             startingPoint={({ dataUrl, open, onRemove }) => (

@@ -54,9 +54,13 @@ export class AutocompleteController {
     @Query('limit') limitParam?: string,
   ) {
     const parsedLimit = Number(limitParam);
+    // Cap is above the largest data file (skills.json, 710 entries) so a
+    // caller that needs the whole vocabulary in one request — e.g. the case
+    // study publish dialog, which matches the case study's own text against
+    // every known skill — gets it instead of an alphabetically truncated slice.
     const limit =
       Number.isFinite(parsedLimit) && parsedLimit > 0
-        ? Math.min(parsedLimit, 500)
+        ? Math.min(parsedLimit, 1000)
         : 10;
     // If a JSON data file exists for this type, serve from it with Fuse.js fuzzy search
     if (this.svc.hasJsonData(type)) {

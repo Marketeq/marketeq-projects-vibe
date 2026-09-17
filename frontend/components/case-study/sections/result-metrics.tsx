@@ -36,6 +36,18 @@ function ResultMetricsEdit({
   >(() => Object.fromEntries(ids.map((id, i) => [id, initialMetrics[i]])))
   const len = items.length
 
+  // Inserts a fresh metric at `at`, seeding metricData too — items and
+  // metricData must stay in lockstep, otherwise metrics.map((id) => metricData[id])
+  // below (and ResultMetricsView's render) hits an undefined entry for the new id.
+  const addMetricAt = (at: number) => {
+    const uniqueId = getId() + 2
+    setItems((prev) => prev.toSpliced(at, 0, uniqueId))
+    setMetricData((prev) => ({
+      ...prev,
+      [uniqueId]: { value: "0%", label: "New Metric" },
+    }))
+  }
+
   useEffect(() => {
     onDataChange?.({ metrics: items.map((id) => metricData[id]) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -75,10 +87,7 @@ function ResultMetricsEdit({
                     }
                     canDuplicate={len < 4}
                     canHide={false}
-                    onDuplicate={() => {
-                      const uniqueId = getId() + 2
-                      setItems(items.toSpliced(index, 0, uniqueId))
-                    }}
+                    onDuplicate={() => addMetricAt(index)}
                   />
 
                   <div className="relative space-y-2" key={index}>
@@ -122,9 +131,11 @@ function ResultMetricsEdit({
 
 function ResultMetricsView({ data }: { data?: Record<string, unknown> }) {
   const d = data ?? {}
-  const metrics = Array.isArray(d.metrics)
-    ? (d.metrics as ResultMetricItem[])
-    : []
+  // Entries can be null/undefined in case studies saved before the
+  // editor seeded new items — drop the holes rather than crash.
+  const metrics = (
+    Array.isArray(d.metrics) ? (d.metrics as (ResultMetricItem | null | undefined)[]) : []
+  ).filter((item): item is ResultMetricItem => Boolean(item))
   if (!metrics.length) return null
   return (
     <section className="border rounded-lg bg-border-200 gap-x-[53.33px] flex items-center justify-between flex-wrap p-[50px]">

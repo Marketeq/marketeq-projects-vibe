@@ -13,6 +13,7 @@ import {
   EditablePreview,
   EditableRoot,
   PictureEditor,
+  useToast,
 } from "@/components/ui"
 import { uploadCaseStudyImage } from "@/lib/case-study-upload"
 import type { PrototypeData } from "@/lib/case-study-mapper"
@@ -44,6 +45,7 @@ function PrototypeEdit({
     initialData?.url as string | undefined
   )
   const caption = useWatch({ control, name: "caption" })
+  const { toast } = useToast()
 
   useEffect(() => {
     onDataChange?.({ url: imageUrl ?? "", caption })
@@ -65,7 +67,14 @@ function PrototypeEdit({
                 onChange(files)
                 const file = (files as File[] | undefined)?.[0]
                 if (file instanceof File) {
-                  uploadCaseStudyImage(file).then(setImageUrl)
+                  uploadCaseStudyImage(file)
+                    .then(setImageUrl)
+                    .catch(() => {
+                      toast({
+                        title: "Couldn't upload image",
+                        description: "Please try again.",
+                      })
+                    })
                 }
               }}
               startingPoint={({ dataUrl, open, style, onRemove, onEdit }) => (

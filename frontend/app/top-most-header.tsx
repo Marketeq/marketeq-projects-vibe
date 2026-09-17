@@ -848,10 +848,43 @@ const Notifications = () => {
     router.push(`/inbox?threadId=${thread.id}`)
   }
 
+  const getThreadOfferNotification = (thread: InboxThreadSummary) => {
+    if (thread.lastMessagePreview !== "No messages yet") return undefined
+
+    const otherParticipantId = thread.participantIds?.find(
+      (participantId) => participantId !== user?.id
+    )
+
+    return allNotifications.find((item) => {
+      if (!item.isOfferNotification) return false
+
+      const metadata = item.metadata
+      const notificationThreadId =
+        readMetadataString(metadata, "threadId") ||
+        readMetadataString(metadata, "messageThreadId")
+      if (notificationThreadId === thread.id) return true
+
+      if (!otherParticipantId) return false
+      return [
+        "actorId",
+        "senderId",
+        "senderUserId",
+        "submittedById",
+        "acceptedById",
+        "declinedById",
+        "withdrawnById",
+        "clientId",
+        "talentId",
+      ].some((key) => readMetadataString(metadata, key) === otherParticipantId)
+    })
+  }
+
   const renderInboxThreadItem = (thread: InboxThreadSummary) => {
+    const offerNotification = getThreadOfferNotification(thread)
     const timeLabel = thread.lastMessageAt
       ? formatNotificationTime(thread.lastMessageAt)
-      : ""
+      : offerNotification?.timeLabel || ""
+    const preview = offerNotification?.description ?? thread.lastMessagePreview
     return (
       <button
         key={thread.id}
@@ -900,7 +933,7 @@ const Notifications = () => {
                 : "text-gray-700"
             )}
           >
-            {thread.lastMessagePreview}
+            {preview}
           </div>
         </div>
       </button>

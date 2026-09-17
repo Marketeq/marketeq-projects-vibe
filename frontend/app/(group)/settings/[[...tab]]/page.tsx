@@ -36,6 +36,7 @@ import { cn, convertToKbOrMb, getIsNotEmpty } from "@/utils/functions"
 import languagesMock from "@/public/mock/languages.json"
 import ActiveSessionsModal from "@/components/active-sessions-modal"
 import NotificationPreferences from "@/components/notification-preferences"
+import PrivacySettings from "@/components/privacy-settings"
 import SecuritySettingsStepper from "@/components/security-settings"
 import { SettingsTaxInfo } from "@/components/settings-tax-info"
 import SettingsSidebar, {
@@ -2602,17 +2603,34 @@ export default function SettingsPage() {
               )}
 
               {activeTab === "privacy" && (
-                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
-                  Privacy
-                </h1>
+                <>
+                  <div className="flex w-[658px] flex-col items-start gap-3">
+                    <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                      Privacy
+                    </h1>
+                    <p className="w-full text-sm text-gray-500">
+                      Control your profile visibility, contact preferences, and data settings.
+                    </p>
+                  </div>
+                  <div className="mt-6">
+                    <PrivacySettings />
+                  </div>
+                </>
               )}
 
               {activeTab === "notifications" && (
                 <>
-                  <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400 mb-6">
-                    Notifications
-                  </h1>
-                  <NotificationPreferences />
+                  <div className="flex w-[658px] flex-col items-start gap-3">
+                    <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                      Notifications
+                    </h1>
+                    <p className="w-full text-sm text-gray-500">
+                      Manage how and when you receive alerts and updates.
+                    </p>
+                  </div>
+                  <div className="mt-6">
+                    <NotificationPreferences />
+                  </div>
                 </>
               )}
 

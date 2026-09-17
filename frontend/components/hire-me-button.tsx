@@ -56,6 +56,10 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   useToast,
 } from "@/components/ui"
 
@@ -81,6 +85,11 @@ export function getDefaultJobTitle(
   return (
     jobTitles?.find((job: any) => job.isDefault || job.saveAsDefault)?.jobTitle ||
     jobTitles?.[0]?.jobTitle ||
+    // GET /talent/users/:username (how this modal seeds and refetches the
+    // profile) never loads jobTitles, so both rungs above are always
+    // undefined here — recentJobTitle is a plain column on users and is the
+    // only rung left that can carry a real title on username-reached profiles.
+    profile?.recentJobTitle ||
     legacyRole ||
     fallback
   )
@@ -617,6 +626,12 @@ export function OfferDialog({
   const [showValidationErrors, setShowValidationErrors] = React.useState(false)
   const [customScheduleOpen, setCustomScheduleOpen] = React.useState(false)
   const [customHours, setCustomHours] = React.useState("")
+  // BTB-260: 0 is rejected at input time (onChange guard below), so the only
+  // way tryConfirmCustomSchedule can still fail is an empty hours field —
+  // this surfaces that instead of the row stalling with no feedback.
+  const [customHoursError, setCustomHoursError] = React.useState<
+    string | null
+  >(null)
   // "day" | "week" | "month" | "" — "" means no frequency chosen yet.
   // Defaults to "week" per explicit request — not an empty placeholder,
   // and not "day" (Figma's own rest state) — overridden on purpose.
@@ -914,7 +929,12 @@ export function OfferDialog({
     (isStepThree
       ? Boolean(
           schedule &&
-          selectedContractId &&
+          // BTB-262: selectedContractId is only ever set when there was a
+          // list to choose from (or edit mode's static placeholder). On the
+          // T1-10 fallthrough (no existing contracts, isStepThree entered via
+          // !hasExistingContracts) it stays null forever, so requiring it
+          // unconditionally made this permanently false for that route.
+          (!hasExistingContracts || Boolean(selectedContractId)) &&
           selectedRate &&
           selectedDuration &&
           selectedStartDateAction &&
@@ -973,6 +993,7 @@ export function OfferDialog({
     setShowValidationErrors(false)
     setCustomScheduleOpen(false)
     setCustomHours("")
+    setCustomHoursError(null)
     setCustomRateValue("")
     setCustomDurationValue("")
     setCustomDurationUnit("Months")
@@ -1090,8 +1111,14 @@ export function OfferDialog({
       parsedHours <= CUSTOM_HOURS_MAX[frequency] &&
       frequency
     ) {
+      setCustomHoursError(null)
       setSchedule("custom")
       setCustomScheduleOpen(false)
+    } else {
+      // BTB-260: the row used to just sit there on invalid input. Enter
+      // (new onKeyDown below) and blur both land here now, so both get the
+      // same message instead of silently doing nothing.
+      setCustomHoursError("Please enter the number of hours.")
     }
   }
 
@@ -2148,14 +2175,32 @@ export function OfferDialog({
                                     // question for the lead, not built.
                                     // T1-12: same rejection, extended with
                                     // the per-frequency max.
+                                    // BTB-260: also reject a non-empty value
+                                    // that parses to 0 ("0", "00") the same
+                                    // way — empty stays allowed so the field
+                                    // can still be cleared.
                                     const value = event.target.value
                                     if (
                                       /^\d*$/.test(value) &&
+                                      (value === "" || Number(value) > 0) &&
                                       Number(value) <=
                                         CUSTOM_HOURS_MAX[customFrequency]
                                     ) {
                                       setCustomHours(value)
+                                      setCustomHoursError(null)
                                     }
+                                  }}
+                                  onKeyDown={(event) => {
+                                    // BTB-260: Enter had no handler at all —
+                                    // route it through the same confirm used
+                                    // by blur so both take identical
+                                    // success/failure paths.
+                                    if (event.key !== "Enter") return
+                                    event.preventDefault()
+                                    tryConfirmCustomSchedule(
+                                      customHours,
+                                      customFrequency
+                                    )
                                   }}
                                   onBlur={(event) => {
                                     // Same blur-vs-click race T1-5 fixed on
@@ -2248,6 +2293,11 @@ export function OfferDialog({
                                   </SelectContent>
                                 </Select>
                               </div>
+                              {customHoursError ? (
+                                <ErrorMessage className="mt-1">
+                                  {customHoursError}
+                                </ErrorMessage>
+                              ) : null}
                             </div>
                           ) : null}
 
@@ -2267,6 +2317,9 @@ export function OfferDialog({
                                 // then reopening the row would show a blank
                                 // Select now that its placeholder is gone.
                                 setCustomFrequency("week")
+                                // BTB-260: same reasoning — don't leave a
+                                // stale error visible if the row is reopened.
+                                setCustomHoursError(null)
                               } else {
                                 // A tile click may have a commit in flight
                                 // (T1-11's 200ms delay). Without cancelling
@@ -2751,6 +2804,34 @@ export function OfferDialog({
 
 export function HireMeButton({ profile, buttonProps }: HireMeButtonProps) {
   const [open, setOpen] = React.useState(false)
+
+  // BTB-261: `profile && !profile.availability`, not `!profile?.availability`
+  // — the latter is also true while profile is still undefined during load,
+  // which would flash the button disabled before the real value is known.
+  const isUnavailable = Boolean(profile && !profile.availability)
+
+  if (isUnavailable) {
+    return (
+      <TooltipProvider delayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {/* A natively disabled button swallows pointer events, so the
+            tooltip trigger has to be this wrapping span, not the button
+            itself — same pattern as HideToggle in recent-questions-manager.tsx. */}
+            <span className="inline-flex">
+              <Button {...buttonProps} disabled aria-disabled="true">
+                <Plus className="size-[15px]" />
+                Hire Me
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            This talent is not currently available for hire.
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
 
   return (
     <OfferDialog

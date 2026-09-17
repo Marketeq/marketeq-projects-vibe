@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { Controller, useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
 import { cn } from "@/utils/functions"
-import { EditableArea, EditableInput, EditableLabel, EditablePreview, EditableRoot, PictureEditor } from "@/components/ui"
+import { EditableArea, EditableInput, EditableLabel, EditablePreview, EditableRoot, PictureEditor, useToast } from "@/components/ui"
 import { uploadCaseStudyImage } from "@/lib/case-study-upload"
 import type { BigImageData } from "@/lib/case-study-mapper"
 import { BlockImageToolbar } from "@/components/case-study/toolbars"
@@ -51,6 +51,7 @@ function BigImageEdit({
   )
   const [isImageEditOpen, setIsImageEditOpen] = useState(false)
   const caption = useWatch({ control, name: "caption" })
+  const { toast } = useToast()
 
   useEffect(() => {
     onDataChange?.({
@@ -80,13 +81,20 @@ function BigImageEdit({
                 onChange(files)
                 const file = (files as File[] | undefined)?.[0]
                 if (file instanceof File) {
-                  uploadCaseStudyImage(file).then((url) => {
-                    setImageUrl(url)
-                    setImageZoom(1)
-                    setImageRotation(0)
-                    setImageOffsetX(50)
-                    setImageOffsetY(50)
-                  })
+                  uploadCaseStudyImage(file)
+                    .then((url) => {
+                      setImageUrl(url)
+                      setImageZoom(1)
+                      setImageRotation(0)
+                      setImageOffsetX(50)
+                      setImageOffsetY(50)
+                    })
+                    .catch(() => {
+                      toast({
+                        title: "Couldn't upload image",
+                        description: "Please try again.",
+                      })
+                    })
                 }
               }}
               startingPoint={({ dataUrl, open, onRemove }) => (

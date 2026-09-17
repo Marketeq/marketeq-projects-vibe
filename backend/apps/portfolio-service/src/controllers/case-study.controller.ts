@@ -39,6 +39,23 @@ export class CaseStudyController {
     return this.svc.getById(id, req.user.userId);
   }
 
+  // Both like routes are declared before the bare ':id' PATCH/DELETE handlers
+  // for the same reason 'public/:slug' is — Nest matches in declaration order.
+  @UseGuards(AuthGuard('jwt'))
+  @Get(':id/like')
+  getLikeState(@Param('id') id: string, @Req() req: any) {
+    return this.svc.getLikeState(id, req.user.userId);
+  }
+
+  // Deliberately a toggle on one route rather than POST/DELETE: the heart is
+  // one control, and a toggle can't get stuck out of sync with it.
+  @UseGuards(AuthGuard('jwt'))
+  @Post(':id/like')
+  @HttpCode(HttpStatus.OK)
+  toggleLike(@Param('id') id: string, @Req() req: any) {
+    return this.svc.toggleLike(id, req.user.userId);
+  }
+
   @UseGuards(AuthGuard('jwt'))
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateCaseStudyDto, @Req() req: any) {

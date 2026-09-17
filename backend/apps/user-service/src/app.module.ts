@@ -37,6 +37,7 @@ import { BlockedUsersModule } from './blocked-users/blocked-users.module';
 import { ReportsModule } from './reports/reports.module';
 import { ResumeModule } from './resume/resume.module';
 import { DashboardTasksModule } from './dashboard-tasks/dashboard-tasks.module';
+import { PrivacyModule } from './privacy/privacy.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -95,6 +96,7 @@ import { DashboardTasksModule } from './dashboard-tasks/dashboard-tasks.module';
     ReportsModule,
     ResumeModule,
     DashboardTasksModule,
+    PrivacyModule,
   ],
   controllers: [HealthController],
   providers: [
