@@ -16651,21 +16651,50 @@ const ServiceScopeEditStep = ({
                         </div>
                         <div className="flex items-center gap-3 self-stretch">
                           {phase.statusKind === "recurring" ? (
-                            <div className="hidden items-center gap-x-2 text-[13px] leading-4 font-semibold text-[#122A4B] md:inline-flex">
-                              <RefreshCcw05 className="size-4 text-success-500" />
-                              <span>Recurs:</span>
+                            <div className="hidden h-[25px] w-[206px] items-center justify-center gap-2 text-[13px] font-semibold leading-4 text-[#122A4B] md:inline-flex">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex h-[25px] shrink-0 cursor-default items-center gap-2">
+                                      <span className="inline-flex size-4 shrink-0 items-center justify-center text-success-600">
+                                        <svg
+                                          aria-hidden="true"
+                                          viewBox="0 -960 960 960"
+                                          className="size-4 shrink-0"
+                                          fill="currentColor"
+                                        >
+                                          <path d="m360-120-57-56 64-64h-7q-117 0-198.5-81.5T80-520q0-117 81.5-198.5T360-800h240q117 0 198.5 81.5T880-520q0 117-81.5 198.5T600-240v-80q83 0 141.5-58.5T800-520q0-83-58.5-141.5T600-720H360q-83 0-141.5 58.5T160-520q0 83 58.5 142.5T360-312h16l-72-72 56-56 160 160-160 160Z" />
+                                        </svg>
+                                      </span>
+                                      <span className="flex h-4 w-12 shrink-0 items-center">
+                                        Recurs:
+                                      </span>
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="left"
+                                    align="center"
+                                    sideOffset={12}
+                                    visual="white"
+                                    className="flex h-[94px] w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                  >
+                                    <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                    Work that repeats in cycles. Starts on Day X
+                                    and runs for the number of cycles you set.
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button
                                     type="button"
                                     variant="ghost"
-                                    className="h-8 rounded-[5px] border border-gray-200 bg-primary-50 px-3 text-[13px] font-semibold leading-4 text-dark-blue-400 hover:bg-primary-50"
-                                    onClick={() =>
-                                      toggleServicePhaseNote(phase.name)
-                                    }
+                                    visual="gray"
+                                    className="h-[25px] w-[126px] rounded border border-dashed border-gray-300 bg-gray-100 px-[7px] py-[5px] text-sm font-medium leading-[17px] text-dark-blue-400 shadow-xs hover:bg-gray-100 focus:bg-gray-100 data-[state=open]:bg-gray-100 data-[state=open]:text-dark-blue-400"
                                   >
-                                    {formatServiceRecurringStatus(phase)}
-                                    <ChevronDown className="ml-2 size-4" />
+                                    <span className="h-[17px] w-28 shrink-0 text-left text-dark-blue-400">
+                                      {formatServiceRecurringStatus(phase)}
+                                    </span>
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent
@@ -16711,20 +16740,64 @@ const ServiceScopeEditStep = ({
                               </DropdownMenu>
                             </div>
                           ) : (
-                            <Button
-                              variant="link"
-                              visual="gray"
-                              type="button"
-                              className="hidden gap-x-2 text-[13px] font-semibold leading-4 text-[#122A4B] hover:no-underline md:inline-flex"
-                              onClick={() => toggleServicePhaseNote(phase.name)}
-                            >
-                              {phase.statusKind === "ongoing" ? (
-                                <RefreshCcw05 className="size-4 text-success-500" />
-                              ) : (
-                                <Clock className="size-4 text-success-500" />
-                              )}
-                              {phase.status}
-                            </Button>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="link"
+                                    visual="gray"
+                                    type="button"
+                                    className="hidden cursor-default gap-x-2 text-[13px] font-semibold leading-4 text-[#122A4B] hover:no-underline md:inline-flex"
+                                  >
+                                    {phase.statusKind === "ongoing" ? (
+                                      <svg
+                                        aria-hidden="true"
+                                        viewBox="0 -960 960 960"
+                                        className="size-4 shrink-0 text-success-600"
+                                        fill="currentColor"
+                                      >
+                                        <path d="M220-260q-92 0-156-64T0-480q0-92 64-156t156-64q37 0 71 11.5t61 32.5l128 104 128-104q27-21 61-32.5t71-11.5q92 0 156 64t64 156q0 92-64 156t-156 64q-37 0-71-11.5T608-304L480-408 352-304q-27 21-61 32.5T220-260Zm0-80q20 0 38.5-6t33.5-18l124-100-124-100q-15-12-33.5-18t-38.5-6q-59 0-99.5 40.5T80-480q0 59 40.5 99.5T220-340Zm520 0q59 0 99.5-40.5T880-480q0-59-40.5-99.5T740-620q-20 0-38.5 6T668-596L544-496l124 100q15 12 33.5 18t38.5 6Z" />
+                                      </svg>
+                                    ) : (
+                                      <svg
+                                        aria-hidden="true"
+                                        viewBox="0 0 16 16"
+                                        className="size-4 shrink-0 text-success-600"
+                                        fill="currentColor"
+                                      >
+                                        <path d="M4.66667 1.33333C5.03333 1.33333 5.33333 1.63333 5.33333 2V2.66667H10.6667V2C10.6667 1.63333 10.9667 1.33333 11.3333 1.33333C11.7 1.33333 12 1.63333 12 2V2.66667H12.6667C13.4 2.66667 14 3.26667 14 4V12.6667C14 13.4 13.4 14 12.6667 14H3.33333C2.6 14 2 13.4 2 12.6667V4C2 3.26667 2.6 2.66667 3.33333 2.66667H4V2C4 1.63333 4.3 1.33333 4.66667 1.33333ZM3.33333 6V12.6667H12.6667V6H3.33333ZM3.33333 4V4.66667H12.6667V4H3.33333Z" />
+                                      </svg>
+                                    )}
+                                    {phase.status}
+                                  </Button>
+                                </TooltipTrigger>
+                                {phase.statusKind === "ongoing" ? (
+                                  <TooltipContent
+                                    side="left"
+                                    align="center"
+                                    sideOffset={12}
+                                    visual="white"
+                                    className="flex h-[76px] w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                  >
+                                    <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                    Continuous work starting on Day X with no
+                                    set end date.
+                                  </TooltipContent>
+                                ) : (
+                                  <TooltipContent
+                                    side="left"
+                                    align="center"
+                                    sideOffset={12}
+                                    visual="white"
+                                    className="flex h-[94px] w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                  >
+                                    <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                    One-time starting work that begins on Day X
+                                    and will not repeat again.
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
+                            </TooltipProvider>
                           )}
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -17133,6 +17206,7 @@ const ServiceScopeEditStep = ({
 
                       {phase.note &&
                       shouldShowPhaseNote &&
+                      phase.phaseType !== "setup" &&
                       activeServicePhaseNote === phase.name ? (
                         <div
                           className={cn(
@@ -17178,7 +17252,6 @@ const ServiceScopeEditStep = ({
                 <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
                   {[
                     "Reduce the budget",
-                    "Shorten the project timeline",
                     "Improve scope quality",
                   ].map((item) => (
                     <Button
