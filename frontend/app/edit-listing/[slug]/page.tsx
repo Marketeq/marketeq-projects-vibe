@@ -7216,7 +7216,9 @@ function PublishProject({
         // If no project found by slug, create a new draft so edits still save
         //    If the slug matches a seed listing, use its title/description
         if (!response?.data) {
-          const seedListing = TEAM_SEED_LISTINGS.find((s) => s.id === params.slug)
+          const seedListing = TEAM_SEED_LISTINGS.find(
+            (s) => s.id === params.slug
+          )
           response = await ProjectAPI.CreateProjectDraft({
             title: seedListing?.title || "",
             shortDescription: seedListing?.description || "",

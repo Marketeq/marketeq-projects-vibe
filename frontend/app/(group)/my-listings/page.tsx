@@ -5,13 +5,13 @@ import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import { ProjectAPI } from "@/service/http/project"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import {
   formatRelativeTime,
   statusToBadgeVisual,
   useMyListings,
 } from "@/src/lib/my-listings"
-import { ProjectAPI } from "@/service/http/project"
 import { cn } from "@/utils/functions"
 import {
   Archive,
@@ -532,8 +532,7 @@ export default function MyListingsPage() {
                         title: "",
                         listingType: option.type,
                       })
-                      const draftId =
-                        res?.data?.projectId ?? res?.data?.id
+                      const draftId = res?.data?.projectId ?? res?.data?.id
                       if (draftId) {
                         setShowNewListingDialog(false)
                         router.push(`/my-listings/${draftId}`)

@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { UserAPI } from "@/service/http/user"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import { UserAPI } from "@/service/http/user"
 import {
   type FavoriteGroup as FavGroup,
   type Favorite,
@@ -1299,258 +1299,258 @@ export default function FavoritesPage() {
 
   return (
     <AuthenticatedRoute>
-    <div className="p-3.5 md:p-10 lg:py-[100px] lg:px-[200px]">
-      <div className="md:hidden items-center flex flex-row-reverse justify-between">
-        <div className="flex items-center gap-x-3 lg:gap-x-3.5">
-          <SortDropdown value={sortBy} onChange={setSortBy} />
+      <div className="p-3.5 md:p-10 lg:py-[100px] lg:px-[200px]">
+        <div className="md:hidden items-center flex flex-row-reverse justify-between">
+          <div className="flex items-center gap-x-3 lg:gap-x-3.5">
+            <SortDropdown value={sortBy} onChange={setSortBy} />
 
-          <ToggleGroupRoot
-            value={value}
-            onValueChange={(details) => setValue(details.value)}
-          >
-            <ToggleGroupItem value={GRID_LAYOUT}>
-              <Grid className="size-4 lg:size-6" />
-            </ToggleGroupItem>
-            <ToggleGroupItem value={LIST_LAYOUT}>
-              <List className="size-4 lg:size-6" />
-            </ToggleGroupItem>
-          </ToggleGroupRoot>
-        </div>
-
-        <NewGroupModal
-          onCreated={handleGroupCreated}
-          existingNames={allGroupNames}
-          activeTab={activeTab}
-        />
-      </div>
-
-      <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400 xs:max-md:mt-6">
-        My Favorites
-      </h1>
-
-      <Tabs
-        className="mt-7 lg:mt-[19px]"
-        value={activeTab}
-        onValueChange={setActiveTab}
-      >
-        <div className="border-b h-[60px] flex items-end justify-between border-gray-200">
-          <div className="items-end inline-flex gap-x-3">
-            <Button
-              className="text-gray-500"
-              variant="ghost"
-              visual="gray"
-              size="md"
+            <ToggleGroupRoot
+              value={value}
+              onValueChange={(details) => setValue(details.value)}
             >
-              <SearchMd className="size-[18px]" />
-            </Button>
-
-            <TabsList className="flex justify-start border-b-0 px-0">
-              <TabsTrigger
-                className="xs:max-lg:text-xs xs:max-lg:leading-5"
-                value="Projects"
-              >
-                Projects{" "}
-                {projectGroups.flatMap((g) => g.favorites).length > 0 &&
-                  `(${projectGroups.flatMap((g) => g.favorites).length})`}
-              </TabsTrigger>
-              <TabsTrigger
-                className="xs:max-lg:text-xs xs:max-lg:leading-5"
-                value="Services"
-              >
-                Services{" "}
-                {serviceGroups.flatMap((g) => g.favorites).length > 0 &&
-                  `(${serviceGroups.flatMap((g) => g.favorites).length})`}
-              </TabsTrigger>
-              <TabsTrigger
-                className="xs:max-lg:text-xs xs:max-lg:leading-5"
-                value="Talent Network"
-              >
-                Talent Network
-              </TabsTrigger>
-            </TabsList>
+              <ToggleGroupItem value={GRID_LAYOUT}>
+                <Grid className="size-4 lg:size-6" />
+              </ToggleGroupItem>
+              <ToggleGroupItem value={LIST_LAYOUT}>
+                <List className="size-4 lg:size-6" />
+              </ToggleGroupItem>
+            </ToggleGroupRoot>
           </div>
 
-          <div className="hidden items-center gap-x-3 lg:gap-x-6 self-start md:flex">
-            <div className="flex items-center gap-x-3 lg:gap-x-3.5">
-              <SortDropdown value={sortBy} onChange={setSortBy} />
+          <NewGroupModal
+            onCreated={handleGroupCreated}
+            existingNames={allGroupNames}
+            activeTab={activeTab}
+          />
+        </div>
 
-              <ToggleGroupRoot
-                value={value}
-                onValueChange={(details) => setValue(details.value)}
+        <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400 xs:max-md:mt-6">
+          My Favorites
+        </h1>
+
+        <Tabs
+          className="mt-7 lg:mt-[19px]"
+          value={activeTab}
+          onValueChange={setActiveTab}
+        >
+          <div className="border-b h-[60px] flex items-end justify-between border-gray-200">
+            <div className="items-end inline-flex gap-x-3">
+              <Button
+                className="text-gray-500"
+                variant="ghost"
+                visual="gray"
+                size="md"
               >
-                <ToggleGroupItem value={GRID_LAYOUT}>
-                  <Grid className="size-4 lg:size-6" />
-                </ToggleGroupItem>
-                <ToggleGroupItem value={LIST_LAYOUT}>
-                  <List className="size-4 lg:size-6" />
-                </ToggleGroupItem>
-              </ToggleGroupRoot>
+                <SearchMd className="size-[18px]" />
+              </Button>
+
+              <TabsList className="flex justify-start border-b-0 px-0">
+                <TabsTrigger
+                  className="xs:max-lg:text-xs xs:max-lg:leading-5"
+                  value="Projects"
+                >
+                  Projects{" "}
+                  {projectGroups.flatMap((g) => g.favorites).length > 0 &&
+                    `(${projectGroups.flatMap((g) => g.favorites).length})`}
+                </TabsTrigger>
+                <TabsTrigger
+                  className="xs:max-lg:text-xs xs:max-lg:leading-5"
+                  value="Services"
+                >
+                  Services{" "}
+                  {serviceGroups.flatMap((g) => g.favorites).length > 0 &&
+                    `(${serviceGroups.flatMap((g) => g.favorites).length})`}
+                </TabsTrigger>
+                <TabsTrigger
+                  className="xs:max-lg:text-xs xs:max-lg:leading-5"
+                  value="Talent Network"
+                >
+                  Talent Network
+                </TabsTrigger>
+              </TabsList>
             </div>
 
-            <NewGroupModal
-              onCreated={handleGroupCreated}
-              existingNames={allGroupNames}
-              activeTab={activeTab}
-            />
-          </div>
-        </div>
+            <div className="hidden items-center gap-x-3 lg:gap-x-6 self-start md:flex">
+              <div className="flex items-center gap-x-3 lg:gap-x-3.5">
+                <SortDropdown value={sortBy} onChange={setSortBy} />
 
-        {/* Talent Network Tab */}
-        <TabsContent value="Talent Network">
-          <div className="pt-[14px] lg:pt-6">
-            {sortedSampleGroups.length === 0 ? (
+                <ToggleGroupRoot
+                  value={value}
+                  onValueChange={(details) => setValue(details.value)}
+                >
+                  <ToggleGroupItem value={GRID_LAYOUT}>
+                    <Grid className="size-4 lg:size-6" />
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value={LIST_LAYOUT}>
+                    <List className="size-4 lg:size-6" />
+                  </ToggleGroupItem>
+                </ToggleGroupRoot>
+              </div>
+
+              <NewGroupModal
+                onCreated={handleGroupCreated}
+                existingNames={allGroupNames}
+                activeTab={activeTab}
+              />
+            </div>
+          </div>
+
+          {/* Talent Network Tab */}
+          <TabsContent value="Talent Network">
+            <div className="pt-[14px] lg:pt-6">
+              {sortedSampleGroups.length === 0 ? (
+                <EmptyState
+                  icon={Users}
+                  title="No favorite talent yet"
+                  description="Build your talent network by saving professionals you&rsquo;d love to work with. Group them by project, specialty, or team for quick access."
+                  action={
+                    <NextLink href="/talent">
+                      <Button>Browse Talent</Button>
+                    </NextLink>
+                  }
+                />
+              ) : getFirstItem(value) === GRID_LAYOUT ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-6">
+                  {sortedSampleGroups.map((group) => (
+                    <TalentCard
+                      key={group.id}
+                      groupId={group.id}
+                      groupName={group.name}
+                      talents={groupTalents[group.id] ?? []}
+                      createdAt={group.createdAt}
+                      onRename={handleRenameGroup}
+                      onDelete={handleDeleteGroup}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Accordion type="multiple" className="flex flex-col gap-y-3">
+                  {sortedSampleGroups.map((group) => (
+                    <TalentCardLandscapeRow
+                      key={group.id}
+                      value={group.id}
+                      groupId={group.id}
+                      groupName={group.name}
+                      talents={groupTalents[group.id] ?? []}
+                      createdAt={group.createdAt}
+                      onRename={handleRenameGroup}
+                      onDelete={handleDeleteGroup}
+                    />
+                  ))}
+                </Accordion>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Projects Tab */}
+          <TabsContent value="Projects">
+            {isLoading ? (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
+                {Array(8)
+                  .fill(0)
+                  .map((_, i) => (
+                    <div
+                      key={i}
+                      className="bg-white border rounded-lg h-[300px] animate-pulse"
+                    />
+                  ))}
+              </div>
+            ) : projectGroups.length === 0 ? (
               <EmptyState
-                icon={Users}
-                title="No favorite talent yet"
-                description="Build your talent network by saving professionals you&rsquo;d love to work with. Group them by project, specialty, or team for quick access."
+                icon={Briefcase}
+                title="No saved projects yet"
+                description="Browse projects and tap the star icon to save them here. Organize what you love into groups for easy access later."
                 action={
-                  <NextLink href="/talent">
-                    <Button>Browse Talent</Button>
+                  <NextLink href="/c/research">
+                    <Button>Browse Projects</Button>
                   </NextLink>
                 }
               />
             ) : getFirstItem(value) === GRID_LAYOUT ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-6">
-                {sortedSampleGroups.map((group) => (
-                  <TalentCard
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
+                {sortedProjectGroups.map((group) => (
+                  <ProjectGroupCard
                     key={group.id}
-                    groupId={group.id}
-                    groupName={group.name}
-                    talents={groupTalents[group.id] ?? []}
-                    createdAt={group.createdAt}
+                    group={group}
+                    itemMeta={itemMeta}
                     onRename={handleRenameGroup}
                     onDelete={handleDeleteGroup}
+                    existingNames={allGroupNames}
                   />
                 ))}
               </div>
             ) : (
-              <Accordion type="multiple" className="flex flex-col gap-y-3">
-                {sortedSampleGroups.map((group) => (
-                  <TalentCardLandscapeRow
+              <div className="grid gap-y-3 pt-3.5 lg:pt-6">
+                {sortedProjectGroups.map((group) => (
+                  <ProjectGroupListCard
                     key={group.id}
-                    value={group.id}
-                    groupId={group.id}
-                    groupName={group.name}
-                    talents={groupTalents[group.id] ?? []}
-                    createdAt={group.createdAt}
+                    group={group}
+                    itemMeta={itemMeta}
                     onRename={handleRenameGroup}
                     onDelete={handleDeleteGroup}
+                    existingNames={allGroupNames}
                   />
                 ))}
-              </Accordion>
+              </div>
             )}
-          </div>
-        </TabsContent>
+          </TabsContent>
 
-        {/* Projects Tab */}
-        <TabsContent value="Projects">
-          {isLoading ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
-              {Array(8)
-                .fill(0)
-                .map((_, i) => (
-                  <div
-                    key={i}
-                    className="bg-white border rounded-lg h-[300px] animate-pulse"
+          {/* Services Tab */}
+          <TabsContent value="Services">
+            {isLoading ? (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
+                {Array(8)
+                  .fill(0)
+                  .map((_, i) => (
+                    <div
+                      key={i}
+                      className="bg-white border rounded-lg h-[300px] animate-pulse"
+                    />
+                  ))}
+              </div>
+            ) : serviceGroups.length === 0 ? (
+              <EmptyState
+                icon={Monitor}
+                title="No saved services yet"
+                description="Discover services from top talent and save the ones you&rsquo;re interested in. You can organize them into groups for easy comparison."
+                action={
+                  <NextLink href="/c/research">
+                    <Button>Browse Services</Button>
+                  </NextLink>
+                }
+              />
+            ) : getFirstItem(value) === GRID_LAYOUT ? (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
+                {sortedServiceGroups.map((group) => (
+                  <ProjectGroupCard
+                    key={group.id}
+                    group={group}
+                    itemMeta={itemMeta}
+                    onRename={handleRenameGroup}
+                    onDelete={handleDeleteGroup}
+                    existingNames={allGroupNames}
+                    itemType="service"
                   />
                 ))}
-            </div>
-          ) : projectGroups.length === 0 ? (
-            <EmptyState
-              icon={Briefcase}
-              title="No saved projects yet"
-              description="Browse projects and tap the star icon to save them here. Organize what you love into groups for easy access later."
-              action={
-                <NextLink href="/c/research">
-                  <Button>Browse Projects</Button>
-                </NextLink>
-              }
-            />
-          ) : getFirstItem(value) === GRID_LAYOUT ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
-              {sortedProjectGroups.map((group) => (
-                <ProjectGroupCard
-                  key={group.id}
-                  group={group}
-                  itemMeta={itemMeta}
-                  onRename={handleRenameGroup}
-                  onDelete={handleDeleteGroup}
-                  existingNames={allGroupNames}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="grid gap-y-3 pt-3.5 lg:pt-6">
-              {sortedProjectGroups.map((group) => (
-                <ProjectGroupListCard
-                  key={group.id}
-                  group={group}
-                  itemMeta={itemMeta}
-                  onRename={handleRenameGroup}
-                  onDelete={handleDeleteGroup}
-                  existingNames={allGroupNames}
-                />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Services Tab */}
-        <TabsContent value="Services">
-          {isLoading ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
-              {Array(8)
-                .fill(0)
-                .map((_, i) => (
-                  <div
-                    key={i}
-                    className="bg-white border rounded-lg h-[300px] animate-pulse"
+              </div>
+            ) : (
+              <div className="grid gap-y-3 pt-3.5 lg:pt-6">
+                {sortedServiceGroups.map((group) => (
+                  <ProjectGroupListCard
+                    key={group.id}
+                    group={group}
+                    itemMeta={itemMeta}
+                    onRename={handleRenameGroup}
+                    onDelete={handleDeleteGroup}
+                    existingNames={allGroupNames}
+                    itemType="service"
                   />
                 ))}
-            </div>
-          ) : serviceGroups.length === 0 ? (
-            <EmptyState
-              icon={Monitor}
-              title="No saved services yet"
-              description="Discover services from top talent and save the ones you&rsquo;re interested in. You can organize them into groups for easy comparison."
-              action={
-                <NextLink href="/c/research">
-                  <Button>Browse Services</Button>
-                </NextLink>
-              }
-            />
-          ) : getFirstItem(value) === GRID_LAYOUT ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-3.5 lg:gap-6 pt-3.5 lg:pt-6">
-              {sortedServiceGroups.map((group) => (
-                <ProjectGroupCard
-                  key={group.id}
-                  group={group}
-                  itemMeta={itemMeta}
-                  onRename={handleRenameGroup}
-                  onDelete={handleDeleteGroup}
-                  existingNames={allGroupNames}
-                  itemType="service"
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="grid gap-y-3 pt-3.5 lg:pt-6">
-              {sortedServiceGroups.map((group) => (
-                <ProjectGroupListCard
-                  key={group.id}
-                  group={group}
-                  itemMeta={itemMeta}
-                  onRename={handleRenameGroup}
-                  onDelete={handleDeleteGroup}
-                  existingNames={allGroupNames}
-                  itemType="service"
-                />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
-    </div>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
     </AuthenticatedRoute>
   )
 }

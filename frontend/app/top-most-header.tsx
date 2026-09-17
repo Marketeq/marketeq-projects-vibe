@@ -3,9 +3,9 @@
 import React, { useCallback, useEffect, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
-  useAuth,
   hasCompletedClientOnboarding,
   hasCompletedTalentOnboarding,
+  useAuth,
 } from "@/contexts/auth"
 import { useAutocomplete } from "@/libs/autocomplete"
 import {

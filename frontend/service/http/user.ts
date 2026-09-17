@@ -98,7 +98,10 @@ export const UserAPI = {
   updateProfile: (userId: string, data: UserProfilePayload) =>
     AxiosRequest.patch(`${USER_BASE}/v1/users/${userId}`, data),
   dismissOnboarding: (userId: string) =>
-    AxiosRequest.patch(`${USER_BASE}/v1/users/${userId}/onboarding/dismiss`, {}),
+    AxiosRequest.patch(
+      `${USER_BASE}/v1/users/${userId}/onboarding/dismiss`,
+      {}
+    ),
 
   // Education
   addEducation: (data: EducationPayload) =>

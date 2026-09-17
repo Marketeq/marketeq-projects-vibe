@@ -562,7 +562,9 @@ const skillsFormDefaultValue: SkillsFormValues = {
 
 const industriesFormSchema = z.object({
   industries: z
-    .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
+    .array(
+      z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
+    )
     .min(1, "Please at least provide 1 industry"),
 })
 
@@ -2107,7 +2109,10 @@ export const WorkExperienceDialog = ({
         edit,
       })}
       <DialogContent className="max-w-[700px] max-h-[calc(100vh-2rem)] rounded-[12px] p-0 flex flex-col overflow-hidden">
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col min-h-0 flex-1">
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="flex flex-col min-h-0 flex-1"
+        >
           <div className="pt-6 px-6 flex-1 overflow-y-auto min-h-0">
             <div className="flex items-start gap-x-2">
               <div className="flex-auto">
@@ -3430,9 +3435,7 @@ export const SkillsDialog = ({
         )
 
         await Promise.all(
-          toRemove.map((skill: any) =>
-            UserAPI.removeSkill(String(skill.id))
-          )
+          toRemove.map((skill: any) => UserAPI.removeSkill(String(skill.id)))
         )
         await Promise.all(
           toAdd.map((skill) => UserAPI.addSkill({ name: skill.name }))

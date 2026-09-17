@@ -16,7 +16,6 @@ import {
   ExperiencePayload,
   UserAPI,
 } from "@/service/http/user"
-import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { cn, hookFormHasError, noop } from "@/utils/functions"
 import {
   useCallbackRef,
@@ -62,6 +61,7 @@ import { Controller, SubmitHandler, useForm, useWatch } from "react-hook-form"
 import { useToggle } from "react-use"
 import { z } from "zod"
 import { UserProfile } from "@/types/user"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import NextImage from "@/components/next-image"
 import {
   BecomeTopSeller,
@@ -572,7 +572,9 @@ export const StatusDialog = ({
   const next = () => {
     if (advancingRef.current) return
     advancingRef.current = true
-    setTimeout(() => { advancingRef.current = false }, 300)
+    setTimeout(() => {
+      advancingRef.current = false
+    }, 300)
     // If opened directly to a single step, skip to next incomplete step (or close if all done)
     if (isDirectStep) {
       let openedDialogName: keyof typeof dialogsState | null = null
@@ -863,7 +865,14 @@ export const StatusDialog = ({
         }
       />
 
-      <Dialog open={isOpen && !isDirectStep && !Object.values(dialogsState).some((s) => s.opened)} onOpenChange={setIsOpen}>
+      <Dialog
+        open={
+          isOpen &&
+          !isDirectStep &&
+          !Object.values(dialogsState).some((s) => s.opened)
+        }
+        onOpenChange={setIsOpen}
+      >
         <DialogContent
           dialogOverlay={<DialogOverlay className="bg-gray-700/50" />}
           variant="unanimated"
@@ -1137,7 +1146,8 @@ const MoreInfoDialog = ({
       setWorkExperiences(nextEntries)
     }
     if (userId) {
-      const defaultEntry = nextEntries.find((e) => e.saveAsDefault) ?? nextEntries[0]
+      const defaultEntry =
+        nextEntries.find((e) => e.saveAsDefault) ?? nextEntries[0]
       UserAPI.updateProfile(userId, {
         rateMin: values.earning ? Number(values.earning) : undefined,
         rateMax: values.clientRate ? Number(values.clientRate) : undefined,
@@ -1252,13 +1262,26 @@ const MoreInfoDialog = ({
                 <div className="mt-6">
                   {state === "default" && profileError && (
                     <div className="flex flex-col items-start gap-y-3">
-                      <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
-                      <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+                      <p className="text-base text-dark-blue-400">
+                        Something went wrong. Please try again.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outlined"
+                        visual="gray"
+                        onClick={() => onReloadProfile?.()}
+                      >
+                        Retry
+                      </Button>
                     </div>
                   )}
 
                   {state === "default" && !profileError && profileLoading && (
-                    <div className="space-y-3" aria-busy="true" aria-label="Loading">
+                    <div
+                      className="space-y-3"
+                      aria-busy="true"
+                      aria-label="Loading"
+                    >
                       <div className="h-9 w-[200px] bg-gray-200 rounded animate-pulse" />
                       <div className="h-4 w-[260px] bg-gray-200 rounded animate-pulse" />
                     </div>
@@ -1655,7 +1678,11 @@ const MoreInfoDialog = ({
                   <Button
                     size="md"
                     type="button"
-                    disabled={!Boolean(workExperiences?.length) || profileLoading || profileError}
+                    disabled={
+                      !Boolean(workExperiences?.length) ||
+                      profileLoading ||
+                      profileError
+                    }
                     onClick={next}
                   >
                     Save & Continue
@@ -1883,19 +1910,32 @@ const AboutMeDialog = ({
                 <div className="mt-1 h-6 w-[280px] bg-gray-200 rounded animate-pulse" />
               ) : (
                 <p className="mt-1 text-base leading-[24.31px] text-dark-blue-400">
-                  Create a connection and let clients feel like they already know
-                  you!
+                  Create a connection and let clients feel like they already
+                  know you!
                 </p>
               )}
             </div>
 
             {profileError ? (
               <div className="mt-6 flex flex-col items-start gap-y-3">
-                <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
-                <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+                <p className="text-base text-dark-blue-400">
+                  Something went wrong. Please try again.
+                </p>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  visual="gray"
+                  onClick={() => onReloadProfile?.()}
+                >
+                  Retry
+                </Button>
               </div>
             ) : profileLoading ? (
-              <div className="mt-6 h-[345px] bg-gray-200 rounded animate-pulse" aria-busy="true" aria-label="Loading" />
+              <div
+                className="mt-6 h-[345px] bg-gray-200 rounded animate-pulse"
+                aria-busy="true"
+                aria-label="Loading"
+              />
             ) : (
               <div className="mt-6 space-y-1.5">
                 <Textarea
@@ -1925,7 +1965,10 @@ const AboutMeDialog = ({
             >
               Skip
             </Button>
-            <Button size="md" disabled={!isValid || profileLoading || profileError}>
+            <Button
+              size="md"
+              disabled={!isValid || profileLoading || profileError}
+            >
               Save & Continue
             </Button>
           </div>
@@ -2000,7 +2043,9 @@ const AboutMeDialog = ({
 
 const skillsFormSchema = z.object({
   skills: z
-    .array(z.object({ id: z.union([z.number(), z.string()]), name: z.string() }))
+    .array(
+      z.object({ id: z.union([z.number(), z.string()]), name: z.string() })
+    )
     .min(1, "Please select at least 1 skill(s)")
     .max(50, "You have reached the maximum limit of 50 skills"),
 })
@@ -2039,7 +2084,9 @@ const SkillsDialog = ({
     onChange: onOpenedChange,
   })
   const [query, setQuery] = React.useState("")
-  const [filteredSkills, setFilteredSkills] = useState<{ id: number | string; name: string }[]>([])
+  const [filteredSkills, setFilteredSkills] = useState<
+    { id: number | string; name: string }[]
+  >([])
 
   const fetchSkills = React.useCallback(async (q: string) => {
     if (!q.trim()) {
@@ -2052,7 +2099,9 @@ const SkillsDialog = ({
       )
       if (!res.ok) return
       const data = await res.json()
-      const entries: { id: string; label: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
+      const entries: { id: string; label: string }[] = Array.isArray(data)
+        ? data
+        : (data.entries ?? data.results ?? [])
       setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.label })))
     } catch {}
   }, [])
@@ -2135,107 +2184,153 @@ const SkillsDialog = ({
 
             {profileError && (
               <div className="mt-6 flex flex-col items-start gap-y-3">
-                <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
-                <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+                <p className="text-base text-dark-blue-400">
+                  Something went wrong. Please try again.
+                </p>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  visual="gray"
+                  onClick={() => onReloadProfile?.()}
+                >
+                  Retry
+                </Button>
               </div>
             )}
 
             {!profileError && profileLoading && (
-              <div className="mt-6 space-y-3" aria-busy="true" aria-label="Loading">
+              <div
+                className="mt-6 space-y-3"
+                aria-busy="true"
+                aria-label="Loading"
+              >
                 <div className="h-11 w-full bg-gray-200 rounded animate-pulse" />
                 <div className="h-8 w-[160px] bg-gray-200 rounded animate-pulse" />
               </div>
             )}
 
             {!profileError && !profileLoading && (
-            <div className="mt-6">
-              <Controller
-                name="skills"
-                control={control}
-                render={({ field: { value, onChange } }) => (
-                  <Combobox
-                    className="w-full"
-                    value={value}
-                    onChange={(val: typeof value) => {
-                      const unique = val.filter((s, i, arr) =>
-                        arr.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase()) === i
-                      )
-                      onChange(unique)
-                      setQuery("")
-                    }}
-                    multiple
-                  >
-                    <ComboboxTrigger>
-                      <ComboboxInput
-                        size="lg"
-                        displayValue={() => query}
-                        placeholder="Search for skills"
-                        onChange={(event) => setQuery(event.target.value)}
-                        invalid={hookFormHasError({ errors, name: "skills" })}
-                      />
-                      <ComboboxButton size="lg">
-                        <SearchMd className="h-5 w-5" />
-                      </ComboboxButton>
-                    </ComboboxTrigger>
-                    <ScaleOutIn afterLeave={() => setQuery("")}>
-                      <ComboboxOptions>
-                        <ScrollArea viewportClassName="max-h-[304px]">
-                          {filteredSkills
-                            .filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
-                            .map((skill) => (
-                              <ComboboxOption key={`${skill.id}-${skill.name}`} value={skill}>
-                                {skill.name}
-                              </ComboboxOption>
-                            ))}
-                          {(() => {
-                            const q = query.trim().toLowerCase()
-                            const alreadySelected = (value ?? []).some((s) => s.name.toLowerCase() === q)
-                            const visibleOptions = filteredSkills.filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
-                            if (!q || alreadySelected || visibleOptions.length > 0) return null
-                            return (
-                              <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
-                                Add &ldquo;{query.trim()}&rdquo;
-                              </ComboboxOption>
-                            )
-                          })()}
-                        </ScrollArea>
-                      </ComboboxOptions>
-                    </ScaleOutIn>
-                  </Combobox>
-                )}
-              />
-
-              <HookFormErrorMessage
-                name="skills"
-                errors={errors}
-                render={({ message }) => (
-                  <ErrorMessage className="mt-1.5" size="sm">
-                    {message}
-                  </ErrorMessage>
-                )}
-              />
-
-              <div className="mt-3 flex gap-3 flex-wrap">
-                {skills?.map((skill) => (
-                  <Badge key={skill.id} visual="primary">
-                    {skill.name}
-                    <button
-                      type="button"
-                      className="focus-visible:outline-none"
-                      onClick={() => {
-                        setValue(
-                          "skills",
-                          skills.filter((s) => s.id !== skill.id)
+              <div className="mt-6">
+                <Controller
+                  name="skills"
+                  control={control}
+                  render={({ field: { value, onChange } }) => (
+                    <Combobox
+                      className="w-full"
+                      value={value}
+                      onChange={(val: typeof value) => {
+                        const unique = val.filter(
+                          (s, i, arr) =>
+                            arr.findIndex(
+                              (x) =>
+                                x.name.toLowerCase() === s.name.toLowerCase()
+                            ) === i
                         )
-                        trigger()
+                        onChange(unique)
+                        setQuery("")
                       }}
+                      multiple
                     >
-                      <X2 className="size-3" />
-                    </button>
-                  </Badge>
-                ))}
+                      <ComboboxTrigger>
+                        <ComboboxInput
+                          size="lg"
+                          displayValue={() => query}
+                          placeholder="Search for skills"
+                          onChange={(event) => setQuery(event.target.value)}
+                          invalid={hookFormHasError({ errors, name: "skills" })}
+                        />
+                        <ComboboxButton size="lg">
+                          <SearchMd className="h-5 w-5" />
+                        </ComboboxButton>
+                      </ComboboxTrigger>
+                      <ScaleOutIn afterLeave={() => setQuery("")}>
+                        <ComboboxOptions>
+                          <ScrollArea viewportClassName="max-h-[304px]">
+                            {filteredSkills
+                              .filter(
+                                (skill) =>
+                                  !(value ?? []).some(
+                                    (s) =>
+                                      s.name.toLowerCase() ===
+                                      skill.name.toLowerCase()
+                                  )
+                              )
+                              .map((skill) => (
+                                <ComboboxOption
+                                  key={`${skill.id}-${skill.name}`}
+                                  value={skill}
+                                >
+                                  {skill.name}
+                                </ComboboxOption>
+                              ))}
+                            {(() => {
+                              const q = query.trim().toLowerCase()
+                              const alreadySelected = (value ?? []).some(
+                                (s) => s.name.toLowerCase() === q
+                              )
+                              const visibleOptions = filteredSkills.filter(
+                                (skill) =>
+                                  !(value ?? []).some(
+                                    (s) =>
+                                      s.name.toLowerCase() ===
+                                      skill.name.toLowerCase()
+                                  )
+                              )
+                              if (
+                                !q ||
+                                alreadySelected ||
+                                visibleOptions.length > 0
+                              )
+                                return null
+                              return (
+                                <ComboboxOption
+                                  value={{
+                                    id: `custom-${query.trim()}`,
+                                    name: query.trim(),
+                                  }}
+                                >
+                                  Add &ldquo;{query.trim()}&rdquo;
+                                </ComboboxOption>
+                              )
+                            })()}
+                          </ScrollArea>
+                        </ComboboxOptions>
+                      </ScaleOutIn>
+                    </Combobox>
+                  )}
+                />
+
+                <HookFormErrorMessage
+                  name="skills"
+                  errors={errors}
+                  render={({ message }) => (
+                    <ErrorMessage className="mt-1.5" size="sm">
+                      {message}
+                    </ErrorMessage>
+                  )}
+                />
+
+                <div className="mt-3 flex gap-3 flex-wrap">
+                  {skills?.map((skill) => (
+                    <Badge key={skill.id} visual="primary">
+                      {skill.name}
+                      <button
+                        type="button"
+                        className="focus-visible:outline-none"
+                        onClick={() => {
+                          setValue(
+                            "skills",
+                            skills.filter((s) => s.id !== skill.id)
+                          )
+                          trigger()
+                        }}
+                      >
+                        <X2 className="size-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
               </div>
-            </div>
             )}
           </div>
           <div className="border rounded-b-[10px] flex items-center justify-between border-gray-200 bg-white py-4 px-6">
@@ -2261,7 +2356,10 @@ const SkillsDialog = ({
               >
                 Skip
               </Button>
-              <Button size="md" disabled={!isValid || profileLoading || profileError}>
+              <Button
+                size="md"
+                disabled={!isValid || profileLoading || profileError}
+              >
                 Save & Continue
               </Button>
             </div>
@@ -2443,7 +2541,9 @@ const WorkExperienceDialog = ({
   })
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = React.useState("")
-  const [filteredSkills, setFilteredSkills] = useState<{ id: number | string; name: string }[]>([])
+  const [filteredSkills, setFilteredSkills] = useState<
+    { id: number | string; name: string }[]
+  >([])
 
   const fetchSkills = React.useCallback(async (q: string) => {
     if (!q.trim()) {
@@ -2456,7 +2556,9 @@ const WorkExperienceDialog = ({
       )
       if (!res.ok) return
       const data = await res.json()
-      const entries: { id: string; label: string }[] = Array.isArray(data) ? data : data.entries ?? data.results ?? []
+      const entries: { id: string; label: string }[] = Array.isArray(data)
+        ? data
+        : (data.entries ?? data.results ?? [])
       setFilteredSkills(entries.map((e) => ({ id: e.id, name: e.label })))
     } catch {}
   }, [])
@@ -2543,20 +2645,26 @@ const WorkExperienceDialog = ({
       const editingExp = workExperiences?.[editingIndex]
       setWorkExperiences(
         workExperiences?.map((workExperience, index) =>
-          index === editingIndex ? { ...values, id: workExperience.id } : workExperience
+          index === editingIndex
+            ? { ...values, id: workExperience.id }
+            : workExperience
         )
       )
       if (editingExp?.id) {
         UserAPI.updateExperience(editingExp.id, payload).catch(() => {})
       } else if (userId) {
-        UserAPI.addExperience(payload).then((res) => {
-          const newId = res?.data?.id
-          if (newId) {
-            setWorkExperiences((prev) =>
-              prev?.map((w, i) => (i === editingIndex ? { ...w, id: newId } : w))
-            )
-          }
-        }).catch(() => {})
+        UserAPI.addExperience(payload)
+          .then((res) => {
+            const newId = res?.data?.id
+            if (newId) {
+              setWorkExperiences((prev) =>
+                prev?.map((w, i) =>
+                  i === editingIndex ? { ...w, id: newId } : w
+                )
+              )
+            }
+          })
+          .catch(() => {})
       }
       setEditingIndex(undefined)
     } else {
@@ -2568,9 +2676,7 @@ const WorkExperienceDialog = ({
             const newId = res?.data?.id
             if (newId) {
               setWorkExperiences((prev) =>
-                prev?.map((w, i) =>
-                  i === newIndex ? { ...w, id: newId } : w
-                )
+                prev?.map((w, i) => (i === newIndex ? { ...w, id: newId } : w))
               )
             }
           })
@@ -2680,7 +2786,9 @@ const WorkExperienceDialog = ({
                 <div className="mt-6">
                   {state === "default" && profileError && (
                     <div className="flex flex-col items-start gap-y-3">
-                      <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
+                      <p className="text-base text-dark-blue-400">
+                        Something went wrong. Please try again.
+                      </p>
                       <Button
                         type="button"
                         variant="outlined"
@@ -2693,7 +2801,11 @@ const WorkExperienceDialog = ({
                   )}
 
                   {state === "default" && !profileError && profileLoading && (
-                    <div className="space-y-3" aria-busy="true" aria-label="Loading">
+                    <div
+                      className="space-y-3"
+                      aria-busy="true"
+                      aria-label="Loading"
+                    >
                       <div className="h-9 w-[200px] bg-gray-200 rounded animate-pulse" />
                       <div className="h-4 w-[260px] bg-gray-200 rounded animate-pulse" />
                     </div>
@@ -2830,7 +2942,10 @@ const WorkExperienceDialog = ({
                                         }
                                       >
                                         {months.map((m) => (
-                                          <ListboxOption key={m.value} value={m.value}>
+                                          <ListboxOption
+                                            key={m.value}
+                                            value={m.value}
+                                          >
                                             {m.value}
                                           </ListboxOption>
                                         ))}
@@ -2940,7 +3055,10 @@ const WorkExperienceDialog = ({
                                         }
                                       >
                                         {months.map((m) => (
-                                          <ListboxOption key={m.value} value={m.value}>
+                                          <ListboxOption
+                                            key={m.value}
+                                            value={m.value}
+                                          >
                                             {m.value}
                                           </ListboxOption>
                                         ))}
@@ -3070,8 +3188,13 @@ const WorkExperienceDialog = ({
                             className="w-full mt-[30px]"
                             value={value}
                             onChange={(val: typeof value) => {
-                              const unique = val.filter((s, i, arr) =>
-                                arr.findIndex((x) => x.name.toLowerCase() === s.name.toLowerCase()) === i
+                              const unique = val.filter(
+                                (s, i, arr) =>
+                                  arr.findIndex(
+                                    (x) =>
+                                      x.name.toLowerCase() ===
+                                      s.name.toLowerCase()
+                                  ) === i
                               )
                               onChange(unique)
                               setQuery("")
@@ -3099,7 +3222,14 @@ const WorkExperienceDialog = ({
                               <ComboboxOptions>
                                 <ScrollArea viewportClassName="max-h-[304px]">
                                   {filteredSkills
-                                    .filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
+                                    .filter(
+                                      (skill) =>
+                                        !(value ?? []).some(
+                                          (s) =>
+                                            s.name.toLowerCase() ===
+                                            skill.name.toLowerCase()
+                                        )
+                                    )
                                     .map((skill) => (
                                       <ComboboxOption
                                         key={`${skill.id}-${skill.name}`}
@@ -3110,11 +3240,31 @@ const WorkExperienceDialog = ({
                                     ))}
                                   {(() => {
                                     const q = query.trim().toLowerCase()
-                                    const alreadySelected = (value ?? []).some((s) => s.name.toLowerCase() === q)
-                                    const visibleOptions = filteredSkills.filter((skill) => !(value ?? []).some((s) => s.name.toLowerCase() === skill.name.toLowerCase()))
-                                    if (!q || alreadySelected || visibleOptions.length > 0) return null
+                                    const alreadySelected = (value ?? []).some(
+                                      (s) => s.name.toLowerCase() === q
+                                    )
+                                    const visibleOptions =
+                                      filteredSkills.filter(
+                                        (skill) =>
+                                          !(value ?? []).some(
+                                            (s) =>
+                                              s.name.toLowerCase() ===
+                                              skill.name.toLowerCase()
+                                          )
+                                      )
+                                    if (
+                                      !q ||
+                                      alreadySelected ||
+                                      visibleOptions.length > 0
+                                    )
+                                      return null
                                     return (
-                                      <ComboboxOption value={{ id: `custom-${query.trim()}`, name: query.trim() }}>
+                                      <ComboboxOption
+                                        value={{
+                                          id: `custom-${query.trim()}`,
+                                          name: query.trim(),
+                                        }}
+                                      >
                                         Add &ldquo;{query.trim()}&rdquo;
                                       </ComboboxOption>
                                     )
@@ -3192,7 +3342,11 @@ const WorkExperienceDialog = ({
                     size="md"
                     type="button"
                     onClick={next}
-                    disabled={!Boolean(workExperiences?.length) || profileLoading || profileError}
+                    disabled={
+                      !Boolean(workExperiences?.length) ||
+                      profileLoading ||
+                      profileError
+                    }
                   >
                     Save & Continue
                   </Button>
@@ -3506,20 +3660,26 @@ const EducationDialog = ({
       const editingEdu = educationQualifications?.[editingIndex]
       setEducationQualifications(
         educationQualifications?.map((qualification, index) =>
-          index === editingIndex ? { ...values, id: qualification.id } : qualification
+          index === editingIndex
+            ? { ...values, id: qualification.id }
+            : qualification
         )
       )
       if (editingEdu?.id) {
         UserAPI.updateEducation(editingEdu.id, payload).catch(() => {})
       } else if (userId) {
-        UserAPI.addEducation(payload).then((res) => {
-          const newId = res?.data?.id
-          if (newId) {
-            setEducationQualifications((prev) =>
-              prev?.map((e, i) => (i === editingIndex ? { ...e, id: newId } : e))
-            )
-          }
-        }).catch(() => {})
+        UserAPI.addEducation(payload)
+          .then((res) => {
+            const newId = res?.data?.id
+            if (newId) {
+              setEducationQualifications((prev) =>
+                prev?.map((e, i) =>
+                  i === editingIndex ? { ...e, id: newId } : e
+                )
+              )
+            }
+          })
+          .catch(() => {})
       }
       setEditingIndex(undefined)
     } else {
@@ -3533,9 +3693,7 @@ const EducationDialog = ({
             const newId = res?.data?.id
             if (newId) {
               setEducationQualifications((prev) =>
-                prev?.map((e, i) =>
-                  i === newIndex ? { ...e, id: newId } : e
-                )
+                prev?.map((e, i) => (i === newIndex ? { ...e, id: newId } : e))
               )
             }
           })
@@ -3638,13 +3796,26 @@ const EducationDialog = ({
               <div className="mt-6">
                 {state === "default" && profileError && (
                   <div className="flex flex-col items-start gap-y-3">
-                    <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
-                    <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+                    <p className="text-base text-dark-blue-400">
+                      Something went wrong. Please try again.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outlined"
+                      visual="gray"
+                      onClick={() => onReloadProfile?.()}
+                    >
+                      Retry
+                    </Button>
                   </div>
                 )}
 
                 {state === "default" && !profileError && profileLoading && (
-                  <div className="space-y-3" aria-busy="true" aria-label="Loading">
+                  <div
+                    className="space-y-3"
+                    aria-busy="true"
+                    aria-label="Loading"
+                  >
                     <div className="h-9 w-[200px] bg-gray-200 rounded animate-pulse" />
                     <div className="h-4 w-[260px] bg-gray-200 rounded animate-pulse" />
                   </div>
@@ -3817,7 +3988,10 @@ const EducationDialog = ({
                                   />
                                   <ListboxOptions>
                                     {months.map((m) => (
-                                      <ListboxOption key={m.value} value={m.value}>
+                                      <ListboxOption
+                                        key={m.value}
+                                        value={m.value}
+                                      >
                                         {m.value}
                                       </ListboxOption>
                                     ))}
@@ -3906,7 +4080,10 @@ const EducationDialog = ({
                                   />
                                   <ListboxOptions>
                                     {months.map((m) => (
-                                      <ListboxOption key={m.value} value={m.value}>
+                                      <ListboxOption
+                                        key={m.value}
+                                        value={m.value}
+                                      >
                                         {m.value}
                                       </ListboxOption>
                                     ))}
@@ -4016,7 +4193,11 @@ const EducationDialog = ({
                   <Button
                     size="md"
                     type="button"
-                    disabled={!Boolean(educationQualifications?.length) || profileLoading || profileError}
+                    disabled={
+                      !Boolean(educationQualifications?.length) ||
+                      profileLoading ||
+                      profileError
+                    }
                     onClick={next}
                   >
                     Save & Continue
@@ -4257,60 +4438,73 @@ const Portfolio = ({
 
               {profileError && (
                 <div className="mt-6 flex flex-col items-start gap-y-3">
-                  <p className="text-base text-dark-blue-400">Something went wrong. Please try again.</p>
-                  <Button type="button" variant="outlined" visual="gray" onClick={() => onReloadProfile?.()}>Retry</Button>
+                  <p className="text-base text-dark-blue-400">
+                    Something went wrong. Please try again.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    visual="gray"
+                    onClick={() => onReloadProfile?.()}
+                  >
+                    Retry
+                  </Button>
                 </div>
               )}
 
               {!profileError && profileLoading && (
-                <div className="mt-6 grid grid-cols-2 gap-3" aria-busy="true" aria-label="Loading">
+                <div
+                  className="mt-6 grid grid-cols-2 gap-3"
+                  aria-busy="true"
+                  aria-label="Loading"
+                >
                   <div className="h-[150px] bg-gray-200 rounded animate-pulse" />
                   <div className="h-[150px] bg-gray-200 rounded animate-pulse" />
                 </div>
               )}
 
               {!profileError && !profileLoading && (
-              <div className="mt-6 grid grid-cols-2 gap-3">
-                {portfolioItems.map((item, index) => (
-                  <article
-                    key={index}
-                    className="h-[150px] bg-white gap-y-2 flex items-center flex-col justify-center border border-gray-200 p-6 rounded-[5px]"
-                  >
-                    <div className="size-10 shrink-0 rounded-full border-2 border-success-500 inline-flex items-center justify-center text-success-500">
-                      <Check className="size-4" />
-                    </div>
-                    <h3 className="text-center text-sm font-semibold text-dark-blue-400">
-                      {item}
-                    </h3>
-                    <button
-                      type="button"
-                      className="text-xs text-error-500 hover:underline"
-                      onClick={() => {
-                        const updated = portfolioItems.filter(
-                          (_, i) => i !== index
-                        )
-                        setPortfolioItems(updated)
-                        if (updated.length === 0) onFinished?.(false)
-                      }}
+                <div className="mt-6 grid grid-cols-2 gap-3">
+                  {portfolioItems.map((item, index) => (
+                    <article
+                      key={index}
+                      className="h-[150px] bg-white gap-y-2 flex items-center flex-col justify-center border border-gray-200 p-6 rounded-[5px]"
                     >
-                      Remove
-                    </button>
-                  </article>
-                ))}
-                <button
-                  type="button"
-                  className="h-[150px] bg-white gap-y-3 flex items-center flex-col justify-center border border-gray-300 border-dashed p-6 rounded-[5px] hover:border-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-                  onClick={() => setCaseStudyOpen(true)}
-                >
-                  <div className="size-[52px] rounded-full text-white shrink-0 border-[12px] border-gray-200 bg-gray-400 inline-flex items-center justify-center">
-                    <Plus className="size-[21px]" />
-                  </div>
+                      <div className="size-10 shrink-0 rounded-full border-2 border-success-500 inline-flex items-center justify-center text-success-500">
+                        <Check className="size-4" />
+                      </div>
+                      <h3 className="text-center text-sm font-semibold text-dark-blue-400">
+                        {item}
+                      </h3>
+                      <button
+                        type="button"
+                        className="text-xs text-error-500 hover:underline"
+                        onClick={() => {
+                          const updated = portfolioItems.filter(
+                            (_, i) => i !== index
+                          )
+                          setPortfolioItems(updated)
+                          if (updated.length === 0) onFinished?.(false)
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </article>
+                  ))}
+                  <button
+                    type="button"
+                    className="h-[150px] bg-white gap-y-3 flex items-center flex-col justify-center border border-gray-300 border-dashed p-6 rounded-[5px] hover:border-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                    onClick={() => setCaseStudyOpen(true)}
+                  >
+                    <div className="size-[52px] rounded-full text-white shrink-0 border-[12px] border-gray-200 bg-gray-400 inline-flex items-center justify-center">
+                      <Plus className="size-[21px]" />
+                    </div>
 
-                  <h3 className="text-center text-sm font-semibold text-gray-400">
-                    Add a project
-                  </h3>
-                </button>
-              </div>
+                    <h3 className="text-center text-sm font-semibold text-gray-400">
+                      Add a project
+                    </h3>
+                  </button>
+                </div>
               )}
             </div>
             <div className="border rounded-b-[10px] flex items-center justify-between border-gray-200 bg-white py-4 px-6">
@@ -4339,7 +4533,11 @@ const Portfolio = ({
                 <Button
                   size="md"
                   type="button"
-                  disabled={portfolioItems.length === 0 || profileLoading || profileError}
+                  disabled={
+                    portfolioItems.length === 0 ||
+                    profileLoading ||
+                    profileError
+                  }
                   onClick={() => {
                     onFinished?.(true)
                     next?.()

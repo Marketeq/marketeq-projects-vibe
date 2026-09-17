@@ -46,7 +46,9 @@ test("client onboarding reaches final step from signup", async ({
   }
 
   const expectStep = async (step: number) => {
-    await expect(page.getByText(new RegExp(`STEP ${step} / [67]`, "i"))).toBeVisible({
+    await expect(
+      page.getByText(new RegExp(`STEP ${step} / [67]`, "i"))
+    ).toBeVisible({
       timeout: 15000,
     })
   }

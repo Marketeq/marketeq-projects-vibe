@@ -750,6 +750,7 @@ getCategoryPage(slug: string): Promise<CategoryPageResponse | null>
   - `app/(group)/(group)/level-1/projects/page.tsx` - Direct import and usage
   - `app/(group)/(group)/level-1/projects/api-wrapper.tsx` - Used in wrapper component
 - **Usage Pattern**:
+
   ```typescript
   import {
     type BlockItem,
@@ -758,6 +759,7 @@ getCategoryPage(slug: string): Promise<CategoryPageResponse | null>
 
   const data = await getCategoryPage("creative")
   ```
+
 - **Data Flow**:
   1. Component calls `getCategoryPage('creative')`
   2. Function makes Axios GET request

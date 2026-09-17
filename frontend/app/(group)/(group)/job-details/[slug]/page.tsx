@@ -2,11 +2,11 @@
 
 import { use, useEffect, useRef, useState } from "react"
 import {
+  type LegalServiceError,
+  fetchNdaAudit,
   fetchNdaPreview,
   fetchNdaStatus,
-  fetchNdaAudit,
   submitNdaSign,
-  type LegalServiceError,
 } from "@/src/lib/api/legal-service"
 import {
   ArrowLeft,
@@ -23,28 +23,28 @@ import {
   UploadCloud,
   X,
 } from "@blend-metrics/icons"
-import NextLink from "@/components/next-link"
 import { ProtectedLock } from "@/components/icons/protected-lock"
+import NextLink from "@/components/next-link"
 import { SaveButton } from "@/components/talent-profile-comps"
 import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
   Accordion,
   AccordionItem,
   AccordionTrigger,
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
   Badge,
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
   Button,
   Checkbox,
-  DisclosureContent,
   Dialog,
   DialogClose,
   DialogContent,
   DialogDescription,
   DialogTitle,
+  DisclosureContent,
   IconButton,
   Input,
   Label,
@@ -293,9 +293,7 @@ export default function JobDetailsPage({
   const { slug } = use(params)
   const slugTitle = titleizeSlug(slug)
   const subtitle =
-    slugTitle && slugTitle !== "Placeholder"
-      ? slugTitle
-      : job.subtitle
+    slugTitle && slugTitle !== "Placeholder" ? slugTitle : job.subtitle
   const isLegalServiceNda = heroVariant === "legal-service-nda"
   const primaryCtaLabel = isLegalServiceNda ? "Accept Offer" : "Apply"
   const metaLeadLabel = isLegalServiceNda
@@ -311,11 +309,14 @@ export default function JobDetailsPage({
   const [ndaPreviewPdfUrl, setNdaPreviewPdfUrl] = useState<string | null>(null)
   const [signedPdfUrl, setSignedPdfUrl] = useState<string | null>(null)
   const [signedByName, setSignedByName] = useState("")
-  const [signedArtifactForPreview, setSignedArtifactForPreview] = useState<string | null>(null)
+  const [signedArtifactForPreview, setSignedArtifactForPreview] = useState<
+    string | null
+  >(null)
   const [signError, setSignError] = useState<SignErrorState | null>(null)
   const [isSignSubmitting, setIsSignSubmitting] = useState(false)
-  const [ndaModalStep, setNdaModalStep] =
-    useState<NdaModalStep | "success">("review")
+  const [ndaModalStep, setNdaModalStep] = useState<NdaModalStep | "success">(
+    "review"
+  )
   const [ndaStatus, setNdaStatus] = useState<NdaStatus>("unsigned")
   const [signingMethod, setSigningMethod] = useState<NdaSigningMethod>("typed")
   const [signerName, setSignerName] = useState("")
@@ -341,14 +342,17 @@ export default function JobDetailsPage({
   const trimmedSignerName = signerName.trim()
   const trimmedSignerInitials = signerInitials.trim()
   const showNameInvalid = nameTouched && trimmedSignerName.length === 0
-  const showInitialsInvalid = initialsTouched && trimmedSignerInitials.length === 0
+  const showInitialsInvalid =
+    initialsTouched && trimmedSignerInitials.length === 0
   const showConsentInvalid = consentTouched && !consentChecked
   const typedSignaturePreview = [trimmedSignerName, trimmedSignerInitials]
     .filter(Boolean)
     .join("   ")
   const typedSignedDocumentPreview = "Unknown User"
   const hasUploadSignature = uploadedSignatureFile !== null
-  const hasDrawSignature = Boolean(drawnSignatureDataUrl && drawnInitialsDataUrl)
+  const hasDrawSignature = Boolean(
+    drawnSignatureDataUrl && drawnInitialsDataUrl
+  )
   const hasTypedSignature = typedSignaturePreview.length > 0
   const hasSigningArtifact =
     signingMethod === "upload"
@@ -363,7 +367,7 @@ export default function JobDetailsPage({
     hasSigningArtifact
   const signedPreviewSignatureSrc =
     signingMethod === "upload"
-      ? uploadedSignatureFile?.dataUrl ?? null
+      ? (uploadedSignatureFile?.dataUrl ?? null)
       : signingMethod === "draw"
         ? drawnSignatureDataUrl || null
         : null
@@ -396,7 +400,9 @@ export default function JobDetailsPage({
             setSignedPdfUrl(data.signedPdfUrl)
           }
           // Restore drawn/uploaded signature image from localStorage (visual UX only)
-          const storedArtifact = localStorage.getItem(`nda_artifact_${NDA_DOCUMENT_ID}`)
+          const storedArtifact = localStorage.getItem(
+            `nda_artifact_${NDA_DOCUMENT_ID}`
+          )
           if (storedArtifact) {
             setSignedArtifactForPreview(storedArtifact)
           }
@@ -553,11 +559,11 @@ export default function JobDetailsPage({
           reviewPageVisibility.current[pageIndex] = entry.intersectionRatio
         })
 
-        const mostVisiblePage = Object.entries(reviewPageVisibility.current).reduce(
+        const mostVisiblePage = Object.entries(
+          reviewPageVisibility.current
+        ).reduce(
           (best, [pageIndex, ratio]) =>
-            ratio > best.ratio
-              ? { page: Number(pageIndex), ratio }
-              : best,
+            ratio > best.ratio ? { page: Number(pageIndex), ratio } : best,
           { page: 1, ratio: 0 }
         )
 
@@ -651,7 +657,9 @@ export default function JobDetailsPage({
         const alpha = data[offset + 3]
         const isVisible = alpha > alphaThreshold
         const isInk =
-          red < lightThreshold || green < lightThreshold || blue < lightThreshold
+          red < lightThreshold ||
+          green < lightThreshold ||
+          blue < lightThreshold
 
         if (!isVisible || !isInk) continue
 
@@ -841,7 +849,9 @@ export default function JobDetailsPage({
       canvas.setPointerCapture(event.pointerId)
     }
 
-  const handleDrawPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+  const handleDrawPointerMove = (
+    event: React.PointerEvent<HTMLCanvasElement>
+  ) => {
     const activeTarget = activeDrawTargetRef.current
     if (!activeTarget) return
 
@@ -864,11 +874,15 @@ export default function JobDetailsPage({
     activeDrawTargetRef.current = null
   }
 
-  const handleDrawPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+  const handleDrawPointerUp = (
+    event: React.PointerEvent<HTMLCanvasElement>
+  ) => {
     finishDrawing(event.currentTarget)
   }
 
-  const handleDrawPointerLeave = (event: React.PointerEvent<HTMLCanvasElement>) => {
+  const handleDrawPointerLeave = (
+    event: React.PointerEvent<HTMLCanvasElement>
+  ) => {
     if (!activeDrawTargetRef.current) return
     finishDrawing(event.currentTarget)
   }
@@ -915,7 +929,7 @@ export default function JobDetailsPage({
       // the correct signature regardless of which method (typed/draw/upload) was used.
       const artifactSrc =
         signingMethod === "draw"
-          ? (drawnSignatureDataUrl || null)
+          ? drawnSignatureDataUrl || null
           : signingMethod === "upload"
             ? (uploadedSignatureFile?.dataUrl ?? null)
             : null
@@ -931,7 +945,10 @@ export default function JobDetailsPage({
       setSignedPdfUrl(result.signedPdfUrl)
       // Also persist the signed PDF URL so Download button works after refresh
       if (result.signedPdfUrl) {
-        localStorage.setItem(`nda_signed_pdf_${NDA_DOCUMENT_ID}`, result.signedPdfUrl)
+        localStorage.setItem(
+          `nda_signed_pdf_${NDA_DOCUMENT_ID}`,
+          result.signedPdfUrl
+        )
       }
       setNdaStatus("signed")
       setNdaModalStep("success")
@@ -949,10 +966,7 @@ export default function JobDetailsPage({
         setNdaModalStep("success")
       } else if (lsErr.status === 410) {
         setSignError("voided")
-      } else if (
-        lsErr.status === 422 &&
-        lsErr.code === "LS_NAME_NO_MATCH"
-      ) {
+      } else if (lsErr.status === 422 && lsErr.code === "LS_NAME_NO_MATCH") {
         setSignError("name-mismatch")
       } else if (lsErr.status === 423) {
         setSignError("locked-out")
@@ -987,7 +1001,9 @@ export default function JobDetailsPage({
             <BreadcrumbLink href="/find-jobs">Jobs</BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbItem>
-            <BreadcrumbLink href="/find-jobs">Mobile Application</BreadcrumbLink>
+            <BreadcrumbLink href="/find-jobs">
+              Mobile Application
+            </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbItem isCurrentPage>
             <BreadcrumbLink>iOS Development</BreadcrumbLink>
@@ -1075,7 +1091,9 @@ export default function JobDetailsPage({
                   <TabsTrigger value={tabLabels.scope}>
                     {tabLabels.scope}
                   </TabsTrigger>
-                  <TabsTrigger value={tabLabels.team}>{tabLabels.team}</TabsTrigger>
+                  <TabsTrigger value={tabLabels.team}>
+                    {tabLabels.team}
+                  </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value={tabLabels.description}>
@@ -1099,10 +1117,11 @@ export default function JobDetailsPage({
 
                       <div className="mt-5 text-sm font-light leading-6 text-dark-blue-400">
                         <p>
-                          Ut enim ad minim veniam, quis nostrud exercitation ullamco
-                          laboris nisi ut aliquip ex ea commodo consequat. Duis aute
-                          irure dolor in reprehenderit in voluptate velit esse
-                          cillum dolore eu fugiat nulla pariatur.
+                          Ut enim ad minim veniam, quis nostrud exercitation
+                          ullamco laboris nisi ut aliquip ex ea commodo
+                          consequat. Duis aute irure dolor in reprehenderit in
+                          voluptate velit esse cillum dolore eu fugiat nulla
+                          pariatur.
                         </p>
 
                         <ul className="mt-5 space-y-3">
@@ -1122,10 +1141,11 @@ export default function JobDetailsPage({
 
                       <div className="mt-5 text-sm font-light leading-6 text-dark-blue-400">
                         <p>
-                          Lorem ipsum dolor sit amet, consectetur adipiscing elit,
-                          sed do eiusmod tempor incididunt ut labore et dolore magna
-                          aliqua. Duis aute irure dolor in reprehenderit in voluptate
-                          velit esse cillum dolore eu fugiat nulla pariatur.
+                          Lorem ipsum dolor sit amet, consectetur adipiscing
+                          elit, sed do eiusmod tempor incididunt ut labore et
+                          dolore magna aliqua. Duis aute irure dolor in
+                          reprehenderit in voluptate velit esse cillum dolore eu
+                          fugiat nulla pariatur.
                         </p>
 
                         <ul className="mt-5 space-y-3">
@@ -1173,11 +1193,19 @@ export default function JobDetailsPage({
                             <div className="flex items-center gap-3">
                               <Avatar>
                                 <AvatarImage
-                                  src={teamMembers[index % teamMembers.length]?.avatar}
-                                  alt={teamMembers[index % teamMembers.length]?.name}
+                                  src={
+                                    teamMembers[index % teamMembers.length]
+                                      ?.avatar
+                                  }
+                                  alt={
+                                    teamMembers[index % teamMembers.length]
+                                      ?.name
+                                  }
                                 />
                                 <AvatarFallback>
-                                  {teamMembers[index % teamMembers.length]?.name.charAt(0)}
+                                  {teamMembers[
+                                    index % teamMembers.length
+                                  ]?.name.charAt(0)}
                                 </AvatarFallback>
                               </Avatar>
                               <div className="min-w-0 flex-1">
@@ -1236,7 +1264,9 @@ export default function JobDetailsPage({
 
                                 <span className="text-base font-semibold leading-7 text-gray-900 md:text-[18px]">
                                   {phase.phaseLabel}{" "}
-                                  <span className="font-light">{phase.phaseName}</span>
+                                  <span className="font-light">
+                                    {phase.phaseName}
+                                  </span>
                                 </span>
                               </div>
 
@@ -1326,8 +1356,13 @@ export default function JobDetailsPage({
                           >
                             <div className="flex items-center gap-3">
                               <Avatar>
-                                <AvatarImage src={member.avatar} alt={member.name} />
-                                <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
+                                <AvatarImage
+                                  src={member.avatar}
+                                  alt={member.name}
+                                />
+                                <AvatarFallback>
+                                  {member.name.charAt(0)}
+                                </AvatarFallback>
                               </Avatar>
                               <div>
                                 <div className="h-3 w-24 rounded bg-gray-200" />
@@ -1395,7 +1430,10 @@ export default function JobDetailsPage({
 
                         <TableBody>
                           {marketplaceTeamRequirements.map((item) => (
-                            <TableRow key={item.role} className="hover:bg-white">
+                            <TableRow
+                              key={item.role}
+                              className="hover:bg-white"
+                            >
                               <TableCell className="px-6 py-5">
                                 <div>
                                   <div className="text-sm font-semibold text-dark-blue-400">
@@ -1458,7 +1496,8 @@ export default function JobDetailsPage({
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>
-                      Estimated earnings based on current offer rate and schedule.
+                      Estimated earnings based on current offer rate and
+                      schedule.
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -1521,11 +1560,14 @@ export default function JobDetailsPage({
             </section>
 
             {isLegalServiceNda ? (
-            <section className="rounded-lg border border-gray-200 bg-white px-8 py-8 shadow-xs">
+              <section className="rounded-lg border border-gray-200 bg-white px-8 py-8 shadow-xs">
                 <div className="flex items-start justify-between gap-6">
                   <div className="flex min-w-0 items-start gap-3">
                     <Avatar className="size-[56px] shrink-0">
-                      <AvatarImage src={ndaClient.avatar} alt={ndaClient.name} />
+                      <AvatarImage
+                        src={ndaClient.avatar}
+                        alt={ndaClient.name}
+                      />
                       <AvatarFallback>B</AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
@@ -1570,11 +1612,15 @@ export default function JobDetailsPage({
                       <Star className="size-3 text-gray-400" />
                       0.0
                     </span>
-                    <span className="font-light text-gray-500">no reviews yet</span>
+                    <span className="font-light text-gray-500">
+                      no reviews yet
+                    </span>
                   </div>
 
                   <div className="mt-6 flex items-center justify-between gap-3 text-sm">
-                    <span className="font-light text-gray-500">Open Projects</span>
+                    <span className="font-light text-gray-500">
+                      Open Projects
+                    </span>
                     <span className="font-semibold text-dark-blue-400">
                       {ndaClient.openProjects}
                     </span>
@@ -1582,7 +1628,9 @@ export default function JobDetailsPage({
                 </div>
 
                 <div className="mt-7 border-t border-gray-200 pt-7">
-                  <h3 className="text-sm font-semibold text-dark-blue-400">About</h3>
+                  <h3 className="text-sm font-semibold text-dark-blue-400">
+                    About
+                  </h3>
                   <p className="mt-3 text-sm font-light leading-6 text-dark-blue-400">
                     {ndaClient.about}
                   </p>
@@ -1595,7 +1643,9 @@ export default function JobDetailsPage({
                     </Button>
                     <span className="text-xs leading-[14.52px] text-dark-blue-400">
                       Member since{" "}
-                      <span className="font-semibold">{ndaClient.memberSince}</span>
+                      <span className="font-semibold">
+                        {ndaClient.memberSince}
+                      </span>
                     </span>
                   </div>
                 </div>
@@ -1623,8 +1673,8 @@ export default function JobDetailsPage({
                       Marketing
                     </div>
                     <div className="mt-2 text-xs font-light leading-5 text-gray-500">
-                      Building an ambitious mobile product with a small but focused
-                      internal team.
+                      Building an ambitious mobile product with a small but
+                      focused internal team.
                     </div>
                   </div>
                 </div>
@@ -1786,7 +1836,9 @@ export default function JobDetailsPage({
                     </Button>
                     <Button
                       disabled={
-                        !reviewGateCleared || reviewLoading || reviewError !== null
+                        !reviewGateCleared ||
+                        reviewLoading ||
+                        reviewError !== null
                       }
                       onClick={handleContinueToSignPlaceholder}
                     >
@@ -1917,37 +1969,48 @@ export default function JobDetailsPage({
 
                 <div className="flex-1 overflow-y-auto px-6 py-8">
                   <>
-                      <p className="text-[17px] font-light leading-8 text-dark-blue-400">
-                        Confirm your name, initials and signature.
-                      </p>
+                    <p className="text-[17px] font-light leading-8 text-dark-blue-400">
+                      Confirm your name, initials and signature.
+                    </p>
 
-                      <div className="mt-7 space-y-1">
-                        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_172px]">
-                          <div className="space-y-1.5">
-                            <Label size="sm" htmlFor="nda-signer-name" className="font-semibold text-dark-blue-400">
-                              Full Name<span className="text-error-500">*</span>
-                            </Label>
-                            <Input
-                              id="nda-signer-name"
-                              placeholder="Enter your full name"
-                              value={signerName}
-                              isInvalid={showNameInvalid || signError === "name-mismatch"}
-                              onBlur={() => setNameTouched(true)}
-                              onChange={(event) => {
-                                setSignerName(event.target.value)
-                                // Clear name-mismatch error as user retypes
-                                if (signError === "name-mismatch") setSignError(null)
-                              }}
-                            />
-                            {showNameInvalid ? (
-                              <p className="text-sm font-light text-error-500">
-                                Please enter your full name.
-                              </p>
-                            ) : null}
-                          </div>
+                    <div className="mt-7 space-y-1">
+                      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_172px]">
+                        <div className="space-y-1.5">
+                          <Label
+                            size="sm"
+                            htmlFor="nda-signer-name"
+                            className="font-semibold text-dark-blue-400"
+                          >
+                            Full Name<span className="text-error-500">*</span>
+                          </Label>
+                          <Input
+                            id="nda-signer-name"
+                            placeholder="Enter your full name"
+                            value={signerName}
+                            isInvalid={
+                              showNameInvalid || signError === "name-mismatch"
+                            }
+                            onBlur={() => setNameTouched(true)}
+                            onChange={(event) => {
+                              setSignerName(event.target.value)
+                              // Clear name-mismatch error as user retypes
+                              if (signError === "name-mismatch")
+                                setSignError(null)
+                            }}
+                          />
+                          {showNameInvalid ? (
+                            <p className="text-sm font-light text-error-500">
+                              Please enter your full name.
+                            </p>
+                          ) : null}
+                        </div>
 
                         <div className="space-y-1.5">
-                          <Label size="sm" htmlFor="nda-signer-initials" className="font-semibold text-dark-blue-400">
+                          <Label
+                            size="sm"
+                            htmlFor="nda-signer-initials"
+                            className="font-semibold text-dark-blue-400"
+                          >
                             Initials<span className="text-error-500">*</span>
                           </Label>
                           <Input
@@ -1957,7 +2020,9 @@ export default function JobDetailsPage({
                             isInvalid={showInitialsInvalid}
                             onBlur={() => setInitialsTouched(true)}
                             onChange={(event) =>
-                              setSignerInitials(event.target.value.toUpperCase())
+                              setSignerInitials(
+                                event.target.value.toUpperCase()
+                              )
                             }
                           />
                           {showInitialsInvalid ? (
@@ -1966,210 +2031,217 @@ export default function JobDetailsPage({
                             </p>
                           ) : null}
                         </div>
-                        </div>
-                        {/* Full-width name mismatch error spans below both fields */}
-                        {signError === "name-mismatch" ? (
-                          <p className="mt-1.5 text-sm font-light text-error-500">
-                            The name you entered doesn&apos;t match your registered name. Please type your legal name exactly as it appears in your account.
-                          </p>
-                        ) : null}
                       </div>
+                      {/* Full-width name mismatch error spans below both fields */}
+                      {signError === "name-mismatch" ? (
+                        <p className="mt-1.5 text-sm font-light text-error-500">
+                          The name you entered doesn&apos;t match your
+                          registered name. Please type your legal name exactly
+                          as it appears in your account.
+                        </p>
+                      ) : null}
+                    </div>
 
-                      <div className="mt-6">
-                        {signingMethod === "upload" ? (
-                          <div className="relative rounded-[10px] border border-gray-200 bg-white px-6 py-10 text-center">
-                        <button
-                          type="button"
-                          className="absolute right-3 top-3 inline-flex size-6 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-400 transition duration-300 hover:text-gray-500 focus-visible:outline-none"
-                          onClick={clearUploadSignature}
-                        >
-                          <X className="size-4" />
-                        </button>
-                        <input
-                          id="nda-signature-upload-input"
-                          ref={signatureUploadInputRef}
-                          type="file"
-                          accept=".png,.jpg,.jpeg"
-                          className="hidden"
-                          onChange={handleSignatureUploadChange}
-                        />
+                    <div className="mt-6">
+                      {signingMethod === "upload" ? (
+                        <div className="relative rounded-[10px] border border-gray-200 bg-white px-6 py-10 text-center">
+                          <button
+                            type="button"
+                            className="absolute right-3 top-3 inline-flex size-6 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-400 transition duration-300 hover:text-gray-500 focus-visible:outline-none"
+                            onClick={clearUploadSignature}
+                          >
+                            <X className="size-4" />
+                          </button>
+                          <input
+                            id="nda-signature-upload-input"
+                            ref={signatureUploadInputRef}
+                            type="file"
+                            accept=".png,.jpg,.jpeg"
+                            className="hidden"
+                            onChange={handleSignatureUploadChange}
+                          />
 
-                        {uploadedSignatureFile ? (
-                          <div className="flex min-h-[166px] flex-col items-center justify-center">
-                            <img
-                              src={uploadedSignatureFile.dataUrl}
-                              alt={uploadedSignatureFile.name}
-                              className="mx-auto max-h-[96px] w-auto"
-                            />
-                            <p className="mt-6 text-base font-medium text-dark-blue-400">
-                              {uploadedSignatureFile.name}
-                              <span className="ml-2 text-xs font-light text-gray-500">
-                                {uploadedSignatureFile.sizeLabel}
-                              </span>
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="rounded-[10px] border-2 border-dashed border-gray-300 bg-gray-50 px-6 py-10 text-center">
-                            <UploadCloud className="mx-auto size-6 text-primary-500" />
-                            <p className="mt-4 text-base font-medium text-dark-blue-400">
-                              Upload your signature image
-                            </p>
-                            <p className="mt-2 text-sm font-light text-gray-500">
-                              PNG, JPG, JPEG formats, up to 2MB
-                            </p>
-                            <div className="mt-6 flex items-center justify-center gap-3">
-                              <Button
-                                variant="outlined"
-                                visual="gray"
-                                onClick={clearUploadSignature}
-                              >
-                                Cancel
-                              </Button>
-                              <Button
-                                variant="outlined"
-                                visual="gray"
-                                onClick={openUploadSignaturePicker}
-                              >
-                                Browse File
-                              </Button>
+                          {uploadedSignatureFile ? (
+                            <div className="flex min-h-[166px] flex-col items-center justify-center">
+                              <img
+                                src={uploadedSignatureFile.dataUrl}
+                                alt={uploadedSignatureFile.name}
+                                className="mx-auto max-h-[96px] w-auto"
+                              />
+                              <p className="mt-6 text-base font-medium text-dark-blue-400">
+                                {uploadedSignatureFile.name}
+                                <span className="ml-2 text-xs font-light text-gray-500">
+                                  {uploadedSignatureFile.sizeLabel}
+                                </span>
+                              </p>
                             </div>
-                          </div>
-                        )}
-                        {uploadError ? (
-                          <p className="mt-4 text-sm font-light text-error-500">
-                            {uploadError}
-                          </p>
-                        ) : null}
-                          </div>
-                        ) : signingMethod === "draw" ? (
-                          <div className="relative grid min-h-[188px] gap-0 overflow-hidden rounded-[10px] border border-gray-200 bg-white md:grid-cols-[minmax(0,1fr)_168px]">
-                        <button
-                          type="button"
-                          className="absolute right-3 top-3 z-10 inline-flex size-6 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-400 transition duration-300 hover:text-gray-500 focus-visible:outline-none"
-                          onClick={clearDrawArtifacts}
-                        >
-                          <X className="size-4" />
-                        </button>
-                        <div className="flex flex-col items-center justify-center px-8 py-8">
-                          <canvas
-                            ref={drawSignatureCanvasRef}
-                            width={600}
-                            height={200}
-                            className="h-[112px] w-full touch-none"
-                            onPointerDown={handleDrawPointerDown("signature")}
-                            onPointerMove={handleDrawPointerMove}
-                            onPointerUp={handleDrawPointerUp}
-                            onPointerLeave={handleDrawPointerLeave}
-                          />
-                          <div className="h-0 w-full border-t border-dashed border-gray-300" />
-                          <button
-                            type="button"
-                            className="mt-4 text-sm font-medium text-primary-500"
-                            onClick={clearDrawSignature}
-                          >
-                            {drawnSignatureDataUrl ? "Clear Signature" : "Draw Signature"}
-                          </button>
-                        </div>
-                        <div className="flex flex-col items-center justify-center border-t border-gray-200 px-8 py-8 md:border-l md:border-t-0">
-                          <canvas
-                            ref={drawInitialsCanvasRef}
-                            width={300}
-                            height={200}
-                            className="h-[112px] w-full touch-none"
-                            onPointerDown={handleDrawPointerDown("initials")}
-                            onPointerMove={handleDrawPointerMove}
-                            onPointerUp={handleDrawPointerUp}
-                            onPointerLeave={handleDrawPointerLeave}
-                          />
-                          <div className="h-0 w-full border-t border-dashed border-gray-300" />
-                          <button
-                            type="button"
-                            className="mt-4 text-sm font-medium text-primary-500"
-                            onClick={clearDrawInitials}
-                          >
-                            {drawnInitialsDataUrl ? "Clear Initials" : "Draw Initials"}
-                          </button>
-                        </div>
-                          </div>
-                        ) : (
-                          <div className="flex min-h-[188px] items-center justify-center rounded-[10px] border border-gray-200 bg-white px-6 py-10">
-                            <p className="text-[40px] font-light leading-none text-dark-blue-400">
-                              {typedSignaturePreview || "Preview"}
+                          ) : (
+                            <div className="rounded-[10px] border-2 border-dashed border-gray-300 bg-gray-50 px-6 py-10 text-center">
+                              <UploadCloud className="mx-auto size-6 text-primary-500" />
+                              <p className="mt-4 text-base font-medium text-dark-blue-400">
+                                Upload your signature image
+                              </p>
+                              <p className="mt-2 text-sm font-light text-gray-500">
+                                PNG, JPG, JPEG formats, up to 2MB
+                              </p>
+                              <div className="mt-6 flex items-center justify-center gap-3">
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  onClick={clearUploadSignature}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  onClick={openUploadSignaturePicker}
+                                >
+                                  Browse File
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                          {uploadError ? (
+                            <p className="mt-4 text-sm font-light text-error-500">
+                              {uploadError}
                             </p>
+                          ) : null}
+                        </div>
+                      ) : signingMethod === "draw" ? (
+                        <div className="relative grid min-h-[188px] gap-0 overflow-hidden rounded-[10px] border border-gray-200 bg-white md:grid-cols-[minmax(0,1fr)_168px]">
+                          <button
+                            type="button"
+                            className="absolute right-3 top-3 z-10 inline-flex size-6 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-400 transition duration-300 hover:text-gray-500 focus-visible:outline-none"
+                            onClick={clearDrawArtifacts}
+                          >
+                            <X className="size-4" />
+                          </button>
+                          <div className="flex flex-col items-center justify-center px-8 py-8">
+                            <canvas
+                              ref={drawSignatureCanvasRef}
+                              width={600}
+                              height={200}
+                              className="h-[112px] w-full touch-none"
+                              onPointerDown={handleDrawPointerDown("signature")}
+                              onPointerMove={handleDrawPointerMove}
+                              onPointerUp={handleDrawPointerUp}
+                              onPointerLeave={handleDrawPointerLeave}
+                            />
+                            <div className="h-0 w-full border-t border-dashed border-gray-300" />
+                            <button
+                              type="button"
+                              className="mt-4 text-sm font-medium text-primary-500"
+                              onClick={clearDrawSignature}
+                            >
+                              {drawnSignatureDataUrl
+                                ? "Clear Signature"
+                                : "Draw Signature"}
+                            </button>
                           </div>
-                        )}
-                      </div>
-
-                      <div className="mt-6 grid gap-4 md:grid-cols-2">
-                        {signingMethod !== "typed" ? (
-                          <Button
-                            variant="light"
-                            visual="primary"
-                            size="md"
-                            leftIcon={<Type02 className="size-4" />}
-                            onClick={() => switchSigningMethod("typed")}
-                          >
-                            Type my signature
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="light"
-                            visual="primary"
-                            size="md"
-                            leftIcon={<UploadCloud className="size-4" />}
-                            onClick={() => switchSigningMethod("upload")}
-                          >
-                            Upload my signature
-                          </Button>
-                        )}
-
-                        {signingMethod === "draw" ? (
-                          <Button
-                            variant="light"
-                            visual="primary"
-                            size="md"
-                            leftIcon={<UploadCloud className="size-4" />}
-                            onClick={() => switchSigningMethod("upload")}
-                          >
-                            Upload my signature
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="light"
-                            visual="primary"
-                            size="md"
-                            leftIcon={<Edit03 className="size-4" />}
-                            onClick={() => switchSigningMethod("draw")}
-                          >
-                            Draw my signature
-                          </Button>
-                        )}
-                      </div>
-
-                      <div className="mt-6 rounded-lg border border-gray-200 bg-gray-25 p-4">
-                        <label
-                          htmlFor="nda-consent-checkbox"
-                          className="flex items-start gap-3"
-                        >
-                          <Checkbox
-                            id="nda-consent-checkbox"
-                            size="md"
-                            checked={consentChecked}
-                            onBlur={() => setConsentTouched(true)}
-                            onCheckedChange={(checked) =>
-                              setConsentChecked(checked === true)
-                            }
-                          />
-                          <span className="text-sm font-light leading-6 text-gray-500">
-                            {NDA_SIGN_CONSENT_LABEL}
-                          </span>
-                        </label>
-                        {showConsentInvalid ? (
-                          <p className="mt-3 text-sm font-light text-error-500">
-                            Please agree to the electronic signature consent to continue.
+                          <div className="flex flex-col items-center justify-center border-t border-gray-200 px-8 py-8 md:border-l md:border-t-0">
+                            <canvas
+                              ref={drawInitialsCanvasRef}
+                              width={300}
+                              height={200}
+                              className="h-[112px] w-full touch-none"
+                              onPointerDown={handleDrawPointerDown("initials")}
+                              onPointerMove={handleDrawPointerMove}
+                              onPointerUp={handleDrawPointerUp}
+                              onPointerLeave={handleDrawPointerLeave}
+                            />
+                            <div className="h-0 w-full border-t border-dashed border-gray-300" />
+                            <button
+                              type="button"
+                              className="mt-4 text-sm font-medium text-primary-500"
+                              onClick={clearDrawInitials}
+                            >
+                              {drawnInitialsDataUrl
+                                ? "Clear Initials"
+                                : "Draw Initials"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex min-h-[188px] items-center justify-center rounded-[10px] border border-gray-200 bg-white px-6 py-10">
+                          <p className="text-[40px] font-light leading-none text-dark-blue-400">
+                            {typedSignaturePreview || "Preview"}
                           </p>
-                        ) : null}
-                      </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-6 grid gap-4 md:grid-cols-2">
+                      {signingMethod !== "typed" ? (
+                        <Button
+                          variant="light"
+                          visual="primary"
+                          size="md"
+                          leftIcon={<Type02 className="size-4" />}
+                          onClick={() => switchSigningMethod("typed")}
+                        >
+                          Type my signature
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="light"
+                          visual="primary"
+                          size="md"
+                          leftIcon={<UploadCloud className="size-4" />}
+                          onClick={() => switchSigningMethod("upload")}
+                        >
+                          Upload my signature
+                        </Button>
+                      )}
+
+                      {signingMethod === "draw" ? (
+                        <Button
+                          variant="light"
+                          visual="primary"
+                          size="md"
+                          leftIcon={<UploadCloud className="size-4" />}
+                          onClick={() => switchSigningMethod("upload")}
+                        >
+                          Upload my signature
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="light"
+                          visual="primary"
+                          size="md"
+                          leftIcon={<Edit03 className="size-4" />}
+                          onClick={() => switchSigningMethod("draw")}
+                        >
+                          Draw my signature
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="mt-6 rounded-lg border border-gray-200 bg-gray-25 p-4">
+                      <label
+                        htmlFor="nda-consent-checkbox"
+                        className="flex items-start gap-3"
+                      >
+                        <Checkbox
+                          id="nda-consent-checkbox"
+                          size="md"
+                          checked={consentChecked}
+                          onBlur={() => setConsentTouched(true)}
+                          onCheckedChange={(checked) =>
+                            setConsentChecked(checked === true)
+                          }
+                        />
+                        <span className="text-sm font-light leading-6 text-gray-500">
+                          {NDA_SIGN_CONSENT_LABEL}
+                        </span>
+                      </label>
+                      {showConsentInvalid ? (
+                        <p className="mt-3 text-sm font-light text-error-500">
+                          Please agree to the electronic signature consent to
+                          continue.
+                        </p>
+                      ) : null}
+                    </div>
                   </>
                 </div>
 
@@ -2198,7 +2270,8 @@ export default function JobDetailsPage({
                 )}
                 {signError === "rate-limited" && (
                   <p className="mt-2 px-6 text-sm font-light text-error-500">
-                    Too many signing attempts. Please wait a minute and try again.
+                    Too many signing attempts. Please wait a minute and try
+                    again.
                   </p>
                 )}
                 {signError === "already-signed" && (
@@ -2226,7 +2299,6 @@ export default function JobDetailsPage({
           </DialogContent>
         </Dialog>
       ) : null}
-
     </div>
   )
 }

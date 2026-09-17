@@ -33,10 +33,7 @@ const GoogleLoginButtonInner = () => {
 
       AuthAPI.LoginWithGoogle({ access_token: accessToken })
         .then(async (response) => {
-          if (
-            response?.status === 200 &&
-            response?.data?.user
-          ) {
+          if (response?.status === 200 && response?.data?.user) {
             let nextUser = response.data.user
             try {
               const me = await UserAPI.me()

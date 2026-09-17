@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
+import { useAuth } from "@/contexts/auth"
 import {
   AutocompleteAPI,
   type AutocompleteCategorySuggestion,
@@ -12,15 +13,12 @@ import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { TeamsAPI } from "@/service/http/teams"
 import {
-  TEAM_SEED_LISTINGS,
-} from "@/src/lib/my-listings"
-import {
   addFavorite,
   findFavoriteByItemId,
   removeFavorite,
 } from "@/src/lib/api/favorites"
+import { TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
-import { useAuth } from "@/contexts/auth"
 import { cn, getIsNotEmpty, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import { TagsInputHiddenInput } from "@ark-ui/react"
@@ -2130,57 +2128,68 @@ export default function ProjectDetails() {
   // ── Budget & Duration computed from scope ──────────────────────────────────
   const [budgetPeriod, setBudgetPeriod] = React.useState("week")
 
-  const { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays } =
-    React.useMemo(() => {
-      const phases = project.scope ?? []
+  const {
+    budgetTotalCents,
+    durationLabel,
+    durationValue,
+    durationUnit,
+    durationDays,
+  } = React.useMemo(() => {
+    const phases = project.scope ?? []
 
-      // Duration: tasks within a phase run in parallel (take max), phases are sequential (sum).
-      // Matches the scope builder's getPhaseDurationInDays logic.
-      let totalDays = 0
-      for (const phase of phases) {
-        const taskDurations = (phase.rows ?? [])
-          .map((row: any) => {
-            const dur = row.duration
-            if (!dur) return 0
-            const val = Number(dur.value) || 0
-            if (val <= 0) return 0
-            if (dur.type === "weeks") return val * 7
-            if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
-            return val // days
-          })
-          .filter((d: number) => d > 0)
-        if (taskDurations.length > 0) {
-          totalDays += Math.max(...taskDurations)
-        }
+    // Duration: tasks within a phase run in parallel (take max), phases are sequential (sum).
+    // Matches the scope builder's getPhaseDurationInDays logic.
+    let totalDays = 0
+    for (const phase of phases) {
+      const taskDurations = (phase.rows ?? [])
+        .map((row: any) => {
+          const dur = row.duration
+          if (!dur) return 0
+          const val = Number(dur.value) || 0
+          if (val <= 0) return 0
+          if (dur.type === "weeks") return val * 7
+          if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+          return val // days
+        })
+        .filter((d: number) => d > 0)
+      if (taskDurations.length > 0) {
+        totalDays += Math.max(...taskDurations)
       }
+    }
 
-      // Display rules from docs:
-      // < 7 days → show days | < 4 weeks (28 days) → show weeks | otherwise → show months
-      let durationLabel = "—"
-      let durationValue = 0
-      let durationUnit = ""
-      if (totalDays > 0) {
-        if (totalDays < 7) {
-          durationValue = totalDays
-          durationUnit = "day"
-          durationLabel = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
-        } else if (totalDays < 28) {
-          const weeks = Math.max(1, Math.ceil(totalDays / 7))
-          durationValue = weeks
-          durationUnit = "week"
-          durationLabel = `${weeks} Week${weeks !== 1 ? "s" : ""}`
-        } else {
-          const months = Math.max(1, Math.ceil(totalDays / 30))
-          durationValue = months
-          durationUnit = "month"
-          durationLabel = `${months} Month${months !== 1 ? "s" : ""}`
-        }
+    // Display rules from docs:
+    // < 7 days → show days | < 4 weeks (28 days) → show weeks | otherwise → show months
+    let durationLabel = "—"
+    let durationValue = 0
+    let durationUnit = ""
+    if (totalDays > 0) {
+      if (totalDays < 7) {
+        durationValue = totalDays
+        durationUnit = "day"
+        durationLabel = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
+      } else if (totalDays < 28) {
+        const weeks = Math.max(1, Math.ceil(totalDays / 7))
+        durationValue = weeks
+        durationUnit = "week"
+        durationLabel = `${weeks} Week${weeks !== 1 ? "s" : ""}`
+      } else {
+        const months = Math.max(1, Math.ceil(totalDays / 30))
+        durationValue = months
+        durationUnit = "month"
+        durationLabel = `${months} Month${months !== 1 ? "s" : ""}`
       }
+    }
 
-      const budgetTotalCents = Number(project.budgetAmountUsdCents) || 0
+    const budgetTotalCents = Number(project.budgetAmountUsdCents) || 0
 
-      return { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays: totalDays }
-    }, [project.scope, project.budgetAmountUsdCents])
+    return {
+      budgetTotalCents,
+      durationLabel,
+      durationValue,
+      durationUnit,
+      durationDays: totalDays,
+    }
+  }, [project.scope, project.budgetAmountUsdCents])
 
   // Format budget: Cost_Per_Period = Total_Cost / Number_of_Periods
   const formatBudget = React.useCallback(
@@ -2253,7 +2262,6 @@ export default function ProjectDetails() {
 
   const [isFavorited, setIsFavorited] = React.useState(false)
 
-
   React.useEffect(() => {
     if (!project?.id) return
     findFavoriteByItemId(String(project.id)).then((fav) => {
@@ -2302,10 +2310,7 @@ export default function ProjectDetails() {
             role: d.category || d.categories?.[0] || "Software Development",
             summary: d.shortDescription || d.fullDescription || "",
             description: d.fullDescription || "",
-            featuredImage:
-              featuredImage ||
-              d.featuredImage ||
-              null,
+            featuredImage: featuredImage || d.featuredImage || null,
             featuredVideo: featuredVideo || d.featuredVideo || null,
             mediaUrls:
               galleryUrls.length > 0 ? galleryUrls : (d.mediaUrls ?? []),
@@ -2485,8 +2490,9 @@ export default function ProjectDetails() {
                 let profile: any = null
                 if (m.username) {
                   try {
-                    const profileRes =
-                      await TeamsAPI.getTalentUserByUsername(m.username)
+                    const profileRes = await TeamsAPI.getTalentUserByUsername(
+                      m.username
+                    )
                     profile = profileRes?.data
                   } catch {
                     /* profile not found */
@@ -2506,7 +2512,8 @@ export default function ProjectDetails() {
                   location: profile?.location || profile?.country || null,
                   languages: profile?.languages ?? [],
                   skills: profile?.skills ?? [],
-                  experience: profile?.experienceLevel || profile?.experience || null,
+                  experience:
+                    profile?.experienceLevel || profile?.experience || null,
                   isLead: m.role === "owner" || m.role === "lead",
                   isOnline: false,
                 }
@@ -3665,7 +3672,9 @@ export default function ProjectDetails() {
 
                     <TabsContent value="Description">
                       <div id="section-Description" className="pt-6">
-                        {getRichTextCharacterCount(project.description || "") === 0 && (
+                        {getRichTextCharacterCount(
+                          project.description || ""
+                        ) === 0 && (
                           <Alert
                             variant="primary"
                             className="mb-6 items-center"
@@ -3691,7 +3700,8 @@ export default function ProjectDetails() {
                             </NextLink>
                           </Alert>
                         )}
-                        {getRichTextCharacterCount(project.description || "") > 0 ? (
+                        {getRichTextCharacterCount(project.description || "") >
+                        0 ? (
                           <DescriptionCard
                             descHtml={project.description}
                             onEdit={() => {
@@ -3751,8 +3761,12 @@ export default function ProjectDetails() {
                               setDescFullscreenOpen(open)
                             }}
                             fullscreenHelperText="Provide a comprehensive description of this project, including its purpose and features."
-                            fullscreenCharacterCount={getRichTextCharacterCount(descDraft)}
-                            fullscreenMaxCharacterCount={FULL_DESCRIPTION_MAX_LENGTH}
+                            fullscreenCharacterCount={getRichTextCharacterCount(
+                              descDraft
+                            )}
+                            fullscreenMaxCharacterCount={
+                              FULL_DESCRIPTION_MAX_LENGTH
+                            }
                             className="hidden"
                             onUpdate={(html) => setDescDraft(html)}
                           />
@@ -4215,100 +4229,101 @@ export default function ProjectDetails() {
                               {({ isShowing, setIsShowing, scrollHeight }) => {
                                 const needsOverflow = scrollHeight > 456
                                 return (
-                                <div
-                                  className={cn(
-                                    "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] mt-6 transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
-                                    needsOverflow && !isShowing && "h-[456px]",
-                                    (isShowing || !needsOverflow) && "h-auto"
-                                  )}
-                                >
-                                  <h2 className="text-xl leading-none text-dark-blue-400 font-semibold">
-                                    Deliverables
-                                  </h2>
+                                  <div
+                                    className={cn(
+                                      "relative border border-gray-200 bg-white rounded-lg p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] mt-6 transition-[height] duration-300 overflow-hidden [interpolate-size:allow-keywords]",
+                                      needsOverflow &&
+                                        !isShowing &&
+                                        "h-[456px]",
+                                      (isShowing || !needsOverflow) && "h-auto"
+                                    )}
+                                  >
+                                    <h2 className="text-xl leading-none text-dark-blue-400 font-semibold">
+                                      Deliverables
+                                    </h2>
 
-                                  <div className="mt-6 flex flex-col">
-                                    {(
-                                      project.deliverables as Array<{
-                                        phaseLabel: string
-                                        phaseName: string
-                                        items: string[]
-                                      }>
-                                    ).map((phase, pi) => (
-                                      <div
-                                        key={`${phase.phaseLabel}-${pi}`}
-                                        className={cn(
-                                          pi > 0 &&
-                                            "mt-6 pt-6 border-t border-gray-200"
-                                        )}
-                                      >
-                                        <p className="text-sm text-dark-blue-400">
-                                          <span className="font-extralight">
-                                            {phase.phaseLabel}
-                                          </span>{" "}
-                                          <span className="font-semibold">
-                                            {phase.phaseName}
-                                          </span>
-                                        </p>
-                                        <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-6">
-                                          {phase.items
-                                            .slice(0, 6)
-                                            .map((item, i) => (
-                                              <div
-                                                key={`${item}-${i}`}
-                                                className="flex items-center gap-x-3"
-                                              >
-                                                <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                                  <Check className="size-2" />
-                                                </span>
-                                                <p className="text-sm font-extralight leading-tight text-dark-blue-400">
-                                                  {formatDeliverable(item)}
-                                                </p>
-                                              </div>
-                                            ))}
+                                    <div className="mt-6 flex flex-col">
+                                      {(
+                                        project.deliverables as Array<{
+                                          phaseLabel: string
+                                          phaseName: string
+                                          items: string[]
+                                        }>
+                                      ).map((phase, pi) => (
+                                        <div
+                                          key={`${phase.phaseLabel}-${pi}`}
+                                          className={cn(
+                                            pi > 0 &&
+                                              "mt-6 pt-6 border-t border-gray-200"
+                                          )}
+                                        >
+                                          <p className="text-sm text-dark-blue-400">
+                                            <span className="font-extralight">
+                                              {phase.phaseLabel}
+                                            </span>{" "}
+                                            <span className="font-semibold">
+                                              {phase.phaseName}
+                                            </span>
+                                          </p>
+                                          <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-6">
+                                            {phase.items
+                                              .slice(0, 6)
+                                              .map((item, i) => (
+                                                <div
+                                                  key={`${item}-${i}`}
+                                                  className="flex items-center gap-x-3"
+                                                >
+                                                  <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
+                                                    <Check className="size-2" />
+                                                  </span>
+                                                  <p className="text-sm font-extralight leading-tight text-dark-blue-400">
+                                                    {formatDeliverable(item)}
+                                                  </p>
+                                                </div>
+                                              ))}
+                                          </div>
                                         </div>
-                                      </div>
-                                    ))}
+                                      ))}
+                                    </div>
+
+                                    <Alert className="mt-6">
+                                      <AlertIcon>
+                                        <AlertCircle className="h-5 w-5" />
+                                      </AlertIcon>
+                                      <AlertContent>
+                                        <AlertDescription>
+                                          The above list of deliverables is
+                                          based on the current project scope and
+                                          tasks. Deliverables are subject to
+                                          change with any changes to the project
+                                          scope or tasks.
+                                        </AlertDescription>
+                                      </AlertContent>
+                                    </Alert>
+
+                                    {needsOverflow &&
+                                      (isShowing ? (
+                                        <div className="flex mt-6 items-center justify-center">
+                                          <Button
+                                            visual="gray"
+                                            variant="link"
+                                            onClick={() => setIsShowing(false)}
+                                          >
+                                            View Less
+                                          </Button>
+                                        </div>
+                                      ) : (
+                                        <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(180deg,theme(colors.white/0)_0%,theme(colors.white)_60%)] pb-[26px] flex justify-center items-end">
+                                          <Button
+                                            visual="gray"
+                                            variant="link"
+                                            onClick={() => setIsShowing(true)}
+                                          >
+                                            View More
+                                          </Button>
+                                        </div>
+                                      ))}
                                   </div>
-
-                                  <Alert className="mt-6">
-                                    <AlertIcon>
-                                      <AlertCircle className="h-5 w-5" />
-                                    </AlertIcon>
-                                    <AlertContent>
-                                      <AlertDescription>
-                                        The above list of deliverables is based
-                                        on the current project scope and tasks.
-                                        Deliverables are subject to change with
-                                        any changes to the project scope or
-                                        tasks.
-                                      </AlertDescription>
-                                    </AlertContent>
-                                  </Alert>
-
-                                  {needsOverflow && (
-                                    isShowing ? (
-                                      <div className="flex mt-6 items-center justify-center">
-                                        <Button
-                                          visual="gray"
-                                          variant="link"
-                                          onClick={() => setIsShowing(false)}
-                                        >
-                                          View Less
-                                        </Button>
-                                      </div>
-                                    ) : (
-                                      <div className="rounded-b-lg absolute inset-x-0 bottom-0 h-[136px] bg-[linear-gradient(180deg,theme(colors.white/0)_0%,theme(colors.white)_60%)] pb-[26px] flex justify-center items-end">
-                                        <Button
-                                          visual="gray"
-                                          variant="link"
-                                          onClick={() => setIsShowing(true)}
-                                        >
-                                          View More
-                                        </Button>
-                                      </div>
-                                    )
-                                  )}
-                                </div>
                                 )
                               }}
                             </ShowMoreLessRoot>
@@ -8140,7 +8155,10 @@ export default function ProjectDetails() {
 
                   <Avatar size="sm" className="border-2 border-white">
                     {user?.avatarUrl && (
-                      <AvatarImage src={user.avatarUrl} alt={user.firstName || "Owner"} />
+                      <AvatarImage
+                        src={user.avatarUrl}
+                        alt={user.firstName || "Owner"}
+                      />
                     )}
                     <AvatarFallback>
                       {user?.firstName?.[0]?.toUpperCase() || "O"}

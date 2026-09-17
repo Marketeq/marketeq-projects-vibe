@@ -211,44 +211,44 @@ export default function InboxRoot() {
 
   return (
     <AuthenticatedRoute>
-    <Inbox>
-      <div
-        className="flex w-full bg-white overflow-hidden"
-        style={{ height: "calc(100vh - 65px)" }}
-      >
-        <LeftSidebar
-          selectedConversation={selectedConversation}
-          setSelectedConversation={setSelectedConversation}
-          // We pass the whole map so Sidebar can show previews:
-          messagesByConversation={messagesByConversation}
-          initialThreadId={initialThreadId}
-          initialParticipantId={initialParticipantId}
-          searchIndex={searchIndex}
-          onHighlightMessage={setHighlightMessageId}
-          privateKey={privateKey}
-        />
+      <Inbox>
+        <div
+          className="flex w-full bg-white overflow-hidden"
+          style={{ height: "calc(100vh - 65px)" }}
+        >
+          <LeftSidebar
+            selectedConversation={selectedConversation}
+            setSelectedConversation={setSelectedConversation}
+            // We pass the whole map so Sidebar can show previews:
+            messagesByConversation={messagesByConversation}
+            initialThreadId={initialThreadId}
+            initialParticipantId={initialParticipantId}
+            searchIndex={searchIndex}
+            onHighlightMessage={setHighlightMessageId}
+            privateKey={privateKey}
+          />
 
-        {/* pass only the conversation and token into Chats */}
-        <Chats
-          selectedConversation={selectedConversation}
-          jwtToken={token}
-          privateKey={privateKey}
-          currentUserProfile={currentUserProfile}
-          onToggleRightSidebar={() => setRightSidebarOpen((v) => !v)}
-          onMessagesLoaded={handleMessagesLoaded}
-          highlightMessageId={highlightMessageId}
-          onHighlightConsumed={() => setHighlightMessageId(null)}
-          onIndexNewMessage={searchIndex.addDoc}
-        />
-
-        {rightSidebarOpen && (
-          <RightSidebar
+          {/* pass only the conversation and token into Chats */}
+          <Chats
             selectedConversation={selectedConversation}
             jwtToken={token}
+            privateKey={privateKey}
+            currentUserProfile={currentUserProfile}
+            onToggleRightSidebar={() => setRightSidebarOpen((v) => !v)}
+            onMessagesLoaded={handleMessagesLoaded}
+            highlightMessageId={highlightMessageId}
+            onHighlightConsumed={() => setHighlightMessageId(null)}
+            onIndexNewMessage={searchIndex.addDoc}
           />
-        )}
-      </div>
-    </Inbox>
+
+          {rightSidebarOpen && (
+            <RightSidebar
+              selectedConversation={selectedConversation}
+              jwtToken={token}
+            />
+          )}
+        </div>
+      </Inbox>
     </AuthenticatedRoute>
   )
 }

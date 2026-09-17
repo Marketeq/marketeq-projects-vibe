@@ -40,7 +40,11 @@ export default function TalentDashboard() {
       const saved = localStorage.getItem("marketeq-profile-completion")
       if (!saved) return
       const parsed = JSON.parse(saved)
-      if (Object.values(parsed).some((v: unknown) => (v as Record<string, unknown>)?.opened)) {
+      if (
+        Object.values(parsed).some(
+          (v: unknown) => (v as Record<string, unknown>)?.opened
+        )
+      ) {
         setShowCompleteProfile(true)
       }
     } catch {}

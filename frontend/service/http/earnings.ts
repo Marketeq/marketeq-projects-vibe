@@ -1,7 +1,8 @@
 import axios from "axios"
 import Cookies from "js-cookie"
 
-const EARNINGS_BASE = process.env.NEXT_PUBLIC_EARNINGS_SERVICE_URL ?? "http://localhost:3026/v1"
+const EARNINGS_BASE =
+  process.env.NEXT_PUBLIC_EARNINGS_SERVICE_URL ?? "http://localhost:3026/v1"
 
 function getToken() {
   return (
@@ -106,13 +107,19 @@ export interface EarningsQuery {
   sortOrder?: "asc" | "desc"
 }
 
-export async function getEarningsSummary(timezone?: string): Promise<EarningsSummary> {
+export async function getEarningsSummary(
+  timezone?: string
+): Promise<EarningsSummary> {
   const tz = timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
-  const res = await earningsAxios.get(`/earnings/summary?timezone=${encodeURIComponent(tz)}`)
+  const res = await earningsAxios.get(
+    `/earnings/summary?timezone=${encodeURIComponent(tz)}`
+  )
   return res.data
 }
 
-export async function getEarnings(query: EarningsQuery = {}): Promise<EarningsListResponse> {
+export async function getEarnings(
+  query: EarningsQuery = {}
+): Promise<EarningsListResponse> {
   const params = new URLSearchParams()
   for (const [k, v] of Object.entries(query)) {
     if (v != null && v !== "") params.set(k, String(v))

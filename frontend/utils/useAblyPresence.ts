@@ -148,41 +148,44 @@ export function useAblyPresence(threadId: string) {
 
   // Publish our own typing state. Call with `true` from the composer's
   // onChange; the hook auto-clears after TYPING_TIMEOUT_MS of silence.
-  const sendTyping = useCallback((typing: boolean) => {
-    const channel = channelRef.current
-    if (!channel) return
-    if (!user?.id) return
+  const sendTyping = useCallback(
+    (typing: boolean) => {
+      const channel = channelRef.current
+      if (!channel) return
+      if (!user?.id) return
 
-    if (typing) {
-      if (typingResetTimerRef.current) {
-        clearTimeout(typingResetTimerRef.current)
-      }
-      typingResetTimerRef.current = setTimeout(() => {
-        sendTyping(false)
-      }, TYPING_TIMEOUT_MS)
+      if (typing) {
+        if (typingResetTimerRef.current) {
+          clearTimeout(typingResetTimerRef.current)
+        }
+        typingResetTimerRef.current = setTimeout(() => {
+          sendTyping(false)
+        }, TYPING_TIMEOUT_MS)
 
-      if (sendingTypingRef.current) return
-      sendingTypingRef.current = true
-      channel.presence
-        .update({ userId: user.id, typing: true })
-        .catch((err) => {
-          console.warn("[useAblyPresence] typing update failed", err)
-          sendingTypingRef.current = false
-        })
-    } else {
-      if (typingResetTimerRef.current) {
-        clearTimeout(typingResetTimerRef.current)
-        typingResetTimerRef.current = null
+        if (sendingTypingRef.current) return
+        sendingTypingRef.current = true
+        channel.presence
+          .update({ userId: user.id, typing: true })
+          .catch((err) => {
+            console.warn("[useAblyPresence] typing update failed", err)
+            sendingTypingRef.current = false
+          })
+      } else {
+        if (typingResetTimerRef.current) {
+          clearTimeout(typingResetTimerRef.current)
+          typingResetTimerRef.current = null
+        }
+        if (!sendingTypingRef.current) return
+        sendingTypingRef.current = false
+        channel.presence
+          .update({ userId: user.id, typing: false })
+          .catch((err) => {
+            console.warn("[useAblyPresence] typing clear failed", err)
+          })
       }
-      if (!sendingTypingRef.current) return
-      sendingTypingRef.current = false
-      channel.presence
-        .update({ userId: user.id, typing: false })
-        .catch((err) => {
-          console.warn("[useAblyPresence] typing clear failed", err)
-        })
-    }
-  }, [user?.id])
+    },
+    [user?.id]
+  )
 
   const isOnline = (userId: string | undefined | null) =>
     !!userId && members.some((m) => m.clientId === userId)

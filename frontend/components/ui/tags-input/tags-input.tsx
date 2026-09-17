@@ -51,7 +51,8 @@ export const TagsInputControl = React.forwardRef<
     className={cn(
       "min-h-11 bg-white border border-gray-300 shadow-xs focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-50 focus-visible:outline-none py-2.5 px-3.5 flex flex-wrap gap-x-3 gap-y-1 items-center rounded-[5px]",
       {
-        "border-error-300 focus-within:border-error-300 focus-within:ring-error-100": invalid,
+        "border-error-300 focus-within:border-error-300 focus-within:ring-error-100":
+          invalid,
       },
       className
     )}

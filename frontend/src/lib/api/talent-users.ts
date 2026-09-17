@@ -22,7 +22,11 @@ export interface TalentUser {
   location?: string
   rateMin?: number | null
   rateMax?: number | null
-  jobTitles?: Array<{ jobTitle?: string; isDefault?: boolean; saveAsDefault?: boolean }>
+  jobTitles?: Array<{
+    jobTitle?: string
+    isDefault?: boolean
+    saveAsDefault?: boolean
+  }>
   recentJobTitle?: string | null
   skills?: Array<{ name: string }>
 }

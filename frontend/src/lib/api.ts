@@ -11,12 +11,12 @@ export async function apiFetch<T = any>(
   path: string,
   { body, headers, ...opts }: FetchOpts = {}
 ): Promise<T> {
-  const cleanBase = API_BASE.replace(/\/+$/, "");
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const cleanBase = API_BASE.replace(/\/+$/, "")
+  const cleanPath = path.startsWith("/") ? path : `/${path}`
 
-  let finalUrl = `${cleanBase}${cleanPath}`;
+  let finalUrl = `${cleanBase}${cleanPath}`
   if (cleanBase.endsWith("/api") && cleanPath.startsWith("/api/")) {
-    finalUrl = `${cleanBase}${cleanPath.slice(4)}`;
+    finalUrl = `${cleanBase}${cleanPath.slice(4)}`
   }
 
   const requestHeaders = new Headers(headers)

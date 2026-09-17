@@ -62,10 +62,7 @@ export default function SignUp() {
 
     AuthAPI.SignUpWithEmail({ email })
       .then((response) => {
-        if (
-          response?.status === 201 &&
-          response?.data?.user
-        ) {
+        if (response?.status === 201 && response?.data?.user) {
           setUser(response?.data?.user)
           router.push("/onboarding")
           reset()

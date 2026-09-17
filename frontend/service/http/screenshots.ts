@@ -30,7 +30,6 @@ export interface ScreenshotCardDTO {
   groupKey: string | null
   thumbnailUrl: string
   createdAt: string
-  
 }
 
 export interface ScreenshotCardsResponse {

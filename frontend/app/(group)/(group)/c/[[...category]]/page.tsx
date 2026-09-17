@@ -2898,7 +2898,6 @@ export default function Projects() {
     setDisplayedProjects(sorted)
   }, [allProjects])
 
-
   useEffect(() => {
     async function loadFavorites() {
       const favorites = await getAllFavorites()

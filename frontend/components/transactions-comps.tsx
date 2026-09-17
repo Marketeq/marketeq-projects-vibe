@@ -2998,6 +2998,35 @@ export const OverviewTab = ({
   )
 }
 
+const Verify = ({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[400px] p-6">
+        <h1 className="text-lg leading-6 font-semibold text-dark-blue-400">
+          Verify it's you
+        </h1>
+        <p className="text-sm text-gray-500 mt-2">
+          We sent a magic link to your email.  Click the link to continue your
+          withdrawal.
+        </p>
+
+        <div className="mt-6 flex items-center gap-x-6">
+          <Button variant="light">Resend Magic Link</Button>
+          <Button variant="link" visual="gray">
+            Try another way
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 const WithdrawFunds = ({
   open,
   onOpenChange,

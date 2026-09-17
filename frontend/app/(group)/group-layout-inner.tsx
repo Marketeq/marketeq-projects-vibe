@@ -10,7 +10,5 @@ export function GroupLayoutInner({ children }: { children: React.ReactNode }) {
     return <>{children}</>
   }
 
-  return (
-    <div className="pt-[62px] lg:pt-[65px]">{children}</div>
-  )
+  return <div className="pt-[62px] lg:pt-[65px]">{children}</div>
 }

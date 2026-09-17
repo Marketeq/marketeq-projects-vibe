@@ -604,8 +604,7 @@ export function Chats({
       const localOnly = prev.filter(
         (m) =>
           !fetchedIds.has(m.id) &&
-          ((m as any).threadId === undefined ||
-            (m as any).threadId === convId),
+          ((m as any).threadId === undefined || (m as any).threadId === convId)
       )
       return [...fetchedMsgs, ...localOnly]
     })
@@ -841,7 +840,7 @@ export function Chats({
               )
               if (tempIdx !== -1) {
                 next = next.map((existing, i) =>
-                  i === tempIdx ? incoming : existing,
+                  i === tempIdx ? incoming : existing
                 )
                 changed = true
                 continue
@@ -934,7 +933,7 @@ export function Chats({
       setLocalMsgs((prev) => {
         if (prev.some((m) => m.id === incoming.id)) {
           return prev.map((m) =>
-            m.id === incoming.id ? { ...m, ...patch } : m,
+            m.id === incoming.id ? { ...m, ...patch } : m
           )
         }
         pendingEditsRef.current.set(incoming.id, patch)

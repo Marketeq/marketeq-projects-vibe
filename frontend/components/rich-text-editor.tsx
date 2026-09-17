@@ -52,12 +52,12 @@ import {
   DropdownMenuTrigger,
   IconButton,
   ImageEditor,
+  RmDialog,
   Toggle,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  RmDialog,
   useToast,
 } from "@/components/ui"
 
@@ -621,15 +621,22 @@ const RichTextToolbar = ({
       const cursorPos = editor.state.selection.from
 
       if (isLegacyHeading) {
-        editor.chain().focus(undefined, { scrollIntoView: false }).setParagraph().run()
+        editor
+          .chain()
+          .focus(undefined, { scrollIntoView: false })
+          .setParagraph()
+          .run()
       }
 
       const { tr } = editor.state
       const fontSizeMarkType = editor.schema.marks.fontSize
 
       if (value === "Normal Text") {
-        const currentStored = tr.storedMarks ?? editor.state.selection.$from.marks()
-        const filtered = currentStored.filter((m) => m.type !== fontSizeMarkType)
+        const currentStored =
+          tr.storedMarks ?? editor.state.selection.$from.marks()
+        const filtered = currentStored.filter(
+          (m) => m.type !== fontSizeMarkType
+        )
         tr.setStoredMarks(filtered)
       } else {
         const sizeMap: Record<string, string> = {
@@ -637,8 +644,11 @@ const RichTextToolbar = ({
           "Normal Heading": "normal-heading",
           "Small Heading": "small-heading",
         }
-        const currentStored = tr.storedMarks ?? editor.state.selection.$from.marks()
-        const filtered = currentStored.filter((m) => m.type !== fontSizeMarkType)
+        const currentStored =
+          tr.storedMarks ?? editor.state.selection.$from.marks()
+        const filtered = currentStored.filter(
+          (m) => m.type !== fontSizeMarkType
+        )
         const newMark = fontSizeMarkType.create({ size: sizeMap[value] })
         tr.setStoredMarks([...filtered, newMark])
       }
@@ -709,7 +719,11 @@ const RichTextToolbar = ({
 
   const handleBulletListToggle = () => {
     if (editor.isActive("bulletList")) {
-      editor.chain().focus(undefined, { scrollIntoView: false }).toggleBulletList().run()
+      editor
+        .chain()
+        .focus(undefined, { scrollIntoView: false })
+        .toggleBulletList()
+        .run()
       return
     }
 
@@ -723,7 +737,11 @@ const RichTextToolbar = ({
 
   const handleOrderedListToggle = () => {
     if (editor.isActive("orderedList")) {
-      editor.chain().focus(undefined, { scrollIntoView: false }).toggleOrderedList().run()
+      editor
+        .chain()
+        .focus(undefined, { scrollIntoView: false })
+        .toggleOrderedList()
+        .run()
       return
     }
 
@@ -1096,13 +1114,14 @@ const ActiveEditor = ({
 
         const proseMirrorRect = proseMirrorElement.getBoundingClientRect()
         const proseMirrorWidth = proseMirrorRect.width
-        const paddingLeft = parseFloat(getComputedStyle(proseMirrorElement).paddingLeft) || 0
-        const paddingRight = parseFloat(getComputedStyle(proseMirrorElement).paddingRight) || 0
+        const paddingLeft =
+          parseFloat(getComputedStyle(proseMirrorElement).paddingLeft) || 0
+        const paddingRight =
+          parseFloat(getComputedStyle(proseMirrorElement).paddingRight) || 0
         const contentWidth = proseMirrorWidth - paddingLeft - paddingRight
         const halfGap = 24 // 24px gap on each side of center
         const halfWidth = (contentWidth - halfGap * 2) / 2
-        const nextWidth =
-          align === "full-width" ? contentWidth : halfWidth
+        const nextWidth = align === "full-width" ? contentWidth : halfWidth
         const nextLeft =
           align === "full-width"
             ? paddingLeft
@@ -1242,8 +1261,12 @@ const ActiveEditor = ({
           }
 
           // Hide drop cursor when hovering over an image
-          const elementUnderCursor = document.elementFromPoint(event.clientX, event.clientY)
-          const isOverImage = elementUnderCursor?.tagName === "IMG" ||
+          const elementUnderCursor = document.elementFromPoint(
+            event.clientX,
+            event.clientY
+          )
+          const isOverImage =
+            elementUnderCursor?.tagName === "IMG" ||
             elementUnderCursor?.closest("img") !== null
           const dropCursor = containerRef.current.querySelector(
             ".rich-text-dropcursor"
@@ -1299,11 +1322,7 @@ const ActiveEditor = ({
 
           const draggedEl = draggedImage.element
 
-          if (
-            targetImgEl &&
-            draggedEl &&
-            targetImgEl !== draggedEl
-          ) {
+          if (targetImgEl && draggedEl && targetImgEl !== draggedEl) {
             // Side-by-side drop: intercept completely
             event.preventDefault()
             clearImageDragPreviewState()
@@ -1332,7 +1351,10 @@ const ActiveEditor = ({
                 tr.insert(
                   insertPos,
                   draggedNode.type.create(
-                    { ...draggedNode.attrs, align: dropSide === "left" ? "right" : "left" },
+                    {
+                      ...draggedNode.attrs,
+                      align: dropSide === "left" ? "right" : "left",
+                    },
                     draggedNode.content,
                     draggedNode.marks
                   )
@@ -1483,7 +1505,12 @@ const ActiveEditor = ({
         )
       }
     },
-    [editor, hasFontMenuAnchorSelection, isToolbarPinned, updateFloatingToolbarPosition]
+    [
+      editor,
+      hasFontMenuAnchorSelection,
+      isToolbarPinned,
+      updateFloatingToolbarPosition,
+    ]
   )
 
   const handleFontMenuTriggerMouseDown = useCallback(() => {
@@ -2219,13 +2246,22 @@ const ActiveEditor = ({
           onMouseEnter={() => setIsHoveringImageToolbar(true)}
           onMouseLeave={() => {
             setIsHoveringImageToolbar(false)
-            if (!isImageAlignMenuOpen && !isImageEditorOpen && !isDeleteDialogOpen) {
+            if (
+              !isImageAlignMenuOpen &&
+              !isImageEditorOpen &&
+              !isDeleteDialogOpen
+            ) {
               clearHoveredImage()
             }
           }}
           onAlignMenuOpenChange={(open) => {
             setIsImageAlignMenuOpen(open)
-            if (!open && !isHoveringImageToolbar && !isImageEditorOpen && !isDeleteDialogOpen) {
+            if (
+              !open &&
+              !isHoveringImageToolbar &&
+              !isImageEditorOpen &&
+              !isDeleteDialogOpen
+            ) {
               clearHoveredImage()
             }
           }}
@@ -2281,14 +2317,19 @@ const RichTextEditor = ({
   const [isEditing, setIsEditing] = useState(false)
   const [internalFullscreenOpen, setInternalFullscreenOpen] = useState(false)
   const isFullscreenControlled = controlledFullscreenOpen !== undefined
-  const isFullscreenOpen = isFullscreenControlled ? controlledFullscreenOpen : internalFullscreenOpen
-  const setIsFullscreenOpen = useCallback((open: boolean) => {
-    if (isFullscreenControlled) {
-      onFullscreenOpenChange?.(open)
-    } else {
-      setInternalFullscreenOpen(open)
-    }
-  }, [isFullscreenControlled, onFullscreenOpenChange])
+  const isFullscreenOpen = isFullscreenControlled
+    ? controlledFullscreenOpen
+    : internalFullscreenOpen
+  const setIsFullscreenOpen = useCallback(
+    (open: boolean) => {
+      if (isFullscreenControlled) {
+        onFullscreenOpenChange?.(open)
+      } else {
+        setInternalFullscreenOpen(open)
+      }
+    },
+    [isFullscreenControlled, onFullscreenOpenChange]
+  )
   const [content, setContent] = useState(() =>
     normalizeRichTextHtml(defaultValue || "")
   )
@@ -2302,8 +2343,11 @@ const RichTextEditor = ({
   const shouldResumeInlineEditingRef = useRef(false)
   const fullscreenEditorRef = useRef<Editor | null>(null)
   const fullscreenInsertImageRef = useRef<(() => void) | null>(null)
-  const fullscreenToolbarToggleRef = useRef<((pinned: boolean) => void) | null>(null)
-  const [isFullscreenToolbarPinned, setIsFullscreenToolbarPinned] = useState(false)
+  const fullscreenToolbarToggleRef = useRef<((pinned: boolean) => void) | null>(
+    null
+  )
+  const [isFullscreenToolbarPinned, setIsFullscreenToolbarPinned] =
+    useState(false)
   const historyEntriesRef = useRef<string[]>([
     normalizeRichTextHtml(defaultValue || ""),
   ])
@@ -2424,24 +2468,26 @@ const RichTextEditor = ({
         })
       } else {
         // Already editing — trigger the file input directly (insert mode)
-        const fileInput =
-          containerRef.current?.querySelector<HTMLInputElement>(
-            "input[data-rich-text-file-input]"
-          )
+        const fileInput = containerRef.current?.querySelector<HTMLInputElement>(
+          "input[data-rich-text-file-input]"
+        )
         fileInput?.click()
       }
     },
     [isEditing]
   )
 
-  const handleFullscreenOpenChange = useCallback((open: boolean) => {
-    setIsFullscreenOpen(open)
+  const handleFullscreenOpenChange = useCallback(
+    (open: boolean) => {
+      setIsFullscreenOpen(open)
 
-    if (!open) {
-      setIsEditing(shouldResumeInlineEditingRef.current)
-      shouldResumeInlineEditingRef.current = false
-    }
-  }, [setIsFullscreenOpen])
+      if (!open) {
+        setIsEditing(shouldResumeInlineEditingRef.current)
+        shouldResumeInlineEditingRef.current = false
+      }
+    },
+    [setIsFullscreenOpen]
+  )
 
   useEffect(() => {
     if (!isEditing && !isFullscreenOpen) {
@@ -2565,8 +2611,12 @@ const RichTextEditor = ({
       toolbarClassName={toolbarClassName}
       initialFocusPoint={null}
       onEditorReady={handleFullscreenEditorReady}
-      onInsertImageReady={(fn) => { fullscreenInsertImageRef.current = fn }}
-      onToolbarToggleReady={(fn) => { fullscreenToolbarToggleRef.current = fn }}
+      onInsertImageReady={(fn) => {
+        fullscreenInsertImageRef.current = fn
+      }}
+      onToolbarToggleReady={(fn) => {
+        fullscreenToolbarToggleRef.current = fn
+      }}
       onToolbarPinnedChange={setIsFullscreenToolbarPinned}
       stickyToolbar
       stickyToolbarActions={fullscreenToolbarActions}
@@ -2746,80 +2796,92 @@ const RichTextEditor = ({
 
             <div className="relative flex-1 bg-gray-50">
               <div className="absolute inset-0 overflow-y-auto">
-              <div className="px-[50px] pt-[50px] pb-[100px]">
-                <div className="mx-auto w-full max-w-[818px]">
-                  {(fullscreenHelperText || fullscreenMaxCharacterCount != null) && (
-                    <div className="flex items-center justify-between mb-2">
-                      {fullscreenHelperText && (
-                        <p className="text-sm font-light text-dark-blue-400">
-                          {fullscreenHelperText}
-                        </p>
-                      )}
-                      {fullscreenMaxCharacterCount != null && (
-                        <span className={cn(
-                          "text-xs shrink-0 ml-auto",
-                          (fullscreenCharacterCount ?? 0) > fullscreenMaxCharacterCount
-                            ? "text-error-500"
-                            : "text-gray-400"
-                        )}>
-                          {(fullscreenCharacterCount ?? 0).toLocaleString()}/{fullscreenMaxCharacterCount.toLocaleString()}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  <div
-                    data-rich-text-fullscreen-content="true"
-                    className="relative bg-white border border-gray-200 rounded-xl shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-h-[calc(100vh-252px)]"
-                  >
-                    {!isFullscreenToolbarPinned && (
-                      <div className="sticky top-6 z-10 h-0 overflow-visible"
-                      >
-                        <div className="flex items-center gap-x-1.5 justify-end mr-6 mt-6">
-                        <TooltipProvider delayDuration={75}>
-                          <Tooltip>
-                            <TooltipTrigger
-                              type="button"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                fullscreenToolbarToggleRef.current?.(true)
-                              }}
-                              className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
-                            >
-                              <Type02 className="size-4" />
-                            </TooltipTrigger>
-                            <TooltipContent side="top" visual="white" sideOffset={8}>
-                              Show toolbar
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        <TooltipProvider delayDuration={75}>
-                          <Tooltip>
-                            <TooltipTrigger
-                              type="button"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                fullscreenInsertImageRef.current?.()
-                              }}
-                              className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
-                            >
-                              <ImageIcon className="size-4" />
-                            </TooltipTrigger>
-                            <TooltipContent side="top" visual="white" sideOffset={8}>
-                              Add image
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        </div>
+                <div className="px-[50px] pt-[50px] pb-[100px]">
+                  <div className="mx-auto w-full max-w-[818px]">
+                    {(fullscreenHelperText ||
+                      fullscreenMaxCharacterCount != null) && (
+                      <div className="flex items-center justify-between mb-2">
+                        {fullscreenHelperText && (
+                          <p className="text-sm font-light text-dark-blue-400">
+                            {fullscreenHelperText}
+                          </p>
+                        )}
+                        {fullscreenMaxCharacterCount != null && (
+                          <span
+                            className={cn(
+                              "text-xs shrink-0 ml-auto",
+                              (fullscreenCharacterCount ?? 0) >
+                                fullscreenMaxCharacterCount
+                                ? "text-error-500"
+                                : "text-gray-400"
+                            )}
+                          >
+                            {(fullscreenCharacterCount ?? 0).toLocaleString()}/
+                            {fullscreenMaxCharacterCount.toLocaleString()}
+                          </span>
+                        )}
                       </div>
                     )}
-                    {fullscreenEditor}
+                    <div
+                      data-rich-text-fullscreen-content="true"
+                      className="relative bg-white border border-gray-200 rounded-xl shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-h-[calc(100vh-252px)]"
+                    >
+                      {!isFullscreenToolbarPinned && (
+                        <div className="sticky top-6 z-10 h-0 overflow-visible">
+                          <div className="flex items-center gap-x-1.5 justify-end mr-6 mt-6">
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger
+                                  type="button"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    fullscreenToolbarToggleRef.current?.(true)
+                                  }}
+                                  className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
+                                >
+                                  <Type02 className="size-4" />
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="top"
+                                  visual="white"
+                                  sideOffset={8}
+                                >
+                                  Show toolbar
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger
+                                  type="button"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    fullscreenInsertImageRef.current?.()
+                                  }}
+                                  className="inline-flex size-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 shadow-sm transition duration-200 hover:bg-white hover:text-dark-blue-400 focus-visible:outline-none"
+                                >
+                                  <ImageIcon className="size-4" />
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="top"
+                                  visual="white"
+                                  sideOffset={8}
+                                >
+                                  Add image
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </div>
+                      )}
+                      {fullscreenEditor}
+                    </div>
                   </div>
                 </div>
-              </div>
               </div>
             </div>
           </DialogContent>

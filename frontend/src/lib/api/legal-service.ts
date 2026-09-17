@@ -7,7 +7,6 @@
  * - Throws an Error with .status and .code properties on non-ok responses
  *   so callers can map HTTP status codes to UI error states
  */
-
 import Cookies from "js-cookie"
 
 const LEGAL_SERVICE_URL =
@@ -58,7 +57,8 @@ async function parseError(res: Response): Promise<LegalServiceError> {
   const msg = (body.message as string | undefined) ?? `HTTP ${res.status}`
   const err = new Error(msg) as LegalServiceError
   err.status = res.status
-  err.code = (body.code as string | undefined) ?? (body.error as string | undefined)
+  err.code =
+    (body.code as string | undefined) ?? (body.error as string | undefined)
   return err
 }
 
@@ -74,12 +74,12 @@ export interface NdaPreviewResponse {
  * Never store pdfUrl in persistent storage — always call fresh.
  */
 export async function fetchNdaPreview(
-  documentId: string,
+  documentId: string
 ): Promise<NdaPreviewResponse> {
-  const res = await fetch(
-    `${LEGAL_SERVICE_URL}/v1/nda/${documentId}/preview`,
-    { headers: authHeaders(), credentials: "include" },
-  )
+  const res = await fetch(`${LEGAL_SERVICE_URL}/v1/nda/${documentId}/preview`, {
+    headers: authHeaders(),
+    credentials: "include",
+  })
   if (!res.ok) throw await parseError(res)
   return res.json() as Promise<NdaPreviewResponse>
 }
@@ -90,7 +90,7 @@ export interface NdaStatusResponse {
   id: string
   status: "generated" | "signed" | "voided"
   pdfUrl: string | null
-  signedPdfUrl: string | null   // fresh presigned URL — generated on every request, never expires
+  signedPdfUrl: string | null // fresh presigned URL — generated on every request, never expires
   documentType: string
   jobListingId: string
   generatedAt: string
@@ -103,12 +103,12 @@ export interface NdaStatusResponse {
  * Used on page load to determine whether to show unsigned/signed/voided state.
  */
 export async function fetchNdaStatus(
-  documentId: string,
+  documentId: string
 ): Promise<NdaStatusResponse> {
-  const res = await fetch(
-    `${LEGAL_SERVICE_URL}/v1/nda/${documentId}`,
-    { headers: authHeaders(), credentials: "include" },
-  )
+  const res = await fetch(`${LEGAL_SERVICE_URL}/v1/nda/${documentId}`, {
+    headers: authHeaders(),
+    credentials: "include",
+  })
   if (!res.ok) throw await parseError(res)
   return res.json() as Promise<NdaStatusResponse>
 }
@@ -143,17 +143,14 @@ export interface SignNdaResponse {
  */
 export async function submitNdaSign(
   documentId: string,
-  payload: SignNdaPayload,
+  payload: SignNdaPayload
 ): Promise<SignNdaResponse> {
-  const res = await fetch(
-    `${LEGAL_SERVICE_URL}/v1/nda/${documentId}/sign`,
-    {
-      method: "POST",
-      headers: authHeaders(),
-      credentials: "include",
-      body: JSON.stringify(payload),
-    },
-  )
+  const res = await fetch(`${LEGAL_SERVICE_URL}/v1/nda/${documentId}/sign`, {
+    method: "POST",
+    headers: authHeaders(),
+    credentials: "include",
+    body: JSON.stringify(payload),
+  })
   if (!res.ok) throw await parseError(res)
   return res.json() as Promise<SignNdaResponse>
 }
@@ -184,12 +181,12 @@ export interface NdaAuditResponse {
  * when React state has been reset.
  */
 export async function fetchNdaAudit(
-  documentId: string,
+  documentId: string
 ): Promise<NdaAuditResponse> {
-  const res = await fetch(
-    `${LEGAL_SERVICE_URL}/v1/nda/${documentId}/audit`,
-    { headers: authHeaders(), credentials: "include" },
-  )
+  const res = await fetch(`${LEGAL_SERVICE_URL}/v1/nda/${documentId}/audit`, {
+    headers: authHeaders(),
+    credentials: "include",
+  })
   if (!res.ok) throw await parseError(res)
   return res.json() as Promise<NdaAuditResponse>
 }

@@ -48,8 +48,7 @@ type SignInFormValues = z.infer<typeof signInSchema>
 const getLoginErrorMessage = (error: any) => {
   const status = error?.response?.status
   const serverMessage =
-    error?.response?.data?.message ??
-    error?.response?.data?.errors?.message
+    error?.response?.data?.message ?? error?.response?.data?.errors?.message
 
   if (status === 401 || status === 403) {
     return "Invalid email or password"
@@ -183,7 +182,11 @@ export default function SignIn() {
     }
   }
 
-  const onSubmit: SubmitHandler<SignInFormValues> = ({ email, password, rememberMe }) => {
+  const onSubmit: SubmitHandler<SignInFormValues> = ({
+    email,
+    password,
+    rememberMe,
+  }) => {
     setIsLoading(true)
 
     setLoginError(null)
