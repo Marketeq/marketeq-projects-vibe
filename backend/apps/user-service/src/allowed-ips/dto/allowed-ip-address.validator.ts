@@ -6,10 +6,11 @@ import {
 import { parseEntry } from '../ip-range.util';
 
 /**
- * The two shapes the IP Restrictions screen can produce: a single address, or a
- * range typed as "from - to". Both sides of a range must be the same IP
- * version, and the range has to run forwards — "203.0.113.9 - 203.0.113.4"
- * allows nothing, and silently storing it would look like a working rule.
+ * The three shapes an allow-list entry can take: a single address, a range
+ * typed as "from - to", or CIDR ("192.168.1.0/24"). Both sides of a range must
+ * be the same IP version, and the range has to run forwards —
+ * "203.0.113.9 - 203.0.113.4" allows nothing, and silently storing it would
+ * look like a working rule.
  *
  * The parsing lives in ip-range.util so that what counts as a valid entry here
  * and what counts as covering the caller in the lockout guards can never drift
@@ -31,7 +32,7 @@ export function IsAllowedIpAddress(validationOptions?: ValidationOptions) {
       validator: {
         validate: (value: unknown) => isAllowedIpAddress(value),
         defaultMessage: (args: ValidationArguments) =>
-          `${args.property} must be an IP address or a range written "from - to", with both sides the same version and the range running forwards`,
+          `${args.property} must be an IP address, a range written "from - to" with both sides the same version and running forwards, or a CIDR block such as 192.168.1.0/24`,
       },
     });
   };

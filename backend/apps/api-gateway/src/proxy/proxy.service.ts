@@ -79,6 +79,15 @@ export class ProxyService {
       // these exact paths ahead of the global json() parser).
       ...(req.headers['stripe-signature'] ? { 'stripe-signature': req.headers['stripe-signature'] as string } : {}),
       ...(req.headers['x-ramp-signature'] ? { 'x-ramp-signature': req.headers['x-ramp-signature'] as string } : {}),
+      // The caller's real user agent. Without it auth-service records the
+      // internal HTTP client, so every row in the Devices list reads
+      // "axios/1.14.0" and the parsed device type, name and OS are wrong for
+      // every user. Same shape as the entries above: forwarded only when
+      // present, so nothing changes for requests that do not carry one.
+      //
+      // Existing session rows stay wrong after this — the value is captured at
+      // sign-in, so only a re-login rewrites one.
+      ...(req.headers['user-agent'] ? { 'user-agent': req.headers['user-agent'] as string } : {}),
     }
 
     // Downstream services (timezone-resolution.service.ts, geo.service.ts's
