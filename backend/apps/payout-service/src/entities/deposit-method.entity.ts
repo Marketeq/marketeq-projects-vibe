@@ -25,6 +25,19 @@ export enum VerificationStatus {
   FAILED   = 'failed',
   EXPIRED  = 'expired',
   LOCKED   = 'locked',
+  // PS-34 §4.3: Stripe's risk engine escalated a cross-border connected
+  // account (UK/SEPA/AU/CA) past DOB collection to government ID + selfie.
+  // Not a failure — the contractor must complete a new Account Link.
+  PENDING_ADDITIONAL_KYC = 'pending_additional_kyc',
+  // PS-35 §6: method created, cannot receive payouts until the Didit
+  // biometric method gate clears. Set immediately on creation when the
+  // gate is REQUIRED; promoted to VERIFIED by the payout.method.biometric.verified
+  // consumer (consumers/identity-events.consumer.ts).
+  PENDING_BIOMETRIC = 'pending_biometric',
+  // PS-35 §6: all 3 Didit attempts exhausted. Terminal — method deactivated,
+  // contractor must contact support. Distinct from FAILED (micro-deposit
+  // attempts exhausted) so the two failure paths surface different copy.
+  VERIFICATION_FAILED = 'verification_failed',
 }
 
 // PS-10 §2: All 9 crypto providers
@@ -126,6 +139,16 @@ export class DepositMethod {
 
   @Column({ type: 'varchar', name: 'wise_recipient_id', nullable: true })
   wiseRecipientId: string | null;
+
+  // -- Wise Platform fields (PS-34 §8) --
+  // Separate from the wise* OAuth fields above: Wise Platform is a B2B
+  // infrastructure integration (India/Japan/GCC/other local-bank delivery),
+  // not the contractor-owned-Wise-account OAuth path (PS-09 v2.0).
+  @Column({ type: 'varchar', name: 'wise_platform_recipient_id', nullable: true })
+  wisePlatformRecipientId: string | null;
+
+  @Column({ type: 'varchar', name: 'wise_platform_transfer_id', nullable: true })
+  wisePlatformTransferId: string | null;
 
   // -- Payoneer fields --
   @Column({ type: 'varchar', name: 'payoneer_payee_id', nullable: true })
