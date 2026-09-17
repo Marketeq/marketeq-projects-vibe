@@ -4,14 +4,11 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
 
-// Composes listings-service (scope source of truth) and checkout-service
-// (draft owner) into one bootstrap response for the checkout page. This is
-// gateway-level composition, not a microservice-to-microservice call — see
-// homepage.service.ts for the established precedent of this pattern.
+// Checkout-service owns the summary; gateway just authenticates and forwards,
+// reshaping the response into the shape the frontend already expects.
 @Injectable()
 export class CheckoutDraftGatewayService {
   private readonly logger = new Logger(CheckoutDraftGatewayService.name);
-  private readonly listingsUrl: string;
   private readonly checkoutUrl: string;
   private readonly internalServiceToken: string | undefined;
 
@@ -19,8 +16,6 @@ export class CheckoutDraftGatewayService {
     private readonly http: HttpService,
     config: ConfigService,
   ) {
-    this.listingsUrl =
-      config.get<string>('LISTINGS_SERVICE_URL') || 'http://localhost:3004';
     this.checkoutUrl =
       config.get<string>('CHECKOUT_SERVICE_URL') || 'http://localhost:3009';
     this.internalServiceToken = config.get<string>('INTERNAL_SERVICE_TOKEN');
@@ -39,35 +34,36 @@ export class CheckoutDraftGatewayService {
           projectCost: project.budget ?? null,
         },
         {
+  async getListingSummary(listingId: string, _clientId: string) {
+    let summary;
+    try {
+      summary = await firstValueFrom(
+        this.http.get(`${this.checkoutUrl}/v1/checkout/listings/${listingId}/summary`, {
           headers: this.internalServiceToken
             ? { 'x-internal-token': this.internalServiceToken }
             : {},
-        },
-      ),
-    );
-
-    return {
-      listing: {
-        id: project.id,
-        title: project.title,
-      },
-      draft: draft.data,
-    };
-  }
-
-  private async fetchProject(listingId: string): Promise<any> {
-    try {
-      const response = await firstValueFrom(
-        this.http.get(`${this.listingsUrl}/v1/projects/${listingId}`),
+        }),
       );
-      return response.data;
     } catch (err) {
       const axiosErr = err as AxiosError;
       if (axiosErr.response?.status === 404) {
         throw new NotFoundException('Listing not found');
       }
-      this.logger.warn(`Failed to fetch project ${listingId}: ${axiosErr.message}`);
+      this.logger.warn(`Failed to fetch checkout summary for ${listingId}: ${axiosErr.message}`);
       throw err;
     }
+    const { listing, phases, projectCost } = summary.data;
+
+    return {
+      listing,
+      draft: {
+        id: null,
+        listingId: listing.id,
+        phases,
+        projectCost,
+        createdAt: null,
+        updatedAt: null,
+      },
+    };
   }
 }

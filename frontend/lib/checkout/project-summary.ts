@@ -10,6 +10,7 @@ export type CheckoutRawTeamMember = {
   rate: number | null
   experienceLevel: string | null
   isLead: boolean
+  status: string | null
 }
 
 export type CheckoutFaq = {
@@ -76,6 +77,7 @@ const getTeamMembers = (project: any): CheckoutRawTeamMember[] => {
     rate: typeof member.rate === "number" ? member.rate : null,
     experienceLevel: member.experienceLevel ?? null,
     isLead: Boolean(member.isLead),
+    status: member.status ?? null,
   }))
 }
 

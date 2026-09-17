@@ -24,10 +24,6 @@ export type CheckoutDraftPhase = {
   tasks: CheckoutDraftTask[];
 };
 
-// Seeded once from the listing's scope at first checkout visit and never
-// re-synced automatically — see docs/md/Checkout Service/Front-end/
-// "Project Scope / Team Members + Payment Summary (Checkout Step).md".
-// Read-only for now: no endpoints mutate `phases` yet.
 @Entity('checkout_drafts')
 @Unique(['clientId', 'listingId'])
 export class CheckoutDraft {

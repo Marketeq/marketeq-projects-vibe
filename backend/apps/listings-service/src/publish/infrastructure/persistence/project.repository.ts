@@ -100,6 +100,12 @@ export abstract class ProjectRepository {
   abstract getProjectIdsWithScope(
     projectIds: Array<Project['id']>,
   ): Promise<Set<string>>;
+  
+  abstract setSingleProjectMemberStatus(
+    id: Project['id'],
+    userId: string,
+    status: string,
+  ): Promise<void>;
 
   abstract getRecentQuestions(id: Project['id']): Promise<RecentQuestion[]>;
 

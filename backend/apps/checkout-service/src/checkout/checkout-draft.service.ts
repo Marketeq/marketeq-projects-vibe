@@ -56,7 +56,7 @@ export class CheckoutDraftService {
     private readonly repo: Repository<CheckoutDraft>,
   ) {}
 
-  async findOrCreate(
+  async commit(
     clientId: string,
     listingId: string,
     seed: { phases?: ScopeSeedPhase[]; projectCost?: number | null },

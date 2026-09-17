@@ -32,6 +32,11 @@ export class Invitation {
   @Column({ name: 'company_id', type: 'uuid', nullable: true })
   companyId?: string;
 
+
+  @Index()
+  @Column({ name: 'project_id', type: 'uuid', nullable: true })
+  projectId?: string;
+
   @Index()
   @Column({ name: 'invited_email', type: 'text' })
   invitedEmail!: string;

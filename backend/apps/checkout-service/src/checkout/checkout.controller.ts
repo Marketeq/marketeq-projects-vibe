@@ -12,7 +12,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { CheckoutService } from "./checkout.service";
-import { CheckoutDraftService } from "./checkout-draft.service";
+import { CheckoutSummaryService } from "./checkout-summary.service";
 import { StripeService } from "../stripe/stripe.service";
 import { JwtAuthGuard } from "../guards/jwt-auth.guard";
 import { InternalTokenGuard } from "../guards/internal-token.guard";
@@ -20,7 +20,6 @@ import { RolesGuard } from "../guards/roles.guard";
 import { Request } from "express";
 
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
-import { FindOrCreateDraftDto } from './dto/find-or-create-draft.dto';
 import { ApplyGiftCardDto } from './dto/apply-gift-card.dto';
 import { UseWalletDto } from './dto/use-wallet.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
@@ -41,23 +40,13 @@ export class CheckoutController {
   constructor(
     private readonly checkoutService: CheckoutService,
     private readonly stripeService: StripeService,
-    private readonly checkoutDraftService: CheckoutDraftService,
+    private readonly checkoutSummaryService: CheckoutSummaryService,
   ) {}
 
-  // ─── Checkout draft (read-only for now — seeded once, never edited) ──
-
-  // Called only by the gateway's CheckoutDraftController, which has already
-  // authenticated the end user via its own JwtAuthGuard — so this endpoint
-  // trusts the gateway (via INTERNAL_SERVICE_TOKEN) and takes clientId
-  // straight from the request body instead of re-deriving it from a
-  // forwarded user JWT.
-  @Post("drafts/find-or-create")
+  @Get("listings/:listingId/summary")
   @UseGuards(InternalTokenGuard)
-  findOrCreateDraft(@Body() dto: FindOrCreateDraftDto) {
-    return this.checkoutDraftService.findOrCreate(dto.clientId, dto.listingId, {
-      phases: dto.phases,
-      projectCost: dto.projectCost,
-    });
+  getListingSummary(@Param('listingId') listingId: string) {
+    return this.checkoutSummaryService.getSummary(listingId);
   }
 
   // Internal gateway-to-service call — the gateway already authenticated

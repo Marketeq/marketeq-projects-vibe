@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
+import { HttpModule } from '@nestjs/axios';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { CheckoutSession } from './checkout/entities/checkout-session.entity';
 import { Wallet } from './checkout/entities/wallet.entity';
@@ -14,6 +15,7 @@ import { StripeMetadata } from './checkout/entities/stripe-metadata.entity';
 import { CheckoutDraft } from './checkout/entities/checkout-draft.entity';
 import { CheckoutService } from './checkout/checkout.service';
 import { CheckoutDraftService } from './checkout/checkout-draft.service';
+import { CheckoutSummaryService } from './checkout/checkout-summary.service';
 import { CheckoutController } from './checkout/checkout.controller';
 import { UcheckoutUserviceController } from './checkout-service.controller';
 import { UcheckoutUserviceService } from './checkout-service.service';
@@ -45,6 +47,7 @@ import { InternalTokenGuard } from './guards/internal-token.guard';
       SavedBankAccount, WireTransfer, StripeMetadata,
       CheckoutDraft,
     ]),
+    HttpModule,
     ...(process.env.RABBITMQ_URL
       ? [ClientsModule.register([
           {
@@ -60,6 +63,6 @@ import { InternalTokenGuard } from './guards/internal-token.guard';
       : []),
   ],
   controllers: [CheckoutController, UcheckoutUserviceController],
-  providers: [CheckoutService, CheckoutDraftService, UcheckoutUserviceService, StripeService, JwtAuthGuard, InternalTokenGuard],
+  providers: [CheckoutService, CheckoutDraftService, CheckoutSummaryService, UcheckoutUserviceService, StripeService, JwtAuthGuard, InternalTokenGuard],
 })
 export class CheckoutServiceModule {}

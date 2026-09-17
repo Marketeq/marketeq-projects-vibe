@@ -796,6 +796,18 @@ export class PublishService {
     };
   }
 
+  async setProjectMemberStatus(
+    projectId: string,
+    memberUserId: string,
+    status: string,
+  ) {
+    await this.projectRepository.setSingleProjectMemberStatus(
+      projectId,
+      memberUserId,
+      status,
+    );
+  }
+
   async getRecentQuestions(userId: string, projectId: string) {
     await this.ensureProjectOwnership(projectId, userId);
     return this.projectRepository.getRecentQuestions(projectId);
