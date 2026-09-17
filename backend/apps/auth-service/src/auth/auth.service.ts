@@ -1713,6 +1713,33 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return { revoked: result.affected ?? 0 };
   }
 
+  /**
+   * Read-only two-factor state for the signed-in user.
+   *
+   * twoFactorEnabled is a column on this service's user table and exists
+   * nowhere else, so a client that loads its user from user-service's
+   * GET /user/me cannot see it and renders every account as having no
+   * authenticator. The login response carries the flag, but a page opened on
+   * an existing session never sees that response. Hence a plain read.
+   *
+   * Deliberately returns no secret and no backup codes — this answers
+   * "is one enrolled", nothing more.
+   */
+  async getTwoFactorStatus(
+    userId: string,
+  ): Promise<{ enabled: boolean; method: string | null }> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'twoFactorEnabled', 'twoFactorMethod'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    return {
+      enabled: user.twoFactorEnabled ?? false,
+      method: user.twoFactorMethod ?? null,
+    };
+  }
+
   async generateTwoFactorSecret(userId: string) {
     const user = await this.userRepository.findOne({
       where: { id: userId },

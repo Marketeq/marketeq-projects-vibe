@@ -1083,8 +1083,52 @@ export default function SettingsPage() {
 
   // Derived, not local state: enrolment lives on the account, so a local flag
   // reads false again on every reload and the badge disappears even though the
-  // authenticator is still enrolled. `user` is refreshed from the server.
+  // authenticator is still enrolled.
   const isAuthenticatorEnabled = user?.twoFactorEnabled ?? false
+
+  /**
+   * Fills in twoFactorEnabled, which `user` arrives without.
+   *
+   * AuthProvider loads the user from GET /user/me, served by user-service —
+   * and twoFactorEnabled is a column on auth-service's user table, which has
+   * no counterpart there. So the field is always undefined on load and the
+   * badge stayed hidden on every reload for an account that *is* enrolled;
+   * it only appeared for the moment after enrolling, from the in-memory
+   * setUser below. The login response does carry the flag, but a page opened
+   * on an existing session never sees that response.
+   *
+   * Read from the service that owns it and folded into the same user object,
+   * so this badge and the Two-Factor section keep reading it as they already
+   * do rather than each growing their own source of truth.
+   */
+  useEffect(() => {
+    if (!user?.id) return
+
+    let cancelled = false
+    AuthAPI.GetTwoFactorStatus()
+      .then((res) => {
+        if (cancelled) return
+        const data = (res as any)?.data ?? res
+        const enabled: boolean = data?.enabled ?? false
+        const method = (data?.method ?? null) as "totp" | "sms" | null
+        // Returning prev unchanged when it already agrees keeps this from
+        // re-rendering in a loop off its own write.
+        setUser((prev) =>
+          prev &&
+          (prev.twoFactorEnabled !== enabled || prev.twoFactorMethod !== method)
+            ? { ...prev, twoFactorEnabled: enabled, twoFactorMethod: method }
+            : prev
+        )
+      })
+      .catch(() => {
+        // Advisory only: if the status cannot be read, leave the badge hidden
+        // rather than assert an enrolment we could not confirm.
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, setUser])
 
   /**
    * The QR is minted server-side and the secret stored encrypted against the
@@ -4021,9 +4065,21 @@ export default function SettingsPage() {
                               override would only win by stylesheet accident;
                               flex-1 sets flex-basis instead and never
                               collides with the w-16. */}
+                          {/* The component colours typed text and placeholder
+                              alike (text-gray-300), so entered digits stay as
+                              faint as the 000-000 hint. Empty boxes keep the
+                              base grey; a box holding a digit goes to
+                              text-gray-black, the same colour Input uses for
+                              typed text. :not(:placeholder-shown) is an
+                              arbitrary variant because Tailwind 3.4 ships
+                              placeholder-shown but no negated form, and it
+                              also lands at (0,2,0) specificity — the cva here
+                              is plain concatenation, so a bare text-* would
+                              tie with the base class and win only by
+                              stylesheet order. */}
                           <SixDigitPinInput
                             className="w-full"
-                            pinInputClassName="min-w-0 flex-1"
+                            pinInputClassName="min-w-0 flex-1 [&:not(:placeholder-shown)]:text-gray-black"
                           />
                         </div>
 

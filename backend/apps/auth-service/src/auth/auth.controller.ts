@@ -408,6 +408,15 @@ export class AuthController {
     return this.authService.heartbeat(userId, sessionId);
   }
 
+  @ApiOperation({ summary: 'Read whether two-factor is enrolled' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
+  @Get('2fa/status')
+  getTwoFactorStatus(@Req() req: Request) {
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.getTwoFactorStatus(userId);
+  }
+
   @ApiOperation({ summary: 'Generate 2FA secret and QR code' })
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, SessionValidationGuard)
