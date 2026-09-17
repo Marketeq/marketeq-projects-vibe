@@ -65,6 +65,7 @@ import { format, isSameDay, parseISO } from "date-fns"
 import { useMeasure, useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message, MessageAttachment } from "@/types/message"
+import type { OfferStatus } from "@/types/offer"
 import { User } from "@/types/user"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { toast } from "@/components/ui/toast/use-toast"
@@ -322,6 +323,12 @@ export interface DeclinedOfferCardData {
 export interface OfferNotificationMessageData {
   id: string
   contractId: string
+  // PMCM-393 AC-42: the offer's live status as of the last refetch — distinct
+  // from `event` below, which is fixed to whatever this notification's own
+  // event type was when it was created and never changes. Undefined means
+  // "no live signal" (seeded fixtures, or the offer-service lookup failed)
+  // and must never be treated as withdrawn/expired.
+  offerStatus?: OfferStatus
   event: string
   title: string
   body: string
@@ -428,6 +435,24 @@ export function Chats({
   onOfferUpdateRequested,
 }: ChatsProps) {
   const router = useRouter()
+  // AC-42.08: live connectivity, unlike the existing navigator.onLine
+  // pre-flight checks elsewhere in this file (one-time checks paired with a
+  // toast) — this needs to react while a dialog is already open. Named
+  // isNetworkOnline (not isOnline) — that name is already the presence-check
+  // function returned by useOnlineUsers() below.
+  const [isNetworkOnline, setIsNetworkOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine
+  )
+  useEffect(() => {
+    const goOnline = () => setIsNetworkOnline(true)
+    const goOffline = () => setIsNetworkOnline(false)
+    window.addEventListener("online", goOnline)
+    window.addEventListener("offline", goOffline)
+    return () => {
+      window.removeEventListener("online", goOnline)
+      window.removeEventListener("offline", goOffline)
+    }
+  }, [])
   const [textareaValue, setTextareaValue] = useState("")
   const lastTypedAtRef = useRef(0)
   const userTypedRef = useRef(false)
@@ -452,11 +477,24 @@ export function Chats({
   // the raw payload, re-run the existing offerNotificationMessages refetch
   // (owned by the inbox page) and let the sync effect below pick up the
   // refreshed item — no parallel formatting/state.
-  useOfferChannel(
-    selectedNotificationOffer?.contractId,
-    () => onOfferUpdateRequested?.(),
-    () => onOfferUpdateRequested?.()
-  )
+  const { isLive: offerChannelIsLive, hasConnected: offerChannelHasConnected } =
+    useOfferChannel(
+      selectedNotificationOffer?.contractId,
+      () => onOfferUpdateRequested?.(),
+      () => onOfferUpdateRequested?.()
+    )
+  // AC-42.07: only once we've actually connected once — otherwise this would
+  // read true (not live yet) for the brief moment every modal takes to open.
+  const showOfferChannelReconnecting =
+    offerChannelHasConnected && !offerChannelIsLive
+
+  // AC-42.05: fires only when the expiry itself changed on a still-open
+  // offer — not on every unrelated update — so it can't misfire together
+  // with the withdrawn/expired button-swap below.
+  const [showOfferUpdatedBanner, setShowOfferUpdatedBanner] = useState(false)
+  useEffect(() => {
+    if (!selectedNotificationOffer) setShowOfferUpdatedBanner(false)
+  }, [selectedNotificationOffer])
 
   useEffect(() => {
     if (!selectedNotificationOffer) return
@@ -464,6 +502,12 @@ export function Chats({
       (item) => item.id === selectedNotificationOffer.id
     )
     if (fresh && fresh !== selectedNotificationOffer) {
+      if (
+        fresh.offerStatus === "PENDING" &&
+        fresh.expiresLabel !== selectedNotificationOffer.expiresLabel
+      ) {
+        setShowOfferUpdatedBanner(true)
+      }
       setSelectedNotificationOffer(fresh)
     }
   }, [offerNotificationMessages, selectedNotificationOffer])
@@ -673,6 +717,73 @@ export function Chats({
     notificationOfferStep === "event" &&
     selectedNotificationOffer?.event === "offer.withdrawn"
 
+  // PMCM-393 AC-42.02/03/04: live status for whichever offer/counter view is
+  // currently open. `offerStatus` is undefined whenever there's no live
+  // signal (seeded fixtures, or the getOffer() lookup failed) — every check
+  // below requires an explicit match against a live value, so undefined
+  // always falls through to "no override", never to withdrawn/expired.
+  //
+  // A local Decline never reaches this: declining closes the dialog
+  // synchronously in the same handler that calls the API (see onDecline
+  // below), before any Ably-driven refetch could arrive, so there's no
+  // window where our own decline could be misread as a withdrawal here.
+  const liveOfferWithdrawn = selectedNotificationOffer?.offerStatus === "WITHDRAWN"
+
+  // The offer's own status has no notion of "counter offer" — a COUNTERED
+  // offer falling back to PENDING just means whatever counter was active is
+  // no longer active. That's true whether the talent withdrew it, it timed
+  // out, or the client declined it (declined is excluded above the same way
+  // as the primary-offer case). Disambiguating withdrawn vs. expired needs
+  // an extra signal.
+  const liveCounterOfferGone =
+    selectedNotificationOffer?.offerStatus === "PENDING" &&
+    selectedNotificationOfferEventVariant === "counter-offer-details"
+  const newestNotificationForOpenOffer = useMemo(() => {
+    if (!liveCounterOfferGone || !selectedNotificationOffer) return undefined
+    return offerNotificationMessages
+      .filter((item) => item.contractId === selectedNotificationOffer.contractId)
+      .sort(
+        (left, right) =>
+          new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+      )
+      .at(-1)
+  }, [liveCounterOfferGone, offerNotificationMessages, selectedNotificationOffer])
+  // Disambiguation source: the refreshed notification list, not the Ably
+  // payload — offers.service.ts/counter-offers.service.ts publish the exact
+  // same { offer: { status: 'PENDING' }, counterOffer: null } shape for
+  // counter withdrawn, counter declined, and counter expired alike (verified
+  // against counter-offers.service.ts's decline/withdraw and
+  // expiry.processor.ts's expireCounterOffers — all three restore the parent
+  // offer to PENDING the same way), so the live payload alone cannot tell
+  // withdrawn from expired. offer.counter_expired and offer.counter_withdrawn
+  // notification events already exist as first-class strings in this file
+  // (see selectedNotificationOfferEventVariant above), so if the backend
+  // ever creates one for this offer, use it. In production, no producer in
+  // offer-service or notification-service currently emits a notification for
+  // either event (confirmed: no OFFER_EXCHANGE consumer in notification-service
+  // and no notification client in offer-service) — so newestNotificationForOpenOffer
+  // will not exist for real traffic, and this falls through to the withdrawn
+  // copy every time, per instruction, until a backend producer is added.
+  const liveCounterResolvedExpired =
+    liveCounterOfferGone &&
+    newestNotificationForOpenOffer?.event === "offer.counter_expired"
+  const liveCounterWithdrawn = liveCounterOfferGone && !liveCounterResolvedExpired
+  const liveOfferExpired =
+    selectedNotificationOffer?.offerStatus === "EXPIRED" ||
+    liveCounterResolvedExpired
+  // Applies even outside the "event" step (AC-42.04 point 4): if the viewer
+  // is mid Accept/Decline/Counter when the offer goes terminal, the submit
+  // action must disable and show this text rather than ripping them out of
+  // the sub-flow. Copy matches offer-flow-dialog.tsx's existing terminal
+  // notice for "expired" so there's no third string for the same state.
+  const liveTerminalNotice = liveOfferWithdrawn
+    ? "This offer has been withdrawn."
+    : liveCounterWithdrawn
+      ? "This counter offer has been withdrawn."
+      : liveOfferExpired
+        ? "This offer has expired."
+        : undefined
+
   const selectedNotificationOfferVariant: OfferFlowDialogVariant =
     notificationOfferStep === "accept"
       ? notificationAcceptanceMessage.trim() && notificationTermsAccepted
@@ -700,6 +811,7 @@ export function Chats({
     setNotificationTermsAccepted(false)
     setNotificationDeclineMessage("")
     setNotificationDeclineReason("")
+    setShowOfferUpdatedBanner(false)
   }
 
   const selectedNotificationOfferData = useMemo<OfferDialogData | null>(() => {
@@ -5997,6 +6109,39 @@ export function Chats({
             (selectedNotificationOffer?.event !== "offer.declined" &&
               selectedNotificationOffer?.event !== "offer.counter_declined")
           }
+          liveWithdrawn={notificationOfferStep === "event" && liveOfferWithdrawn}
+          liveCounterWithdrawn={
+            notificationOfferStep === "event" && liveCounterWithdrawn
+          }
+          liveExpired={notificationOfferStep === "event" && liveOfferExpired}
+          talentAskNowLabel={
+            selectedTalentOfferExpiredOverThirtyDays
+              ? "Ask Now"
+              : "Request Extension"
+          }
+          onTalentRecoveryAction={() => {
+            if (!selectedNotificationOffer || !selectedNotificationOfferData) return
+            setSelectedTab("Messages")
+            setTextareaValue(
+              selectedTalentOfferExpiredOverThirtyDays
+                ? `Hi ${selectedNotificationOfferData.senderDisplayName.split(/\s+/)[0]}! I wanted to check in and see if the ${selectedNotificationOfferData.role} role for the project ${selectedNotificationOfferData.offerTitle} is still available. If so, I’m still interested.`
+                : `Hi ${selectedNotificationOfferData.senderDisplayName.split(/\s+/)[0]}! Can you extend the offer for the project ${selectedNotificationOfferData.offerTitle}? I’m still interested.`
+            )
+            lastTypedAtRef.current = Date.now()
+            userTypedRef.current = true
+            sendTyping(true)
+            requestAnimationFrame(() => composerRef.current?.focus())
+            setSelectedNotificationOffer(null)
+          }}
+          onLiveExpiredEditOffer={() => setNotificationOfferStep("edit-expired")}
+          onLiveExpiredResendOffer={() => {
+            setNotificationResendMessage("")
+            setNotificationOfferStep("resend")
+          }}
+          showUpdatedBanner={showOfferUpdatedBanner}
+          showReconnecting={showOfferChannelReconnecting}
+          offline={!isNetworkOnline}
+          liveTerminalNotice={liveTerminalNotice}
           onAcceptanceMessageChange={setNotificationAcceptanceMessage}
           onTermsAcceptedChange={setNotificationTermsAccepted}
           onDeclineMessageChange={setNotificationDeclineMessage}
@@ -7386,6 +7531,18 @@ export function Chats({
               : undefined
           }
           data={selectedNotificationOfferData}
+          // PMCM-393 AC-42.04 point 4: only the "counter" sub-flow (composing
+          // a new counter against a still-live offer) needs this — "edit"/
+          // "edit-expired"/"resend-edit" are themselves the recovery/edit
+          // flows for an already-terminal offer, so showing the same notice
+          // there would contradict the screen the viewer is already on.
+          submitDisabled={
+            submittingCounterOffer ||
+            (notificationOfferStep === "counter" && Boolean(liveTerminalNotice))
+          }
+          terminalNotice={
+            notificationOfferStep === "counter" ? liveTerminalNotice : undefined
+          }
           onCancel={() => {
             setShowClientPreviousStartDate(false)
             setNotificationOfferStep(
