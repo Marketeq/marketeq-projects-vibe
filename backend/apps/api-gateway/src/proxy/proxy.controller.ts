@@ -66,6 +66,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   nda: 'legal',                    // legal-service NDA endpoints
   resume: 'users',                  // resume upload/parse lives in user-service
   'dashboard-tasks': 'users',       // personal to-do tasks live in user-service
+  privacy: 'users',                 // privacy settings live in user-service
 }
 
 const USER_SERVICE_V1_RESOURCES = new Set([
