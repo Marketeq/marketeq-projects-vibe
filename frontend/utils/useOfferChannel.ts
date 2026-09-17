@@ -17,6 +17,11 @@ export function useOfferChannel(
 ) {
   const { user } = useAuth()
   const [isLive, setIsLive] = useState(false)
+  // Tracks whether THIS subscription has connected at least once, so callers
+  // can gate a "Reconnecting..." indicator on hasConnected && !isLive rather
+  // than !isLive alone — isLive starts false before the first connect too,
+  // which would otherwise flash the indicator on every open.
+  const [hasConnected, setHasConnected] = useState(false)
   const onUpdateRef = useRef(onUpdate)
   const onReconnectRef = useRef(onReconnect)
   useEffect(() => {
@@ -61,6 +66,7 @@ export function useOfferChannel(
     let wasDropped = false
     const onConnected = () => {
       setIsLive(true)
+      setHasConnected(true)
       if (wasDropped) {
         wasDropped = false
         onReconnectRef.current?.()
@@ -92,8 +98,9 @@ export function useOfferChannel(
       client.connection.off("closed", onDropped)
       client.close()
       setIsLive(false)
+      setHasConnected(false)
     }
   }, [offerId, user?.id])
 
-  return { isLive }
+  return { isLive, hasConnected }
 }
