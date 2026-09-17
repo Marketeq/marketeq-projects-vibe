@@ -47,6 +47,7 @@ export const listOffers = async (
   if (params?.sort) query.set("sort", params.sort)
   if (params?.order) query.set("order", params.order)
   if (params?.as) query.set("as", params.as)
+  if (params?.talentId) query.set("talentId", params.talentId)
 
   const queryString = query.toString()
   const url = queryString ? `${OFFERS_BASE}?${queryString}` : OFFERS_BASE

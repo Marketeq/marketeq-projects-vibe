@@ -43,6 +43,7 @@ import { Message } from "@/types/message"
 import { UserProfile } from "@/types/user"
 import { User } from "@/types/user"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
+import { toast } from "@/components/ui/toast/use-toast"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
 import { HireMeButton } from "@/components/hire-me-button"
 import { SaveTalentButton } from "@/components/save-talent-button"
@@ -436,9 +437,23 @@ const RightSidebar = ({
       setResendOfferOpen(false)
     } catch (error) {
       console.error("Offer creation failed", error)
-      setResendSubmitError(
-        "The offer could not be sent. Review the terms and try again."
-      )
+      // PMCM-393 AC-41.03: this is the one place in the frontend that
+      // actually calls createOffer() — offer-service's checkActiveOfferConstraint
+      // (or the uq_offers_one_active_per_pair DB backstop) 409s here, never
+      // in hire-me-button.tsx, which doesn't call the backend at all.
+      const errorCode = (error as { response?: { data?: { error?: string } } })
+        ?.response?.data?.error
+      if (errorCode === "ACTIVE_OFFER_ALREADY_EXISTS") {
+        toast({
+          variant: "destructive",
+          description:
+            "You already have an active offer out for this talent. You'll need to withdraw it before sending a new one.",
+        })
+      } else {
+        setResendSubmitError(
+          "The offer could not be sent. Review the terms and try again."
+        )
+      }
     } finally {
       setResendSubmitting(false)
     }
