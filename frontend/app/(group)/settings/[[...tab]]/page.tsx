@@ -159,6 +159,11 @@ import {
   RadioGroup,
   RadioGroupItem,
   Progress,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Switch,
   Table,
   TableBody,
@@ -1046,6 +1051,31 @@ export default function SettingsPage() {
     "What was the make of your first car?",
     "What is your favourite book?",
   ]
+
+  /**
+   * Brings a newly added question into view.
+   *
+   * Growing the modal covers the first few, but once it reaches the viewport
+   * cap and starts scrolling, an appended row lands below the fold again and
+   * Add Question reads as dead a second time. Scrolling the last row into view
+   * keeps the button's effect visible at any count.
+   *
+   * Skips the first render so opening the modal does not jump.
+   */
+  const securityQuestionsListRef = useRef<HTMLDivElement>(null)
+  const securityQuestionCount = securityQuestions.length
+  const lastSecurityQuestionCount = useRef(securityQuestionCount)
+  useEffect(() => {
+    if (securityQuestionCount <= lastSecurityQuestionCount.current) {
+      lastSecurityQuestionCount.current = securityQuestionCount
+      return
+    }
+    lastSecurityQuestionCount.current = securityQuestionCount
+    securityQuestionsListRef.current?.lastElementChild?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+    })
+  }, [securityQuestionCount])
 
   const canSaveSecurityQuestions = securityQuestions.every(
     (q) => q.question !== "" && q.answer.trim() !== ""
@@ -3478,8 +3508,16 @@ export default function SettingsPage() {
                     open={isSecurityQuestionsOpen}
                     onOpenChange={setIsSecurityQuestionsOpen}
                   >
+                    {/* The dialog itself scrolls once the questions outgrow the
+                        viewport, matching the App Authenticator modal. The
+                        list below used to be a fixed h-[340px] scroll box, so
+                        Add Question appended a row into hidden overflow and
+                        the button looked dead. Scrolling here instead lets the
+                        modal grow with each question and only scroll when it
+                        has to. Safe for the dropdowns: SelectContent portals
+                        out, so no scrolling ancestor can clip it. */}
                     <DialogContent
-                      className="flex w-[556px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      className="flex max-h-[calc(100vh-4rem)] w-[556px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 overflow-y-auto p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)] scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
                       dialogOverlay={
                         <DialogOverlay className="backdrop-blur-[8px]" />
                       }
@@ -3506,7 +3544,15 @@ export default function SettingsPage() {
                           </DialogDescription>
                         </div>
 
-                        <div className="flex h-[340px] w-full flex-col items-start gap-5 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+                        {/* min-h, not h: 340px is the designed height and the
+                            two default questions sit inside it, so at rest
+                            this looks exactly as drawn. Each added question
+                            now extends the list instead of disappearing into
+                            a fixed box's overflow. */}
+                        <div
+                          ref={securityQuestionsListRef}
+                          className="flex min-h-[340px] w-full flex-col items-start gap-5"
+                        >
                           {securityQuestions.map((entry, index) => (
                             <div
                               key={index}
@@ -3516,33 +3562,46 @@ export default function SettingsPage() {
                                 <Label size="sm">
                                   Security Question {index + 1}
                                 </Label>
-                                <Listbox
-                                  value={entry.question}
-                                  onChange={(value) =>
+                                {/* Select, not Listbox, and only here.
+                                    ListboxOptions is `absolute` with no
+                                    portal, so it is clipped by the nearest
+                                    scrolling ancestor — which in this modal
+                                    meant the open panel was cut off and
+                                    reading the choices took a scroll.
+                                    The other Listboxes on this page share the
+                                    same limitation but not the symptom: their
+                                    scrolling ancestor is the tab content area,
+                                    which is viewport-height, so the panel has
+                                    room and scrolling the page is expected
+                                    anyway.
+                                    Headless UI 1.7 has no `anchor`/portal
+                                    escape — that landed in v2 — whereas
+                                    SelectContent renders in a
+                                    SelectPrimitive.Portal at z-50 and floats
+                                    clear of any scrolling ancestor, including
+                                    the DialogContent that now scrolls. It is
+                                    also what the app's other dialogs use. */}
+                                <Select
+                                  value={entry.question || undefined}
+                                  onValueChange={(value) =>
                                     updateSecurityQuestion(
                                       index,
                                       "question",
-                                      value as string
+                                      value
                                     )
                                   }
                                 >
-                                  <ListboxButton
-                                    placeholder="Select a question"
-                                    displayValue={(val) =>
-                                      (val as string) || null
-                                    }
-                                  />
-                                  <ListboxOptions>
+                                  <SelectTrigger className="w-full text-base">
+                                    <SelectValue placeholder="Select a question" />
+                                  </SelectTrigger>
+                                  <SelectContent>
                                     {securityQuestionOptions.map((option) => (
-                                      <ListboxOption
-                                        key={option}
-                                        value={option}
-                                      >
+                                      <SelectItem key={option} value={option}>
                                         {option}
-                                      </ListboxOption>
+                                      </SelectItem>
                                     ))}
-                                  </ListboxOptions>
-                                </Listbox>
+                                  </SelectContent>
+                                </Select>
                               </div>
 
                               <div className="flex w-full flex-col items-start gap-1.5">
