@@ -1,4 +1,4 @@
-import { Controller, Post, Put, Get, Param, Body, Req, Headers, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Put, Get, Param, Body, Req, Headers, ForbiddenException, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { ContractsService } from '../services/contracts.service';
 import { GroupsService } from '../services/groups.service';
@@ -12,6 +12,8 @@ import { CreateContractDto } from '../dtos/create-contract.dto';
 import { ConfigService } from '@nestjs/config';
 import { Public } from '../decorators/public.decorator';
 import { AuditLoggerService } from '../services/audit-logger.service';
+import { ContractOwnerGuard } from '../guards/contract-owner.guard';
+import { Contract } from '../entities/contract.entity';
 
 @Controller('contracts')
 export class ContractsController {
@@ -46,9 +48,26 @@ export class ContractsController {
   }
 
   // End a single contract
+  // PMCM-331: ownership check via ContractOwnerGuard — caller must be the
+  // contract's own clientId, or the ownerClientId of its ContractGroup.
+  // Previously no @Req()/no ownership check at all: any authenticated user
+  // could end any contract by id. FR-12: audit entry on successful end,
+  // same pattern as HIRE_FLOW_INITIATED/CONTRACT_MEMBER_ADDED above —
+  // req.contract is set by ContractOwnerGuard, so this doesn't need a
+  // second fetch just to get groupId for the audit details.
   @Put(':id/end')
-  async endContract(@Param('id') id: string, @Body() dto: EndContractDto) {
-    return this.contractsService.endContract(id, dto);
+  @UseGuards(ContractOwnerGuard)
+  async endContract(
+    @Param('id') id: string,
+    @Body() dto: EndContractDto,
+    @Req() req: Request & { user: { sub: string; role: string }; contract?: Contract },
+  ) {
+    const result = await this.contractsService.endContract(id, dto);
+    await this.auditLoggerService.log(req.user, 'CONTRACT_ENDED', {
+      contractId: id,
+      groupId: req.contract?.groupId ?? null,
+    });
+    return result;
   }
 
   // Accept/Reject flow for talent
