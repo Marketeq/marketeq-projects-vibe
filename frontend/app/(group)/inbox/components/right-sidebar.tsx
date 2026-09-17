@@ -773,7 +773,10 @@ const RightSidebar = ({
 
             <div className="mt-5">
               <div className="flex items-center justify-between"><h3 className="text-sm font-semibold text-dark-blue-400">Add a Message</h3><span className="text-xs text-gray-400">Optional</span></div>
-              <Textarea className="mt-3 h-[128px] resize-none" placeholder="Write your message" maxLength={500} value={resendMessage} onChange={(event) => setResendMessage(event.target.value)} />
+              <div className="mt-3 flex flex-col gap-2">
+                <Textarea className="h-[128px] resize-none" placeholder="Write your message" maxLength={500} value={resendMessage} onChange={(event) => setResendMessage(event.target.value)} />
+                <span className="text-right text-[10px] font-medium leading-4 text-gray-400">{resendMessage.length}/500</span>
+              </div>
             </div>
           </div>
 

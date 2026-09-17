@@ -2507,14 +2507,20 @@ export function OfferDialog({
                                   Optional
                                 </span>
                               </div>
-                              <Textarea
-                                className="mt-3 min-h-[110px]"
-                                placeholder="Write your message"
-                                value={message}
-                                onChange={(event) =>
-                                  setMessage(event.target.value)
-                                }
-                              />
+                              <div className="mt-3 flex flex-col gap-2">
+                                <Textarea
+                                  className="min-h-[110px]"
+                                  placeholder="Write your message"
+                                  maxLength={500}
+                                  value={message}
+                                  onChange={(event) =>
+                                    setMessage(event.target.value)
+                                  }
+                                />
+                                <span className="text-right text-[10px] font-medium leading-4 text-gray-400">
+                                  {message.length}/500
+                                </span>
+                              </div>
                             </div>
                           ) : null}
 

@@ -78,6 +78,7 @@ import {
   OfferFlowDialog,
   type OfferFlowDialogVariant,
 } from "@/components/offer-flow-dialog"
+import { useOfferChannel } from "@/utils/useOfferChannel"
 import {
   Avatar,
   AvatarFallback,
@@ -190,6 +191,10 @@ interface ChatsProps {
   counterOfferCard?: CounterOfferCardData | null
   declinedOfferCard?: DeclinedOfferCardData | null
   offerNotificationMessages?: OfferNotificationMessageData[]
+  /** Ably 'offer.updated' fired (or the channel reconnected) for the
+   * currently open offer notification — re-run the existing notification
+   * list refetch so selectedNotificationOffer picks up fresh data. */
+  onOfferUpdateRequested?: () => void
 }
 
 const COMPOSER_MAX_CHARS = 8000
@@ -420,6 +425,7 @@ export function Chats({
   counterOfferCard,
   declinedOfferCard,
   offerNotificationMessages = [],
+  onOfferUpdateRequested,
 }: ChatsProps) {
   const router = useRouter()
   const [textareaValue, setTextareaValue] = useState("")
@@ -439,6 +445,29 @@ export function Chats({
     useState<string[]>([])
   const [selectedNotificationOffer, setSelectedNotificationOffer] =
     useState<OfferNotificationMessageData | null>(null)
+
+  // PMCM-393 AC-42: keep the open offer notification dialog live. The
+  // channel event doesn't carry OfferNotificationMessageData's display shape
+  // (formatted currency/duration/schedule strings), so rather than hand-merge
+  // the raw payload, re-run the existing offerNotificationMessages refetch
+  // (owned by the inbox page) and let the sync effect below pick up the
+  // refreshed item — no parallel formatting/state.
+  useOfferChannel(
+    selectedNotificationOffer?.contractId,
+    () => onOfferUpdateRequested?.(),
+    () => onOfferUpdateRequested?.()
+  )
+
+  useEffect(() => {
+    if (!selectedNotificationOffer) return
+    const fresh = offerNotificationMessages.find(
+      (item) => item.id === selectedNotificationOffer.id
+    )
+    if (fresh && fresh !== selectedNotificationOffer) {
+      setSelectedNotificationOffer(fresh)
+    }
+  }, [offerNotificationMessages, selectedNotificationOffer])
+
   const [notificationOfferStep, setNotificationOfferStep] = useState<
     | "event"
     | "accept"
