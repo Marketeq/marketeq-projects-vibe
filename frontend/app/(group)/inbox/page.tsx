@@ -232,6 +232,12 @@ export default function InboxRoot() {
                 return {
                   id: item.id,
                   contractId: offerId,
+                  // PMCM-393 AC-42: live status from this same getOffer() call,
+                  // separate from `event` below (the notification's own fixed
+                  // event type, which never changes once the notification is
+                  // created). The seeded-fixture catch branch below has no
+                  // live offer to source this from and must leave it unset.
+                  offerStatus: offer.status,
                   event: item.event?.toLowerCase() || "offer.received",
                   title: item.title,
                   body: item.body,

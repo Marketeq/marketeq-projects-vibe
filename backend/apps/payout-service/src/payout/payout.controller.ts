@@ -7,6 +7,7 @@ import { Response } from 'express';
 import { PayoutService }       from './payout.service';
 import { MagicLinkService }    from '../magic-link/magic-link.service';
 import { JwtAuthGuard }        from '../guards/jwt-auth.guard';
+import { RolesGuard, Roles }   from '../guards/roles.guard';
 import { ValidateAmountDto }   from './dto/validate-amount.dto';
 import { InitiatePayoutDto }   from './dto/initiate-payout.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
@@ -95,6 +96,26 @@ export class PayoutController {
   @HttpCode(200)
   async cancel(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
     return this.payoutService.cancel(req.user.userId, id);
+  }
+
+  // PS-15 §6.2: Admin — list payouts held for EDD compliance review.
+  // Declared before ':id' below (same reasoning as 'summary'/'export') so
+  // the literal 'admin' segment is never swallowed by the :id param route.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @Get('admin/awaiting-edd')
+  @HttpCode(200)
+  async listAwaitingEDD() {
+    return this.payoutService.listAwaitingEDD();
+  }
+
+  // PS-15 §6.2: Admin — release a payout past EDD review, straight to QUEUED.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @Post(':id/release-edd')
+  @HttpCode(200)
+  async releaseEDD(@Request() req: any, @Param('id', ParseUUIDPipe) id: string) {
+    return this.payoutService.releaseEDD(id, req.user.userId);
   }
 
   // US-27/AC-27.07: paginated payout history — declared after the literal

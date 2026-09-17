@@ -1,6 +1,6 @@
 import { Injectable, HttpStatus } from '@nestjs/common';
 import { PayoutError } from '../common/errors/payout.error';
-import { createHash } from 'crypto';
+import { keccak256 } from 'js-sha3';
 
 @Injectable()
 export class AddressValidatorService {
@@ -73,19 +73,15 @@ export class AddressValidatorService {
     return bech32.test(address) ? address.toLowerCase() : address;
   }
 
-  // EIP-55 checksum — uses keccak256 per spec
-  // (Node.js crypto supports 'sha3-256' which is keccak256 for EIP-55)
+  // EIP-55 checksum — keccak256 of the lowercase hex address (without 0x).
+  // Node's built-in crypto 'sha3-256' is standard NIST SHA3-256, NOT
+  // Keccak-256 — they differ in padding (Keccak predates SHA3's
+  // standardization) and produce different digests, so every checksum this
+  // used to compute was wrong. js-sha3's keccak256 is the real Ethereum
+  // hash — matches ethers.js getAddress() and every wallet's own check.
   private toChecksumAddress(address: string): string {
     const addr = address.toLowerCase().replace('0x', '');
-    // EIP-55 uses keccak256 of the lowercase hex address (without 0x)
-    // Node's 'sha3-256' is actually Keccak-256 in the crypto module
-    let hash: string;
-    try {
-      hash = createHash('sha3-256').update(addr).digest('hex');
-    } catch {
-      // Fallback if sha3-256 not available — use sha256 (close enough for dev)
-      hash = createHash('sha256').update(addr).digest('hex');
-    }
+    const hash = keccak256(addr);
     let checksummed = '0x';
     for (let i = 0; i < addr.length; i++) {
       checksummed += parseInt(hash[i], 16) >= 8

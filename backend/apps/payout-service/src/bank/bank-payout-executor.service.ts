@@ -12,6 +12,8 @@ import { PayoutRequest, PayoutStatus, PayoutSpeed } from '../entities/payout-req
 import { DepositMethod, MethodType, VerificationStatus } from '../entities/deposit-method.entity';
 import { AuditService } from '../audit/audit.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
+import { WisePlatformService } from '../execution/wise-platform.service';
+import { PayoutFeeService } from '../fees/payout-fee.service';
 
 @Injectable()
 export class BankPayoutExecutorService {
@@ -26,6 +28,8 @@ export class BankPayoutExecutorService {
     private readonly config: ConfigService,
     private readonly auditService: AuditService,
     private readonly publisher: PayoutPublisher,
+    private readonly wisePlatformService: WisePlatformService,
+    private readonly feeService: PayoutFeeService,
   ) {
     const key = this.config.get('STRIPE_SECRET_KEY', '');
     if (key && key !== 'sk_test_YOUR_TEST_KEY_HERE') {
@@ -70,6 +74,21 @@ export class BankPayoutExecutorService {
       await this.failPayout(payout,
         'Your Wise/Payoneer connection needs to be re-authorized before this payout can proceed.',
         'ERR_PAYOUT_METHOD_REAUTH_REQUIRED');
+      return;
+    }
+
+    // PS-34 §2/§6: BANK_MANUAL methods outside Stripe's cross-border
+    // coverage (India, Japan, GCC, and everything else) never get a Stripe
+    // Connect account at all — they route through Wise Platform instead.
+    // Must branch before the Stripe-specific checks below, which don't
+    // apply to this path.
+    if (
+      method.methodType === MethodType.BANK_MANUAL &&
+      method.bankCountry &&
+      method.bankCountry.toUpperCase() !== 'US' &&
+      !this.feeService.isStripeCrossBorderCountry(method.bankCountry)
+    ) {
+      await this.executeWisePlatformPayout(payout, method);
       return;
     }
 
@@ -208,6 +227,64 @@ export class BankPayoutExecutorService {
         action: 'bank.transfer.reversal_failed',
         metadata: { transferId, error: err.message },
       });
+    }
+  }
+
+  // PS-34 §5.2 steps 1 + 4-6: quote, create, and fund the Wise Platform
+  // transfer for a non-Stripe-cross-border international payout. The
+  // recipient itself was already created at method-verification time
+  // (methods.service.ts verifyViaWisePlatform) — only the quote/transfer are
+  // per-payout. Wise settles asynchronously (transfer state webhooks, same
+  // as Stripe's payout.paid pattern) — left PROCESSING here.
+  private async executeWisePlatformPayout(payout: PayoutRequest, method: DepositMethod): Promise<void> {
+    if (!method.wisePlatformRecipientId) {
+      await this.failPayout(payout, 'Bank account is not attached for payouts.', 'ERR_CONNECT_ACCOUNT_NOT_ATTACHED');
+      return;
+    }
+
+    await this.payoutRepo.update(payout.id, {
+      status: PayoutStatus.PROCESSING,
+      processingAt: new Date(),
+    });
+
+    try {
+      const amountUsd = parseFloat(payout.netAmountUsd);
+      const quote = await this.wisePlatformService.getQuote({
+        sourceCurrency: 'USD',
+        targetCurrency: method.bankCurrency ?? 'USD',
+        sourceAmount: amountUsd,
+      });
+      const transferId = await this.wisePlatformService.executeTransfer({
+        quoteId: quote.quoteId,
+        recipientId: method.wisePlatformRecipientId,
+        reference: payout.id,
+      });
+
+      await this.payoutRepo.update(payout.id, {
+        wisePlatformTransferId: transferId,
+        bridgeProvider: 'WISE_PLATFORM',
+        providerReference: transferId,
+        providerStatus: 'incoming_payment_waiting',
+        providerResponse: { transferId, quoteId: quote.quoteId },
+      } as any);
+
+      await this.methodRepo.update(method.id, { lastPayoutAt: new Date(), wisePlatformTransferId: transferId } as any);
+
+      await this.auditService.log({
+        contractorId: payout.contractorId,
+        payoutRequestId: payout.id,
+        actorType: 'service',
+        actorId: 'payout-service',
+        action: 'bank.payout.executed',
+        previousStatus: PayoutStatus.QUEUED,
+        newStatus: PayoutStatus.PROCESSING,
+        metadata: { transferId, quoteId: quote.quoteId, provider: 'wise_platform' },
+      });
+
+      this.logger.log(`Wise Platform payout initiated: ${payout.id} → $${amountUsd} to recipient ${method.wisePlatformRecipientId}`);
+    } catch (err: any) {
+      this.logger.error(`Wise Platform payout failed: ${payout.id} — ${err.message}`);
+      await this.failPayout(payout, err.message, err.errorCode ?? 'ERR_WISE_PLATFORM_TRANSFER_FAILED');
     }
   }
 

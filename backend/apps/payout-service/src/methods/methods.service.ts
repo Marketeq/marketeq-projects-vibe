@@ -19,6 +19,10 @@ import { UpdateMethodDto }     from './dto/update-method.dto';
 import { CryptoConnectionService } from '../crypto/crypto-connection.service';
 import { OAuthService } from '../oauth/oauth.service';
 import { StripeProvider } from '../providers/stripe.provider';
+import { WisePlatformService } from '../execution/wise-platform.service';
+import { PayoutFeeService } from '../fees/payout-fee.service';
+import { PauseStatusService } from '../pause/pause-status.service';
+import { IdentityServiceClient } from '../common/identity.client';
 
 @Injectable()
 export class MethodsService {
@@ -44,6 +48,10 @@ export class MethodsService {
     private readonly cryptoConnectionService: CryptoConnectionService,
     private readonly oauthService: OAuthService,
     private readonly stripeProvider: StripeProvider,
+    private readonly wisePlatformService: WisePlatformService,
+    private readonly feeService: PayoutFeeService,
+    private readonly pauseStatusService: PauseStatusService,
+    private readonly identityService: IdentityServiceClient,
   ) {
     this.maxMethods = parseInt(this.config.get('MAX_DEPOSIT_METHODS', '5'), 10) || 5;
   }
@@ -227,9 +235,65 @@ export class MethodsService {
       metadata: { methodId: method.id, methodType: method.methodType },
     });
 
+    // PS-35 §2/§5.2: biometric gate fires for every new payout method, on
+    // top of whatever provider verification (Stripe/Wise/micro-deposit)
+    // just ran above — checked here, covering the BANK_MANUAL/BANK_STRIPE
+    // path. CRYPTO (returns earlier, via cryptoConnectionService) and
+    // WISE/PAYONEER (returns earlier via oauthService.initiateOAuth, whose
+    // own callback flow completes asynchronously) are not yet gated here —
+    // a real gap against PS-35's "any new payout method" scope, left for a
+    // follow-up rather than reshaping the OAuth callback flow blind.
+    //
+    // FEATURE_BIOMETRIC_GATE_ENABLED defaults false — same reasoning as
+    // schedule.service.ts's updateSchedule(): identity-service doesn't
+    // implement this endpoint yet, and failing closed (PS-35 §8) with the
+    // gate always-on would 503 every new payout method for every
+    // contractor. Flip this on once identity-service ships PS-35.
+    const biometricGateEnabled = this.config.get('FEATURE_BIOMETRIC_GATE_ENABLED', 'false') === 'true';
+    const biometric = biometricGateEnabled
+      ? await this.identityService.getMethodGateStatus(contractorId, method.id)
+      : { gate: 'VERIFIED' as const };
+
+    if (biometric.gate === 'FAILED') {
+      await this.methodRepo.update(method.id, {
+        isActive: false,
+        verificationStatus: VerificationStatus.VERIFICATION_FAILED,
+      } as any);
+      throw new PayoutError(
+        'Identity verification failed. This payout method cannot be activated.',
+        HttpStatus.FORBIDDEN, 'ERR_BIOMETRIC_VERIFICATION_FAILED',
+      );
+    }
+
+    if (biometric.gate === 'REQUIRED') {
+      // Overrides whatever provider verification computed above — the
+      // method exists and is visible, but not usable for payouts until
+      // biometric clears (payout.method.biometric.verified consumer).
+      await this.methodRepo.update(method.id, { verificationStatus: VerificationStatus.PENDING_BIOMETRIC } as any);
+      return {
+        depositMethodId: method.id,
+        verificationStatus: 'pending_biometric',
+        biometricRequired: true,
+        sessionUrl: biometric.sessionUrl,
+        verification,
+      };
+    }
+
+    // biometric.gate === 'VERIFIED' (already cleared for a previous method
+    // this contractor added) — fall through to whatever provider
+    // verification already resolved.
+
+    // Pre-existing bug, surfaced by the new Wise Platform instant-verify
+    // path (methods.service.ts verifyViaWisePlatform): this outer field was
+    // hardcoded 'pending' even when createVerification() already resolved
+    // the method to VERIFIED synchronously (the US instant-Stripe-ACH
+    // branch had the same issue) — a contractor whose account verified
+    // immediately was told it was still pending until their next page load.
+    const resolvedStatus = (verification as any)?.verified === true ? 'verified' : 'pending';
+
     return {
       depositMethodId: method.id,
-      verificationStatus: 'pending',
+      verificationStatus: resolvedStatus,
       verification,
     };
   }
@@ -342,6 +406,11 @@ export class MethodsService {
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_DEPOSIT_METHOD_UNVERIFIED');
     }
 
+    // PS-16 §7.3: picking a new verified default resolves NO_DEFAULT_METHOD
+    // / DEFAULT_METHOD_DEACTIVATED — captured before the transaction below so
+    // the comparison reflects the pre-change state.
+    const wasPaused = (await this.pauseStatusService.getPauseStatus(contractorId)).paused;
+
     await this.dataSource.transaction(async (em) => {
       await em.update(DepositMethod,
         { contractorId, isDefault: true },
@@ -360,6 +429,8 @@ export class MethodsService {
         metadata: { methodId, methodType: method.methodType },
       });
     });
+
+    await this.pauseStatusService.evaluateAndPublishPauseChange(contractorId, wasPaused);
 
     return { success: true };
   }
@@ -479,7 +550,7 @@ export class MethodsService {
     return {
       depositMethodId: method.id,
       verificationStatus: method.verificationStatus,
-      reauthRequired: false,
+      reauthRequired: method.reauthRequired,
       attemptsRemaining: verification?.maxAttempts
         ? verification.maxAttempts - (verification.attemptCount ?? 0) : null,
       lockedUntil: verification?.lockedUntil?.toISOString() ?? null,
@@ -558,6 +629,28 @@ export class MethodsService {
           };
         }
 
+        // PS-34 §4/§1: the random-amount micro-deposit flow below this
+        // comment used to run for every non-US country. It was fake — two
+        // random numbers generated locally, nothing ever sent to any bank —
+        // and PS-34 explicitly voids it ("do not implement any part of it").
+        // Wise Platform countries (India, Japan, GCC, and everything else
+        // outside Stripe's cross-border coverage) now get real verification
+        // via Wise's own bank-registry validation + recipient creation
+        // (§5.2 steps 2-3) instead.
+        if (method.bankCountry && !this.feeService.isStripeCrossBorderCountry(method.bankCountry)) {
+          return await this.verifyViaWisePlatform(method, dto);
+        }
+
+        // UK/SEPA/AU/CA (Stripe cross-border): PS-34 §4.2 replaces this with
+        // DOB-gated Stripe KYC (StripeProvider.submitDob(), watched via the
+        // account.updated webhook — see providers/stripe.provider.ts). That
+        // requires attaching the international bank_account as a Stripe
+        // external_account first, and neither PS-33 nor PS-34 documents the
+        // non-US external-account field mapping (sort_code/IBAN/BSB per
+        // country) — PS-33 §3.4 only specifies the US routing_number case.
+        // Rather than guess a Stripe API contract that isn't written down
+        // anywhere in the doc set, these countries keep the interim
+        // micro-deposit flow below until that mapping is specified.
         const amount1 = Math.floor(Math.random() * 99) + 1;
         const amount2 = Math.floor(Math.random() * 99) + 1;
         const manualVerify = this.verifyRepo.create({
@@ -579,6 +672,88 @@ export class MethodsService {
     }
   }
 
+  // PS-34 §5.2 steps 2-3: validate the contractor's local bank details
+  // against Wise's own registry, then create the Wise Platform recipient
+  // record. Runs synchronously at method-creation time (Wise's validation is
+  // immediate — no waiting period, unlike Stripe's DOB/webhook flow above).
+  // recipientType is Wise's per-country account type string; PS-34 §5.3
+  // documents only the India case ('indian') and says every other country's
+  // exact type must come from Wise's account-requirements API. Until
+  // Marketeq is an approved Wise Platform partner there is no live endpoint
+  // to query, so the map below is a best-effort default — a wrong entry
+  // fails loudly at Wise's recipient-creation call (ERR_WISE_PLATFORM_RECIPIENT_FAILED)
+  // rather than silently mis-routing a payout.
+  // PS-36 §7: only India, Japan, and UAE are documented explicitly; every
+  // other Wise Platform country (Saudi/Qatar/Bahrain/Kuwait/Oman/SWIFT
+  // fallback) needs its exact type confirmed via getAccountRequirements()
+  // before going live — see the class-level comment above.
+  private static readonly WISE_RECIPIENT_TYPE: Record<string, string> = {
+    IN: 'indian',
+    JP: 'japanese',
+    AE: 'emirates',
+  };
+
+  private async verifyViaWisePlatform(method: DepositMethod, dto: AddMethodDto) {
+    if (!this.wisePlatformService.isConfigured()) {
+      // Fail closed, per PS-35 §5's "never fail open" contract applied here
+      // too — surface a clear, actionable error instead of silently marking
+      // an unverifiable method as pending forever.
+      throw new PayoutError(
+        'International bank transfers for this country are not available yet. Please try again later or contact support.',
+        HttpStatus.SERVICE_UNAVAILABLE,
+        'ERR_WISE_PLATFORM_NOT_CONFIGURED',
+      );
+    }
+
+    const country = method.bankCountry!.toUpperCase();
+    const fields: Record<string, string> = {};
+    if (dto.bankIfscCode) fields.ifscCode = dto.bankIfscCode;
+    if (dto.bankAccountNumber) fields.accountNumber = dto.bankAccountNumber;
+    if (dto.bankIban) fields.iban = dto.bankIban;
+    if (dto.bankSwiftBic) fields.swiftCode = dto.bankSwiftBic;
+    if (dto.bankBsbNumber) fields.bsbCode = dto.bankBsbNumber;
+    if (dto.bankCode) fields.bankCode = dto.bankCode;
+    if (dto.bankBranchCode) fields.branchCode = dto.bankBranchCode;
+
+    const validation = await this.wisePlatformService.validateBankAccount({
+      bankCountry: country,
+      currency: method.bankCurrency ?? '',
+      fields,
+    });
+    if (!validation.valid) {
+      throw new PayoutError(
+        validation.errorMessage ?? 'These bank account details could not be validated.',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'ERR_BANK_ACCOUNT_VALIDATION_FAILED',
+      );
+    }
+
+    const recipientId = await this.wisePlatformService.createRecipient({
+      currency: method.bankCurrency ?? '',
+      bankCountry: country,
+      accountHolderName: dto.bankAccountName || method.nickname || 'Account Holder',
+      recipientType: MethodsService.WISE_RECIPIENT_TYPE[country] ?? 'iban',
+      bankDetails: fields,
+    });
+
+    await this.methodRepo.update(method.id, {
+      wisePlatformRecipientId: recipientId,
+      verificationStatus: VerificationStatus.VERIFIED,
+    } as any);
+
+    await this.auditService.log({
+      contractorId: method.contractorId, actorType: 'contractor', actorId: method.contractorId,
+      action: 'method.verified',
+      metadata: { methodId: method.id, methodType: 'BANK_MANUAL', via: 'wise_platform', bankCountry: country },
+    });
+
+    return {
+      type: 'wise_platform',
+      verified: true,
+      message: 'Your bank account has been verified.',
+    };
+  }
+
   private verificationMessage(status: VerificationStatus): string {
     switch (status) {
       case VerificationStatus.PENDING: return 'Verification in progress.';
@@ -594,7 +769,7 @@ export class MethodsService {
     return {
       id: m.id, methodType: m.methodType, displayLabel: m.displayLabel,
       nickname: m.nickname, isDefault: m.isDefault,
-      verificationStatus: m.verificationStatus, reauthRequired: false,
+      verificationStatus: m.verificationStatus, reauthRequired: m.reauthRequired,
       bankCountry: m.bankCountry, bankCurrency: m.bankCurrency,
       createdAt: m.createdAt.toISOString(),
       lockedUntil: lockedUntil ? lockedUntil.toISOString() : null,
