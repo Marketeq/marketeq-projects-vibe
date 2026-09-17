@@ -16383,35 +16383,83 @@ const ServiceScopeEditStep = ({
         viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
-        <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
-          <div className="flex flex-col gap-8 min-[1180px]:flex-row">
-            <div className="min-w-0 flex-auto max-w-[790px]">
-              <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
-                Edit your scope
-              </h1>
-              <p className="mt-4 text-sm leading-5 text-dark-blue-400">
-                Modify the table as needed manually or with the help of Smart
-                Assistant, your project plan will adjust accordingly.
-              </p>
+        <div className="bg-gray-50 px-5 py-10 md:px-10 min-[1024px]:px-[100px] min-[1024px]:pb-5 min-[1024px]:pt-[50px]">
+          <div className="mx-auto flex max-w-[1240px] flex-col gap-8 min-[1180px]:flex-row min-[1180px]:items-start">
+            <div className="min-w-0 flex-auto min-[1180px]:w-[886px]">
+              <div className="flex h-20 w-full shrink-0 flex-col items-center justify-center gap-4 self-stretch p-0">
+                <h1 className="h-11 shrink-0 self-stretch text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
+                  Edit your scope
+                </h1>
+                <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                  Modify the table as needed manually or with the help of Smart
+                  Assistant, your project plan will adjust accordingly.
+                </p>
+              </div>
 
               <div className="mt-8 grid overflow-hidden rounded-[5px] border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] md:grid-cols-2">
-                <div className="flex items-center justify-between border-b border-gray-200 px-5 py-[22px] md:border-b-0 md:border-r">
-                  <div>
-                    <div className="flex items-center gap-x-2 text-sm leading-5 font-semibold text-gray-400">
-                      Budget Calculator
-                      <HelpCircle className="size-4" />
+                <div className="flex h-[106px] flex-1 items-center gap-6 border-b border-gray-200 p-6 md:border-b-0 md:border-r">
+                  <div className="flex h-[58px] flex-1 flex-col items-start gap-2 p-0">
+                    <div className="flex h-5 shrink-0 items-center gap-2 self-stretch p-0 text-sm leading-5 font-medium text-gray-400">
+                      <span className="h-5 w-[121px] shrink-0">
+                        Budget Calculator
+                      </span>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="link"
+                              type="button"
+                              aria-label="Show budget calculator details"
+                              className="size-4 p-0 text-inherit"
+                            >
+                              <Info className="size-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            side="right"
+                            align="center"
+                            sideOffset={12}
+                            visual="white"
+                            className="flex h-[226px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                          >
+                            <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                            <div className="flex h-[186px] w-[182.55px] shrink-0 items-center">
+                              <div>
+                                <p>Your budget updates automatically based on:</p>
+                                <ul className="my-4 list-disc pl-5">
+                                  <li>Tasks</li>
+                                  <li>Roles</li>
+                                  <li>Location</li>
+                                  <li>Experience level</li>
+                                  <li>Task duration</li>
+                                </ul>
+                                <p>
+                                  Any change here updates the budget shown in the
+                                  sidebar.
+                                </p>
+                              </div>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
-                    <div className="mt-3 flex items-center gap-x-1 text-dark-blue-400">
-                      <span className="text-2xl leading-8 font-semibold">
+                    <div className="flex h-[30px] shrink-0 items-baseline gap-1 self-stretch p-0 text-dark-blue-400">
+                      <span className="h-[29px] shrink-0 text-center text-2xl font-bold leading-[29px] capitalize">
                         ${budgetAmount.toLocaleString()}
                       </span>
-                      <span className="text-sm leading-5">per</span>
+                      <span className="h-[17px] w-[23px] shrink-0 text-sm font-medium leading-[17px]">
+                        per
+                      </span>
                       <Select
                         value={budgetFrequency}
                         onValueChange={setBudgetFrequency}
                       >
-                        <SelectTrigger className="h-8 gap-x-1 border-gray-200 px-3 text-sm leading-5 font-medium text-dark-blue-400">
+                        <SelectTrigger
+                          indicator={false}
+                          className="h-[25px] w-[66px] shrink-0 gap-1 rounded border-gray-300 px-[7px] py-[5px] text-sm font-medium leading-[17px] text-dark-blue-400 shadow-xs"
+                        >
                           <SelectValue />
+                          <ChevronDown className="size-3 shrink-0 text-gray-400" />
                         </SelectTrigger>
                         <SelectContent className="w-32">
                           {["week", "month"].map((frequency) => (
@@ -16428,19 +16476,59 @@ const ServiceScopeEditStep = ({
                       src="/job-listing/money-bag.png"
                       alt=""
                       aria-hidden="true"
-                      className="size-6"
+                      className="size-8"
                     />
                   </div>
                 </div>
-                <div className="flex items-center justify-between px-5 py-[22px]">
-                  <div>
-                    <div className="flex items-center gap-x-2 text-sm leading-5 font-semibold text-gray-400">
-                      Duration
-                      <HelpCircle className="size-4" />
+                <div className="flex h-[105px] flex-1 items-start gap-6 p-6">
+                  <div className="flex h-[57px] flex-1 flex-col items-start gap-2 p-0">
+                    <div className="flex h-5 shrink-0 items-center gap-2 self-stretch p-0 text-sm leading-5 font-medium text-gray-400">
+                      <span className="h-5 w-[180px] shrink-0">
+                        Project Timeline Calculator
+                      </span>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="link"
+                              type="button"
+                              aria-label="Show timeline calculator details"
+                              className="size-4 p-0 text-inherit"
+                            >
+                              <Info className="size-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            side="right"
+                            align="center"
+                            sideOffset={12}
+                            visual="white"
+                            className="flex h-[190px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                          >
+                            <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                            <div className="flex h-[150px] w-[182.55px] shrink-0 items-center">
+                              <div>
+                                <p>The project timeline adjusts based on:</p>
+                                <ul className="my-4 list-disc pl-5">
+                                  <li>Task durations</li>
+                                  <li>Assigned work schedules</li>
+                                  <li>Number of team members</li>
+                                </ul>
+                                <p>
+                                  Any change here will update the project's total
+                                  length.
+                                </p>
+                              </div>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
-                    <p className="mt-3 text-2xl leading-8 font-semibold text-dark-blue-400">
-                      Ongoing
-                    </p>
+                    <div className="flex h-[29px] shrink-0 items-baseline gap-1 self-stretch p-0 text-dark-blue-400">
+                      <span className="h-[29px] shrink-0 text-center text-2xl font-bold leading-[29px] capitalize">
+                        Ongoing
+                      </span>
+                    </div>
                   </div>
                   <div className="flex h-14 w-14 items-center justify-center gap-2 rounded-[6px] bg-primary-50">
                     <img
@@ -16454,9 +16542,9 @@ const ServiceScopeEditStep = ({
               </div>
 
               <div className="mt-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div className="inline-flex rounded-[5px] border border-gray-300 bg-white shadow-xs">
+                <div className="mx-auto flex h-9 w-[254px] shrink-0 items-center p-0 shadow-xs md:mx-0">
                   <Button
-                    className="h-10 rounded-r-none border-0"
+                    className="h-9 w-[123px] rounded-l-[5px] rounded-r-none border-y border-l border-r-0 border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 capitalize text-gray-800 shadow-none"
                     variant="outlined"
                     visual="gray"
                     type="button"
@@ -16464,39 +16552,47 @@ const ServiceScopeEditStep = ({
                       setExpandedPhaseNames(phases.map((phase) => phase.name))
                     }
                   >
-                    <ChevronDown className="size-4" />
-                    Expand All
+                    <ChevronsDown className="size-[15px] shrink-0 text-gray-500" />
+                    <span className="h-5 w-[72px] shrink-0 text-center">
+                      Expand All
+                    </span>
                   </Button>
                   <Button
-                    className="h-10 rounded-l-none border-y-0 border-r-0"
+                    className="h-9 w-[131px] rounded-l-none rounded-r-[5px] border border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-none"
                     variant="outlined"
                     visual="gray"
                     type="button"
                     onClick={() => setExpandedPhaseNames([])}
                   >
-                    <ChevronDown className="size-4 rotate-180" />
-                    Collapse All
+                    <ChevronsUp className="size-[15px] shrink-0 text-gray-500" />
+                    <span className="h-5 w-20 shrink-0 text-center">
+                      Collapse All
+                    </span>
                   </Button>
                 </div>
                 <div className="flex flex-col gap-3 md:flex-row">
-                  <div className="relative w-full md:w-[250px]">
-                    <SearchMd className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-                    <Input
-                      className="h-10 pl-9"
+                  <SearchField className="h-9 w-full shrink-0 md:w-[223px]">
+                    <SearchFieldButton className="left-2.5 size-4 text-gray-400">
+                      <SearchMd className="size-4" />
+                    </SearchFieldButton>
+                    <SearchFieldInput
+                      className="h-9 w-[223px] rounded-[5px] py-2.5 pl-[34px] pr-3 text-sm leading-5 text-gray-500 placeholder:text-gray-500 placeholder:opacity-50"
                       placeholder="Find a phase or task"
                       value={searchValue}
                       onChange={(event) => setSearchValue(event.target.value)}
                     />
-                  </div>
+                  </SearchField>
                   <Button
-                    className="h-10"
+                    className="h-9 w-[124px] shrink-0 rounded-[5px] border border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-none"
                     variant="outlined"
                     visual="gray"
                     type="button"
                     onClick={openAddPhaseDialog}
                   >
-                    <Plus className="size-4" />
-                    Add Phase
+                    <Plus className="size-[15px] shrink-0 text-gray-500" />
+                    <span className="h-5 w-[73px] shrink-0 text-center">
+                      Add Phase
+                    </span>
                   </Button>
                 </div>
               </div>
@@ -16518,33 +16614,44 @@ const ServiceScopeEditStep = ({
                   return (
                     <div
                       key={phase.name}
-                      className="relative rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
+                      className="relative overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
                     >
-                      <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                        <div className="flex min-w-0 items-center gap-x-4">
+                      <div className="flex h-14 items-center justify-center gap-4 border-b border-gray-200 p-3">
+                        <div className="flex h-8 min-w-0 flex-1 flex-col items-start justify-end gap-1 self-stretch p-0">
+                          <div className="flex h-8 min-w-0 items-center gap-2 p-0">
                           <Button
                             variant="link"
                             type="button"
-                            className="text-inherit"
+                            aria-label={
+                              isExpanded
+                                ? `Collapse ${phase.name}`
+                                : `Expand ${phase.name}`
+                            }
+                            className="size-8 rounded-[5px] p-1.5 text-inherit"
                             onClick={() => togglePhase(phase.name)}
                           >
                             <ChevronDown
                               className={cn(
                                 "size-5 text-gray-500",
-                                isExpanded && "rotate-180",
+                                !isExpanded && "rotate-180",
                               )}
                             />
                           </Button>
-                          <h2 className="text-lg leading-7 font-semibold text-gray-black">
-                            {phase.name}{" "}
-                            <span className="font-normal text-gray-500">
-                              {phase.customName}
+                          <div className="flex h-7 min-w-0 items-center gap-1.5 p-0">
+                            <span className="inline-flex h-7 shrink-0 items-center whitespace-nowrap text-lg font-semibold leading-7 text-gray-black">
+                              {phase.name}
                             </span>
-                          </h2>
+                            {phase.customName ? (
+                              <span className="inline-flex h-5 min-w-0 items-center whitespace-nowrap text-lg font-light leading-5 text-gray-600">
+                                {phase.customName}
+                              </span>
+                            ) : null}
+                          </div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-x-3">
+                        <div className="flex items-center gap-3 self-stretch">
                           {phase.statusKind === "recurring" ? (
-                            <div className="hidden items-center gap-x-2 text-sm leading-5 font-semibold text-dark-blue-400 md:inline-flex">
+                            <div className="hidden items-center gap-x-2 text-[13px] leading-4 font-semibold text-[#122A4B] md:inline-flex">
                               <RefreshCcw05 className="size-4 text-success-500" />
                               <span>Recurs:</span>
                               <DropdownMenu>
@@ -16552,7 +16659,7 @@ const ServiceScopeEditStep = ({
                                   <Button
                                     type="button"
                                     variant="ghost"
-                                    className="h-8 rounded-[5px] border border-gray-200 bg-primary-50 px-3 text-sm font-semibold text-dark-blue-400 hover:bg-primary-50"
+                                    className="h-8 rounded-[5px] border border-gray-200 bg-primary-50 px-3 text-[13px] font-semibold leading-4 text-dark-blue-400 hover:bg-primary-50"
                                     onClick={() =>
                                       toggleServicePhaseNote(phase.name)
                                     }
@@ -16608,7 +16715,7 @@ const ServiceScopeEditStep = ({
                               variant="link"
                               visual="gray"
                               type="button"
-                              className="hidden gap-x-2 text-sm leading-5 text-dark-blue-400 hover:no-underline md:inline-flex"
+                              className="hidden gap-x-2 text-[13px] font-semibold leading-4 text-[#122A4B] hover:no-underline md:inline-flex"
                               onClick={() => toggleServicePhaseNote(phase.name)}
                             >
                               {phase.statusKind === "ongoing" ? (
@@ -16621,8 +16728,13 @@ const ServiceScopeEditStep = ({
                           )}
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <IconButton variant="ghost" visual="gray">
-                                <MoreHorizontal className="size-4" />
+                              <IconButton
+                                variant="ghost"
+                                visual="gray"
+                                aria-label={`Open actions for ${phase.name}`}
+                                className="h-[23px] w-[27px] rounded-[5px] px-1.5 py-1"
+                              >
+                                <MoreHorizontal className="size-[15px] text-gray-500" />
                               </IconButton>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
@@ -16649,35 +16761,139 @@ const ServiceScopeEditStep = ({
                             variant="outlined"
                             visual="gray"
                             type="button"
+                            aria-label={`Add task to ${phase.name}`}
+                            className="size-8 rounded-[5px] border-gray-300 bg-white p-2 shadow-[0px_1px_4px_rgba(0,0,0,0.03)]"
                             onClick={() => addTask(phase.name)}
                           >
-                            <Plus className="size-4" />
+                            <Plus className="size-3 text-gray-500" />
                           </IconButton>
                         </div>
                       </div>
 
                       {isExpanded ? (
                         <>
-                          <div className="grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] gap-x-6 border-b border-gray-200 bg-gray-50 px-6 py-3 text-xs leading-[18px] font-semibold text-gray-600">
-                            <span>Task Name</span>
-                            <span>Role</span>
-                            <span>Location</span>
-                            <span>Experience</span>
-                            <span>Duration</span>
+                          <div className="grid h-11 w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] border-b border-gray-200 bg-gray-50 text-xs font-medium leading-[18px] text-gray-600">
+                            {[
+                              "Task Name",
+                              "Role",
+                              "Location",
+                              "Experience",
+                              "Duration",
+                            ].map((header) => (
+                              <span
+                                key={header}
+                                className="flex h-11 items-center gap-3 self-stretch border-b border-gray-200 bg-gray-50 px-6 py-3"
+                              >
+                                {header === "Role" ? (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="h-[18px] shrink-0 cursor-default">
+                                          {header}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="right"
+                                        align="center"
+                                        sideOffset={12}
+                                        visual="white"
+                                        className="flex w-[222px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                      >
+                                        <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                        Defines the type of specialist needed for
+                                        this task. Used to match talent and
+                                        generate the job description.
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : header === "Location" ? (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="h-[18px] shrink-0 cursor-default">
+                                          {header}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="right"
+                                        align="center"
+                                        sideOffset={12}
+                                        visual="white"
+                                        className="flex h-[94px] w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                      >
+                                        <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                        Influences team coordination and affects
+                                        how the budget is estimated.
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : header === "Experience" ? (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="h-[18px] shrink-0 cursor-default">
+                                          {header}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="left"
+                                        align="center"
+                                        sideOffset={12}
+                                        visual="white"
+                                        className="flex h-28 w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                      >
+                                        <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                        Helps determine the level of skill needed.
+                                        Impacts estimated delivery time and team
+                                        composition.
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : header === "Duration" ? (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="h-[18px] shrink-0 cursor-default">
+                                          {header}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="left"
+                                        align="center"
+                                        sideOffset={12}
+                                        visual="white"
+                                        className="flex h-[94px] w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                      >
+                                        <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                        Estimated hours to complete the task.
+                                        Directly affects the project&apos;s
+                                        timeline and budget.
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : (
+                                  <span className="h-[18px] shrink-0">
+                                    {header}
+                                  </span>
+                                )}
+                              </span>
+                            ))}
                           </div>
                           {phase.rows.map((row) => (
                             <div
                               key={`${phase.name}-${row.task}`}
-                              className="relative grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] items-center gap-x-6 border-b border-gray-200 px-6 py-4 last:border-b-0"
+                              className="relative grid h-[72px] w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] items-center border-b border-gray-200 last:border-b-0"
                             >
-                              <span className="text-sm leading-5 font-semibold text-gray-black">
-                                {row.task}
-                              </span>
-                              <div>
+                              <div className="flex h-[72px] w-[240px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
+                                <span className="h-5 min-w-0 shrink-0 text-sm font-semibold leading-5 text-gray-black">
+                                  {row.task}
+                                </span>
+                              </div>
+                              <div className="flex h-[72px] w-[240px] shrink-0 flex-col items-start gap-1 self-stretch px-6 py-4">
                                 <Button
                                   variant="link"
                                   type="button"
-                                  className="justify-start text-left text-sm font-normal leading-5 text-gray-600 hover:no-underline"
+                                  className="h-[17px] justify-start p-0 text-left text-sm font-normal leading-[17px] text-gray-600 hover:no-underline"
                                   onClick={() =>
                                     openServiceRoleEditor(phase.name, row)
                                   }
@@ -16688,6 +16904,7 @@ const ServiceScopeEditStep = ({
                                   {formatServiceRowSchedule(row)}
                                 </p>
                               </div>
+                              <div className="flex h-[72px] w-[135.33px] shrink-0 items-start self-stretch px-3 py-4">
                               <CountriesCombobox
                                 value={row.location}
                                 onValueChange={(location) =>
@@ -16696,6 +16913,8 @@ const ServiceScopeEditStep = ({
                                 placeholder="Location"
                                 triggerClassName="h-7 rounded-[5px] border-dashed border-gray-300 bg-gray-50 px-2 text-xs leading-[18px] text-gray-700"
                               />
+                              </div>
+                              <div className="flex h-[72px] w-[135.33px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button
@@ -16723,9 +16942,12 @@ const ServiceScopeEditStep = ({
                                   ))}
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                              <span className="text-sm leading-5 text-gray-500">
-                                {row.duration}
-                              </span>
+                              </div>
+                              <div className="flex h-[72px] w-[135.33px] shrink-0 items-start self-stretch px-6 py-4">
+                                <span className="h-5 shrink-0 whitespace-nowrap text-sm leading-5 text-gray-500">
+                                  {row.duration}
+                                </span>
+                              </div>
 
                               {activeServiceRoleKey ===
                               `${phase.name}-${row.task}` ? (
@@ -16930,44 +17152,106 @@ const ServiceScopeEditStep = ({
               </div>
             </div>
 
-            <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
-              <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-                <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
+            <div className="flex h-[654px] w-full shrink-0 flex-col rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1180px]:w-[322px] self-start">
+              <div className="flex h-12 shrink-0 self-stretch items-start justify-between gap-2 border-b border-gray-200 px-5 py-3">
+                <h2 className="h-6 flex-1 text-base leading-6 font-semibold text-dark-blue-400">
                   Smart Assistant
                 </h2>
-                <Copy className="size-5 text-gray-400" />
+                <img
+                  src="/job-listing/smart-assistant-robot.png"
+                  alt=""
+                  aria-hidden="true"
+                  width={20}
+                  height={20}
+                  className="size-5 shrink-0"
+                />
               </div>
-              <div className="p-5">
-                <h3 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                  What do you want to do?
-                </h3>
-                <p className="text-sm leading-5 text-dark-blue-400">
-                  Here are some suggestions:
-                </p>
-                <div className="mt-4 space-y-3">
-                  {["Reduce the budget", "Improve scope quality"].map(
-                    (item) => (
-                      <Button
-                        key={item}
-                        className="h-10 rounded-full"
-                        variant="outlined"
-                        visual="gray"
-                        onClick={() => runServiceAssistant(item)}
-                      >
-                        <Copy className="size-4 text-gray-400" />
-                        {item}
-                      </Button>
-                    ),
-                  )}
+              <div className="flex h-[466px] shrink-0 grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+                <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
+                  <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
+                    What do you want to do?
+                  </h3>
+                  <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                    Here are some suggestions:
+                  </p>
+                </div>
+                <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
+                  {[
+                    "Reduce the budget",
+                    "Shorten the project timeline",
+                    "Improve scope quality",
+                  ].map((item) => (
+                    <Button
+                      key={item}
+                      className={cn(
+                        "h-10 rounded-full py-2.5 pl-4 pr-6 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                        item === "Reduce the budget" &&
+                          "w-full max-w-[195px] justify-start bg-white",
+                        item === "Shorten the project timeline" &&
+                          "w-[253px] justify-start bg-white",
+                        item === "Improve scope quality" &&
+                          "w-[214px] justify-start bg-white"
+                      )}
+                      variant="outlined"
+                      visual="gray"
+                      onClick={() => runServiceAssistant(item)}
+                    >
+                      {item === "Reduce the budget" ? (
+                        <>
+                          <img
+                            src="/job-listing/smart-assistant-money-bag.png"
+                            alt=""
+                            aria-hidden="true"
+                            width={20}
+                            height={20}
+                            className="size-5 shrink-0"
+                          />
+                          <span className="h-5 w-[127px] shrink-0">
+                            {item}
+                          </span>
+                        </>
+                      ) : item === "Shorten the project timeline" ? (
+                        <>
+                          <img
+                            src="/job-listing/smart-assistant-timeline.png"
+                            alt=""
+                            aria-hidden="true"
+                            width={20}
+                            height={20}
+                            className="size-5 shrink-0"
+                          />
+                          <span className="h-5 w-[185px] shrink-0">
+                            {item}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <img
+                            src="/job-listing/smart-assistant-target.png"
+                            alt=""
+                            aria-hidden="true"
+                            width={20}
+                            height={20}
+                            className="size-5 shrink-0"
+                          />
+                          <span className="h-5 w-[146px] shrink-0">
+                            {item}
+                          </span>
+                        </>
+                      )}
+                    </Button>
+                  ))}
                 </div>
                 {assistantResult ? (
-                  <p className="mt-4 rounded-[5px] bg-primary-50 p-3 text-sm leading-5 text-dark-blue-400">
+                  <p className="w-[282px] rounded-[5px] bg-primary-50 p-3 text-sm leading-5 text-dark-blue-400">
                     {assistantResult}
                   </p>
                 ) : null}
-                <div className="mt-[310px] rounded-[5px] border border-gray-300 bg-white p-3 shadow-xs">
+              </div>
+              <div className="flex h-[140px] w-[322px] shrink-0 flex-col items-start gap-2 self-stretch p-5">
+                <div className="flex h-[100px] w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
                   <Textarea
-                    className="h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-gray-500 shadow-none focus:border-transparent focus:ring-0"
+                    className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-gray-500 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-gray-400 focus:ring-0"
                     placeholder="I want to change..."
                     value={assistantMessage}
                     onChange={(event) =>
@@ -16985,10 +17269,18 @@ const ServiceScopeEditStep = ({
                       }
                     }}
                   />
-                  <div className="flex items-center justify-between">
-                    <RefreshCcw05 className="size-4 text-gray-400" />
+                  <div className="flex h-6 w-[260px] shrink-0 self-stretch items-center justify-between gap-2 p-0">
+                    <img
+                      src="/job-listing/smart-assistant-wand.png"
+                      alt=""
+                      aria-hidden="true"
+                      width={20}
+                      height={20}
+                      className="size-5 shrink-0"
+                    />
                     <Button
-                      className="size-8 rounded-full p-0"
+                      className="size-6 rounded-full p-1 shadow-none"
+                      aria-label="Send message to Smart Assistant"
                       disabled={!assistantMessage.trim() || isAssistantLoading}
                       onClick={() => runServiceAssistant(assistantMessage)}
                     >
