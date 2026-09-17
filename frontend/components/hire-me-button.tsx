@@ -15,6 +15,7 @@ import {
   X,
 } from "@blend-metrics/icons"
 import { AnimatePresence, motion } from "framer-motion"
+import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
 import {
   logHireFlowInitiated,
@@ -23,6 +24,7 @@ import {
   type ContractGroupSummary,
   type ContractGroupMemberSummary,
 } from "@/service/http/contracts"
+import { listOffers } from "@/service/http/offers"
 import { ProjectAPI } from "@/service/http/project"
 import type { UserProfile } from "@/types/user"
 import NextImage from "@/components/next-image"
@@ -2810,13 +2812,56 @@ export function OfferDialog({
 
 export function HireMeButton({ profile, buttonProps }: HireMeButtonProps) {
   const [open, setOpen] = React.useState(false)
+  const { user } = useAuth()
 
   // BTB-261: `profile && !profile.availability`, not `!profile?.availability`
   // — the latter is also true while profile is still undefined during load,
   // which would flash the button disabled before the real value is known.
   const isUnavailable = Boolean(profile && !profile.availability)
+  const isOwnProfile = Boolean(user?.id && profile?.id && user.id === profile.id)
 
-  if (isUnavailable) {
+  // PMCM-393 AC-41.02/41.04: does the viewing client already have an active
+  // (PENDING/COUNTERED) offer out to this talent? talentId only narrows an
+  // already-JWT-scoped query (see ListOffersQueryDto/OfferListQueryBuilder),
+  // it can't widen it. Guarded so an unauthenticated visitor makes no
+  // request at all (not a 401 swallowed after the fact), and a talent
+  // viewing their own profile — never a client of themselves — doesn't
+  // trigger one either.
+  const [hasActiveOfferWithTalent, setHasActiveOfferWithTalent] =
+    React.useState(false)
+  React.useEffect(() => {
+    if (!user?.id || !profile?.id || isOwnProfile) {
+      setHasActiveOfferWithTalent(false)
+      return
+    }
+
+    // Same isActive-flag pattern as the contract-groups fetch above — a
+    // stale response from a superseded profile must not set state.
+    let isActive = true
+    listOffers({
+      talentId: profile.id,
+      status: ["PENDING", "COUNTERED"],
+      limit: 1,
+    })
+      .then((response) => {
+        if (!isActive) return
+        setHasActiveOfferWithTalent((response.data?.length ?? 0) > 0)
+      })
+      .catch(() => {
+        if (!isActive) return
+        setHasActiveOfferWithTalent(false)
+      })
+    return () => {
+      isActive = false
+    }
+  }, [user?.id, profile?.id, isOwnProfile])
+
+  if (isUnavailable || hasActiveOfferWithTalent) {
+    // isUnavailable wins when both are true: it isn't self-resolvable by
+    // the client, unlike the active-offer case (withdraw and retry).
+    const tooltipMessage = isUnavailable
+      ? "This talent is not currently available for hire."
+      : "You already have an active offer with this talent."
     return (
       <TooltipProvider delayDuration={0}>
         <Tooltip>
@@ -2831,9 +2876,7 @@ export function HireMeButton({ profile, buttonProps }: HireMeButtonProps) {
               </Button>
             </span>
           </TooltipTrigger>
-          <TooltipContent>
-            This talent is not currently available for hire.
-          </TooltipContent>
+          <TooltipContent>{tooltipMessage}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
     )
