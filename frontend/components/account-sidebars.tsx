@@ -303,7 +303,8 @@ const SidebarShell = ({
         className={cn(
           "shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200 overflow-hidden overflow-y-auto",
           "transition-[width] duration-300 ease-in-out",
-          "px-[15px] py-[15px] space-y-6",
+          "px-[15px] pb-[15px] space-y-6",
+          collapsed ? "pt-[42px]" : "pt-[15px]",
           collapsed ? "w-[72px]" : "w-[224px]"
         )}
       >
