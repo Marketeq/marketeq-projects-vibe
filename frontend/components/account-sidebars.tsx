@@ -316,7 +316,7 @@ const SidebarShell = ({
             collapsed ? "opacity-0 pointer-events-none" : "opacity-100"
           )}
         >
-          <p className="text-xs text-gray-500 leading-4 whitespace-nowrap">
+          <p className="text-xs text-gray-500 leading-4">
             Get the right talent for your next project.
           </p>
           <NextLink
