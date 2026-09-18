@@ -7,10 +7,9 @@ import { Company } from './entities/company.entity';
 import { CompanyUser } from './entities/company-user.entity';
 import { User } from '../user/entities/user.entity';
 import { R2Service } from '../storage/r2.service';
-import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Company, CompanyUser, User]), AuditModule],
+  imports: [TypeOrmModule.forFeature([Company, CompanyUser, User])],
   controllers: [CompaniesController, CompaniesInternalController],
   providers: [CompaniesService, R2Service],
   exports: [CompaniesService],

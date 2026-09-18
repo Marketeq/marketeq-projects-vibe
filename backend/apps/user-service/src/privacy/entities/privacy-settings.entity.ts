@@ -17,13 +17,8 @@ export class PrivacySettings {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  // Explicit column names: the migration creates snake_case
-  // (user_id / created_at / updated_at) and user-service has no global
-  // snake_case naming strategy, so without these TypeORM queries "userId"
-  // and Postgres answers 42703 — every read of this table failed.
-  // Matches the convention in allowed-ips.entity.ts.
   @Index({ unique: true })
-  @Column({ name: 'user_id', type: 'uuid' })
+  @Column({ type: 'uuid' })
   userId: string;
 
   /**
@@ -40,9 +35,9 @@ export class PrivacySettings {
   @Column({ type: 'jsonb', nullable: true })
   client: Record<string, any> | null;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  @CreateDateColumn()
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  @UpdateDateColumn()
   updatedAt: Date;
 }

@@ -10,7 +10,6 @@ import {
   Param,
   Patch,
   Post,
-  Req,
   Query,
   ServiceUnavailableException,
   UploadedFile,
@@ -35,17 +34,7 @@ import {
   detectRasterImageMimeType,
   looksLikeSvg,
   sanitizeSvg,
-  normaliseRasterImage,
-  MAX_LOGO_DIMENSION,
-  MIN_LOGO_DIMENSION,
 } from '../storage/image-upload.util';
-import {
-  AuditService,
-  AUDIT_ACTIONS,
-  AuditContext,
-} from '../audit/audit.service';
-import { resolveCallerIp } from '../allowed-ips/caller-ip.util';
-import type { Request } from 'express';
 
 /** Extensions used for the stored object key, keyed by verified mime type. */
 const LOGO_EXTENSIONS: Record<string, string> = {
@@ -62,37 +51,13 @@ export class CompaniesController {
   constructor(
     private readonly companies: CompaniesService,
     private readonly r2: R2Service,
-    private readonly audit: AuditService,
   ) {}
-
-  /** Same shape allowed-ips uses, so every audit row reads alike. */
-  private auditContext(user: JwtUser, req: Request): AuditContext {
-    const ua = req.headers['user-agent'];
-    return {
-      actorUserId: user.sub,
-      ipAddress: resolveCallerIp(req),
-      userAgent: Array.isArray(ua) ? ua[0] : (ua ?? null),
-    };
-  }
 
   @ApiOperation({ summary: 'Create a company; caller becomes owner + admin' })
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async create(
-    @CurrentUser() user: JwtUser,
-    @Body() dto: CreateCompanyDto,
-    @Req() req: Request,
-  ) {
+  async create(@CurrentUser() user: JwtUser, @Body() dto: CreateCompanyDto) {
     const company = await this.companies.create(dto, user.sub);
-    // Recorded after the write, never before: an audit row for something that
-    // did not happen is worse than no row. record() swallows its own errors,
-    // so auditing can never fail the request it is describing.
-    await this.audit.record(
-      AUDIT_ACTIONS.COMPANY_CREATED,
-      user.sub,
-      this.auditContext(user, req),
-      { companyId: company?.id, name: dto?.name },
-    );
     return { success: true, data: company, message: 'Company created successfully' };
   }
 
@@ -164,22 +129,6 @@ export class CompaniesController {
         );
       }
       mimeType = detected;
-
-      // Re-encode before storing, exactly as the avatar path does. A logo is
-      // uploaded from the same phones and cameras as any other image, and
-      // EXIF routinely carries GPS — a company logo is public-facing, so
-      // storing the bytes as uploaded publishes wherever the file was made.
-      // This path was the last one still doing that.
-      //
-      // No minimum dimension: unlike a square avatar, a logo is often a wide
-      // wordmark, so a floor here would reject uploads that work today.
-      const normalised = await normaliseRasterImage(
-        body,
-        mimeType,
-        MAX_LOGO_DIMENSION,
-        MIN_LOGO_DIMENSION,
-      );
-      body = normalised.buffer;
     }
 
     // A missing bucket is a deployment gap, not a user error. The company
@@ -222,18 +171,9 @@ export class CompaniesController {
     @CurrentUser() user: JwtUser,
     @Param('id') id: string,
     @Body() dto: UpdateCompanyDto,
-    @Req() req: Request,
   ) {
     await this.companies.assertIsAdmin(id, user.sub);
     const data = await this.companies.update(id, dto);
-    // Field names only, never the values — the trail says what was touched,
-    // it is not a second copy of the record.
-    await this.audit.record(
-      AUDIT_ACTIONS.COMPANY_UPDATED,
-      user.sub,
-      this.auditContext(user, req),
-      { companyId: id, fields: Object.keys(dto ?? {}) },
-    );
     return { success: true, data, message: 'Company updated successfully' };
   }
 

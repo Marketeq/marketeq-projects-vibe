@@ -20,12 +20,10 @@ import { TaxInfoService } from "../tax-info/tax-info.service";
 import { TaxInfoController } from "../tax-info/tax-info.controller";
 import { TaxDocumentService } from "../tax-info/tax-document.service";
 import { TinEncryptionService } from "../tax-info/tin-encryption.service";
-import { AuditModule } from "../audit/audit.module";
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Skill, TaxInfo]),
-    AuditModule,
     ClientsModule.registerAsync([
       {
         name: "RABBITMQ_CLIENT",

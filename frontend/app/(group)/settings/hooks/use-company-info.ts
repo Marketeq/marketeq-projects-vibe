@@ -75,13 +75,9 @@ export function useCompanyInfo(enabled: boolean) {
   }, [enabled, hasLoaded])
 
   /**
-   * Persists the fields that have storage and returns the saved record
-   * alongside `logoError`, which is set when the details saved but the logo
-   * upload did not.
-   *
-   * Throws on failure of the record write itself, so the caller can surface it
-   * — a silent failure there is what lets someone believe their company
-   * details were saved.
+   * Persists the fields that have storage and returns the saved record.
+   * Throws on failure so the caller can surface it — a silent failure here is
+   * what lets someone believe their company details were saved.
    */
   const save = useCallback(
     async (draft: CompanyInfoDraft, logoFile?: File | null) => {
@@ -92,27 +88,7 @@ export function useCompanyInfo(enabled: boolean) {
 
       // Upload first: the logo endpoint is not scoped to a company id, so the
       // URL is just another field once it resolves.
-      //
-      // A failure here used to abort the whole save, so an unconfigured bucket
-      // or a momentary storage fault discarded every text field the person had
-      // just typed — they lost the form and were told only that the logo
-      // storage was misconfigured. The details are worth keeping on their own,
-      // so the upload failing is reported rather than thrown, and the record is
-      // written either way. The caller decides how to surface a partial save.
-      let logoUrl: string | undefined
-      let logoError: string | null = null
-      if (logoFile) {
-        try {
-          logoUrl = await uploadCompanyLogo(logoFile)
-        } catch (error: any) {
-          logoError =
-            error?.response?.data?.errors?.message ||
-            error?.response?.data?.message ||
-            error?.message ||
-            "We could not upload that logo."
-        }
-      }
-
+      const logoUrl = logoFile ? await uploadCompanyLogo(logoFile) : undefined
       const domain = draft.website.trim()
 
       const profile = {
@@ -139,9 +115,7 @@ export function useCompanyInfo(enabled: boolean) {
           })
 
       setCompany(saved)
-      // logoError is non-null only when the details saved and the logo did
-      // not, so the caller can report a partial save instead of a success.
-      return { company: saved, logoError }
+      return saved
     },
     [company]
   )

@@ -19,22 +19,10 @@ export interface AllowedIpInput {
   description?: string
 }
 
-/** One entry that was not created because an existing entry already covers it. */
-export interface OverlappingAllowedIp {
-  address: string
-  /** The entry already on the list that covers it, named so it can be found. */
-  conflictsWith: string
-}
-
 export interface BulkCreateResult {
   created: AllowedIp[]
   /** Addresses already on the list; reported rather than treated as failures. */
   skipped: string[]
-  /**
-   * Addresses that overlap an existing entry. Reported rather than thrown for
-   * the same reason as skipped: one bad row must not fail a 200-row import.
-   */
-  overlapping: OverlappingAllowedIp[]
 }
 
 // The shared wrapper types its generic as the *request body* and always

@@ -53,46 +53,6 @@ export const AuthAPI = {
     return AxiosRequest.post(`${AUTH_BASE}/auth/reset-password`, data)
   },
 
-  /**
-   * For a signed-in user who knows their current password, unlike
-   * ResetPassword which trades an emailed token. Sets no cookies: the caller's
-   * session stays valid, so the tab they are standing in does not sign out.
-   */
-  ChangePassword: (data: { currentPassword: string; newPassword: string }) => {
-    return AxiosRequest.patch(`${AUTH_BASE}/auth/change-password`, data)
-  },
-
-  /**
-   * Account recovery email. The address is not usable until the link sent to
-   * it is followed — GetRecoveryEmail reports both the proven address and one
-   * still awaiting confirmation, so the screen can tell them apart.
-   */
-  GetRecoveryEmail: () => {
-    return AxiosRequest.get(`${AUTH_BASE}/auth/recovery-email`)
-  },
-
-  SetRecoveryEmail: (data: { email: string }) => {
-    return AxiosRequest.post(`${AUTH_BASE}/auth/recovery-email`, data)
-  },
-
-  ResendRecoveryEmail: () => {
-    return AxiosRequest.post(`${AUTH_BASE}/auth/recovery-email/resend`, {})
-  },
-
-  /** Unauthenticated: holding the token is the proof. */
-  VerifyRecoveryEmail: (data: { token: string }) => {
-    return AxiosRequest.post(`${AUTH_BASE}/auth/recovery-email/verify`, data)
-  },
-
-  /**
-   * Whether an authenticator is enrolled. twoFactorEnabled is an auth-service
-   * column, so it is absent from the user that GET /user/me returns — without
-   * this the UI treats every freshly-loaded page as having no authenticator.
-   */
-  GetTwoFactorStatus: () => {
-    return AxiosRequest.get(`${AUTH_BASE}/auth/2fa/status`)
-  },
-
   GenerateTwoFactor: () => {
     return AxiosRequest.post(`${AUTH_BASE}/auth/2fa/generate`, {})
   },

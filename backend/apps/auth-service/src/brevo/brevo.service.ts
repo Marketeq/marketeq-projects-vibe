@@ -4,9 +4,6 @@ import axios, { AxiosInstance } from 'axios';
 const BREVO_API_BASE = 'https://api.brevo.com/v3';
 const PASSWORD_CREATED_SUBJECT =
   'Your Account Password Has Been Successfully Created!';
-const RECOVERY_EMAIL_SUBJECT = 'Set Up Your Account Recovery Email';
-const EMAIL_FONT =
-  "'Inter',-apple-system,'Segoe UI',Arial,Helvetica,sans-serif";
 
 interface BrevoSender {
   email: string;
@@ -36,7 +33,6 @@ export class BrevoService {
   private readonly fromName: string;
   private readonly passwordResetTemplateId?: number;
   private readonly passwordCreatedTemplateId?: number;
-  private readonly recoveryEmailTemplateId?: number;
 
   constructor() {
     const apiKey = process.env.BREVO_API_KEY || '';
@@ -47,8 +43,6 @@ export class BrevoService {
     this.passwordResetTemplateId = raw ? Number(raw) : undefined;
     const passwordCreatedRaw = process.env.BREVO_PASSWORD_CREATED_TEMPLATE_ID;
     this.passwordCreatedTemplateId = passwordCreatedRaw ? Number(passwordCreatedRaw) : undefined;
-    const recoveryEmailRaw = process.env.BREVO_RECOVERY_EMAIL_TEMPLATE_ID;
-    this.recoveryEmailTemplateId = recoveryEmailRaw ? Number(recoveryEmailRaw) : undefined;
 
     if (!apiKey) {
       this.logger.warn(
@@ -163,113 +157,6 @@ export class BrevoService {
     }
 
     await this.send(request);
-  }
-
-  /**
-   * Confirmation link for adding a recovery email.
-   *
-   * Sent to the requested address, never to the account's current one — the
-   * whole point is to prove whoever asked can read the new inbox.
-   */
-  async sendRecoveryEmailVerification(
-    to: string,
-    params: { firstName?: string; confirmUrl: string },
-  ): Promise<void> {
-    const request: SendTransacEmailRequest = {
-      to: [{ email: to }],
-      subject: RECOVERY_EMAIL_SUBJECT,
-      params: {
-        firstName: params.firstName ?? '',
-        confirmUrl: params.confirmUrl,
-      },
-      tags: ['recovery-email'],
-    };
-
-    // A Brevo-hosted template wins when one is configured, matching how
-    // password-reset and password-created behave. Without it the in-repo
-    // layout below is used, so the flow works in an environment that has an
-    // API key but no template set up.
-    if (this.recoveryEmailTemplateId) {
-      request.templateId = this.recoveryEmailTemplateId;
-    } else {
-      request.htmlContent = this.buildRecoveryEmailHtml(params);
-    }
-
-    await this.send(request);
-  }
-
-  /**
-   * Table-based rather than flex: Gmail, Outlook and most desktop clients
-   * strip or ignore modern layout CSS, so the Figma auto-layout is expressed
-   * as nested tables with explicit spacer rows. The values are the Figma ones
-   * — 724px frame, 660px content, 24px gaps, #344054 body, 260x36 button.
-   */
-  private buildRecoveryEmailHtml(params: {
-    firstName?: string;
-    confirmUrl: string;
-  }): string {
-    const firstName = this.escapeHtml(params.firstName?.trim() || 'there');
-    const href = this.escapeAttribute(params.confirmUrl);
-    const assetBase = this.resolveEmailAssetBase();
-    const logo = assetBase
-      ? `<img src="${this.escapeAttribute(`${assetBase}/email/marketeq-logo.png`)}" width="128" height="19" alt="Marketeq" style="display:block;width:128px;height:19px;border:0;" />`
-      : `<span style="font-family:${EMAIL_FONT};font-size:20px;line-height:20px;font-weight:800;color:#22376B;letter-spacing:-0.4px;">Marketeq</span>`;
-
-    const line = (html: string) =>
-      `<tr><td style="font-family:${EMAIL_FONT};font-size:14px;line-height:20px;font-weight:500;color:#344054;padding:0 0 24px 0;">${html}</td></tr>`;
-
-    return `<!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>${this.escapeHtml(RECOVERY_EMAIL_SUBJECT)}</title>
-</head>
-<body style="margin:0;padding:0;background-color:#ffffff;">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#ffffff;">
-  <tr><td align="center" style="padding:40px 16px;">
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="724" style="width:724px;max-width:100%;">
-
-      <tr><td style="padding:0 0 55px 0;">${logo}</td></tr>
-
-      <tr><td>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="660" style="width:660px;max-width:100%;">
-          ${line(`Hi ${firstName},`)}
-          ${line('You have requested this email be added to your Marketeq account for account recovery.')}
-          ${line('Please click the button below to enable account recovery for your account.')}
-          ${line('This link will expire after <strong style="font-weight:700;">24 hours</strong>.')}
-          ${line('If you are receiving this message in error, you can ignore this email.')}
-          <tr><td>
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-              <tr><td align="center" style="background-color:#306CFE;border-radius:5px;box-shadow:0px 1px 2px rgba(16,24,40,0.05);">
-                <a href="${href}" style="display:inline-block;width:232px;padding:8px 14px;font-family:${EMAIL_FONT};font-size:14px;line-height:20px;font-weight:600;color:#ffffff;text-align:center;text-decoration:none;">Enable Account Recovery</a>
-              </td></tr>
-            </table>
-          </td></tr>
-        </table>
-      </td></tr>
-
-    </table>
-  </td></tr>
-</table>
-</body></html>`;
-  }
-
-  /**
-   * Where the wordmark is served from. Only https qualifies — a localhost base
-   * renders as a broken image in a real inbox, so the text wordmark is the
-   * better fallback. Mirrors notification-service's resolver.
-   */
-  private resolveEmailAssetBase(): string | undefined {
-    const base = (process.env.EMAIL_ASSET_BASE_URL?.trim() || '').replace(
-      /\/+$/,
-      '',
-    );
-    if (!base) return undefined;
-    try {
-      return new URL(base).protocol === 'https:' ? base : undefined;
-    } catch {
-      return undefined;
-    }
   }
 
   private buildPasswordCreatedHtml(params: {
