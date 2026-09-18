@@ -10954,6 +10954,74 @@ const reorderServicePhases = (phases: ServiceScopePhase[]) =>
     })
     .map(({ phase }) => phase);
 
+const reorderServiceRecurringPhases = (
+  phases: ServiceScopePhase[],
+  activeId: UniqueIdentifier,
+  overId: UniqueIdentifier,
+) => {
+  const setupPhases = phases.filter((phase) => phase.phaseType === "setup");
+  const recurringPhases = phases.filter(
+    (phase) => phase.phaseType === "recurring",
+  );
+  const ongoingPhases = phases.filter((phase) => phase.phaseType === "ongoing");
+  const oldIndex = recurringPhases.findIndex((phase) => phase.id === activeId);
+  const newIndex = recurringPhases.findIndex((phase) => phase.id === overId);
+
+  if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) {
+    return phases;
+  }
+
+  return [
+    ...setupPhases,
+    ...arrayMove(recurringPhases, oldIndex, newIndex),
+    ...ongoingPhases,
+  ];
+};
+
+const ServicePhaseSortableCard = ({
+  children,
+  phase,
+}: {
+  children: React.ReactNode;
+  phase: ServiceScopePhase;
+}) => {
+  const {
+    attributes,
+    listeners,
+    transform,
+    transition,
+    setNodeRef,
+    isDragging,
+    isOver,
+  } = useSortable({
+    id: phase.id,
+    disabled: phase.phaseType !== "recurring",
+  });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.8 : 1,
+    zIndex: isDragging ? 1 : 0,
+    position: "relative",
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        isOver &&
+          phase.phaseType === "recurring" &&
+          "after:absolute after:inset-x-0 after:top-0 after:h-[3px] after:bg-primary-500 after:content-['']",
+      )}
+      {...(phase.phaseType === "recurring" ? attributes : {})}
+      {...(phase.phaseType === "recurring" ? listeners : {})}
+    >
+      {children}
+    </div>
+  );
+};
+
 const serviceScopePhaseTypeOptions = [
   {
     value: "setup" as const,
@@ -15754,6 +15822,11 @@ const ServiceScopeEditStep = ({
   const didApplyPersistedScopeRef = useRef(false);
   const skipNextServiceScopeSaveRef = useRef(false);
   const lastSavedServiceScopeSignatureRef = useRef("");
+  const servicePhaseDndSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, {}),
+  );
   const normalizedSearchValue = normalizeSearchText(searchValue);
   const visiblePhases = normalizedSearchValue
     ? phases.filter((phase) => {
@@ -16407,6 +16480,16 @@ const ServiceScopeEditStep = ({
     );
   };
 
+  const handleServicePhaseDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) return;
+
+    setPhases((currentPhases) =>
+      reorderServiceRecurringPhases(currentPhases, active.id, over.id),
+    );
+  };
+
   useIsomorphicLayoutEffect(() => {
     toggleValidation(true);
   }, []);
@@ -16699,8 +16782,20 @@ const ServiceScopeEditStep = ({
                 </div>
               </div>
 
-              <div className="mt-6 space-y-3">
-                {visiblePhases.map((phase) => {
+              <DndContext
+                collisionDetection={closestCenter}
+                modifiers={[restrictToVerticalAxis]}
+                onDragEnd={handleServicePhaseDragEnd}
+                sensors={servicePhaseDndSensors}
+              >
+                <SortableContext
+                  items={visiblePhases
+                    .filter((phase) => phase.phaseType === "recurring")
+                    .map((phase) => phase.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="mt-6 space-y-3">
+                    {visiblePhases.map((phase) => {
                   const isExpanded = expandedPhaseIds.includes(phase.id);
                   const phaseIndex = phases.findIndex(
                     (candidate) => candidate.id === phase.id,
@@ -16712,10 +16807,8 @@ const ServiceScopeEditStep = ({
                     ) === phaseIndex;
 
                   return (
-                    <div
-                      key={phase.id}
-                      className="relative overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
-                    >
+                    <ServicePhaseSortableCard key={phase.id} phase={phase}>
+                      <div className="relative overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                       <div className="flex h-14 items-center justify-center gap-4 border-b border-gray-200 p-3">
                         <div className="flex h-8 min-w-0 flex-1 flex-col items-start justify-end gap-1 self-stretch p-0">
                           <div className="flex h-8 min-w-0 items-center gap-2 p-0">
@@ -17295,10 +17388,13 @@ const ServiceScopeEditStep = ({
                           <span className="absolute right-[-12px] top-1/2 size-6 -translate-y-1/2 rotate-45 bg-primary-50" />
                         </div>
                       ) : null}
-                    </div>
+                      </div>
+                    </ServicePhaseSortableCard>
                   );
-                })}
-              </div>
+                    })}
+                  </div>
+                </SortableContext>
+              </DndContext>
             </div>
 
             <div className="flex h-[654px] w-full shrink-0 flex-col rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1180px]:w-[322px] self-start">
