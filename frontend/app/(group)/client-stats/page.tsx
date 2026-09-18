@@ -176,11 +176,12 @@ const spendByContractType = [
   { type: "Individual", amount: 750, count: 3 },
 ]
 
-const budgetUtilization = [
-  { name: "Mobile App Redesign", budget: 8000, spent: 6200, pct: 78 },
-  { name: "Brand Identity", budget: 5000, spent: 4800, pct: 96 },
-  { name: "Content Strategy", budget: 3000, spent: 1200, pct: 40 },
-  { name: "Backend API", budget: 6000, spent: 3400, pct: 57 },
+const spendPerContract = [
+  { name: "Mobile App Redesign", type: "Project", spent: 6200 },
+  { name: "Brand Identity System", type: "Project", spent: 4800 },
+  { name: "Monthly SEO Service", type: "Service", spent: 4500 },
+  { name: "Backend API Dev", type: "Project", spent: 3400 },
+  { name: "Content Strategy", type: "Project", spent: 1200 },
 ]
 
 const costPerHireData = [
@@ -347,6 +348,14 @@ const dollar = (value: number) => `$${value.toLocaleString()}`
 const kpiId = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, "-")
 const spark = (values: readonly number[]) => values.map((value, index) => ({ index, value }))
 
+const CASCADE_DELAYS = [
+  "delay-0", "delay-75", "delay-100", "delay-150",
+  "delay-200", "delay-300", "delay-500", "delay-700",
+] as const
+const cascadeDelay = (index: number) => CASCADE_DELAYS[Math.min(index, CASCADE_DELAYS.length - 1)]
+const fadeIn = (index: number = 0) =>
+  `animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(index)}`
+
 const PremiumOverlay = ({ children }: { children: React.ReactNode }) => (
   <div className="relative">
     <div className="pointer-events-none select-none blur-[6px]">{children}</div>
@@ -455,7 +464,7 @@ export default function ClientStatsPage() {
         <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px] overflow-hidden">
           <div className="flex-auto min-w-0">
             {/* Summary banner */}
-            <Alert variant="primary" className="mb-6">
+            <Alert variant="primary" className={`mb-6 ${fadeIn(0)}`}>
               <AlertIcon>
                 <BarChartSquare02 className="size-5" />
               </AlertIcon>
@@ -562,10 +571,10 @@ export default function ClientStatsPage() {
                 <TabsContent value="overview" className="mt-6">
                   {/* KPI cards with sparklines */}
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    {overviewKpis.map((kpi) => (
+                    {overviewKpis.map((kpi, i) => (
                       <Card
                         key={kpi.label}
-                        className="group flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0"
+                        className={`group flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0 ${fadeIn(i)}`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
@@ -617,7 +626,7 @@ export default function ClientStatsPage() {
                   <div className="mt-6 grid gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
                     <div className="grid gap-3">
                       {/* Spending over time */}
-                      <Card className="flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-5 shadow-none transition-none hover:border-gray-200 hover:ring-0">
+                      <Card className={`flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-5 shadow-none transition-none hover:border-gray-200 hover:ring-0 ${fadeIn(0)}`}>
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="text-[14px] font-semibold leading-normal text-dark-blue-400">
@@ -651,7 +660,7 @@ export default function ClientStatsPage() {
                       </Card>
 
                       {/* Snapshot insights */}
-                      <Card className="flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-5 shadow-none transition-none hover:border-gray-200 hover:ring-0">
+                      <Card className={`flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-5 shadow-none transition-none hover:border-gray-200 hover:ring-0 ${fadeIn(1)}`}>
                         <div className="text-[14px] font-semibold leading-normal text-dark-blue-400">
                           Snapshot Insights
                         </div>
@@ -667,7 +676,7 @@ export default function ClientStatsPage() {
                     </div>
 
                     {/* Hiring funnel */}
-                    <Card className="flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-5 shadow-none transition-none hover:border-gray-200 hover:ring-0">
+                    <Card className={`flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-5 shadow-none transition-none hover:border-gray-200 hover:ring-0 ${fadeIn(2)}`}>
                       <div className="text-[14px] font-semibold leading-normal text-dark-blue-400">
                         Hiring Funnel
                       </div>
@@ -711,8 +720,8 @@ export default function ClientStatsPage() {
                         { label: "Total Spent (All Time)", value: "$24,850" },
                         { label: "Avg Monthly Spend", value: "$3,856" },
                         { label: "Avg Cost Per Hire", value: "$3,550" },
-                      ].map((row) => (
-                        <div key={row.label} className="rounded-lg border border-gray-200 bg-white p-4">
+                      ].map((row, i) => (
+                        <div key={row.label} className={`rounded-lg border border-gray-200 bg-white p-4 ${fadeIn(i)}`}>
                           <div className="text-[12px] font-medium leading-normal text-gray-500">{row.label}</div>
                           <div className="mt-2 text-[18px] font-bold leading-none text-dark-blue-400">{row.value}</div>
                         </div>
@@ -722,7 +731,7 @@ export default function ClientStatsPage() {
                     {/* Spend by category + Monthly trend */}
                     <div className="mt-6 grid gap-3 lg:grid-cols-2">
                       {/* Spend by category donut */}
-                      <Card className="flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0">
+                      <Card className={`flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0 ${fadeIn(0)}`}>
                         <div className="text-[13px] font-semibold leading-normal text-dark-blue-400">
                           Spend by Category
                         </div>
@@ -759,7 +768,7 @@ export default function ClientStatsPage() {
                       </Card>
 
                       {/* Spend by contract type */}
-                      <Card className="flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0">
+                      <Card className={`flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0 ${fadeIn(1)}`}>
                         <div className="text-[13px] font-semibold leading-normal text-dark-blue-400">
                           Spend by Contract Type
                         </div>
@@ -777,31 +786,25 @@ export default function ClientStatsPage() {
                       </Card>
                     </div>
 
-                    {/* Budget utilization */}
-                    <div className="mt-6">
+                    {/* Spend per contract */}
+                    <div className={`mt-6 ${fadeIn(2)}`}>
                       <div className="text-[14px] font-semibold leading-normal text-dark-blue-400">
-                        Budget Utilization
+                        Spend Per Contract
                       </div>
                       <div className="mt-1 text-[13px] font-light leading-normal text-gray-500">
-                        How much of each project budget has been used.
+                        Total amount spent on each contract.
                       </div>
-                      <div className="mt-4 space-y-4">
-                        {budgetUtilization.map((row) => (
-                          <div key={row.name}>
-                            <div className="flex items-center justify-between gap-3 text-[13px] leading-normal">
-                              <span className="font-semibold text-dark-blue-400">{row.name}</span>
-                              <span className="font-medium text-gray-500">
-                                {dollar(row.spent)} / {dollar(row.budget)} ({row.pct}%)
-                              </span>
-                            </div>
-                            <Progress
-                              className="mt-2 h-2 bg-transparent"
-                              indicatorClassName={cn(
-                                "rounded-full",
-                                row.pct > 90 ? "bg-amber-500" : ""
-                              )}
-                              value={row.pct}
-                            />
+                      <div className="mt-4 overflow-hidden rounded-lg border border-gray-200">
+                        <div className="grid grid-cols-[minmax(0,1fr)_100px_110px] bg-white px-4 py-3 text-[12px] font-semibold text-gray-500">
+                          <div>Contract</div>
+                          <div>Type</div>
+                          <div className="text-right">Total Spent</div>
+                        </div>
+                        {spendPerContract.map((row) => (
+                          <div key={row.name} className="grid grid-cols-[minmax(0,1fr)_100px_110px] items-center border-t border-gray-200 px-4 py-3 text-[13px]">
+                            <div className="min-w-0 truncate font-semibold text-dark-blue-400">{row.name}</div>
+                            <div className="font-medium text-gray-500">{row.type}</div>
+                            <div className="text-right font-semibold text-dark-blue-400">{dollar(row.spent)}</div>
                           </div>
                         ))}
                       </div>
@@ -862,8 +865,8 @@ export default function ClientStatsPage() {
                         { label: "Offer Acceptance", value: "78%", delta: "+6%", deltaUp: true },
                         { label: "Applications / Job", value: "7.0", delta: "+1.2", deltaUp: true },
                         { label: "Active Pipeline", value: "23", delta: "+5", deltaUp: true },
-                      ].map((row) => (
-                        <div key={row.label} className="rounded-lg border border-gray-200 bg-white p-4">
+                      ].map((row, i) => (
+                        <div key={row.label} className={`rounded-lg border border-gray-200 bg-white p-4 ${fadeIn(i)}`}>
                           <div className="text-[12px] font-medium leading-normal text-gray-500">{row.label}</div>
                           <div className="mt-2 text-[18px] font-bold leading-none text-dark-blue-400">{row.value}</div>
                           <div className="mt-2 flex items-center gap-x-1">
@@ -882,7 +885,7 @@ export default function ClientStatsPage() {
 
                     {/* Time-to-hire + Offer acceptance charts */}
                     <div className="mt-6 grid gap-3 lg:grid-cols-2">
-                      <Card className="flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0">
+                      <Card className={`flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0 ${fadeIn(0)}`}>
                         <div className="text-[13px] font-semibold leading-normal text-dark-blue-400">
                           Time-to-Hire Trend
                         </div>
@@ -899,7 +902,7 @@ export default function ClientStatsPage() {
                         </div>
                       </Card>
 
-                      <Card className="flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0">
+                      <Card className={`flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0 ${fadeIn(1)}`}>
                         <div className="text-[13px] font-semibold leading-normal text-dark-blue-400">
                           Offer Acceptance Rate
                         </div>
@@ -924,7 +927,7 @@ export default function ClientStatsPage() {
                     </div>
 
                     {/* Application volume chart */}
-                    <div className="mt-6">
+                    <div className={`mt-6 ${fadeIn(2)}`}>
                       <Card className="flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0">
                         <div className="text-[13px] font-semibold leading-normal text-dark-blue-400">
                           Application Volume
@@ -1017,8 +1020,8 @@ export default function ClientStatsPage() {
                         { label: "Completed", value: "8" },
                         { label: "Avg Duration", value: "2.8 mo" },
                         { label: "Completion Rate", value: "92%" },
-                      ].map((row) => (
-                        <div key={row.label} className="rounded-lg border border-gray-200 bg-white p-4">
+                      ].map((row, i) => (
+                        <div key={row.label} className={`rounded-lg border border-gray-200 bg-white p-4 ${fadeIn(i)}`}>
                           <div className="text-[12px] font-medium leading-normal text-gray-500">{row.label}</div>
                           <div className="mt-2 text-[18px] font-bold leading-none text-dark-blue-400">{row.value}</div>
                         </div>
@@ -1026,7 +1029,7 @@ export default function ClientStatsPage() {
                     </div>
 
                     {/* Active vs completed over time */}
-                    <div className="mt-6">
+                    <div className={`mt-6 ${fadeIn(1)}`}>
                       <Card className="flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0">
                         <div className="text-[13px] font-semibold leading-normal text-dark-blue-400">
                           Contracts Over Time
@@ -1163,8 +1166,8 @@ export default function ClientStatsPage() {
                         { label: "Repeat Hire Rate", value: "43%" },
                         { label: "Avg Rating Given", value: "4.8" },
                         { label: "Avg Retention", value: "4.2 mo" },
-                      ].map((row) => (
-                        <div key={row.label} className="rounded-lg border border-gray-200 bg-white p-4">
+                      ].map((row, i) => (
+                        <div key={row.label} className={`rounded-lg border border-gray-200 bg-white p-4 ${fadeIn(i)}`}>
                           <div className="text-[12px] font-medium leading-normal text-gray-500">{row.label}</div>
                           <div className="mt-2 text-[18px] font-bold leading-none text-dark-blue-400">{row.value}</div>
                         </div>
@@ -1181,8 +1184,8 @@ export default function ClientStatsPage() {
                       </div>
 
                       <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                        {topSkillsHired.map((row) => (
-                          <div key={row.skill} className="rounded-lg border border-gray-200 bg-white p-4">
+                        {topSkillsHired.map((row, i) => (
+                          <div key={row.skill} className={`rounded-lg border border-gray-200 bg-white p-4 ${fadeIn(i)}`}>
                             <div className="flex items-center justify-between gap-3">
                               <div className="text-[14px] font-semibold leading-normal text-dark-blue-400">{row.skill}</div>
                               <Badge visual="gray" className="border border-gray-200 bg-white">
@@ -1200,7 +1203,7 @@ export default function ClientStatsPage() {
 
                     {/* Rating distribution */}
                     <div className="mt-6 grid gap-3 lg:grid-cols-2">
-                      <Card className="flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0">
+                      <Card className={`flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0 ${fadeIn(0)}`}>
                         <div className="text-[13px] font-semibold leading-normal text-dark-blue-400">
                           Ratings You've Given
                         </div>
@@ -1231,7 +1234,7 @@ export default function ClientStatsPage() {
                       </Card>
 
                       {/* Repeat hire trend */}
-                      <Card className="flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0">
+                      <Card className={`flex-col items-stretch justify-start rounded-lg border border-gray-200 bg-white p-4 shadow-none transition-none hover:border-gray-200 hover:ring-0 ${fadeIn(1)}`}>
                         <div className="text-[13px] font-semibold leading-normal text-dark-blue-400">
                           Repeat Hire Rate Trend
                         </div>
