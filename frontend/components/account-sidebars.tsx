@@ -31,10 +31,13 @@ import {
 const SIDEBAR_COLLAPSED_KEY = "sidebar-collapsed"
 
 const useSidebarCollapsed = () => {
-  const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window === "undefined") return false
-    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true"
-  })
+  const [collapsed, setCollapsed] = useState(false)
+
+  // Hydrate from localStorage after mount to avoid SSR mismatch
+  useEffect(() => {
+    const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
+    if (stored === "true") setCollapsed(true)
+  }, [])
 
   const toggle = useCallback(() => {
     setCollapsed((prev) => {
@@ -269,7 +272,7 @@ const CollapseToggle = ({
     <TooltipTrigger asChild>
       <IconButton
         className={cn(
-          "bg-white size-8 opacity-60 hover:opacity-100 border border-gray-200",
+          "bg-white size-8 hover:bg-gray-100 border border-gray-200",
           collapsed ? "mx-auto" : ""
         )}
         variant="outlined"
@@ -280,11 +283,9 @@ const CollapseToggle = ({
         <Sidebar className="size-4" />
       </IconButton>
     </TooltipTrigger>
-    {collapsed && (
-      <TooltipContent side="right" sideOffset={12} className="text-xs font-medium">
-        Expand sidebar
-      </TooltipContent>
-    )}
+    <TooltipContent side="right" sideOffset={12} className="text-xs font-medium">
+      {collapsed ? "Expand sidebar" : "Collapse sidebar"}
+    </TooltipContent>
   </Tooltip>
 )
 
