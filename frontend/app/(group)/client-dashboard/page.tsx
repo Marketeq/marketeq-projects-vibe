@@ -16,11 +16,17 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  CurrencyDollar,
   Download,
   Bank,
   Edit03,
+  FileCheck02,
+  Inbox01,
+  MessageSquare02,
   Phone,
+  Send01,
   UserCircle,
+  Users01,
   MapPin,
   Plus,
   Share06,
@@ -583,6 +589,113 @@ const GETTING_STARTED_STEPS = [
   },
 ]
 
+// ---------------------------------------------------------------------------
+// Recent Activity feed (client-specific)
+// ---------------------------------------------------------------------------
+
+type ClientActivityCategory =
+  | "job"
+  | "offer"
+  | "contract"
+  | "payment"
+  | "message"
+  | "hire"
+  | "review"
+  | "application"
+
+type ClientActivityItem = {
+  icon: React.ElementType
+  title: string
+  subtitle: string
+  date: string
+  category: ClientActivityCategory
+  expandable?: boolean
+}
+
+const clientActivityItems: ClientActivityItem[] = [
+  {
+    icon: Briefcase,
+    title: "You posted a new job",
+    subtitle: "QA Engineer for Mobile App",
+    date: "Today, 2:30 PM",
+    category: "job",
+  },
+  {
+    icon: Inbox01,
+    title: "New application received",
+    subtitle: "Sarah applied to Backend API Developer",
+    date: "Today, 11:45 AM",
+    category: "application",
+  },
+  {
+    icon: Send01,
+    title: "Offer sent",
+    subtitle: "You sent an offer to Marcus for UI/UX Design",
+    date: "Yesterday, 4:15 PM",
+    category: "offer",
+  },
+  {
+    icon: FileCheck02,
+    title: "Contract started",
+    subtitle: "Mobile App Redesign with Devon",
+    date: "Yesterday, 10:00 AM",
+    category: "contract",
+  },
+  {
+    icon: CurrencyDollar,
+    title: "Payment processed",
+    subtitle: "$2,400 milestone payment for Brand Identity",
+    date: "Sep 14, 3:20 PM",
+    category: "payment",
+  },
+  {
+    icon: MessageSquare02,
+    title: "New message",
+    subtitle: "Devon sent you a message about Mobile App Redesign",
+    date: "Sep 14, 1:05 PM",
+    category: "message",
+  },
+  {
+    icon: Users01,
+    title: "Talent hired",
+    subtitle: "You hired Alex for Content Strategy",
+    date: "Sep 13, 9:30 AM",
+    category: "hire",
+  },
+  {
+    icon: Star,
+    title: "Review submitted",
+    subtitle: "You left a 5-star review for Brand Identity project",
+    date: "Sep 12, 5:00 PM",
+    category: "review",
+  },
+  {
+    icon: Check,
+    title: "Offer accepted",
+    subtitle: "Marcus accepted your offer for UI/UX Design",
+    date: "Sep 12, 2:15 PM",
+    category: "offer",
+  },
+  {
+    icon: Briefcase,
+    title: "Job updated",
+    subtitle: "You updated the description for Frontend Developer role",
+    date: "Sep 11, 11:00 AM",
+    category: "job",
+  },
+]
+
+const clientActivityCategoryStyles: Record<ClientActivityCategory, { bg: string; icon: string }> = {
+  job: { bg: "bg-primary-50", icon: "text-primary-500" },
+  offer: { bg: "bg-warning-50", icon: "text-warning-500" },
+  contract: { bg: "bg-success-50", icon: "text-success-500" },
+  payment: { bg: "bg-success-50", icon: "text-success-500" },
+  message: { bg: "bg-primary-50", icon: "text-primary-500" },
+  hire: { bg: "bg-primary-50", icon: "text-primary-500" },
+  review: { bg: "bg-warning-50", icon: "text-warning-500" },
+  application: { bg: "bg-gray-100", icon: "text-gray-500" },
+}
+
 const RecentActivity = ({
   user,
   onStepChange,
@@ -734,6 +847,38 @@ const RecentActivity = ({
               </AccordionItem>
             ))}
           </Accordion>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="Recent Activity">
+        <div className="pt-3">
+          <div className="border p-5 rounded-lg bg-white border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-dark-blue-400">Recent Activity</h2>
+            </div>
+
+            <div className="relative space-y-0">
+              {/* Timeline line */}
+              <div className="absolute left-4 top-10 bottom-4 w-px bg-gray-200" />
+
+              {clientActivityItems.map((item, i) => {
+                const Icon = item.icon
+                const styles = clientActivityCategoryStyles[item.category]
+                return (
+                  <div key={i} className="flex items-start gap-3 relative py-2.5">
+                    <div className={`flex items-center justify-center size-8 rounded-full flex-none mt-0.5 z-10 ${styles.bg}`}>
+                      <Icon className={`size-4 ${styles.icon}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-dark-blue-400">{item.title}</p>
+                      <p className="text-sm text-gray-500 mt-0.5">{item.subtitle}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{item.date}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       </TabsContent>
     </Tabs>
