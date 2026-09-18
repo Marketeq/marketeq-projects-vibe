@@ -230,7 +230,7 @@ export default function MyListingsPage() {
       <div className="flex bg-gray-50 min-h-screen">
         <LeftSidebar />
 
-        <div className="flex-1 p-[32px] min-[1024px]:pl-[274px] min-[1024px]:pt-[50px] min-[1024px]:pr-[50px]">
+        <div className="flex-1 p-[32px] min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pt-[50px] min-[1024px]:pr-[50px]">
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-bold text-dark-blue-400">
               My Listings

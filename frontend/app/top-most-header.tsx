@@ -1065,6 +1065,7 @@ const Notifications = () => {
               size="md"
               variant="ghost"
               visual="gray"
+              title="Notifications"
             >
               <Bell className="size-[18px]" />
             </IconButton>
@@ -1686,6 +1687,7 @@ const PATHNAMES = [
 const HAS_SIDEBAR_NAV = [
   "/talent-dashboard",
   "/client-dashboard",
+  "/client-stats",
   "/inbox",
   "/earnings",
   "/my-teams",
@@ -1699,6 +1701,8 @@ const HAS_SIDEBAR_NAV = [
   "/notifications",
   "/complete-profile",
   "/settings",
+  "/active-project",
+  "/billing",
 ]
 
 // Pages that have a secondary nav bar below the primary nav — shadow should only appear on the secondary nav, not the primary
@@ -1774,7 +1778,9 @@ export const TopMostHeader = ({
 
   // Show shadow: always on pages without secondary nav, or when secondary nav is hidden (scrolled away)
   const showNavShadow = !hasSecondaryNav || secondaryNavHidden
-  const hasSidebarNav = HAS_SIDEBAR_NAV.includes(pathname)
+  const hasSidebarNav = HAS_SIDEBAR_NAV.some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  )
 
   return (
     <div
@@ -1804,6 +1810,7 @@ export const TopMostHeader = ({
                 visual="gray"
                 variant="outlined"
                 size="md"
+                title="My Balance"
               >
                 <span className="inline-flex items-center gap-x-[7.2px] lg:gap-x-1 text-[12.6px] leading-5 lg:text-base lg:leading-6 font-light">
                   <span className="font-semibold">$ 1,540</span> USD
@@ -1832,6 +1839,7 @@ export const TopMostHeader = ({
                     size="md"
                     variant="ghost"
                     visual="gray"
+                    title="Invite"
                   >
                     <Plus className="size-[18px]" />
                   </IconButton>
