@@ -19,6 +19,7 @@ import { ReviewsClient } from './services/reviews.client';
 import { NotificationsClient } from './services/notifications.client';
 import { AuditLoggerService } from './services/audit-logger.service';
 import { TalentNetworkService } from './services/talent-network.service';
+import { ContractOwnerGuard } from './guards/contract-owner.guard';
 
 // Import your entities
 import { Contract } from './entities/contract.entity';
@@ -63,6 +64,7 @@ import { JwtAuthGuard } from './middleware/jwt-auth.guard';
     NotificationsClient,
     AuditLoggerService,
     TalentNetworkService,
+    ContractOwnerGuard,
     // Global JWT guard
     {
       provide: APP_GUARD,

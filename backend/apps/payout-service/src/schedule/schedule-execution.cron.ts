@@ -26,7 +26,7 @@ import { PayoutRequest, PayoutStatus, PayoutTrigger } from '../entities/payout-r
 import { DepositMethod, VerificationStatus, MethodType } from '../entities/deposit-method.entity';
 import { SplitCalculatorService } from './split-calculator.service';
 import { ThresholdCheckService } from './threshold-check.service';
-import { NextExecutionService, ACH_METHOD_TYPES } from './next-execution.service';
+import { NextExecutionService, isAchMethod } from './next-execution.service';
 import { AchInitiationCalculatorService } from './ach-initiation-calculator.service';
 import { PauseStatusService } from '../pause/pause-status.service';
 import { EarningsClient } from '../common/earnings.client';
@@ -140,12 +140,15 @@ export class ScheduleExecutionCron {
     }
   }
 
-  // ─── PS-17 v2.0 §6: Execution window check — ACH only ──────
+  // ─── PS-17 v2.0 §6 / PS-34 §7: Execution window check — US ACH only ──
   // Non-ACH methods (Wise, Payoneer, Crypto) run 24/7 and are never gated by
   // this window — they initiate exactly on their configured day regardless
-  // of time, weekend, or US federal holiday.
-  private isWithinExecutionWindow(now: Date, methodType: MethodType): boolean {
-    if (!ACH_METHOD_TYPES.includes(methodType)) return true;
+  // of time, weekend, or US federal holiday. International BANK_MANUAL
+  // (Stripe cross-border or Wise Platform) is in the same boat — Wise
+  // Platform runs 24/7 and Stripe's cross-border rail processes weekends —
+  // so only true domestic ACH (BANK_STRIPE, or BANK_MANUAL/US) is windowed.
+  private isWithinExecutionWindow(now: Date, methodType: MethodType, bankCountry?: string | null): boolean {
+    if (!isAchMethod(methodType, bankCountry)) return true;
 
     const day = now.getUTCDay();
     const hour = now.getUTCHours();
@@ -165,7 +168,7 @@ export class ScheduleExecutionCron {
 
       if (!primaryMethod || primaryMethod.verificationStatus !== VerificationStatus.VERIFIED) {
         this.logger.log(`Schedule ${schedule.id} skipped — primary method not available`);
-        await this.nextExecService.advanceNextExecution(schedule, primaryMethod?.methodType ?? null);
+        await this.nextExecService.advanceNextExecution(schedule, primaryMethod?.methodType ?? null, primaryMethod?.bankCountry);
         return;
       }
 
@@ -176,7 +179,7 @@ export class ScheduleExecutionCron {
         await this.publisher.publishPayoutsPaused(schedule.contractorId, {
           reason: 'primary_method_reauth_required', depositMethodId: primaryMethod.id,
         });
-        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
         return;
       }
 
@@ -191,19 +194,19 @@ export class ScheduleExecutionCron {
         const gate = await this.kycGateService.checkGate(schedule.contractorId, primaryMethod.id);
         if (!gate.allowed) {
           this.logger.log(`Schedule ${schedule.id} skipped — KYC gate blocked (${gate.blockedBy})`);
-          await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+          await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
           return;
         }
       } catch (err: any) {
         this.logger.log(`Schedule ${schedule.id} skipped — KYC gate blocked (${err.errorCode ?? err.message})`);
-        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
         return;
       }
 
       // Check 2: execution window (ACH only). Outside window = deferred to
       // the next window open, NOT the next scheduled frequency date — leave
       // nextExecutionAt untouched so the next tick re-evaluates it.
-      if (!this.isWithinExecutionWindow(new Date(), primaryMethod.methodType)) {
+      if (!this.isWithinExecutionWindow(new Date(), primaryMethod.methodType, primaryMethod.bankCountry)) {
         this.logger.log(`Schedule ${schedule.id} deferred — outside ACH execution window`);
         return;
       }
@@ -213,7 +216,7 @@ export class ScheduleExecutionCron {
         await this.pauseStatusService.assertNotPaused(schedule.contractorId);
       } catch {
         this.logger.log(`Schedule ${schedule.id} skipped — payouts paused`);
-        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
         return;
       }
 
@@ -224,13 +227,13 @@ export class ScheduleExecutionCron {
         balanceUSD = parseFloat(balance?.availableBalance ?? '0');
       } catch {
         this.logger.warn(`Schedule ${schedule.id} skipped — earnings service unavailable`);
-        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
         return;
       }
 
       const thresholdResult = await this.thresholdCheck.checkThreshold(schedule, balanceUSD);
       if (!thresholdResult.proceed) {
-        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
         return;
       }
 
@@ -239,7 +242,7 @@ export class ScheduleExecutionCron {
       const payoutUSD = balanceUSD - reserveUSD;
       if (payoutUSD <= 0) {
         this.logger.log(`Schedule ${schedule.id} skipped — payout amount $${payoutUSD} after reserve`);
-        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
         return;
       }
 
@@ -248,7 +251,7 @@ export class ScheduleExecutionCron {
         await this.executeSplit(schedule, payoutUSD, primaryMethod);
       } else {
         await this.executeSinglePayout(schedule, primaryMethod, payoutUSD, 'primary');
-        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
         await this.scheduleRepo.update(schedule.id, { consecutiveMissCount: 0 });
       }
 
@@ -285,7 +288,7 @@ export class ScheduleExecutionCron {
       // no debit occurred, retry primary on next scheduled cycle,
       // consecutiveMissCount NOT incremented.
       this.logger.error(`Split: primary failed for schedule ${schedule.id}`);
-      await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+      await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
       return;
     }
 
@@ -293,7 +296,7 @@ export class ScheduleExecutionCron {
     const secondaryMethod = await this.methodRepo.findOne({ where: { id: schedule.secondaryMethodId! } });
     if (!secondaryMethod || !secondaryMethod.isActive) {
       this.logger.warn(`Split: secondary method ${schedule.secondaryMethodId} inactive — primary got full amount`);
-      await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+      await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
       await this.scheduleRepo.update(schedule.id, { consecutiveMissCount: 0 });
       return;
     }
@@ -301,7 +304,7 @@ export class ScheduleExecutionCron {
     if (secondaryMethod.verificationStatus !== VerificationStatus.VERIFIED || secondaryMethod.reauthRequired) {
       // PS-18 §7.1: REAUTH_REQUIRED — skip secondary, primary already executed at its split portion
       this.logger.warn(`Split: secondary method needs reauth — skipping secondary for schedule ${schedule.id}`);
-      await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+      await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
       await this.scheduleRepo.update(schedule.id, { consecutiveMissCount: 0 });
       return;
     }
@@ -313,13 +316,13 @@ export class ScheduleExecutionCron {
       const secondaryGate = await this.kycGateService.checkGate(schedule.contractorId, secondaryMethod.id);
       if (!secondaryGate.allowed) {
         this.logger.warn(`Split: secondary KYC gate blocked (${secondaryGate.blockedBy}) — skipping secondary for schedule ${schedule.id}`);
-        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+        await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
         await this.scheduleRepo.update(schedule.id, { consecutiveMissCount: 0 });
         return;
       }
     } catch (err: any) {
       this.logger.warn(`Split: secondary KYC gate blocked (${err.errorCode ?? err.message}) — skipping secondary for schedule ${schedule.id}`);
-      await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+      await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
       await this.scheduleRepo.update(schedule.id, { consecutiveMissCount: 0 });
       return;
     }
@@ -344,7 +347,7 @@ export class ScheduleExecutionCron {
       });
     }
 
-    await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType);
+    await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
     await this.scheduleRepo.update(schedule.id, { consecutiveMissCount: 0 });
   }
 

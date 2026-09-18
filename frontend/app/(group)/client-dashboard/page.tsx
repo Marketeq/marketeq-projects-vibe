@@ -16,11 +16,17 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  CurrencyDollar,
   Download,
   Bank,
   Edit03,
+  FileCheck02,
+  Inbox01,
+  MessageSquare02,
   Phone,
+  Send01,
   UserCircle,
+  Users01,
   MapPin,
   Plus,
   Share06,
@@ -506,7 +512,7 @@ const Welcome = ({
         </div>
 
         <div className="md:pl-6 md:py-3.5 xs:max-md:mt-[25px]">
-          <NextLink href="/projects">
+          <NextLink href="/client-stats">
             <Button
               className="bg-white w-full text-dark-blue-400"
               variant="outlined"
@@ -583,6 +589,113 @@ const GETTING_STARTED_STEPS = [
   },
 ]
 
+// ---------------------------------------------------------------------------
+// Recent Activity feed (client-specific)
+// ---------------------------------------------------------------------------
+
+type ClientActivityCategory =
+  | "job"
+  | "offer"
+  | "contract"
+  | "payment"
+  | "message"
+  | "hire"
+  | "review"
+  | "application"
+
+type ClientActivityItem = {
+  icon: React.ElementType
+  title: string
+  subtitle: string
+  date: string
+  category: ClientActivityCategory
+  expandable?: boolean
+}
+
+const clientActivityItems: ClientActivityItem[] = [
+  {
+    icon: Briefcase,
+    title: "You posted a new job",
+    subtitle: "QA Engineer for Mobile App",
+    date: "Today, 2:30 PM",
+    category: "job",
+  },
+  {
+    icon: Inbox01,
+    title: "New application received",
+    subtitle: "Sarah applied to Backend API Developer",
+    date: "Today, 11:45 AM",
+    category: "application",
+  },
+  {
+    icon: Send01,
+    title: "Offer sent",
+    subtitle: "You sent an offer to Marcus for UI/UX Design",
+    date: "Yesterday, 4:15 PM",
+    category: "offer",
+  },
+  {
+    icon: FileCheck02,
+    title: "Contract started",
+    subtitle: "Mobile App Redesign with Devon",
+    date: "Yesterday, 10:00 AM",
+    category: "contract",
+  },
+  {
+    icon: CurrencyDollar,
+    title: "Payment processed",
+    subtitle: "$2,400 milestone payment for Brand Identity",
+    date: "Sep 14, 3:20 PM",
+    category: "payment",
+  },
+  {
+    icon: MessageSquare02,
+    title: "New message",
+    subtitle: "Devon sent you a message about Mobile App Redesign",
+    date: "Sep 14, 1:05 PM",
+    category: "message",
+  },
+  {
+    icon: Users01,
+    title: "Talent hired",
+    subtitle: "You hired Alex for Content Strategy",
+    date: "Sep 13, 9:30 AM",
+    category: "hire",
+  },
+  {
+    icon: Star,
+    title: "Review submitted",
+    subtitle: "You left a 5-star review for Brand Identity project",
+    date: "Sep 12, 5:00 PM",
+    category: "review",
+  },
+  {
+    icon: Check,
+    title: "Offer accepted",
+    subtitle: "Marcus accepted your offer for UI/UX Design",
+    date: "Sep 12, 2:15 PM",
+    category: "offer",
+  },
+  {
+    icon: Briefcase,
+    title: "Job updated",
+    subtitle: "You updated the description for Frontend Developer role",
+    date: "Sep 11, 11:00 AM",
+    category: "job",
+  },
+]
+
+const clientActivityCategoryStyles: Record<ClientActivityCategory, { bg: string; icon: string }> = {
+  job: { bg: "bg-primary-50", icon: "text-primary-500" },
+  offer: { bg: "bg-warning-50", icon: "text-warning-500" },
+  contract: { bg: "bg-success-50", icon: "text-success-500" },
+  payment: { bg: "bg-success-50", icon: "text-success-500" },
+  message: { bg: "bg-primary-50", icon: "text-primary-500" },
+  hire: { bg: "bg-primary-50", icon: "text-primary-500" },
+  review: { bg: "bg-warning-50", icon: "text-warning-500" },
+  application: { bg: "bg-gray-100", icon: "text-gray-500" },
+}
+
 const RecentActivity = ({
   user,
   onStepChange,
@@ -629,9 +742,11 @@ const RecentActivity = ({
       <TabsList className="w-full justify-start border-b-0">
         <TabsTrigger value="Next Steps">
           Next Steps
-          <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-            {remainingSteps}
-          </span>
+          {remainingSteps > 0 && (
+            <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
+              {remainingSteps}
+            </span>
+          )}
         </TabsTrigger>
         <TabsTrigger value="Recent Activity">Recent Activity</TabsTrigger>
 
@@ -736,6 +851,38 @@ const RecentActivity = ({
           </Accordion>
         </div>
       </TabsContent>
+
+      <TabsContent value="Recent Activity">
+        <div className="pt-3">
+          <div className="border p-5 rounded-lg bg-white border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-dark-blue-400">Recent Activity</h2>
+            </div>
+
+            <div className="relative space-y-0">
+              {/* Timeline line */}
+              <div className="absolute left-4 top-10 bottom-4 w-px bg-gray-200" />
+
+              {clientActivityItems.map((item, i) => {
+                const Icon = item.icon
+                const styles = clientActivityCategoryStyles[item.category]
+                return (
+                  <div key={i} className="flex items-start gap-3 relative py-2.5">
+                    <div className={`flex items-center justify-center size-8 rounded-full flex-none mt-0.5 z-10 ${styles.bg}`}>
+                      <Icon className={`size-4 ${styles.icon}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-dark-blue-400">{item.title}</p>
+                      <p className="text-sm text-gray-500 mt-0.5">{item.subtitle}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{item.date}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </TabsContent>
     </Tabs>
   )
 }
@@ -758,12 +905,12 @@ const Content = ({
 }: { profile?: DashboardProfile | null } & ProfileCtaHandlers) => {
   const [isOpen, toggleIsOpen] = useToggle(false)
   return (
-    <div className="flex-auto pt-3.5 px-3.5 md:pt-6 md:px-6 min-[1024px]:px-8 min-[1200px]:pl-[274px] min-[1024px]:pt-[50px] min-[1200px]:pr-[50px]">
-      <div className="flex min-[1440px]:gap-x-8 justify-center overflow-hidden">
-        <div className="xs:max-[1440px]:flex-auto min-[1440px]:max-w-[1024px] space-y-3 md:space-y-5 min-w-0">
+    <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px] overflow-hidden">
+        <div className="flex-auto space-y-3 md:space-y-5 min-w-0">
           <Welcome onOpenProfile={toggleIsOpen} user={profile} />
           <RecentActivity user={profile} />
           <RecentProjects />
+          <Footer />
         </div>
 
         <RightSidebar profile={profile} {...handlers} />
@@ -805,8 +952,6 @@ const Content = ({
             </ScrollArea>
           </DialogContent>
         </Dialog>
-      </div>
-      <Footer />
     </div>
   )
 }
@@ -1107,9 +1252,6 @@ const RightSidebarDownPart = ({
             <TabsTrigger value="Transactions">Transactions</TabsTrigger>
             <TabsTrigger value="Invoices">
               Invoices
-              <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-                0
-              </span>
             </TabsTrigger>
           </TabsList>
           <TabsContent value="Transactions">

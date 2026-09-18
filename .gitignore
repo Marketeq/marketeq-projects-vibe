@@ -162,3 +162,7 @@ backend/gen-token.js
 .vscode/
 patch-transactions-comps.js
 .claude/worktrees/
+CLAUDE.local.md
+.claude/settings.local.json
+.env.offers-cloud
+backend/.env.offers-cloud

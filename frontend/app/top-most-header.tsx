@@ -1686,6 +1686,7 @@ const PATHNAMES = [
 const HAS_SIDEBAR_NAV = [
   "/talent-dashboard",
   "/client-dashboard",
+  "/client-stats",
   "/inbox",
   "/earnings",
   "/my-teams",
@@ -1699,6 +1700,8 @@ const HAS_SIDEBAR_NAV = [
   "/notifications",
   "/complete-profile",
   "/settings",
+  "/active-project",
+  "/billing",
 ]
 
 // Pages that have a secondary nav bar below the primary nav — shadow should only appear on the secondary nav, not the primary
@@ -1774,7 +1777,9 @@ export const TopMostHeader = ({
 
   // Show shadow: always on pages without secondary nav, or when secondary nav is hidden (scrolled away)
   const showNavShadow = !hasSecondaryNav || secondaryNavHidden
-  const hasSidebarNav = HAS_SIDEBAR_NAV.includes(pathname)
+  const hasSidebarNav = HAS_SIDEBAR_NAV.some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  )
 
   return (
     <div

@@ -90,7 +90,16 @@ export class CaseStudyService {
       const csRepo = manager.getRepository(CaseStudy);
       const likeRepo = manager.getRepository(CaseStudyLike);
 
-      const cs = await csRepo.findOne({ where: { id }, select: { id: true } });
+      // Locked for the whole toggle, because the recount below has to see
+      // every committed like. Under READ COMMITTED two concurrent likes from
+      // different users would each see only their own insert, both count 1,
+      // and both write that same too-low total — leaving likesCount short of
+      // the real number of rows. The lock serializes toggles per case study.
+      const cs = await csRepo.findOne({
+        where: { id },
+        select: { id: true },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!cs) {
         throw new NotFoundException('Case study not found');
       }

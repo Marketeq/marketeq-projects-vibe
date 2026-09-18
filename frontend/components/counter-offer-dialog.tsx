@@ -51,6 +51,10 @@ interface CounterOfferDialogProps {
   data: OfferDialogData
   message?: string
   submitDisabled?: boolean
+  /** PMCM-393 AC-42.04: set while the underlying offer has gone terminal
+   * mid-compose — shown next to the submit action, which the caller also
+   * disables via submitDisabled. */
+  terminalNotice?: string
   onMessageChange?: (value: string) => void
   onCancel?: () => void
   onReview?: () => void
@@ -300,6 +304,7 @@ export function CounterOfferDialog({
   data,
   message,
   submitDisabled = false,
+  terminalNotice,
   onMessageChange,
   onCancel,
   onReview,
@@ -605,6 +610,18 @@ export function CounterOfferDialog({
                 </div>
               </div>
 
+              {terminalNotice ? (
+                <div className="border-t border-gray-100 px-6 pt-4">
+                  <Alert className="min-h-[auto] p-4">
+                    <AlertIcon className="shrink-0">
+                      <Info className="size-5" />
+                    </AlertIcon>
+                    <AlertContent className="text-sm font-semibold leading-5 text-gray-600">
+                      {terminalNotice}
+                    </AlertContent>
+                  </Alert>
+                </div>
+              ) : null}
               <div className="flex shrink-0 items-center justify-between border-t border-gray-100 px-6 py-4">
                 <Button variant="outlined" visual="gray" onClick={onCancel}>
                   {mode === "edit" ? "View Previous Offer" : "Previous Offer"}
@@ -621,6 +638,7 @@ export function CounterOfferDialog({
                     {mode === "edit" ? "Edit Offer" : "Edit Counter Offer"}
                   </Button>
                   <Button
+                    disabled={submitDisabled}
                     onClick={() =>
                       onSubmit?.({
                         offerRate: state.rateValue,
@@ -1167,6 +1185,17 @@ export function CounterOfferDialog({
                   </div>
                 </div>
               </div>
+
+              {terminalNotice ? (
+                <Alert className="min-h-[auto] p-4">
+                  <AlertIcon className="shrink-0">
+                    <Info className="size-5" />
+                  </AlertIcon>
+                  <AlertContent className="text-sm font-semibold leading-5 text-gray-600">
+                    {terminalNotice}
+                  </AlertContent>
+                </Alert>
+              ) : null}
 
               <div className="flex items-center justify-end gap-3">
                 <Button
