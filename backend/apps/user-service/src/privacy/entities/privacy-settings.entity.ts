@@ -18,7 +18,7 @@ export class PrivacySettings {
   id: string;
 
   @Index({ unique: true })
-  @Column({ type: 'uuid' })
+  @Column({ name: 'user_id', type: 'uuid' })
   userId: string;
 
   /**
@@ -35,9 +35,9 @@ export class PrivacySettings {
   @Column({ type: 'jsonb', nullable: true })
   client: Record<string, any> | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 }
