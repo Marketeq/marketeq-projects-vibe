@@ -80,7 +80,7 @@
   transition: opacity 0.15s ease;
 }
 .group:hover .sidebar-anim-home .sidebar-door-shadow {
-  opacity: 0.2;
+  opacity: 1;
 }
 
 /* --- Inbox flap cross-fade defaults --- */
