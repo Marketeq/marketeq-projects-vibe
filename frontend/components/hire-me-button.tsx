@@ -2478,8 +2478,18 @@ export function OfferDialog({
                                             // just styles it gray.
                                             minValue={new Date()}
                                             onValueChange={(date) => {
-                                              setSelectedStartDate(date)
-                                              setFocusedStartDate(date)
+                                              // BTB-266: matches
+                                              // computeEstimatedStartDate's
+                                              // existing weekend handling —
+                                              // silent snap to the following
+                                              // Monday, no toast/warning.
+                                              const adjusted = isWeekendDate(
+                                                date
+                                              )
+                                                ? getNextMondayOnOrAfter(date)
+                                                : date
+                                              setSelectedStartDate(adjusted)
+                                              setFocusedStartDate(adjusted)
                                               setSelectedStartDateAction(
                                                 "change"
                                               )
