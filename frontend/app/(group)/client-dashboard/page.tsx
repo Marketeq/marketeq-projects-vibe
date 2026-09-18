@@ -506,7 +506,7 @@ const Welcome = ({
         </div>
 
         <div className="md:pl-6 md:py-3.5 xs:max-md:mt-[25px]">
-          <NextLink href="/projects">
+          <NextLink href="/client-stats">
             <Button
               className="bg-white w-full text-dark-blue-400"
               variant="outlined"

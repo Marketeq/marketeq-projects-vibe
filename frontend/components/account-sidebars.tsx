@@ -130,7 +130,7 @@ const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
       { href: "/client-dashboard", label: "Home", icon: Home03 },
       { href: "/my-contracts", label: "My Contracts", icon: FileCheck02 },
       { href: "/my-jobs", label: "My Jobs", icon: Briefcase },
-      { href: "/stats", label: "Stats & Trends", icon: BarChartSquare02 },
+      { href: "/client-stats", label: "Stats & Trends", icon: BarChartSquare02 },
     ],
   },
   {
