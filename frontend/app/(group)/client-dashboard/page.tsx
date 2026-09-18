@@ -477,32 +477,32 @@ const Welcome = ({
 
       <div className="flex md:flex-row flex-col xs:max-md:gap-y-5 md:items-center bg-white p-5 border rounded-lg border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
         <div className="grid grid-cols-2 md:grid-cols-4 xs:max-md:gap-y-[38px] xs:max-md:pt-[13px] md:divide-x md:divide-gray-200 flex-auto md:border-r md:border-gray-200">
-          <article className="md:px-6 space-y-3">
-            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400">
+          <article className="md:px-3 space-y-3">
+            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400 whitespace-nowrap">
               Active Projects
             </p>
             <h1 className="text-2xl text-center leading-[29.05px] font-semibold text-dark-blue-400">
               0
             </h1>
           </article>
-          <article className="md:px-6 space-y-3">
-            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400">
+          <article className="md:px-3 space-y-3">
+            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400 whitespace-nowrap">
               Completed Projects
             </p>
             <h1 className="text-2xl text-center leading-[29.05px] font-semibold text-dark-blue-400">
               {user?.totalProjectsCompleted ?? 0}
             </h1>
           </article>
-          <article className="md:px-6 space-y-3">
-            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400">
+          <article className="md:px-3 space-y-3">
+            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400 whitespace-nowrap">
               Paused Projects
             </p>
             <h1 className="text-2xl text-center leading-[29.05px] font-semibold text-dark-blue-400">
               0
             </h1>
           </article>
-          <article className="md:px-6 space-y-3">
-            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400">
+          <article className="md:px-3 space-y-3">
+            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400 whitespace-nowrap">
               Overdue Tasks
             </p>
             <h1 className="text-2xl text-center leading-[29.05px] font-semibold text-dark-blue-400">

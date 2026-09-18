@@ -1065,6 +1065,7 @@ const Notifications = () => {
               size="md"
               variant="ghost"
               visual="gray"
+              title="Notifications"
             >
               <Bell className="size-[18px]" />
             </IconButton>
@@ -1809,6 +1810,7 @@ export const TopMostHeader = ({
                 visual="gray"
                 variant="outlined"
                 size="md"
+                title="My Balance"
               >
                 <span className="inline-flex items-center gap-x-[7.2px] lg:gap-x-1 text-[12.6px] leading-5 lg:text-base lg:leading-6 font-light">
                   <span className="font-semibold">$ 1,540</span> USD
@@ -1837,6 +1839,7 @@ export const TopMostHeader = ({
                     size="md"
                     variant="ghost"
                     visual="gray"
+                    title="Invite"
                   >
                     <Plus className="size-[18px]" />
                   </IconButton>
