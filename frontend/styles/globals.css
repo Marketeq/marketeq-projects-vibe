@@ -75,12 +75,13 @@
   transform-box: fill-box;
   transform-origin: left center;
 }
-.sidebar-door-shadow {
-  opacity: 0;
-  transition: opacity 0.15s ease;
+.sidebar-door-shadow { opacity: 0; }
+@keyframes sidebar-door-shadow-show {
+  0%, 100% { opacity: 0; }
+  20%, 60% { opacity: 1; }
 }
 .group:hover .sidebar-anim-home .sidebar-door-shadow {
-  opacity: 1;
+  animation: sidebar-door-shadow-show 0.6s ease;
 }
 
 /* --- Inbox flap cross-fade defaults --- */
