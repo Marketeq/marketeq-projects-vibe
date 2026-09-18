@@ -133,8 +133,19 @@ const AnimatedMail = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 19 19" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     {/* Envelope body */}
     <path d="M5.35 15.49h7.8c1.26 0 1.89 0 2.372-.245a2.25 2.25 0 0 0 .983-.983c.245-.482.245-1.112.245-2.372v-4.8c0-1.26 0-1.89-.245-2.371a2.25 2.25 0 0 0-.984-.984c-.48-.245-1.11-.245-2.371-.245h-7.8c-1.26 0-1.89 0-2.371.245a2.25 2.25 0 0 0-.984.984c-.245.48-.245 1.111-.245 2.371v4.8c0 1.26 0 1.89.245 2.372.216.423.56.767.984.983.48.245 1.11.245 2.371.245Z" />
-    {/* Envelope flap (V-line) */}
-    <path className="sidebar-flap" d="m1.749 5.74 6.124 4.287c.496.347.744.52 1.013.588.238.059.488.059.726 0 .27-.068.518-.241 1.013-.588L16.75 5.74" />
+    {/* Closed flap (V pointing down into envelope) */}
+    <path className="sidebar-flap-closed" d="m1.749 5.74 6.124 4.287c.496.347.744.52 1.013.588.238.059.488.059.726 0 .27-.068.518-.241 1.013-.588L16.75 5.74" />
+    {/* Open flap (V pointing up above envelope) */}
+    <path className="sidebar-flap-open" d="m1.749 5.74 6.124-4.287c.496-.347.744-.52 1.013-.588.238-.059.488-.059.726 0 .27.068.518.241 1.013.588L16.75 5.74" />
+  </svg>
+)
+
+const AnimatedDollar = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 19 19" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    {/* S-curve (top to bottom) */}
+    <path className="sidebar-dollar-s" d="M14.085 6.984a3 3 0 0 0-3-3h-3a3 3 0 1 0 0 6h3a3 3 0 0 1 0 6h-3a3 3 0 0 1-3-3" />
+    {/* Vertical line */}
+    <line x1="9.585" y1="2.484" x2="9.585" y2="17.484" className="sidebar-dollar-line" />
   </svg>
 )
 
@@ -144,6 +155,7 @@ const ANIMATED_ICONS: Partial<Record<string, ComponentType<{ className?: string 
   "My Contracts": AnimatedFileCheck,
   Reports: AnimatedBarChart,
   "Stats & Trends": AnimatedBarChart,
+  Financials: AnimatedDollar,
   Inbox: AnimatedMail,
 }
 
