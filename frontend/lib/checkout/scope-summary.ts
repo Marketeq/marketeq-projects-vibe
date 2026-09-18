@@ -5,6 +5,7 @@ export type CheckoutDraftTask = {
   title: string
   description: string | null
   roleName: string | null
+  assigneeUserId: string | null
   location: string[] | null
   experienceLevel: string | null
   estimatedHours: number | null

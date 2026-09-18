@@ -1254,6 +1254,7 @@ export class PublishService {
         return {
           title: task.taskName,
           roleName: task.role,
+          assigneeUserId: task.assigneeUserId ?? null,
           location: task.location ?? [],
           experienceLevel:
             task.experienceLevel ?? task.experience?.[0] ?? 'Medior',

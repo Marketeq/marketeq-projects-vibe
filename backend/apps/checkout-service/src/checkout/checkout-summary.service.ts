@@ -1,14 +1,23 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
+import * as jwt from 'jsonwebtoken';
+import { CheckoutRateSelectionDto } from './dto/calculate-rate-estimate.dto';
 
 export type SummaryScopeTask = {
   id: string;
   title: string;
   description: string | null;
   roleName: string | null;
+  assigneeUserId: string | null;
   location: string[] | null;
   experienceLevel: string | null;
   estimatedHours: number | null;
@@ -25,6 +34,7 @@ type RawScopeTask = {
   title?: string;
   description?: string;
   roleName?: string;
+  assigneeUserId?: string | null;
   location?: string[];
   experienceLevel?: string;
   estimatedHours?: number;
@@ -36,6 +46,48 @@ type RawScopePhase = {
   tasks?: RawScopeTask[];
 };
 
+type PricingBudgetRoleResult = {
+  hourlyRateUsdCents: number | null;
+  isStale: boolean;
+  noData: boolean;
+};
+
+const normalizeRoleKey = (value: string): string =>
+  value.trim().toLowerCase().replace(/\s+/g, ' ');
+
+const normalizeExperience = (value?: string | null) => {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized === 'student' || normalized === 'junior') return 'junior';
+  if (
+    normalized === 'medior' ||
+    normalized === 'mediator' ||
+    normalized === 'mid'
+  ) {
+    return 'mid';
+  }
+  if (normalized === 'senior' || normalized === 'guru') return 'senior';
+  return undefined;
+};
+
+const PRICING_REGIONS = new Map<string, string>([
+  ['united states', 'United States'],
+  ['usa', 'United States'],
+  ['canada', 'Canada'],
+  ['united kingdom', 'United Kingdom'],
+  ['uk', 'United Kingdom'],
+  ['western europe', 'Western Europe'],
+  ['eastern europe', 'Eastern Europe'],
+  ['latin america', 'Latin America'],
+  ['south asia', 'South Asia'],
+  ['india', 'South Asia'],
+  ['pakistan', 'South Asia'],
+  ['southeast asia', 'Southeast Asia'],
+]);
+
+const normalizeLocation = (value?: string | null) =>
+  value ? PRICING_REGIONS.get(value.trim().toLowerCase()) : undefined;
+
 const normalizeScopePhases = (raw: RawScopePhase[]): SummaryScopePhase[] =>
   (Array.isArray(raw) ? raw : []).map((phase, phaseIndex) => {
     const phaseId = `phase-${phaseIndex}`;
@@ -45,6 +97,7 @@ const normalizeScopePhases = (raw: RawScopePhase[]): SummaryScopePhase[] =>
         title: task?.title ?? 'Untitled task',
         description: task?.description ?? null,
         roleName: task?.roleName ?? null,
+        assigneeUserId: task?.assigneeUserId ?? null,
         location: task?.location ?? null,
         experienceLevel: task?.experienceLevel ?? null,
         estimatedHours: task?.estimatedHours ?? null,
@@ -64,6 +117,8 @@ const normalizeScopePhases = (raw: RawScopePhase[]): SummaryScopePhase[] =>
 export class CheckoutSummaryService {
   private readonly logger = new Logger(CheckoutSummaryService.name);
   private readonly listingsUrl: string;
+  private readonly pricingUrl: string;
+  private readonly jwtSecret?: string;
 
   constructor(
     private readonly http: HttpService,
@@ -71,6 +126,9 @@ export class CheckoutSummaryService {
   ) {
     this.listingsUrl =
       config.get<string>('LISTINGS_SERVICE_URL') || 'http://localhost:3004';
+    this.pricingUrl =
+      config.get<string>('PRICING_SERVICE_URL') || 'http://localhost:3029';
+    this.jwtSecret = config.get<string>('JWT_SECRET');
   }
 
   async getSummary(listingId: string) {
@@ -84,6 +142,115 @@ export class CheckoutSummaryService {
       phases: normalizeScopePhases(project.scope ?? []),
       projectCost: typeof project.budget === 'number' ? project.budget : null,
     };
+  }
+
+  async getRateEstimate(
+    listingId: string,
+    selections: CheckoutRateSelectionDto[],
+  ) {
+    const project = await this.fetchProject(listingId);
+    const phases = normalizeScopePhases(project.scope ?? []);
+    const selectionByRole = new Map(
+      selections.map((selection) => [
+        normalizeRoleKey(selection.roleKey),
+        selection,
+      ]),
+    );
+    const groups = new Map<
+      string,
+      {
+        roleTitle: string;
+        experience: string | null;
+        location: string | null;
+        estimatedHours: number;
+      }
+    >();
+
+    for (const phase of phases) {
+      for (const task of phase.tasks) {
+        if (task.assigneeUserId || !task.roleName) continue;
+        const roleKey = normalizeRoleKey(task.roleName);
+        const group = groups.get(roleKey) ?? {
+          roleTitle: task.roleName,
+          experience: task.experienceLevel,
+          location: task.location?.[0] ?? null,
+          estimatedHours: 0,
+        };
+        const hours = Number(task.estimatedHours);
+        if (Number.isFinite(hours) && hours > 0) {
+          group.estimatedHours += hours;
+        }
+        groups.set(roleKey, group);
+      }
+    }
+
+    if (groups.size === 0) {
+      return { listingId, rates: [] };
+    }
+    if (!this.jwtSecret) {
+      throw new ServiceUnavailableException(
+        'Pricing authentication is not configured',
+      );
+    }
+
+    const groupedRoles = Array.from(groups.entries());
+    const roles = groupedRoles.map(([roleKey, group]) => {
+      const selection = selectionByRole.get(roleKey);
+      return {
+        roleTitle: group.roleTitle,
+        location: normalizeLocation(selection?.location ?? group.location),
+        experienceLevel: normalizeExperience(
+          selection?.experience ?? group.experience,
+        ),
+        estimatedHours: Math.max(1, Math.round(group.estimatedHours)),
+      };
+    });
+
+    try {
+      const token = jwt.sign({ sub: 'checkout-service' }, this.jwtSecret, {
+        expiresIn: '5m',
+      });
+      const response = await firstValueFrom(
+        this.http.post(
+          `${this.pricingUrl}/v1/budget/calculate`,
+          { roles },
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 5_000,
+          },
+        ),
+      );
+      const pricingRoles = response.data?.roles as
+        | PricingBudgetRoleResult[]
+        | undefined;
+      if (!Array.isArray(pricingRoles) || pricingRoles.length !== roles.length) {
+        throw new BadGatewayException(
+          'Pricing service returned an invalid response',
+        );
+      }
+
+      return {
+        listingId,
+        rates: groupedRoles.map(([roleKey], index) => ({
+          roleKey,
+          hourlyRateUsdCents:
+            typeof pricingRoles[index].hourlyRateUsdCents === 'number'
+              ? pricingRoles[index].hourlyRateUsdCents
+              : null,
+          noData: Boolean(pricingRoles[index].noData),
+          isStale: Boolean(pricingRoles[index].isStale),
+        })),
+      };
+    } catch (err) {
+      if (err instanceof BadGatewayException) throw err;
+      const axiosErr = err as AxiosError;
+      this.logger.warn(
+        `Failed to estimate rates for listing ${listingId}: ${axiosErr.message}`,
+      );
+      throw new BadGatewayException(
+        'Pricing estimate is temporarily unavailable',
+      );
+    }
   }
 
   private async fetchProject(listingId: string): Promise<any> {

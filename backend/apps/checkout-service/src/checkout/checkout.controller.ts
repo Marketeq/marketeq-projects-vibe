@@ -34,6 +34,7 @@ import { WalletTopUpDto } from './dto/wallet-topup.dto';
 import { StoreMetadataDto } from './dto/store-metadata.dto';
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
 import { ConfirmPaymentIntentDto } from './dto/confirm-payment-intent.dto';
+import { CalculateRateEstimateDto } from './dto/calculate-rate-estimate.dto';
 
 @Controller("v1/checkout")
 export class CheckoutController {
@@ -57,6 +58,16 @@ export class CheckoutController {
       phases: dto.phases,
       projectCost: dto.projectCost,
     });
+  @Post("listings/:listingId/rate-estimate")
+  @UseGuards(JwtAuthGuard)
+  getListingRateEstimate(
+    @Param('listingId') listingId: string,
+    @Body() dto: CalculateRateEstimateDto,
+  ) {
+    return this.checkoutSummaryService.getRateEstimate(
+      listingId,
+      dto.selections,
+    );
   }
 
   // ─── Existing Endpoints (now with auth + proper DTOs) ─────────────

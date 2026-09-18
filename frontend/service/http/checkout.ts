@@ -9,6 +9,22 @@ export type CheckoutInstallmentPlan =
   | "quarterly"
   | "yearly"
 
+export type CheckoutRateSelection = {
+  roleKey: string
+  experience?: string
+  location?: string
+}
+
+export type CheckoutRateEstimate = {
+  listingId: string
+  rates: Array<{
+    roleKey: string
+    hourlyRateUsdCents: number | null
+    noData: boolean
+    isStale: boolean
+  }>
+}
+
 export const CheckoutAPI = {
   CreateSession: (data: {
     projectId: string
@@ -43,4 +59,10 @@ export const CheckoutAPI = {
 
   GetListingSummary: (listingId: string) =>
     AxiosRequest.get(`/v1/checkout/listings/${listingId}/summary`),
+
+  GetRateEstimate: (listingId: string, selections: CheckoutRateSelection[]) =>
+    AxiosRequest.post<{ selections: CheckoutRateSelection[] }>(
+      `/v1/checkout/listings/${listingId}/rate-estimate`,
+      { selections }
+    ),
 }
