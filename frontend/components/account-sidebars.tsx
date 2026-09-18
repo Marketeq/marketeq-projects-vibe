@@ -106,7 +106,8 @@ const SidebarLink = ({
       <TooltipTrigger asChild>
         <NextLink
           className={cn(
-            "relative flex w-full items-center gap-x-3 font-semibold text-sm leading-6 text-dark-blue-400 rounded-[5px] h-10 flex-none px-3 whitespace-nowrap",
+            "relative flex items-center font-semibold text-sm leading-6 text-dark-blue-400 rounded-[5px] h-10 flex-none whitespace-nowrap",
+            collapsed ? "w-10 mx-auto justify-center" : "w-full gap-x-3 px-3",
             isActive ? "bg-primary-50 text-primary-500" : "hover:bg-gray-100"
           )}
           href={item.href}
@@ -124,8 +125,8 @@ const SidebarLink = ({
           </span>
           <span
             className={cn(
-              "truncate transition-opacity duration-300",
-              collapsed ? "opacity-0" : "opacity-100"
+              "truncate transition-all duration-300",
+              collapsed ? "opacity-0 w-0" : "opacity-100"
             )}
           >
             {item.label}
@@ -133,8 +134,8 @@ const SidebarLink = ({
           {item.badge && (
             <Badge
               className={cn(
-                "rounded-full ml-auto shrink-0 transition-opacity duration-300",
-                collapsed ? "opacity-0" : "opacity-100"
+                "rounded-full ml-auto shrink-0 transition-all duration-300",
+                collapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
               )}
               size="md"
               visual={isActive ? "primary" : "error"}
@@ -307,7 +308,7 @@ const SidebarShell = ({
           "shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200 overflow-hidden overflow-y-auto",
           "transition-[width] duration-300 ease-in-out",
           "px-3 py-[15px] space-y-6",
-          collapsed ? "w-[64px]" : "w-[224px]"
+          collapsed ? "w-[72px]" : "w-[224px]"
         )}
       >
         <CollapseToggle collapsed={collapsed} onToggle={toggle} />
