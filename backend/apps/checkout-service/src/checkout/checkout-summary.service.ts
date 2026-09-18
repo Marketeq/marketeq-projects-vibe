@@ -70,24 +70,6 @@ const normalizeExperience = (value?: string | null) => {
   return undefined;
 };
 
-const PRICING_REGIONS = new Map<string, string>([
-  ['united states', 'United States'],
-  ['usa', 'United States'],
-  ['canada', 'Canada'],
-  ['united kingdom', 'United Kingdom'],
-  ['uk', 'United Kingdom'],
-  ['western europe', 'Western Europe'],
-  ['eastern europe', 'Eastern Europe'],
-  ['latin america', 'Latin America'],
-  ['south asia', 'South Asia'],
-  ['india', 'South Asia'],
-  ['pakistan', 'South Asia'],
-  ['southeast asia', 'Southeast Asia'],
-]);
-
-const normalizeLocation = (value?: string | null) =>
-  value ? PRICING_REGIONS.get(value.trim().toLowerCase()) : undefined;
-
 const normalizeScopePhases = (raw: RawScopePhase[]): SummaryScopePhase[] =>
   (Array.isArray(raw) ? raw : []).map((phase, phaseIndex) => {
     const phaseId = `phase-${phaseIndex}`;
@@ -198,7 +180,7 @@ export class CheckoutSummaryService {
       const selection = selectionByRole.get(roleKey);
       return {
         roleTitle: group.roleTitle,
-        location: normalizeLocation(selection?.location ?? group.location),
+        location: selection?.location ?? group.location ?? undefined,
         experienceLevel: normalizeExperience(
           selection?.experience ?? group.experience,
         ),
@@ -206,51 +188,74 @@ export class CheckoutSummaryService {
       };
     });
 
-    try {
-      const token = jwt.sign({ sub: 'checkout-service' }, this.jwtSecret, {
-        expiresIn: '5m',
-      });
-      const response = await firstValueFrom(
-        this.http.post(
-          `${this.pricingUrl}/v1/budget/calculate`,
-          { roles },
-          {
-            headers: { Authorization: `Bearer ${token}` },
-            timeout: 5_000,
-          },
-        ),
-      );
-      const pricingRoles = response.data?.roles as
-        | PricingBudgetRoleResult[]
-        | undefined;
-      if (!Array.isArray(pricingRoles) || pricingRoles.length !== roles.length) {
+    const resolvedIndices: number[] = [];
+    const rolesToPrice: typeof roles = [];
+    roles.forEach((role, index) => {
+      if (role.location) {
+        resolvedIndices.push(index);
+        rolesToPrice.push(role);
+      }
+    });
+
+    const pricingRoles: PricingBudgetRoleResult[] = roles.map(() => ({
+      hourlyRateUsdCents: null,
+      isStale: false,
+      noData: true,
+    }));
+
+    if (rolesToPrice.length > 0) {
+      try {
+        const token = jwt.sign({ sub: 'checkout-service' }, this.jwtSecret, {
+          expiresIn: '5m',
+        });
+        const response = await firstValueFrom(
+          this.http.post(
+            `${this.pricingUrl}/v1/budget/calculate`,
+            { roles: rolesToPrice },
+            {
+              headers: { Authorization: `Bearer ${token}` },
+              timeout: 5_000,
+            },
+          ),
+        );
+        const pricedResults = response.data?.roles as
+          | PricingBudgetRoleResult[]
+          | undefined;
+        if (
+          !Array.isArray(pricedResults) ||
+          pricedResults.length !== rolesToPrice.length
+        ) {
+          throw new BadGatewayException(
+            'Pricing service returned an invalid response',
+          );
+        }
+        resolvedIndices.forEach((roleIndex, i) => {
+          pricingRoles[roleIndex] = pricedResults[i];
+        });
+      } catch (err) {
+        if (err instanceof BadGatewayException) throw err;
+        const axiosErr = err as AxiosError;
+        this.logger.warn(
+          `Failed to estimate rates for listing ${listingId}: ${axiosErr.message}`,
+        );
         throw new BadGatewayException(
-          'Pricing service returned an invalid response',
+          'Pricing estimate is temporarily unavailable',
         );
       }
-
-      return {
-        listingId,
-        rates: groupedRoles.map(([roleKey], index) => ({
-          roleKey,
-          hourlyRateUsdCents:
-            typeof pricingRoles[index].hourlyRateUsdCents === 'number'
-              ? pricingRoles[index].hourlyRateUsdCents
-              : null,
-          noData: Boolean(pricingRoles[index].noData),
-          isStale: Boolean(pricingRoles[index].isStale),
-        })),
-      };
-    } catch (err) {
-      if (err instanceof BadGatewayException) throw err;
-      const axiosErr = err as AxiosError;
-      this.logger.warn(
-        `Failed to estimate rates for listing ${listingId}: ${axiosErr.message}`,
-      );
-      throw new BadGatewayException(
-        'Pricing estimate is temporarily unavailable',
-      );
     }
+
+    return {
+      listingId,
+      rates: groupedRoles.map(([roleKey], index) => ({
+        roleKey,
+        hourlyRateUsdCents:
+          typeof pricingRoles[index].hourlyRateUsdCents === 'number'
+            ? pricingRoles[index].hourlyRateUsdCents
+            : null,
+        noData: Boolean(pricingRoles[index].noData),
+        isStale: Boolean(pricingRoles[index].isStale),
+      })),
+    };
   }
 
   private async fetchProject(listingId: string): Promise<any> {
