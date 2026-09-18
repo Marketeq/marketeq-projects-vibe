@@ -10,7 +10,6 @@ import { JobListingTask } from '../entities/job-listing-task.entity';
 import { JobListing } from '../entities/job-listing.entity';
 import { TeamMemberRow } from '../entities/job-listing-role-row.entity';
 import { WorkSchedule } from '../enums/work-schedule.enum';
-import { hourlyRateForTask, popularRegionForRole } from '../../shared/utils/pricing';
 
 // ── Hours per week for each standard schedule ────────────────────────────────
 const HOURS_PER_WEEK: Record<string, number> = {
@@ -276,11 +275,8 @@ export class JobListingBudgetService {
   // region, and experience level.
   // When location or experienceLevel is missing, pricing-service returns the
   // platform average for the role across all regions/levels.
-  // Fallback chain:
-  //   1. pricing-service real data (PlatformRateAverage)
-  //   2. Static rate table (hourlyRateForTask) using the most popular
-  //      sourcing region for the role — produces realistic estimates
-  //      when the platform lacks transaction history for a role/region combo.
+  // Returns 0 when pricing-service has no rate or is unavailable so the
+  // listing can remain saveable/publishable while the budget is stale.
   async getRateUsdCents(
     roleTitle: string,
     location: string | null,
@@ -303,24 +299,14 @@ export class JobListingBudgetService {
       const median = response.data.hourlyRateMedianUsdCents;
       if (median != null) return median;
 
-      // pricing-service returned noData — fall back to static rate table
-      this.logger.log(
-        `No platform rate data for "${roleTitle}" in "${location ?? 'any'}" — using static fallback`,
+      this.logger.warn(
+        `No platform rate data for "${roleTitle}" in "${location ?? 'any'}" — using zero rate`,
       );
     } catch {
       this.logger.warn(`pricing-service unavailable for rate lookup: ${roleTitle}`);
     }
 
-    // Static fallback: use the most popular sourcing region for this role
-    // so budget estimates reflect realistic talent market rates.
-    const fallbackLocation = location ?? popularRegionForRole(roleTitle);
-    const fallbackRate = hourlyRateForTask({
-      roleName: roleTitle,
-      experienceLevel: experienceLevel ?? 'Mid',
-      location: fallbackLocation,
-    });
-    // hourlyRateForTask returns dollars — convert to USD cents
-    return fallbackRate * 100;
+    return 0;
   }
 
   // Signs a short-lived internal token for pricing-service's InternalJwtGuard.

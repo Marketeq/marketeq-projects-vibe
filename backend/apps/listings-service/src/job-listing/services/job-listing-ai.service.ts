@@ -1270,12 +1270,21 @@ export class JobListingAiService {
               "You generate a service scope structure for an ongoing freelance engagement. " +
               'Respond only with a JSON object: { "phases": [{ "phaseName": "string", ' +
               '"phaseType": "setup|recurring|ongoing", "recurrenceSchedule": "weekly|monthly|quarterly|null", ' +
-              '"recurrenceCount": number|null, "tasks": [...] }] }. ' +
+              '"recurrenceCount": number|null, "tasks": [{ "taskName": "string", ' +
+              '"roleTitle": "string", "location": "string", "experienceLevel": "string", ' +
+              '"workSchedule": "full_time|part_time", "estimatedHours": number }] }] }. ' +
               "Rules: Exactly one setup phase (first). One or more recurring phases (middle). " +
               "Exactly one ongoing phase (last). Maximum 10 phases total. Maximum 16 tasks per phase. " +
               "setup and ongoing phases have recurrenceSchedule: null and recurrenceCount: null. " +
               "recurring phases must have recurrenceSchedule and recurrenceCount >= 1. " +
-              "Do not include a duration field — services have no fixed end date.",
+              "Do not include a duration field — services have no fixed end date. " +
+              "taskName must be a specific, concrete action (e.g. \"Set up analytics dashboard\"), " +
+              "never a generic placeholder like \"Task 1\". roleTitle must be a specific " +
+              "professional title matched to that task (e.g. \"SEO Copywriter\", \"Video Editor\", " +
+              "\"React Developer\"), never a generic placeholder like \"Specialist\". " +
+              "experienceLevel must be one of: " +
+              `junior, mid, senior. location must be one of these countries: ${VALID_COUNTRIES_PROMPT_LIST}. ` +
+              "estimatedHours must be a positive number.",
           },
           {
             role: "user",
@@ -1283,7 +1292,7 @@ export class JobListingAiService {
               `Service description: ${input.description}`,
               `Deliverables: ${input.deliverables}`,
               `Tools: ${input.tools.join(", ")}`,
-              `Roles: ${input.roles.join(", ")}`,
+              `Roles mentioned by the client: ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified — infer the right role for each task yourself"}`,
               `Monthly budget: $${budgetUsd} USD`,
               "Generate the service scope with setup, recurring work cycles, and ongoing maintenance.",
             ].join("\n"),
