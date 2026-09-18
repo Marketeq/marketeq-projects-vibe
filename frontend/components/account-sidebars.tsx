@@ -145,7 +145,7 @@ const AnimatedUsers = ({ className }: { className?: string }) => (
     {/* Back person (peeks right on hover) */}
     <g className="sidebar-peek-person">
       <path d="M17.408 15.75v-1.5a3 3 0 0 0-2.25-2.902" />
-      <path d="M12.158 2.348a3 3 0 0 1 0 5.812 3 3 0 0 1 0-5.812Z" />
+      <path d="M12.158 2.348a3 3 0 0 1 0 5.812" />
     </g>
     {/* Front person (static) */}
     <path d="M12.908 15.75v-1.5a3 3 0 0 0-3-3h-6a3 3 0 0 0-3 3v1.5" />
