@@ -742,9 +742,11 @@ const RecentActivity = ({
       <TabsList className="w-full justify-start border-b-0">
         <TabsTrigger value="Next Steps">
           Next Steps
-          <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-            {remainingSteps}
-          </span>
+          {remainingSteps > 0 && (
+            <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
+              {remainingSteps}
+            </span>
+          )}
         </TabsTrigger>
         <TabsTrigger value="Recent Activity">Recent Activity</TabsTrigger>
 
@@ -1252,9 +1254,6 @@ const RightSidebarDownPart = ({
             <TabsTrigger value="Transactions">Transactions</TabsTrigger>
             <TabsTrigger value="Invoices">
               Invoices
-              <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-                0
-              </span>
             </TabsTrigger>
           </TabsList>
           <TabsContent value="Transactions">

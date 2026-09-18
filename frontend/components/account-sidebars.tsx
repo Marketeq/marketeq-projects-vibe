@@ -1,6 +1,6 @@
 "use client"
 
-import { ComponentType, useMemo } from "react"
+import { ComponentType, useMemo, useState } from "react"
 import { usePathname } from "next/navigation"
 import { cn } from "@/utils/functions"
 import { useInboxThreads } from "@/utils/useInboxThreads"
@@ -19,7 +19,14 @@ import {
   Users,
 } from "@blend-metrics/icons"
 import NextLink from "@/components/next-link"
-import { Badge, IconButton } from "@/components/ui"
+import {
+  Badge,
+  IconButton,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui"
 
 type SidebarItem = {
   href: string
@@ -39,13 +46,15 @@ type SidebarSection = {
   items: SidebarItem[]
 }
 
-const sidebarFrameClass =
-  "w-[224px] shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r space-y-6 border-gray-200 p-[15px]"
-
-const renderSections = (sections: SidebarSection[], pathname: string) => {
+const renderSections = (
+  sections: SidebarSection[],
+  pathname: string,
+  collapsed: boolean
+) => {
   const linkClass = (href: string) =>
     cn(
-      "flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 gap-x-3 rounded-[5px] h-10 flex-none px-3",
+      "flex w-full items-center font-semibold text-sm leading-6 text-dark-blue-400 rounded-[5px] h-10 flex-none",
+      collapsed ? "justify-center px-0" : "gap-x-3 px-3",
       pathname === href || pathname?.startsWith(href + "/")
         ? "bg-primary-50 text-primary-500"
         : "hover:bg-gray-100"
@@ -53,9 +62,11 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
 
   return sections.map((section) => (
     <div key={section.label} className="flex flex-col gap-y-2">
-      <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">
-        {section.label}
-      </span>
+      {!collapsed && (
+        <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">
+          {section.label}
+        </span>
+      )}
 
       <div className="flex flex-col gap-y-1">
         {section.items.map((item) => {
@@ -64,7 +75,7 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
           const isActive =
             pathname === item.href || pathname?.startsWith(item.href + "/")
 
-          return (
+          const link = (
             <NextLink
               key={item.label}
               className={linkClass(item.href)}
@@ -72,12 +83,12 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
             >
               <Icon
                 className={cn(
-                  "size-[18px]",
+                  "size-[18px] shrink-0",
                   isActive ? "text-primary-500" : "text-dark-blue-400/50"
                 )}
               />
-              {item.label}
-              {item.badge && (
+              {!collapsed && item.label}
+              {!collapsed && item.badge && (
                 <Badge
                   className="rounded-full ml-auto"
                   size="md"
@@ -86,8 +97,27 @@ const renderSections = (sections: SidebarSection[], pathname: string) => {
                   {item.badge}
                 </Badge>
               )}
+              {collapsed && item.badge && (
+                <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-error-500" />
+              )}
             </NextLink>
           )
+
+          if (collapsed) {
+            return (
+              <Tooltip key={item.label}>
+                <TooltipTrigger asChild>
+                  <div className="relative">{link}</div>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>
+                  {item.label}
+                  {item.badge ? ` (${item.badge})` : ""}
+                </TooltipContent>
+              </Tooltip>
+            )
+          }
+
+          return link
         })}
       </div>
     </div>
@@ -152,59 +182,92 @@ const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
 export const TalentAccountSidebar = () => {
   const pathname = usePathname()
   const { totalUnread } = useInboxThreads()
+  const [collapsed, setCollapsed] = useState(false)
   const sections = useMemo(
     () => buildTalentSections(formatBadge(totalUnread)),
     [totalUnread]
   )
 
   return (
-    <div className={sidebarFrameClass}>
-      {renderSections(sections, pathname)}
-      <div className="border-t border-gray-200 pt-5 px-3">
-        <p className="text-xs text-gray-500 leading-4">
-          Get the right talent for your next project.
-        </p>
-        <NextLink
-          href="/"
-          className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
+    <TooltipProvider delayDuration={0}>
+      <div
+        className={cn(
+          "shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200 transition-all duration-300 ease-in-out overflow-hidden",
+          collapsed ? "w-[64px] p-2 space-y-4" : "w-[224px] p-[15px] space-y-6"
+        )}
+      >
+        <IconButton
+          className="bg-white absolute size-[23px] opacity-50 hover:opacity-100 top-2.5 right-2.5 z-10"
+          variant="outlined"
+          visual="gray"
+          size="md"
+          onClick={() => setCollapsed((c) => !c)}
         >
-          Browse the Marketplace
-        </NextLink>
+          <Sidebar className="size-[15px]" />
+        </IconButton>
+        {renderSections(sections, pathname, collapsed)}
+        {!collapsed && (
+          <div className="border-t border-gray-200 pt-5 px-3">
+            <p className="text-xs text-gray-500 leading-4">
+              Get the right talent for your next project.
+            </p>
+            <NextLink
+              href="/"
+              className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
+            >
+              Browse the Marketplace
+            </NextLink>
+          </div>
+        )}
       </div>
-    </div>
+    </TooltipProvider>
   )
 }
 
 export const ClientAccountSidebar = () => {
   const pathname = usePathname()
   const { totalUnread } = useInboxThreads()
+  const [collapsed, setCollapsed] = useState(false)
   const sections = useMemo(
     () => buildClientSections(formatBadge(totalUnread)),
     [totalUnread]
   )
 
   return (
-    <div className={sidebarFrameClass}>
-      <IconButton
-        className="bg-white absolute size-[23px] opacity-50 hover:opacity-100 top-2.5 right-2.5"
-        variant="outlined"
-        visual="gray"
-        size="md"
+    <TooltipProvider delayDuration={0}>
+      <div
+        className={cn(
+          "shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200 transition-all duration-300 ease-in-out overflow-hidden",
+          collapsed ? "w-[64px] p-2 space-y-4" : "w-[224px] p-[15px] space-y-6"
+        )}
       >
-        <Sidebar className="size-[15px]" />
-      </IconButton>
-      {renderSections(sections, pathname)}
-      <div className="border-t border-gray-200 pt-5 px-3">
-        <p className="text-xs text-gray-500 leading-4">
-          Get the right talent for your next project.
-        </p>
-        <NextLink
-          href="/"
-          className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
+        <IconButton
+          className={cn(
+            "bg-white absolute size-[23px] opacity-50 hover:opacity-100 top-2.5 z-10",
+            collapsed ? "right-1/2 translate-x-1/2" : "right-2.5"
+          )}
+          variant="outlined"
+          visual="gray"
+          size="md"
+          onClick={() => setCollapsed((c) => !c)}
         >
-          Browse the Marketplace
-        </NextLink>
+          <Sidebar className="size-[15px]" />
+        </IconButton>
+        {renderSections(sections, pathname, collapsed)}
+        {!collapsed && (
+          <div className="border-t border-gray-200 pt-5 px-3">
+            <p className="text-xs text-gray-500 leading-4">
+              Get the right talent for your next project.
+            </p>
+            <NextLink
+              href="/"
+              className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
+            >
+              Browse the Marketplace
+            </NextLink>
+          </div>
+        )}
       </div>
-    </div>
+    </TooltipProvider>
   )
 }
