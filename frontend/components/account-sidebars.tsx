@@ -92,12 +92,10 @@ const formatBadge = (count: number) => {
 
 const AnimatedHome = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 19 19" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    {/* Roof + house body (single path to avoid double-stroke on roofline) */}
-    <path d="m3.164 8.113 6.78-5.085c.258-.193.387-.29.529-.328a.75.75 0 0 1 .382 0c.141.038.27.135.529.328l6.78 5.085M4.664 6.988v7.35c0 .84 0 1.26.163 1.581a1.5 1.5 0 0 0 .656.656c.32.163.74.163 1.58.163h7.2c.84 0 1.26 0 1.582-.163a1.5 1.5 0 0 0 .655-.656c.164-.32.164-.74.164-1.58v-7.35l-4.56-3.42c-.517-.388-.775-.582-1.059-.656a1.5 1.5 0 0 0-.763 0c-.284.074-.542.268-1.058.655l-4.56 3.42Z" />
-    {/* Dark doorway interior (filled, fades in on hover to simulate depth) */}
-    <path className="sidebar-door-shadow" d="M8.414 16.738v-5.55c0-.42 0-.63.081-.79a.75.75 0 0 1 .328-.328c.16-.082.37-.082.79-.082h2.1c.42 0 .63 0 .791.082a.75.75 0 0 1 .328.328c.082.16.082.37.082.79v5.55Z" fill="currentColor" stroke="none" />
-    {/* Door (animated scaleX on hover) */}
-    <path className="sidebar-door" d="M8.414 16.738v-5.55c0-.42 0-.63.081-.79a.75.75 0 0 1 .328-.328c.16-.082.37-.082.79-.082h2.1c.42 0 .63 0 .791.082a.75.75 0 0 1 .328.328c.082.16.082.37.082.79v5.55" />
+    {/* House body (closed shape includes internal roofline) */}
+    <path d="M4.664 6.988v7.35c0 .84 0 1.26.163 1.581a1.5 1.5 0 0 0 .656.656c.32.163.74.163 1.58.163h7.2c.84 0 1.26 0 1.582-.163a1.5 1.5 0 0 0 .655-.656c.164-.32.164-.74.164-1.58v-7.35l-4.56-3.42c-.517-.388-.775-.582-1.059-.656a1.5 1.5 0 0 0-.763 0c-.284.074-.542.268-1.058.655l-4.56 3.42Z" />
+    {/* Roof chevron (tips like a hat on hover) */}
+    <path className="sidebar-roof" d="m3.164 8.113 6.78-5.085c.258-.193.387-.29.529-.328a.75.75 0 0 1 .382 0c.141.038.27.135.529.328l6.78 5.085" />
   </svg>
 )
 
@@ -144,8 +142,12 @@ const AnimatedUsers = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 19 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     {/* Back person (peeks right on hover) */}
     <g className="sidebar-peek-person">
+      {/* Original visible parts (shoulder + right half of head) */}
       <path d="M17.408 15.75v-1.5a3 3 0 0 0-2.25-2.902" />
       <path d="M12.158 2.348a3 3 0 0 1 0 5.812" />
+      {/* Hidden parts revealed during peek */}
+      <path className="sidebar-peek-reveal" d="M12.158 8.16a3 3 0 0 1 0-5.812" />
+      <path className="sidebar-peek-reveal" d="M15.158 11.348h-2.5a3 3 0 0 0-2.25 2.902v1.5" />
     </g>
     {/* Front person (static) */}
     <path d="M12.908 15.75v-1.5a3 3 0 0 0-3-3h-6a3 3 0 0 0-3 3v1.5" />

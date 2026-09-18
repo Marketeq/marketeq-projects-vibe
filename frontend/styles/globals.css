@@ -38,10 +38,18 @@
 }
 @keyframes sidebar-peek {
   0%, 100% { transform: translateX(0) rotate(0deg); }
-  35%, 65% { transform: translateX(3.5px) rotate(6deg); }
+  35%, 65% { transform: translateX(4px) rotate(8deg); }
 }
+@keyframes sidebar-peek-reveal {
+  0%, 100% { opacity: 0; }
+  25%, 75% { opacity: 1; }
+}
+.sidebar-peek-reveal { opacity: 0; }
 .group:hover .sidebar-anim-users .sidebar-peek-person {
   animation: sidebar-peek 0.6s ease;
+}
+.group:hover .sidebar-anim-users .sidebar-peek-reveal {
+  animation: sidebar-peek-reveal 0.6s ease;
 }
 @keyframes sidebar-pop {
   0%, 100% { transform: scale(1); }
@@ -63,9 +71,9 @@
   20% { opacity: 1; }
   100% { stroke-dashoffset: 0; opacity: 1; }
 }
-@keyframes sidebar-door-open {
-  0%, 100% { transform: scaleX(1); }
-  30%, 55% { transform: scaleX(0.05); }
+@keyframes sidebar-hat-tip {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  30%, 60% { transform: translateY(-3px) rotate(-12deg); }
 }
 @keyframes sidebar-dollar-s-draw {
   0% { stroke-dashoffset: 40; opacity: 0; }
@@ -79,17 +87,9 @@
 }
 
 /* --- Transform setup for animated SVG parts --- */
-.sidebar-door {
+.sidebar-roof {
   transform-box: fill-box;
-  transform-origin: left center;
-}
-.sidebar-door-shadow { opacity: 0; }
-@keyframes sidebar-door-shadow-show {
-  0%, 100% { opacity: 0; }
-  20%, 60% { opacity: 1; }
-}
-.group:hover .sidebar-anim-home .sidebar-door-shadow {
-  animation: sidebar-door-shadow-show 0.6s ease;
+  transform-origin: center bottom;
 }
 
 /* --- Inbox flap cross-fade defaults --- */
@@ -106,9 +106,9 @@
 .group:hover .sidebar-anim-alert { animation: sidebar-ring 0.8s ease; }
 .group:hover .sidebar-anim-settings { animation: sidebar-spin 0.7s linear; }
 
-/* --- Home: door opens --- */
-.group:hover .sidebar-anim-home .sidebar-door {
-  animation: sidebar-door-open 0.6s ease;
+/* --- Home: roof tips like a hat --- */
+.group:hover .sidebar-anim-home .sidebar-roof {
+  animation: sidebar-hat-tip 0.6s ease;
 }
 
 /* --- Contracts: lines draw L→R staggered, then checkmark pops --- */
