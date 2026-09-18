@@ -905,12 +905,12 @@ const Content = ({
 }: { profile?: DashboardProfile | null } & ProfileCtaHandlers) => {
   const [isOpen, toggleIsOpen] = useToggle(false)
   return (
-    <div className="flex-auto pt-3.5 px-3.5 md:pt-6 md:px-6 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pt-[50px] min-[1024px]:pr-[50px]">
-      <div className="flex min-[1440px]:gap-x-8 justify-center overflow-hidden">
-        <div className="xs:max-[1440px]:flex-auto min-[1440px]:max-w-[1024px] space-y-3 md:space-y-5 min-w-0">
+    <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px] overflow-hidden">
+        <div className="flex-auto space-y-3 md:space-y-5 min-w-0">
           <Welcome onOpenProfile={toggleIsOpen} user={profile} />
           <RecentActivity user={profile} />
           <RecentProjects />
+          <Footer />
         </div>
 
         <RightSidebar profile={profile} {...handlers} />
@@ -952,8 +952,6 @@ const Content = ({
             </ScrollArea>
           </DialogContent>
         </Dialog>
-      </div>
-      <Footer />
     </div>
   )
 }

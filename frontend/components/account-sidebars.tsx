@@ -160,12 +160,14 @@ const renderSections = (
   pathname: string,
   collapsed: boolean
 ) =>
-  sections.map((section) => (
-    <div key={section.label} className="flex flex-col">
+  sections.map((section, index) => (
+    <div key={section.label} className={cn("flex flex-col", index === 0 && "relative")}>
       <span
         className={cn(
-          "text-xs leading-5 font-medium text-dark-blue-400 whitespace-nowrap overflow-hidden transition-all duration-300",
-          collapsed ? "opacity-0 h-0" : "opacity-100 h-5 mb-2"
+          "text-xs leading-5 font-medium text-dark-blue-400 whitespace-nowrap overflow-hidden",
+          index === 0
+            ? cn("absolute -top-7 left-0 transition-opacity duration-300", collapsed ? "opacity-0" : "opacity-100")
+            : cn("transition-all duration-300", collapsed ? "opacity-0 h-0" : "opacity-100 h-5 mb-2")
         )}
       >
         {section.label}
@@ -308,7 +310,7 @@ const SidebarShell = ({
           "shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200 overflow-hidden overflow-y-auto",
           "transition-[width] duration-300 ease-in-out",
           "px-[15px] pb-[15px] space-y-6",
-          "pt-[55px]",
+          "pt-[45px]",
           collapsed ? "w-[72px]" : "w-[224px]"
         )}
       >
