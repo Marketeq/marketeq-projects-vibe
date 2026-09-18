@@ -10932,8 +10932,27 @@ type ServiceScopeRow = (typeof serviceScopePhases)[number]["rows"][number] & {
 };
 
 type ServiceScopePhase = Omit<(typeof serviceScopePhases)[number], "rows"> & {
+  id: string;
   rows: ServiceScopeRow[];
 };
+
+const getServicePhaseOrder = (phaseType: ServiceScopePhase["phaseType"]) => {
+  if (phaseType === "setup") return 0;
+  if (phaseType === "ongoing") return 2;
+  return 1;
+};
+
+const reorderServicePhases = (phases: ServiceScopePhase[]) =>
+  phases
+    .map((phase, index) => ({ phase, index }))
+    .sort((first, second) => {
+      const orderDelta =
+        getServicePhaseOrder(first.phase.phaseType) -
+        getServicePhaseOrder(second.phase.phaseType);
+
+      return orderDelta || first.index - second.index;
+    })
+    .map(({ phase }) => phase);
 
 const serviceScopePhaseTypeOptions = [
   {
@@ -10953,65 +10972,85 @@ const serviceScopePhaseTypeOptions = [
   },
 ];
 
+const serviceRecurringScheduleOptions = [
+  { label: "Weekly", value: "weekly" as const },
+  { label: "Monthly", value: "monthly" as const },
+  { label: "Quarterly", value: "quarterly" as const },
+];
+
+const getServiceRecurringScheduleLabel = (schedule?: string) =>
+  serviceRecurringScheduleOptions.find((option) => option.value === schedule)
+    ?.label ?? "Monthly";
+
 const createServicePhasesFromGeneratedScope = (
   scope: any,
 ): ServiceScopePhase[] => {
   const generatedPhases = Array.isArray(scope?.phases) ? scope.phases : [];
 
-  return generatedPhases
-    .map((phase: any, phaseIndex: number) => {
-      const phaseType =
-        phase?.phaseType === "recurring" || phase?.phaseType === "ongoing"
-          ? phase.phaseType
-          : "setup";
-      const phaseOption = serviceScopePhaseTypeOptions.find(
-        (option) => option.value === phaseType,
-      );
-      const recurrenceSchedule = phase?.recurrenceSchedule ?? "monthly";
-      const recurrenceCount = Number(phase?.recurrenceCount ?? 3) || 3;
-      const status =
-        phaseType === "ongoing"
-          ? "Ongoing"
-          : phaseType === "recurring"
-            ? `Recurs: ${recurrenceSchedule === "weekly" ? "Weekly" : "Monthly"}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`
-            : "2 weeks";
-
-      return {
-        name: String(
-          phase?.phaseName ?? phaseOption?.label ?? `Phase ${phaseIndex + 1}`,
-        ),
-        customName: "",
-        status,
-        statusKind: phaseType === "setup" ? "one-time" : phaseType,
-        phaseType,
-        recurrenceSchedule:
-          phaseType === "recurring" ? recurrenceSchedule : undefined,
-        recurrenceCount:
-          phaseType === "recurring" ? recurrenceCount : undefined,
-        note:
+  return reorderServicePhases(
+    generatedPhases
+      .map((phase: any, phaseIndex: number) => {
+        const phaseType =
+          phase?.phaseType === "recurring" || phase?.phaseType === "ongoing"
+            ? phase.phaseType
+            : "setup";
+        const phaseOption = serviceScopePhaseTypeOptions.find(
+          (option) => option.value === phaseType,
+        );
+        const recurrenceSchedule = phase?.recurrenceSchedule ?? "monthly";
+        const recurrenceCount = Number(phase?.recurrenceCount ?? 3) || 3;
+        const status =
           phaseType === "ongoing"
-            ? "Continuous work starting on Day X with no set end date."
+            ? "Ongoing"
             : phaseType === "recurring"
-              ? "Work that repeats in cycles. Starts on Day X and runs for the number of cycles you set."
-              : "One-time starting work that begins on Day X and will not repeat again.",
-        rows: Array.isArray(phase?.tasks)
-          ? phase.tasks.map((task: any) => ({
-              task: String(task?.taskName ?? "New Task"),
-              role: String(task?.roleTitle ?? "Specialist"),
-              location: String(task?.location ?? "USA"),
-              experience: String(task?.experienceLevel ?? "Junior"),
-              duration: `${Number(task?.estimatedHours ?? 10) || 10} hours`,
-              workSchedule:
-                task?.workSchedule === "part_time"
-                  ? "part_time"
-                  : task?.workSchedule === "custom"
-                    ? "custom"
-                    : "full_time",
-            }))
-          : [],
-      };
-    })
-    .filter((phase: ServiceScopePhase) => phase.name && phase.rows.length > 0);
+              ? `Recurs: ${getServiceRecurringScheduleLabel(recurrenceSchedule)}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`
+              : "2 weeks";
+
+        return {
+          id: String(
+            phase?.id ?? `service-generated-phase-${phaseIndex}-${getId()}`,
+          ),
+          name: phaseOption?.label ?? `Phase ${phaseIndex + 1}`,
+          customName:
+            phaseType === "recurring"
+              ? String(phase?.phaseName ?? "")
+                  .replace(/^Recurring(?:\s+\d+)?\s*/i, "")
+                  .trim()
+              : "",
+          status,
+          statusKind: phaseType === "setup" ? "one-time" : phaseType,
+          phaseType,
+          recurrenceSchedule:
+            phaseType === "recurring" ? recurrenceSchedule : undefined,
+          recurrenceCount:
+            phaseType === "recurring" ? recurrenceCount : undefined,
+          note:
+            phaseType === "ongoing"
+              ? "Continuous work starting on Day X with no set end date."
+              : phaseType === "recurring"
+                ? "Work that repeats in cycles. Starts on Day X and runs for the number of cycles you set."
+                : "One-time starting work that begins on Day X and will not repeat again.",
+          rows: Array.isArray(phase?.tasks)
+            ? phase.tasks.map((task: any) => ({
+                task: String(task?.taskName ?? "New Task"),
+                role: String(task?.roleTitle ?? "Specialist"),
+                location: String(task?.location ?? "USA"),
+                experience: String(task?.experienceLevel ?? "Junior"),
+                duration: `${Number(task?.estimatedHours ?? 10) || 10} hours`,
+                workSchedule:
+                  task?.workSchedule === "part_time"
+                    ? "part_time"
+                    : task?.workSchedule === "custom"
+                      ? "custom"
+                      : "full_time",
+              }))
+            : [],
+        };
+      })
+      .filter(
+        (phase: ServiceScopePhase) => phase.name && phase.rows.length > 0,
+      ),
+  );
 };
 
 const getServicePhaseDisplayParts = (
@@ -11027,12 +11066,9 @@ const getServicePhaseDisplayParts = (
   }
 
   if (phaseType === "recurring") {
-    const recurringNameMatch = phaseName.match(/^Recurring(?:\s+\d+)?/i);
-    const name = recurringNameMatch?.[0] ?? `Recurring ${phaseIndex + 1}`;
-
     return {
-      name,
-      customName: phaseName.replace(name, "").trim(),
+      name: "Recurring",
+      customName: phaseName.replace(/^Recurring(?:\s+\d+)?\s*/i, "").trim(),
     };
   }
 
@@ -11047,99 +11083,104 @@ const createServicePhasesFromPersistedJobListing = (
 ): ServiceScopePhase[] => {
   const persistedPhases = Array.isArray(phases) ? phases : [];
 
-  return persistedPhases
-    .map((phase: any, phaseIndex: number) => {
-      const phaseType: ServiceScopePhase["phaseType"] =
-        phase?.phaseType === "recurring" || phase?.phaseType === "ongoing"
-          ? phase.phaseType
-          : "setup";
-      const phaseName = String(
-        phase?.phaseName ?? phase?.name ?? `Phase ${phaseIndex + 1}`,
-      );
-      const { name, customName } = getServicePhaseDisplayParts(
-        phaseType,
-        phaseName,
-        phaseIndex,
-      );
-      const recurrenceSchedule = phase?.recurrenceSchedule ?? "monthly";
-      const recurrenceCount = Number(phase?.recurrenceCount ?? 3) || 3;
-      const sourceRows = Array.isArray(phase?.rows)
-        ? phase.rows
-        : Array.isArray(phase?.tasks)
-          ? phase.tasks
-          : [];
-      const rows = sourceRows.map((row: any) => {
-        const durationValue =
-          typeof row?.duration === "object"
-            ? toFiniteNumber(row.duration?.value)
-            : toFiniteNumber(row?.estimatedHours ?? row?.durationHours);
-        const durationType =
-          typeof row?.duration === "object" && row.duration?.type
-            ? String(row.duration.type)
-            : "hours";
+  return reorderServicePhases(
+    persistedPhases
+      .map((phase: any, phaseIndex: number) => {
+        const phaseType: ServiceScopePhase["phaseType"] =
+          phase?.phaseType === "recurring" || phase?.phaseType === "ongoing"
+            ? phase.phaseType
+            : "setup";
+        const phaseName = String(
+          phase?.phaseName ?? phase?.name ?? `Phase ${phaseIndex + 1}`,
+        );
+        const { name, customName } = getServicePhaseDisplayParts(
+          phaseType,
+          phaseName,
+          phaseIndex,
+        );
+        const recurrenceSchedule = phase?.recurrenceSchedule ?? "monthly";
+        const recurrenceCount = Number(phase?.recurrenceCount ?? 3) || 3;
+        const sourceRows = Array.isArray(phase?.rows)
+          ? phase.rows
+          : Array.isArray(phase?.tasks)
+            ? phase.tasks
+            : [];
+        const rows = sourceRows.map((row: any) => {
+          const durationValue =
+            typeof row?.duration === "object"
+              ? toFiniteNumber(row.duration?.value)
+              : toFiniteNumber(row?.estimatedHours ?? row?.durationHours);
+          const durationType =
+            typeof row?.duration === "object" && row.duration?.type
+              ? String(row.duration.type)
+              : "hours";
+
+          return {
+            id: toNullableString(row?.id),
+            task: String(row?.task ?? row?.taskName ?? "New Task"),
+            role: String(row?.role ?? row?.roleTitle ?? "Specialist"),
+            location: String(row?.location ?? "USA"),
+            experience: String(
+              row?.experience ?? row?.experienceLevel ?? "Junior",
+            ),
+            duration: `${durationValue || 10} ${durationType}`,
+            workSchedule:
+              row?.workSchedule === "part_time"
+                ? "part_time"
+                : row?.workSchedule === "custom"
+                  ? "custom"
+                  : "full_time",
+            customHours:
+              row?.workSchedule === "custom"
+                ? Number(row?.customHours) || undefined
+                : undefined,
+            customFrequency:
+              row?.workSchedule === "custom"
+                ? (row?.customFrequency ?? undefined)
+                : undefined,
+            contractLengthMonths: toFiniteNumber(row?.contractLengthMonths),
+            hourlyRateLowUsdCents: toFiniteNumber(row?.hourlyRateLowUsdCents),
+            hourlyRateHighUsdCents: toFiniteNumber(row?.hourlyRateHighUsdCents),
+          };
+        });
 
         return {
-          id: toNullableString(row?.id),
-          task: String(row?.task ?? row?.taskName ?? "New Task"),
-          role: String(row?.role ?? row?.roleTitle ?? "Specialist"),
-          location: String(row?.location ?? "USA"),
-          experience: String(
-            row?.experience ?? row?.experienceLevel ?? "Junior",
+          id: String(
+            phase?.id ?? `service-persisted-phase-${phaseIndex}-${getId()}`,
           ),
-          duration: `${durationValue || 10} ${durationType}`,
-          workSchedule:
-            row?.workSchedule === "part_time"
-              ? "part_time"
-              : row?.workSchedule === "custom"
-                ? "custom"
-                : "full_time",
-          customHours:
-            row?.workSchedule === "custom"
-              ? Number(row?.customHours) || undefined
-              : undefined,
-          customFrequency:
-            row?.workSchedule === "custom"
-              ? (row?.customFrequency ?? undefined)
-              : undefined,
-          contractLengthMonths: toFiniteNumber(row?.contractLengthMonths),
-          hourlyRateLowUsdCents: toFiniteNumber(row?.hourlyRateLowUsdCents),
-          hourlyRateHighUsdCents: toFiniteNumber(row?.hourlyRateHighUsdCents),
+          name,
+          customName,
+          status:
+            phaseType === "ongoing"
+              ? "Ongoing"
+              : phaseType === "recurring"
+                ? `Recurs: ${getServiceRecurringScheduleLabel(recurrenceSchedule)}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`
+                : "2 weeks",
+          statusKind:
+            phaseType === "setup"
+              ? "one-time"
+              : phaseType === "ongoing"
+                ? "ongoing"
+                : "recurring",
+          phaseType,
+          recurrenceSchedule:
+            phaseType === "recurring" ? recurrenceSchedule : undefined,
+          recurrenceCount:
+            phaseType === "recurring" ? recurrenceCount : undefined,
+          note:
+            phaseType === "ongoing"
+              ? "Continuous work starting on Day X with no set end date."
+              : phaseType === "recurring"
+                ? "Work that repeats in cycles. Starts on Day X and runs for the number of cycles you set."
+                : "One-time starting work that begins on Day X and will not repeat again.",
+          rows,
         };
-      });
-
-      return {
-        name,
-        customName,
-        status:
-          phaseType === "ongoing"
-            ? "Ongoing"
-            : phaseType === "recurring"
-              ? `Recurs: ${recurrenceSchedule === "weekly" ? "Weekly" : "Monthly"}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`
-              : "2 weeks",
-        statusKind:
-          phaseType === "setup"
-            ? "one-time"
-            : phaseType === "ongoing"
-              ? "ongoing"
-              : "recurring",
-        phaseType,
-        recurrenceSchedule:
-          phaseType === "recurring" ? recurrenceSchedule : undefined,
-        recurrenceCount:
-          phaseType === "recurring" ? recurrenceCount : undefined,
-        note:
-          phaseType === "ongoing"
-            ? "Continuous work starting on Day X with no set end date."
-            : phaseType === "recurring"
-              ? "Work that repeats in cycles. Starts on Day X and runs for the number of cycles you set."
-              : "One-time starting work that begins on Day X and will not repeat again.",
-        rows,
-      };
-    })
-    .filter(
-      (phase: ServiceScopePhase) =>
-        phase.name && phase.customName !== undefined && phase.rows.length > 0,
-    );
+      })
+      .filter(
+        (phase: ServiceScopePhase) =>
+          phase.name && phase.customName !== undefined && phase.rows.length > 0,
+      ),
+  );
 };
 
 const projectScopePhaseLabels = [
@@ -15657,14 +15698,19 @@ const ServiceScopeEditStep = ({
   const { toggleValidation } = useStepContext();
   const { projectScopeMethods } = useProjectScopeContext();
   const [projectScopeState, setProjectScopeState] = projectScopeMethods;
-  const [phases, setPhases] = useState<ServiceScopePhase[]>(() =>
-    serviceScopePhases.map((phase) => ({
-      ...phase,
-      rows: phase.rows.map((row) => ({ ...row, workSchedule: "full_time" })),
-    })),
+  const createDefaultServicePhases = () =>
+    reorderServicePhases(
+      serviceScopePhases.map((phase, phaseIndex) => ({
+        ...phase,
+        id: `service-default-phase-${phaseIndex}`,
+        rows: phase.rows.map((row) => ({ ...row, workSchedule: "full_time" })),
+      })),
+    );
+  const [phases, setPhases] = useState<ServiceScopePhase[]>(
+    createDefaultServicePhases,
   );
-  const [expandedPhaseNames, setExpandedPhaseNames] = useState(() =>
-    serviceScopePhases.map((phase) => phase.name),
+  const [expandedPhaseIds, setExpandedPhaseIds] = useState(() =>
+    createDefaultServicePhases().map((phase) => phase.id),
   );
   const [searchValue, setSearchValue] = useState("");
   const [isAddPhaseDialogOpen, setAddPhaseDialogOpen] = useState(false);
@@ -15678,9 +15724,16 @@ const ServiceScopeEditStep = ({
   const didGenerateInitialScopeRef = useRef(false);
   const [budgetAmount, setBudgetAmount] = useState(5000);
   const [budgetFrequency, setBudgetFrequency] = useState("week");
-  const [activeServicePhaseNote, setActiveServicePhaseNote] = useState<
+  const [activeServicePhaseNoteId, setActiveServicePhaseNoteId] = useState<
     string | null
   >(null);
+  const [activeRecurringPhaseId, setActiveRecurringPhaseId] = useState<
+    string | null
+  >(null);
+  const [draftRecurringSchedule, setDraftRecurringSchedule] = useState<
+    (typeof serviceRecurringScheduleOptions)[number]["value"]
+  >("monthly");
+  const [draftRecurringCount, setDraftRecurringCount] = useState(1);
   const [activeServiceRoleKey, setActiveServiceRoleKey] = useState<
     string | null
   >(null);
@@ -15790,7 +15843,7 @@ const ServiceScopeEditStep = ({
     didGenerateInitialScopeRef.current = true;
     skipNextServiceScopeSaveRef.current = true;
     setPhases(persistedPhases);
-    setExpandedPhaseNames(persistedPhases.map((phase) => phase.name));
+    setExpandedPhaseIds(persistedPhases.map((phase) => phase.id));
   }, [projectScopeState]);
 
   useEffect(() => {
@@ -15811,7 +15864,7 @@ const ServiceScopeEditStep = ({
         if (generatedPhases.length > 0) {
           skipNextServiceScopeSaveRef.current = true;
           setPhases(generatedPhases);
-          setExpandedPhaseNames(generatedPhases.map((phase) => phase.name));
+          setExpandedPhaseIds(generatedPhases.map((phase) => phase.id));
         }
       } catch (error) {
         console.error("Failed to generate service scope", error);
@@ -15822,13 +15875,13 @@ const ServiceScopeEditStep = ({
   }, [budgetAmount, jobListingId]);
 
   const updateRow = (
-    phaseName: string,
+    phaseId: string,
     taskName: string,
     nextValues: Partial<ServiceScopeRow>,
   ) => {
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
-        phase.name !== phaseName
+        phase.id !== phaseId
           ? phase
           : {
               ...phase,
@@ -15851,8 +15904,8 @@ const ServiceScopeEditStep = ({
     return "Full-time";
   };
 
-  const openServiceRoleEditor = (phaseName: string, row: ServiceScopeRow) => {
-    const key = `${phaseName}-${row.task}`;
+  const openServiceRoleEditor = (phaseId: string, row: ServiceScopeRow) => {
+    const key = `${phaseId}-${row.task}`;
     const [durationValue] = row.duration.split(/\s+/);
 
     setActiveServiceRoleKey(key);
@@ -15866,10 +15919,10 @@ const ServiceScopeEditStep = ({
     setDraftServiceCustomFrequency(row.customFrequency ?? "per_week");
   };
 
-  const saveServiceRoleEditor = (phaseName: string, taskName: string) => {
+  const saveServiceRoleEditor = (phaseId: string, taskName: string) => {
     const nextHours = Number(draftServiceCustomHours) || 15;
 
-    updateRow(phaseName, taskName, {
+    updateRow(phaseId, taskName, {
       role: draftServiceRole.trim() || "Specialist",
       workSchedule: draftServiceSchedule,
       customHours: draftServiceSchedule === "custom" ? nextHours : undefined,
@@ -15886,13 +15939,13 @@ const ServiceScopeEditStep = ({
   };
 
   const updatePhaseRecurrence = (
-    phaseName: string,
-    recurrenceSchedule: "monthly" | "weekly",
+    phaseId: string,
+    recurrenceSchedule: (typeof serviceRecurringScheduleOptions)[number]["value"],
     recurrenceCount: number,
   ) => {
     setPhases((currentPhases) =>
       currentPhases.map((phase) => {
-        if (phase.name !== phaseName || phase.phaseType !== "recurring") {
+        if (phase.id !== phaseId || phase.phaseType !== "recurring") {
           return phase;
         }
 
@@ -15900,7 +15953,9 @@ const ServiceScopeEditStep = ({
           ...phase,
           recurrenceSchedule,
           recurrenceCount,
-          status: `Recurs: ${recurrenceSchedule === "weekly" ? "Weekly" : "Monthly"}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`,
+          status: `Recurs: ${getServiceRecurringScheduleLabel(
+            recurrenceSchedule,
+          )}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`,
         };
       }),
     );
@@ -15910,11 +15965,38 @@ const ServiceScopeEditStep = ({
     recurrenceSchedule?: string;
     recurrenceCount?: number;
   }) => {
-    const scheduleLabel =
-      phase.recurrenceSchedule === "weekly" ? "Weekly" : "Monthly";
+    const scheduleLabel = getServiceRecurringScheduleLabel(
+      phase.recurrenceSchedule,
+    );
     const count = phase.recurrenceCount ?? 3;
 
     return `${scheduleLabel}, ${count} ${count === 1 ? "time" : "times"}`;
+  };
+
+  const openRecurringScheduleDialog = (phase: ServiceScopePhase) => {
+    setActiveRecurringPhaseId(phase.id);
+    setDraftRecurringSchedule(
+      phase.recurrenceSchedule === "weekly" ||
+        phase.recurrenceSchedule === "quarterly"
+        ? phase.recurrenceSchedule
+        : "monthly",
+    );
+    setDraftRecurringCount(phase.recurrenceCount ?? 1);
+  };
+
+  const closeRecurringScheduleDialog = () => {
+    setActiveRecurringPhaseId(null);
+  };
+
+  const saveRecurringScheduleDialog = () => {
+    if (!activeRecurringPhaseId) return;
+
+    updatePhaseRecurrence(
+      activeRecurringPhaseId,
+      draftRecurringSchedule,
+      draftRecurringCount,
+    );
+    closeRecurringScheduleDialog();
   };
 
   const isPhaseTypeUnavailable = (
@@ -15922,11 +16004,6 @@ const ServiceScopeEditStep = ({
   ) =>
     phaseType !== "recurring" &&
     phases.some((phase) => phase.phaseType === phaseType);
-
-  const getFirstAvailablePhaseType = () =>
-    serviceScopePhaseTypeOptions.find(
-      (option) => !isPhaseTypeUnavailable(option.value),
-    )?.value ?? "recurring";
 
   const selectedPhaseTypeLabel =
     serviceScopePhaseTypeOptions.find((option) => option.value === newPhaseType)
@@ -15939,8 +16016,35 @@ const ServiceScopeEditStep = ({
 
   const openAddPhaseDialog = () => {
     setNewPhaseName("");
-    setNewPhaseType(getFirstAvailablePhaseType());
+    setNewPhaseType("");
     setAddPhaseDialogOpen(true);
+  };
+
+  const insertServicePhase = (
+    currentPhases: ServiceScopePhase[],
+    nextPhase: ServiceScopePhase,
+  ) => {
+    if (nextPhase.phaseType === "setup") {
+      return [nextPhase, ...currentPhases];
+    }
+
+    if (nextPhase.phaseType === "ongoing") {
+      return [...currentPhases, nextPhase];
+    }
+
+    const ongoingPhaseIndex = currentPhases.findIndex(
+      (phase) => phase.phaseType === "ongoing",
+    );
+
+    if (ongoingPhaseIndex === -1) {
+      return [...currentPhases, nextPhase];
+    }
+
+    return [
+      ...currentPhases.slice(0, ongoingPhaseIndex),
+      nextPhase,
+      ...currentPhases.slice(ongoingPhaseIndex),
+    ];
   };
 
   const addPhase = () => {
@@ -15952,17 +16056,12 @@ const ServiceScopeEditStep = ({
       (option) => option.value === newPhaseType,
     );
     const phaseTypeLabel = selectedOption?.label ?? "Recurring";
-    const recurringCount = phases.filter(
-      (phase) => phase.phaseType === "recurring",
-    ).length;
-    const nextName =
-      newPhaseType === "recurring" && recurringCount > 0
-        ? `Recurring ${recurringCount + 1}`
-        : phaseTypeLabel;
+    const nextName = phaseTypeLabel;
     const trimmedPhaseName = newPhaseName.trim();
     const nextPhase =
       newPhaseType === "setup"
         ? {
+            id: `service-phase-${getId()}`,
             name: nextName,
             customName: trimmedPhaseName,
             status: "2 weeks",
@@ -15981,6 +16080,7 @@ const ServiceScopeEditStep = ({
           }
         : newPhaseType === "ongoing"
           ? {
+              id: `service-phase-${getId()}`,
               name: nextName,
               customName: trimmedPhaseName,
               status: "Ongoing",
@@ -15998,6 +16098,7 @@ const ServiceScopeEditStep = ({
               ],
             }
           : {
+              id: `service-phase-${getId()}`,
               name: nextName,
               customName: trimmedPhaseName,
               status: "Recurs: Monthly, 1 time",
@@ -16017,17 +16118,19 @@ const ServiceScopeEditStep = ({
               ],
             };
 
-    setPhases((currentPhases) => [...currentPhases, nextPhase]);
-    setExpandedPhaseNames((currentNames) => [...currentNames, nextName]);
+    setPhases((currentPhases) =>
+      reorderServicePhases(insertServicePhase(currentPhases, nextPhase)),
+    );
+    setExpandedPhaseIds((currentIds) => [...currentIds, nextPhase.id]);
     setAddPhaseDialogOpen(false);
     setNewPhaseName("");
     setNewPhaseType("");
   };
 
-  const addTask = (phaseName: string) => {
+  const addTask = (phaseId: string) => {
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
-        phase.name !== phaseName
+        phase.id !== phaseId
           ? phase
           : {
               ...phase,
@@ -16044,21 +16147,19 @@ const ServiceScopeEditStep = ({
             },
       ),
     );
-    setExpandedPhaseNames((currentNames) =>
-      currentNames.includes(phaseName)
-        ? currentNames
-        : [...currentNames, phaseName],
+    setExpandedPhaseIds((currentIds) =>
+      currentIds.includes(phaseId) ? currentIds : [...currentIds, phaseId],
     );
   };
 
   const addServiceQualityTask = () => {
-    const targetPhaseName = phases[0]?.name;
+    const targetPhaseId = phases[0]?.id;
 
-    if (!targetPhaseName) return false;
+    if (!targetPhaseId) return false;
 
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
-        phase.name !== targetPhaseName
+        phase.id !== targetPhaseId
           ? phase
           : {
               ...phase,
@@ -16077,10 +16178,10 @@ const ServiceScopeEditStep = ({
             },
       ),
     );
-    setExpandedPhaseNames((currentNames) =>
-      currentNames.includes(targetPhaseName)
-        ? currentNames
-        : [...currentNames, targetPhaseName],
+    setExpandedPhaseIds((currentIds) =>
+      currentIds.includes(targetPhaseId)
+        ? currentIds
+        : [...currentIds, targetPhaseId],
     );
 
     return true;
@@ -16167,14 +16268,13 @@ const ServiceScopeEditStep = ({
         );
 
         return {
+          id: String(phase?.id ?? `service-assistant-phase-${index}-${getId()}`),
           name:
             phaseType === "setup"
               ? "Setup"
               : phaseType === "ongoing"
                 ? "Ongoing"
-                : phaseName.startsWith("Recurring")
-                  ? phaseName
-                  : `Recurring ${index + 1}`,
+                : "Recurring",
           customName:
             phaseType === "setup" || phaseType === "ongoing"
               ? phaseName.replace(/^(Setup|Ongoing)\s*/i, "").trim()
@@ -16225,8 +16325,10 @@ const ServiceScopeEditStep = ({
       },
     );
 
-    setPhases(nextPhases);
-    setExpandedPhaseNames(nextPhases.map((phase) => phase.name));
+    const orderedPhases = reorderServicePhases(nextPhases);
+
+    setPhases(orderedPhases);
+    setExpandedPhaseIds(orderedPhases.map((phase) => phase.id));
     return true;
   };
 
@@ -16280,28 +16382,28 @@ const ServiceScopeEditStep = ({
     }
   };
 
-  const removePhase = (phaseName: string) => {
+  const removePhase = (phaseId: string) => {
     setPhases((currentPhases) =>
       currentPhases.length <= 1
         ? currentPhases
-        : currentPhases.filter((phase) => phase.name !== phaseName),
+        : currentPhases.filter((phase) => phase.id !== phaseId),
     );
-    setExpandedPhaseNames((currentNames) =>
-      currentNames.filter((name) => name !== phaseName),
-    );
-  };
-
-  const togglePhase = (phaseName: string) => {
-    setExpandedPhaseNames((currentNames) =>
-      currentNames.includes(phaseName)
-        ? currentNames.filter((name) => name !== phaseName)
-        : [...currentNames, phaseName],
+    setExpandedPhaseIds((currentIds) =>
+      currentIds.filter((id) => id !== phaseId),
     );
   };
 
-  const toggleServicePhaseNote = (phaseName: string) => {
-    setActiveServicePhaseNote((currentName) =>
-      currentName === phaseName ? null : phaseName,
+  const togglePhase = (phaseId: string) => {
+    setExpandedPhaseIds((currentIds) =>
+      currentIds.includes(phaseId)
+        ? currentIds.filter((id) => id !== phaseId)
+        : [...currentIds, phaseId],
+    );
+  };
+
+  const toggleServicePhaseNote = (phaseId: string) => {
+    setActiveServicePhaseNoteId((currentId) =>
+      currentId === phaseId ? null : phaseId,
     );
   };
 
@@ -16549,7 +16651,7 @@ const ServiceScopeEditStep = ({
                     visual="gray"
                     type="button"
                     onClick={() =>
-                      setExpandedPhaseNames(phases.map((phase) => phase.name))
+                      setExpandedPhaseIds(phases.map((phase) => phase.id))
                     }
                   >
                     <ChevronsDown className="size-[15px] shrink-0 text-gray-500" />
@@ -16562,7 +16664,7 @@ const ServiceScopeEditStep = ({
                     variant="outlined"
                     visual="gray"
                     type="button"
-                    onClick={() => setExpandedPhaseNames([])}
+                    onClick={() => setExpandedPhaseIds([])}
                   >
                     <ChevronsUp className="size-[15px] shrink-0 text-gray-500" />
                     <span className="h-5 w-20 shrink-0 text-center">
@@ -16599,11 +16701,9 @@ const ServiceScopeEditStep = ({
 
               <div className="mt-6 space-y-3">
                 {visiblePhases.map((phase) => {
-                  const isExpanded = expandedPhaseNames.includes(phase.name);
+                  const isExpanded = expandedPhaseIds.includes(phase.id);
                   const phaseIndex = phases.findIndex(
-                    (candidate) =>
-                      candidate.name === phase.name &&
-                      candidate.customName === phase.customName,
+                    (candidate) => candidate.id === phase.id,
                   );
                   const shouldShowPhaseNote =
                     phaseIndex > -1 &&
@@ -16613,7 +16713,7 @@ const ServiceScopeEditStep = ({
 
                   return (
                     <div
-                      key={phase.name}
+                      key={phase.id}
                       className="relative overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
                     >
                       <div className="flex h-14 items-center justify-center gap-4 border-b border-gray-200 p-3">
@@ -16628,7 +16728,7 @@ const ServiceScopeEditStep = ({
                                 : `Expand ${phase.name}`
                             }
                             className="size-8 rounded-[5px] p-1.5 text-inherit"
-                            onClick={() => togglePhase(phase.name)}
+                            onClick={() => togglePhase(phase.id)}
                           >
                             <ChevronDown
                               className={cn(
@@ -16651,11 +16751,27 @@ const ServiceScopeEditStep = ({
                         </div>
                         <div className="flex items-center gap-3 self-stretch">
                           {phase.statusKind === "recurring" ? (
-                            <div className="hidden h-[25px] w-[206px] items-center justify-center gap-2 text-[13px] font-semibold leading-4 text-[#122A4B] md:inline-flex">
+                            <div className="hidden h-[25px] items-center justify-center gap-2 text-[13px] font-semibold leading-4 text-[#122A4B] md:inline-flex">
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <span className="inline-flex h-[25px] shrink-0 cursor-default items-center gap-2">
+                                    <span
+                                      className="inline-flex h-[25px] shrink-0 cursor-pointer items-center gap-2"
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() =>
+                                        openRecurringScheduleDialog(phase)
+                                      }
+                                      onKeyDown={(event) => {
+                                        if (
+                                          event.key === "Enter" ||
+                                          event.key === " "
+                                        ) {
+                                          event.preventDefault();
+                                          openRecurringScheduleDialog(phase);
+                                        }
+                                      }}
+                                    >
                                       <span className="inline-flex size-4 shrink-0 items-center justify-center text-success-600">
                                         <svg
                                           aria-hidden="true"
@@ -16684,60 +16800,19 @@ const ServiceScopeEditStep = ({
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    visual="gray"
-                                    className="h-[25px] w-[126px] rounded border border-dashed border-gray-300 bg-gray-100 px-[7px] py-[5px] text-sm font-medium leading-[17px] text-dark-blue-400 shadow-xs hover:bg-gray-100 focus:bg-gray-100 data-[state=open]:bg-gray-100 data-[state=open]:text-dark-blue-400"
-                                  >
-                                    <span className="h-[17px] w-28 shrink-0 text-left text-dark-blue-400">
-                                      {formatServiceRecurringStatus(phase)}
-                                    </span>
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent
-                                  align="end"
-                                  className="w-48"
-                                >
-                                  {[
-                                    {
-                                      label: "Monthly, 1 time",
-                                      recurrenceSchedule: "monthly" as const,
-                                      recurrenceCount: 1,
-                                    },
-                                    {
-                                      label: "Monthly, 3 times",
-                                      recurrenceSchedule: "monthly" as const,
-                                      recurrenceCount: 3,
-                                    },
-                                    {
-                                      label: "Weekly, 4 times",
-                                      recurrenceSchedule: "weekly" as const,
-                                      recurrenceCount: 4,
-                                    },
-                                    {
-                                      label: "Weekly, 8 times",
-                                      recurrenceSchedule: "weekly" as const,
-                                      recurrenceCount: 8,
-                                    },
-                                  ].map((option) => (
-                                    <DropdownMenuItem
-                                      key={option.label}
-                                      onSelect={() =>
-                                        updatePhaseRecurrence(
-                                          phase.name,
-                                          option.recurrenceSchedule,
-                                          option.recurrenceCount,
-                                        )
-                                      }
-                                    >
-                                      {option.label}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                visual="gray"
+                                className="h-[25px] min-w-[126px] rounded border border-dashed border-gray-300 bg-gray-100 px-[7px] py-[5px] text-sm font-medium leading-[17px] text-dark-blue-400 shadow-xs hover:bg-gray-100 focus:bg-gray-100"
+                                onClick={() =>
+                                  openRecurringScheduleDialog(phase)
+                                }
+                              >
+                                <span className="h-[17px] shrink-0 whitespace-nowrap text-left text-dark-blue-400">
+                                  {formatServiceRecurringStatus(phase)}
+                                </span>
+                              </Button>
                             </div>
                           ) : (
                             <TooltipProvider>
@@ -16812,19 +16887,19 @@ const ServiceScopeEditStep = ({
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
-                                onSelect={() => togglePhase(phase.name)}
+                                onSelect={() => togglePhase(phase.id)}
                               >
                                 {isExpanded ? "Collapse Phase" : "Expand Phase"}
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                onSelect={() => addTask(phase.name)}
+                                onSelect={() => addTask(phase.id)}
                               >
                                 Add Task
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 visual="destructive"
-                                onSelect={() => removePhase(phase.name)}
+                                onSelect={() => removePhase(phase.id)}
                               >
                                 Remove Phase
                               </DropdownMenuItem>
@@ -16836,7 +16911,7 @@ const ServiceScopeEditStep = ({
                             type="button"
                             aria-label={`Add task to ${phase.name}`}
                             className="size-8 rounded-[5px] border-gray-300 bg-white p-2 shadow-[0px_1px_4px_rgba(0,0,0,0.03)]"
-                            onClick={() => addTask(phase.name)}
+                            onClick={() => addTask(phase.id)}
                           >
                             <Plus className="size-3 text-gray-500" />
                           </IconButton>
@@ -16954,7 +17029,7 @@ const ServiceScopeEditStep = ({
                           </div>
                           {phase.rows.map((row) => (
                             <div
-                              key={`${phase.name}-${row.task}`}
+                              key={`${phase.id}-${row.task}`}
                               className="relative grid h-[72px] w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] items-center border-b border-gray-200 last:border-b-0"
                             >
                               <div className="flex h-[72px] w-[240px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
@@ -16968,7 +17043,7 @@ const ServiceScopeEditStep = ({
                                   type="button"
                                   className="h-[17px] justify-start p-0 text-left text-sm font-normal leading-[17px] text-gray-600 hover:no-underline"
                                   onClick={() =>
-                                    openServiceRoleEditor(phase.name, row)
+                                    openServiceRoleEditor(phase.id, row)
                                   }
                                 >
                                   {row.role}
@@ -16981,7 +17056,7 @@ const ServiceScopeEditStep = ({
                               <CountriesCombobox
                                 value={row.location}
                                 onValueChange={(location) =>
-                                  updateRow(phase.name, row.task, { location })
+                                  updateRow(phase.id, row.task, { location })
                                 }
                                 placeholder="Location"
                                 triggerClassName="h-7 rounded-[5px] border-dashed border-gray-300 bg-gray-50 px-2 text-xs leading-[18px] text-gray-700"
@@ -17005,7 +17080,7 @@ const ServiceScopeEditStep = ({
                                     <DropdownMenuItem
                                       key={experience}
                                       onSelect={() =>
-                                        updateRow(phase.name, row.task, {
+                                        updateRow(phase.id, row.task, {
                                           experience,
                                         })
                                       }
@@ -17023,7 +17098,7 @@ const ServiceScopeEditStep = ({
                               </div>
 
                               {activeServiceRoleKey ===
-                              `${phase.name}-${row.task}` ? (
+                              `${phase.id}-${row.task}` ? (
                                 <div className="absolute left-[185px] top-[-22px] z-10 w-[280px] rounded-[5px] border border-gray-200 bg-white p-4 shadow-lg">
                                   <Label className="text-xs leading-[18px] text-dark-blue-400">
                                     Role
@@ -17189,7 +17264,7 @@ const ServiceScopeEditStep = ({
                                       type="button"
                                       onClick={() =>
                                         saveServiceRoleEditor(
-                                          phase.name,
+                                          phase.id,
                                           row.task,
                                         )
                                       }
@@ -17207,7 +17282,7 @@ const ServiceScopeEditStep = ({
                       {phase.note &&
                       shouldShowPhaseNote &&
                       phase.phaseType !== "setup" &&
-                      activeServicePhaseNote === phase.name ? (
+                      activeServicePhaseNoteId === phase.id ? (
                         <div
                           className={cn(
                             "pointer-events-none absolute hidden w-[230px] rounded-[5px] bg-primary-50 p-4 text-sm leading-5 text-dark-blue-400 shadow-xs min-[1180px]:block",
@@ -17367,28 +17442,26 @@ const ServiceScopeEditStep = ({
         </div>
       </ScrollArea>
       <Dialog open={isAddPhaseDialogOpen} onOpenChange={setAddPhaseDialogOpen}>
-        <DialogContent className="w-[410px] max-w-[calc(100vw-32px)]">
-          <DialogHeader>
-            <DialogTitle className="text-xl leading-7 font-semibold text-dark-blue-400">
-              Add Phase
-            </DialogTitle>
-          </DialogHeader>
-          <div className="mt-2 space-y-5">
-            <div>
-              <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-                Phase Name
-              </Label>
-              <Input
-                className="mt-2 h-11"
-                placeholder="Enter phase name"
-                value={newPhaseName}
-                onChange={(event) => setNewPhaseName(event.target.value)}
-              />
-            </div>
-            <div>
-              <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-                Phase Type
-              </Label>
+        <DialogContent
+          accessibilityTitle="Add Phase"
+          className="flex h-[314px] w-[371px] max-w-[calc(100vw-32px)] flex-col items-center gap-8 rounded-xl bg-white p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+        >
+          <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5 self-stretch">
+            <Label className="h-5 text-sm font-medium leading-5 text-dark-blue-400">
+              Phase Name
+            </Label>
+            <Input
+              className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-500 shadow-xs placeholder:text-gray-500"
+              placeholder="Enter phase name"
+              value={newPhaseName}
+              onChange={(event) => setNewPhaseName(event.target.value)}
+            />
+          </div>
+          <div className="flex h-24 w-[323px] flex-col items-start gap-1.5 self-stretch">
+            <Label className="h-5 text-sm font-medium leading-5 text-dark-blue-400">
+              Phase Type
+            </Label>
+            <div className="flex h-11 w-[323px] flex-col items-start gap-1.5 self-stretch">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -17396,15 +17469,17 @@ const ServiceScopeEditStep = ({
                     visual="gray"
                     type="button"
                     className={cn(
-                      "mt-2 h-11 w-full justify-between border-gray-300 bg-white px-3 text-left text-sm font-normal leading-5",
-                      newPhaseType ? "text-dark-blue-400" : "text-gray-400",
+                      "h-11 w-[323px] justify-between rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-left text-base font-normal leading-6 shadow-xs",
+                      newPhaseType ? "text-dark-blue-400" : "text-gray-500",
                     )}
-                    rightIcon={<ChevronDown className="size-4 text-gray-500" />}
+                    rightIcon={
+                      <ChevronDown className="size-5 rotate-180 text-gray-400" />
+                    }
                   >
                     {selectedPhaseTypeLabel}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-[360px]">
+                <DropdownMenuContent align="start" className="w-[323px]">
                   {serviceScopePhaseTypeOptions.map((option) => {
                     const isUnavailable = isPhaseTypeUnavailable(option.value);
 
@@ -17440,21 +17515,138 @@ const ServiceScopeEditStep = ({
                   })}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <p className="mt-2 text-sm leading-5 text-gray-500">
-                Helps organize tasks by timing and frequency
-              </p>
             </div>
+            <p className="h-5 w-[323px] text-sm font-normal leading-5 text-gray-500">
+              Helps organize tasks by timing and frequency
+            </p>
           </div>
-          <DialogFooter className="mt-8 grid grid-cols-2 gap-3">
+          <DialogFooter className="grid h-9 w-[323px] grid-cols-2 gap-3 self-stretch">
             <Button
               type="button"
               variant="outlined"
               visual="gray"
+              className="h-9 w-[155.5px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-xs"
               onClick={() => setAddPhaseDialogOpen(false)}
             >
               Cancel
             </Button>
-            <Button type="button" disabled={!canCreatePhase} onClick={addPhase}>
+            <Button
+              type="button"
+              className="h-9 w-[155.5px] rounded-[5px] bg-primary-500 px-[14px] py-2 text-sm font-semibold leading-5 text-white shadow-xs"
+              disabled={!canCreatePhase}
+              onClick={addPhase}
+            >
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(activeRecurringPhaseId)}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeRecurringScheduleDialog();
+          }
+        }}
+      >
+        <DialogContent
+          accessibilityTitle="Recurring schedule"
+          className="flex h-[268px] w-[371px] max-w-[calc(100vw-32px)] flex-col items-center gap-8 rounded-xl bg-white p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+        >
+          <div className="flex h-[152px] w-[323px] flex-col items-start gap-3 self-stretch">
+            <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5 self-stretch">
+              <Label className="h-5 text-sm font-medium leading-5 text-dark-blue-400">
+                Recurring schedule
+              </Label>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    type="button"
+                    className="h-11 w-[323px] justify-between rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-left text-base font-normal leading-6 text-dark-blue-400 shadow-xs"
+                    rightIcon={
+                      <ChevronDown className="size-5 text-gray-500" />
+                    }
+                  >
+                    {serviceRecurringScheduleOptions.find(
+                      (option) => option.value === draftRecurringSchedule,
+                    )?.label ?? "Monthly"}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  className="h-36 w-[155px] overflow-y-scroll rounded-[5px] border border-gray-100 bg-white p-0 shadow-[0px_0px_4px_rgba(0,0,0,0.04),0px_4px_8px_rgba(0,0,0,0.06)]"
+                >
+                  {serviceRecurringScheduleOptions.map((option) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      className={cn(
+                        "h-12 w-[155px] rounded-none px-3 py-2 text-[13px] font-medium leading-[13px] text-gray-500 focus:bg-gray-50 focus:text-dark-blue-400",
+                        draftRecurringSchedule === option.value &&
+                          "bg-gray-50 text-dark-blue-400",
+                      )}
+                      onSelect={() => setDraftRecurringSchedule(option.value)}
+                    >
+                      {option.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+              <Label className="h-5 text-sm font-medium leading-5 text-dark-blue-400">
+                Repeats
+              </Label>
+              <div className="flex h-11 w-[323px] items-start overflow-hidden rounded-[5px] border border-gray-300 bg-white shadow-xs">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  visual="gray"
+                  className="h-11 w-12 rounded-none border-0 border-r border-gray-300 bg-white px-[14px] py-2.5 text-gray-500 shadow-none hover:bg-white"
+                  onClick={() =>
+                    setDraftRecurringCount((count) => Math.max(1, count - 1))
+                  }
+                >
+                  <span className="h-5 w-5 text-xl font-normal leading-5">
+                    -
+                  </span>
+                </Button>
+                <div className="flex h-11 w-[227px] flex-1 items-center justify-center px-3.5 py-2.5 text-center text-base font-normal leading-6 text-gray-900">
+                  <span>{draftRecurringCount}</span>
+                  <span className="ml-1 text-gray-400">
+                    {draftRecurringCount === 1 ? "time" : "times"}
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  visual="gray"
+                  className="h-11 w-12 rounded-none border-0 border-l border-gray-300 bg-white px-[14px] py-2.5 text-gray-500 shadow-none hover:bg-white"
+                  onClick={() =>
+                    setDraftRecurringCount((count) => Math.min(99, count + 1))
+                  }
+                >
+                  <Plus className="size-5" />
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="grid h-9 w-[323px] grid-cols-2 gap-3 self-stretch">
+            <Button
+              type="button"
+              variant="outlined"
+              visual="gray"
+              className="h-9 w-[155.5px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-xs"
+              onClick={closeRecurringScheduleDialog}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="h-9 w-[155.5px] rounded-[5px] bg-primary-500 px-[14px] py-2 text-sm font-semibold leading-5 text-white shadow-xs"
+              onClick={saveRecurringScheduleDialog}
+            >
               Done
             </Button>
           </DialogFooter>
