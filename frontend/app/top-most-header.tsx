@@ -98,6 +98,10 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@/components/ui"
 import { ScrollBar } from "@/components/ui"
 
@@ -1058,25 +1062,34 @@ const Notifications = () => {
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <div className="relative inline-flex">
-            <IconButton
-              className="rounded-full"
-              size="md"
-              variant="ghost"
-              visual="gray"
-            >
-              <Bell className="size-[18px]" />
-            </IconButton>
-            {unreadBadgeCount + inboxTotalUnread > 0 ? (
-              <span className="absolute top-0 right-0 pointer-events-none inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-error-100 px-2 text-[10px] font-bold leading-[18px] text-error-500">
-                {unreadBadgeCount + inboxTotalUnread > 99
-                  ? "99+"
-                  : unreadBadgeCount + inboxTotalUnread}
-              </span>
-            ) : null}
-          </div>
-        </PopoverTrigger>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <div className="relative inline-flex">
+                <IconButton
+                  className="rounded-full"
+                  size="md"
+                  variant="ghost"
+                  visual="gray"
+                >
+                  <Bell className="size-[18px]" />
+                </IconButton>
+                {unreadBadgeCount + inboxTotalUnread > 0 ? (
+                  <span className="absolute top-0 right-0 pointer-events-none inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-error-100 px-2 text-[10px] font-bold leading-[18px] text-error-500">
+                    {unreadBadgeCount + inboxTotalUnread > 99
+                      ? "99+"
+                      : unreadBadgeCount + inboxTotalUnread}
+                  </span>
+                ) : null}
+              </div>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          {!open && (
+            <TooltipContent side="bottom" sideOffset={8} className="text-xs font-medium">
+              Notifications
+            </TooltipContent>
+          )}
+        </Tooltip>
         <PopoverContent
           className="w-[370px] bg-white border border-gray-100 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]"
           align="end"
@@ -1802,45 +1815,62 @@ export const TopMostHeader = ({
         <div className="flex flex-auto gap-x-3 xs:max-lg:ml-3 xs:max-md:hidden">
           <SearchBar />
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                className="gap-x-2 xs:max-lg:h-[34px] xs:max-lg:px-[12.6px] xs:max-lg:py-[7.2px] bg-white"
-                visual="gray"
-                variant="outlined"
-                size="md"
-              >
-                <span className="inline-flex items-center gap-x-[7.2px] lg:gap-x-1 text-[12.6px] leading-5 lg:text-base lg:leading-6 font-light">
-                  <span className="font-semibold">$ 1,540</span> USD
-                </span>
-                <ChevronDown className="text-gray-500 size-[13.5px] lg:size-[15px]" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-[174px]">
-              <DropdownMenuItem onSelect={() => router.push("/add-funds")}>
-                <Plus className="size-4" /> Add Funds
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => router.push("/transfer-funds")}>
-                <Repeat className="size-4" /> Transfer Funds
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <TooltipProvider delayDuration={0}>
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      className="gap-x-2 xs:max-lg:h-[34px] xs:max-lg:px-[12.6px] xs:max-lg:py-[7.2px] bg-white"
+                      visual="gray"
+                      variant="outlined"
+                      size="md"
+                    >
+                      <span className="inline-flex items-center gap-x-[7.2px] lg:gap-x-1 text-[12.6px] leading-5 lg:text-base lg:leading-6 font-light">
+                        <span className="font-semibold">$ 1,540</span> USD
+                      </span>
+                      <ChevronDown className="text-gray-500 size-[13.5px] lg:size-[15px]" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={8} className="text-xs font-medium">
+                  My Balance
+                </TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent className="w-[174px]">
+                <DropdownMenuItem onSelect={() => router.push("/add-funds")}>
+                  <Plus className="size-4" /> Add Funds
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push("/transfer-funds")}>
+                  <Repeat className="size-4" /> Transfer Funds
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </TooltipProvider>
         </div>
 
         <div className="flex items-center">
           {user ? (
             <>
+              <TooltipProvider delayDuration={0}>
               <div className="flex items-center gap-x-1">
-                <InviteWindowTrigger asChild>
-                  <IconButton
-                    className="rounded-full"
-                    size="md"
-                    variant="ghost"
-                    visual="gray"
-                  >
-                    <Plus className="size-[18px]" />
-                  </IconButton>
-                </InviteWindowTrigger>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <InviteWindowTrigger asChild>
+                      <IconButton
+                        className="rounded-full"
+                        size="md"
+                        variant="ghost"
+                        visual="gray"
+                      >
+                        <Plus className="size-[18px]" />
+                      </IconButton>
+                    </InviteWindowTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" sideOffset={8} className="text-xs font-medium">
+                    Invite
+                  </TooltipContent>
+                </Tooltip>
                 <Notifications />
                 <IconButton
                   className="rounded-full lg:hidden"
@@ -1851,6 +1881,7 @@ export const TopMostHeader = ({
                   <ThreeHorizontalLines className="text-dark-blue-400" />
                 </IconButton>
               </div>
+              </TooltipProvider>
 
               <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                 <DropdownMenuTrigger className="hidden lg:inline-flex items-center gap-x-2 px-3 py-1.5 rounded-[8px] hover:bg-gray-100 focus-visible:outline-none">

@@ -14,6 +14,8 @@ import {
   Mail01,
   Search,
   Settings02,
+  ChevronsLeft,
+  ChevronsRight,
   Sidebar,
   UserCircle,
   Users,
@@ -85,6 +87,94 @@ const formatBadge = (count: number) => {
 }
 
 // ---------------------------------------------------------------------------
+// Animated sidebar icons (custom SVGs with separate paths for hover animation)
+// ---------------------------------------------------------------------------
+
+const AnimatedHome = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 19 19" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    {/* Roof */}
+    <path d="m3.164 8.113 6.78-5.085c.258-.193.387-.29.529-.328a.75.75 0 0 1 .382 0c.141.038.27.135.529.328l6.78 5.085" />
+    {/* House body */}
+    <path d="M4.664 6.988v7.35c0 .84 0 1.26.163 1.581a1.5 1.5 0 0 0 .656.656c.32.163.74.163 1.58.163h7.2c.84 0 1.26 0 1.582-.163a1.5 1.5 0 0 0 .655-.656c.164-.32.164-.74.164-1.58v-7.35l-4.56-3.42c-.517-.388-.775-.582-1.059-.656a1.5 1.5 0 0 0-.763 0c-.284.074-.542.268-1.058.655l-4.56 3.42Z" />
+    {/* Door */}
+    <path className="sidebar-door" d="M8.414 16.738v-5.55c0-.42 0-.63.081-.79a.75.75 0 0 1 .328-.328c.16-.082.37-.082.79-.082h2.1c.42 0 .63 0 .791.082a.75.75 0 0 1 .328.328c.082.16.082.37.082.79v5.55" />
+  </svg>
+)
+
+const AnimatedFileCheck = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 19 19" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    {/* Document outline */}
+    <path d="M15.605 9.861V5.586c0-1.26 0-1.89-.245-2.371a2.25 2.25 0 0 0-.983-.984c-.481-.245-1.111-.245-2.372-.245h-4.8c-1.26 0-1.89 0-2.371.245a2.25 2.25 0 0 0-.983.984c-.246.481-.246 1.111-.246 2.371v7.8c0 1.26 0 1.89.246 2.372.215.423.56.767.983.983.481.245 1.111.245 2.371.245h2.4" />
+    {/* Line 1 (top, longest) - draws L→R */}
+    <line x1="6.605" y1="5.736" x2="12.605" y2="5.736" className="sidebar-doc-line sidebar-doc-line-1" />
+    {/* Line 2 (middle) - draws L→R */}
+    <line x1="6.605" y1="8.736" x2="11.105" y2="8.736" className="sidebar-doc-line sidebar-doc-line-2" />
+    {/* Line 3 (short bottom) - draws L→R */}
+    <line x1="6.605" y1="11.736" x2="8.105" y2="11.736" className="sidebar-doc-line sidebar-doc-line-3" />
+    {/* Checkmark */}
+    <polyline points="11.48,14.736 12.98,16.236 16.355,12.861" className="sidebar-checkmark" />
+  </svg>
+)
+
+const AnimatedBarChart = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 19 19" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    {/* Square outline */}
+    <path d="M6.036 16.228h6.3c1.26 0 1.89 0 2.371-.245A2.25 2.25 0 0 0 15.69 15c.245-.482.245-1.112.245-2.372v-6.3c0-1.26 0-1.89-.245-2.371a2.25 2.25 0 0 0-.983-.984c-.481-.245-1.111-.245-2.372-.245h-6.3c-1.26 0-1.89 0-2.37.245a2.25 2.25 0 0 0-.984.984c-.245.481-.245 1.111-.245 2.371v6.3c0 1.26 0 1.89.245 2.372.216.423.56.767.983.983.481.245 1.111.245 2.372.245Z" />
+    {/* Bar 1 - short, left: bottom to top */}
+    <line x1="6.186" y1="13.228" x2="6.186" y2="11.728" className="sidebar-bar sidebar-bar-1" />
+    {/* Bar 2 - medium, center */}
+    <line x1="9.186" y1="13.228" x2="9.186" y2="8.728" className="sidebar-bar sidebar-bar-2" />
+    {/* Bar 3 - tall, right */}
+    <line x1="12.186" y1="13.228" x2="12.186" y2="5.728" className="sidebar-bar sidebar-bar-3" />
+  </svg>
+)
+
+const AnimatedMail = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 19 19" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    {/* Envelope body */}
+    <path d="M5.35 15.49h7.8c1.26 0 1.89 0 2.372-.245a2.25 2.25 0 0 0 .983-.983c.245-.482.245-1.112.245-2.372v-4.8c0-1.26 0-1.89-.245-2.371a2.25 2.25 0 0 0-.984-.984c-.48-.245-1.11-.245-2.371-.245h-7.8c-1.26 0-1.89 0-2.371.245a2.25 2.25 0 0 0-.984.984c-.245.48-.245 1.111-.245 2.371v4.8c0 1.26 0 1.89.245 2.372.216.423.56.767.984.983.48.245 1.11.245 2.371.245Z" />
+    {/* Closed flap (V pointing down into envelope) */}
+    <path className="sidebar-flap-closed" d="m1.749 5.74 6.124 4.287c.496.347.744.52 1.013.588.238.059.488.059.726 0 .27-.068.518-.241 1.013-.588L16.75 5.74" />
+    {/* Open flap (V pointing up above envelope) */}
+    <path className="sidebar-flap-open" d="m1.749 5.74 6.124-4.287c.496-.347.744-.52 1.013-.588.238-.059.488-.059.726 0 .27.068.518.241 1.013.588L16.75 5.74" />
+  </svg>
+)
+
+const AnimatedDollar = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 19 19" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    {/* S-curve (top to bottom) */}
+    <path className="sidebar-dollar-s" d="M14.085 6.984a3 3 0 0 0-3-3h-3a3 3 0 1 0 0 6h3a3 3 0 0 1 0 6h-3a3 3 0 0 1-3-3" />
+    {/* Vertical line */}
+    <line x1="9.585" y1="2.484" x2="9.585" y2="17.484" className="sidebar-dollar-line" />
+  </svg>
+)
+
+// Map labels to custom animated icon components
+const ANIMATED_ICONS: Partial<Record<string, ComponentType<{ className?: string }>>> = {
+  Home: AnimatedHome,
+  "My Contracts": AnimatedFileCheck,
+  Reports: AnimatedBarChart,
+  "Stats & Trends": AnimatedBarChart,
+  Financials: AnimatedDollar,
+  Inbox: AnimatedMail,
+}
+
+const ICON_ANIM: Record<string, string> = {
+  Home: "sidebar-anim-home",
+  "My Listings": "sidebar-anim-search",
+  "My Contracts": "sidebar-anim-contracts",
+  "My Jobs": "sidebar-anim-briefcase",
+  "My Teams": "sidebar-anim-users",
+  Financials: "sidebar-anim-dollar",
+  Reports: "sidebar-anim-chart",
+  "Stats & Trends": "sidebar-anim-chart",
+  Profile: "sidebar-anim-profile",
+  Inbox: "sidebar-anim-inbox",
+  Notifications: "sidebar-anim-alert",
+  Settings: "sidebar-anim-settings",
+}
+
+// ---------------------------------------------------------------------------
 // Single unified link — same layout in both states, text fades with opacity
 // ---------------------------------------------------------------------------
 
@@ -97,18 +187,19 @@ const SidebarLink = ({
   isActive: boolean
   collapsed: boolean
 }) => {
-  const Icon = item.icon
+  const Icon = ANIMATED_ICONS[item.label] ?? item.icon
+  const animClass = ICON_ANIM[item.label] ?? ""
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <NextLink
           className={cn(
-            "relative flex w-full items-center gap-x-3 font-semibold text-sm leading-6 text-dark-blue-400 rounded-[5px] h-10 flex-none px-3 whitespace-nowrap",
+            "group relative flex w-full items-center gap-x-3 font-semibold text-sm leading-6 text-dark-blue-400 rounded-[5px] h-10 flex-none px-3 whitespace-nowrap",
             isActive ? "bg-primary-50 text-primary-500" : "hover:bg-gray-100"
           )}
           href={item.href}
         >
-          <span className="relative shrink-0">
+          <span className={cn("relative shrink-0", animClass)}>
             <Icon
               className={cn(
                 "size-[18px]",
@@ -273,7 +364,24 @@ const CollapseToggle = ({
         size="md"
         onClick={onToggle}
       >
-        <Sidebar className="size-[15px]" />
+        <span className="relative inline-flex items-center justify-center size-[15px]">
+          <Sidebar className="size-[15px]" />
+          <svg
+            className="absolute left-[62%] top-1/2 -translate-x-1/2 -translate-y-1/2 size-[5px] text-current drop-shadow-[0_0_1px_white]"
+            viewBox="0 0 24 24"
+            fill="white"
+            stroke="currentColor"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            {collapsed ? (
+              <polyline points="9 18 15 12 9 6" />
+            ) : (
+              <polyline points="15 18 9 12 15 6" />
+            )}
+          </svg>
+        </span>
       </IconButton>
     </TooltipTrigger>
     <TooltipContent side={collapsed ? "right" : "bottom"} sideOffset={8} className="text-xs font-medium">
