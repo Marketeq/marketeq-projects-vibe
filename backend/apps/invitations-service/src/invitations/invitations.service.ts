@@ -15,7 +15,6 @@ import {
   parseAcceptToken,
 } from '../auth/invite-secret.util';
 import { InternalUserSummary, UserServiceClient } from './user-service.client';
-import { PublishServiceClient } from './publish-service.client';
 import { InvitationEventsService } from './invitation-events.service';
 import {
   AlreadyAcceptedException,
@@ -91,7 +90,6 @@ export class InvitationsService {
     private readonly repo: Repository<Invitation>,
     private readonly config: ConfigService,
     private readonly userService: UserServiceClient,
-    private readonly publishService: PublishServiceClient,
     private readonly events: InvitationEventsService,
     @Inject('RABBITMQ_CLIENT')
     private readonly rabbitmq: ClientProxy,
@@ -322,7 +320,6 @@ export class InvitationsService {
         this.repo.create({
           teamId: dto.teamId,
           companyId: dto.companyId,
-          projectId: dto.projectId,
           invitedEmail: email,
           role: dto.role,
           note: normalizedNote ?? undefined,
@@ -368,11 +365,6 @@ export class InvitationsService {
             inviterName,
             inviterAvatarUrl,
           });
-
-          // Project-scoped invite: mark them Pending on project_members.
-          if (dto.projectId) {
-            await this.publishService.addPendingMember(dto.projectId, inviteeUser.id);
-          }
         }
       } catch (err: any) {
         this.logger.warn(
@@ -760,18 +752,6 @@ export class InvitationsService {
     inv.canceledAt = new Date();
     const saved = await this.repo.save(inv);
     this.events.revoked(inv.id, inv.teamId, inv.companyId, inv.invitedEmail);
-
-    // Project-scoped invite: the person never accepted, so their Pending
-    // project_members row must not linger forever as "Pending Invite".
-    if (inv.projectId) {
-      const inviteeUser = await this.userService
-        .getUserSummaryByEmail(inv.invitedEmail)
-        .catch(() => null);
-      if (inviteeUser?.id) {
-        await this.publishService.declineMember(inv.projectId, inviteeUser.id);
-      }
-    }
-
     return saved;
   }
 
@@ -977,12 +957,6 @@ export class InvitationsService {
 
     if (!updated) {
       throw new InvitationNotFoundException();
-    }
-
-    // Project-scoped invite: flip that project's Pending row to Active now
-    // that the invitee has actually accepted.
-    if (inv.projectId) {
-      await this.publishService.activateMember(inv.projectId, invitee.id);
     }
 
     const priorSummary = await this.userService

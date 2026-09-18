@@ -257,22 +257,6 @@ export class ProjectRelationalRepository implements ProjectRepository {
     return new Set(rows.map((r) => r.projectId));
   }
 
-  async setSingleProjectMemberStatus(
-    id: Project['id'],
-    userId: string,
-    status: string,
-  ): Promise<void> {
-    await this.projectRepository.manager.query(
-      `INSERT INTO listings.project_members
-         ("projectId", "userId", "projectRole", "status", "isLead", "updatedAt")
-       VALUES ($1, $2, 'Contributor', $3, false, now())
-       ON CONFLICT ("projectId", "userId") DO UPDATE SET
-         "status" = EXCLUDED."status",
-         "updatedAt" = now()`,
-      [id?.toString(), userId, status],
-    );
-  }
-
   async getRecentQuestions(id: Project['id']): Promise<RecentQuestion[]> {
     const rows = await this.projectRepository.manager.query(
       `SELECT "recentQuestions" FROM listings.project WHERE id = $1`,

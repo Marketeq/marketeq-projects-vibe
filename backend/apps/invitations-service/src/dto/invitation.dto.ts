@@ -21,11 +21,6 @@ export class CreateInvitationsDto {
   @IsOptional()
   companyId?: string;
 
-  
-  @IsUUID()
-  @IsOptional()
-  projectId?: string;
-
   @Transform(toRoleOrDefault)
   @IsEnum(InvitationRole)
   @IsOptional()
