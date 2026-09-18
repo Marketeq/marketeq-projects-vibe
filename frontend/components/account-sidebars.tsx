@@ -28,15 +28,19 @@ import {
   TooltipTrigger,
 } from "@/components/ui"
 
+// ---------------------------------------------------------------------------
+// Persistent collapsed state (localStorage-backed, no flash on navigation)
+// ---------------------------------------------------------------------------
+
 const SIDEBAR_COLLAPSED_KEY = "sidebar-collapsed"
 
 const useSidebarCollapsed = () => {
-  const [collapsed, setCollapsed] = useState(false)
+  // Start with null = "not yet loaded from storage"
+  const [collapsed, setCollapsed] = useState<boolean | null>(null)
 
-  // Hydrate from localStorage after mount to avoid SSR mismatch
+  // Read localStorage once on mount
   useEffect(() => {
-    const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
-    if (stored === "true") setCollapsed(true)
+    setCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true")
   }, [])
 
   const toggle = useCallback(() => {
@@ -61,11 +65,20 @@ const useSidebarCollapsed = () => {
   return [collapsed, toggle] as const
 }
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
 type SidebarItem = {
   href: string
   label: string
   icon: ComponentType<{ className?: string }>
   badge?: string
+}
+
+type SidebarSection = {
+  label: string
+  items: SidebarItem[]
 }
 
 const formatBadge = (count: number) => {
@@ -74,61 +87,18 @@ const formatBadge = (count: number) => {
   return String(count)
 }
 
-type SidebarSection = {
-  label: string
-  items: SidebarItem[]
-}
-
 // ---------------------------------------------------------------------------
-// Expanded sidebar link
+// Single unified link — icons never move, text fades with opacity
 // ---------------------------------------------------------------------------
 
-const ExpandedLink = ({
+const SidebarLink = ({
   item,
   isActive,
+  collapsed,
 }: {
   item: SidebarItem
   isActive: boolean
-}) => {
-  const Icon = item.icon
-  return (
-    <NextLink
-      className={cn(
-        "flex w-full items-center gap-x-3 font-semibold text-sm leading-6 text-dark-blue-400 rounded-[5px] h-10 flex-none px-3",
-        isActive ? "bg-primary-50 text-primary-500" : "hover:bg-gray-100"
-      )}
-      href={item.href}
-    >
-      <Icon
-        className={cn(
-          "size-[18px] shrink-0",
-          isActive ? "text-primary-500" : "text-dark-blue-400/50"
-        )}
-      />
-      {item.label}
-      {item.badge && (
-        <Badge
-          className="rounded-full ml-auto"
-          size="md"
-          visual={isActive ? "primary" : "error"}
-        >
-          {item.badge}
-        </Badge>
-      )}
-    </NextLink>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Collapsed sidebar link — square 40x40 target with tooltip
-// ---------------------------------------------------------------------------
-
-const CollapsedLink = ({
-  item,
-  isActive,
-}: {
-  item: SidebarItem
-  isActive: boolean
+  collapsed: boolean
 }) => {
   const Icon = item.icon
   return (
@@ -136,38 +106,71 @@ const CollapsedLink = ({
       <TooltipTrigger asChild>
         <NextLink
           className={cn(
-            "relative flex items-center justify-center size-10 rounded-lg mx-auto",
-            isActive ? "bg-primary-50" : "hover:bg-gray-100"
+            "relative flex w-full items-center gap-x-3 font-semibold text-sm leading-6 text-dark-blue-400 rounded-[5px] h-10 flex-none px-3 whitespace-nowrap",
+            isActive ? "bg-primary-50 text-primary-500" : "hover:bg-gray-100"
           )}
           href={item.href}
         >
-          <Icon
-            className={cn(
-              "size-[20px]",
-              isActive ? "text-primary-500" : "text-dark-blue-400/50"
+          <span className="relative shrink-0">
+            <Icon
+              className={cn(
+                "size-[18px]",
+                isActive ? "text-primary-500" : "text-dark-blue-400/50"
+              )}
+            />
+            {item.badge && collapsed && (
+              <span className="absolute -top-0.5 -right-1.5 size-[7px] rounded-full bg-error-500 ring-2 ring-gray-50" />
             )}
-          />
+          </span>
+          <span
+            className={cn(
+              "truncate transition-opacity duration-300",
+              collapsed ? "opacity-0" : "opacity-100"
+            )}
+          >
+            {item.label}
+          </span>
           {item.badge && (
-            <span className="absolute top-1 right-1 size-[7px] rounded-full bg-error-500 ring-2 ring-gray-50" />
+            <Badge
+              className={cn(
+                "rounded-full ml-auto shrink-0 transition-opacity duration-300",
+                collapsed ? "opacity-0" : "opacity-100"
+              )}
+              size="md"
+              visual={isActive ? "primary" : "error"}
+            >
+              {item.badge}
+            </Badge>
           )}
         </NextLink>
       </TooltipTrigger>
-      <TooltipContent side="right" sideOffset={12} className="text-xs font-medium">
-        {item.label}
-        {item.badge ? ` (${item.badge})` : ""}
-      </TooltipContent>
+      {collapsed && (
+        <TooltipContent side="right" sideOffset={12} className="text-xs font-medium">
+          {item.label}
+          {item.badge ? ` (${item.badge})` : ""}
+        </TooltipContent>
+      )}
     </Tooltip>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Section renderers
+// Section renderer — one component for both states
 // ---------------------------------------------------------------------------
 
-const renderExpanded = (sections: SidebarSection[], pathname: string) =>
+const renderSections = (
+  sections: SidebarSection[],
+  pathname: string,
+  collapsed: boolean
+) =>
   sections.map((section) => (
-    <div key={section.label} className="flex flex-col gap-y-2">
-      <span className="inline-block text-xs leading-5 font-medium text-dark-blue-400">
+    <div key={section.label} className="flex flex-col">
+      <span
+        className={cn(
+          "text-xs leading-5 font-medium text-dark-blue-400 whitespace-nowrap overflow-hidden transition-all duration-300",
+          collapsed ? "opacity-0 h-0" : "opacity-100 h-5 mb-2"
+        )}
+      >
         {section.label}
       </span>
       <div className="flex flex-col gap-y-1">
@@ -175,26 +178,15 @@ const renderExpanded = (sections: SidebarSection[], pathname: string) =>
           const isActive =
             pathname === item.href || pathname?.startsWith(item.href + "/")
           return (
-            <ExpandedLink key={item.label} item={item} isActive={isActive} />
+            <SidebarLink
+              key={item.label}
+              item={item}
+              isActive={isActive}
+              collapsed={collapsed}
+            />
           )
         })}
       </div>
-    </div>
-  ))
-
-const renderCollapsed = (sections: SidebarSection[], pathname: string) =>
-  sections.map((section, sectionIdx) => (
-    <div key={section.label} className="flex flex-col items-center gap-y-1">
-      {sectionIdx > 0 && (
-        <div className="w-6 border-t border-gray-200 mb-1" />
-      )}
-      {section.items.map((item) => {
-        const isActive =
-          pathname === item.href || pathname?.startsWith(item.href + "/")
-        return (
-          <CollapsedLink key={item.label} item={item} isActive={isActive} />
-        )
-      })}
     </div>
   ))
 
@@ -258,7 +250,7 @@ const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
 ]
 
 // ---------------------------------------------------------------------------
-// Toggle button (top-right corner of the sidebar)
+// Toggle button (absolute top-right corner)
 // ---------------------------------------------------------------------------
 
 const CollapseToggle = ({
@@ -294,11 +286,58 @@ const CollapseToggle = ({
 )
 
 // ---------------------------------------------------------------------------
-// Sidebar shells
+// Sidebar shell (shared layout, role-specific sections)
+// ---------------------------------------------------------------------------
+
+const SidebarShell = ({
+  sections,
+  collapsed,
+  toggle,
+}: {
+  sections: SidebarSection[]
+  collapsed: boolean
+  toggle: () => void
+}) => {
+  const pathname = usePathname()
+
+  return (
+    <TooltipProvider delayDuration={150}>
+      <div
+        className={cn(
+          "shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200 overflow-hidden overflow-y-auto",
+          "transition-[width] duration-300 ease-in-out",
+          "p-[15px] space-y-6",
+          collapsed ? "w-[64px]" : "w-[224px]"
+        )}
+      >
+        <CollapseToggle collapsed={collapsed} onToggle={toggle} />
+        {renderSections(sections, pathname, collapsed)}
+        <div
+          className={cn(
+            "border-t border-gray-200 pt-5 px-3 transition-opacity duration-300",
+            collapsed ? "opacity-0" : "opacity-100"
+          )}
+        >
+          <p className="text-xs text-gray-500 leading-4 whitespace-nowrap">
+            Get the right talent for your next project.
+          </p>
+          <NextLink
+            href="/"
+            className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block whitespace-nowrap"
+          >
+            Browse the Marketplace
+          </NextLink>
+        </div>
+      </div>
+    </TooltipProvider>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Exported sidebars
 // ---------------------------------------------------------------------------
 
 export const TalentAccountSidebar = () => {
-  const pathname = usePathname()
   const { totalUnread } = useInboxThreads()
   const [collapsed, toggle] = useSidebarCollapsed()
   const sections = useMemo(
@@ -306,38 +345,13 @@ export const TalentAccountSidebar = () => {
     [totalUnread]
   )
 
-  return (
-    <TooltipProvider delayDuration={150}>
-      <div
-        className={cn(
-          "shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200 transition-all duration-300 ease-in-out overflow-hidden",
-          collapsed ? "w-[64px] px-2 pt-10 pb-2 space-y-4" : "w-[224px] p-[15px] space-y-6"
-        )}
-      >
-        <CollapseToggle collapsed={collapsed} onToggle={toggle} />
-        {collapsed
-          ? renderCollapsed(sections, pathname)
-          : renderExpanded(sections, pathname)}
-        {!collapsed && (
-          <div className="border-t border-gray-200 pt-5 px-3">
-            <p className="text-xs text-gray-500 leading-4">
-              Get the right talent for your next project.
-            </p>
-            <NextLink
-              href="/"
-              className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
-            >
-              Browse the Marketplace
-            </NextLink>
-          </div>
-        )}
-      </div>
-    </TooltipProvider>
-  )
+  // Don't render until localStorage is read — prevents flash
+  if (collapsed === null) return null
+
+  return <SidebarShell sections={sections} collapsed={collapsed} toggle={toggle} />
 }
 
 export const ClientAccountSidebar = () => {
-  const pathname = usePathname()
   const { totalUnread } = useInboxThreads()
   const [collapsed, toggle] = useSidebarCollapsed()
   const sections = useMemo(
@@ -345,32 +359,8 @@ export const ClientAccountSidebar = () => {
     [totalUnread]
   )
 
-  return (
-    <TooltipProvider delayDuration={150}>
-      <div
-        className={cn(
-          "shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200 transition-all duration-300 ease-in-out overflow-hidden",
-          collapsed ? "w-[64px] px-2 pt-10 pb-2 space-y-4" : "w-[224px] p-[15px] space-y-6"
-        )}
-      >
-        <CollapseToggle collapsed={collapsed} onToggle={toggle} />
-        {collapsed
-          ? renderCollapsed(sections, pathname)
-          : renderExpanded(sections, pathname)}
-        {!collapsed && (
-          <div className="border-t border-gray-200 pt-5 px-3">
-            <p className="text-xs text-gray-500 leading-4">
-              Get the right talent for your next project.
-            </p>
-            <NextLink
-              href="/"
-              className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
-            >
-              Browse the Marketplace
-            </NextLink>
-          </div>
-        )}
-      </div>
-    </TooltipProvider>
-  )
+  // Don't render until localStorage is read — prevents flash
+  if (collapsed === null) return null
+
+  return <SidebarShell sections={sections} collapsed={collapsed} toggle={toggle} />
 }
