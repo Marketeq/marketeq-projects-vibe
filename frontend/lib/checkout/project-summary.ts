@@ -11,6 +11,10 @@ export type CheckoutRawTeamMember = {
   experienceLevel: string | null
   isLead: boolean
   status: string | null
+  skills: string[]
+  totalProjectsCompleted: number | null
+  repeatHireRate: number | null
+  memberSince: string | null
 }
 
 export type CheckoutFaq = {
@@ -78,6 +82,14 @@ const getTeamMembers = (project: any): CheckoutRawTeamMember[] => {
     experienceLevel: member.experienceLevel ?? null,
     isLead: Boolean(member.isLead),
     status: member.status ?? null,
+    skills: Array.isArray(member.skills) ? member.skills : [],
+    totalProjectsCompleted:
+      typeof member.totalProjectsCompleted === "number"
+        ? member.totalProjectsCompleted
+        : null,
+    repeatHireRate:
+      typeof member.repeatHireRate === "number" ? member.repeatHireRate : null,
+    memberSince: member.memberSince ?? null,
   }))
 }
 
