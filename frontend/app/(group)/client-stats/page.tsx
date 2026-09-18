@@ -461,7 +461,7 @@ export default function ClientStatsPage() {
       <div className="flex bg-gray-50">
         <LeftSidebar forceRole="CLIENT" />
 
-        <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px] overflow-hidden">
+        <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px] overflow-hidden">
           <div className="flex-auto min-w-0">
             {/* Summary banner */}
             <Alert variant="primary" className="mb-6">
