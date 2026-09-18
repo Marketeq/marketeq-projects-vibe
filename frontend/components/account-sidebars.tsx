@@ -140,6 +140,19 @@ const AnimatedMail = ({ className }: { className?: string }) => (
   </svg>
 )
 
+const AnimatedUsers = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 19 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    {/* Back person (peeks right on hover) */}
+    <g className="sidebar-peek-person">
+      <path d="M17.408 15.75v-1.5a3 3 0 0 0-2.25-2.902" />
+      <path d="M12.158 2.348a3 3 0 0 1 0 5.812 3 3 0 0 1 0-5.812Z" />
+    </g>
+    {/* Front person (static) */}
+    <path d="M12.908 15.75v-1.5a3 3 0 0 0-3-3h-6a3 3 0 0 0-3 3v1.5" />
+    <path d="M9.908 5.25a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+  </svg>
+)
+
 const AnimatedDollar = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 19 19" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     {/* S-curve (top to bottom) */}
@@ -155,6 +168,7 @@ const ANIMATED_ICONS: Partial<Record<string, ComponentType<{ className?: string 
   "My Contracts": AnimatedFileCheck,
   Reports: AnimatedBarChart,
   "Stats & Trends": AnimatedBarChart,
+  "My Teams": AnimatedUsers,
   Financials: AnimatedDollar,
   Inbox: AnimatedMail,
 }

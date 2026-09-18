@@ -31,9 +31,14 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-@keyframes sidebar-slide {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(2px); }
+/* --- Teams: back person peeks out --- */
+.sidebar-peek-person {
+  transform-box: fill-box;
+  transform-origin: center center;
+  transition: transform 0.4s ease;
+}
+.group:hover .sidebar-anim-users .sidebar-peek-person {
+  transform: translateX(3.5px) rotate(-8deg);
 }
 @keyframes sidebar-pop {
   0%, 100% { transform: scale(1); }
@@ -94,7 +99,6 @@
 /* --- Simple wrapper animations --- */
 .group:hover .sidebar-anim-search { animation: sidebar-tilt 0.55s ease; }
 .group:hover .sidebar-anim-briefcase { animation: sidebar-rock 0.5s ease; }
-.group:hover .sidebar-anim-users { animation: sidebar-slide 0.4s ease; }
 .group:hover .sidebar-anim-profile { animation: sidebar-pop 0.45s ease; }
 .group:hover .sidebar-anim-alert { animation: sidebar-ring 0.8s ease; }
 .group:hover .sidebar-anim-settings { animation: sidebar-spin 0.7s linear; }
