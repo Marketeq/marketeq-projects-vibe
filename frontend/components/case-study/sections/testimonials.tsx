@@ -72,23 +72,6 @@ function TestimonialsEdit({
     }))
   }
 
-  // Inserts a fresh testimonial at `at`, seeding testimonialData too — items and
-  // testimonialData must stay in lockstep, otherwise items.map((id) => testimonialData[id])
-  // below (and TestimonialsView's render) hits an undefined entry for the new id.
-  const addTestimonialAt = (at: number) => {
-    const uniqueId = getId() + 2
-    setItems((prev) => prev.toSpliced(at, 0, uniqueId))
-    setTestimonialData((prev) => ({
-      ...prev,
-      [uniqueId]: {
-        quoteHtml:
-          "Lorem Ipsum is simply dummy text of the printing and typesetting industry.",
-        authorHtml: "John Doe",
-        roleHtml: "Acme Inc., President & CEO",
-      },
-    }))
-  }
-
   useEffect(() => {
     onDataChange?.({ items: items.map((id) => testimonialData[id]) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
