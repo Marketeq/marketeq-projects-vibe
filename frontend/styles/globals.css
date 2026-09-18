@@ -97,7 +97,7 @@
 .group:hover .sidebar-anim-users { animation: sidebar-slide 0.4s ease; }
 .group:hover .sidebar-anim-profile { animation: sidebar-pop 0.45s ease; }
 .group:hover .sidebar-anim-alert { animation: sidebar-ring 0.8s ease; }
-.group:hover .sidebar-anim-settings { animation: sidebar-spin 0.7s ease-in-out; }
+.group:hover .sidebar-anim-settings { animation: sidebar-spin 0.7s linear; }
 
 /* --- Home: door opens --- */
 .group:hover .sidebar-anim-home .sidebar-door {
