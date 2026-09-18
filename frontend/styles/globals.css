@@ -145,7 +145,7 @@
   animation: sidebar-dollar-s-draw 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 .group:hover .sidebar-anim-dollar .sidebar-dollar-line {
-  animation: sidebar-dollar-line-draw 0.3s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: sidebar-dollar-line-draw 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) both;
   animation-delay: 0.3s;
 }
 
