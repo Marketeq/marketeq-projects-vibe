@@ -274,11 +274,9 @@ const CollapseToggle = ({
         <Sidebar className="size-[15px]" />
       </IconButton>
     </TooltipTrigger>
-    {collapsed && (
-      <TooltipContent side="right" sideOffset={12} className="text-xs font-medium">
-        Expand sidebar
-      </TooltipContent>
-    )}
+    <TooltipContent side={collapsed ? "right" : "bottom"} sideOffset={8} className="text-xs font-medium">
+      {collapsed ? "Expand sidebar" : "Close sidebar"}
+    </TooltipContent>
   </Tooltip>
 )
 
