@@ -258,7 +258,7 @@ const buildClientSections = (inboxBadge?: string): SidebarSection[] => [
 ]
 
 // ---------------------------------------------------------------------------
-// Toggle button (sits at the bottom of the sidebar)
+// Toggle button (top-right corner of the sidebar)
 // ---------------------------------------------------------------------------
 
 const CollapseToggle = ({
@@ -272,20 +272,24 @@ const CollapseToggle = ({
     <TooltipTrigger asChild>
       <IconButton
         className={cn(
-          "bg-white size-8 hover:bg-gray-100 border border-gray-200",
-          collapsed ? "mx-auto" : ""
+          "bg-white absolute z-10 size-[23px] hover:opacity-100 border border-gray-200",
+          collapsed
+            ? "top-2.5 left-1/2 -translate-x-1/2 opacity-80"
+            : "top-2.5 right-2.5 opacity-50"
         )}
         variant="outlined"
         visual="gray"
         size="md"
         onClick={onToggle}
       >
-        <Sidebar className="size-4" />
+        <Sidebar className="size-[15px]" />
       </IconButton>
     </TooltipTrigger>
-    <TooltipContent side="right" sideOffset={12} className="text-xs font-medium">
-      {collapsed ? "Expand sidebar" : "Collapse sidebar"}
-    </TooltipContent>
+    {collapsed && (
+      <TooltipContent side="right" sideOffset={12} className="text-xs font-medium">
+        Expand sidebar
+      </TooltipContent>
+    )}
   </Tooltip>
 )
 
@@ -306,47 +310,27 @@ export const TalentAccountSidebar = () => {
     <TooltipProvider delayDuration={150}>
       <div
         className={cn(
-          "shrink-0 bg-gray-50 min-[1024px]:flex flex-col fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200 transition-[width] duration-300 ease-in-out",
-          collapsed ? "w-[60px]" : "w-[224px]"
+          "shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200 transition-all duration-300 ease-in-out overflow-hidden",
+          collapsed ? "w-[64px] p-2 space-y-4" : "w-[224px] p-[15px] space-y-6"
         )}
       >
-        {/* Scrollable nav area */}
-        <div
-          className={cn(
-            "flex-1 overflow-y-auto overflow-x-hidden",
-            collapsed ? "px-[10px] pt-3 space-y-3" : "p-[15px] space-y-6"
-          )}
-        >
-          {collapsed
-            ? renderCollapsed(sections, pathname)
-            : renderExpanded(sections, pathname)}
-        </div>
-
-        {/* Bottom section */}
-        <div
-          className={cn(
-            "border-t border-gray-200 shrink-0",
-            collapsed ? "px-[10px] py-3 flex justify-center" : "px-[15px] py-4"
-          )}
-        >
-          {!collapsed && (
-            <div className="px-3 mb-3">
-              <p className="text-xs text-gray-500 leading-4">
-                Get the right talent for your next project.
-              </p>
-              <NextLink
-                href="/"
-                className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
-              >
-                Browse the Marketplace
-              </NextLink>
-            </div>
-          )}
-          <CollapseToggle
-            collapsed={collapsed}
-            onToggle={toggle}
-          />
-        </div>
+        <CollapseToggle collapsed={collapsed} onToggle={toggle} />
+        {collapsed
+          ? renderCollapsed(sections, pathname)
+          : renderExpanded(sections, pathname)}
+        {!collapsed && (
+          <div className="border-t border-gray-200 pt-5 px-3">
+            <p className="text-xs text-gray-500 leading-4">
+              Get the right talent for your next project.
+            </p>
+            <NextLink
+              href="/"
+              className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
+            >
+              Browse the Marketplace
+            </NextLink>
+          </div>
+        )}
       </div>
     </TooltipProvider>
   )
@@ -365,47 +349,27 @@ export const ClientAccountSidebar = () => {
     <TooltipProvider delayDuration={150}>
       <div
         className={cn(
-          "shrink-0 bg-gray-50 min-[1024px]:flex flex-col fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200 transition-[width] duration-300 ease-in-out",
-          collapsed ? "w-[60px]" : "w-[224px]"
+          "shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200 transition-all duration-300 ease-in-out overflow-hidden",
+          collapsed ? "w-[64px] p-2 space-y-4" : "w-[224px] p-[15px] space-y-6"
         )}
       >
-        {/* Scrollable nav area */}
-        <div
-          className={cn(
-            "flex-1 overflow-y-auto overflow-x-hidden",
-            collapsed ? "px-[10px] pt-3 space-y-3" : "p-[15px] space-y-6"
-          )}
-        >
-          {collapsed
-            ? renderCollapsed(sections, pathname)
-            : renderExpanded(sections, pathname)}
-        </div>
-
-        {/* Bottom section */}
-        <div
-          className={cn(
-            "border-t border-gray-200 shrink-0",
-            collapsed ? "px-[10px] py-3 flex justify-center" : "px-[15px] py-4"
-          )}
-        >
-          {!collapsed && (
-            <div className="px-3 mb-3">
-              <p className="text-xs text-gray-500 leading-4">
-                Get the right talent for your next project.
-              </p>
-              <NextLink
-                href="/"
-                className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
-              >
-                Browse the Marketplace
-              </NextLink>
-            </div>
-          )}
-          <CollapseToggle
-            collapsed={collapsed}
-            onToggle={toggle}
-          />
-        </div>
+        <CollapseToggle collapsed={collapsed} onToggle={toggle} />
+        {collapsed
+          ? renderCollapsed(sections, pathname)
+          : renderExpanded(sections, pathname)}
+        {!collapsed && (
+          <div className="border-t border-gray-200 pt-5 px-3">
+            <p className="text-xs text-gray-500 leading-4">
+              Get the right talent for your next project.
+            </p>
+            <NextLink
+              href="/"
+              className="text-xs font-semibold text-primary-500 hover:text-primary-600 hover:underline mt-1.5 inline-block"
+            >
+              Browse the Marketplace
+            </NextLink>
+          </div>
+        )}
       </div>
     </TooltipProvider>
   )
