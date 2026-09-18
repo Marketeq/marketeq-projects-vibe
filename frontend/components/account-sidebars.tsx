@@ -35,10 +35,8 @@ import {
 const SIDEBAR_COLLAPSED_KEY = "sidebar-collapsed"
 
 const useSidebarCollapsed = () => {
-  // Start with null = "not yet loaded from storage"
   const [collapsed, setCollapsed] = useState<boolean | null>(null)
 
-  // Read localStorage once on mount
   useEffect(() => {
     setCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true")
   }, [])
@@ -51,7 +49,6 @@ const useSidebarCollapsed = () => {
     })
   }, [])
 
-  // Sync across tabs
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === SIDEBAR_COLLAPSED_KEY) {
@@ -88,7 +85,7 @@ const formatBadge = (count: number) => {
 }
 
 // ---------------------------------------------------------------------------
-// Single unified link — icons never move, text fades with opacity
+// Single unified link — same layout in both states, text fades with opacity
 // ---------------------------------------------------------------------------
 
 const SidebarLink = ({
@@ -106,8 +103,7 @@ const SidebarLink = ({
       <TooltipTrigger asChild>
         <NextLink
           className={cn(
-            "relative flex items-center font-semibold text-sm leading-6 text-dark-blue-400 rounded-[5px] h-10 flex-none whitespace-nowrap",
-            collapsed ? "w-10 mx-auto justify-center" : "w-full gap-x-3 px-3",
+            "relative flex w-full items-center gap-x-3 font-semibold text-sm leading-6 text-dark-blue-400 rounded-[5px] h-10 flex-none px-3 whitespace-nowrap",
             isActive ? "bg-primary-50 text-primary-500" : "hover:bg-gray-100"
           )}
           href={item.href}
@@ -125,8 +121,8 @@ const SidebarLink = ({
           </span>
           <span
             className={cn(
-              "truncate transition-all duration-300",
-              collapsed ? "opacity-0 w-0" : "opacity-100"
+              "truncate transition-opacity duration-300",
+              collapsed ? "opacity-0" : "opacity-100"
             )}
           >
             {item.label}
@@ -134,8 +130,8 @@ const SidebarLink = ({
           {item.badge && (
             <Badge
               className={cn(
-                "rounded-full ml-auto shrink-0 transition-all duration-300",
-                collapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+                "rounded-full ml-auto shrink-0 transition-opacity duration-300",
+                collapsed ? "opacity-0" : "opacity-100"
               )}
               size="md"
               visual={isActive ? "primary" : "error"}
@@ -156,7 +152,7 @@ const SidebarLink = ({
 }
 
 // ---------------------------------------------------------------------------
-// Section renderer — one component for both states
+// Section renderer
 // ---------------------------------------------------------------------------
 
 const renderSections = (
@@ -307,8 +303,8 @@ const SidebarShell = ({
         className={cn(
           "shrink-0 bg-gray-50 min-[1024px]:block fixed z-40 top-[62px] lg:top-[65px] left-0 bottom-0 hidden border-r border-gray-200 overflow-hidden overflow-y-auto",
           "transition-[width] duration-300 ease-in-out",
-          "px-3 py-[15px] space-y-6",
-          collapsed ? "w-[72px]" : "w-[224px]"
+          "px-[15px] py-[15px] space-y-6",
+          collapsed ? "w-[70px]" : "w-[224px]"
         )}
       >
         <CollapseToggle collapsed={collapsed} onToggle={toggle} />
@@ -316,7 +312,7 @@ const SidebarShell = ({
         <div
           className={cn(
             "border-t border-gray-200 pt-5 px-3 transition-opacity duration-300",
-            collapsed ? "opacity-0" : "opacity-100"
+            collapsed ? "opacity-0 pointer-events-none" : "opacity-100"
           )}
         >
           <p className="text-xs text-gray-500 leading-4 whitespace-nowrap">
@@ -346,7 +342,6 @@ export const TalentAccountSidebar = () => {
     [totalUnread]
   )
 
-  // Don't render until localStorage is read — prevents flash
   if (collapsed === null) return null
 
   return <SidebarShell sections={sections} collapsed={collapsed} toggle={toggle} />
@@ -360,7 +355,6 @@ export const ClientAccountSidebar = () => {
     [totalUnread]
   )
 
-  // Don't render until localStorage is read — prevents flash
   if (collapsed === null) return null
 
   return <SidebarShell sections={sections} collapsed={collapsed} toggle={toggle} />
