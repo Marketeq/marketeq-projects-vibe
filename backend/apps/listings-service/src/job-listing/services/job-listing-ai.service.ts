@@ -53,6 +53,14 @@ const REGION_COUNTRY_REFERENCE = VALID_REGIONS.map(
     `- ${region}: ${(REGION_COUNTRY_PROMPT_SAMPLE[region] ?? REGION_TO_COUNTRIES[region]).join(", ")}`,
 ).join("\n");
 
+// Full 5-level experience scale — matches ps_platform_rate_averages.
+// experience_level (pricing-service) and Step 4's EXPERIENCE_LEVELS picker.
+// Single source of truth for every scope-generation/edit prompt below and
+// for normalizeTask()'s validation, so they can never drift out of sync
+// with each other the way the old 3-level junior/mid/senior scale did.
+const VALID_EXPERIENCE_LEVELS = ["student", "junior", "medior", "senior", "guru"];
+const VALID_EXPERIENCE_LEVELS_PROMPT_LIST = VALID_EXPERIENCE_LEVELS.join(", ");
+
 interface GroqMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -189,16 +197,17 @@ EXPERIENCE COST MULTIPLIERS
 
 Use these multipliers when evaluating experience-level cost:
 
+- student: 0.50
 - junior: 0.75
-- mid / medior: 1.00
+- medior: 1.00
 - senior: 1.25
-
-Treat "mid" and "medior" as equivalent.
+- guru: 1.50
 
 A lower multiplier means lower estimated labor cost.
 
 The multiplier represents COST ONLY.
-It does not mean that a lower experience level is appropriate for every task.
+It does not mean that a lower experience level is appropriate for every task,
+nor that a higher one is always the safer choice.
 `;
 
 const COST_OPTIMIZATION_RULES = `
@@ -290,10 +299,20 @@ additional coordination complexity.
 
 EXPERIENCE DECISION RULES
 
-Do not automatically change senior -> mid -> junior because the multiplier
-is lower.
+Do not automatically move down the experience ladder (guru -> senior ->
+medior -> junior -> student) just because the multiplier is lower, and do
+not move up to guru just because a task sounds important.
 
-Prefer senior or experienced resources for:
+Guru resources are appropriate ONLY for:
+
+- work with genuinely severe consequences if done wrong (e.g. irreversible
+  data migrations, security architecture for sensitive systems, a technical
+  decision that locks in the platform's direction for years)
+- deep, narrow specialist expertise that a general senior would not have
+- rare, high-stakes escalations — this is not "senior but better," it is a
+  distinct, uncommon tier
+
+Prefer senior resources for:
 
 - architecture
 - ambiguous requirements
@@ -305,7 +324,7 @@ Prefer senior or experienced resources for:
 - high-impact design decisions
 - tasks where mistakes could cause substantial downstream rework
 
-Mid-level resources are appropriate for:
+Medior-level resources are appropriate for:
 
 - standard implementation
 - moderately complex development
@@ -323,17 +342,29 @@ Junior resources are more appropriate for:
 - tasks with clear acceptance criteria
 - work that can be efficiently reviewed by a more experienced person
 
+Student resources are appropriate ONLY for:
+
+- extremely simple, fully-specified, low-risk work with no ambiguity at all
+  (e.g. basic data entry, running a pre-written script, formatting content
+  to a template)
+- tasks where an error is trivial to catch and cheap to fix
+- do not use this tier just because a task is cheap to have done fast —
+  it must genuinely require no independent judgment
+
 Compare savings against the potential cost of errors and rework.
 
 For example:
 
 senior = 1.25
-mid = 1.00
+medior = 1.00
 
-Changing senior -> mid saves 20% of the experience-adjusted portion of the
-cost.
+Changing senior -> medior saves 20% of the experience-adjusted portion of
+the cost.
 
-Do it only when the task does not genuinely require senior expertise.
+Do it only when the task does not genuinely require senior expertise. Apply
+the same reasoning one step at a time between any two adjacent tiers —
+never skip a tier (e.g. senior straight to junior) without considering
+whether medior is the more defensible stop.
 
 HOURS DECISION RULES
 
@@ -361,7 +392,7 @@ Multiple optimizations may be applied to the same task, but be more
 conservative when stacking changes.
 
 For example, a task currently US + Senior + 16 hours has relative cost
-1.00 × 1.25 × 16 = 20.00. Moving it to South Asia + Mid + 12 hours gives
+1.00 × 1.25 × 16 = 20.00. Moving it to South Asia + Medior + 12 hours gives
 0.25 × 1.00 × 12 = 3.00 — substantially cheaper mathematically, but that
 does NOT mean the second configuration is appropriate.
 
@@ -393,7 +424,7 @@ Before modifying the scope:
 Do NOT attempt to force every task toward:
 
 lowest-location-multiplier
-+ junior
++ student
 + minimum-hours.
 
 The goal is the lowest-cost REALISTIC delivery plan, not the lowest possible
@@ -906,11 +937,11 @@ export class JobListingAiService {
     index: number,
   ): GeneratedTask {
     const estimatedHours = Number(task.estimatedHours);
-    const experienceLevel = ["junior", "mid", "senior"].includes(
-      String(task.experienceLevel),
+    const experienceLevel = VALID_EXPERIENCE_LEVELS.includes(
+      String(task.experienceLevel).toLowerCase(),
     )
-      ? String(task.experienceLevel)
-      : "mid";
+      ? String(task.experienceLevel).toLowerCase()
+      : "medior";
     const workSchedule =
       task.workSchedule === "part_time" ? "part_time" : "full_time";
 
@@ -1223,7 +1254,7 @@ export class JobListingAiService {
               '"roleTitle": "string", "location": "string", "experienceLevel": "string", ' +
               '"workSchedule": "full_time|part_time", "estimatedHours": number }] }] }. ' +
               "Maximum 10 phases. Maximum 16 tasks per phase. " +
-              "experienceLevel must be one of: junior, mid, senior. " +
+              `experienceLevel must be one of: ${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}. ` +
               `location must be one of these countries: ${VALID_COUNTRIES_PROMPT_LIST}. ` +
               "estimatedHours must be a positive number. Do not include markdown or prose.",
           },
@@ -1283,7 +1314,7 @@ export class JobListingAiService {
               "professional title matched to that task (e.g. \"SEO Copywriter\", \"Video Editor\", " +
               "\"React Developer\"), never a generic placeholder like \"Specialist\". " +
               "experienceLevel must be one of: " +
-              `junior, mid, senior. location must be one of these countries: ${VALID_COUNTRIES_PROMPT_LIST}. ` +
+              `${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}. location must be one of these countries: ${VALID_COUNTRIES_PROMPT_LIST}. ` +
               "estimatedHours must be a positive number.",
           },
           {
@@ -1319,12 +1350,14 @@ export class JobListingAiService {
         "what they need beyond the basic description. Make reasonable assumptions. " +
         'Respond only with a JSON object: { "phases": [...] } following the service scope structure ' +
         "(one setup, one or more recurring, one ongoing). Maximum 8 phases. Maximum 12 tasks per phase. " +
-        "Include role, location, experienceLevel, workSchedule, estimatedHours on every task."
+        "Include role, location, experienceLevel, workSchedule, estimatedHours on every task. " +
+        `experienceLevel must be one of: ${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}.`
       : "You generate a complete project scope from a brief description. The client is unsure " +
         "what they need beyond the basic description. Make reasonable assumptions. " +
         'Respond only with a JSON object: { "phases": [...] } following the project scope structure. ' +
         "Maximum 8 phases. Maximum 12 tasks per phase. " +
-        "Include role, location, experienceLevel, workSchedule, estimatedHours on every task.";
+        "Include role, location, experienceLevel, workSchedule, estimatedHours on every task. " +
+        `experienceLevel must be one of: ${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}.`;
 
     const result = await this.call<
       GeneratedProjectScope | GeneratedServiceScope
@@ -1479,13 +1512,16 @@ export class JobListingAiService {
 
     // Step 2 — Score each region/experience combination
     // Composite score = quality weight (0.75) + budget fit weight (0.25)
-    // Quality rank: senior=3, mid=2, junior=1
+    // Quality rank: guru=5, senior=4, medior=3, junior=2, student=1
     // Budget fit: 1 if effective hourly >= median, 0.5 if >= low, 0 otherwise
     const qualityRank: Record<string, number> = {
-      senior: 3,
-      mid: 2,
-      junior: 1,
+      guru: 5,
+      senior: 4,
+      medior: 3,
+      junior: 2,
+      student: 1,
     };
+    const MAX_QUALITY_RANK = 5;
 
     const scored = input.rateData.map((rate) => {
       const quality = qualityRank[rate.experienceLevel] ?? 1;
@@ -1503,7 +1539,7 @@ export class JobListingAiService {
             : 0;
       const bestFit = Math.max(fitFull, fitPart);
       const schedule = fitPart > fitFull ? "part_time" : "full_time";
-      const score = (quality / 3) * 0.75 + bestFit * 0.25;
+      const score = (quality / MAX_QUALITY_RANK) * 0.75 + bestFit * 0.25;
       return { rate, score, schedule, fitFull, fitPart };
     });
 
