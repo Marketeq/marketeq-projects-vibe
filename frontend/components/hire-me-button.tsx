@@ -2465,7 +2465,7 @@ export function OfferDialog({
                                       <DisclosureContent className="shadow-xl">
                                         <div className="relative mt-1">
                                           <span className="absolute left-6 top-5 z-10 flex items-center gap-0.5 text-[14px] font-semibold leading-normal text-dark-blue-400">
-                                            {focusedStartDate.getFullYear()}
+                                            {focusedStartDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
                                             <ChevronRight className="size-4 text-primary-500" />
                                           </span>
                                           <Calendar
