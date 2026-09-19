@@ -2,12 +2,24 @@
 
 import React, { useEffect, useState } from "react"
 import { Reorder } from "framer-motion"
+import { Camera01 } from "@blend-metrics/icons"
 import { getId } from "@/utils/functions"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui"
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  IconButton,
+  PictureEditor,
+  useToast,
+} from "@/components/ui"
+import { uploadCaseStudyImage } from "@/lib/case-study-upload"
 import type { TestimonialData, TestimonialItem } from "@/lib/case-study-mapper"
 import { BlockToolbar } from "@/components/case-study/toolbars"
 import { AddBlockDivider } from "@/components/case-study/add-block-divider"
 import { ArticleRoot, ControlledDraggable, Html, RichTextEditor, swap } from "./_shared"
+
+/** Shown until the user uploads a photo of the person quoted. */
+const DEFAULT_AVATAR_SRC = "/man.jpg"
 
 const defaultTestimonials: TestimonialItem[] = [
   {
@@ -41,6 +53,7 @@ function TestimonialsEdit({
     Record<number, TestimonialItem>
   >(() => Object.fromEntries(ids.map((id, i) => [id, initialItems[i]])))
   const len = items.length
+  const { toast } = useToast()
 
   // Inserts a fresh testimonial at `at`, seeding testimonialData too — items and
   // testimonialData must stay in lockstep, otherwise items.map((id) => testimonialData[id])
@@ -133,10 +146,53 @@ function TestimonialsEdit({
                     </div>
 
                     <div className="mt-[50px] flex items-center gap-x-2">
-                      <Avatar size="md">
-                        <AvatarImage src="/man.jpg" alt="Man" />
-                        <AvatarFallback>M</AvatarFallback>
-                      </Avatar>
+                      <PictureEditor
+                        skipEditStep
+                        onValueChange={(files) => {
+                          const file = (files as File[] | undefined)?.[0]
+                          if (!(file instanceof File)) return
+                          uploadCaseStudyImage(file)
+                            .then((url) =>
+                              setTestimonialData((prev) => ({
+                                ...prev,
+                                [item]: { ...prev[item], avatarUrl: url },
+                              }))
+                            )
+                            .catch(() => {
+                              toast({
+                                title: "Couldn't upload image",
+                                description: "Please try again.",
+                              })
+                            })
+                        }}
+                        startingPoint={({ dataUrl, open }) => (
+                          <div className="group/avatar relative shrink-0">
+                            <Avatar size="md">
+                              <AvatarImage
+                                src={
+                                  dataUrl ||
+                                  testimonialData[item]?.avatarUrl ||
+                                  DEFAULT_AVATAR_SRC
+                                }
+                                alt=""
+                              />
+                              <AvatarFallback>M</AvatarFallback>
+                            </Avatar>
+
+                            <IconButton
+                              type="button"
+                              variant="ghost"
+                              visual="gray"
+                              size="sm"
+                              aria-label="Change photo"
+                              onClick={open}
+                              className="absolute inset-0 size-10 rounded-full bg-dark-blue-400/60 text-white opacity-0 hover:bg-dark-blue-400/60 hover:text-white group-hover/avatar:opacity-100 focus-visible:opacity-100"
+                            >
+                              <Camera01 className="size-4" />
+                            </IconButton>
+                          </div>
+                        )}
+                      />
 
                       <div className="space-y-0.5">
                         <h3 className="relative">
@@ -232,7 +288,7 @@ function TestimonialsView({ data }: { data?: Record<string, unknown> }) {
 
             <div className="mt-[50px] flex items-center gap-x-2">
               <Avatar size="md">
-                <AvatarImage src="/man.jpg" alt="Man" />
+                <AvatarImage src={item.avatarUrl || DEFAULT_AVATAR_SRC} alt="" />
                 <AvatarFallback>M</AvatarFallback>
               </Avatar>
 
