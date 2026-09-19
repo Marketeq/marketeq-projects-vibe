@@ -270,9 +270,14 @@ export class JobListingScopeService {
     listingId: string,
     rawPhases: GeneratedScopePhaseInput[],
     hasScope: boolean,
-  ): Promise<{ phases: JobListingPhase[]; totalBudgetUsdCents: number }> {
+  ): Promise<{
+    phases: JobListingPhase[];
+    totalBudgetUsdCents: number;
+    isBudgetStale: boolean;
+  }> {
     const phases = await this.applyAiGeneratedScope(listingId, rawPhases, hasScope);
-    const totalBudgetUsdCents = await this.budgetService.recalculateAndPersist(listingId, phases);
+    const { totalBudgetUsdCents, isBudgetStale } =
+      await this.budgetService.recalculateAndPersistWithStatus(listingId, phases);
 
     await this.listingRepo.update(listingId, {
       budgetAmountUsdCents: totalBudgetUsdCents,
@@ -280,7 +285,7 @@ export class JobListingScopeService {
       staleWarningSent: false,
     });
 
-    return { phases, totalBudgetUsdCents };
+    return { phases, totalBudgetUsdCents, isBudgetStale };
   }
 
   // ── applySmartAssistantScopeEdit ───────────────────────────────────────────
@@ -292,7 +297,11 @@ export class JobListingScopeService {
     listing: JobListing,
     updatedScope: GeneratedScopePhaseInput[],
     command: string,
-  ): Promise<{ phases: JobListingPhase[]; totalBudgetUsdCents: number }> {
+  ): Promise<{
+    phases: JobListingPhase[];
+    totalBudgetUsdCents: number;
+    isBudgetStale: boolean;
+  }> {
     // Snapshot current scope before replacing (for history entry).
     const beforePhases = await this.phaseRepo.find({
       where: { jobListingId: listing.id },
@@ -308,10 +317,11 @@ export class JobListingScopeService {
     );
 
     // Recalculate budget and timeline on new scope.
-    const totalBudgetUsdCents = await this.budgetService.recalculateAndPersist(
-      listing.id,
-      savedPhases,
-    );
+    const { totalBudgetUsdCents, isBudgetStale } =
+      await this.budgetService.recalculateAndPersistWithStatus(
+        listing.id,
+        savedPhases,
+      );
 
     // Append history entry (max 20 kept; oldest pruned).
     const historyEntry: SmartAssistantHistoryEntry = {
@@ -333,13 +343,17 @@ export class JobListingScopeService {
       staleWarningSent: false,
     });
 
-    return { phases: savedPhases, totalBudgetUsdCents };
+    return { phases: savedPhases, totalBudgetUsdCents, isBudgetStale };
   }
 
   async restoreSmartAssistantScopeEdit(
     listing: JobListing,
     historyId: string,
-  ): Promise<{ phases: JobListingPhase[]; totalBudgetUsdCents: number }> {
+  ): Promise<{
+    phases: JobListingPhase[];
+    totalBudgetUsdCents: number;
+    isBudgetStale: boolean;
+  }> {
     const entry = (listing.smartAssistantHistory ?? []).find(
       (item) => item.id === historyId && item.field === 'scope',
     );
@@ -357,10 +371,11 @@ export class JobListingScopeService {
       true,
     );
 
-    const totalBudgetUsdCents = await this.budgetService.recalculateAndPersist(
-      listing.id,
-      savedPhases,
-    );
+    const { totalBudgetUsdCents, isBudgetStale } =
+      await this.budgetService.recalculateAndPersistWithStatus(
+        listing.id,
+        savedPhases,
+      );
 
     const historyEntry: SmartAssistantHistoryEntry = {
       id: uuidv4(),
@@ -381,7 +396,7 @@ export class JobListingScopeService {
       staleWarningSent: false,
     });
 
-    return { phases: savedPhases, totalBudgetUsdCents };
+    return { phases: savedPhases, totalBudgetUsdCents, isBudgetStale };
   }
 
   // ── loadInheritedScope ─────────────────────────────────────────────────────
@@ -392,7 +407,11 @@ export class JobListingScopeService {
   async undoLatestSmartAssistantScopeEdit(
     listing: JobListing,
     historyId: string,
-  ): Promise<{ phases: JobListingPhase[]; totalBudgetUsdCents: number }> {
+  ): Promise<{
+    phases: JobListingPhase[];
+    totalBudgetUsdCents: number;
+    isBudgetStale: boolean;
+  }> {
     const history = [...(listing.smartAssistantHistory ?? [])];
     const latest = history[history.length - 1];
 
@@ -409,10 +428,11 @@ export class JobListingScopeService {
       true,
     );
 
-    const totalBudgetUsdCents = await this.budgetService.recalculateAndPersist(
-      listing.id,
-      savedPhases,
-    );
+    const { totalBudgetUsdCents, isBudgetStale } =
+      await this.budgetService.recalculateAndPersistWithStatus(
+        listing.id,
+        savedPhases,
+      );
 
     history.pop();
 
@@ -423,7 +443,7 @@ export class JobListingScopeService {
       staleWarningSent: false,
     });
 
-    return { phases: savedPhases, totalBudgetUsdCents };
+    return { phases: savedPhases, totalBudgetUsdCents, isBudgetStale };
   }
 
   async replaceLatestSmartAssistantScopeHistoryAfter(

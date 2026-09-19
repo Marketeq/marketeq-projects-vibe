@@ -426,6 +426,7 @@ export class JobListingController {
           phases: scope.phases,
           appliedPhases: applied.phases,
           totalBudgetUsdCents: applied.totalBudgetUsdCents,
+          isBudgetStale: applied.isBudgetStale,
         };
       }
 
@@ -487,6 +488,7 @@ export class JobListingController {
     return {
       phases: applied.phases,
       totalBudgetUsdCents: applied.totalBudgetUsdCents,
+      isBudgetStale: applied.isBudgetStale,
     };
   }
 
@@ -686,6 +688,7 @@ export class JobListingController {
           ...result,
           phases: persisted.phases,
           totalBudgetUsdCents: persisted.totalBudgetUsdCents,
+          isBudgetStale: persisted.isBudgetStale,
         };
       }
 
@@ -811,6 +814,7 @@ export class JobListingController {
         mode: "scope",
         phases: restored.phases,
         totalBudgetUsdCents: restored.totalBudgetUsdCents,
+        isBudgetStale: restored.isBudgetStale,
       };
     }
 
@@ -847,6 +851,7 @@ export class JobListingController {
         mode: "scope",
         phases: undone.phases,
         totalBudgetUsdCents: undone.totalBudgetUsdCents,
+        isBudgetStale: undone.isBudgetStale,
       };
     }
 
@@ -905,6 +910,7 @@ export class JobListingController {
           ...result,
           phases: applied.phases,
           totalBudgetUsdCents: applied.totalBudgetUsdCents,
+          isBudgetStale: applied.isBudgetStale,
         };
       }
 

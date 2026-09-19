@@ -12258,7 +12258,7 @@ const ProjectScopeEditStep = ({
         )
         if (typeof totalBudgetUsdCents === "number") {
           setBudgetAmount(Math.round(totalBudgetUsdCents / 100))
-          setIsBudgetStale(false)
+          setIsBudgetStale(Boolean(response?.data?.isBudgetStale))
         }
       } catch (error) {
         console.error("Failed to generate project scope", error)
@@ -12441,14 +12441,16 @@ const ProjectScopeEditStep = ({
 
     if (typeof budgetUsdCents === "number") {
       setBudgetAmount(nextBudgetAmount)
-      setIsBudgetStale(false)
+      setIsBudgetStale(Boolean(data?.isBudgetStale))
     }
 
     return nextPhases.length > 0
       ? getProjectAssistantListingSnapshot(
           nextPhases,
           nextBudgetAmount,
-          typeof budgetUsdCents === "number" ? false : isBudgetStale
+          typeof budgetUsdCents === "number"
+            ? Boolean(data?.isBudgetStale)
+            : isBudgetStale
         )
       : null
   }
@@ -12752,7 +12754,7 @@ const ProjectScopeEditStep = ({
           )
           if (typeof totalBudgetUsdCents === "number") {
             setBudgetAmount(Math.round(totalBudgetUsdCents / 100))
-            setIsBudgetStale(false)
+            setIsBudgetStale(Boolean(response?.data?.isBudgetStale))
           }
           lastSavedProjectScopeSignatureRef.current = signature
         } catch (error) {
@@ -12871,6 +12873,24 @@ const ProjectScopeEditStep = ({
                           ))}
                         </SelectContent>
                       </Select>
+                      {isBudgetStale ? (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span
+                                aria-label="Budget rates unavailable"
+                                className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-warning-600"
+                              >
+                                <AlertTriangle className="size-4" />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent visual="white" size="md">
+                              Some pricing rates are unavailable. The budget may
+                              be incomplete.
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -15644,6 +15664,7 @@ const ServiceScopeEditStep = ({
   const didGenerateInitialScopeRef = useRef(false);
   const [budgetAmount, setBudgetAmount] = useState(5000);
   const [isBudgetLoading, setIsBudgetLoading] = useState(false);
+  const [isBudgetStale, setIsBudgetStale] = useState(false);
   const [budgetFrequency, setBudgetFrequency] = useState("week");
   const [activeServicePhaseNoteId, setActiveServicePhaseNoteId] = useState<
     string | null
@@ -15801,6 +15822,7 @@ const ServiceScopeEditStep = ({
         );
         if (typeof totalBudgetUsdCents === "number") {
           setBudgetAmount(Math.round(totalBudgetUsdCents / 100));
+          setIsBudgetStale(Boolean(response?.data?.isBudgetStale));
         }
       } catch (error) {
         console.error("Failed to generate service scope", error);
@@ -16308,6 +16330,7 @@ const ServiceScopeEditStep = ({
         const totalBudgetUsdCents = toFiniteNumber(data.totalBudgetUsdCents);
         if (typeof totalBudgetUsdCents === "number") {
           setBudgetAmount(Math.round(totalBudgetUsdCents / 100));
+          setIsBudgetStale(Boolean(data.isBudgetStale));
         }
         setAssistantResult(
           data.summary ?? "Applied: Smart Assistant updated the service scope.",
@@ -16431,6 +16454,7 @@ const ServiceScopeEditStep = ({
           );
           if (typeof totalBudgetUsdCents === "number") {
             setBudgetAmount(Math.round(totalBudgetUsdCents / 100));
+            setIsBudgetStale(Boolean(response?.data?.isBudgetStale));
           }
           lastSavedServiceScopeSignatureRef.current = signature;
         } catch (error) {
@@ -16544,6 +16568,24 @@ const ServiceScopeEditStep = ({
                             ))}
                           </SelectContent>
                         </Select>
+                        {isBudgetStale ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  aria-label="Budget rates unavailable"
+                                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-warning-600"
+                                >
+                                  <AlertTriangle className="size-4" />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent visual="white" size="md">
+                                Some pricing rates are unavailable. The budget
+                                may be incomplete.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : null}
                       </div>
                     )}
                   </div>

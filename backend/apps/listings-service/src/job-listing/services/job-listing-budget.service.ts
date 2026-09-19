@@ -284,6 +284,19 @@ export class JobListingBudgetService {
     location: string | null,
     experienceLevel: string | null,
   ): Promise<number> {
+    const result = await this.getRateLookupResult(
+      roleTitle,
+      location,
+      experienceLevel,
+    );
+    return result.rateUsdCents;
+  }
+
+  async getRateLookupResult(
+    roleTitle: string,
+    location: string | null,
+    experienceLevel: string | null,
+  ): Promise<{ rateUsdCents: number; isStale: boolean }> {
     try {
       const response = await firstValueFrom(
         this.http.get(
@@ -299,7 +312,12 @@ export class JobListingBudgetService {
         ),
       );
       const median = response.data.hourlyRateMedianUsdCents;
-      if (median != null) return median;
+      if (median != null) {
+        return {
+          rateUsdCents: median,
+          isStale: Boolean(response.data.isStale),
+        };
+      }
 
       this.logger.warn(
         `No platform rate data for "${roleTitle}" in "${location ?? 'any'}" — using zero rate`,
@@ -308,7 +326,7 @@ export class JobListingBudgetService {
       this.logger.warn(`pricing-service unavailable for rate lookup: ${roleTitle}`);
     }
 
-    return 0;
+    return { rateUsdCents: 0, isStale: true };
   }
 
   // Signs a short-lived internal token for pricing-service's InternalJwtGuard.
@@ -325,19 +343,29 @@ export class JobListingBudgetService {
   // so the frontend can display it in the price guide hover modal.
   // Result is in USD cents.
   async calculateTotalBudget(phases: JobListingPhase[]): Promise<number> {
+    const result = await this.calculateTotalBudgetResult(phases);
+    return result.totalBudgetUsdCents;
+  }
+
+  async calculateTotalBudgetResult(
+    phases: JobListingPhase[],
+  ): Promise<{ totalBudgetUsdCents: number; isBudgetStale: boolean }> {
     let totalUsdCents = 0;
+    let isBudgetStale = false;
     for (const phase of phases) {
       for (const task of phase.tasks) {
-        const rateUsdCents = await this.getRateUsdCents(
+        const rateLookup = await this.getRateLookupResult(
           task.roleTitle,
           task.location,
           task.experienceLevel,
         );
+        const rateUsdCents = rateLookup.rateUsdCents;
+        isBudgetStale = isBudgetStale || rateLookup.isStale;
         task.hourlyRateUsdCents = rateUsdCents;
         totalUsdCents += Math.round(task.estimatedHours * rateUsdCents);
       }
     }
-    return totalUsdCents;
+    return { totalBudgetUsdCents: totalUsdCents, isBudgetStale };
   }
 
   // ── calculateTeamTableBudget ────────────────────────────────────────────────
@@ -375,11 +403,23 @@ export class JobListingBudgetService {
     listingId: string,
     phases: JobListingPhase[],
   ): Promise<number> {
+    const result = await this.recalculateAndPersistWithStatus(
+      listingId,
+      phases,
+    );
+    return result.totalBudgetUsdCents;
+  }
+
+  async recalculateAndPersistWithStatus(
+    listingId: string,
+    phases: JobListingPhase[],
+  ): Promise<{ totalBudgetUsdCents: number; isBudgetStale: boolean }> {
     // Re-assign start/end days across all tasks.
     assignTaskDays(phases);
 
     // Recalculate budget and store rates on tasks.
-    const totalUsdCents = await this.calculateTotalBudget(phases);
+    const { totalBudgetUsdCents, isBudgetStale } =
+      await this.calculateTotalBudgetResult(phases);
 
     // Persist updated startDay, endDay, hourlyRateUsdCents on each task.
     for (const phase of phases) {
@@ -394,9 +434,9 @@ export class JobListingBudgetService {
 
     // Persist the new total budget on the listing record itself.
     await this.listingRepo.update(listingId, {
-      budgetAmountUsdCents: totalUsdCents,
+      budgetAmountUsdCents: totalBudgetUsdCents,
     });
 
-    return totalUsdCents;
+    return { totalBudgetUsdCents, isBudgetStale };
   }
 }
