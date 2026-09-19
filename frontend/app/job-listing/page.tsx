@@ -2088,6 +2088,13 @@ const durationToDays = (
 // and the shared scope-builder component's HOURLY_RATE_BY_LEVEL.
 const EXPERIENCE_LEVELS = ["Student", "Junior", "Medior", "Senior", "Guru"] as const;
 type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number];
+const formatExperienceDisplay = (experience?: string | null) => {
+  const normalizedExperience = experience?.trim();
+  if (!normalizedExperience) return "";
+  return `${normalizedExperience.charAt(0).toUpperCase()}${normalizedExperience
+    .slice(1)
+    .toLowerCase()}`;
+};
 
 const taskFormSchema = z.object({
   task: z.string().min(1, "Please enter at least 1 character(s)"),
@@ -13374,10 +13381,7 @@ const ProjectScopeEditStep = ({
                             >
                               <div className="flex h-[72px] w-[240px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
                                 <Input
-                                  className="h-5 min-w-0 shrink-0 rounded-none border-0 bg-transparent p-0 text-sm font-semibold leading-5 text-gray-black shadow-none focus:border-transparent focus:ring-0"
-                                  style={{
-                                    width: `${Math.min(Math.max(row.task.length, 1), 22)}ch`,
-                                  }}
+                                  className="h-5 min-w-0 flex-1 truncate rounded-none border-0 bg-transparent p-0 text-sm font-semibold leading-5 text-gray-black shadow-none focus:border-transparent focus:ring-0"
                                   value={row.task}
                                   onChange={(event) =>
                                     updateRow(phaseName, row.id, {
@@ -13421,7 +13425,7 @@ const ProjectScopeEditStep = ({
                                         <ChevronDown className="size-[15px]" />
                                       }
                                     >
-                                      {row.experience}
+                                      {formatExperienceDisplay(row.experience)}
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="start">
@@ -15858,6 +15862,25 @@ const ServiceScopeEditStep = ({
     );
   };
 
+  const updateRowAtIndex = (
+    phaseId: string,
+    rowIndex: number,
+    nextValues: Partial<ServiceScopeRow>,
+  ) => {
+    setPhases((currentPhases) =>
+      currentPhases.map((phase) =>
+        phase.id !== phaseId
+          ? phase
+          : {
+              ...phase,
+              rows: phase.rows.map((row, currentRowIndex) =>
+                currentRowIndex === rowIndex ? { ...row, ...nextValues } : row,
+              ),
+            },
+      ),
+    );
+  };
+
   const formatServiceRowSchedule = (row: ServiceScopeRow) => {
     if (row.workSchedule === "part_time") return "Part-time";
     if (row.workSchedule === "custom") {
@@ -17163,15 +17186,21 @@ const ServiceScopeEditStep = ({
                               </span>
                             ))}
                           </div>
-                          {phase.rows.map((row) => (
+                          {phase.rows.map((row, rowIndex) => (
                             <div
-                              key={`${phase.id}-${row.task}`}
+                              key={`${phase.id}-${rowIndex}`}
                               className="relative grid h-[72px] w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] items-center border-b border-gray-200 last:border-b-0"
                             >
                               <div className="flex h-[72px] w-[240px] min-w-0 shrink-0 items-start gap-3 self-stretch px-6 py-4">
-                                <span className="block h-5 min-w-0 truncate text-sm font-semibold leading-5 text-gray-black">
-                                  {row.task}
-                                </span>
+                                <Input
+                                  className="h-5 min-w-0 flex-1 truncate rounded-none border-0 bg-transparent p-0 text-sm font-semibold leading-5 text-gray-black shadow-none focus:border-transparent focus:ring-0"
+                                  value={row.task}
+                                  onChange={(event) =>
+                                    updateRowAtIndex(phase.id, rowIndex, {
+                                      task: event.target.value,
+                                    })
+                                  }
+                                />
                               </div>
                               <div className="flex h-[72px] w-[240px] shrink-0 flex-col items-start gap-1 self-stretch px-6 py-4">
                                 <Button
@@ -17208,7 +17237,7 @@ const ServiceScopeEditStep = ({
                                     className="h-7 w-max gap-x-1 border-dashed border-gray-300 bg-gray-50 px-2 text-xs font-normal leading-[18px] text-gray-700 shadow-none"
                                     rightIcon={<ChevronDown className="size-3" />}
                                   >
-                                    {row.experience}
+                                    {formatExperienceDisplay(row.experience)}
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="start">
@@ -17235,180 +17264,221 @@ const ServiceScopeEditStep = ({
 
                               {activeServiceRoleKey ===
                               `${phase.id}-${row.task}` ? (
-                                <div className="absolute left-[185px] top-[-22px] z-10 w-[280px] rounded-[5px] border border-gray-200 bg-white p-4 shadow-lg">
-                                  <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                    Role
-                                  </Label>
-                                  <Combobox
-                                    className="mt-1.5 w-full"
-                                    value={draftServiceRole}
-                                    onChange={(value) => {
-                                      setDraftServiceRole(String(value ?? ""));
-                                      setServiceRoleAutocompleteOpen(false);
-                                    }}
-                                    nullable
+                                <Dialog
+                                  open={
+                                    activeServiceRoleKey ===
+                                    `${phase.id}-${row.task}`
+                                  }
+                                  onOpenChange={(open) => {
+                                    if (!open) {
+                                      setActiveServiceRoleKey(null);
+                                    }
+                                  }}
+                                >
+                                  <DialogContent
+                                    variant="unanimated"
+                                    accessibilityTitle="Edit role"
+                                    dialogOverlay={
+                                      <DialogOverlay className="bg-[#101828]/20" />
+                                    }
+                                    className="left-1/2 top-1/2 flex w-[371px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col items-start gap-8 rounded-xl bg-white p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
                                   >
-                                    <ComboboxTrigger>
-                                      <ComboboxInput
-                                        className="h-9 text-sm leading-5 ui-open:pl-3"
-                                        value={draftServiceRole}
-                                        onChange={(event) =>
-                                          setDraftServiceRole(
-                                            event.target.value,
-                                          )
-                                        }
-                                        onClick={() =>
-                                          setServiceRoleAutocompleteOpen(
-                                            serviceRoleAutocompleteOptions.length >
-                                              0,
-                                          )
-                                        }
-                                        onFocus={() =>
-                                          setServiceRoleAutocompleteOpen(
-                                            serviceRoleAutocompleteOptions.length >
-                                              0,
-                                          )
-                                        }
-                                        onBlur={() =>
-                                          setTimeout(
-                                            () =>
-                                              setServiceRoleAutocompleteOpen(
-                                                false,
-                                              ),
-                                            150,
-                                          )
-                                        }
-                                      />
-                                    </ComboboxTrigger>
+                                    <div className="flex w-[323px] flex-col items-start gap-3">
+                                      <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+                                        <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                                          Role
+                                        </Label>
+                                        <Combobox
+                                          className="w-[323px]"
+                                          value={draftServiceRole}
+                                          onChange={(value) => {
+                                            setDraftServiceRole(
+                                              String(value ?? ""),
+                                            );
+                                            setServiceRoleAutocompleteOpen(false);
+                                          }}
+                                          nullable
+                                        >
+                                          <ComboboxTrigger>
+                                            <ComboboxInput
+                                              className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs focus:ring-0 ui-open:pl-[14px]"
+                                              value={draftServiceRole}
+                                              onChange={(event) =>
+                                                setDraftServiceRole(
+                                                  event.target.value,
+                                                )
+                                              }
+                                              onClick={() =>
+                                                setServiceRoleAutocompleteOpen(
+                                                  serviceRoleAutocompleteOptions.length >
+                                                    0,
+                                                )
+                                              }
+                                              onFocus={() =>
+                                                setServiceRoleAutocompleteOpen(
+                                                  serviceRoleAutocompleteOptions.length >
+                                                    0,
+                                                )
+                                              }
+                                              onBlur={() =>
+                                                setTimeout(
+                                                  () =>
+                                                    setServiceRoleAutocompleteOpen(
+                                                      false,
+                                                    ),
+                                                  150,
+                                                )
+                                              }
+                                            />
+                                          </ComboboxTrigger>
 
-                                    {isServiceRoleAutocompleteOpen ? (
-                                      <ComboboxOptions className="h-[120px] overflow-hidden">
-                                        <ScrollArea viewportClassName="h-[120px]">
-                                          {serviceRoleAutocompleteOptions.map(
-                                            (option) => (
-                                              <ComboboxOption
-                                                key={option}
-                                                value={option}
-                                              >
-                                                {option}
-                                              </ComboboxOption>
-                                            ),
-                                          )}
-                                        </ScrollArea>
-                                      </ComboboxOptions>
-                                    ) : null}
-                                  </Combobox>
-                                  <div className="mt-4">
-                                    <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                      Work Schedule
-                                    </Label>
-                                    <Select
-                                      value={draftServiceSchedule}
-                                      onValueChange={(value) =>
-                                        setDraftServiceSchedule(
-                                          value as JobListingWorkSchedule,
-                                        )
-                                      }
-                                    >
-                                      <SelectTrigger className="mt-1.5 h-9 w-full px-3 text-sm leading-5 text-gray-700">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent className="w-[248px]">
-                                        {[
-                                          {
-                                            value: "full_time" as const,
-                                            label: "Full-time",
-                                          },
-                                          {
-                                            value: "part_time" as const,
-                                            label: "Part-time",
-                                          },
-                                          {
-                                            value: "custom" as const,
-                                            label: "Custom",
-                                          },
-                                        ].map((schedule) => (
-                                          <SelectItem
-                                            key={schedule.value}
-                                            value={schedule.value}
-                                          >
-                                            {schedule.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  {draftServiceSchedule === "custom" ? (
-                                    <div className="mt-4">
-                                      <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                        Estimated hours
-                                      </Label>
-                                      <div className="mt-1.5 grid grid-cols-[1fr_64px_1fr]">
-                                        <Input
-                                          className="h-9 rounded-r-none text-sm leading-5"
-                                          value={draftServiceCustomHours}
-                                          onChange={(event) =>
-                                            setDraftServiceCustomHours(
-                                              event.target.value,
+                                          {isServiceRoleAutocompleteOpen ? (
+                                            <ComboboxOptions className="h-[120px] w-[323px] overflow-hidden">
+                                              <ScrollArea viewportClassName="h-[120px]">
+                                                {serviceRoleAutocompleteOptions.map(
+                                                  (option) => (
+                                                    <ComboboxOption
+                                                      key={option}
+                                                      value={option}
+                                                    >
+                                                      {option}
+                                                    </ComboboxOption>
+                                                  ),
+                                                )}
+                                              </ScrollArea>
+                                            </ComboboxOptions>
+                                          ) : null}
+                                        </Combobox>
+                                      </div>
+                                      <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+                                        <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                                          Work Schedule
+                                        </Label>
+                                        <Select
+                                          value={draftServiceSchedule}
+                                          onValueChange={(value) =>
+                                            setDraftServiceSchedule(
+                                              value as JobListingWorkSchedule,
                                             )
                                           }
-                                        />
-                                        <span className="inline-flex h-9 items-center justify-center border-y border-gray-300 bg-white text-sm leading-5 text-gray-500">
-                                          hours
-                                        </span>
-                                        <Select
-                                          value={draftServiceCustomFrequency}
-                                          onValueChange={
-                                            setDraftServiceCustomFrequency
-                                          }
                                         >
-                                          <SelectTrigger className="h-9 min-w-[112px] rounded-l-none px-3 text-sm leading-5 text-dark-blue-400">
+                                          <SelectTrigger className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs">
                                             <SelectValue />
                                           </SelectTrigger>
-                                          <SelectContent className="min-w-[112px]">
+                                          <SelectContent className="w-[323px]">
                                             {[
-                                              "per_day",
-                                              "per_week",
-                                              "per_month",
-                                              "per_quarter",
-                                              "per_year",
-                                            ].map((frequency) => (
+                                              {
+                                                value: "full_time" as const,
+                                                label: "Full-time",
+                                              },
+                                              {
+                                                value: "part_time" as const,
+                                                label: "Part-time",
+                                              },
+                                              {
+                                                value: "custom" as const,
+                                                label: "Custom",
+                                              },
+                                            ].map((schedule) => (
                                               <SelectItem
-                                                key={frequency}
-                                                value={frequency}
+                                                key={schedule.value}
+                                                value={schedule.value}
                                               >
-                                                {frequency.replace("_", " ")}
+                                                {schedule.label}
                                               </SelectItem>
                                             ))}
                                           </SelectContent>
                                         </Select>
                                       </div>
+                                      {draftServiceSchedule === "custom" ? (
+                                        <div className="flex h-[70px] w-[323px] shrink-0 items-start gap-3">
+                                          <div className="flex h-[70px] w-[155.5px] flex-col items-start gap-1.5">
+                                            <Label className="h-5 w-[109px] whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                                              Estimated hours
+                                            </Label>
+                                            <div className="flex h-11 w-[155.5px] items-start bg-white p-0 shadow-xs">
+                                              <input
+                                                className="h-11 w-[84.5px] flex-1 rounded-l-[5px] rounded-r-none border border-gray-300 bg-white px-3.5 py-2.5 text-base font-normal leading-6 text-gray-black shadow-none outline-none focus:border-gray-300 focus:outline-none"
+                                                value={draftServiceCustomHours}
+                                                onChange={(event) =>
+                                                  setDraftServiceCustomHours(
+                                                    event.target.value,
+                                                  )
+                                                }
+                                              />
+                                              <span className="-ml-px inline-flex h-11 w-[71px] shrink-0 items-center rounded-l-none rounded-r-[5px] border border-gray-300 bg-white px-3.5 py-2.5 text-base font-normal leading-6 text-gray-500">
+                                                <span className="h-6 w-[43px] shrink-0">
+                                                  hours
+                                                </span>
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <div className="flex h-[70px] w-[155.5px] flex-col items-start gap-1.5 pt-[26px]">
+                                            <Select
+                                              value={draftServiceCustomFrequency}
+                                              onValueChange={
+                                                setDraftServiceCustomFrequency
+                                              }
+                                            >
+                                              <SelectTrigger className="h-11 w-[155.5px] rounded-[5px] border-gray-300 bg-white py-2.5 pl-3.5 pr-3 text-base font-normal leading-6 text-gray-black shadow-xs">
+                                                <SelectValue />
+                                              </SelectTrigger>
+                                              <SelectContent className="h-[118px] w-[156px] rounded-[5px] border border-gray-100 bg-white p-0 shadow-[0px_4px_19px_rgba(0,0,0,0.04)] [&>div]:h-[118px] [&>div]:overflow-y-scroll [&>div]:py-0 [&>div]:scrollbar-thin [&>div]:scrollbar-thumb-gray-200 [&>div]:scrollbar-track-transparent [&>div]:[scrollbar-gutter:stable]">
+                                                {[
+                                                  "per_day",
+                                                  "per_week",
+                                                  "per_month",
+                                                  "per_quarter",
+                                                  "per_year",
+                                                ].map((frequency) => (
+                                                  <SelectItem
+                                                    key={frequency}
+                                                    value={frequency}
+                                                    className="h-[34px] w-[156px] rounded-none px-3 py-2.5 text-[13px] font-medium leading-[13px] text-gray-500 focus:bg-gray-50 focus:text-gray-black data-[state=checked]:bg-gray-50 data-[state=checked]:text-gray-black [&>span:first-child]:hidden"
+                                                  >
+                                                    {frequency.replace(
+                                                      "_",
+                                                      " ",
+                                                    )}
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                        </div>
+                                      ) : null}
                                     </div>
-                                  ) : null}
-                                  <div className="mt-4 grid grid-cols-2 gap-2">
-                                    <Button
-                                      type="button"
-                                      variant="outlined"
-                                      visual="gray"
-                                      onClick={() =>
-                                        setActiveServiceRoleKey(null)
-                                      }
-                                    >
-                                      Cancel
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      onClick={() =>
-                                        saveServiceRoleEditor(
-                                          phase.id,
-                                          row.task,
-                                        )
-                                      }
-                                    >
-                                      Done
-                                    </Button>
-                                  </div>
-                                </div>
+                                    <div className="flex h-9 w-[323px] shrink-0 items-start gap-3">
+                                      <Button
+                                        type="button"
+                                        variant="outlined"
+                                        visual="gray"
+                                        className="h-9 w-[155.5px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-xs"
+                                        onClick={() =>
+                                          setActiveServiceRoleKey(null)
+                                        }
+                                      >
+                                        <span className="h-5 w-12 text-center">
+                                          Cancel
+                                        </span>
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        className="h-9 w-[155.5px] rounded-[5px] bg-primary-500 px-[14px] py-2 text-sm font-semibold leading-5 text-white shadow-xs"
+                                        onClick={() =>
+                                          saveServiceRoleEditor(
+                                            phase.id,
+                                            row.task,
+                                          )
+                                        }
+                                      >
+                                        <span className="h-5 w-9 text-center">
+                                          Done
+                                        </span>
+                                      </Button>
+                                    </div>
+                                  </DialogContent>
+                                </Dialog>
                               ) : null}
                             </div>
                           ))}
