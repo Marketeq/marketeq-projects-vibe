@@ -210,7 +210,13 @@ It does not mean that a lower experience level is appropriate for every task,
 nor that a higher one is always the safer choice.
 `;
 
-const COST_OPTIMIZATION_RULES = `
+// Split into a project and a service variant per explicit request, so each
+// can diverge independently later (e.g. a service-specific cost lever like
+// reducing recurrenceCount/recurrenceSchedule, which project scopes have no
+// equivalent of). Content is intentionally IDENTICAL right now — this is
+// just the branch point, not a behavior change. Keep both in sync until a
+// real divergence is asked for.
+const COST_OPTIMIZATION_RULES_PROJECT = `
 COST OPTIMIZATION MODE
 
 The user's goal is to reduce the total cost of the scope while preserving a
@@ -426,6 +432,250 @@ Do NOT attempt to force every task toward:
 lowest-location-multiplier
 + student
 + minimum-hours.
+
+The goal is the lowest-cost REALISTIC delivery plan, not the lowest possible
+mathematical score.
+
+If two alternatives have similar cost:
+
+- prefer fewer changes
+- prefer lower delivery risk
+- prefer preserving team continuity
+- prefer fewer cross-location handoffs
+
+LOCATION CLASSIFICATION AND OUTPUT
+
+A task's "location" field is always one specific real country — never a
+region name — both when you read the current scope and when you write the
+updated one. The UI only offers a country picker; there is no way to select
+a region directly.
+
+To reason about cost, first translate a task's country into its region using
+the reference below, then apply that region's multiplier from LOCATION COST
+MULTIPLIERS above.
+
+REGION -> COUNTRY REFERENCE
+
+${REGION_COUNTRY_REFERENCE}
+
+When you decide a task should move to a different region for cost reasons,
+pick one specific real country from that region's list above to write into
+"location". Vary your choice across the countries listed for a region
+instead of always defaulting to the same one or two countries — different
+tasks moving to the same region should not all land on an identical country
+unless there is a specific reason to group them together (e.g. they hand off
+work to each other).
+
+Never write a region name itself (e.g. "South Asia") into a task's
+"location" field.
+
+If a task's current location cannot confidently be classified into any
+region, treat it as the default multiplier tier (0.40) and leave the task's
+location unchanged.
+`;
+
+const COST_OPTIMIZATION_RULES_SERVICE = `
+COST OPTIMIZATION MODE
+
+The user's goal is to reduce the total cost of the scope while preserving a
+realistic and deliverable service.
+
+${LOCATION_MULTIPLIERS}
+
+${EXPERIENCE_MULTIPLIERS}
+
+COST COMPARISON
+
+For each task, estimate relative labor cost as:
+
+relativeCost =
+  hours
+  × locationMultiplier
+  × experienceMultiplier
+
+If the task contains a base hourly rate or other base cost, use:
+
+estimatedCost =
+  baseRate
+  × hours
+  × locationMultiplier
+  × experienceMultiplier
+
+Use this formula to compare alternatives. hours here is read from the
+task's current estimatedHours — it is an INPUT to the comparison, never a
+value you change. See AVAILABLE LEVERS below.
+
+Do not invent a base rate if none is provided.
+Relative cost is sufficient for comparing options.
+
+IMPORTANT:
+The mathematically cheapest option is NOT automatically the correct option.
+
+Optimize the whole scope, not individual rows independently.
+
+AVAILABLE LEVERS
+
+For a Service scope, cost optimization may ONLY change a task's LOCATION,
+its EXPERIENCE LEVEL, or both. These are the only two levers.
+
+1. KEEP unchanged
+2. Change LOCATION
+3. Change EXPERIENCE LEVEL
+4. Apply a combination of LOCATION and EXPERIENCE LEVEL
+
+KEEP is a valid optimization decision.
+
+Do NOT change a task's estimatedHours for cost-optimization purposes.
+Do NOT remove or consolidate any task. Do NOT add new tasks. Hours and the
+task list itself are out of scope for this command — this differs from
+Project scopes, where reducing hours and removing/consolidating tasks are
+also available levers.
+
+LOCATION DECISION RULES
+
+A lower-cost location should only be selected when the task is appropriate
+for that delivery model.
+
+Changing location is more reasonable when:
+
+- the task is well defined
+- work can be done asynchronously
+- acceptance criteria are clear
+- stakeholder interaction is limited
+- the task is relatively independent
+- handoff requirements are low
+- timezone overlap is not important
+- the cost difference is meaningful
+
+Prefer keeping the current location when:
+
+- frequent stakeholder/customer interaction is required
+- timezone alignment is important
+- tasks are tightly coupled
+- there are frequent cross-task dependencies
+- rapid collaboration is important
+- continuity/domain knowledge is important
+- the financial savings are small compared with coordination overhead
+
+Evaluate related tasks together.
+
+Do not move one task to a cheaper location when doing so creates an awkward
+handoff between several tightly coupled tasks.
+
+Example:
+
+Moving an independent implementation task from a 1.00 location multiplier
+to a 0.25 location multiplier may provide substantial savings.
+
+Moving a highly collaborative task from 1.00 to 0.85 may not justify the
+additional coordination complexity.
+
+EXPERIENCE DECISION RULES
+
+Do not automatically move down the experience ladder (guru -> senior ->
+medior -> junior -> student) just because the multiplier is lower, and do
+not move up to guru just because a task sounds important.
+
+Guru resources are appropriate ONLY for:
+
+- work with genuinely severe consequences if done wrong (e.g. irreversible
+  data migrations, security architecture for sensitive systems, a technical
+  decision that locks in the platform's direction for years)
+- deep, narrow specialist expertise that a general senior would not have
+- rare, high-stakes escalations — this is not "senior but better," it is a
+  distinct, uncommon tier
+
+Prefer senior resources for:
+
+- architecture
+- ambiguous requirements
+- product or technical strategy
+- stakeholder management
+- security-sensitive work
+- complex integrations
+- difficult technical decisions
+- high-impact design decisions
+- tasks where mistakes could cause substantial downstream rework
+
+Medior-level resources are appropriate for:
+
+- standard implementation
+- moderately complex development
+- tasks with reasonably clear requirements
+- work requiring some independent judgment
+
+Junior resources are more appropriate for:
+
+- well-defined execution
+- repetitive work
+- straightforward implementation
+- documentation
+- routine testing
+- data preparation
+- tasks with clear acceptance criteria
+- work that can be efficiently reviewed by a more experienced person
+
+Student resources are appropriate ONLY for:
+
+- extremely simple, fully-specified, low-risk work with no ambiguity at all
+  (e.g. basic data entry, running a pre-written script, formatting content
+  to a template)
+- tasks where an error is trivial to catch and cheap to fix
+- do not use this tier just because a task is cheap to have done fast —
+  it must genuinely require no independent judgment
+
+Compare savings against the potential cost of errors and rework.
+
+For example:
+
+senior = 1.25
+medior = 1.00
+
+Changing senior -> medior saves 20% of the experience-adjusted portion of
+the cost.
+
+Do it only when the task does not genuinely require senior expertise. Apply
+the same reasoning one step at a time between any two adjacent tiers —
+never skip a tier (e.g. senior straight to junior) without considering
+whether medior is the more defensible stop.
+
+COMBINED CHANGES
+
+Location and experience level may both be changed on the same task, but be
+more conservative when stacking changes.
+
+For example, a task currently US + Senior has a relative per-hour cost of
+1.00 × 1.25 = 1.25. Moving it to South Asia + Medior gives
+0.25 × 1.00 = 0.25 per hour — substantially cheaper mathematically, but
+that does NOT mean the second configuration is appropriate.
+
+Before combining changes, determine whether:
+
+- the task can reasonably move locations
+- the task can reasonably use lower experience
+
+Critical tasks should generally not receive several risk-increasing changes
+at once.
+
+SCOPE-LEVEL OPTIMIZATION
+
+Before modifying the scope:
+
+1. Understand the overall service objective.
+2. Understand what each phase is intended to accomplish.
+3. Identify high-impact and critical tasks.
+4. Identify dependencies and tightly coupled tasks.
+5. Identify tasks requiring significant stakeholder interaction.
+6. Identify tasks that genuinely require senior experience.
+7. Identify independent work suitable for lower-cost locations.
+8. Identify well-defined work suitable for lower experience.
+9. Consider downstream rework and coordination costs.
+10. Prefer meaningful savings with low or moderate execution risk.
+
+Do NOT attempt to force every task toward:
+
+lowest-location-multiplier
++ student.
 
 The goal is the lowest-cost REALISTIC delivery plan, not the lowest possible
 mathematical score.
@@ -1571,10 +1821,12 @@ export class JobListingAiService {
   }
 
   // Builds the system prompt for handleSmartAssistantScopeEdit. Cost-related
-  // commands ("reduce the budget", "make it cheaper", ...) get the full
-  // COST_OPTIMIZATION_RULES appended — the multiplier tables and decision
-  // rules that keep the model from just racing every task to junior/cheapest
-  // region/minimum hours. Timeline-shortening commands get
+  // commands ("reduce the budget", "make it cheaper", ...) get
+  // COST_OPTIMIZATION_RULES_PROJECT or COST_OPTIMIZATION_RULES_SERVICE
+  // appended, branched on workType (currently identical content — split so
+  // they can diverge independently later) — the multiplier tables and
+  // decision rules that keep the model from just racing every task to
+  // junior/cheapest region/minimum hours. Timeline-shortening commands get
   // TIMELINE_OPTIMIZATION_RULES, and scope-quality commands ("Improve scope
   // quality", "add more detail", ...) get SCOPE_QUALITY_RULES — each
   // independently of the others, so a command could in principle match more
@@ -1685,7 +1937,10 @@ SERVICE RULES:
     }
 
     if (isCostOptimization) {
-      prompt += `\n${COST_OPTIMIZATION_RULES}`;
+      prompt +=
+        input.workType === "service"
+          ? `\n${COST_OPTIMIZATION_RULES_SERVICE}`
+          : `\n${COST_OPTIMIZATION_RULES_PROJECT}`;
 
       if (!hasExplicitReductionTarget) {
         const currentBudgetUsd =
