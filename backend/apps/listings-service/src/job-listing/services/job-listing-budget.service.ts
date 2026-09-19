@@ -20,21 +20,23 @@ const HOURS_PER_WEEK: Record<string, number> = {
 const WORKING_DAYS_PER_WEEK = 5;
 
 // ── normalizeExperienceLevel ──────────────────────────────────────────────
-// pricing-service only understands junior/mid/senior (GetRatesQueryDto).
-// Step 4's own experience picker now only offers those three, but older
-// listings (or tasks created via the shared scope-builder component, which
-// still uses the 5-level Student/Junior/Medior/Senior/Guru scale) may still
-// carry a legacy value — collapse those down instead of 400ing.
+// pricing-service now stores and accepts the full 5-level scale (student/
+// junior/medior/senior/guru), matching Step 4's picker and the shared
+// scope-builder component — no collapsing needed, just lowercasing. The old
+// 3-level 'mid' value is intentionally NOT mapped to 'medior' — it isn't
+// supported. A task still carrying the legacy value falls through to
+// pricing-service as literal "mid", which pricing-service's @IsIn now
+// rejects (400), yielding a zero rate via getRateUsdCents's catch — same
+// safe-fallback behavior as any other unresolvable rate lookup.
 // Same mapping as publish.service.ts's signInternalToken-adjacent EXP map;
 // kept local here rather than shared to avoid a cross-file dependency for
 // two small lookup tables.
 const EXPERIENCE_LEVEL_MAP: Record<string, string> = {
-  student: 'junior',
+  student: 'student',
   junior:  'junior',
-  medior:  'mid',
-  mid:     'mid',
+  medior:  'medior',
   senior:  'senior',
-  guru:    'senior',
+  guru:    'guru',
 };
 
 function normalizeExperienceLevel(experienceLevel: string | null): string | undefined {

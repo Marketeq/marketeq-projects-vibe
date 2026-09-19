@@ -32,8 +32,6 @@ import {
 } from "@/service/http/contracts";
 import {
   JobListingAPI,
-  JobListingPricingAPI,
-  type JobListingPricingExperience,
   type JobListingPhaseType,
   type JobListingWorkSchedule,
 } from "@/service/http/job-listing";
@@ -2086,10 +2084,9 @@ const durationToDays = (
   if (type === "hours") return Math.max(1, Math.ceil(value / 24));
   return value;
 };
-// Collapsed to the 3 levels pricing-service's rate lookup understands
-// (junior/mid/senior) — Step 4's budget calculator and price guide only
-// resolve real rate data for these three.
-const EXPERIENCE_LEVELS = ["Junior", "Mid", "Senior"] as const;
+// Full 5-level scale — matches ps_platform_rate_averages.experience_level
+// and the shared scope-builder component's HOURLY_RATE_BY_LEVEL.
+const EXPERIENCE_LEVELS = ["Student", "Junior", "Medior", "Senior", "Guru"] as const;
 type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number];
 
 const taskFormSchema = z.object({
@@ -7465,166 +7462,6 @@ const getProjectTimelineMonthsFromScope = (phases: Phase[]) => {
   return totalWeeks > 0 ? Math.ceil(totalWeeks / 4.33) : 0;
 };
 
-const normalizePricingExperience = (
-  experience?: string,
-): JobListingPricingExperience | undefined => {
-  const normalized = normalizeSearchText(experience);
-  if (normalized === "junior") return "junior";
-  if (normalized === "medior" || normalized === "mid") return "mid";
-  if (normalized === "senior" || normalized === "guru") return "senior";
-  return undefined;
-};
-
-// Mirrors backend/apps/listings-service/src/job-listing/services/
-// job-listing-budget.service.ts's COUNTRY_TO_REGION — pricing-service only
-// understands these 8 regions, not the 56 real countries CountriesCombobox
-// offers, so a raw country name (e.g. "India") 400s. Duplicated here (not
-// imported — separate deployable frontend/backend, no shared package)
-// because this screen calls pricing-service directly via the gateway
-// instead of going through job-listing-budget.service.ts. Keep in sync if
-// that map changes.
-const COUNTRY_TO_REGION: Record<string, string> = {
-  "United States": "United States",
-  Canada: "Canada",
-  "United Kingdom": "United Kingdom",
-  Australia: "United States",
-  "New Zealand": "United States",
-
-  Germany: "Western Europe",
-  France: "Western Europe",
-  Spain: "Western Europe",
-  Italy: "Western Europe",
-  Netherlands: "Western Europe",
-  Sweden: "Western Europe",
-  Norway: "Western Europe",
-  Denmark: "Western Europe",
-  Finland: "Western Europe",
-  Switzerland: "Western Europe",
-  Austria: "Western Europe",
-  Belgium: "Western Europe",
-  Ireland: "Western Europe",
-  Portugal: "Western Europe",
-  Greece: "Western Europe",
-
-  Ukraine: "Eastern Europe",
-  Poland: "Eastern Europe",
-  Romania: "Eastern Europe",
-  "Czech Republic": "Eastern Europe",
-  Hungary: "Eastern Europe",
-  Turkey: "Eastern Europe",
-  Russia: "Eastern Europe",
-  Estonia: "Eastern Europe",
-  Latvia: "Eastern Europe",
-  Lithuania: "Eastern Europe",
-  Croatia: "Eastern Europe",
-  Serbia: "Eastern Europe",
-  Bulgaria: "Eastern Europe",
-
-  Brazil: "Latin America",
-  Mexico: "Latin America",
-  Argentina: "Latin America",
-  Colombia: "Latin America",
-  Chile: "Latin America",
-
-  India: "South Asia",
-  Pakistan: "South Asia",
-  Bangladesh: "South Asia",
-  "Sri Lanka": "South Asia",
-  Nigeria: "South Asia",
-  Kenya: "South Asia",
-  "South Africa": "South Asia",
-  Egypt: "South Asia",
-
-  Philippines: "Southeast Asia",
-  Thailand: "Southeast Asia",
-  Vietnam: "Southeast Asia",
-  Indonesia: "Southeast Asia",
-  Malaysia: "Southeast Asia",
-  Singapore: "Southeast Asia",
-  Japan: "Southeast Asia",
-  "South Korea": "Southeast Asia",
-  China: "Southeast Asia",
-  Israel: "Southeast Asia",
-};
-
-const COUNTRY_TO_REGION_LOWER: Record<string, string> = Object.fromEntries(
-  Object.entries(COUNTRY_TO_REGION).map(([country, region]) => [
-    country.toLowerCase(),
-    region,
-  ]),
-);
-
-// "usa"/"us" aren't real country names (the actual entry is "United
-// States") but were already special-cased here before this fix — kept for
-// backward compatibility with anything already relying on that shorthand.
-const LOCATION_ALIASES: Record<string, string> = {
-  usa: "united states",
-  us: "united states",
-  uk: "united kingdom",
-};
-
-const normalizePricingLocation = (location?: string) => {
-  const normalized = normalizeSearchText(location);
-  if (!normalized) return undefined;
-  const aliased = LOCATION_ALIASES[normalized] ?? normalized;
-  // No match -> omit location rather than send pricing-service a raw
-  // country/city string it will always 400 on.
-  return COUNTRY_TO_REGION_LOWER[aliased];
-};
-
-const temporaryRateUsdCentsByExperience: Record<
-  JobListingPricingExperience,
-  number
-> = {
-  junior: 4_500,
-  mid: 7_500,
-  senior: 11_000,
-};
-
-const calculateProjectScopeBudgetUsdCents = async (phases: Phase[]) => {
-  let totalUsdCents = 0;
-  let isStale = false;
-
-  for (const phase of phases) {
-    for (const row of phase.rows ?? []) {
-      const estimatedHours = toEstimatedHours(row);
-      const experience = normalizePricingExperience(row.experience);
-
-      try {
-        const response = await JobListingPricingAPI.GetRate({
-          role: row.role,
-          location: normalizePricingLocation(row.location),
-          experience,
-          schedule: row.workSchedule ?? "full_time",
-        });
-        const apiRateUsdCents = toFiniteNumber(
-          response?.data?.hourlyRateMedianUsdCents,
-        );
-        const rateUsdCents =
-          typeof apiRateUsdCents === "number"
-            ? apiRateUsdCents
-            : experience
-              ? temporaryRateUsdCentsByExperience[experience]
-              : undefined;
-
-        if (response?.data?.isStale) {
-          isStale = true;
-        }
-
-        if (typeof rateUsdCents !== "number") {
-          continue;
-        }
-
-        totalUsdCents += Math.round(estimatedHours * rateUsdCents);
-      } catch {
-        isStale = true;
-      }
-    }
-  }
-
-  return { totalUsdCents, isStale };
-};
-
 const getPhaseSearchTargetId = (phaseIndex: number) =>
   `project-scope-phase-${phaseIndex}`;
 
@@ -12283,6 +12120,7 @@ const ProjectScopeEditStep = ({
   const assistantUndoSnapshotRef =
     useRef<ProjectAssistantListingSnapshot | null>(null)
   const [budgetAmount, setBudgetAmount] = useState(5000)
+  const [isBudgetLoading, setIsBudgetLoading] = useState(false)
   const [isBudgetStale, setIsBudgetStale] = useState(false)
   const [budgetFrequency, setBudgetFrequency] = useState("week")
   const [budgetTooltipOpen, setBudgetTooltipOpen] = useState(false)
@@ -12367,24 +12205,6 @@ const ProjectScopeEditStep = ({
   }, [activeRoleKey, draftRole])
 
   useEffect(() => {
-    let cancelled = false
-
-    const calculateBudget = async () => {
-      const result = await calculateProjectScopeBudgetUsdCents(phases)
-      if (cancelled) return
-
-      setBudgetAmount(Math.round(result.totalUsdCents / 100))
-      setIsBudgetStale(result.isStale)
-    }
-
-    void calculateBudget()
-
-    return () => {
-      cancelled = true
-    }
-  }, [phases])
-
-  useEffect(() => {
     if (didApplyPersistedScopeRef.current) return
 
     const persistedPhases = Array.isArray(projectScopeState)
@@ -12397,7 +12217,6 @@ const ProjectScopeEditStep = ({
 
     didApplyPersistedScopeRef.current = true
     didGenerateInitialScopeRef.current = true
-    skipNextProjectScopeSaveRef.current = true
     setPhases(persistedPhases)
     setExpandedPhaseNames(
       persistedPhases
@@ -12411,6 +12230,7 @@ const ProjectScopeEditStep = ({
     didGenerateInitialScopeRef.current = true
 
     const generateScope = async () => {
+      setIsBudgetLoading(true)
       try {
         const response = await JobListingAPI.GenerateScope(jobListingId, {
           workType: "project",
@@ -12433,14 +12253,22 @@ const ProjectScopeEditStep = ({
             generatedPhases.map((phase) => phase.phaseName ?? "")
           )
         }
+        const totalBudgetUsdCents = toFiniteNumber(
+          response?.data?.totalBudgetUsdCents
+        )
+        if (typeof totalBudgetUsdCents === "number") {
+          setBudgetAmount(Math.round(totalBudgetUsdCents / 100))
+          setIsBudgetStale(false)
+        }
       } catch (error) {
         console.error("Failed to generate project scope", error)
+      } finally {
+        setIsBudgetLoading(false)
       }
     }
 
     void generateScope()
   }, [
-    budgetAmount,
     jobListingId,
     projectTimelineMonths,
     jobListingDraftDetails.description,
@@ -12911,16 +12739,26 @@ const ProjectScopeEditStep = ({
 
     if (signature === lastSavedProjectScopeSignatureRef.current) return
 
+    setIsBudgetLoading(true)
     const timeout = window.setTimeout(() => {
       const saveScope = async () => {
         try {
-          await JobListingAPI.ApplyGeneratedScope(jobListingId, {
+          const response = await JobListingAPI.ApplyGeneratedScope(jobListingId, {
             hasScope: true,
             phases: payload.phases,
           })
+          const totalBudgetUsdCents = toFiniteNumber(
+            response?.data?.totalBudgetUsdCents
+          )
+          if (typeof totalBudgetUsdCents === "number") {
+            setBudgetAmount(Math.round(totalBudgetUsdCents / 100))
+            setIsBudgetStale(false)
+          }
           lastSavedProjectScopeSignatureRef.current = signature
         } catch (error) {
           console.error("Failed to save project job listing scope", error)
+        } finally {
+          setIsBudgetLoading(false)
         }
       }
 
@@ -13002,7 +12840,7 @@ const ProjectScopeEditStep = ({
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  {isAssistantLoading ? (
+                  {isAssistantLoading || isBudgetLoading ? (
                     <span className="relative h-10 w-full overflow-hidden rounded bg-gray-100">
                       <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
                     </span>
@@ -13172,11 +13010,11 @@ const ProjectScopeEditStep = ({
             </div>
 
             <div className="mt-6 space-y-3">
-              {isAssistantLoading ? (
+              {isAssistantLoading || isBudgetLoading ? (
                 <div
                   className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
                   aria-busy="true"
-                  aria-label="Smart Assistant is updating the scope"
+                  aria-label="Scope budget is updating"
                 >
                   <div className="flex h-14 items-center justify-center gap-4 border-b border-gray-200 p-3">
                     <div className="flex h-8 min-w-0 flex-1 flex-col items-start justify-end gap-1 self-stretch p-0">
@@ -13818,7 +13656,7 @@ const ProjectScopeEditStep = ({
                   </div>
                 )
               }))}
-              {!isAssistantLoading && visiblePhases.length === 0 ? (
+              {!isAssistantLoading && !isBudgetLoading && visiblePhases.length === 0 ? (
                 <div className="rounded-lg border border-gray-200 bg-white px-6 py-8 text-center text-sm leading-5 text-gray-500 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                   No phase or task found.
                 </div>
@@ -16721,8 +16559,8 @@ const ServiceScopeEditStep = ({
                 <div className="flex h-[105px] flex-1 items-start gap-6 p-6">
                   <div className="flex h-[57px] flex-1 flex-col items-start gap-2 p-0">
                     <div className="flex h-5 shrink-0 items-center gap-2 self-stretch p-0 text-sm leading-5 font-medium text-gray-400">
-                      <span className="h-5 w-[180px] shrink-0">
-                        Project Timeline Calculator
+                      <span className="h-5 w-[53px] shrink-0">
+                        Duration
                       </span>
                       <TooltipProvider>
                         <Tooltip>
