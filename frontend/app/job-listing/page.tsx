@@ -12087,6 +12087,21 @@ type ProjectAssistantListingSnapshot = {
   timelineMonths: number
 }
 
+type ServiceAssistantHistoryItem = {
+  id: string;
+  prompt: string;
+  result?: string;
+  status: "pending" | "success" | "error";
+  listingBefore?: ServiceAssistantListingSnapshot;
+  listingAfter?: ServiceAssistantListingSnapshot;
+};
+
+type ServiceAssistantListingSnapshot = {
+  phases: ServiceScopePhase[];
+  budgetAmount: number;
+  isBudgetStale: boolean;
+};
+
 const ProjectScopeEditStep = ({
   setProgress,
   jobListingId,
@@ -15664,7 +15679,14 @@ const ServiceScopeEditStep = ({
   >("");
   const [assistantMessage, setAssistantMessage] = useState("");
   const [assistantResult, setAssistantResult] = useState("");
+  const [assistantLastPrompt, setAssistantLastPrompt] = useState("");
+  const [assistantHistory, setAssistantHistory] = useState<
+    ServiceAssistantHistoryItem[]
+  >([]);
   const [isAssistantLoading, setIsAssistantLoading] = useState(false);
+  const assistantChatScrollRef = useRef<HTMLDivElement | null>(null);
+  const assistantUndoSnapshotRef =
+    useRef<ServiceAssistantListingSnapshot | null>(null);
   const didGenerateInitialScopeRef = useRef(false);
   const [budgetAmount, setBudgetAmount] = useState(5000);
   const [isBudgetLoading, setIsBudgetLoading] = useState(false);
@@ -15961,6 +15983,152 @@ const ServiceScopeEditStep = ({
     return `${scheduleLabel}, ${count} ${count === 1 ? "time" : "times"}`;
   };
 
+  const cloneServicePhases = (sourcePhases: ServiceScopePhase[]) =>
+    sourcePhases.map((phase) => ({
+      ...phase,
+      rows: phase.rows.map((row) => ({ ...row })),
+    }));
+
+  const getServiceAssistantListingSnapshot = (
+    sourcePhases: ServiceScopePhase[] = phases,
+    sourceBudgetAmount: number = budgetAmount,
+    sourceIsBudgetStale: boolean = isBudgetStale,
+  ): ServiceAssistantListingSnapshot => ({
+    phases: cloneServicePhases(sourcePhases),
+    budgetAmount: sourceBudgetAmount,
+    isBudgetStale: sourceIsBudgetStale,
+  });
+
+  const restoreServiceAssistantListingSnapshot = (
+    snapshot: ServiceAssistantListingSnapshot,
+  ) => {
+    const nextPhases = cloneServicePhases(snapshot.phases);
+    skipNextServiceScopeSaveRef.current = true;
+    setPhases(nextPhases);
+    setExpandedPhaseIds(nextPhases.map((phase) => phase.id));
+    setBudgetAmount(snapshot.budgetAmount);
+    setIsBudgetStale(snapshot.isBudgetStale);
+  };
+
+  const persistServiceAssistantListingSnapshot = async (
+    snapshot: ServiceAssistantListingSnapshot,
+  ) => {
+    if (!jobListingId) return;
+
+    await JobListingAPI.ApplyGeneratedScope(jobListingId, {
+      hasScope: true,
+      phases: snapshot.phases.map((phase) => ({
+        phaseName: `${phase.name} ${phase.customName ?? ""}`.trim(),
+        phaseType: phase.phaseType,
+        recurrenceSchedule: phase.recurrenceSchedule,
+        recurrenceCount: phase.recurrenceCount,
+        tasks: phase.rows.map((row) => {
+          const [durationValue] = row.duration.split(/\s+/);
+
+          return {
+            taskName: row.task,
+            roleTitle: row.role,
+            location: row.location,
+            experienceLevel: row.experience,
+            workSchedule: row.workSchedule ?? "full_time",
+            customHours: row.customHours,
+            customFrequency: row.customFrequency,
+            estimatedHours:
+              row.workSchedule === "custom"
+                ? Number(row.customHours) || 1
+                : Number(durationValue) || 1,
+          };
+        }),
+      })),
+    });
+  };
+
+  const startServiceAssistantHistoryItem = (
+    prompt: string,
+    listingBefore: ServiceAssistantListingSnapshot,
+  ) => {
+    const historyId = `service-assistant-history-${getId()}`;
+
+    setAssistantHistory((currentHistory) =>
+      [
+        ...currentHistory,
+        {
+          id: historyId,
+          prompt,
+          status: "pending" as const,
+          listingBefore,
+        },
+      ].slice(-20),
+    );
+
+    return historyId;
+  };
+
+  const completeServiceAssistantHistoryItem = (
+    id: string,
+    prompt: string,
+    result: string,
+    status: Exclude<ServiceAssistantHistoryItem["status"], "pending"> =
+      "success",
+    listingAfter?: ServiceAssistantListingSnapshot,
+  ) => {
+    setAssistantResult(result);
+    setAssistantLastPrompt(prompt);
+    setAssistantHistory((currentHistory) =>
+      currentHistory.map((item) =>
+        item.id === id ? { ...item, result, status, listingAfter } : item,
+      ),
+    );
+  };
+
+  const getServiceAssistantResultText = (value: unknown, fallback: string) => {
+    if (typeof value === "string") return value;
+
+    if (Array.isArray(value)) {
+      return value
+        .map((item) =>
+          typeof item === "string" ? item : JSON.stringify(item),
+        )
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    if (value && typeof value === "object") {
+      const objectValue = value as {
+        summary?: unknown;
+        message?: unknown;
+        suggestions?: unknown;
+      };
+
+      if (typeof objectValue.summary === "string") return objectValue.summary;
+      if (typeof objectValue.message === "string") return objectValue.message;
+
+      if (Array.isArray(objectValue.suggestions)) {
+        return objectValue.suggestions
+          .map((item) =>
+            typeof item === "string" ? item : JSON.stringify(item),
+          )
+          .filter(Boolean)
+          .join("\n");
+      }
+    }
+
+    return fallback;
+  };
+
+  useEffect(() => {
+    const latestHistoryItem = assistantHistory[assistantHistory.length - 1];
+    if (!latestHistoryItem || latestHistoryItem.status === "pending") return;
+
+    window.requestAnimationFrame(() => {
+      const scrollContainer = assistantChatScrollRef.current;
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+  }, [assistantHistory]);
+
   const openRecurringScheduleDialog = (phase: ServiceScopePhase) => {
     setActiveRecurringPhaseId(phase.id);
     setDraftRecurringSchedule(
@@ -16181,33 +16349,25 @@ const ServiceScopeEditStep = ({
     if (!normalizedMessage) return false;
 
     if (normalizedMessage.includes("budget")) {
+      let fallbackMessage = "";
       setBudgetAmount((currentAmount) => {
         const nextAmount = Math.max(1000, Math.round(currentAmount * 0.8));
-        setAssistantResult(
-          `Applied: budget reduced to $${nextAmount.toLocaleString()} per ${budgetFrequency}.`,
-        );
+        fallbackMessage = `Applied: budget reduced to $${nextAmount.toLocaleString()} per ${budgetFrequency}.`;
         return nextAmount;
       });
-      return true;
+      return fallbackMessage;
     } else if (
       normalizedMessage.includes("quality") ||
       normalizedMessage.includes("scope") ||
       normalizedMessage.includes("improve")
     ) {
       const didAddTask = addServiceQualityTask();
-      setAssistantResult(
-        didAddTask
-          ? "Applied: added a Quality Review task to the setup phase."
-          : "No available phase found to update.",
-      );
-      return true;
+      return didAddTask
+        ? "Applied: added a Quality Review task to the setup phase."
+        : "No available phase found to update.";
     } else {
-      setAssistantResult(
-        "Try one of the suggested actions: reduce the budget or improve scope quality.",
-      );
+      return "Try one of the suggested actions: reduce the budget or improve scope quality.";
     }
-
-    return false;
   };
 
   const buildServiceAssistantScope = () => ({
@@ -16241,7 +16401,7 @@ const ServiceScopeEditStep = ({
       ? generatedScope.phases
       : [];
 
-    if (!generatedPhases.length) return false;
+    if (!generatedPhases.length) return null;
 
     const nextPhases: ServiceScopePhase[] = generatedPhases.map(
       (phase: any, index: number) => {
@@ -16317,15 +16477,29 @@ const ServiceScopeEditStep = ({
 
     setPhases(orderedPhases);
     setExpandedPhaseIds(orderedPhases.map((phase) => phase.id));
-    return true;
+    return orderedPhases;
   };
 
   const runServiceAssistant = async (message: string) => {
-    if (!message.trim()) return;
+    const prompt = message.trim();
+    if (!prompt) return;
+
+    const listingBefore = getServiceAssistantListingSnapshot();
+    assistantUndoSnapshotRef.current = listingBefore;
+    setAssistantLastPrompt(prompt);
+    const historyId = startServiceAssistantHistoryItem(prompt, listingBefore);
+    setAssistantMessage("");
 
     if (!jobListingId) {
-      applyServiceAssistantFallback(message);
-      setAssistantMessage("");
+      const fallbackResult = applyServiceAssistantFallback(prompt);
+      completeServiceAssistantHistoryItem(
+        historyId,
+        prompt,
+        fallbackResult ||
+          "Smart Assistant needs a saved job draft first. Please try again in a moment.",
+        fallbackResult ? "success" : "error",
+        fallbackResult ? getServiceAssistantListingSnapshot() : undefined,
+      );
       return;
     }
 
@@ -16334,7 +16508,7 @@ const ServiceScopeEditStep = ({
     try {
       const response = await JobListingAPI.SmartAssistant(jobListingId, {
         mode: "scope",
-        command: message,
+        command: prompt,
         currentScope: buildServiceAssistantScope(),
         workType: "service",
         currentTotalBudgetUsdCents: Math.round(budgetAmount * 100),
@@ -16342,38 +16516,120 @@ const ServiceScopeEditStep = ({
       const data = response?.data ?? {};
 
       if (data.aiStatus === "AI_UNAVAILABLE") {
-        applyServiceAssistantFallback(message);
-        setAssistantResult(
-          data.message ?? "Smart Assistant is temporarily unavailable.",
+        const fallbackResult = applyServiceAssistantFallback(prompt);
+        completeServiceAssistantHistoryItem(
+          historyId,
+          prompt,
+          fallbackResult ||
+            getServiceAssistantResultText(
+              data.message,
+              "Smart Assistant is temporarily unavailable.",
+            ),
+          fallbackResult ? "success" : "error",
+          fallbackResult ? getServiceAssistantListingSnapshot() : undefined,
         );
         return;
       }
 
-      if (applyGeneratedServiceScope(data.updatedScope)) {
+      const nextPhases = applyGeneratedServiceScope(data.updatedScope);
+
+      if (nextPhases) {
         const totalBudgetUsdCents = toFiniteNumber(data.totalBudgetUsdCents);
+        let nextBudgetAmount = budgetAmount;
+        const nextIsBudgetStale = Boolean(data.isBudgetStale);
+
         if (typeof totalBudgetUsdCents === "number") {
-          setBudgetAmount(Math.round(totalBudgetUsdCents / 100));
-          setIsBudgetStale(Boolean(data.isBudgetStale));
+          nextBudgetAmount = Math.round(totalBudgetUsdCents / 100);
+          setBudgetAmount(nextBudgetAmount);
+          setIsBudgetStale(nextIsBudgetStale);
         }
-        setAssistantResult(
-          data.summary ?? "Applied: Smart Assistant updated the service scope.",
+
+        completeServiceAssistantHistoryItem(
+          historyId,
+          prompt,
+          getServiceAssistantResultText(
+            data.summary,
+            "Applied: Smart Assistant updated the service scope.",
+          ),
+          "success",
+          getServiceAssistantListingSnapshot(
+            nextPhases,
+            nextBudgetAmount,
+            typeof totalBudgetUsdCents === "number"
+              ? nextIsBudgetStale
+              : isBudgetStale,
+          ),
         );
       } else {
-        setAssistantResult(
-          data.summary ?? "Smart Assistant did not return an updated scope.",
+        completeServiceAssistantHistoryItem(
+          historyId,
+          prompt,
+          getServiceAssistantResultText(
+            data.summary,
+            "Smart Assistant did not return an updated scope.",
+          ),
+          "error",
         );
       }
     } catch (error: any) {
-      applyServiceAssistantFallback(message);
+      const fallbackResult = applyServiceAssistantFallback(prompt);
+      completeServiceAssistantHistoryItem(
+        historyId,
+        prompt,
+        fallbackResult ||
+          error?.response?.data?.message ||
+          error?.message ||
+          "Smart Assistant is temporarily unavailable.",
+        fallbackResult ? "success" : "error",
+        fallbackResult ? getServiceAssistantListingSnapshot() : undefined,
+      );
+    } finally {
+      setIsAssistantLoading(false);
+      setIsBudgetLoading(false);
+    }
+  };
+
+  const undoServiceAssistant = async () => {
+    if (!assistantUndoSnapshotRef.current) return;
+
+    const snapshot = assistantUndoSnapshotRef.current;
+    setIsAssistantLoading(true);
+
+    try {
+      restoreServiceAssistantListingSnapshot(snapshot);
+      await persistServiceAssistantListingSnapshot(snapshot);
+      assistantUndoSnapshotRef.current = null;
+      setAssistantResult("");
+      setAssistantLastPrompt("");
+    } catch (error: any) {
       setAssistantResult(
         error?.response?.data?.message ||
           error?.message ||
-          "Smart Assistant is temporarily unavailable.",
+          "Unable to save the restored scope.",
       );
     } finally {
-      setAssistantMessage("");
       setIsAssistantLoading(false);
-      setIsBudgetLoading(false);
+    }
+  };
+
+  const restoreServiceAssistantHistoryItem = async (
+    item: ServiceAssistantHistoryItem,
+  ) => {
+    if (!item.listingAfter) return;
+
+    setIsAssistantLoading(true);
+
+    try {
+      restoreServiceAssistantListingSnapshot(item.listingAfter);
+      await persistServiceAssistantListingSnapshot(item.listingAfter);
+    } catch (error: any) {
+      setAssistantResult(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Unable to save the restored scope.",
+      );
+    } finally {
+      setIsAssistantLoading(false);
     }
   };
 
@@ -17525,7 +17781,10 @@ const ServiceScopeEditStep = ({
                   className="size-5 shrink-0"
                 />
               </div>
-              <div className="flex h-[466px] shrink-0 grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+              <div
+                ref={assistantChatScrollRef}
+                className="flex h-[466px] shrink-0 grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
+              >
                 <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
                   <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
                     What do you want to do?
@@ -17600,10 +17859,90 @@ const ServiceScopeEditStep = ({
                     </Button>
                   ))}
                 </div>
-                {assistantResult ? (
-                  <p className="w-[282px] rounded-[5px] bg-primary-50 p-3 text-sm leading-5 text-dark-blue-400">
-                    {assistantResult}
-                  </p>
+                {assistantHistory.length > 0 ? (
+                  <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
+                    {assistantHistory.map((item, itemIndex) => {
+                      const isLatest = itemIndex === assistantHistory.length - 1;
+                      const canRestore =
+                        !isLatest &&
+                        item.status === "success" &&
+                        Boolean(item.listingAfter);
+                      const resultLines = (item.result ?? "")
+                        .split(/\n+/)
+                        .map((line) => line.replace(/^[-•]\s*/, "").trim())
+                        .filter(Boolean);
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex w-[282px] flex-col items-start gap-6 self-stretch"
+                        >
+                          <div className="flex w-[282px] justify-end">
+                            <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base font-normal leading-6 text-dark-blue-400">
+                              {item.prompt}
+                            </p>
+                          </div>
+                          {item.status !== "pending" ? (
+                            <div className="text-base font-normal leading-6 text-dark-blue-400">
+                              {item.status === "error" ? (
+                                <p>{item.result}</p>
+                              ) : (
+                                <>
+                                  <p>Here&apos;s what we&apos;ve updated:</p>
+                                  <ul className="list-disc pl-5">
+                                    {resultLines.map((line) => (
+                                      <li key={`${item.id}-${line}`}>{line}</li>
+                                    ))}
+                                  </ul>
+                                </>
+                              )}
+                            </div>
+                          ) : null}
+                          {canRestore ? (
+                            <Button
+                              type="button"
+                              variant="outlined"
+                              visual="gray"
+                              className="h-7 w-[136px] rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs"
+                              disabled={isAssistantLoading}
+                              onClick={() =>
+                                void restoreServiceAssistantHistoryItem(item)
+                              }
+                            >
+                              <ArrowUpLeft className="size-3 shrink-0" />
+                              Restore This Version
+                            </Button>
+                          ) : null}
+                          {isLatest && item.status !== "pending" ? (
+                            <div className="flex h-10 items-start gap-2">
+                              <Button
+                                type="button"
+                                className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none"
+                                disabled={isAssistantLoading || !item.prompt}
+                                onClick={() => runServiceAssistant(item.prompt)}
+                              >
+                                <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                                Retry
+                              </Button>
+                              {item.status === "success" ? (
+                                <Button
+                                  type="button"
+                                  variant="outlined"
+                                  visual="gray"
+                                  className="h-7 w-[62px] rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs"
+                                  disabled={!assistantUndoSnapshotRef.current}
+                                  onClick={() => void undoServiceAssistant()}
+                                >
+                                  <ArrowUpLeft className="size-3 shrink-0" />
+                                  Undo
+                                </Button>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : null}
               </div>
               <div className="flex h-[140px] w-[322px] shrink-0 flex-col items-start gap-2 self-stretch p-5">
