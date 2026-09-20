@@ -58,6 +58,7 @@ import type { ReleaseChannel } from './services/updater/channels';
 import { createErrorHandler } from './services/error-handler';
 import { createPowerMonitorService } from './services/power-monitor';
 import { registerContractsIpc } from './services/contracts/register-ipc';
+import { registerStatsIpc } from './services/stats/register-ipc';
 import {
   createWindowManager,
   resolveRendererPaths,
@@ -278,6 +279,24 @@ async function bootstrap(): Promise<void> {
     logger.info('contracts IPC wired');
   } catch (err) {
     logger.error({ err }, 'failed to initialize contracts IPC');
+  }
+
+  // --- Today stats IPC (local SQLite aggregate, no network) -------------
+  let detachStatsIpc: (() => void) | null = null;
+  try {
+    if (!timerService) throw new Error('timer service not initialized');
+    const db = initDatabase();
+    const repos = createRepos(db);
+    detachStatsIpc = registerStatsIpc({
+      logger,
+      sessionRepo: repos.session,
+      contractRepo: repos.contract,
+      timer: timerService,
+      getUserId: () => authService?.getCurrentUser()?.id ?? repos.user.findFirst()?.id ?? null,
+    });
+    logger.info('today stats IPC wired');
+  } catch (err) {
+    logger.error({ err }, 'failed to initialize today stats IPC');
   }
 
   // --- Phase 6: onboarding wizard --------------------------------------
@@ -649,6 +668,11 @@ async function bootstrap(): Promise<void> {
       detachContractsIpc?.();
     } catch (err) {
       logger.warn({ err }, 'error while detaching contracts ipc');
+    }
+    try {
+      detachStatsIpc?.();
+    } catch (err) {
+      logger.warn({ err }, 'error while detaching stats ipc');
     }
     try {
       updaterSvc?.dispose();

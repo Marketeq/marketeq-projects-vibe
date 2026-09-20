@@ -33,6 +33,13 @@ interface DayGroup {
   contracts: Contract[]
 }
 
+interface TodayStats {
+  trackedSeconds: number
+  earnedCents: number
+  currency: string
+  goalSeconds: number
+}
+
 interface TimeTrackerAppProps {
   userName?: string
   userEmail?: string
@@ -565,6 +572,9 @@ export function TimeTrackerApp({
   }, [])
   const [days, setDays] = React.useState<DayGroup[]>(initialDays || [])
   const [contractsLoaded, setContractsLoaded] = React.useState(false)
+
+  // ── "Today" hours/earnings — persisted locally, survives app restarts ──
+  const [todayStats, setTodayStats] = React.useState<TodayStats | null>(null)
   const [expandedContracts, setExpandedContracts] = React.useState<Set<string>>(new Set())
   const [collapsedDays, setCollapsedDays] = React.useState<Set<number>>(new Set())
 
@@ -694,6 +704,29 @@ export function TimeTrackerApp({
     fetchContracts()
     return () => { cancelled = true }
   }, [])
+
+  // ── "Today" hours/earnings — fetched from local SQLite via IPC, so it
+  // survives app restarts (unlike the ephemeral `days` state above) ──────
+  const refreshTodayStats = React.useCallback(async () => {
+    try {
+      const stats = await window.dtt?.stats?.getToday?.()
+      if (stats) setTodayStats(stats)
+    } catch (err) {
+      console.error("Failed to fetch today stats:", err)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    refreshTodayStats()
+    const off = window.dtt?.timer?.onStateChanged?.(() => { refreshTodayStats() })
+    return () => { off?.() }
+  }, [refreshTodayStats])
+
+  React.useEffect(() => {
+    if (!isRunning || isPaused) return
+    const id = setInterval(refreshTodayStats, 30_000)
+    return () => clearInterval(id)
+  }, [isRunning, isPaused, refreshTodayStats])
 
   // ── Live clock ──────────────────────────────────────────────────────────
   React.useEffect(() => {
@@ -1371,14 +1404,24 @@ export function TimeTrackerApp({
             )}
             {days.map((day, dayIdx) => {
               const dayCollapsed = collapsedDays.has(dayIdx)
+              const isToday = day.label === "Today"
+              const hoursTracked = isToday && todayStats
+                ? (todayStats.trackedSeconds / 3600).toFixed(1)
+                : calcDayTrackedHours(day.contracts)
+              const totalHoursDisplay = isToday && todayStats
+                ? (todayStats.goalSeconds / 3600).toFixed(1)
+                : day.totalHours
+              const earned = isToday && todayStats
+                ? `$${(todayStats.earnedCents / 100).toFixed(2)}`
+                : calcDayEarnings(day.contracts, day.hourlyRate)
               return (
                 <div key={dayIdx} className="animate-stagger-in" style={{ animationDelay: `${dayIdx * 100}ms`, animationFillMode: "both" }}>
                   <DaySummary
                     label={day.label}
                     fullDate={day.fullDate}
-                    hoursTracked={calcDayTrackedHours(day.contracts)}
-                    totalHours={day.totalHours}
-                    earned={calcDayEarnings(day.contracts, day.hourlyRate)}
+                    hoursTracked={hoursTracked}
+                    totalHours={totalHoursDisplay}
+                    earned={earned}
                     collapsed={dayCollapsed}
                     onToggle={() => {
                       setCollapsedDays((prev) => {

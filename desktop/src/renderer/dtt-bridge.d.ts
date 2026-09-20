@@ -42,6 +42,7 @@ import type {
   TimerStartArgs,
   TimerStopArgs,
   TimerTickPayload,
+  TodayStatsDTO,
 } from '../shared/ipc-contracts';
 import type { AppInfo, PingResult } from '../shared/types';
 
@@ -121,6 +122,10 @@ export interface DttContractsBridge {
   getTasks: (contractId: string) => Promise<BackendTask[]>;
 }
 
+export interface DttStatsBridge {
+  getToday: () => Promise<TodayStatsDTO>;
+}
+
 export interface DttBridgeGlobal {
   getAppInfo: () => Promise<AppInfo>;
   ping: (echo: string) => Promise<PingResult>;
@@ -133,6 +138,7 @@ export interface DttBridgeGlobal {
   permissions: DttPermissionsBridge;
   auth: DttAuthBridge;
   contracts: DttContractsBridge;
+  stats: DttStatsBridge;
   sync: DttSyncBridge;
   onboarding: DttOnboardingBridge;
 }

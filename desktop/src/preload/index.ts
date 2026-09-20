@@ -40,6 +40,7 @@ import type {
   TimerStartArgs,
   TimerStopArgs,
   TimerTickPayload,
+  TodayStatsDTO,
   UpdaterProgressInfo,
   UpdaterStatusDTO,
 } from '../shared/ipc-contracts';
@@ -280,6 +281,11 @@ const dtt = {
       ipcRenderer.invoke(IPC.contractsGetMine),
     getTasks: (contractId: string): Promise<BackendTask[]> =>
       ipcRenderer.invoke(IPC.contractsGetTasks, contractId),
+  },
+
+  stats: {
+    getToday: async (): Promise<TodayStatsDTO> =>
+      unwrapIpcResult<TodayStatsDTO>(await ipcRenderer.invoke(IPC.statsGetToday)),
   },
 
   sync: {

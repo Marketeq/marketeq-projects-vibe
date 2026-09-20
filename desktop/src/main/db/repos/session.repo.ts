@@ -2,9 +2,16 @@
 // All session writes go through this repository. The TimerService (future
 // phases) and SyncQueue call into here. Renderers never see SQL.
 
+import { z } from 'zod';
 import type { DbHandle } from '../connection';
 import { SessionRow } from '../schema';
 import { one, many, run, tx } from './base';
+
+const DailyContractTotalRow = z.object({
+  contract_id: z.string().min(1),
+  total_billable_seconds: z.number().int().nonnegative(),
+});
+export type DailyContractTotal = z.infer<typeof DailyContractTotalRow>;
 
 export function createSessionRepo(db: DbHandle) {
   return {
@@ -85,6 +92,36 @@ export function createSessionRepo(db: DbHandle) {
         SessionRow,
         `SELECT * FROM session WHERE user_id = ? ORDER BY started_at DESC LIMIT ?`,
         [userId, limit],
+      );
+    },
+
+    /**
+     * Sums billable_seconds per contract for CLOSED sessions belonging to
+     * userId whose started_at falls in [startAt, endAt). Excludes the
+     * currently-open session (ended_at IS NULL) — its billable_seconds
+     * isn't finalized yet; the caller adds the live elapsed seconds from
+     * TimerService.getSnapshot() for that one.
+     *
+     * Known limitation: a session that starts before startAt and is still
+     * running past it is bucketed entirely under the day it started — no
+     * midnight-crossing split. Acceptable for v1.
+     */
+    sumBillableSecondsByContract(input: {
+      userId: string;
+      startAt: number;
+      endAt: number;
+    }): DailyContractTotal[] {
+      return many(
+        db,
+        DailyContractTotalRow,
+        `SELECT contract_id, SUM(billable_seconds) AS total_billable_seconds
+           FROM session
+          WHERE user_id = ?
+            AND ended_at IS NOT NULL
+            AND started_at >= ?
+            AND started_at < ?
+          GROUP BY contract_id`,
+        [input.userId, input.startAt, input.endAt],
       );
     },
   };
