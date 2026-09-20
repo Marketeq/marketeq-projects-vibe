@@ -477,32 +477,32 @@ const Welcome = ({
 
       <div className="flex md:flex-row flex-col xs:max-md:gap-y-5 md:items-center bg-white p-5 border rounded-lg border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
         <div className="grid grid-cols-2 md:grid-cols-4 xs:max-md:gap-y-[38px] xs:max-md:pt-[13px] md:divide-x md:divide-gray-200 flex-auto md:border-r md:border-gray-200">
-          <article className="md:px-6 space-y-3">
-            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400">
+          <article className="md:px-3 space-y-3">
+            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400 whitespace-nowrap">
               Active Projects
             </p>
             <h1 className="text-2xl text-center leading-[29.05px] font-semibold text-dark-blue-400">
               0
             </h1>
           </article>
-          <article className="md:px-6 space-y-3">
-            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400">
+          <article className="md:px-3 space-y-3">
+            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400 whitespace-nowrap">
               Completed Projects
             </p>
             <h1 className="text-2xl text-center leading-[29.05px] font-semibold text-dark-blue-400">
               {user?.totalProjectsCompleted ?? 0}
             </h1>
           </article>
-          <article className="md:px-6 space-y-3">
-            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400">
+          <article className="md:px-3 space-y-3">
+            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400 whitespace-nowrap">
               Paused Projects
             </p>
             <h1 className="text-2xl text-center leading-[29.05px] font-semibold text-dark-blue-400">
               0
             </h1>
           </article>
-          <article className="md:px-6 space-y-3">
-            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400">
+          <article className="md:px-3 space-y-3">
+            <p className="text-xs text-center leading-[14.52px] text-dark-blue-400 whitespace-nowrap">
               Overdue Tasks
             </p>
             <h1 className="text-2xl text-center leading-[29.05px] font-semibold text-dark-blue-400">
@@ -905,12 +905,12 @@ const Content = ({
 }: { profile?: DashboardProfile | null } & ProfileCtaHandlers) => {
   const [isOpen, toggleIsOpen] = useToggle(false)
   return (
-    <div className="flex-auto pt-3.5 px-3.5 md:pt-6 md:px-6 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pt-[50px] min-[1024px]:pr-[50px]">
-      <div className="flex min-[1440px]:gap-x-8 justify-center overflow-hidden">
-        <div className="xs:max-[1440px]:flex-auto min-[1440px]:max-w-[1024px] space-y-3 md:space-y-5 min-w-0">
+    <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px] overflow-hidden">
+        <div className="flex-auto space-y-3 md:space-y-5 min-w-0">
           <Welcome onOpenProfile={toggleIsOpen} user={profile} />
           <RecentActivity user={profile} />
           <RecentProjects />
+          <Footer />
         </div>
 
         <RightSidebar profile={profile} {...handlers} />
@@ -952,8 +952,6 @@ const Content = ({
             </ScrollArea>
           </DialogContent>
         </Dialog>
-      </div>
-      <Footer />
     </div>
   )
 }
