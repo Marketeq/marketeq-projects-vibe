@@ -329,6 +329,12 @@ export interface OfferNotificationMessageData {
   // "no live signal" (seeded fixtures, or the offer-service lookup failed)
   // and must never be treated as withdrawn/expired.
   offerStatus?: OfferStatus
+  // PMCM-392 AC-40.06: the real contracts-service contract id, once one
+  // exists — a different thing from `contractId` above, which (despite the
+  // name) is this offer's own id. Undefined means no contract yet, same
+  // "no live signal" rule as offerStatus: never invent one, never treat
+  // absence as an error.
+  realContractId?: string | null
   event: string
   title: string
   body: string
@@ -367,6 +373,23 @@ export interface OfferNotificationMessageData {
 }
 
 const COUNTER_OFFER_STORAGE_PREFIX = "inbox_counter_offer_submitted"
+
+// PMCM-392 AC-40.02: "Monday, Jan 30, 2025" — the weekday variant, matching
+// offer-service's own OfferResponse.startDateDisplay spec and the identical
+// toLocaleDateString call already in hire-me-button.tsx. Display-time only:
+// the already-formatted "Jan 30, 2025" values this reads (selectedNotificationOfferData.startDate,
+// acceptedOfferCard.startDate) are untouched everywhere else they render.
+const formatAcceptedHeadlineDate = (startDate: string): string => {
+  const parsed = new Date(startDate)
+  return Number.isNaN(parsed.getTime())
+    ? startDate
+    : parsed.toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+}
 
 const OFFER_EVENT_ACTION: Record<string, string> = {
   "offer.received": "sent an offer",
@@ -2557,6 +2580,18 @@ export function Chats({
   const conversationOfferContractIds = new Set(
     conversationOfferNotifications.map((item) => item.contractId)
   )
+  // PMCM-392 AC-40.03/40.06: acceptedOfferCard is frozen into sessionStorage
+  // at accept time, before contracts-service could possibly have created
+  // anything — there is no real contractId to write there. Looked up here
+  // instead, from the same live, already-refetched list selectedNotificationOffer
+  // reads, matched on the shared offer id (acceptedOfferCard.contractId is
+  // that same misnomer). Picks up a real id automatically once one exists,
+  // with no new polling.
+  const acceptedOfferCardRealContractId = acceptedOfferCard
+    ? conversationOfferNotifications.find(
+        (item) => item.contractId === acceptedOfferCard.contractId
+      )?.realContractId
+    : undefined
   const seededTalentFollowOnId = [...conversationOfferNotifications]
     .reverse()
     .find(
@@ -4812,7 +4847,9 @@ export function Chats({
 
                     <Card className="mt-4 w-full min-w-[320px] flex-col items-stretch justify-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
                       <h3 className="text-base font-bold leading-[19.36px] text-dark-blue-400">
-                        Offer Accepted!
+                        {acceptedOfferCard.startDate.startsWith("Starts")
+                          ? `Offer Accepted — ${acceptedOfferCard.startDate}`
+                          : `Offer Accepted — Starts on ${formatAcceptedHeadlineDate(acceptedOfferCard.startDate)}`}
                       </h3>
                       <p className="mt-5 text-sm font-medium leading-[16.94px] text-dark-blue-400">
                         {acceptedOfferCard.offerTitle}
@@ -4821,27 +4858,28 @@ export function Chats({
                         <Badge variant="rounded" visual="gray" size="sm">
                           {acceptedOfferCard.offerType}
                         </Badge>
-                        <span className="text-xs leading-[14.52px] text-gray-500">
-                          {acceptedOfferCard.startDate.startsWith("Starts")
-                            ? acceptedOfferCard.startDate
-                            : `Starts on ${acceptedOfferCard.startDate}`}
-                        </span>
                       </div>
-                      <Button
-                        variant="link"
-                        visual="primary"
-                        size="sm"
-                        className="mt-4 h-5 w-fit p-0 text-xs font-semibold leading-5 no-underline hover:no-underline"
-                        onClick={() =>
-                          router.push(
-                            `/active-project/${encodeURIComponent(
-                              acceptedOfferCard.contractId
-                            )}?title=${encodeURIComponent(acceptedOfferCard.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract&perspective=talent`
-                          )
-                        }
-                      >
-                        View Contract
-                      </Button>
+                      {acceptedOfferCardRealContractId ? (
+                        <Button
+                          variant="link"
+                          visual="primary"
+                          size="sm"
+                          className="mt-4 h-5 w-fit p-0 text-xs font-semibold leading-5 no-underline hover:no-underline"
+                          onClick={() =>
+                            router.push(
+                              `/active-project/${encodeURIComponent(
+                                acceptedOfferCardRealContractId
+                              )}?title=${encodeURIComponent(acceptedOfferCard.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract&perspective=talent`
+                            )
+                          }
+                        >
+                          View Contract
+                        </Button>
+                      ) : (
+                        <span className="mt-4 block text-xs leading-[14.52px] text-gray-500">
+                          Contract being prepared...
+                        </span>
+                      )}
                     </Card>
                   </article>
                 </div>
@@ -6142,6 +6180,17 @@ export function Chats({
           showReconnecting={showOfferChannelReconnecting}
           offline={!isNetworkOnline}
           liveTerminalNotice={liveTerminalNotice}
+          contractId={selectedNotificationOffer?.realContractId}
+          onViewContract={() => {
+            if (!selectedNotificationOffer?.realContractId || !selectedNotificationOfferData) {
+              return
+            }
+            const realContractId = selectedNotificationOffer.realContractId
+            setSelectedNotificationOffer(null)
+            router.push(
+              `/active-project/${encodeURIComponent(realContractId)}?title=${encodeURIComponent(selectedNotificationOfferData.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract`
+            )
+          }}
           onAcceptanceMessageChange={setNotificationAcceptanceMessage}
           onTermsAcceptedChange={setNotificationTermsAccepted}
           onDeclineMessageChange={setNotificationDeclineMessage}
@@ -6787,7 +6836,7 @@ export function Chats({
                     ? "You withdrew this offer"
                     : selectedNotificationOfferIsClientExpired
                       ? "This Offer Expired"
-                      : "This Offer Was Accepted"}
+                      : `Offer Accepted — Starts on ${formatAcceptedHeadlineDate(selectedNotificationOfferData.startDate)}`}
                 </DialogTitle>
                 <DialogClose asChild>
                   <IconButton variant="ghost" visual="gray" size="md">
@@ -6920,21 +6969,26 @@ export function Chats({
                         Resend Offer
                       </Button>
                     </div>
-                  ) : (
+                  ) : selectedNotificationOffer.realContractId ? (
                     <Button
                       variant="outlined"
                       visual="gray"
                       size="sm"
                       onClick={() => {
-                        const contractId = selectedNotificationOffer.contractId
+                        const realContractId = selectedNotificationOffer.realContractId
+                        if (!realContractId) return
                         setSelectedNotificationOffer(null)
                         router.push(
-                          `/active-project/${encodeURIComponent(contractId)}?title=${encodeURIComponent(selectedNotificationOfferData.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract`
+                          `/active-project/${encodeURIComponent(realContractId)}?title=${encodeURIComponent(selectedNotificationOfferData.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract`
                         )
                       }}
                     >
                       View Contract
                     </Button>
+                  ) : (
+                    <span className="text-xs font-medium leading-[15px] text-gray-500">
+                      Contract being prepared...
+                    </span>
                   )}
                 </div>
               </div>
