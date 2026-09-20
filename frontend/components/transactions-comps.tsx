@@ -11922,7 +11922,20 @@ export const PayoutsTab = ({
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <BankIcon className="size-4 text-gray-400" />
+                        {row.methodType === "CRYPTO" ? (
+                          // methodLabel is built server-side as
+                          // `${cryptoProvider} ${token} ••••${last6}`
+                          // (crypto-connection.service.ts) — the first word
+                          // is always the exact CRYPTO_PROVIDER_ICON key
+                          // (METAMASK, COINBASE, etc.), so this never
+                          // guesses at the label format.
+                          <CryptoProviderIcon
+                            provider={row.methodLabel?.split(" ")[0] ?? ""}
+                            className="size-4"
+                          />
+                        ) : (
+                          <BankIcon className="size-4 text-gray-400" />
+                        )}
                         <span className="text-sm text-gray-500">
                           {row.methodLabel ?? row.methodType ?? "—"}
                         </span>
