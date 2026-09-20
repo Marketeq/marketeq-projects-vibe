@@ -221,6 +221,11 @@ const isWeekendDate = (date: Date): boolean => {
   return day === 0 || day === 6
 }
 
+// BTB-271: mirrors offer-service's MAX_RATE (offer.constants.ts) — the
+// backend's real ceiling for the rate field, so this doesn't invent a
+// number of its own.
+const MAX_CUSTOM_RATE = 9999
+
 // T3/FR-1/AC-8.1: no backend endpoint computes this. offer-service
 // specified it in full — offer-response.interface.ts's startDateDisplay
 // field carries the exact "Monday, Jan 30, 2025" string this file had
@@ -1963,6 +1968,7 @@ export function OfferDialog({
                                   className="w-full"
                                   type="text"
                                   inputMode="decimal"
+                                  maxLength={7}
                                   placeholder="Enter hourly rate"
                                   value={customRateValue}
                                   onChange={(event) => {
@@ -1974,8 +1980,22 @@ export function OfferDialog({
                                     // allowed here unlike customHours — this
                                     // is a dollar rate, not a whole-hours
                                     // count, and cents are a normal input.
+                                    //
+                                    // BTB-271: maxLength above stops the
+                                    // extreme case (a 50-digit paste); this
+                                    // adds a magnitude ceiling for a
+                                    // short-but-over-limit value like
+                                    // "10000". A non-finite parse (bare ".")
+                                    // falls through to the regex's own
+                                    // judgement — Number(".") is NaN, and
+                                    // that must not block a leading decimal
+                                    // point the regex already allows.
                                     const value = event.target.value
-                                    if (/^\d*(\.\d{0,2})?$/.test(value)) {
+                                    if (
+                                      /^\d*(\.\d{0,2})?$/.test(value) &&
+                                      (!Number.isFinite(Number(value)) ||
+                                        Number(value) <= MAX_CUSTOM_RATE)
+                                    ) {
                                       setCustomRateValue(value)
                                     }
                                   }}
