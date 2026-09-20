@@ -670,14 +670,7 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
                 )}
 
                 <div className="mt-6">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-sm font-semibold text-dark-blue-400">Enter Withdrawal Amount</label>
-                    {available > 0 && (
-                      <button type="button" className="text-xs font-medium text-primary-600 hover:text-primary-700" onClick={() => setAmount(available.toFixed(2))}>
-                        Withdraw Full Amount
-                      </button>
-                    )}
-                  </div>
+                  <label className="text-sm font-semibold text-dark-blue-400 block mb-1.5">Enter Withdrawal Amount</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium">$</span>
                     <Input
@@ -685,8 +678,17 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
                       value={amount}
                       disabled={balanceLoading || !!balanceError || (!!balance && available <= 0)}
                       onChange={(e) => setAmount(e.target.value)}
-                      className="pl-7"
+                      className="pl-7 pr-32"
                     />
+                    {available > 0 && (
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-primary-600 hover:text-primary-700"
+                        onClick={() => setAmount(available.toFixed(2))}
+                      >
+                        Withdraw Full Amount
+                      </button>
+                    )}
                   </div>
                   {amount && available > 0 && Number(amount) > available && (
                     <p className="mt-2 text-xs text-red-600">This amount exceeds your available balance of ${available.toFixed(2)}.</p>
