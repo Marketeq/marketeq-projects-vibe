@@ -166,3 +166,5 @@ CLAUDE.local.md
 .claude/settings.local.json
 .env.offers-cloud
 backend/.env.offers-cloud
+
+backend/.env.prod-supabase
