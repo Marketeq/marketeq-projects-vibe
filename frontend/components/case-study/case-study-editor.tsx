@@ -12,6 +12,7 @@ import {
   buildColumnsData,
   collectCaseStudyText,
   regionsToSchemaJson,
+  DEFAULT_CASE_STUDY_TITLE,
   schemaJsonToRegions,
   type CaseStudyBlockType,
   type EditorRegion,
@@ -28,8 +29,45 @@ import { EditorTopBar } from "./editor-top-bar"
 import { EditorPreviewBar } from "./editor-preview-bar"
 import { ClientPreview } from "./client-preview"
 
-interface State {
+/**
+ * Everything undo/redo restores: the blocks plus the title and description.
+ * Transient UI (validation errors, which dialog is open, the saved-at chip)
+ * deliberately stays outside — undo moves the document back, not the editor
+ * chrome.
+ */
+interface Doc {
   regions: EditorRegion[]
+  title: string
+  description: string
+}
+
+interface State {
+  past: Doc[]
+  present: Doc
+  future: Doc[]
+  /**
+   * Bumped on every undo/redo. Section components initialise their own form
+   * state from the `data` prop and never read it again, so restoring a
+   * document has to remount them — this rides along in their React key to
+   * force that. Editing doesn't bump it: a keystroke must not remount the
+   * field being typed in.
+   */
+  epoch: number
+  /**
+   * Block ids that have already announced their data shape in the current
+   * epoch. Every section announces exactly once from a mount effect, before
+   * the user can touch it, so the first update-data a block sends after a
+   * (re)mount is that announcement and any later one is a real edit.
+   */
+  announced: number[]
+  /**
+   * The coalesce key and timestamp of the last recorded edit. Consecutive
+   * edits that share a key and land within COALESCE_MS collapse into the
+   * existing history entry, so typing a sentence is one undo step rather
+   * than one per keystroke.
+   */
+  lastKey: string | null
+  lastAt: number
 }
 
 type Action =
@@ -46,14 +84,24 @@ type Action =
       index?: number
     }
   | { type: "reorder"; payload: EditorRegion[] }
-  | { type: "hydrate"; payload: EditorRegion[] }
+  | { type: "hydrate"; payload: Doc }
   | { type: "remove"; payload: number }
   | { type: "duplicate"; payload: number }
   | { type: "move-up"; payload: number }
   | { type: "move-down"; payload: number }
   | { type: "update-data"; payload: { id: number; data: Record<string, unknown> } }
+  | { type: "set-title"; payload: string }
+  | { type: "set-description"; payload: string }
+  | { type: "undo" }
+  | { type: "redo" }
 
-function reducer(state: State, action: Action): State {
+/**
+ * Applies one edit to the document. Returns the same object it was given
+ * when an action is a no-op (moving the first block up, removing an id that
+ * isn't there) — the history wrapper uses that identity check to avoid
+ * recording an undo step for an edit that changed nothing.
+ */
+function docReducer(state: Doc, action: Action): Doc {
   switch (action.type) {
     case "add": {
       const block: EditorRegion = {
@@ -74,7 +122,17 @@ function reducer(state: State, action: Action): State {
       return { ...state, regions: action.payload }
 
     case "hydrate":
-      return { ...state, regions: action.payload }
+      return action.payload
+
+    case "set-title":
+      return state.title === action.payload
+        ? state
+        : { ...state, title: action.payload }
+
+    case "set-description":
+      return state.description === action.payload
+        ? state
+        : { ...state, description: action.payload }
 
     case "update-data":
       return {
@@ -129,7 +187,145 @@ function reducer(state: State, action: Action): State {
   }
 }
 
-const defaultValue: State = { regions: [] }
+/** How many undo steps are kept. Older entries fall off the back. */
+const HISTORY_LIMIT = 100
+/**
+ * Edits of the same kind landing within this window join the previous undo
+ * step instead of creating their own. Long enough that normal typing reads
+ * as one step, short enough that a pause starts a new one.
+ */
+const COALESCE_MS = 600
+
+/**
+ * Block data is whatever ends up in schemaJson, so it is always
+ * JSON-serialisable and comparing it this way is safe. Key order is stable
+ * because updates merge into the existing object.
+ */
+function sameValue(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
+/**
+ * Identifies runs of edits that should collapse into a single undo step —
+ * keystrokes in the same field, or repeated changes to the same keys of the
+ * same block. Structural edits (add, remove, reorder, duplicate, move)
+ * return null: each one is its own step, however fast they arrive.
+ */
+function coalesceKey(action: Action): string | null {
+  switch (action.type) {
+    case "set-title":
+      return "set-title"
+    case "set-description":
+      return "set-description"
+    case "update-data":
+      return `update-data:${action.payload.id}:${Object.keys(action.payload.data)
+        .sort()
+        .join(",")}`
+    default:
+      return null
+  }
+}
+
+/**
+ * Wraps docReducer in past/present/future stacks so the top bar's undo and
+ * redo arrows have something to act on. `hydrate` (the initial load) starts
+ * a fresh history rather than becoming an undoable step — there is nothing
+ * before the document the user opened.
+ */
+function reducer(state: State, action: Action): State {
+  switch (action.type) {
+    case "undo": {
+      if (state.past.length === 0) return state
+      return {
+        past: state.past.slice(0, -1),
+        present: state.past[state.past.length - 1],
+        future: [state.present, ...state.future],
+        epoch: state.epoch + 1,
+        announced: [],
+        lastKey: null,
+        lastAt: 0,
+      }
+    }
+
+    case "redo": {
+      if (state.future.length === 0) return state
+      return {
+        past: [...state.past, state.present],
+        present: state.future[0],
+        future: state.future.slice(1),
+        epoch: state.epoch + 1,
+        announced: [],
+        lastKey: null,
+        lastAt: 0,
+      }
+    }
+
+    case "hydrate":
+      return {
+        past: [],
+        present: action.payload,
+        future: [],
+        epoch: state.epoch + 1,
+        announced: [],
+        lastKey: null,
+        lastAt: 0,
+      }
+
+    default: {
+      const present = docReducer(state.present, action)
+      if (present === state.present) return state
+
+      // A section announcing its shape on mount isn't an edit — apply it,
+      // but leave the undo and redo stacks exactly as they were. Recording
+      // it would add a phantom undo step after adding a block and, worse,
+      // the announcements that follow an undo would clear the redo stack the
+      // user just filled.
+      if (action.type === "update-data") {
+        const id = action.payload.id
+        const before = state.present.regions.find((r) => r.id === id)
+        const after = present.regions.find((r) => r.id === id)
+        // Nothing actually changed. A section announces more than once per
+        // mount — its watched values settle a render after the first — so
+        // this drops every echo after the one that lands.
+        if (before && after && sameValue(before.data, after.data)) return state
+        // The announcement itself: absorb the values, leave the stacks alone.
+        if (!state.announced.includes(id)) {
+          return { ...state, present, announced: [...state.announced, id] }
+        }
+      }
+
+      const key = coalesceKey(action)
+      const at = Date.now()
+      // A new edit invalidates anything that was undone: redo only makes
+      // sense while the user is still walking the same line of history.
+      const coalesce =
+        key !== null && key === state.lastKey && at - state.lastAt < COALESCE_MS
+      return {
+        past: coalesce
+          ? state.past
+          : [...state.past, state.present].slice(-HISTORY_LIMIT),
+        present,
+        future: [],
+        epoch: state.epoch,
+        announced: state.announced,
+        lastKey: key,
+        lastAt: at,
+      }
+    }
+  }
+}
+
+const emptyDoc: Doc = { regions: [], title: "", description: "" }
+
+const defaultValue: State = {
+  past: [],
+  present: emptyDoc,
+  future: [],
+  epoch: 0,
+  announced: [],
+  lastKey: null,
+  lastAt: 0,
+}
 
 const CANVAS_WIDTH = 1240
 // The talent-view preview popup (Figma "Frame 1948757393") is a fixed
@@ -268,10 +464,10 @@ function TitleDescriptionBlock({ children }: { children: React.ReactNode }) {
  * components/case-study/sections/*, dispatched through SectionRenderer, and
  * the top bar lives in editor-top-bar.tsx.
  *
- * The undo/redo buttons are present but always disabled: the original
- * monolith's undo/redo buttons had no click handlers either (no history
- * stack ever existed), so this preserves that behavior rather than quietly
- * pretending undo/redo works. Wiring real history is a separate feature.
+ * Undo/redo run off past/present/future stacks of the whole document (see
+ * `Doc` and `reducer`): every block edit plus the title and description.
+ * Keystroke runs in one field collapse into a single step, structural edits
+ * are one step each, and loading the case study starts a fresh history.
  *
  * The preview toggle opens a popup over the editor canvas (the canvas stays
  * mounted underneath): EditorPreviewBar as the header (title, saved-at,
@@ -297,6 +493,12 @@ export default function CaseStudyEditor({
   projectName?: string
 }) {
   const [state, dispatch] = useReducer(reducer, defaultValue)
+  // The document the editor is currently showing. Undo/redo swap which Doc
+  // is `present`, so everything below reads through it rather than holding
+  // its own copy.
+  const { regions, title, description } = state.present
+  const canUndo = state.past.length > 0
+  const canRedo = state.future.length > 0
   const [open, setOpen] = useState(false)
   const [columnPickerOpen, setColumnPickerOpen] = useState(false)
   // Which slot the block picker is currently adding into. Set by whichever
@@ -308,9 +510,13 @@ export default function CaseStudyEditor({
   const [insertIndex, setInsertIndex] = useState<number | undefined>(undefined)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
   const [isPreview, setIsPreview] = useState(false)
-  const [title, setTitle] = useState(projectName)
-  const [titleError, setTitleError] = useState(false)
-  const [description, setDescription] = useState("")
+  // The title starts empty on purpose: the field shows a placeholder and the
+  // user has to type their own title before the case study can be published.
+  // `projectName` is only the fallback label for the top bars and the draft
+  // record's server-side title, never a prefilled value in the input.
+  // The title has no inline error state here — an empty or over-length title
+  // is reported by the publish dialog, which owns the title field at publish
+  // time. Duplicating it in the canvas showed the same message twice.
   const [descriptionError, setDescriptionError] = useState(false)
   const [id, setId] = useState<string | undefined>(caseStudyId)
   const [isReady, setIsReady] = useState(false)
@@ -364,15 +570,26 @@ export default function CaseStudyEditor({
           const { data: cs } = await CaseStudyAPI.Get(caseStudyId)
           if (cancelled) return
           setId(cs.id)
-          setTitle(cs.title)
-          setDescription(cs.description ?? "")
           setStatus(cs.status)
           dispatch({
             type: "hydrate",
-            payload: schemaJsonToRegions(cs.schemaJson, getId),
+            payload: {
+              regions: schemaJsonToRegions(cs.schemaJson, getId),
+              // A case study is created under DEFAULT_CASE_STUDY_TITLE
+              // because the API demands a non-empty title, but that text is a
+              // placeholder, not something the user wrote — so the field opens
+              // empty and the placeholder shows through, forcing a real title
+              // before publishing.
+              title: cs.title === DEFAULT_CASE_STUDY_TITLE ? "" : cs.title,
+              description: cs.description ?? "",
+            },
           })
         } else {
-          const { data: cs } = await CaseStudyAPI.Create({ title })
+          // The backend requires a non-empty title; the draft is created
+          // under the placeholder text while the input stays empty for the user.
+          const { data: cs } = await CaseStudyAPI.Create({
+            title: DEFAULT_CASE_STUDY_TITLE,
+          })
           if (cancelled) return
           setId(cs.id)
         }
@@ -395,10 +612,13 @@ export default function CaseStudyEditor({
   const saveNow = async () => {
     if (!id) return
     try {
+      // An empty title is a valid in-progress state in the editor but not a
+      // valid value to save (the API rejects it), so it's left out entirely
+      // and the draft keeps whatever title it already has.
       await CaseStudyAPI.Update(id, {
-        title,
+        ...(title.trim() ? { title } : {}),
         description,
-        schemaJson: regionsToSchemaJson(state.regions),
+        schemaJson: regionsToSchemaJson(regions),
       })
       setLastSavedAt(
         new Date().toLocaleTimeString([], {
@@ -425,7 +645,7 @@ export default function CaseStudyEditor({
       if (saveTimer.current) clearTimeout(saveTimer.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, description, state.regions, isReady, id])
+  }, [title, description, regions, isReady, id])
 
   const handlePublish = async (details: PublishDetails) => {
     if (!id || isPublishing) return
@@ -435,7 +655,7 @@ export default function CaseStudyEditor({
       await CaseStudyAPI.Update(id, {
         title: details.title,
         description,
-        schemaJson: regionsToSchemaJson(state.regions),
+        schemaJson: regionsToSchemaJson(regions),
       })
       const { data: cs } = await CaseStudyAPI.Publish(id, {
         coverImage: details.coverImage,
@@ -451,7 +671,7 @@ export default function CaseStudyEditor({
           minute: "2-digit",
         })
       )
-      setTitle(cs.title)
+      dispatch({ type: "set-title", payload: cs.title })
       setStatus(cs.status)
       setPublishDialogOpen(false)
       toast({
@@ -476,11 +696,11 @@ export default function CaseStudyEditor({
   const contentText = useMemo(
     () =>
       collectCaseStudyText(
-        regionsToSchemaJson(state.regions).blocks,
+        regionsToSchemaJson(regions).blocks,
         title,
         description
       ),
-    [state.regions, title, description]
+    [regions, title, description]
   )
 
   // Gates the publish dialog on a non-empty description. Called from both
@@ -489,6 +709,9 @@ export default function CaseStudyEditor({
   // field itself only exists in the main canvas, not the preview popup —
   // so a failed check also exits preview, otherwise the inline error would
   // render behind a bar the user can't see.
+  // The title is deliberately not gated here: the publish dialog carries its
+  // own title field and reports an empty one on submit, so blocking the
+  // dialog on the title would leave the Publish button doing nothing visible.
   const handleOpenPublish = () => {
     const isDescriptionValid = description.trim().length > 0
     setDescriptionError(!isDescriptionValid)
@@ -503,8 +726,10 @@ export default function CaseStudyEditor({
     <div className="h-screen flex flex-col bg-gray-50">
       <EditorTopBar
         projectName={title || projectName}
-        canUndo={false}
-        canRedo={false}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={() => dispatch({ type: "undo" })}
+        onRedo={() => dispatch({ type: "redo" })}
         lastSavedAt={lastSavedAt}
         isPreview={isPreview}
         onPreviewToggle={() => setIsPreview((v) => !v)}
@@ -530,27 +755,22 @@ export default function CaseStudyEditor({
                       ref={titleTextareaRef}
                       rows={1}
                       value={title}
-                      placeholder="Your Case Study Title"
+                      placeholder={DEFAULT_CASE_STUDY_TITLE}
                       onChange={(e) => {
                         const value = e.currentTarget.value.replace(
                           /\b\w/g,
                           (char) => char.toUpperCase()
                         )
-                        if (value.length > TITLE_MAX_LENGTH) {
-                          setTitleError(true)
-                          setTitle(value.slice(0, TITLE_MAX_LENGTH))
-                        } else {
-                          setTitleError(false)
-                          setTitle(value)
-                        }
+                        // Still capped at TITLE_MAX_LENGTH, silently — the
+                        // publish dialog is what tells the user they hit the
+                        // limit.
+                        dispatch({
+                          type: "set-title",
+                          payload: value.slice(0, TITLE_MAX_LENGTH),
+                        })
                       }}
                       className="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[64px] leading-tight text-dark-blue-400 font-semibold placeholder:text-gray-500 focus-visible:outline-none focus:ring-0"
                     />
-                    {titleError && (
-                      <p className="mt-1 text-sm font-medium text-error-500">
-                        Max limit reached 120 characters
-                      </p>
-                    )}
                   </div>
 
                   <div>
@@ -565,7 +785,7 @@ export default function CaseStudyEditor({
                       placeholder="Write what into this design or add any details you want to mention"
                       onChange={(e) => {
                         const value = e.currentTarget.value
-                        setDescription(value)
+                        dispatch({ type: "set-description", payload: value })
                         if (value.trim()) setDescriptionError(false)
                       }}
                       className="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-2xl leading-snug font-light text-dark-blue-400 placeholder:text-gray-500 focus-visible:outline-none focus:ring-0"
@@ -579,7 +799,7 @@ export default function CaseStudyEditor({
                 </div>
               </TitleDescriptionBlock>
 
-              {state.regions.length === 0 ? (
+              {regions.length === 0 ? (
                 <div className="mt-[100px]">
                   <InitialBlock onAddBlock={() => openBlockPicker()} />
                 </div>
@@ -588,12 +808,12 @@ export default function CaseStudyEditor({
                   as="div"
                   className="isolate relative"
                   axis="y"
-                  values={state.regions}
+                  values={regions}
                   onReorder={(newRegions) => {
                     dispatch({ type: "reorder", payload: newRegions })
                   }}
                 >
-                  {state.regions.map((region, index) => (
+                  {regions.map((region, index) => (
                     <BlockRoot
                       key={region.id}
                       value={region}
@@ -611,9 +831,10 @@ export default function CaseStudyEditor({
                         dispatch({ type: "move-down", payload: region.id })
                       }
                       isFirst={index === 0}
-                      isLast={index === state.regions.length - 1}
+                      isLast={index === regions.length - 1}
                     >
                       <SectionRenderer
+                        key={`${region.id}-${state.epoch}`}
                         region={region.region}
                         data={region.data}
                         isEditing
@@ -629,7 +850,7 @@ export default function CaseStudyEditor({
                 </Reorder.Group>
               )}
 
-              {state.regions.length > 0 && (
+              {regions.length > 0 && (
                 <div className="mt-[100px]">
                   <AddBlockDivider.Horizontal onPlus={() => openBlockPicker()} />
                 </div>
@@ -651,7 +872,7 @@ export default function CaseStudyEditor({
             />
 
             <ClientPreview
-              blocks={regionsToSchemaJson(state.regions).blocks}
+              blocks={regionsToSchemaJson(regions).blocks}
             />
           </div>
         </div>

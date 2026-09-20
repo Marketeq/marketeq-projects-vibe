@@ -9,6 +9,7 @@ import { AuditService }       from '../audit/audit.service';
 import { PayoutPublisher }    from '../publishers/payout.publisher';
 import { PayoutError }        from '../common/errors/payout.error';
 import { StripeProvider }     from '../providers/stripe.provider';
+import { PauseStatusService } from '../pause/pause-status.service';
 
 interface TokenResult { accessToken: string; refreshToken: string; expiresAt: Date; idToken?: string; }
 interface ProfileResult { email: string; accountIdentifier: string; displayName: string; }
@@ -38,6 +39,7 @@ export class OAuthService {
     private readonly auditService: AuditService,
     private readonly publisher: PayoutPublisher,
     private readonly stripeProvider: StripeProvider,
+    private readonly pauseStatusService: PauseStatusService,
   ) {
     const redisUrl = this.config.get('REDIS_URL', 'redis://localhost:6379');
     this.redis = new Redis(redisUrl);
@@ -215,6 +217,13 @@ export class OAuthService {
       if (!method) throw new PayoutError('No pending method found.',
         HttpStatus.NOT_FOUND, 'ERR_DEPOSIT_METHOD_NOT_FOUND');
 
+      // PS-16 §7.3: captured before the update below so a completed reauth
+      // on the contractor's default method can detect the
+      // DEFAULT_METHOD_REAUTH_REQUIRED → resumed transition. Only relevant
+      // on the reauth path — a fresh connect can't be resolving a pause
+      // condition that didn't exist yet.
+      const wasPaused = isReauth ? (await this.pauseStatusService.getPauseStatus(contractorId)).paused : false;
+
       // Same account already linked (e.g. a contractor re-connecting the
       // same provider email as an existing method, or a duplicate reauth) —
       // mirrors the ERR_DEPOSIT_METHOD_DUPLICATE check already used for
@@ -241,6 +250,8 @@ export class OAuthService {
         routingNumber: bankingDetails.routingNumber,
         stripeExternalAccountId: externalAccount.externalAccountId,
         stripeConnectAccountId: externalAccount.connectAccountId,
+        connectPayoutsEnabled: externalAccount.connectPayoutsEnabled,
+        connectRequirementsDue: externalAccount.connectRequirementsDue,
         verificationStatus: VerificationStatus.VERIFIED,
         displayLabel: `${provider} (${profile.email})`,
         reauthRequired: false,
@@ -251,6 +262,10 @@ export class OAuthService {
         action: isReauth ? 'method.reauthorized' : 'method.verified',
         metadata: { methodId: method.id, provider, email: profile.email },
       });
+
+      if (isReauth) {
+        await this.pauseStatusService.evaluateAndPublishPauseChange(contractorId, wasPaused);
+      }
 
       return { methodId: method.id, success: true };
     } catch (err) {

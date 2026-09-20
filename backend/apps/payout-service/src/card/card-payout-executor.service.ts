@@ -59,8 +59,12 @@ export class CardPayoutExecutorService {
     }
 
     // Pre-flight checks
+    // PS-24 §11: this is "not yet activated," not "not found" — the row
+    // exists, method.methodType/existence were already confirmed above.
+    // ERR_CARD_NOT_FOUND is for a depositMethodId that doesn't resolve to a
+    // DEBIT_CARD method at all, a different failure than this one.
     if (method.verificationStatus !== VerificationStatus.VERIFIED) {
-      await this.failPayout(payout, 'Card has not been activated.', 'ERR_CARD_NOT_FOUND');
+      await this.failPayout(payout, 'Card has not been activated.', 'ERR_CARD_NOT_ACTIVATED');
       return;
     }
 

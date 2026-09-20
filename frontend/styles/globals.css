@@ -2,6 +2,164 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---- Sidebar icon hover animations ---- */
+
+/* --- Keyframes --- */
+@keyframes sidebar-tilt {
+  0%, 100% { transform: rotate(0deg); }
+  30% { transform: rotate(-25deg); }
+  60% { transform: rotate(8deg); }
+  80% { transform: rotate(-3deg); }
+}
+@keyframes sidebar-rock {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(10deg); }
+  75% { transform: rotate(-10deg); }
+}
+@keyframes sidebar-ring {
+  0%, 100% { transform: rotate(0deg); }
+  8% { transform: rotate(24deg); }
+  16% { transform: rotate(-22deg); }
+  24% { transform: rotate(20deg); }
+  32% { transform: rotate(-16deg); }
+  42% { transform: rotate(12deg); }
+  52% { transform: rotate(-8deg); }
+  64% { transform: rotate(5deg); }
+  78% { transform: rotate(-2deg); }
+}
+@keyframes sidebar-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+/* --- Teams: back person peeks out --- */
+.sidebar-peek-person {
+  transform-box: fill-box;
+  transform-origin: left center;
+}
+@keyframes sidebar-peek {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  35%, 65% { transform: translateX(4px) rotate(8deg); }
+}
+@keyframes sidebar-peek-reveal {
+  0%, 100% { opacity: 0; }
+  25%, 75% { opacity: 1; }
+}
+.sidebar-peek-reveal { opacity: 0; }
+.group:hover .sidebar-anim-users .sidebar-peek-person {
+  animation: sidebar-peek 0.6s ease;
+}
+.group:hover .sidebar-anim-users .sidebar-peek-reveal {
+  animation: sidebar-peek-reveal 0.6s ease;
+}
+@keyframes sidebar-pop {
+  0%, 100% { transform: scale(1); }
+  35% { transform: scale(1.2); }
+  65% { transform: scale(0.95); }
+}
+@keyframes sidebar-line-draw {
+  0% { stroke-dashoffset: 10; opacity: 0; }
+  20% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes sidebar-check-pop {
+  0% { stroke-dashoffset: 10; opacity: 0; }
+  40% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes sidebar-bar-grow {
+  0% { stroke-dashoffset: 10; opacity: 0; }
+  20% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes sidebar-hat-tip {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  30%, 60% { transform: translateY(-3px) rotate(-12deg); }
+}
+@keyframes sidebar-dollar-s-draw {
+  0% { stroke-dashoffset: 40; opacity: 0; }
+  8% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes sidebar-dollar-line-draw {
+  0% { stroke-dashoffset: 16; opacity: 0; }
+  20% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 1; }
+}
+
+/* --- Transform setup for animated SVG parts --- */
+.sidebar-roof {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+
+/* --- Inbox flap cross-fade defaults --- */
+.sidebar-flap-closed,
+.sidebar-flap-open {
+  transition: opacity 0.3s ease;
+}
+.sidebar-flap-open { opacity: 0; }
+
+/* --- Simple wrapper animations --- */
+.group:hover .sidebar-anim-search { animation: sidebar-tilt 0.55s ease; }
+.group:hover .sidebar-anim-briefcase { animation: sidebar-rock 0.5s ease; }
+.group:hover .sidebar-anim-profile { animation: sidebar-pop 0.45s ease; }
+.group:hover .sidebar-anim-alert { animation: sidebar-ring 0.8s ease; }
+.group:hover .sidebar-anim-settings { animation: sidebar-spin 0.7s linear; }
+
+/* --- Home: roof tips like a hat --- */
+.group:hover .sidebar-anim-home .sidebar-roof {
+  animation: sidebar-hat-tip 0.6s ease;
+}
+
+/* --- Contracts: lines draw L→R staggered, then checkmark pops --- */
+.sidebar-doc-line, .sidebar-checkmark {
+  stroke-dasharray: 10;
+  stroke-dashoffset: 0;
+}
+.group:hover .sidebar-anim-contracts .sidebar-doc-line {
+  animation: sidebar-line-draw 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.group:hover .sidebar-anim-contracts .sidebar-doc-line-1 { animation-delay: 0s; }
+.group:hover .sidebar-anim-contracts .sidebar-doc-line-2 { animation-delay: 0.15s; }
+.group:hover .sidebar-anim-contracts .sidebar-doc-line-3 { animation-delay: 0.3s; }
+.group:hover .sidebar-anim-contracts .sidebar-checkmark {
+  animation: sidebar-check-pop 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation-delay: 0.5s;
+}
+
+/* --- Stats/Reports: bars grow from bottom, staggered --- */
+.sidebar-bar {
+  stroke-dasharray: 10;
+  stroke-dashoffset: 0;
+}
+.group:hover .sidebar-anim-chart .sidebar-bar {
+  animation: sidebar-bar-grow 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.group:hover .sidebar-anim-chart .sidebar-bar-1 { animation-delay: 0s; }
+.group:hover .sidebar-anim-chart .sidebar-bar-2 { animation-delay: 0.15s; }
+.group:hover .sidebar-anim-chart .sidebar-bar-3 { animation-delay: 0.3s; }
+
+/* --- Dollar: S-curve draws top→bottom, then vertical line --- */
+.sidebar-dollar-s {
+  stroke-dasharray: 40;
+  stroke-dashoffset: 0;
+}
+.sidebar-dollar-line {
+  stroke-dasharray: 16;
+  stroke-dashoffset: 0;
+}
+.group:hover .sidebar-anim-dollar .sidebar-dollar-s {
+  animation: sidebar-dollar-s-draw 0.7s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.group:hover .sidebar-anim-dollar .sidebar-dollar-line {
+  animation: sidebar-dollar-line-draw 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation-delay: 0.3s;
+}
+
+/* --- Inbox: envelope opens (cross-fade closed→open flap) --- */
+.group:hover .sidebar-anim-inbox .sidebar-flap-closed { opacity: 0; }
+.group:hover .sidebar-anim-inbox .sidebar-flap-open { opacity: 1; }
+
 /* ------------------------------------------------------------------------------------------------ */
 
 :root {

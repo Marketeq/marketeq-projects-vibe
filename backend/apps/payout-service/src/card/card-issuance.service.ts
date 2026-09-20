@@ -55,13 +55,21 @@ export class CardIssuanceService {
     }
 
     // PS-13 §2.1: Pre-flight checks
-    // Geographic check — US only in v1
-    // In production, fetch contractor profile from user-service
-    // For now, we rely on KYC status as proxy
     const kycResult = await this.kycClient.getStatus(contractorId);
     if (kycResult.suspended || kycResult.tier === 'unknown') {
       throw new PayoutError('Identity verification required before requesting a card.',
         HttpStatus.FORBIDDEN, 'ERR_CARD_KYC_REQUIRED');
+    }
+
+    // PS-24 §11 / PS-13: US only in v1. kyc-identity-service's gate-status
+    // response has no contractorCountry field yet (same gap as the OFAC
+    // country check in crypto-payout-executor.service.ts) — this reads
+    // undefined until that ships, so the check is a safe no-op today rather
+    // than blocking every card request.
+    const contractorCountry = (kycResult as any).contractorCountry as string | undefined;
+    if (contractorCountry && contractorCountry.toUpperCase() !== 'US') {
+      throw new PayoutError('The Marketeq card is currently available to US contractors only.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_CARD_GEO_UNAVAILABLE', { contractorCountry });
     }
 
     // One card per contractor in v1

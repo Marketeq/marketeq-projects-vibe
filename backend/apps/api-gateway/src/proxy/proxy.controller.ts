@@ -66,6 +66,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   nda: 'legal',                    // legal-service NDA endpoints
   resume: 'users',                  // resume upload/parse lives in user-service
   'dashboard-tasks': 'users',       // personal to-do tasks live in user-service
+  privacy: 'users',                  // privacy settings live in user-service
 }
 
 const USER_SERVICE_V1_RESOURCES = new Set([
@@ -364,6 +365,14 @@ export class ProxyController {
       // Without this branch, /v1/earnings/* silently fell through to the 'v1'
       // default (transaction-service) instead of earnings-service.
       prefix = 'earnings'
+    } else if (prefix === 'v1' && segments[1] === 'checkout') {
+      // checkout-service's controller is @Controller("v1/checkout"), so it
+      // expects the full /v1/checkout/... path unchanged. Without this
+      // branch, /v1/checkout/* silently fell through to the 'v1' default
+      // (transaction-service) and 404'd — every CheckoutAPI call from the
+      // frontend (session, wallet balance, gift cards, status, cancel) was
+      // broken through the gateway.
+      prefix = 'checkout'
     } else if (prefix === 'v1' && (segments[1] === 'deposit-methods')) {
       prefix = 'deposit-methods'
     } else if (prefix === 'v1' && segments[1] === 'oauth') {

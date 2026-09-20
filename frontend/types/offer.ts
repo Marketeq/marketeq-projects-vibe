@@ -115,6 +115,9 @@ export interface ListOffersParams {
   // derives which offers are visible from the JWT's userId, never from
   // this param (list-offers-query.dto.ts).
   as?: ViewerRoleFilter
+  // PMCM-393 AC-41.02: narrows to offers with this talent — never widens,
+  // same invariant as `as` above (backend derives the caller from the JWT).
+  talentId?: string
 }
 
 // Mirrors LatestCounterOfferSummary — offer-response.interface.ts.

@@ -2,12 +2,24 @@
 
 import React, { useEffect, useState } from "react"
 import { Reorder } from "framer-motion"
+import { Camera01 } from "@blend-metrics/icons"
 import { getId } from "@/utils/functions"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui"
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  IconButton,
+  PictureEditor,
+  useToast,
+} from "@/components/ui"
+import { uploadCaseStudyImage } from "@/lib/case-study-upload"
 import type { TestimonialData, TestimonialItem } from "@/lib/case-study-mapper"
 import { BlockToolbar } from "@/components/case-study/toolbars"
 import { AddBlockDivider } from "@/components/case-study/add-block-divider"
 import { ArticleRoot, ControlledDraggable, Html, RichTextEditor, swap } from "./_shared"
+
+/** Shown until the user uploads a photo of the person quoted. */
+const DEFAULT_AVATAR_SRC = "/man.jpg"
 
 const defaultTestimonials: TestimonialItem[] = [
   {
@@ -41,6 +53,24 @@ function TestimonialsEdit({
     Record<number, TestimonialItem>
   >(() => Object.fromEntries(ids.map((id, i) => [id, initialItems[i]])))
   const len = items.length
+  const { toast } = useToast()
+
+  // Inserts a fresh testimonial at `at`, seeding testimonialData too — items and
+  // testimonialData must stay in lockstep, otherwise items.map((id) => testimonialData[id])
+  // below (and TestimonialsView's render) hits an undefined entry for the new id.
+  const addTestimonialAt = (at: number) => {
+    const uniqueId = getId() + 2
+    setItems((prev) => prev.toSpliced(at, 0, uniqueId))
+    setTestimonialData((prev) => ({
+      ...prev,
+      [uniqueId]: {
+        quoteHtml:
+          "Lorem Ipsum is simply dummy text of the printing and typesetting industry.",
+        authorHtml: "John Doe",
+        roleHtml: "Acme Inc., President & CEO",
+      },
+    }))
+  }
 
   useEffect(() => {
     onDataChange?.({ items: items.map((id) => testimonialData[id]) })
@@ -89,10 +119,7 @@ function TestimonialsEdit({
                     canDuplicate
                     duplicateDisabled={len >= 3}
                     canHide
-                    onDuplicate={() => {
-                      const uniqueId = getId() + 2
-                      setItems(items.toSpliced(index, 0, uniqueId))
-                    }}
+                    onDuplicate={() => addTestimonialAt(index)}
                   />
 
                   <article className="min-h-[249px] p-6 rounded-[20px] bg-gray-100 rounded-bl-none relative">
@@ -119,10 +146,53 @@ function TestimonialsEdit({
                     </div>
 
                     <div className="mt-[50px] flex items-center gap-x-2">
-                      <Avatar size="md">
-                        <AvatarImage src="/man.jpg" alt="Man" />
-                        <AvatarFallback>M</AvatarFallback>
-                      </Avatar>
+                      <PictureEditor
+                        skipEditStep
+                        onValueChange={(files) => {
+                          const file = (files as File[] | undefined)?.[0]
+                          if (!(file instanceof File)) return
+                          uploadCaseStudyImage(file)
+                            .then((url) =>
+                              setTestimonialData((prev) => ({
+                                ...prev,
+                                [item]: { ...prev[item], avatarUrl: url },
+                              }))
+                            )
+                            .catch(() => {
+                              toast({
+                                title: "Couldn't upload image",
+                                description: "Please try again.",
+                              })
+                            })
+                        }}
+                        startingPoint={({ dataUrl, open }) => (
+                          <div className="group/avatar relative shrink-0">
+                            <Avatar size="md">
+                              <AvatarImage
+                                src={
+                                  dataUrl ||
+                                  testimonialData[item]?.avatarUrl ||
+                                  DEFAULT_AVATAR_SRC
+                                }
+                                alt=""
+                              />
+                              <AvatarFallback>M</AvatarFallback>
+                            </Avatar>
+
+                            <IconButton
+                              type="button"
+                              variant="ghost"
+                              visual="gray"
+                              size="sm"
+                              aria-label="Change photo"
+                              onClick={open}
+                              className="absolute inset-0 size-10 rounded-full bg-dark-blue-400/60 text-white opacity-0 hover:bg-dark-blue-400/60 hover:text-white group-hover/avatar:opacity-100 focus-visible:opacity-100"
+                            >
+                              <Camera01 className="size-4" />
+                            </IconButton>
+                          </div>
+                        )}
+                      />
 
                       <div className="space-y-0.5">
                         <h3 className="relative">
@@ -171,10 +241,7 @@ function TestimonialsEdit({
               >
                 <AddBlockDivider.Vertical
                   className="h-full group-hover/gap:visible invisible transition-[visibility] duration-300"
-                  onAdd={() => {
-                    const uniqueId = getId() + 2
-                    setItems(items.toSpliced(index, 0, uniqueId))
-                  }}
+                  onAdd={() => addTestimonialAt(index)}
                 />
               </div>
             )}
@@ -187,9 +254,11 @@ function TestimonialsEdit({
 
 function TestimonialsView({ data }: { data?: Record<string, unknown> }) {
   const d = data ?? {}
-  const items = Array.isArray(d.items)
-    ? (d.items as TestimonialItem[])
-    : []
+  // Entries can be null/undefined in case studies saved before the
+  // editor seeded new items — drop the holes rather than crash.
+  const items = (
+    Array.isArray(d.items) ? (d.items as (TestimonialItem | null | undefined)[]) : []
+  ).filter((item): item is TestimonialItem => Boolean(item))
   if (!items.length) return null
   return (
     <section>
@@ -203,21 +272,36 @@ function TestimonialsView({ data }: { data?: Record<string, unknown> }) {
         {items.map((item, i) => (
           <article
             key={i}
-            className="min-h-[249px] p-6 rounded-[20px] bg-gray-100 rounded-bl-none"
+            className="min-h-[249px] p-6 rounded-[20px] bg-gray-100 rounded-bl-none relative"
           >
-            <Html
-              html={item.quoteHtml}
-              className="text-2xl leading-[29px] text-dark-blue-400 line-clamp-6"
-            />
-            <div className="mt-6">
-              <Html
-                html={item.authorHtml}
-                className="text-sm font-bold leading-none text-dark-blue-400"
-              />
-              <Html
-                html={item.roleHtml}
-                className="text-xs leading-none font-light text-dark-blue-400 mt-1"
-              />
+            <div className="flex items-start gap-x-3">
+              <h1 className="pt-[11px] leading-none text-dark-blue-400 font-bold text-[114.33px]">
+                "
+              </h1>
+              <div className="pt-6">
+                <Html
+                  html={item.quoteHtml}
+                  className="text-2xl leading-[29px] text-dark-blue-400"
+                />
+              </div>
+            </div>
+
+            <div className="mt-[50px] flex items-center gap-x-2">
+              <Avatar size="md">
+                <AvatarImage src={item.avatarUrl || DEFAULT_AVATAR_SRC} alt="" />
+                <AvatarFallback>M</AvatarFallback>
+              </Avatar>
+
+              <div className="space-y-0.5">
+                <Html
+                  html={item.authorHtml}
+                  className="text-sm font-bold leading-none text-dark-blue-400"
+                />
+                <Html
+                  html={item.roleHtml}
+                  className="text-xs leading-none font-light text-dark-blue-400"
+                />
+              </div>
             </div>
           </article>
         ))}

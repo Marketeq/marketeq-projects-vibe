@@ -92,6 +92,12 @@ export class PayoutRequest {
   @Column({ name: 'bridge_provider', type: 'varchar', length: 32, nullable: true })
   bridgeProvider: string | null;
 
+  // PS-34 §8: Wise Platform transfer ID for payouts routed through
+  // WisePlatformService (India, Japan, GCC, and other non-Stripe-cross-border
+  // countries). Null for every other execution path.
+  @Column({ name: 'wise_platform_transfer_id', type: 'varchar', length: 64, nullable: true })
+  wisePlatformTransferId: string | null;
+
   @Column({ name: 'crypto_amount', type: 'numeric', precision: 28, scale: 18, nullable: true })
   cryptoAmount: string | null;
 

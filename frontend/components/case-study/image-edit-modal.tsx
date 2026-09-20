@@ -63,7 +63,7 @@ export function ImageEditModal({
   initialOffsetX = 50,
   initialOffsetY = 50,
   aspectRatio = DEFAULT_ASPECT_RATIO,
-  objectFit = "contain",
+  objectFit = "cover",
   onSave,
 }: {
   open: boolean

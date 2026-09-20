@@ -2554,15 +2554,43 @@ export const OverviewTab = ({
           const identifier =
             addForm.bankAccountNumber || addForm.bankClabe || addForm.bankIban
           const last4 = identifier.slice(-4)
-          setMicroAmounts({ amount1: "", amount2: "" })
-          setVerifyState({
-            methodId: data.depositMethodId,
-            displayLabel: data.displayLabel ?? "••••" + last4,
-            bankName: addForm.bankAccountName || "",
-            step: "instructions",
-            source: "manual",
-          })
+          const displayLabel = data.displayLabel ?? "••••" + last4
+          const bankName = addForm.bankAccountName || ""
           setShowAddMethod(false)
+          // Stripe can resolve a us_bank_account SetupIntent straight to
+          // "succeeded" with no real micro-deposits ever queued (see
+          // stripe.provider.ts's createMicrodepositSetupIntent) — showing
+          // the "we sent two deposits, check back in 2 days" screen here
+          // would be false: nothing was sent, the account is already
+          // verified. Mirrors the Stripe FC instant path's verifying ->
+          // success sequence instead of the microdeposit "instructions" step.
+          if (data.verification?.type === "instant") {
+            setVerifyState({
+              methodId: data.depositMethodId,
+              displayLabel,
+              bankName,
+              step: "verifying",
+              source: "manual",
+            })
+            await new Promise((r) => setTimeout(r, 1500))
+            setVerifyState({
+              methodId: data.depositMethodId,
+              displayLabel,
+              bankName,
+              step: "success",
+              source: "manual",
+            })
+            fetchMethods()
+          } else {
+            setMicroAmounts({ amount1: "", amount2: "" })
+            setVerifyState({
+              methodId: data.depositMethodId,
+              displayLabel,
+              bankName,
+              step: "instructions",
+              source: "manual",
+            })
+          }
         }
       } else {
         toast({
@@ -11135,7 +11163,13 @@ const PayoutDetailDialog = ({
     fetchDetail()
   }, [payoutId, fetchDetail])
 
-  // AC-29.01/29.02: poll while the open payout hasn't reached a terminal status.
+  // Deliberately no separate useEarningsChannel subscription here — this
+  // dialog is always mounted inside PayoutsTab (visibility toggled via the
+  // Dialog's `open` prop, not conditional rendering), which now holds its
+  // own live channel connection (see PayoutsTab above). A second
+  // subscription here would just be a second simultaneous Ably connection
+  // for the same contractor. Kept on the 15s poll for the (less common)
+  // open-detail-view case; the list view behind it already updates live.
   useEffect(() => {
     if (!payoutId || !detail || !NON_TERMINAL.has(detail.status)) return
     const id = setInterval(() => fetchDetail(true), 15_000)
@@ -11326,12 +11360,14 @@ export const PayoutsTab = ({
     setMonthlySummaryError(false)
     payoutFetch(`/payouts/summary`)
       .then(async (res) => {
-        if (!res.ok) throw new Error("failed")
+        if (!res.ok) {
+          setMonthlySummaryError(true)
+          return null
+        }
         return res.json()
       })
-      .then(setMonthlySummary)
-      .catch((e) => {
-        console.error("Failed to fetch monthly payout summary", e)
+      .then((data) => { if (data) setMonthlySummary(data) })
+      .catch(() => {
         setMonthlySummaryError(true)
       })
   }, [])
@@ -11486,9 +11522,32 @@ export const PayoutsTab = ({
     })
   }, [onFiltersChange, dateRange, dateFrom, dateTo, statusFilter, depositMethodId, searchQuery])
 
-  // AC-29.01/29.02/29.03: poll every 15s (no flicker — silent refetch) as long as
-  // any row on this page hasn't reached a terminal status. No SSE/WebSocket infra
-  // exists in this codebase, so polling is the correct mechanism per PS-31.
+  // US-91–94: live push over Ably — same balance.updated/payout_completed
+  // event the Overview tab's Recent Activity widget already consumes (see
+  // that hook call further up this file). This table used to rely solely
+  // on the 15s poll below and never subscribed to the channel at all, so a
+  // payout that completed between polls stayed stuck on "Processing" for
+  // up to 15s, or indefinitely if the contractor didn't have another
+  // non-terminal row keeping the poll alive — only a manual refresh or a
+  // new withdrawal (which re-mounts/re-triggers loadPayouts) would show it.
+  const { isLive } = useEarningsChannel({
+    onBalanceUpdated: React.useCallback((evt: EarningsRealtimeEvent) => {
+      if (evt.mutationType === "payout_completed") {
+        loadPayouts(true)
+      }
+    }, [loadPayouts]),
+    onPayoutFailed: React.useCallback(() => {
+      loadPayouts(true)
+    }, [loadPayouts]),
+    onReconnected: React.useCallback(() => {
+      loadPayouts(true)
+    }, [loadPayouts]),
+  })
+
+  // AC-29.01/29.02/29.03: 15s poll as a fallback for while the Ably channel
+  // is disconnected (isLive false) — mirrors the gating pattern already
+  // used by useEarningsChannel's other consumers. Still scoped to pages
+  // with a non-terminal row, same as before.
   const NON_TERMINAL_STATUSES = new Set([
     "pending_verification",
     "awaiting_edd",
@@ -11497,10 +11556,10 @@ export const PayoutsTab = ({
   ])
   const hasInFlight = payouts.some((p) => NON_TERMINAL_STATUSES.has(p.status))
   useEffect(() => {
-    if (!hasInFlight) return
+    if (!hasInFlight || isLive) return
     const id = setInterval(() => loadPayouts(true), 15_000)
     return () => clearInterval(id)
-  }, [hasInFlight, loadPayouts])
+  }, [hasInFlight, isLive, loadPayouts])
 
   return (
     <div className="space-y-5">
@@ -11863,7 +11922,20 @@ export const PayoutsTab = ({
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <BankIcon className="size-4 text-gray-400" />
+                        {row.methodType === "CRYPTO" ? (
+                          // methodLabel is built server-side as
+                          // `${cryptoProvider} ${token} ••••${last6}`
+                          // (crypto-connection.service.ts) — the first word
+                          // is always the exact CRYPTO_PROVIDER_ICON key
+                          // (METAMASK, COINBASE, etc.), so this never
+                          // guesses at the label format.
+                          <CryptoProviderIcon
+                            provider={row.methodLabel?.split(" ")[0] ?? ""}
+                            className="size-4"
+                          />
+                        ) : (
+                          <BankIcon className="size-4 text-gray-400" />
+                        )}
                         <span className="text-sm text-gray-500">
                           {row.methodLabel ?? row.methodType ?? "—"}
                         </span>

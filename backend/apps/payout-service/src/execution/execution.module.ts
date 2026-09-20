@@ -7,6 +7,8 @@ import { GasEstimatorService }          from './gas-estimator.service';
 import { CryptoRetryService }           from './crypto-retry.service';
 import { CryptoMinimumService }         from './crypto-minimum.service';
 import { CryptoPayoutExecutorService }  from './crypto-payout-executor.service';
+import { WisePlatformService }          from './wise-platform.service';
+import { ChainalysisService }           from './chainalysis.service';
 import { PayoutRequest }                from '../entities/payout-request.entity';
 import { DepositMethod }                from '../entities/deposit-method.entity';
 import { CryptoModule }                 from '../crypto/crypto.module';
@@ -26,6 +28,8 @@ import { PublishersModule }             from '../publishers/publishers.module';
     CryptoRetryService,
     CryptoMinimumService,
     CryptoPayoutExecutorService,
+    WisePlatformService,
+    ChainalysisService,
   ],
   exports: [
     BridgeSelectorService,
@@ -33,6 +37,8 @@ import { PublishersModule }             from '../publishers/publishers.module';
     CryptoRetryService,
     CryptoMinimumService,
     CryptoPayoutExecutorService,
+    WisePlatformService,
+    ChainalysisService,
   ],
 })
 export class ExecutionModule {}

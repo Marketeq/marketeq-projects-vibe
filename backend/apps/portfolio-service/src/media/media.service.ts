@@ -80,6 +80,13 @@ export class MediaService {
     this.s3 = new S3Client({
       region: 'auto',
       endpoint,
+      // Since v3.729 the SDK defaults to WHEN_SUPPORTED, which folds an
+      // x-amz-checksum-crc32 of the *empty* body into the presigned query
+      // string. The browser then PUTs the real file bytes and R2 rejects the
+      // request on the checksum mismatch. Presigned URLs are handed to a
+      // client that cannot know the checksum at signing time, so the checksum
+      // must only be sent when the operation actually requires one.
+      requestChecksumCalculation: 'WHEN_REQUIRED',
       credentials:
         accessKeyId && secretAccessKey ? { accessKeyId, secretAccessKey } : undefined,
     });

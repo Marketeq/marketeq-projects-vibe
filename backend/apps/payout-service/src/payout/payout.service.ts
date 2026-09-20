@@ -18,11 +18,13 @@ import { AuditService }       from '../audit/audit.service';
 import { MagicLinkService }   from '../magic-link/magic-link.service';
 import { WithdrawalRateLimitService } from './withdrawal-rate-limit.service';
 import { KycGateService }     from '../kyc/kyc-gate.service';
+import { EddService }         from '../kyc/edd.service';
 import { PayoutError }        from '../common/errors/payout.error';
 import { ValidateAmountDto, ValidateAmountResponseDto } from './dto/validate-amount.dto';
 import { InitiatePayoutDto, InitiatePayoutResponseDto } from './dto/initiate-payout.dto';
 import { VerifyResponseDto }  from './dto/verify-response.dto';
 import { PayoutPublisher }    from '../publishers/payout.publisher';
+import { PayoutFeeService }   from '../fees/payout-fee.service';
 
 const INSTANT_FEE = '1.75';
 
@@ -48,7 +50,9 @@ export class PayoutService {
     private readonly magicLinkService: MagicLinkService,
     private readonly rateLimitService: WithdrawalRateLimitService,
     private readonly kycGateService: KycGateService,
+    private readonly eddService: EddService,
     private readonly publisher: PayoutPublisher,
+    private readonly feeService: PayoutFeeService,
     @InjectQueue('payout-processing') private readonly queue: Queue,
   ) {
     this.payoutMinimum = parseFloat(this.config.get('PAYOUT_MINIMUM_USD', '50'));
@@ -138,6 +142,16 @@ export class PayoutService {
 
     const fee = dto.speed === 'instant' ? instantFee : 0;
     const net = amount - fee;
+
+    // PS-25 §3.1: the minimum applies to the NET amount, not the gross
+    // request — a $50 request with a fee taken out must not settle below
+    // the $50 floor this platform otherwise enforces everywhere else.
+    if (net < this.payoutMinimum) {
+      throw new PayoutError(
+        `After fees, this withdrawal would be below the $${this.payoutMinimum} minimum.`,
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_INSUFFICIENT_FUNDS_AFTER_FEE',
+      );
+    }
 
     return {
       amountUsd:           amount.toFixed(2),
@@ -232,6 +246,18 @@ export class PayoutService {
     });
     if (!method) throw new PayoutError('Deposit method not found.',
       HttpStatus.NOT_FOUND, 'ERR_PAYOUT_METHOD_NOT_FOUND');
+    // PS-35 §9 pre-flight check 4: a method still awaiting (or that failed)
+    // biometric verification gets its own error code/copy — distinct from
+    // the generic "not verified" below — so the contractor is told to
+    // complete identity verification, not to re-add the method.
+    if (
+      method.verificationStatus === VerificationStatus.PENDING_BIOMETRIC ||
+      method.verificationStatus === VerificationStatus.VERIFICATION_FAILED
+    ) {
+      throw new PayoutError(
+        'This payout method is awaiting identity verification and cannot be used yet.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_METHOD_PENDING_BIOMETRIC');
+    }
     if (method.verificationStatus !== VerificationStatus.VERIFIED) {
       throw new PayoutError('This deposit method has not been verified yet.',
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_METHOD_UNVERIFIED');
@@ -247,12 +273,92 @@ export class PayoutService {
         HttpStatus.BAD_REQUEST, 'ERR_PAYOUT_METHOD_UNAVAILABLE');
     }
 
-    // Calculate fee
-    const feeUsd = dto.speed === 'instant' ? INSTANT_FEE : '0.00';
+    // Calculate fee — instant-speed surcharge (PS-19) plus, for
+    // international BANK_MANUAL methods, PS-34 §3's country-based transfer
+    // fee (both contractor-paid, both shown before the contractor already
+    // confirmed via the magic link — see validateAmount() for the preview
+    // shown pre-confirmation).
+    const instantFee = dto.speed === 'instant' ? parseFloat(INSTANT_FEE) : 0;
+    const intlFee = this.feeService.calculateFee({
+      amountUsd: requestedAmount,
+      methodType: method.methodType,
+      bankCountry: method.bankCountry ?? undefined,
+    }).feeUsd;
+    const feeUsd = (instantFee + intlFee).toFixed(2);
     const netAmountUsd = (parseFloat(dto.amountUsd) - parseFloat(feeUsd)).toFixed(8);
     if (parseFloat(netAmountUsd) <= 0) {
       throw new PayoutError('The instant withdrawal fee exceeds the requested amount.',
         HttpStatus.BAD_REQUEST, 'ERR_PAYOUT_FEE_EXCEEDS_AMOUNT');
+    }
+    // PS-25 §3.1: same net-below-minimum guard as validateAmount() above —
+    // kept consistent so a request that passed the preview can't still be
+    // rejected here (or vice versa) by two different minimum computations.
+    if (parseFloat(netAmountUsd) < this.payoutMinimum) {
+      throw new PayoutError(
+        `After fees, this withdrawal would be below the $${this.payoutMinimum} minimum.`,
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_INSUFFICIENT_FUNDS_AFTER_FEE',
+      );
+    }
+
+    // PS-15 §6.2: Enhanced Due Diligence — payouts >= $10,000 skip the normal
+    // magic-link confirmation and go straight to a compliance-review hold.
+    // This was previously computed (checkEDD/publishEddEvent both existed)
+    // but never called from anywhere — every payout, regardless of size,
+    // went straight through. requiresEDD payouts get their own row/branch
+    // rather than reusing the magic-link transaction below, since there is
+    // nothing for the contractor to confirm here — compliance approval is
+    // the confirmation.
+    const edd = await this.eddService.checkEDD(requestedAmount, contractorId);
+    if (edd.requiresEDD) {
+      const eddRequest = await this.dataSource.transaction(async (em) => {
+        const req = em.create(PayoutRequest, {
+          contractorId, idempotencyKey: dto.idempotencyKey,
+          trigger: PayoutTrigger.MANUAL,
+          status: PayoutStatus.AWAITING_EDD,
+          amountUsd: dto.amountUsd, feeUsd, netAmountUsd,
+          currency: 'USD',
+          speed: dto.speed as PayoutSpeed,
+        });
+        (req as any).depositMethodId = dto.depositMethodId;
+        await em.save(req);
+
+        await this.auditService.log({
+          contractorId, payoutRequestId: req.id,
+          actorType: 'contractor', actorId: contractorId,
+          action: 'withdrawal.initiated',
+          newStatus: PayoutStatus.AWAITING_EDD,
+        });
+
+        return req;
+      });
+
+      await this.eddService.publishEddEvent({
+        payoutRequestId: eddRequest.id,
+        contractorId,
+        amountUSD: requestedAmount,
+        depositMethodId: dto.depositMethodId,
+        methodType: method.methodType,
+      });
+
+      await this.publisher.publishPayoutInitiated({
+        contractorId, payoutRequestId: eddRequest.id, contractId: null,
+        amount: eddRequest.amountUsd,
+        methodType: method.methodType,
+        methodLabel: method.displayLabel ?? method.methodType,
+        methodIdentifier: method.accountIdentifier ?? method.bankAccountLast4 ?? '',
+        initiatedAt: new Date().toISOString(),
+      });
+
+      return {
+        payoutRequestId: eddRequest.id,
+        status: PayoutStatus.AWAITING_EDD,
+        amountUsd: parseFloat(eddRequest.amountUsd).toFixed(2),
+        feeUsd: parseFloat(eddRequest.feeUsd).toFixed(2),
+        netAmountUsd: parseFloat(eddRequest.netAmountUsd).toFixed(2),
+        magicLinkSentTo: '',
+        magicLinkExpiresAt: '',
+        message: `Withdrawals of $${this.eddService.getThreshold().toLocaleString()} or more require a compliance review before they can be sent. We'll notify you once it's approved — no further action is needed from you right now.`,
+      };
     }
 
     // Create the payout_request first, then generate its magic-link token via
@@ -284,6 +390,15 @@ export class PayoutService {
       return req;
     });
 
+    await this.publisher.publishPayoutInitiated({
+      contractorId, payoutRequestId: request.id, contractId: null,
+      amount: request.amountUsd,
+      methodType: method.methodType,
+      methodLabel: method.displayLabel ?? method.methodType,
+      methodIdentifier: method.accountIdentifier ?? method.bankAccountLast4 ?? '',
+      initiatedAt: new Date().toISOString(),
+    });
+
     const rawToken = await this.magicLinkService.generateAndStore(request.id, contractorId);
     const expiresAt = new Date(Date.now() + this.magicLinkService.getTtlMs());
     this.magicLinkService.publishMagicLinkEvent(request, rawToken, contractorEmail, dto.redirectUrl).catch(err =>
@@ -303,9 +418,14 @@ export class PayoutService {
       const balance = await this.earningsClient.getBalance(contractorId);
       const available = parseFloat(balance?.availableBalance ?? '0');
       if (available < amountUsd) {
+        // PS-24 §3: ERR_INSUFFICIENT_BALANCE_AT_EXECUTION — balance dropped
+        // between initiation and execution. Was a bare non-ERR_-prefixed
+        // constant before; every other failureReason on this entity is a
+        // contractor-readable sentence, so this now matches the doc's
+        // userMessage instead of being the odd one out.
         await this.payoutRepo.update(payoutRequestId, {
           status: PayoutStatus.FAILED,
-          failureReason: 'INSUFFICIENT_BALANCE_AT_EXECUTION',
+          failureReason: 'Your balance changed before your withdrawal could be sent. Please start a new withdrawal.',
           failedAt: new Date(),
         });
         this.logger.warn(`Payout ${payoutRequestId} failed: balance $${available} < required $${amountUsd}`);
@@ -427,6 +547,48 @@ export class PayoutService {
     };
   }
 
+  // ─── PS-15 §6.2: Admin — list payouts awaiting EDD review ──────
+  async listAwaitingEDD(): Promise<PayoutRequest[]> {
+    return this.payoutRepo.find({
+      where: { status: PayoutStatus.AWAITING_EDD },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  // ─── PS-15 §6.2: Admin — release a payout past EDD review ──────
+  // No magic-link step for an EDD payout (see initiate() above) — compliance
+  // sign-off here IS the confirmation, so this goes straight to QUEUED and
+  // onto the same processing queue every verified payout uses.
+  async releaseEDD(payoutRequestId: string, actorId: string): Promise<{ status: string }> {
+    const request = await this.payoutRepo.findOne({ where: { id: payoutRequestId } });
+    if (!request) throw new PayoutError('Payout request not found.',
+      HttpStatus.NOT_FOUND, 'ERR_PAYOUT_NOT_FOUND');
+    if (request.status !== PayoutStatus.AWAITING_EDD) {
+      throw new PayoutError('This payout is not awaiting EDD review.',
+        HttpStatus.CONFLICT, 'ERR_PAYOUT_NOT_AWAITING_EDD');
+    }
+
+    await this.dataSource.transaction(async (em) => {
+      await em.update(PayoutRequest, request.id, {
+        status: PayoutStatus.QUEUED,
+        verifiedAt: new Date(),
+        queuedAt: new Date(),
+      });
+      await this.auditService.log({
+        contractorId: request.contractorId,
+        payoutRequestId: request.id,
+        actorType: 'admin', actorId,
+        action: 'edd.released',
+        previousStatus: PayoutStatus.AWAITING_EDD,
+        newStatus: PayoutStatus.QUEUED,
+      });
+    });
+
+    await this.enqueueForProcessing(request.id);
+
+    return { status: 'queued' };
+  }
+
   // ─── Cancel ───────────────────────────────────────────────────
   async cancel(contractorId: string, payoutRequestId: string): Promise<{ status: string }> {
     const request = await this.payoutRepo.findOne({
@@ -540,14 +702,25 @@ export class PayoutService {
     // Figma "Next Payout" card's blue status label (e.g. "Processing...") —
     // reflects whatever payout request is actually in flight right now, not a
     // fabricated value. Null when nothing has been initiated for the next cycle yet.
+    //
+    // Must require dm.isActive: a payout can be deactivated on its deposit
+    // method (PS-33 §8, e.g. a bank rejection with failure_code
+    // account_closed/no_account/debit_not_authorized) while the payout row
+    // itself is still stuck in a non-terminal status — its own terminal
+    // transition depends on a Stripe webhook that may never arrive (same
+    // class of gap as the connect_payouts_enabled/transfer-reversal fixes
+    // above). Without this filter, a contractor whose only payout method has
+    // been deactivated still sees "Processing..." indefinitely, which is
+    // inconsistent with their actual (methodless) payout-method state.
     const NON_TERMINAL = [
       PayoutStatus.PENDING_VERIFICATION, PayoutStatus.AWAITING_EDD,
       PayoutStatus.QUEUED, PayoutStatus.PROCESSING,
     ];
     const inFlight = await this.payoutRepo.createQueryBuilder('p')
-      .leftJoinAndSelect('p.depositMethod', 'dm')
+      .innerJoinAndSelect('p.depositMethod', 'dm')
       .where('p.contractorId = :contractorId', { contractorId })
       .andWhere('p.status IN (:...statuses)', { statuses: NON_TERMINAL })
+      .andWhere('dm.isActive = true')
       .orderBy('p.createdAt', 'DESC')
       .getOne();
 

@@ -511,6 +511,7 @@ function renderHistoryItem(
             title={job.title}
             budget=""
             cardVariant={isGrid ? "job-grid" : "job"}
+            collaborators={[]}
           />
           {isGrid && (
             <span className="absolute bottom-6 right-6">

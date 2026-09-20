@@ -12,6 +12,8 @@ interface CaseStudyViewerProps {
    * listing page) so it isn't rendered twice.
    */
   title?: string
+  /** Optional — same "omit when the surrounding page already shows it" rule as `title`. */
+  description?: string
   blocks: CaseStudyBlock[]
   className?: string
 }
@@ -29,6 +31,7 @@ interface CaseStudyViewerProps {
  */
 export default function CaseStudyViewer({
   title,
+  description,
   blocks,
   className,
 }: CaseStudyViewerProps) {
@@ -38,10 +41,22 @@ export default function CaseStudyViewer({
 
   return (
     <article className={className ?? "space-y-[100px]"}>
-      {title ? (
-        <h1 className="text-[40px] md:text-[64px] leading-tight font-semibold text-dark-blue-400">
-          {title}
-        </h1>
+      {title || description ? (
+        // Tight gap-y-3 (Figma "Frame 53": 12px) between title and
+        // description, kept as one space-y-[100px] item so the gap to
+        // whatever follows stays the normal inter-section spacing.
+        <div className="space-y-3">
+          {title ? (
+            <h1 className="text-[40px] md:text-[64px] leading-tight font-semibold text-dark-blue-400">
+              {title}
+            </h1>
+          ) : null}
+          {description ? (
+            <p className="text-2xl leading-snug font-light text-dark-blue-400">
+              {description}
+            </p>
+          ) : null}
+        </div>
       ) : null}
       {renderableBlocks.map((block, i) => (
         <SectionRenderer

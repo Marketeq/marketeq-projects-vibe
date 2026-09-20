@@ -159,6 +159,25 @@ export default function Projects() {
   const categorySlugPath = pageData?.breadcrumbs.map((b: any) => b.slug) || [
     "creative",
   ]
+
+  const getListingCollaborators = (item: any): string[] => {
+    const candidates =
+      item?.teamAvatars ??
+      item?.teamMembers ??
+      item?.collaborators ??
+      item?.assignedUsers ??
+      item?.providers ??
+      []
+    if (!Array.isArray(candidates)) return []
+    return candidates
+      .map((member: any) =>
+        typeof member === "string"
+          ? member
+          : (member?.avatar ?? member?.avatarUrl ?? member?.profilePicture ?? null)
+      )
+      .filter(Boolean) as string[]
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <div className="py-[50px]">
@@ -411,6 +430,7 @@ export default function Projects() {
                                 project.slug,
                                 project.id
                               )}
+                              collaborators={getListingCollaborators(project)}
                               favoriteSlot={
                                 <FavoriteRoot
                                   onValueChange={async (pressed) => {
@@ -838,6 +858,7 @@ export default function Projects() {
                               rating={4.9}
                               reviewCount={5}
                               href="#"
+                              collaborators={[]}
                               favoriteSlot={
                                 <FavoriteRoot>
                                   {({ pressed }) => (

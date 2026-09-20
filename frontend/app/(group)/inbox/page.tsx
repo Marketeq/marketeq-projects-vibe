@@ -232,6 +232,12 @@ export default function InboxRoot() {
                 return {
                   id: item.id,
                   contractId: offerId,
+                  // PMCM-393 AC-42: live status from this same getOffer() call,
+                  // separate from `event` below (the notification's own fixed
+                  // event type, which never changes once the notification is
+                  // created). The seeded-fixture catch branch below has no
+                  // live offer to source this from and must leave it unset.
+                  offerStatus: offer.status,
                   event: item.event?.toLowerCase() || "offer.received",
                   title: item.title,
                   body: item.body,
@@ -288,7 +294,14 @@ export default function InboxRoot() {
                     typeof metadata.originalStartDate === "string"
                       ? metadata.originalStartDate
                       : undefined,
-                  role: offer.contractTitle.split(/\s+[—-]\s+/)[0].trim(),
+                  role:
+                    typeof metadata.role === "string" && metadata.role.trim()
+                      ? metadata.role.trim()
+                      : typeof metadata.jobTitle === "string" &&
+                          metadata.jobTitle.trim()
+                        ? metadata.jobTitle.trim()
+                        : offer.contractTitle.split(/\s+[—-]\s+/)[0].trim() ||
+                          "Team Member",
                   duration: `${offer.durationMonths} Month${offer.durationMonths === 1 ? "" : "s"}`,
                   schedule:
                     offer.workSchedule.type === "FULL_TIME"
@@ -312,10 +325,19 @@ export default function InboxRoot() {
                   seeded: metadata.seeded === true,
                   clientPerspective: metadata.clientPerspective === true,
                   withdrawnByViewer: metadata.withdrawnByViewer === true,
+                  // No backend producer writes offer notification metadata,
+                  // so metadata.withdrawalMessage is always undefined for a
+                  // real withdrawn offer — fall back to the real offer's own
+                  // withdrawalMessage (already fetched above) before giving
+                  // up to undefined, so the "No message was sent." fallback
+                  // only fires when the message is genuinely absent.
                   withdrawalMessage:
-                    typeof metadata.withdrawalMessage === "string"
+                    typeof metadata.withdrawalMessage === "string" &&
+                    metadata.withdrawalMessage.trim()
                       ? metadata.withdrawalMessage
-                      : undefined,
+                      : typeof offer.withdrawalMessage === "string"
+                        ? offer.withdrawalMessage
+                        : undefined,
                   declineReason:
                     typeof metadata.declineReason === "string"
                       ? metadata.declineReason
@@ -436,7 +458,15 @@ export default function InboxRoot() {
                       ? metadata.originalStartDate
                       : undefined,
                   role:
-                    typeof metadata.role === "string" ? metadata.role : "Role",
+                    typeof metadata.role === "string" && metadata.role.trim()
+                      ? metadata.role.trim()
+                      : typeof metadata.jobTitle === "string" &&
+                          metadata.jobTitle.trim()
+                        ? metadata.jobTitle.trim()
+                        : typeof metadata.contractTitle === "string"
+                          ? metadata.contractTitle.split(/\s+[—-]\s+/)[0].trim() ||
+                            "Team Member"
+                          : "Team Member",
                   duration:
                     typeof metadata.duration === "string"
                       ? metadata.duration
@@ -826,6 +856,9 @@ export default function InboxRoot() {
             counterOfferCard={counterOfferCard}
             declinedOfferCard={declinedOfferCard}
             offerNotificationMessages={offerNotificationMessages}
+            onOfferUpdateRequested={() =>
+              setOfferNotificationRefreshToken((value) => value + 1)
+            }
           />
 
           {rightSidebarOpen && (
