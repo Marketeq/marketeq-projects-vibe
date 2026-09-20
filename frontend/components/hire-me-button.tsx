@@ -2590,7 +2590,12 @@ export function OfferDialog({
                                   }
                                 />
                                 <span className="text-right text-[10px] font-medium leading-4 text-gray-400">
-                                  {message.length}/500
+                                  {/* BTB-273: same boolean-gate-not-live-filter
+                                  mechanism as contractTitle.trim() above —
+                                  collapse to 0 only when the whole value is
+                                  whitespace, don't recompute a trimmed length
+                                  for a value that has real content. */}
+                                  {message.trim() === "" ? 0 : message.length}/500
                                 </span>
                               </div>
                             </div>
