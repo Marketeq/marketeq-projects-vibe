@@ -489,10 +489,10 @@ async function bootstrap(): Promise<void> {
       fallbackIcon,
       windowManager,
       onStartTimer: () => {
-        void timerService?.startTimer({
-          contractId: 'default',
-          taskId: 'default',
-        });
+        // The tray cannot know which task to start — bring the window forward
+        // so the user selects a contract + task there. Starting requires a real
+        // task (see timer-service.startTimer).
+        void windowManager?.showMainWindow();
       },
       onPauseTimer: async () => {
         await timerService?.pauseTimer();
