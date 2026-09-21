@@ -41,15 +41,15 @@
   30%, 65% { transform: rotate(18deg); }
 }
 @keyframes sidebar-peek-reveal {
-  0%, 100% { opacity: 0; }
-  25%, 75% { opacity: 1; }
+  0%, 100% { visibility: hidden; }
+  25%, 75% { visibility: visible; }
 }
-.sidebar-peek-reveal { opacity: 0; }
+.sidebar-peek-reveal { visibility: hidden; }
 .group:hover .sidebar-anim-users .sidebar-peek-person {
   animation: sidebar-peek 0.6s ease;
 }
 .group:hover .sidebar-anim-users .sidebar-peek-reveal {
-  animation: sidebar-peek-reveal 0.6s ease;
+  animation: sidebar-peek-reveal 0.6s ease step-end;
 }
 @keyframes sidebar-pop {
   0%, 100% { transform: scale(1); }
@@ -85,6 +85,7 @@
 .sidebar-roof {
   transform-box: fill-box;
   transform-origin: center bottom;
+  visibility: hidden;
 }
 
 /* --- Inbox: swap closed ↔ open envelope --- */
@@ -101,6 +102,7 @@
 /* --- Home: roof tips like a hat (overflow visible so tipped roof isn't clipped) --- */
 .sidebar-anim-home { overflow: visible; }
 .group:hover .sidebar-anim-home .sidebar-roof {
+  visibility: visible;
   animation: sidebar-hat-tip 0.6s ease;
 }
 
