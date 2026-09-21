@@ -150,6 +150,10 @@ async function bootstrap(): Promise<void> {
   // --- Phase 2: Timer service (9-state FSM) ----------------------------
   let timerService: TimerService | null = null;
   let detachIpcHandlers: (() => void) | null = null;
+  // Sessions the crash-recovery sweep closed at startup — each gets a backend
+  // close enqueued once the outbox exists (Phase 4).
+  let recoveredSessions: ReturnType<TimerService['restoreFromDb']>['closed'] =
+    [];
   try {
     const db = initDatabase();
     const repos = createRepos(db);
@@ -178,8 +182,9 @@ async function bootstrap(): Promise<void> {
       getUserId: () => authService?.getCurrentUser()?.id ?? repos.user.findFirst()?.id ?? null,
       getDeviceId: () => repos.device.findSelf()?.id ?? null,
     });
-    // Restore any open session that was left behind by a previous crash.
-    timerService.restoreFromDb();
+    // Close any session left open by a previous crash / force-kill. Never
+    // silently resumes — the FSM stays Idle. Rows are kept (only ended_at set).
+    recoveredSessions = timerService.restoreFromDb().closed;
     detachIpcHandlers = registerIpcHandlers({ timer: timerService });
     logger.info('phase 2 timer service wired');
   } catch (err) {
@@ -431,6 +436,25 @@ async function bootstrap(): Promise<void> {
       }).detach;
     }
 
+    // Push a close to the backend for every crash-swept session. If the
+    // backend never knew about it (session.start hadn't synced yet), this
+    // 404s and the outbox dead-letters it immediately — same idempotent,
+    // non-retryable-4xx handling every other outbox write already relies on.
+    // FIFO puts this after the original POST /sessions.
+    for (const s of recoveredSessions) {
+      outbox.enqueue({
+        kind: 'session.close',
+        method: 'POST',
+        path: `/sessions/${s.id}/close`,
+        id: `req_ses-close-${s.id}`,
+        payload: {
+          endedAt: s.endedAt,
+          reason: s.endReason ?? 'crash_recover',
+          billableSeconds: s.billableSeconds,
+        },
+      });
+    }
+
     stopSync = async () => {
       try {
         detachEventBridge?.();
@@ -508,10 +532,10 @@ async function bootstrap(): Promise<void> {
       fallbackIcon,
       windowManager,
       onStartTimer: () => {
-        void timerService?.startTimer({
-          contractId: 'default',
-          taskId: 'default',
-        });
+        // The tray cannot know which task to start — bring the window forward
+        // so the user selects a contract + task there. Starting requires a real
+        // task (see timer-service.startTimer).
+        void windowManager?.showMainWindow();
       },
       onPauseTimer: async () => {
         await timerService?.pauseTimer();

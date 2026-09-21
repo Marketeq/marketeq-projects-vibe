@@ -164,9 +164,20 @@ export function createCaptureSupervisor(deps: Deps): CaptureSupervisor {
 
   function findOpenSessionId(): string | null {
     try {
+      // Only an open session that belongs to THIS device counts as "the
+      // timer is running" — a foreign device's row is never picked up. No
+      // age bound here: the timer's own restart recovery (restoreFromDb)
+      // already unconditionally closes every leftover open session before
+      // this supervisor ever starts polling, so nothing stale can survive
+      // to be found here regardless of how old it is. A contractor working
+      // a normal day well past 8 hours is expected (doc 01 §"Daily cap") and
+      // must keep being captured.
       const row = deps.db
         .prepare<[], { id: string }>(
-          `SELECT id FROM session WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1`,
+          `SELECT id FROM session
+             WHERE ended_at IS NULL
+               AND device_id = (SELECT id FROM device_self LIMIT 1)
+             ORDER BY started_at DESC LIMIT 1`,
         )
         .get();
       return row?.id ?? null;
