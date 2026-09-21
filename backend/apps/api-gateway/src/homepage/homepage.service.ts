@@ -40,6 +40,25 @@ interface GetHomepageOptions {
   previewToken?: string;
 }
 
+/**
+ * axios failures do not reliably carry a `.message` — a refused or aborted
+ * request leaves it empty, which is why these CMS warnings used to end in a
+ * bare colon and name no cause at all. Fall back through the fields axios
+ * actually populates, so a dead CMS endpoint reports ECONNREFUSED rather than
+ * nothing.
+ */
+function describeHttpError(err: any): string {
+  return (
+    [
+      err?.response?.status ? `HTTP ${err.response.status}` : null,
+      err?.code,
+      err?.message,
+    ]
+      .filter(Boolean)
+      .join(' ') || `non-Error rejection: ${String(err)}`
+  );
+}
+
 @Injectable()
 export class HomepageService {
   private readonly logger = new Logger(HomepageService.name);
@@ -322,7 +341,7 @@ export class HomepageService {
       };
     } catch (err: any) {
       this.logger.warn(
-        `CMS request failed for Homepages (variant=${variant ?? 'none'}): ${err.message}`,
+        `CMS request failed for Homepages (variant=${variant ?? 'none'}): ${describeHttpError(err)}`,
       );
       return null;
     }
@@ -493,7 +512,9 @@ export class HomepageService {
         bannerType: data.bannerType ?? 'info',
       };
     } catch (err: any) {
-      this.logger.warn(`Failed to fetch homepage banner from CMS: ${err.message}`);
+      this.logger.warn(
+        `Failed to fetch homepage banner from CMS: ${describeHttpError(err)}`,
+      );
       return null;
     }
   }

@@ -176,7 +176,8 @@ def dispatchVibe(event) {
                         string(name: 'PR_TITLE', value: pr_title),
                         string(name: 'PR_BODY', value: pr_body),
                         string(name: 'BASE_REF', value: pr_base_ref),
-                        string(name: 'HEAD_SHA', value: pr_head_sha)
+                        string(name: 'HEAD_SHA', value: pr_head_sha),
+                        string(name: 'PR_AUTHOR', value: pr_author)
                     ]
                     results['Jenkins / SOP Check'] = 'success'
                 } catch (e) {
@@ -188,7 +189,8 @@ def dispatchVibe(event) {
                     build job: 'deep-regression-check', parameters: [
                         string(name: 'PR_NUMBER', value: pr_number),
                         string(name: 'BASE_REF', value: pr_base_ref),
-                        string(name: 'HEAD_SHA', value: pr_head_sha)
+                        string(name: 'HEAD_SHA', value: pr_head_sha),
+                        string(name: 'PR_AUTHOR', value: pr_author)
                     ]
                     results['Jenkins / Deep Regression Check'] = 'success'
                 } catch (e) {

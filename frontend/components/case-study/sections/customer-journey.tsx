@@ -52,6 +52,21 @@ function CustomerJourneyEdit({
   >(() => Object.fromEntries(ids.map((id, i) => [id, initialStages[i]])))
   const len = items.length
 
+  // Inserts a fresh stage at `at`, seeding stageData too — items and
+  // stageData must stay in lockstep, otherwise stages.map((id) => stageData[id])
+  // below (and CustomerJourneyView's render) hits an undefined entry for the new id.
+  const addStageAt = (at: number) => {
+    const uniqueId = getId() + 2
+    setItems((prev) => prev.toSpliced(at, 0, uniqueId))
+    setStageData((prev) => ({
+      ...prev,
+      [uniqueId]: {
+        titleHtml: "Stage Name",
+        bodyHtml: "This is sample description for this stage",
+      },
+    }))
+  }
+
   useEffect(() => {
     onDataChange?.({
       titleHtml: title,
@@ -110,10 +125,7 @@ function CustomerJourneyEdit({
                       setItems(items.filter((itm) => itm !== item))
                     }
                     canDuplicate={len < 4}
-                    onDuplicate={() => {
-                      const uniqueId = getId() + 2
-                      setItems(items.toSpliced(index, 0, uniqueId))
-                    }}
+                    onDuplicate={() => addStageAt(index)}
                   />
 
                   <div className="relative">
@@ -169,10 +181,7 @@ function CustomerJourneyEdit({
               >
                 <AddBlockDivider.Vertical
                   className="h-full group-hover/gap:visible invisible transition-[visibility] duration-300"
-                  onAdd={() => {
-                    const uniqueId = getId() + 2
-                    setItems(items.toSpliced(index, 0, uniqueId))
-                  }}
+                  onAdd={() => addStageAt(index)}
                 />
               </div>
             )}
@@ -185,9 +194,11 @@ function CustomerJourneyEdit({
 
 function CustomerJourneyView({ data }: { data?: Record<string, unknown> }) {
   const d = data ?? {}
-  const stages = Array.isArray(d.stages)
-    ? (d.stages as CustomerJourneyStage[])
-    : []
+  // Entries can be null/undefined in case studies saved before the
+  // editor seeded new items — drop the holes rather than crash.
+  const stages = (
+    Array.isArray(d.stages) ? (d.stages as (CustomerJourneyStage | null | undefined)[]) : []
+  ).filter((item): item is CustomerJourneyStage => Boolean(item))
   return (
     <section>
       <Html

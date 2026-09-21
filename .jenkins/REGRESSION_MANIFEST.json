@@ -131,6 +131,80 @@
       ]
     }
   ],
+  "security_sprint_breakage_patterns": {
+    "_description": "Common ways security hardening breaks existing features. The AI regression detector MUST check all of these when a PR is authored by a security sprint engineer.",
+    "guard_and_middleware_changes": {
+      "description": "New or modified guards/middleware can block legitimate authenticated requests",
+      "watch_paths": [
+        "backend/libs/shared/src/guards/**",
+        "backend/libs/shared/src/middleware/**",
+        "backend/apps/*/src/guards/**",
+        "backend/apps/api-gateway/src/**"
+      ],
+      "regression_examples": [
+        "New global guard rejects valid JWT tokens",
+        "Rate limiter blocks normal user activity",
+        "CORS middleware rejects Vercel preview URLs",
+        "Helmet headers break file downloads or iframe embeds",
+        "New middleware throws on missing optional header, returning 500 instead of proceeding"
+      ]
+    },
+    "dto_validation_tightening": {
+      "description": "Stricter DTO validation can reject requests that worked before",
+      "watch_paths": [
+        "backend/apps/*/src/**/*.dto.ts",
+        "backend/apps/*/src/**/dto/**"
+      ],
+      "regression_examples": [
+        "New @IsNotEmpty() on a field that frontend sends as empty string",
+        "New @MaxLength() shorter than existing stored data",
+        "New @IsEnum() on a field that accepts freeform text",
+        "New required field that existing clients do not send",
+        "Validation pipe now rejects requests that previously passed (400 errors on working forms)"
+      ]
+    },
+    "response_sanitization": {
+      "description": "Stripping fields from API responses breaks frontend consumers",
+      "watch_paths": [
+        "backend/apps/*/src/**/*.service.ts",
+        "backend/apps/*/src/**/*.controller.ts",
+        "backend/apps/*/src/**/*.interceptor.ts"
+      ],
+      "regression_examples": [
+        "Serialization interceptor strips fields the frontend reads (email, phone, location)",
+        "ClassSerializerInterceptor with @Exclude() hides data the frontend needs",
+        "Response DTO maps fewer fields than before",
+        "Sensitive field removal also removes non-sensitive fields by accident"
+      ]
+    },
+    "error_handling_changes": {
+      "description": "Changed error shapes or status codes break frontend error handlers",
+      "regression_examples": [
+        "Error response shape changed (frontend expects { message } but now gets { error })",
+        "Status code changed (401 instead of 403, or 403 instead of 404)",
+        "New exception filter swallows original error details",
+        "Generic 500 replaces specific 4xx that frontend handles"
+      ]
+    },
+    "encryption_and_hashing": {
+      "description": "Changing encryption or hashing algorithms can make stored data unreadable",
+      "regression_examples": [
+        "Password hash algorithm changed, existing users cannot log in",
+        "Encryption key rotation without re-encrypting stored data (E2EE incident precedent)",
+        "Token format changed, existing refresh tokens invalidated",
+        "New signing algorithm on JWT, existing tokens rejected"
+      ]
+    },
+    "database_changes": {
+      "description": "Security-related schema changes can break queries or lose data",
+      "regression_examples": [
+        "New NOT NULL constraint on column that has existing NULL rows",
+        "Column type change breaks existing queries",
+        "New unique constraint conflicts with existing duplicate data",
+        "Index changes slow down queries that were fast before"
+      ]
+    }
+  },
   "api_contracts": {
     "_description": "Backend API response shapes that frontend depends on. Changes to these MUST be flagged.",
     "GET /talent/users/:username": {

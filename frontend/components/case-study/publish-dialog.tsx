@@ -11,6 +11,11 @@ import { ImageEditModal } from "./image-edit-modal"
 import {
   Badge,
   Button,
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandList,
   Dialog,
   DialogClose,
   DialogContent,
@@ -20,11 +25,11 @@ import {
   DialogTitle,
   ErrorMessage,
   Input,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   ScrollArea,
   ScrollBar,
-  TagsInputControl,
-  TagsInputInput,
-  TagsInputRoot,
   useToast,
 } from "@/components/ui"
 
@@ -33,7 +38,6 @@ const MAX_TITLE_LENGTH = 120
 // skills.json is 710 entries; one request pulls the whole vocabulary so the
 // typeahead below searches every skill, not an alphabetical slice.
 const SKILL_LIBRARY_LIMIT = 1000
-
 // Fallback vocabulary — used only until the live autocomplete library
 // resolves, and if it ever comes back empty.
 const SKILL_OPTIONS = [
@@ -99,9 +103,9 @@ const SUGGESTION_SLOTS = 5
  *   1 — the label starts with it ("react" → "React Native")
  *   2 — a later word starts with it ("react" → "Native React")
  *   3 — it appears anywhere inside ("act" → "React")
- * Match is plain lowercased substring, the same test TagsInputInput applies
- * to the options it is handed, so this ranking never promotes a label the
- * input would then filter back out.
+ * Match is plain lowercased substring, the same test the suggestion list
+ * applies to the options it is handed, so this ranking never promotes a label
+ * the list would then filter back out.
  */
 function queryRank(label: string, query: string): number | null {
   const target = label.toLowerCase()
@@ -391,14 +395,75 @@ export function PublishDialog({
     return chosen
   }, [contentSuggestions, skills])
 
-  // Typeahead dropdown pool. Ranked here so the best match is computed on
-  // our side; the dropdown's own Command applies its scoring on top, so
-  // treat this as which skills appear rather than a guaranteed final order.
-  // It is the skills library and nothing else — the case study's own
-  // content plays no part in what appears or in what order. Typing "React" returns every
+  // Typeahead dropdown pool, in the order it is rendered (the Command list
+  // runs with `shouldFilter={false}`, so this order survives to the list). It is
+  // the skills library and nothing else — the case study's own content plays
+  // no part in what appears or in what order. Typing "React" returns every
   // React skill the library holds, best match first: exact, then labels
   // starting with it, then labels whose later words start with it, then bare
   // substrings; alphabetical inside each tier so the list is stable.
+  const [skillsOpen, setSkillsOpen] = useState(false)
+  const skillInputRef = useRef<HTMLInputElement>(null)
+  const skillsListRef = useRef<HTMLDivElement>(null)
+
+  // The list is portaled to document.body, which puts it OUTSIDE the scroll
+  // lock Radix's Dialog wraps around its content (react-remove-scroll). That
+  // lock cancels any wheel event it cannot attribute to the locked subtree, so
+  // the list ends up scrollable only by dragging the bar.
+  //
+  // Merely stopping propagation is not reliable here — it depends on which
+  // phase and target the lock listens on. Instead the scrolling is performed
+  // directly: move the viewport ourselves, then cancel the event so nothing
+  // else acts on it. When the list is already at an end the event is left
+  // alone, so the wheel falls through to the dialog body as it should.
+  // The listener must be native and non-passive; React attaches its own to the
+  // portal container (document.body), which is too late to matter.
+  useEffect(() => {
+    const el = skillsListRef.current
+    if (!skillsOpen || !el) return
+    const viewport = el.querySelector<HTMLElement>(
+      "[data-radix-scroll-area-viewport]"
+    )
+    if (!viewport) return
+
+    const onWheel = (event: WheelEvent) => {
+      const target = event.target as Node | null
+      if (!target || !el.contains(target)) return
+      const before = viewport.scrollTop
+      const max = viewport.scrollHeight - viewport.clientHeight
+      const next = Math.max(0, Math.min(max, before + event.deltaY))
+      if (next === before) return
+      viewport.scrollTop = next
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    // Capture phase on `document` so this runs before the scroll lock's own
+    // handler regardless of where that one is registered.
+    document.addEventListener("wheel", onWheel, {
+      capture: true,
+      passive: false,
+    })
+    return () =>
+      document.removeEventListener("wheel", onWheel, { capture: true })
+  }, [skillsOpen])
+
+  // Adding always goes through here so the cap, the error message, the query
+  // reset and the focus hand-back stay in one place — the list, Enter and a
+  // click all land on the same path.
+  const addSkill = (skill: string) => {
+    if (skills.includes(skill)) return
+    if (skills.length >= MAX_SKILLS) {
+      setSkillLimitReached(true)
+      return
+    }
+    setSkillLimitReached(false)
+    setSkills([...skills, skill])
+    setSkillQuery("")
+    setSkillsOpen(false)
+    skillInputRef.current?.focus()
+  }
+
   const query = skillQuery.trim().toLowerCase()
   const dropdownOptions = useMemo(() => {
     const pool = library.filter((skill) => !skills.includes(skill))
@@ -423,7 +488,7 @@ export function PublishDialog({
         dialogOverlay={<DialogOverlay className="backdrop-blur-md z-[110]" />}
         className="max-w-[740px] max-h-[min(90vh,762px)] flex flex-col p-0 z-[110] shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03),0px_20px_24px_-4px_rgba(16,24,40,.08)]"
       >
-        <DialogHeader className="shrink-0 gap-y-1 p-6 pb-5 relative">
+        <DialogHeader className="relative shrink-0 gap-y-0 py-3 pl-6 pr-3">
           <DialogTitle className="text-lg font-semibold text-primary-900 pr-8">
             Publish Your Case Study
           </DialogTitle>
@@ -445,8 +510,9 @@ export function PublishDialog({
           primitive for its other consumers.
         */}
         <ScrollArea
-          className="flex-1 min-h-0 flex flex-col"
-          viewportClassName="flex-1 min-h-0"
+          className="flex min-h-0 flex-1 flex-col"
+          viewportClassName="h-auto min-h-0 flex-1 [&>div]:h-auto"
+          type="auto"
           scrollBar={<ScrollBar className="w-4 p-1" />}
         >
         <div className="p-6 space-y-6">
@@ -578,47 +644,139 @@ export function PublishDialog({
 
           {/* Skills */}
           <div>
-            <TagsInputRoot
-              value={skills}
-              onValueChange={(details) => {
-                if (details.value.length > MAX_SKILLS) {
-                  setSkillLimitReached(true)
-                  return
-                }
-                setSkillLimitReached(false)
-                setSkills(details.value)
-              }}
-              className="space-y-1.5"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-900">
-                  Skills
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-500">
-                  List up to 10 key skills you used in this project.
-                </p>
-                <span className="shrink-0 text-sm text-gray-500">
+            <div className="space-y-1.5">
+              <div className="flex items-end justify-between gap-x-3">
+                <div className="space-y-0.5">
+                  <span className="flex items-center text-lg font-semibold leading-9 text-dark-blue-400">
+                    Skills
+                  </span>
+                  <p className="text-sm leading-5 text-gray-500">
+                    List up to 10 key skills you used in this project.
+                  </p>
+                </div>
+                <span className="shrink-0 text-xs leading-[15px] text-gray-500">
                   {skills.length}/{MAX_SKILLS}
                 </span>
               </div>
 
-              <TagsInputControl>
-                {/*
-                  Rendered in-flow rather than with `portalDropdown`: a
-                  portaled dropdown mounts on document.body at z-[60], which
-                  is below this dialog's own z-[110], so it would open behind
-                  the dialog. The in-flow dropdown lives inside the dialog's
-                  stacking context and stays visible.
-                */}
-                <TagsInputInput
-                  options={dropdownOptions}
-                  onInputValueChange={setSkillQuery}
-                  placeholder="Add Skills"
-                />
-              </TagsInputControl>
-            </TagsInputRoot>
+              {/* The suggestion list is composed here rather than taken from
+                  TagsInputInput's built-in dropdown: that one renders at
+                  z-[60] when portaled (behind this z-[110] dialog) and is
+                  clipped by the dialog's ScrollArea when it is not. Popover
+                  portals above the dialog and sizes itself to the control,
+                  which is what the design asks for. */}
+              <Popover
+                open={skillsOpen}
+                onOpenChange={(next) =>
+                  setSkillsOpen(next ? skillQuery.trim().length > 0 : false)
+                }
+              >
+                <PopoverTrigger asChild>
+                  <div
+                    className="flex h-11 w-full items-center gap-2 rounded-[5px] border border-gray-300 px-[14px] py-[10px] shadow-[0px_1px_2px_rgba(16,24,40,0.05)]"
+                    onClick={() => skillInputRef.current?.focus()}
+                  >
+                    <Input
+                      ref={skillInputRef}
+                      value={skillQuery}
+                      placeholder="Add Skills"
+                      className="h-max min-w-[120px] flex-1 border-0 p-0 text-base leading-6 shadow-none focus-visible:ring-0"
+                      onChange={(event) => {
+                        setSkillQuery(event.target.value)
+                        setSkillsOpen(event.target.value.trim().length > 0)
+                      }}
+                      onFocus={() => {
+                        if (skillQuery.trim()) setSkillsOpen(true)
+                      }}
+                      onKeyDown={(event) => {
+                        if (
+                          event.key === "Backspace" &&
+                          !skillQuery &&
+                          skills.length
+                        ) {
+                          setSkillLimitReached(false)
+                          setSkills(skills.slice(0, -1))
+                          return
+                        }
+                        if (event.key !== "Enter") return
+                        event.preventDefault()
+                        const first = dropdownOptions[0]
+                        if (first) addSkill(first)
+                      }}
+                    />
+                  </div>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  side="bottom"
+                  sideOffset={8}
+                  // PopoverContent hardcodes w-[346px]; twMerge will not drop
+                  // that for an arbitrary CSS-var width, so the width is set
+                  // inline where it always wins.
+                  style={{ width: "var(--radix-popover-trigger-width)" }}
+                  className="z-[115] p-0"
+                  // The design always drops this list below the control, so
+                  // flipping is off. The viewport below caps its own height to
+                  // the room actually left, so it stays reachable either way.
+                  avoidCollisions={false}
+                  ref={skillsListRef}
+                  onOpenAutoFocus={(event) => event.preventDefault()}
+                  onCloseAutoFocus={(event) => event.preventDefault()}
+                >
+                  {/* Command ships a fixed w-[346px]; the list has to span
+                      the whole control, so widen it back to the popover. */}
+                  <Command shouldFilter={false} className="w-full">
+                    <ScrollArea
+                      // "auto" keeps the bar visible the whole time the list
+                      // overflows; the default "scroll" only flashes it while
+                      // the wheel is actually moving.
+                      type="auto"
+                      viewportClassName="h-auto overflow-x-hidden [&>div]:h-auto"
+                      viewportStyle={{
+                        maxHeight:
+                          "min(232px, var(--radix-popover-content-available-height, 232px))",
+                      }}
+                      scrollBar={<ScrollBar className="w-4 p-1" />}
+                    >
+                      <CommandList className="max-h-none">
+                        <CommandEmpty>No results found.</CommandEmpty>
+                        <CommandGroup className="pt-0">
+                          {dropdownOptions.map((option) => {
+                            const matchIndex = option
+                              .toLowerCase()
+                              .indexOf(query)
+                            return (
+                              <CommandItem
+                                key={option}
+                                value={option}
+                                onSelect={() => addSkill(option)}
+                              >
+                                <span>
+                                  {query && matchIndex >= 0 ? (
+                                    <>
+                                      {option.slice(0, matchIndex)}
+                                      <span className="font-semibold text-gray-900">
+                                        {option.slice(
+                                          matchIndex,
+                                          matchIndex + query.length
+                                        )}
+                                      </span>
+                                      {option.slice(matchIndex + query.length)}
+                                    </>
+                                  ) : (
+                                    option
+                                  )}
+                                </span>
+                              </CommandItem>
+                            )
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                    </ScrollArea>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
 
             {skillLimitReached ? (
               <ErrorMessage size="sm" className="mt-1.5">
@@ -656,17 +814,17 @@ export function PublishDialog({
             {/* Suggested skills — a single row; extras are hidden rather
                 than wrapping to a second line. */}
             {availableSuggestions.length > 0 && skills.length < MAX_SKILLS ? (
-              <div className="mt-4 space-y-1.5">
-                <span className="text-sm font-medium text-gray-900">
+              <div className="mt-4 space-y-3">
+                <span className="block text-xs font-normal leading-5 text-dark-blue-400">
                   Suggested Skills
                 </span>
-                <div className="flex flex-nowrap items-center gap-x-2 overflow-hidden">
+                <div className="flex flex-wrap content-start items-start gap-3">
                   {availableSuggestions.map((skill) => (
                     <Badge
                       key={skill}
                       size="md"
                       visual="primary"
-                      className="bg-primary-50 pr-2 text-primary-500 focus-visible:outline-none shrink-0"
+                      className="shrink-0 gap-x-1 rounded-[16px] bg-[#E8EEFF] py-0.5 pl-2.5 pr-2 text-sm font-medium leading-5 text-primary-500 focus-visible:outline-none"
                       asChild
                     >
                       <button
@@ -693,13 +851,13 @@ export function PublishDialog({
 
         <div className="shrink-0 border-t border-gray-200" />
 
-        <DialogFooter className="shrink-0 flex items-center justify-end gap-x-3 p-6 pt-5">
+        <DialogFooter className="shrink-0 flex items-center justify-end gap-x-3 py-3 pl-6 pr-3">
           <DialogClose asChild>
-            <Button variant="outlined" visual="gray">
+            <Button size="lg" variant="outlined" visual="gray">
               Cancel
             </Button>
           </DialogClose>
-          <Button onClick={handlePublish} disabled={publishing}>
+          <Button size="lg" onClick={handlePublish} disabled={publishing}>
             Publish
           </Button>
         </DialogFooter>

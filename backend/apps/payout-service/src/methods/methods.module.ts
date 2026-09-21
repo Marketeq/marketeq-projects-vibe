@@ -14,6 +14,9 @@ import { PublishersModule }    from '../publishers/publishers.module';
 import { ProvidersModule }     from '../providers/providers.module';
 import { CryptoModule } from '../crypto/crypto.module';
 import { OAuthModule } from '../oauth/oauth.module';
+import { ExecutionModule } from '../execution/execution.module';
+import { FeesModule } from '../fees/fees.module';
+import { PauseModule } from '../pause/pause.module';
 
 @Module({
   imports: [
@@ -22,6 +25,9 @@ import { OAuthModule } from '../oauth/oauth.module';
     ProvidersModule,
     forwardRef(() => CryptoModule),
     OAuthModule,
+    ExecutionModule,   // WisePlatformService
+    FeesModule,        // PayoutFeeService
+    PauseModule,       // PauseStatusService
   ],
   controllers: [MethodsController],
   providers: [MethodsService, BankValidationService, BankEncryptionService, MicroDepositService],

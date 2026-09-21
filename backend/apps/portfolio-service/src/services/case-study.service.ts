@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException, ForbiddenException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { CaseStudy } from '../entities/case-study.entity';
 import { CaseStudyBlock, CaseStudyBlockType } from '../entities/case-study-block.entity';
+import { CaseStudyLike } from '../entities/case-study-like.entity';
 import { CreateCaseStudyDto, UpdateCaseStudyDto, PublishCaseStudyDto } from '../dto/case-study.dto';
 import { SlugService } from './slug.service';
 import { MediaService } from '../media/media.service';
@@ -26,6 +27,9 @@ export class CaseStudyService {
     private readonly caseStudies: Repository<CaseStudy>,
     @InjectRepository(CaseStudyBlock)
     private readonly blocks: Repository<CaseStudyBlock>,
+    @InjectRepository(CaseStudyLike)
+    private readonly likes: Repository<CaseStudyLike>,
+    private readonly dataSource: DataSource,
     private readonly slugService: SlugService,
     private readonly mediaService: MediaService,
     private readonly events: CaseStudyEventPublisher,
@@ -47,6 +51,80 @@ export class CaseStudyService {
 
   async getById(id: string, ownerUserId: string): Promise<CaseStudy> {
     return this.validateOwnership(id, ownerUserId);
+  }
+
+  /** Current like state for one viewer — what the heart renders on open. */
+  async getLikeState(
+    id: string,
+    userId: string,
+  ): Promise<{ liked: boolean; likesCount: number }> {
+    const cs = await this.caseStudies.findOne({
+      where: { id },
+      select: { id: true, likesCount: true },
+    });
+    if (!cs) {
+      throw new NotFoundException('Case study not found');
+    }
+    const liked = await this.likes.exist({
+      where: { caseStudyId: id, userId },
+    });
+    return { liked, likesCount: cs.likesCount };
+  }
+
+  /**
+   * Likes the case study for this viewer, or removes their like if they
+   * already had one.
+   *
+   * Everything runs in one transaction, and the stored total is recomputed
+   * from `case_study_likes` rather than incremented, so a double-submit or
+   * two concurrent clicks can't push the count away from the real number of
+   * rows. The insert races on the table's unique constraint rather than on
+   * a read-then-write check: a duplicate is caught and treated as "already
+   * liked", which is the state the caller asked for anyway.
+   */
+  async toggleLike(
+    id: string,
+    userId: string,
+  ): Promise<{ liked: boolean; likesCount: number }> {
+    return this.dataSource.transaction(async (manager) => {
+      const csRepo = manager.getRepository(CaseStudy);
+      const likeRepo = manager.getRepository(CaseStudyLike);
+
+      // Locked for the whole toggle, because the recount below has to see
+      // every committed like. Under READ COMMITTED two concurrent likes from
+      // different users would each see only their own insert, both count 1,
+      // and both write that same too-low total — leaving likesCount short of
+      // the real number of rows. The lock serializes toggles per case study.
+      const cs = await csRepo.findOne({
+        where: { id },
+        select: { id: true },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!cs) {
+        throw new NotFoundException('Case study not found');
+      }
+
+      const removed = await likeRepo.delete({ caseStudyId: id, userId });
+      const liked = removed.affected === 0;
+      if (liked) {
+        await likeRepo
+          .createQueryBuilder()
+          .insert()
+          .values({ caseStudyId: id, userId })
+          // Concurrent first-likes from the same viewer: one wins, the other
+          // is a no-op, and both end up reporting liked=true.
+          .orIgnore()
+          .execute();
+      }
+
+      const likesCount = await likeRepo.count({ where: { caseStudyId: id } });
+      await csRepo.update({ id }, { likesCount });
+
+      this.logger.debug(
+        `Case study ${id} ${liked ? 'liked' : 'unliked'} by ${userId} (total ${likesCount})`,
+      );
+      return { liked, likesCount };
+    });
   }
 
   async updateDraft(id: string, ownerUserId: string, dto: UpdateCaseStudyDto): Promise<CaseStudy> {

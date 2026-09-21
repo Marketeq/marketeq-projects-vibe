@@ -420,6 +420,24 @@ export class MagicLinkService {
         metadata: { reason: 'magic_link_expired' },
       });
 
+      // PS-14 §7/§10: previously the contractor was never told why their
+      // withdrawal disappeared — no email, no event, just a silent DB
+      // update. No contractor email is available here (this is a cron job,
+      // not a request — payout-service never stores it, only receives it
+      // per-request from the JWT), so this reuses publishPayoutFailed()
+      // rather than guessing at a user-service email-lookup contract that
+      // doesn't exist anywhere in this codebase. Same event/consumer
+      // earnings-service already handles for every other failed payout.
+      await this.publisher.publishPayoutFailed({
+        contractorId: payout.contractorId,
+        payoutRequestId: payout.id,
+        amount: payout.amountUsd,
+        currency: 'USD',
+        methodType: 'MAGIC_LINK',
+        reason: 'Your withdrawal request expired before it was confirmed.',
+        failedAt: new Date().toISOString(),
+      });
+
       this.logger.log(`Cancelled expired payout: ${payout.id}`);
     }
 

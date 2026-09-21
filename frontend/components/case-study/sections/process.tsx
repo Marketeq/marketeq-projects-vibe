@@ -48,6 +48,21 @@ function ProcessEdit({
   )
   const len = items.length
 
+  // Inserts a fresh step at `at`, seeding stepData too — items and
+  // stepData must stay in lockstep, otherwise steps.map((id) => stepData[id])
+  // below (and ProcessView's render) hits an undefined entry for the new id.
+  const addStepAt = (at: number) => {
+    const uniqueId = getId() + 2
+    setItems((prev) => prev.toSpliced(at, 0, uniqueId))
+    setStepData((prev) => ({
+      ...prev,
+      [uniqueId]: {
+        titleHtml: "Step Name",
+        bodyHtml: "This is sample description for process",
+      },
+    }))
+  }
+
   useEffect(() => {
     onDataChange?.({
       titleHtml: title,
@@ -107,10 +122,7 @@ function ProcessEdit({
                       setItems(items.filter((itm) => itm !== item))
                     }
                     canDuplicate={len < 4}
-                    onDuplicate={() => {
-                      const uniqueId = getId() + 2
-                      setItems(items.toSpliced(index, 0, uniqueId))
-                    }}
+                    onDuplicate={() => addStepAt(index)}
                   />
 
                   <div className="relative">
@@ -166,10 +178,7 @@ function ProcessEdit({
               >
                 <AddBlockDivider.Vertical
                   className="h-full group-hover/gap:visible invisible transition-[visibility] duration-300"
-                  onAdd={() => {
-                    const uniqueId = getId() + 2
-                    setItems(items.toSpliced(index, 0, uniqueId))
-                  }}
+                  onAdd={() => addStepAt(index)}
                 />
               </div>
             )}
@@ -182,7 +191,11 @@ function ProcessEdit({
 
 function ProcessView({ data }: { data?: Record<string, unknown> }) {
   const d = data ?? {}
-  const steps = Array.isArray(d.steps) ? (d.steps as ProcessStep[]) : []
+  // Entries can be null/undefined in case studies saved before the
+  // editor seeded new items — drop the holes rather than crash.
+  const steps = (
+    Array.isArray(d.steps) ? (d.steps as (ProcessStep | null | undefined)[]) : []
+  ).filter((item): item is ProcessStep => Boolean(item))
   return (
     <section>
       <Html
