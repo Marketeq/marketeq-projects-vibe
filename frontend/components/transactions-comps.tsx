@@ -3553,9 +3553,16 @@ export const OverviewTab = ({
 
   return (
     <>
-      <div className="flex gap-6">
-        {/* Main Content */}
-        <div className="flex-1 space-y-5 min-w-0">
+      {/* CSS Grid, not two independently-stacked flex columns — each column
+        used to stack its own cards at its own pace via space-y-5, so
+        "Direct Deposit" (left) and "Recent Activity" (right) landed at
+        different heights whenever row 1 (Earnings Summary / Available for
+        Withdrawal) wasn't the same height in both columns, which it never
+        is. Explicit row/col placement on all four cells below removes any
+        dependence on Grid's auto-placement order. */}
+      <div className="grid grid-cols-1 min-[1440px]:grid-cols-[1fr_372px] gap-x-6 gap-y-5">
+        {/* Row 1, col 1 — banners + Earnings Summary */}
+        <div className="min-[1440px]:col-start-1 min-[1440px]:row-start-1 space-y-5 min-w-0">
           {/* Dismissible for the session — closing it doesn't resolve the
             underlying failed withdrawal, just stops repeating the nudge
             once the contractor has seen it. */}
@@ -3858,7 +3865,10 @@ export const OverviewTab = ({
               </div>
             </div>
           </div>
+        </div>
 
+        {/* Row 2, col 1 — Direct Deposit onward */}
+        <div className="min-[1440px]:col-start-1 min-[1440px]:row-start-2 space-y-5 min-w-0">
           {/* Direct Deposit */}
           <div className="rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden">
             <div className="flex items-center justify-between p-8 pb-6">
@@ -7672,8 +7682,8 @@ export const OverviewTab = ({
           </div>
         </div>
 
-        {/* Right Sidebar */}
-        <div className="w-[372px] shrink-0 space-y-5 hidden min-[1440px]:block">
+        {/* Row 1, col 2 — Available for Withdrawal */}
+        <div className="hidden min-[1440px]:block min-[1440px]:col-start-2 min-[1440px]:row-start-1">
           {/* Available for Withdrawal */}
           <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
             <div className="flex items-center gap-1.5 mb-4">
@@ -7859,7 +7869,10 @@ export const OverviewTab = ({
               })()
             )}
           </div>
+        </div>
 
+        {/* Row 2, col 2 — Recent Activity */}
+        <div className="hidden min-[1440px]:block min-[1440px]:col-start-2 min-[1440px]:row-start-2">
           {/* Recent Activity — derived from real payout history (no dedicated
             activity-feed endpoint exists in payout-service; see toActivityItem). */}
           <div className="rounded-lg border border-gray-200 bg-white p-5">
