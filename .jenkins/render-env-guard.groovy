@@ -21,7 +21,11 @@ pipeline {
     environment {
         REPO = 'Marketeq/marketeq-projects-vibe'
         SERVICE_ID = 'srv-d76r48nafjfc73e1djf0'
-        MINIMUM_VARS = '41'
+        // Floor, not the exact count. The service carries 57 vars as of
+        // 2026-09-21; 55 leaves room to retire one or two deliberately
+        // without going red, while still catching a bulk deletion. At the
+        // old value of 41 sixteen variables could vanish unnoticed.
+        MINIMUM_VARS = '55'
     }
 
     stages {
