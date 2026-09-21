@@ -37,8 +37,8 @@
   transform-origin: left center;
 }
 @keyframes sidebar-peek {
-  0%, 100% { transform: translateX(0) rotate(0deg); }
-  35%, 65% { transform: translateX(4px) rotate(8deg); }
+  0%, 100% { transform: rotate(0deg); }
+  30%, 65% { transform: rotate(18deg); }
 }
 @keyframes sidebar-peek-reveal {
   0%, 100% { opacity: 0; }
@@ -90,14 +90,12 @@
 .sidebar-roof {
   transform-box: fill-box;
   transform-origin: center bottom;
+  opacity: 0;
 }
 
-/* --- Inbox flap cross-fade defaults --- */
-.sidebar-flap-closed,
-.sidebar-flap-open {
-  transition: opacity 0.3s ease;
-}
-.sidebar-flap-open { opacity: 0; }
+/* --- Inbox: swap closed ↔ open envelope --- */
+.sidebar-mail-open { display: none; }
+.sidebar-mail-closed { display: inline; }
 
 /* --- Simple wrapper animations --- */
 .group:hover .sidebar-anim-search { animation: sidebar-tilt 0.55s ease; }
@@ -107,8 +105,13 @@
 .group:hover .sidebar-anim-settings { animation: sidebar-spin 0.7s linear; }
 
 /* --- Home: roof tips like a hat --- */
+@keyframes sidebar-hat-tip-show {
+  0% { opacity: 0; }
+  8%, 92% { opacity: 1; }
+  100% { opacity: 0; }
+}
 .group:hover .sidebar-anim-home .sidebar-roof {
-  animation: sidebar-hat-tip 0.6s ease;
+  animation: sidebar-hat-tip 0.6s ease, sidebar-hat-tip-show 0.6s ease;
 }
 
 /* --- Contracts: lines draw L→R staggered, then checkmark pops --- */
@@ -156,9 +159,9 @@
   animation-delay: 0.3s;
 }
 
-/* --- Inbox: envelope opens (cross-fade closed→open flap) --- */
-.group:hover .sidebar-anim-inbox .sidebar-flap-closed { opacity: 0; }
-.group:hover .sidebar-anim-inbox .sidebar-flap-open { opacity: 1; }
+/* --- Inbox: swap to open envelope on hover --- */
+.group:hover .sidebar-anim-inbox .sidebar-mail-closed { display: none; }
+.group:hover .sidebar-anim-inbox .sidebar-mail-open { display: inline; }
 
 /* ------------------------------------------------------------------------------------------------ */
 
