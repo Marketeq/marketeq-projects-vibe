@@ -221,6 +221,11 @@ const isWeekendDate = (date: Date): boolean => {
   return day === 0 || day === 6
 }
 
+// BTB-271: mirrors offer-service's MAX_RATE (offer.constants.ts) — the
+// backend's real ceiling for the rate field, so this doesn't invent a
+// number of its own.
+const MAX_CUSTOM_RATE = 9999
+
 // T3/FR-1/AC-8.1: no backend endpoint computes this. offer-service
 // specified it in full — offer-response.interface.ts's startDateDisplay
 // field carries the exact "Monday, Jan 30, 2025" string this file had
@@ -464,6 +469,16 @@ const CUSTOM_HOURS_MAX: Record<string, number> = {
   day: 24,
   week: 168, // 7 * 24
   month: 744, // 31 * 24
+}
+
+// BTB-272: mirrors offer-service's MAX_DURATION_MONTHS (offer.constants.ts,
+// 60 months = 5 years) — the backend's real ceiling for durationMonths.
+// Per-unit, not a flat constant, because Months and Years are the same
+// backend field at two different scales, same shape as CUSTOM_HOURS_MAX
+// above.
+const CUSTOM_DURATION_MAX: Record<"Months" | "Years", number> = {
+  Months: 60,
+  Years: 5,
 }
 
 // Local copy of the shimmer pattern from talent-profile/page.tsx:531 — not
@@ -1963,6 +1978,7 @@ export function OfferDialog({
                                   className="w-full"
                                   type="text"
                                   inputMode="decimal"
+                                  maxLength={7}
                                   placeholder="Enter hourly rate"
                                   value={customRateValue}
                                   onChange={(event) => {
@@ -1974,8 +1990,22 @@ export function OfferDialog({
                                     // allowed here unlike customHours — this
                                     // is a dollar rate, not a whole-hours
                                     // count, and cents are a normal input.
+                                    //
+                                    // BTB-271: maxLength above stops the
+                                    // extreme case (a 50-digit paste); this
+                                    // adds a magnitude ceiling for a
+                                    // short-but-over-limit value like
+                                    // "10000". A non-finite parse (bare ".")
+                                    // falls through to the regex's own
+                                    // judgement — Number(".") is NaN, and
+                                    // that must not block a leading decimal
+                                    // point the regex already allows.
                                     const value = event.target.value
-                                    if (/^\d*(\.\d{0,2})?$/.test(value)) {
+                                    if (
+                                      /^\d*(\.\d{0,2})?$/.test(value) &&
+                                      (!Number.isFinite(Number(value)) ||
+                                        Number(value) <= MAX_CUSTOM_RATE)
+                                    ) {
                                       setCustomRateValue(value)
                                     }
                                   }}
@@ -2042,25 +2072,55 @@ export function OfferDialog({
                                   className="flex-1"
                                   type="text"
                                   inputMode="numeric"
+                                  maxLength={2}
                                   placeholder="Enter duration"
                                   value={customDurationValue}
                                   onChange={(event) => {
                                     // Same whole-value keystroke rejection as
                                     // customHours/customRateValue — integers
                                     // only, no fractional months/years.
+                                    //
+                                    // BTB-272: maxLength above stops the
+                                    // extreme case (a 50-digit paste); this
+                                    // adds a per-unit magnitude ceiling —
+                                    // unlike customRateValue's guard, no
+                                    // NaN-fallback is needed here, since
+                                    // /^\d*$/ never produces anything but ""
+                                    // or a plain digit string, and Number()
+                                    // of either is always finite.
                                     const value = event.target.value
-                                    if (/^\d*$/.test(value)) {
+                                    if (
+                                      /^\d*$/.test(value) &&
+                                      (value === "" ||
+                                        Number(value) <=
+                                          CUSTOM_DURATION_MAX[
+                                            customDurationUnit
+                                          ])
+                                    ) {
                                       setCustomDurationValue(value)
                                     }
                                   }}
                                 />
                                 <Select
                                   value={customDurationUnit}
-                                  onValueChange={(value) =>
-                                    setCustomDurationUnit(
-                                      value as "Months" | "Years"
-                                    )
-                                  }
+                                  onValueChange={(value) => {
+                                    // BTB-272: same defect reached through a
+                                    // different path — a value valid under
+                                    // the old unit can exceed the new one's
+                                    // max with no keystroke to catch it.
+                                    // Same clamp shape as customHours' Select
+                                    // onValueChange above (T1-12).
+                                    const nextUnit = value as
+                                      | "Months"
+                                      | "Years"
+                                    const max = CUSTOM_DURATION_MAX[nextUnit]
+                                    const clamped =
+                                      Number(customDurationValue) > max
+                                        ? String(max)
+                                        : customDurationValue
+                                    setCustomDurationUnit(nextUnit)
+                                    setCustomDurationValue(clamped)
+                                  }}
                                 >
                                   <SelectTrigger className="w-[140px] shrink-0 text-left">
                                     <SelectValue />
@@ -2478,8 +2538,18 @@ export function OfferDialog({
                                             // just styles it gray.
                                             minValue={new Date()}
                                             onValueChange={(date) => {
-                                              setSelectedStartDate(date)
-                                              setFocusedStartDate(date)
+                                              // BTB-266: matches
+                                              // computeEstimatedStartDate's
+                                              // existing weekend handling —
+                                              // silent snap to the following
+                                              // Monday, no toast/warning.
+                                              const adjusted = isWeekendDate(
+                                                date
+                                              )
+                                                ? getNextMondayOnOrAfter(date)
+                                                : date
+                                              setSelectedStartDate(adjusted)
+                                              setFocusedStartDate(adjusted)
                                               setSelectedStartDateAction(
                                                 "change"
                                               )
@@ -2520,7 +2590,12 @@ export function OfferDialog({
                                   }
                                 />
                                 <span className="text-right text-[10px] font-medium leading-4 text-gray-400">
-                                  {message.length}/500
+                                  {/* BTB-273: same boolean-gate-not-live-filter
+                                  mechanism as contractTitle.trim() above —
+                                  collapse to 0 only when the whole value is
+                                  whitespace, don't recompute a trimmed length
+                                  for a value that has real content. */}
+                                  {message.trim() === "" ? 0 : message.length}/500
                                 </span>
                               </div>
                             </div>
