@@ -6,6 +6,12 @@ import { cn } from "@/utils/functions"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui"
 import { useExclusiveTooltip } from "./tooltip-context"
 
+// A locally-created task (not yet saved to the backend) can't start the
+// timer — mirrors TimeTrackerApp's isRealTaskId check.
+function isRealTaskId(id: string): boolean {
+  return !/^task-/.test(id) && !/^t-\d/.test(id)
+}
+
 export interface TaskEntry {
   id: string
   name: string
@@ -446,6 +452,7 @@ export function ContractEntry({
                     isDifferentContract={isDifferentContract}
                     isTracking={isTracking}
                     size="xs"
+                    clickHint={isRealTaskId(task.id) ? undefined : "Please select a task first"}
                   />
                 </div>
               ))}
