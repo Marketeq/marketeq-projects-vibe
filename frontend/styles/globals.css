@@ -104,7 +104,8 @@
 .group:hover .sidebar-anim-alert { animation: sidebar-ring 0.8s ease; }
 .group:hover .sidebar-anim-settings { animation: sidebar-spin 0.7s linear; }
 
-/* --- Home: roof tips like a hat --- */
+/* --- Home: roof tips like a hat (overflow visible so tipped roof isn't clipped) --- */
+.sidebar-anim-home { overflow: visible; }
 @keyframes sidebar-hat-tip-show {
   0% { opacity: 0; }
   8%, 92% { opacity: 1; }
