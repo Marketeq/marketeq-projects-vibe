@@ -2969,7 +2969,7 @@ function Default() {
                                             key={edu.id || idx}
                                             className="flex pb-5 items-start gap-x-6"
                                           >
-                                            <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
+                                            <div className="size-[55px] p-[5px] relative shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-white flex items-center justify-center">
                                               <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
                                                 {edu.school?.charAt(0) || "E"}
                                               </span>
