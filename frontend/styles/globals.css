@@ -57,40 +57,34 @@
   65% { transform: scale(0.95); }
 }
 @keyframes sidebar-line-draw {
-  0% { stroke-dashoffset: 10; opacity: 0; }
-  20% { opacity: 1; }
-  100% { stroke-dashoffset: 0; opacity: 1; }
+  0% { stroke-dashoffset: 10; }
+  100% { stroke-dashoffset: 0; }
 }
 @keyframes sidebar-check-pop {
-  0% { stroke-dashoffset: 10; opacity: 0; }
-  40% { opacity: 1; }
-  100% { stroke-dashoffset: 0; opacity: 1; }
+  0% { stroke-dashoffset: 10; }
+  100% { stroke-dashoffset: 0; }
 }
 @keyframes sidebar-bar-grow {
-  0% { stroke-dashoffset: 10; opacity: 0; }
-  20% { opacity: 1; }
-  100% { stroke-dashoffset: 0; opacity: 1; }
+  0% { stroke-dashoffset: 10; }
+  100% { stroke-dashoffset: 0; }
 }
 @keyframes sidebar-hat-tip {
   0%, 100% { transform: translateY(0) rotate(0deg); }
   30%, 60% { transform: translateY(-3px) rotate(-12deg); }
 }
 @keyframes sidebar-dollar-s-draw {
-  0% { stroke-dashoffset: 40; opacity: 0; }
-  8% { opacity: 1; }
-  100% { stroke-dashoffset: 0; opacity: 1; }
+  0% { stroke-dashoffset: 40; }
+  100% { stroke-dashoffset: 0; }
 }
 @keyframes sidebar-dollar-line-draw {
-  0% { stroke-dashoffset: 16; opacity: 0; }
-  20% { opacity: 1; }
-  100% { stroke-dashoffset: 0; opacity: 1; }
+  0% { stroke-dashoffset: 16; }
+  100% { stroke-dashoffset: 0; }
 }
 
 /* --- Transform setup for animated SVG parts --- */
 .sidebar-roof {
   transform-box: fill-box;
   transform-origin: center bottom;
-  opacity: 0;
 }
 
 /* --- Inbox: swap closed ↔ open envelope --- */
@@ -106,13 +100,8 @@
 
 /* --- Home: roof tips like a hat (overflow visible so tipped roof isn't clipped) --- */
 .sidebar-anim-home { overflow: visible; }
-@keyframes sidebar-hat-tip-show {
-  0% { opacity: 0; }
-  8%, 92% { opacity: 1; }
-  100% { opacity: 0; }
-}
 .group:hover .sidebar-anim-home .sidebar-roof {
-  animation: sidebar-hat-tip 0.6s ease, sidebar-hat-tip-show 0.6s ease;
+  animation: sidebar-hat-tip 0.6s ease;
 }
 
 /* --- Contracts: lines draw L→R staggered, then checkmark pops --- */
