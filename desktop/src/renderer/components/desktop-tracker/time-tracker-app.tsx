@@ -570,7 +570,13 @@ export function TimeTrackerApp({
       return next
     })
   }, [])
-  const [days, setDays] = React.useState<DayGroup[]>(initialDays || [])
+  // Always start with a "Today" row so the locally-computed todayStats
+  // below has somewhere to render even if the contracts fetch never
+  // succeeds (e.g. offline right after a restart) — fetchContracts()
+  // overwrites this with real contract data once/if it succeeds.
+  const [days, setDays] = React.useState<DayGroup[]>(
+    initialDays || [{ label: "Today", fullDate: formatDate(), totalHours: "0", hourlyRate: 75, contracts: [] }]
+  )
   const [contractsLoaded, setContractsLoaded] = React.useState(false)
 
   // ── "Today" hours/earnings — persisted locally, survives app restarts ──
