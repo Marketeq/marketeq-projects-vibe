@@ -100,7 +100,8 @@
 .group:hover .sidebar-anim-settings { animation: sidebar-spin 0.7s linear; }
 
 /* --- Home: roof tips like a hat (overflow visible so tipped roof isn't clipped) --- */
-.sidebar-anim-home { overflow: visible; }
+.sidebar-anim-home,
+.sidebar-anim-home svg { overflow: visible; }
 .group:hover .sidebar-anim-home .sidebar-roof {
   visibility: visible;
   animation: sidebar-hat-tip 0.6s ease;
