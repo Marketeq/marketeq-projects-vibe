@@ -85,8 +85,8 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
     const contracts: BackendContract[] = Array.isArray(data) ? data : [];
     log?.info({ count: contracts.length }, 'contracts fetched');
 
-    // Mirror each contract + a default task into local SQLite so
-    // the session table's FK constraints are satisfied.
+    // Mirror each contract and its real tasks into local SQLite so the
+    // session table's FK constraints are satisfied.
     if (deps.contractRepo && deps.taskRepo) {
       const now = Date.now();
       for (const c of contracts) {
@@ -104,17 +104,9 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
             screenshot_interval_seconds: 60,
             mirrored_at: now,
           });
-          // Ensure a default task row exists for this contract
-          // Mirror real tasks from TTS API into local SQLite
-          const taskId = `task-${c.id}`;
-          deps.taskRepo.upsert({
-            id: taskId,
-            contract_id: c.id,
-            name: c.title || 'General work',
-            archived: 0,
-            mirrored_at: now,
-          });
-          // Also fetch and mirror real tasks from TTS
+          // Mirror only the contract's real tasks from TTS into local SQLite.
+          // No synthetic "task-<id>" placeholder — a session must reference a
+          // real task, and an unknown id should fail fast, not be made valid.
           try {
             const tasks = await fetchTasksForContract(c.id, token);
             for (const t of tasks) {
@@ -126,7 +118,7 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
                 mirrored_at: now,
               });
             }
-          } catch { /* TTS unavailable — default task is enough */ }
+          } catch { /* TTS unavailable — real tasks sync on the next fetch */ }
         } catch (err) {
           log?.warn({ err, contractId: c.id }, 'failed to mirror contract to local db');
         }

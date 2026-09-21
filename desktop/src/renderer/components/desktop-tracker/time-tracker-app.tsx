@@ -664,10 +664,7 @@ export function TimeTrackerApp({
                   duration: "00:00:00",
                 }))
               }
-            } catch { /* fallback */ }
-            if (tasks.length === 0) {
-              tasks = [{ id: `task-${c.id}`, name: "General work", timeRange: "Not started", duration: "00:00:00" }]
-            }
+            } catch { /* no tasks — the card shows its "Add A Task" empty state */ }
             return {
               id: c.id,
               name: c.title || "Untitled Contract",
@@ -829,6 +826,39 @@ export function TimeTrackerApp({
 
   // ── Actions ─────────────────────────────────────────────────────────────
 
+  // Pin a card at the top of the scroll area. Shared by toggleContract and
+  // openContract.
+  const scrollContractIntoView = (id: string) => {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const el = document.getElementById(`contract-${id}`)
+        const container = scrollRef.current
+        if (el && container) {
+          const cardRect = el.getBoundingClientRect()
+          const containerRect = container.getBoundingClientRect()
+          const scrollTarget = container.scrollTop + (cardRect.top - containerRect.top) - 52 // 48px sticky header + 4px breathing room
+          container.scrollTo({ top: Math.max(0, scrollTarget), behavior: "smooth" })
+        }
+      }, 250)
+    })
+  }
+
+  // Force-open a contract card (never toggles it shut) and scroll it into view.
+  // Used when the user clicks ▶ on a contract header — per spec that only
+  // re-scopes to the contract's tasks, it must not start the timer.
+  const openContract = (id: string) => {
+    const alreadyOpen = expandedContracts.has(id)
+    setExpandedContracts((prev) => new Set(prev).add(id))
+    if (!alreadyOpen) scrollContractIntoView(id)
+  }
+
+  // A real task from the backend must be selected before the timer can start.
+  // Reject a missing id, the raw contract id, a synthetic "task-<id>" mirror,
+  // or a locally-created "t-<timestamp>" row — each produces a session the
+  // website cannot map back to a task.
+  const isRealTaskId = (id?: string): id is string =>
+    !!id && !/^task-/.test(id) && !/^t-\d/.test(id)
+
   const toggleContract = (id: string) => {
     const isOpening = !expandedContracts.has(id)
     setExpandedContracts((prev) => {
@@ -839,22 +869,15 @@ export function TimeTrackerApp({
     })
     // Single scroll: pin the card at the top, ensuring header is at least collapsed
     if (isOpening) {
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          const el = document.getElementById(`contract-${id}`)
-          const container = scrollRef.current
-          if (el && container) {
-            const cardRect = el.getBoundingClientRect()
-            const containerRect = container.getBoundingClientRect()
-            const scrollTarget = container.scrollTop + (cardRect.top - containerRect.top) - 52 // 48px sticky header + 4px breathing room
-            container.scrollTo({ top: Math.max(0, scrollTarget), behavior: "smooth" })
-          }
-        }, 250)
-      })
+      scrollContractIntoView(id)
     }
   }
 
   const startTimerImmediate = (taskName: string, contractName: string, contractId: string, taskId?: string, clientHandle?: string) => {
+    if (!isRealTaskId(taskId)) {
+      console.error("startTimer blocked: no real task selected", { contractId, taskId })
+      return
+    }
     setActiveTask({ taskName, contractName, contractId, clientHandle: clientHandle || "", taskId })
     setTrackingStartTime(new Date())
     setElapsed(0)
@@ -868,11 +891,15 @@ export function TimeTrackerApp({
     // Start the main process timer → creates a session → enables screenshots
     window.dtt?.timer?.start?.({
       contractId,
-      taskId: taskId || contractId,
+      taskId,
     }).catch((err: unknown) => console.error("timer.start failed:", err))
   }
 
   const startTimer = (taskName: string, contractName: string, contractId: string, taskId?: string, clientHandle?: string) => {
+    if (!isRealTaskId(taskId)) {
+      console.error("startTimer blocked: no real task selected", { contractId, taskId })
+      return
+    }
     // Begin 3-2-1 countdown
     setCountdown(3)
     pendingStartRef.current = () => startTimerImmediate(taskName, contractName, contractId, taskId, clientHandle)
@@ -963,6 +990,8 @@ export function TimeTrackerApp({
   }
 
   const handlePlayTask = (taskId: string, contractId?: string) => {
+    // Ignore synthetic / local ids that don't exist on the backend.
+    if (!isRealTaskId(taskId)) return
     // If already tracking, switch immediately (no countdown)
     const start = isRunning ? startTimerImmediate : startTimer
     for (const day of days) {
@@ -978,29 +1007,22 @@ export function TimeTrackerApp({
   }
 
   const handlePlayContract = (contractId: string) => {
-    const start = isRunning ? startTimerImmediate : startTimer
-    for (const day of days) {
-      const c = day.contracts.find((co) => co.id === contractId)
-      if (c) {
-        if (c.tasks.length > 0) {
-          start(c.tasks[0].name, c.name, c.id, c.tasks[0].id, c.clientHandle)
-        } else {
-          start("General work", c.name, c.id, undefined, c.clientHandle)
-        }
-        return
-      }
-    }
+    // The contract-header ▶ never starts the timer — selecting a contract only
+    // re-scopes to its tasks (spec DTT-AC-026.2). Open the card so the user
+    // can click ▶ on a specific task row.
+    openContract(contractId)
   }
 
   const handleSwitchContract = (contractId: string) => {
-    // Stop current tracking, switch to new contract, start immediately
+    // Don't auto-pick tasks[0]. Surface the target contract's tasks and let the
+    // user choose a row (which starts via handlePlayTask). Contract selection
+    // alone never starts the timer.
     for (const day of days) {
       const c = day.contracts.find((co) => co.id === contractId)
       if (c) {
-        const taskName = c.tasks.length > 0 ? c.tasks[0].name : "General work"
-        const taskId = c.tasks.length > 0 ? c.tasks[0].id : undefined
-        startTimerImmediate(taskName, c.name, c.id, taskId, c.clientHandle)
-        // Show floating alert
+        setView("main") // no-op if already on main
+        openContract(contractId)
+        // Confirm the context switch to the user
         setSwitchAlert(c.name)
         if (switchAlertTimeout.current) clearTimeout(switchAlertTimeout.current)
         switchAlertTimeout.current = setTimeout(() => setSwitchAlert(null), 3000)
