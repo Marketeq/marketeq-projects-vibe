@@ -678,7 +678,7 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
                       value={amount}
                       disabled={balanceLoading || !!balanceError || (!!balance && available <= 0)}
                       onChange={(e) => setAmount(e.target.value)}
-                      className="pl-7 pr-32"
+                      className="pl-7 pr-36 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
                     {available > 0 && (
                       <button
