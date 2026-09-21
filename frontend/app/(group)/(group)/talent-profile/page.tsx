@@ -2682,7 +2682,7 @@ function Default() {
                                             className="flex gap-x-6"
                                           >
                                             <div className="relative flex flex-col items-center">
-                                              <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-gray-50 overflow-hidden relative">
+                                              <div className="size-[55px] border border-gray-300 rounded-lg inline-flex shrink-0 justify-center items-center shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] bg-white overflow-hidden relative">
                                                 <span className="absolute inset-0 inline-flex items-center justify-center text-lg font-bold text-gray-400">
                                                   {exp.company?.charAt(0) ||
                                                     "W"}
@@ -2708,7 +2708,7 @@ function Default() {
                                                     brand?.type === "component"
                                                   ) {
                                                     return (
-                                                      <brand.Icon className="size-9 relative bg-gray-50" />
+                                                      <brand.Icon className="size-9 relative bg-white" />
                                                     )
                                                   }
                                                   if (
@@ -2724,7 +2724,7 @@ function Default() {
                                                         }
                                                         width={36}
                                                         height={36}
-                                                        className="object-contain size-9 relative bg-gray-50"
+                                                        className="object-contain size-9 relative bg-white"
                                                         loading="lazy"
                                                         data-fallback="0"
                                                         onError={(e) => {
@@ -2997,7 +2997,7 @@ function Default() {
                                                   brand?.type === "component"
                                                 ) {
                                                   return (
-                                                    <brand.Icon className="size-9 relative bg-gray-50" />
+                                                    <brand.Icon className="size-9 relative bg-white" />
                                                   )
                                                 }
                                                 if (
@@ -3013,7 +3013,7 @@ function Default() {
                                                       }
                                                       width={36}
                                                       height={36}
-                                                      className="object-contain size-9 relative bg-gray-50"
+                                                      className="object-contain size-9 relative bg-white"
                                                       loading="lazy"
                                                       data-fallback="0"
                                                       onError={(e) => {
