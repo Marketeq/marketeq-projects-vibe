@@ -15,9 +15,10 @@
 //   4. Computes elapsed time monotonically using process.hrtime.bigint() for
 //      safety against wall-clock skew, while still using Date.now() for
 //      persisted timestamps.
-//   5. Survives app restart: restoreFromDb() reads the latest open session
-//      and re-hydrates the FSM into `Paused` (never directly Running — the
-//      user must explicitly resume so we don't silently bill).
+//   5. Survives app restart: restoreFromDb() closes every session left open
+//      by an unclean shutdown (crash / force-kill) and leaves the FSM Idle —
+//      it never re-hydrates a session into Running or Paused, so a restart
+//      can't silently keep billing or resume capture for stale state.
 //   6. Enforces business rules from doc 22 (max session 14h, max break 4h,
 //      paid-break allowance).
 //
@@ -700,10 +701,7 @@ export function createTimerService(deps: TimerServiceDeps) {
   // Restart recovery (doc 01 §18, doc 05 DTT-EDGE-CRASH.*)
   // ---------------------------------------------------------------------------
 
-  function restoreFromDb(): {
-    snapshot: TimerSnapshot;
-    closed: Array<{ id: string; wasSynced: boolean }>;
-  } {
+  function restoreFromDb() {
     // After an unclean restart, never silently resume or bill (doc 01 §18,
     // doc 20). A graceful quit closes the session via APP_QUIT; anything still
     // open here is a crash / force-kill leftover. Close every one of them and
@@ -728,7 +726,7 @@ export function createTimerService(deps: TimerServiceDeps) {
     }
     return {
       snapshot: snapshot(),
-      closed: rows.map((r) => ({ id: r.id, wasSynced: r.synced_at != null })),
+      closed: rows,
     };
   }
 

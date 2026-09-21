@@ -149,9 +149,10 @@ async function bootstrap(): Promise<void> {
   // --- Phase 2: Timer service (9-state FSM) ----------------------------
   let timerService: TimerService | null = null;
   let detachIpcHandlers: (() => void) | null = null;
-  // Sessions the crash-recovery sweep closed at startup; any that were already
-  // synced get a backend close enqueued once the outbox exists (Phase 4).
-  let recoveredSessions: Array<{ id: string; wasSynced: boolean }> = [];
+  // Sessions the crash-recovery sweep closed at startup — each gets a backend
+  // close enqueued once the outbox exists (Phase 4).
+  let recoveredSessions: ReturnType<TimerService['restoreFromDb']>['closed'] =
+    [];
   try {
     const db = initDatabase();
     const repos = createRepos(db);
@@ -416,26 +417,23 @@ async function bootstrap(): Promise<void> {
       }).detach;
     }
 
-    // Push a close to the backend for any crash-swept session it already knew
-    // about, so it doesn't keep showing a session as running. Unsynced ones
-    // never reached the server — nothing to do. FIFO puts this after the
-    // original POST /sessions; the backend close is idempotent.
+    // Push a close to the backend for every crash-swept session. If the
+    // backend never knew about it (session.start hadn't synced yet), this
+    // 404s and the outbox dead-letters it immediately — same idempotent,
+    // non-retryable-4xx handling every other outbox write already relies on.
+    // FIFO puts this after the original POST /sessions.
     for (const s of recoveredSessions) {
-      if (!s.wasSynced) continue;
-      const row = repos.session.findById(s.id);
-      if (row?.ended_at != null) {
-        outbox.enqueue({
-          kind: 'session.close',
-          method: 'POST',
-          path: `/sessions/${s.id}/close`,
-          id: `req_ses-close-${s.id}`,
-          payload: {
-            endedAt: row.ended_at,
-            reason: row.end_reason ?? 'crash_recover',
-            billableSeconds: row.billable_seconds,
-          },
-        });
-      }
+      outbox.enqueue({
+        kind: 'session.close',
+        method: 'POST',
+        path: `/sessions/${s.id}/close`,
+        id: `req_ses-close-${s.id}`,
+        payload: {
+          endedAt: s.endedAt,
+          reason: s.endReason ?? 'crash_recover',
+          billableSeconds: s.billableSeconds,
+        },
+      });
     }
 
     stopSync = async () => {
