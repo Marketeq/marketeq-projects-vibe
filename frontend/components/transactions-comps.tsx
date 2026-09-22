@@ -10360,8 +10360,18 @@ export const EarningsTab = ({
         </p>
       )}
 
-      {/* Filters Row — Figma: ~8–12px gutters between controls */}
-      <div className="flex items-center gap-2.5 flex-wrap">
+      {/* Filters Row — Figma: ~8–12px gutters between controls.
+        flex-nowrap + overflow-x-auto, not flex-wrap: at common window
+        widths the 6 filter chips + search field need more room than the
+        row has, and flex-wrap was dropping the search field (the last
+        child, pushed right via ml-auto below) onto its own line instead of
+        keeping it inline. Scrolling the row horizontally when it's tight
+        keeps search on the same row always, which is what's expected here.
+        [&>*]:shrink-0 — without it, flex-nowrap's default shrink:1 squeezes
+        the filter chips instead of scrolling, wrapping labels like "All
+        Entry Types" onto two lines inside the button. Chips keep their
+        natural width and the row scrolls instead. */}
+      <div className="flex items-center gap-2.5 flex-nowrap overflow-x-auto [&>*]:shrink-0">
         <ToggleGroupRoot
           value={[viewMode]}
           onValueChange={(details) => {
