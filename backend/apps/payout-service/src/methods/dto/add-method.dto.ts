@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsIn, IsNotEmpty } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsNotEmpty, IsDateString } from 'class-validator';
 
 export class AddMethodDto {
   @IsIn(['BANK_STRIPE', 'BANK_MANUAL', 'WISE', 'PAYONEER', 'CRYPTO', 'MARKETEQ_DEBIT_CARD', 'TEQ_COIN'])
@@ -48,6 +48,14 @@ export class AddMethodDto {
   @IsOptional() @IsString() bankCpfCnpj?: string;
   @IsOptional() @IsString() bankAgencia?: string;
   @IsOptional() @IsString() bankConta?: string;
+
+  // PS-34 §4.1/§4.2: DOB + legal name, required for UK/SEPA/AU/CA
+  // (Stripe cross-border) BANK_MANUAL methods — added to the bank entry
+  // form (PS-06) to unlock the transfers capability via
+  // StripeProvider.submitDob(). ISO 8601 date string (YYYY-MM-DD).
+  @IsOptional() @IsDateString() dateOfBirth?: string;
+  @IsOptional() @IsString() legalFirstName?: string;
+  @IsOptional() @IsString() legalLastName?: string;
 
   // OAuth fields
   @IsOptional() @IsString() wiseEmail?: string;

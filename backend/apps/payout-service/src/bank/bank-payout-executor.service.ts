@@ -287,6 +287,21 @@ export class BankPayoutExecutorService {
 
     try {
       const amountUsd = parseFloat(payout.netAmountUsd);
+
+      // PS-36 §11: check Marketeq's own Wise Platform float before funding —
+      // getWisePlatformBalanceUsd() existed with zero callers, so an
+      // insufficient float surfaced only as a raw fundTransfer() 502
+      // (ERR_WISE_PLATFORM_FUND_FAILED) instead of this doc's distinct,
+      // finance-actionable pre-flight error.
+      const platformBalanceUsd = await this.wisePlatformService.getWisePlatformBalanceUsd();
+      if (platformBalanceUsd < amountUsd) {
+        this.logger.error(`Wise Platform float insufficient: balance $${platformBalanceUsd} < required $${amountUsd} for payout ${payout.id}`);
+        await this.failPayout(payout,
+          'This withdrawal could not be processed right now. Please try again shortly.',
+          'ERR_WISE_PLATFORM_INSUFFICIENT_BALANCE');
+        return;
+      }
+
       const quote = await this.wisePlatformService.getQuote({
         sourceCurrency: 'USD',
         targetCurrency: method.bankCurrency ?? 'USD',
