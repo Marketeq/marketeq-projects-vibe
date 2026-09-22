@@ -25,10 +25,14 @@ export class SubmitDocumentRequestDto {
   @Length(1, 64)
   documentNumber!: string;
 
+  // Required for every document type except drivers_licence, where Figma marks
+  // it optional. When supplied for a drivers_licence too, it must still pass
+  // the same format and not-past-date checks as every other document type.
+  @ValidateIf((o) => o.documentType !== DocumentType.DRIVERS_LICENCE || o.expirationDate !== undefined)
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'expirationDate must be in YYYY-MM-DD format' })
   @IsNotPastDate()
-  expirationDate!: string;
+  expirationDate?: string;
 
   @ValidateIf((o) => o.documentType === DocumentType.DRIVERS_LICENCE)
   @IsString()

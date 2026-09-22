@@ -33,7 +33,13 @@ export class TravelModeReminderJob {
     });
     this.logger.log(`Travel Mode reminder sweep: ${dueProfiles.length} profile(s) due.`);
     for (const profile of dueProfiles) {
-      await this.evaluateAndSendIfDue(profile, now);
+      try {
+        await this.evaluateAndSendIfDue(profile, now);
+      } catch {
+        // Deliberately no error detail here — could be a raw DB error,
+        // and this log must never carry PII or internals. See docs/error-handling.
+        this.logger.error(`Travel Mode reminder failed for profile ${profile.id}`);
+      }
     }
   }
 
