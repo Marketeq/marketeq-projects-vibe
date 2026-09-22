@@ -16,6 +16,13 @@ export class SubmitDocumentRequestDto {
   })
   documentType!: DocumentType;
 
+  // Display-only, never used for gate/business logic (TRVG2 §1.4).
+  // documentType above remains the canonical, vendor-aligned value.
+  @IsOptional()
+  @IsString()
+  @Length(1, 100)
+  documentTypeLabel?: string;
+
   @IsString()
   @Length(2, 2)
   @Matches(/^[A-Z]{2}$/, { message: 'issuingCountry must be a 2-letter uppercase ISO country code' })

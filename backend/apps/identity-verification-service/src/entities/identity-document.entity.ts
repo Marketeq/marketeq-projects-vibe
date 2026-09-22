@@ -42,6 +42,12 @@ export class IdentityDocument {
   })
   documentType!: DocumentType;
 
+  // Display-only. Never branch gate or business logic on this field
+  // (TRVG2 §1.4). documentType (above) remains the canonical,
+  // vendor-aligned value; this is user-facing wording only.
+  @Column({ name: 'document_type_label', type: 'varchar', length: 100, nullable: true })
+  documentTypeLabel!: string | null;
+
   @Column({ name: 'issuing_country', type: 'char', length: 2 })
   issuingCountry!: string;
 

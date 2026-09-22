@@ -10,11 +10,23 @@ export enum DeclaredDuration {
   NOT_SURE = 'not_sure',
 }
 
+// TRVG2 §1.1 ("Verification status") nine-value enumeration, replacing the
+// earlier four-value placeholder model. See TRVG2 §3 ("State Transitions")
+// for the full transition table: UNSTARTED -> IN_PROGRESS -> PENDING ->
+// VERIFIED; PENDING can instead go to FAILED / FAILED_FINAL / BLOCKED_DUPLICATE
+// / BLOCKED_AGE; FAILED_FINAL and BLOCKED_AGE both auto-clear back to
+// UNSTARTED (24h cooldown / eligible_on respectively); VERIFIED -> EXPIRED
+// on document_expires_on, which returns to IN_PROGRESS on a new session.
 export enum IdentityVerificationStatus {
-  NOT_VERIFIED = 'not_verified',
-  SUBMITTED_PENDING_REVIEW = 'submitted_pending_review',
+  UNSTARTED = 'unstarted',
+  IN_PROGRESS = 'in_progress',
+  PENDING = 'pending',
   VERIFIED = 'verified',
-  REJECTED_BLOCKED = 'rejected_blocked',
+  FAILED = 'failed',
+  FAILED_FINAL = 'failed_final',
+  BLOCKED_DUPLICATE = 'blocked_duplicate',
+  BLOCKED_AGE = 'blocked_age',
+  EXPIRED = 'expired',
 }
 
 export enum LocationVerificationStatus {

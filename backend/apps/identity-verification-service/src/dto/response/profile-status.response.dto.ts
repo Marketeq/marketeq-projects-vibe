@@ -5,6 +5,7 @@ import {
   DeclaredDuration,
 } from '../../entities/enums/identity-verification.enums';
 import { IdentityVerificationProfile } from '../../entities/identity-verification-profile.entity';
+import { coarseFailureReason } from '../../common/status/coarse-failure-reason';
 
 export class ProfileStatusResponseDto {
   verifiedHomeCountry!: string | null;
@@ -34,7 +35,8 @@ export class ProfileStatusResponseDto {
     dto.declaredDuration = profile.declaredDuration;
     dto.travelModeActive = profile.travelModeActive;
     dto.identityVerificationStatus = profile.identityVerificationStatus;
-    dto.identityRejectionReason = profile.identityRejectionReason;
+    dto.identityRejectionReason =
+      profile.identityRejectionReason ?? coarseFailureReason(profile.identityVerificationStatus);
     dto.locationVerificationStatus = profile.locationVerificationStatus;
     dto.reconfirmationRequired = Boolean(
       profile.verifiedHomeCountry && profile.detectedCountry && profile.verifiedHomeCountry !== profile.detectedCountry,

@@ -10,6 +10,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { IdentityVerificationService } from '../services/identity-verification.service';
 import { BearerAuthGuard } from '../common/guards/bearer-auth.guard';
 import { TravelClassificationRequestDto } from '../dto/request/travel-classification.request.dto';
@@ -71,7 +72,11 @@ export class IdentityVerificationController {
     return this.service.createDocumentUploadUrl(req.userId, dto.fileExtension);
   }
 
+  // TRVG2 §6.2: rate-limited so repeated submissions can't be used to
+  // probe which documents exist in the system. 10/hour is this pass's
+  // own flagged default — no threshold is specified by any source.
   @Post('documents')
+  @Throttle({ default: { limit: 10, ttl: 3600000 } })
   async submitDocument(
     @Req() req: AuthenticatedRequest,
     @Body() dto: SubmitDocumentRequestDto,

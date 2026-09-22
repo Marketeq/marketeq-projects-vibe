@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { identityVerificationDataSourceOptions } from './database/data-source';
 import { IdentityVerificationProfile } from './entities/identity-verification-profile.entity';
 import { IdentityDocument } from './entities/identity-document.entity';
@@ -11,6 +13,7 @@ import { IdentityVerificationInternalController } from './controllers/identity-v
 import { IdentityVerificationWebhooksController } from './controllers/identity-verification-webhooks.controller';
 import { IdentityVerificationService } from './services/identity-verification.service';
 import { TravelModeReminderJob } from './jobs/travel-mode-reminder.job';
+import { StatusAutoClearJob } from './jobs/status-auto-clear.job';
 import { HealthModule } from './health/health.module';
 import { DOCUMENT_VERIFICATION_PROVIDER } from './providers/document-verification/document-verification-provider.interface';
 import { DiditDocumentVerificationProvider } from './providers/document-verification/didit-document-verification.provider';
@@ -32,6 +35,12 @@ import { MetricsModule } from './metrics/metrics.module';
       PendingVerificationSession,
     ]),
     ScheduleModule.forRoot(),
+    // TRVG2 §6.2 confirms the document-submission endpoint must be
+    // rate-limited; no threshold is specified by any source. 20
+    // requests/60s is this pass's own global default (per-route @Throttle
+    // overrides this on POST /documents specifically — see the
+    // controller).
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 20 }]),
     HealthModule,
     MetricsModule,
   ],
@@ -43,10 +52,12 @@ import { MetricsModule } from './metrics/metrics.module';
   providers: [
     IdentityVerificationService,
     TravelModeReminderJob,
+    StatusAutoClearJob,
     { provide: DOCUMENT_VERIFICATION_PROVIDER, useClass: DiditDocumentVerificationProvider },
     { provide: VPN_PROXY_DETECTION_PROVIDER, useClass: UnimplementedVpnProxyDetectionProvider },
     { provide: OBJECT_STORAGE_PROVIDER, useClass: R2ObjectStorageProvider },
     { provide: NOTIFICATION_EVENT_PUBLISHER, useClass: RabbitMqNotificationEventPublisher },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}
