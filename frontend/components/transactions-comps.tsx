@@ -11765,22 +11765,27 @@ export const PayoutsTab = ({
           </SelectContent>
         </Select>
 
-        <Button
-          variant="link"
-          size="sm"
-          className="shrink-0 font-semibold text-primary-600"
-          onClick={() => {
-            setStatusFilter("")
-            setSearchQuery("")
-            setDateRange("all_time")
-            setDateFrom("")
-            setDateTo("")
-            setDepositMethodId("")
-            setCurrentPage(1)
-          }}
-        >
-          Clear All
-        </Button>
+        {(statusFilter ||
+          searchQuery ||
+          dateRange !== "all_time" ||
+          depositMethodId) && (
+          <Button
+            variant="link"
+            size="sm"
+            className="shrink-0 font-semibold text-primary-600"
+            onClick={() => {
+              setStatusFilter("")
+              setSearchQuery("")
+              setDateRange("all_time")
+              setDateFrom("")
+              setDateTo("")
+              setDepositMethodId("")
+              setCurrentPage(1)
+            }}
+          >
+            Clear All
+          </Button>
+        )}
 
         <div className="ml-auto">
           {/* Same "Find transactions" search component as Settings → Billing →
