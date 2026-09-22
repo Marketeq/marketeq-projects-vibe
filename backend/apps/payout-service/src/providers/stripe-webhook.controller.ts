@@ -5,7 +5,7 @@
 // the raw Buffer Stripe's SDK needs for signature verification — parsed JSON
 // would fail stripe.webhooks.constructEvent's check.
 
-import { Controller, Post, Req, Headers, HttpCode, Logger } from '@nestjs/common';
+import { Controller, Post, Req, Headers, HttpCode, Logger, BadRequestException } from '@nestjs/common';
 import type { Request } from 'express';
 import { StripeProvider } from './stripe.provider';
 import { Public } from '../decorators/public.decorator';
@@ -31,7 +31,12 @@ export class StripeWebhookController {
       event = this.stripeProvider.constructWebhookEvent(req.body as Buffer, signature);
     } catch (err) {
       this.logger.warn(`Stripe webhook signature validation failed: ${(err as Error).message}`);
-      return { received: false };
+      // PS-33 §5.1: "Return 400 — Stripe will NOT retry on 4xx (except 429)."
+      // Returning 200 here (the @HttpCode(200) default) told Stripe the event
+      // was handled — a rotated STRIPE_WEBHOOK_SECRET or a genuinely forged
+      // request would silently drop real events forever instead of Stripe
+      // retrying/surfacing it in the Dashboard's webhook failure log.
+      throw new BadRequestException('Invalid Stripe webhook signature.');
     }
 
     this.logger.log(`Stripe webhook received: ${event.type}`);
