@@ -1,25 +1,50 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import { Reorder } from "framer-motion"
-import { Camera01 } from "@blend-metrics/icons"
-import { getId } from "@/utils/functions"
+import { Image01, Plus } from "@blend-metrics/icons"
+import { cn, getId } from "@/utils/functions"
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
   IconButton,
   PictureEditor,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   useToast,
 } from "@/components/ui"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import { uploadCaseStudyImage } from "@/lib/case-study-upload"
 import type { TestimonialData, TestimonialItem } from "@/lib/case-study-mapper"
 import { BlockToolbar } from "@/components/case-study/toolbars"
 import { AddBlockDivider } from "@/components/case-study/add-block-divider"
 import { ArticleRoot, ControlledDraggable, Html, RichTextEditor, swap } from "./_shared"
 
-/** Shown until the user uploads a photo of the person quoted. */
-const DEFAULT_AVATAR_SRC = "/man.jpg"
+/**
+ * Figma's Shadow/lg, which Tailwind's own `shadow-lg` does not match — the DS
+ * Tooltip hardcodes `shadow-lg`, so the exact value is overridden per-usage.
+ */
+const TOOLTIP_SHADOW =
+  "shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08),0px_4px_6px_-2px_rgba(16,24,40,0.03)]"
+
+/**
+ * The DS TooltipContent is hardcoded `z-50`, but the builder mounts the editor
+ * in a DialogContent raised to `z-[100]` (talent-profile/page.tsx). The tooltip
+ * portals to the body, so at z-50 it paints *behind* that opaque dialog and the
+ * card is invisible inside the builder while looking fine anywhere else.
+ */
+const TOOLTIP_Z = "z-[110]"
+
+/**
+ * The avatar control's 40px box. Figma renders the icons at 20px/2px and
+ * 18px/1.2px; these icons carry a 19-unit viewBox, so the stroke has to be
+ * scaled by viewBox/rendered-size to land on those widths in real pixels.
+ */
+const PLUS_STROKE_WIDTH = (2 * 19) / 20
+const IMAGE_STROKE_WIDTH = (1.2 * 19) / 18
 
 const defaultTestimonials: TestimonialItem[] = [
   {
@@ -52,6 +77,13 @@ function TestimonialsEdit({
   const [testimonialData, setTestimonialData] = useState<
     Record<number, TestimonialItem>
   >(() => Object.fromEntries(ids.map((id, i) => [id, initialItems[i]])))
+  // Which testimonials have an avatar upload in flight — drives the Figma
+  // "Uploading" state (progress ring, inert control) on that card only.
+  const [uploadingIds, setUploadingIds] = useState<Record<number, boolean>>({})
+  // Each PictureEditor only hands its preview-reset out through startingPoint,
+  // but the upload that needs to undo it lives in onValueChange — so each
+  // testimonial parks its own reset here, keyed by item id.
+  const clearPreviewRefs = useRef<Record<number, () => void>>({})
   const len = items.length
   const { toast } = useToast()
 
@@ -151,6 +183,7 @@ function TestimonialsEdit({
                         onValueChange={(files) => {
                           const file = (files as File[] | undefined)?.[0]
                           if (!(file instanceof File)) return
+                          setUploadingIds((prev) => ({ ...prev, [item]: true }))
                           uploadCaseStudyImage(file)
                             .then((url) =>
                               setTestimonialData((prev) => ({
@@ -159,39 +192,115 @@ function TestimonialsEdit({
                               }))
                             )
                             .catch(() => {
+                              // Drop PictureEditor's local preview, otherwise a
+                              // failed upload still shows the picked photo and
+                              // reads as success until the page is reloaded and
+                              // the never-stored image is gone.
+                              clearPreviewRefs.current[item]?.()
                               toast({
                                 title: "Couldn't upload image",
                                 description: "Please try again.",
                               })
                             })
+                            .finally(() =>
+                              setUploadingIds((prev) => ({
+                                ...prev,
+                                [item]: false,
+                              }))
+                            )
                         }}
-                        startingPoint={({ dataUrl, open }) => (
-                          <div className="group/avatar relative shrink-0">
-                            <Avatar size="md">
-                              <AvatarImage
-                                src={
-                                  dataUrl ||
-                                  testimonialData[item]?.avatarUrl ||
-                                  DEFAULT_AVATAR_SRC
-                                }
-                                alt=""
-                              />
-                              <AvatarFallback>M</AvatarFallback>
-                            </Avatar>
+                        startingPoint={({ dataUrl, open, onRemove }) => {
+                          clearPreviewRefs.current[item] = onRemove
+                          const src =
+                            dataUrl || testimonialData[item]?.avatarUrl
+                          const isUploading = Boolean(uploadingIds[item])
+                          // Complete: the photo carries the control, and the
+                          // gray circle only surfaces on hover/focus.
+                          const hasPhoto = Boolean(src) && !isUploading
 
+                          const control = (
                             <IconButton
                               type="button"
-                              variant="ghost"
+                              variant="outlined"
                               visual="gray"
-                              size="sm"
-                              aria-label="Change photo"
+                              size="md"
+                              disabled={isUploading}
+                              aria-label={
+                                hasPhoto ? "Replace image" : "Add image"
+                              }
                               onClick={open}
-                              className="absolute inset-0 size-10 rounded-full bg-dark-blue-400/60 text-white opacity-0 hover:bg-dark-blue-400/60 hover:text-white group-hover/avatar:opacity-100 focus-visible:opacity-100"
+                              className={cn(
+                                "absolute inset-0 rounded-full border-gray-300 bg-gray-50 text-gray-500 shadow-none hover:border-gray-400 hover:bg-gray-200 hover:text-gray-800 focus-visible:border-gray-400 focus-visible:bg-gray-200 focus-visible:text-gray-800 disabled:opacity-100",
+                                hasPhoto &&
+                                  "border-transparent bg-transparent opacity-0 hover:opacity-100 focus-visible:opacity-100"
+                              )}
                             >
-                              <Camera01 className="size-4" />
+                              {hasPhoto || isUploading ? (
+                                <Image01
+                                  className={cn(
+                                    "size-[18px]",
+                                    isUploading && "text-primary-300"
+                                  )}
+                                  strokeWidth={IMAGE_STROKE_WIDTH}
+                                />
+                              ) : (
+                                <Plus
+                                  className="size-5"
+                                  strokeWidth={PLUS_STROKE_WIDTH}
+                                />
+                              )}
                             </IconButton>
-                          </div>
-                        )}
+                          )
+
+                          return (
+                            <div className="relative size-10 shrink-0">
+                              {hasPhoto && (
+                                <Avatar
+                                  size="md"
+                                  className="border border-gray-200 hover:ring-0 active:ring-0"
+                                >
+                                  <AvatarImage src={src} alt="" />
+                                  <AvatarFallback>M</AvatarFallback>
+                                </Avatar>
+                              )}
+
+                              {isUploading ? (
+                                control
+                              ) : (
+                                <TooltipProvider delayDuration={75}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      {control}
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="top"
+                                      visual="white"
+                                      className={cn(
+                                        "text-center font-semibold",
+                                        TOOLTIP_SHADOW,
+                                        TOOLTIP_Z
+                                      )}
+                                    >
+                                      {hasPhoto
+                                        ? "Replace Image"
+                                        : "Add Image"}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+
+                              {isUploading && (
+                                <span className="pointer-events-none absolute -left-px -top-px">
+                                  <Spinner
+                                    size={42}
+                                    strokeWidth={2}
+                                    trackClassName="stroke-transparent"
+                                  />
+                                </span>
+                              )}
+                            </div>
+                          )
+                        }}
                       />
 
                       <div className="space-y-0.5">
@@ -287,10 +396,18 @@ function TestimonialsView({ data }: { data?: Record<string, unknown> }) {
             </div>
 
             <div className="mt-[50px] flex items-center gap-x-2">
-              <Avatar size="md">
-                <AvatarImage src={item.avatarUrl || DEFAULT_AVATAR_SRC} alt="" />
-                <AvatarFallback>M</AvatarFallback>
-              </Avatar>
+              {/* No stock-photo fallback: the editor's empty state is an
+                  "Add Image" affordance, so an unset avatar has no photo to
+                  stand in for it here. */}
+              {item.avatarUrl && (
+                <Avatar
+                  size="md"
+                  className="border border-gray-200 hover:ring-0 active:ring-0"
+                >
+                  <AvatarImage src={item.avatarUrl} alt="" />
+                  <AvatarFallback>M</AvatarFallback>
+                </Avatar>
+              )}
 
               <div className="space-y-0.5">
                 <Html
