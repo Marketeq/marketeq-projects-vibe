@@ -8,6 +8,7 @@ import {
   Avatar,
   AvatarFallback,
   AvatarImage,
+  CircularProgress,
   IconButton,
   PictureEditor,
   Tooltip,
@@ -16,7 +17,6 @@ import {
   TooltipTrigger,
   useToast,
 } from "@/components/ui"
-import { Spinner } from "@/components/ui/spinner/spinner"
 import { uploadCaseStudyImage } from "@/lib/case-study-upload"
 import type { TestimonialData, TestimonialItem } from "@/lib/case-study-mapper"
 import { BlockToolbar } from "@/components/case-study/toolbars"
@@ -77,9 +77,13 @@ function TestimonialsEdit({
   const [testimonialData, setTestimonialData] = useState<
     Record<number, TestimonialItem>
   >(() => Object.fromEntries(ids.map((id, i) => [id, initialItems[i]])))
-  // Which testimonials have an avatar upload in flight — drives the Figma
-  // "Uploading" state (progress ring, inert control) on that card only.
-  const [uploadingIds, setUploadingIds] = useState<Record<number, boolean>>({})
+  // Which testimonials have an avatar upload in flight, and how far along each
+  // one is — drives the Figma "Uploading" state (progress ring, inert control)
+  // on that card only. A number means in flight at that percent; absent means
+  // idle, so 0% is still distinguishable from "not uploading".
+  const [uploadProgress, setUploadProgress] = useState<
+    Record<number, number | undefined>
+  >({})
   // Each PictureEditor only hands its preview-reset out through startingPoint,
   // but the upload that needs to undo it lives in onValueChange — so each
   // testimonial parks its own reset here, keyed by item id.
@@ -183,8 +187,17 @@ function TestimonialsEdit({
                         onValueChange={(files) => {
                           const file = (files as File[] | undefined)?.[0]
                           if (!(file instanceof File)) return
-                          setUploadingIds((prev) => ({ ...prev, [item]: true }))
-                          uploadCaseStudyImage(file)
+                          setUploadProgress((prev) => ({ ...prev, [item]: 0 }))
+                          uploadCaseStudyImage(file, (percent) =>
+                            setUploadProgress((prev) =>
+                              // A late event from a replaced upload must not
+                              // resurrect the ring on a card that already
+                              // finished, so only track an in-flight item.
+                              prev[item] === undefined
+                                ? prev
+                                : { ...prev, [item]: percent }
+                            )
+                          )
                             .then((url) =>
                               setTestimonialData((prev) => ({
                                 ...prev,
@@ -203,17 +216,19 @@ function TestimonialsEdit({
                               })
                             })
                             .finally(() =>
-                              setUploadingIds((prev) => ({
-                                ...prev,
-                                [item]: false,
-                              }))
+                              setUploadProgress((prev) => {
+                                const next = { ...prev }
+                                delete next[item]
+                                return next
+                              })
                             )
                         }}
                         startingPoint={({ dataUrl, open, onRemove }) => {
                           clearPreviewRefs.current[item] = onRemove
                           const src =
                             dataUrl || testimonialData[item]?.avatarUrl
-                          const isUploading = Boolean(uploadingIds[item])
+                          const progress = uploadProgress[item]
+                          const isUploading = progress !== undefined
                           // Complete: the photo carries the control, and the
                           // gray circle only surfaces on hover/focus.
                           const hasPhoto = Boolean(src) && !isUploading
@@ -291,9 +306,10 @@ function TestimonialsEdit({
 
                               {isUploading && (
                                 <span className="pointer-events-none absolute -left-px -top-px">
-                                  <Spinner
+                                  <CircularProgress
                                     size={42}
                                     strokeWidth={2}
+                                    value={progress}
                                     trackClassName="stroke-transparent"
                                   />
                                 </span>
