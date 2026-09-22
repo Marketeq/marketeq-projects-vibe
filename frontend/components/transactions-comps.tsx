@@ -10360,154 +10360,182 @@ export const EarningsTab = ({
         </p>
       )}
 
-      {/* Filters Row — Figma: ~8–12px gutters between controls */}
-      <div className="flex items-center gap-2.5 flex-wrap">
-        <ToggleGroupRoot
-          value={[viewMode]}
-          onValueChange={(details) => {
-            // US-29: pagination resets whenever the result set underneath it changes.
-            if (details.value.length > 0) {
-              setViewMode(details.value[0])
-              setCurrentPage(1)
-            }
-          }}
-        >
-          <ToggleGroupItem value="daily">Daily</ToggleGroupItem>
-          <ToggleGroupItem value="weekly">Weekly</ToggleGroupItem>
-          <ToggleGroupItem value="monthly">Monthly</ToggleGroupItem>
-        </ToggleGroupRoot>
-
-        <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outlined"
-              visual="gray"
-              size="sm"
-              className={FILTER_CHIP_CLASS}
-            >
-              <Calendar className="size-4 text-gray-800" />
-              {dateRange === "custom" && dateFrom && dateTo
-                ? `${formatDate(parseISO(dateFrom), "LLL d, yyyy")} – ${formatDate(parseISO(dateTo), "LLL d, yyyy")}`
-                : (EARNINGS_DATE_RANGE_LABELS[dateRange] ?? "This Month")}
-              <ChevronDown className="size-4 text-gray-800" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            className="w-auto border-0 bg-transparent p-0 shadow-none"
-            align="start"
-            collisionPadding={16}
+      {/* Filters Row — Figma "Frame 1948757692" (Dev Mode CSS, pasted by
+        @manu042k): outer row gap 24px between the toggle group and
+        everything else; toggle group is flex:none (fixed 197px); the rest
+        ("Frame 1948757699") is flex-grow:1 and itself splits into the 5
+        fixed-width filter dropdowns (flex:none, 12px gaps, "Frame
+        1000002822") and the search field ("Component 987"), which is the
+        one flex-grow:1 in that inner group — Figma's actual mechanism for
+        keeping search on the row is the search field GROWING to fill
+        leftover space, not the fixed-width-+ ml-auto this used to be.
+        overflow-x-auto stays as a fallback for viewports narrower than
+        Figma's 1152px reference frame — Figma doesn't model that, but a
+        real browser needs somewhere to put the overflow instead of
+        wrapping (the original bug) or squishing chip labels. */}
+      <div className="flex items-center gap-6 flex-nowrap overflow-x-auto">
+        <div className="shrink-0">
+          <ToggleGroupRoot
+            value={[viewMode]}
+            onValueChange={(details) => {
+              // US-29: pagination resets whenever the result set underneath it changes.
+              if (details.value.length > 0) {
+                setViewMode(details.value[0])
+                setCurrentPage(1)
+              }
+            }}
           >
-            {datePickerOpen ? (
-              <DateRangeFilterPopoverContent
-                dateRange={dateRange}
-                dateFrom={dateFrom}
-                dateTo={dateTo}
-                defaultPreset="this month"
-                onCancel={() => setDatePickerOpen(false)}
-                onCommit={(next, from, to) => {
-                  setDateRange(next)
-                  setDateFrom(from)
-                  setDateTo(to)
-                  setCurrentPage(1)
-                  setDatePickerOpen(false)
-                }}
-              />
-            ) : null}
-          </PopoverContent>
-        </Popover>
+            <ToggleGroupItem value="daily">Daily</ToggleGroupItem>
+            <ToggleGroupItem value="weekly">Weekly</ToggleGroupItem>
+            <ToggleGroupItem value="monthly">Monthly</ToggleGroupItem>
+          </ToggleGroupRoot>
+        </div>
 
-        <FilterSearchMenu
-          label="All Projects"
-          searchPlaceholder="Find projects"
-          value={projectId}
-          onValueChange={(id) => {
-            setProjectId(id)
-            setCurrentPage(1)
-          }}
-          items={projectOptions.map((p) => ({
-            id: p.id,
-            title: p.name,
-            handle: p.handle,
-          }))}
-        />
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="flex items-center gap-3 shrink-0">
+            <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  className={FILTER_CHIP_CLASS}
+                >
+                  <Calendar className="size-4 text-gray-800" />
+                  {dateRange === "custom" && dateFrom && dateTo
+                    ? `${formatDate(parseISO(dateFrom), "LLL d, yyyy")} – ${formatDate(parseISO(dateTo), "LLL d, yyyy")}`
+                    : (EARNINGS_DATE_RANGE_LABELS[dateRange] ?? "This Month")}
+                  <ChevronDown className="size-4 text-gray-800" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-auto border-0 bg-transparent p-0 shadow-none"
+                align="start"
+                collisionPadding={16}
+              >
+                {datePickerOpen ? (
+                  <DateRangeFilterPopoverContent
+                    dateRange={dateRange}
+                    dateFrom={dateFrom}
+                    dateTo={dateTo}
+                    defaultPreset="this month"
+                    onCancel={() => setDatePickerOpen(false)}
+                    onCommit={(next, from, to) => {
+                      setDateRange(next)
+                      setDateFrom(from)
+                      setDateTo(to)
+                      setCurrentPage(1)
+                      setDatePickerOpen(false)
+                    }}
+                  />
+                ) : null}
+              </PopoverContent>
+            </Popover>
 
-        <FilterSearchMenu
-          label="All Clients"
-          searchPlaceholder="Find clients"
-          value={clientId}
-          onValueChange={(id) => {
-            setClientId(id)
-            setCurrentPage(1)
-          }}
-          items={clientOptions.map((c) => ({
-            id: c.id,
-            title: c.label,
-            handle: c.handle,
-          }))}
-        />
-
-        <Select
-          value={entryType || "all-entry-types"}
-          onValueChange={(v) => {
-            setEntryType(v === "all-entry-types" ? "" : v)
-            setCurrentPage(1)
-          }}
-        >
-          <SelectTrigger className={cn(FILTER_SELECT_CHIP_CLASS, "min-w-[130px]")}>
-            <SelectValue placeholder="All Entry Types" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all-entry-types">All Entry Types</SelectItem>
-            <SelectItem value="automated">Automated</SelectItem>
-            <SelectItem value="manual">Manual</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={statusFilter || "all-statuses"}
-          onValueChange={(v) => {
-            setStatusFilter(v === "all-statuses" ? "" : v)
-            setCurrentPage(1)
-          }}
-        >
-          <SelectTrigger className={cn(FILTER_SELECT_CHIP_CLASS, "min-w-[110px]")}>
-            <SelectValue placeholder="All Statuses" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all-statuses">All Statuses</SelectItem>
-            <SelectItem value="paid">Paid</SelectItem>
-            <SelectItem value="failed">Reversed</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <div className="ml-auto">
-          <SearchField>
-            <SearchFieldButton>
-              <Search className="size-4" />
-            </SearchFieldButton>
-            <SearchFieldInput
-              className={searchQuery ? "pr-9" : undefined}
-              placeholder="Find transactions"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value)
+            <FilterSearchMenu
+              label="All Projects"
+              searchPlaceholder="Find projects"
+              value={projectId}
+              onValueChange={(id) => {
+                setProjectId(id)
                 setCurrentPage(1)
               }}
+              items={projectOptions.map((p) => ({
+                id: p.id,
+                title: p.name,
+                handle: p.handle,
+              }))}
             />
-            {searchQuery && (
-              <button
-                type="button"
-                aria-label="Clear search"
-                className="absolute right-2.5 inset-y-0 my-auto text-gray-400 hover:text-gray-600"
-                onClick={() => {
-                  setSearchQuery("")
+
+            <FilterSearchMenu
+              label="All Clients"
+              searchPlaceholder="Find clients"
+              value={clientId}
+              onValueChange={(id) => {
+                setClientId(id)
+                setCurrentPage(1)
+              }}
+              items={clientOptions.map((c) => ({
+                id: c.id,
+                title: c.label,
+                handle: c.handle,
+              }))}
+            />
+
+            <Select
+              value={entryType || "all-entry-types"}
+              onValueChange={(v) => {
+                setEntryType(v === "all-entry-types" ? "" : v)
+                setCurrentPage(1)
+              }}
+            >
+              <SelectTrigger className={cn(FILTER_SELECT_CHIP_CLASS, "min-w-[130px]")}>
+                <SelectValue placeholder="All Entry Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all-entry-types">All Entry Types</SelectItem>
+                <SelectItem value="automated">Automated</SelectItem>
+                <SelectItem value="manual">Manual</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={statusFilter || "all-statuses"}
+              onValueChange={(v) => {
+                setStatusFilter(v === "all-statuses" ? "" : v)
+                setCurrentPage(1)
+              }}
+            >
+              <SelectTrigger className={cn(FILTER_SELECT_CHIP_CLASS, "min-w-[110px]")}>
+                <SelectValue placeholder="All Statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all-statuses">All Statuses</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="failed">Reversed</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Figma "Component 987" is flex-grow:1 at a 233px reference
+            width, but on real (narrower) browser windows honoring 233px
+            as a hard floor is what forces the whole row into
+            overflow-x-auto's horizontal scrollbar. 150px keeps
+            "Find transactions" fully legible while letting the field
+            shrink enough to keep the row on one line, scrollbar-free,
+            at common widths (verified at 1470px). SearchField itself
+            hardcodes w-[224px] internally (components/ui/search-field),
+            so w-full is required here to let it actually fill this
+            wrapper instead of staying rigid. */}
+          <div className="flex-1 min-w-[150px]">
+            <SearchField className="w-full">
+              <SearchFieldButton>
+                <Search className="size-4" />
+              </SearchFieldButton>
+              <SearchFieldInput
+                className={searchQuery ? "pr-9" : undefined}
+                placeholder="Find transactions"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
                   setCurrentPage(1)
                 }}
-              >
-                <XCircle className="size-4" />
-              </button>
-            )}
-          </SearchField>
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  className="absolute right-2.5 inset-y-0 my-auto text-gray-400 hover:text-gray-600"
+                  onClick={() => {
+                    setSearchQuery("")
+                    setCurrentPage(1)
+                  }}
+                >
+                  <XCircle className="size-4" />
+                </button>
+              )}
+            </SearchField>
+          </div>
         </div>
       </div>
 
