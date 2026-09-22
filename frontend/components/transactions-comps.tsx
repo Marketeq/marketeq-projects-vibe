@@ -10497,11 +10497,18 @@ export const EarningsTab = ({
             </Select>
           </div>
 
-          {/* Figma "Component 987" — flex-grow:1, min-w matches its
-            233px Figma width so it never collapses below that on a
-            crowded row. */}
-          <div className="flex-1 min-w-[233px]">
-            <SearchField>
+          {/* Figma "Component 987" is flex-grow:1 at a 233px reference
+            width, but on real (narrower) browser windows honoring 233px
+            as a hard floor is what forces the whole row into
+            overflow-x-auto's horizontal scrollbar. 150px keeps
+            "Find transactions" fully legible while letting the field
+            shrink enough to keep the row on one line, scrollbar-free,
+            at common widths (verified at 1470px). SearchField itself
+            hardcodes w-[224px] internally (components/ui/search-field),
+            so w-full is required here to let it actually fill this
+            wrapper instead of staying rigid. */}
+          <div className="flex-1 min-w-[150px]">
+            <SearchField className="w-full">
               <SearchFieldButton>
                 <Search className="size-4" />
               </SearchFieldButton>
