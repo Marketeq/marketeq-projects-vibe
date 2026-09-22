@@ -315,6 +315,64 @@ export class CardIssuanceService {
     return { canceled: true };
   }
 
+  // ─── PS-13 §5: Admin — override spending limits ─────────────
+  // Doc's "Adjustable by Marketeq admin: Yes" column for weekly/monthly/
+  // single-transaction limits (daily is also contractor-adjustable up to
+  // $2,500, but that's the [DESIGN REQUIRED] contractor-facing flow — this
+  // is the admin override only). Pushes to Stripe (source of truth for
+  // enforcement) and mirrors onto the entity (source of truth for display).
+  async adminUpdateSpendingLimits(
+    depositMethodId: string,
+    adminId: string,
+    limits: { dailyCents?: number; weeklyCents?: number; monthlyCents?: number; singleCents?: number },
+  ): Promise<{ updated: boolean }> {
+    const method = await this.methodRepo.findOne({
+      where: { id: depositMethodId, methodType: MethodType.MARKETEQ_DEBIT_CARD },
+    });
+    if (!method) {
+      throw new PayoutError('Card not found.', HttpStatus.NOT_FOUND, 'ERR_CARD_NOT_FOUND');
+    }
+
+    const dailyCents = limits.dailyCents ?? method.cardDailyLimitCents ?? DEFAULT_DAILY_LIMIT;
+    const weeklyCents = limits.weeklyCents ?? method.cardWeeklyLimitCents ?? DEFAULT_WEEKLY_LIMIT;
+    const monthlyCents = limits.monthlyCents ?? method.cardMonthlyLimitCents ?? DEFAULT_MONTHLY_LIMIT;
+    const singleCents = limits.singleCents ?? method.cardSingleLimitCents ?? DEFAULT_SINGLE_LIMIT;
+
+    if (this.stripe && method.stripeCardId && !method.stripeCardId.startsWith('ic_stub')) {
+      try {
+        await this.stripe.issuing.cards.update(method.stripeCardId, {
+          spending_controls: {
+            spending_limits: [
+              { amount: dailyCents, interval: 'daily' },
+              { amount: weeklyCents, interval: 'weekly' },
+              { amount: monthlyCents, interval: 'monthly' },
+              { amount: singleCents, interval: 'per_authorization' },
+            ],
+          },
+        });
+      } catch (err: any) {
+        this.logger.warn(`Stripe spending-limit update failed: ${err.message}`);
+        throw new PayoutError('Could not update spending limits with the card provider.',
+          HttpStatus.BAD_GATEWAY, 'ERR_CARD_SPENDING_LIMIT_UPDATE_FAILED');
+      }
+    }
+
+    await this.methodRepo.update(method.id, {
+      cardDailyLimitCents: dailyCents,
+      cardWeeklyLimitCents: weeklyCents,
+      cardMonthlyLimitCents: monthlyCents,
+      cardSingleLimitCents: singleCents,
+    } as any);
+
+    await this.auditService.log({
+      contractorId: method.contractorId, actorType: 'admin', actorId: adminId,
+      action: 'card.spending_limits.updated',
+      metadata: { methodId: method.id, dailyCents, weeklyCents, monthlyCents, singleCents },
+    });
+
+    return { updated: true };
+  }
+
   // ─── Helper ─────────────────────────────────────────────────
   private async findCard(contractorId: string, depositMethodId: string): Promise<DepositMethod> {
     const method = await this.methodRepo.findOne({

@@ -2,9 +2,10 @@
 // PS-13 §2–§7: Card management endpoints
 // Feature-flagged behind FEATURE_DEBIT_CARD_ENABLED
 
-import { Controller, Post, Delete, Body, Param, UseGuards, Request, HttpCode } from '@nestjs/common';
+import { Controller, Post, Patch, Delete, Body, Param, UseGuards, Request, HttpCode } from '@nestjs/common';
 import { CardIssuanceService } from './card-issuance.service';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { RolesGuard, Roles } from '../guards/roles.guard';
 
 @Controller('v1/cards')
 @UseGuards(JwtAuthGuard)
@@ -55,5 +56,20 @@ export class CardController {
   @HttpCode(200)
   async cancelCard(@Request() req: any, @Param('id') id: string) {
     return this.cardSvc.cancelCard(req.user.userId, id);
+  }
+
+  // PS-13 §5: Admin — override weekly/monthly/single-transaction spending
+  // limits. Doc marks these "Adjustable by Marketeq admin: Yes"; existed
+  // with no persistence or endpoint before.
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  @Patch('admin/:id/spending-limits')
+  @HttpCode(200)
+  async updateSpendingLimits(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() dto: { dailyCents?: number; weeklyCents?: number; monthlyCents?: number; singleCents?: number },
+  ) {
+    return this.cardSvc.adminUpdateSpendingLimits(id, req.user.userId, dto);
   }
 }
