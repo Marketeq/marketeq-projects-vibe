@@ -5100,24 +5100,38 @@ export default function SettingsPage() {
                               {/* Synced Data */}
                               <div className="flex flex-col gap-2.5 px-2.5">
                                 <p className="text-base font-semibold text-dark-blue-400">Synced Data</p>
-                                <div className="grid grid-cols-3 gap-x-3 gap-y-5 p-2.5">
-                                  <div className="flex flex-col items-center gap-2">
-                                    <div className="size-[50px] rounded-lg border border-gray-200 bg-white flex items-center justify-center">
-                                      <div className="size-6 rounded flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: selectedIntegration.color }}>{selectedIntegration.name.charAt(0)}</div>
+                                <div className="flex flex-col gap-5 p-2.5">
+                                  {/* Logos row */}
+                                  <div className="flex items-center">
+                                    <div className="flex-1 flex justify-center">
+                                      <div className="size-[50px] rounded-lg border border-gray-200 bg-white flex items-center justify-center">
+                                        <div className="size-6 rounded flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: selectedIntegration.color }}>{selectedIntegration.name.charAt(0)}</div>
+                                      </div>
                                     </div>
-                                    <p className="text-base text-dark-blue-400 text-center">Channel message</p>
-                                    <p className="text-base text-dark-blue-400 text-center">Direct message</p>
-                                  </div>
-                                  <div className="flex flex-col items-center justify-center gap-2">
-                                    <ArrowRight className="size-5 text-gray-400" />
-                                    <ArrowRight className="size-5 text-gray-400 mt-5" />
-                                  </div>
-                                  <div className="flex flex-col items-center gap-2">
-                                    <div className="size-[50px] rounded-lg border border-gray-200 bg-white flex items-center justify-center">
-                                      <span className="text-xs font-bold text-dark-blue-400">M</span>
+                                    <div className="w-10 flex justify-center">
+                                      <ArrowRight className="size-5 text-gray-400" />
                                     </div>
-                                    <p className="text-base text-dark-blue-400 text-center">Contacts, Companies, Notifications, Tasks, Notes</p>
-                                    <p className="text-base text-dark-blue-400 text-center">Tasks and Notes</p>
+                                    <div className="flex-1 flex justify-center">
+                                      <div className="size-[50px] rounded-lg border border-gray-200 bg-white flex items-center justify-center">
+                                        <span className="text-xs font-bold text-dark-blue-400">M</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {/* Channel message row */}
+                                  <div className="flex items-center">
+                                    <p className="flex-1 text-sm text-dark-blue-400 text-center">Channel message</p>
+                                    <div className="w-10 flex justify-center">
+                                      <ArrowRight className="size-4 text-gray-400" />
+                                    </div>
+                                    <p className="flex-1 text-sm text-dark-blue-400 text-center">Contacts, Companies, Notifications, Tasks, Notes</p>
+                                  </div>
+                                  {/* Direct message row */}
+                                  <div className="flex items-center">
+                                    <p className="flex-1 text-sm text-dark-blue-400 text-center">Direct message</p>
+                                    <div className="w-10 flex justify-center">
+                                      <ArrowRight className="size-4 text-gray-400" />
+                                    </div>
+                                    <p className="flex-1 text-sm text-dark-blue-400 text-center">Tasks and Notes</p>
                                   </div>
                                 </div>
                               </div>
@@ -5290,24 +5304,38 @@ export default function SettingsPage() {
                           {/* Synced Data */}
                           <div className="flex flex-col gap-2.5 px-2.5">
                             <p className="text-base font-semibold text-dark-blue-400">Synced Data</p>
-                            <div className="grid grid-cols-3 gap-x-3 gap-y-5 p-2.5">
-                              <div className="flex flex-col items-center gap-2">
-                                <div className="size-[50px] rounded-lg border border-gray-200 bg-white flex items-center justify-center">
-                                  <div className="size-6 rounded flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: selectedIntegration.color }}>{selectedIntegration.name.charAt(0)}</div>
+                            <div className="flex flex-col gap-5 p-2.5">
+                              {/* Logos row */}
+                              <div className="flex items-center">
+                                <div className="flex-1 flex justify-center">
+                                  <div className="size-[50px] rounded-lg border border-gray-200 bg-white flex items-center justify-center">
+                                    <div className="size-6 rounded flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: selectedIntegration.color }}>{selectedIntegration.name.charAt(0)}</div>
+                                  </div>
                                 </div>
-                                <p className="text-base text-dark-blue-400 text-center">Channel message</p>
-                                <p className="text-base text-dark-blue-400 text-center">Direct message</p>
-                              </div>
-                              <div className="flex flex-col items-center justify-center gap-2">
-                                <ArrowRight className="size-5 text-gray-400" />
-                                <ArrowRight className="size-5 text-gray-400 mt-5" />
-                              </div>
-                              <div className="flex flex-col items-center gap-2">
-                                <div className="size-[50px] rounded-lg border border-gray-200 bg-white flex items-center justify-center">
-                                  <span className="text-xs font-bold text-dark-blue-400">M</span>
+                                <div className="w-10 flex justify-center">
+                                  <ArrowRight className="size-5 text-gray-400" />
                                 </div>
-                                <p className="text-base text-dark-blue-400 text-center">Contacts, Companies, Notifications, Tasks, Notes</p>
-                                <p className="text-base text-dark-blue-400 text-center">Tasks and Notes</p>
+                                <div className="flex-1 flex justify-center">
+                                  <div className="size-[50px] rounded-lg border border-gray-200 bg-white flex items-center justify-center">
+                                    <span className="text-xs font-bold text-dark-blue-400">M</span>
+                                  </div>
+                                </div>
+                              </div>
+                              {/* Channel message row */}
+                              <div className="flex items-center">
+                                <p className="flex-1 text-sm text-dark-blue-400 text-center">Channel message</p>
+                                <div className="w-10 flex justify-center">
+                                  <ArrowRight className="size-4 text-gray-400" />
+                                </div>
+                                <p className="flex-1 text-sm text-dark-blue-400 text-center">Contacts, Companies, Notifications, Tasks, Notes</p>
+                              </div>
+                              {/* Direct message row */}
+                              <div className="flex items-center">
+                                <p className="flex-1 text-sm text-dark-blue-400 text-center">Direct message</p>
+                                <div className="w-10 flex justify-center">
+                                  <ArrowRight className="size-4 text-gray-400" />
+                                </div>
+                                <p className="flex-1 text-sm text-dark-blue-400 text-center">Tasks and Notes</p>
                               </div>
                             </div>
                           </div>
