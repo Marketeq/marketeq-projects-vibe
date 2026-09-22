@@ -649,19 +649,53 @@ export class MethodsService {
         // then wait for the account.updated webhook (handleAccountUpdated)
         // to confirm — same async pattern as BANK_STRIPE/Financial
         // Connections, never marked VERIFIED synchronously here.
+        //
+        // Reviewer-caught bug: AddMethodDto marks dateOfBirth/legalFirstName/
+        // legalLastName @IsOptional() (PS-34 §4.1's bank-form addition — no
+        // PR in this stack ships the frontend change), so hard-throwing here
+        // when they're absent turned every UK/SEPA/AU/CA verification into a
+        // guaranteed 422 the moment this merges — strictly worse than the
+        // old fake-but-functional micro-deposit flow it replaced. Falls back
+        // to that same interim flow when the fields aren't sent, so this
+        // activates automatically the day the frontend form ships instead of
+        // needing to land in lockstep with it.
         if (!dto.dateOfBirth || !dto.legalFirstName || !dto.legalLastName) {
+          const amount1 = Math.floor(Math.random() * 99) + 1;
+          const amount2 = Math.floor(Math.random() * 99) + 1;
+          const manualVerify = this.verifyRepo.create({
+            depositMethodId: method.id, contractorId: method.contractorId,
+            verificationType: 'micro_deposit', status: VerificationStatus.PENDING,
+            amount1Cents: amount1, amount2Cents: amount2,
+            maxAttempts: 3, expiresAt,
+          });
+          await this.verifyRepo.save(manualVerify);
+          return {
+            type: 'micro_deposit',
+            message: 'Two small deposits will arrive in your account within 2 business days.',
+            expiresAt: manualVerify.expiresAt!.toISOString(), maxAttempts: 3,
+          };
+        }
+        const [dobYear, dobMonth, dobDay] = dto.dateOfBirth.split('-').map(Number);
+
+        // Reviewer-caught bug: bank-validation.service.ts only enforces an
+        // exact currency match for GB/AU/etc — for SEPA and CA it's a
+        // conditional check (`if (dto.bankCurrency && ...)`), so an omitted
+        // bankCurrency passes validation with method.bankCurrency left null.
+        // Defaulting that to 'usd' silently attached a EUR-country account
+        // as USD. Fail loudly instead of guessing — Stripe requires an
+        // exact currency and a wrong one creates a broken external account.
+        if (!method.bankCurrency) {
           throw new PayoutError(
-            'Date of birth and legal name are required to verify an international bank account.',
+            'A currency is required to verify this bank account.',
             HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_BANK_ACCOUNT_VALIDATION_FAILED',
           );
         }
-        const [dobYear, dobMonth, dobDay] = dto.dateOfBirth.split('-').map(Number);
 
         const attach = await this.stripeProvider.attachInternationalExternalAccount({
           contractorId: method.contractorId,
           depositMethodId: method.id,
           bankCountry: method.bankCountry!,
-          currency: method.bankCurrency ?? 'usd',
+          currency: method.bankCurrency,
           accountHolderName: dto.bankAccountName || method.nickname || `${dto.legalFirstName} ${dto.legalLastName}`,
           iban: dto.bankIban,
           accountNumber: dto.bankAccountNumber,
