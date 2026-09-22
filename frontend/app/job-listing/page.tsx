@@ -10472,7 +10472,15 @@ const ReviewToolsTechnologiesStep = ({
   const [tools, setTools] = useState(() =>
     details.tools?.length ? details.tools : serviceToolTags,
   );
+  const [isGeneratingTools, setIsGeneratingTools] = useState(false);
+  const [toolAutocompleteOptions, setToolAutocompleteOptions] = useState<
+    string[]
+  >([]);
   const didRequestGeneratedToolsRef = useRef(false);
+  const toolAutocompleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const toolAutocompleteRequestIdRef = useRef(0);
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(true);
@@ -10484,6 +10492,7 @@ const ReviewToolsTechnologiesStep = ({
 
   useEffect(() => {
     if (details.tools?.length) {
+      didRequestGeneratedToolsRef.current = true;
       setTools(details.tools);
     }
   }, [details.tools]);
@@ -10496,11 +10505,63 @@ const ReviewToolsTechnologiesStep = ({
     [setDetails],
   );
 
+  const handleToolInputValueChange = useCallback((value: string) => {
+    const query = value.trim();
+
+    if (toolAutocompleteTimerRef.current) {
+      clearTimeout(toolAutocompleteTimerRef.current);
+    }
+
+    if (!query) {
+      setToolAutocompleteOptions([]);
+      return;
+    }
+
+    toolAutocompleteTimerRef.current = setTimeout(async () => {
+      const currentRequestId = ++toolAutocompleteRequestIdRef.current;
+
+      try {
+        const response = await AutocompleteAPI.getByType("tool", query, 10);
+        if (currentRequestId !== toolAutocompleteRequestIdRef.current) return;
+
+        const apiValues: AutocompleteTypeSuggestion[] = Array.isArray(
+          response?.data,
+        )
+          ? response.data
+          : [];
+        setToolAutocompleteOptions(
+          getUniqueOptions(
+            apiValues.map((item) => normalizeAutocompleteLabel(item)),
+          ),
+        );
+      } catch {
+        if (currentRequestId !== toolAutocompleteRequestIdRef.current) return;
+        setToolAutocompleteOptions([]);
+      }
+    }, 250);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (toolAutocompleteTimerRef.current) {
+        clearTimeout(toolAutocompleteTimerRef.current);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
-    if (!jobListingId || didRequestGeneratedToolsRef.current) return;
+    if (
+      !jobListingId ||
+      didRequestGeneratedToolsRef.current ||
+      details.tools?.length
+    ) {
+      return;
+    }
     didRequestGeneratedToolsRef.current = true;
 
     const generateTools = async () => {
+      setIsGeneratingTools(true);
       try {
         const response = await JobListingAPI.GenerateTools(jobListingId, {
           workType: source === "service" ? "service" : "project",
@@ -10513,6 +10574,8 @@ const ReviewToolsTechnologiesStep = ({
         }
       } catch (error) {
         console.error("Failed to generate tools and technologies", error);
+      } finally {
+        setIsGeneratingTools(false);
       }
     };
 
@@ -10561,26 +10624,40 @@ const ReviewToolsTechnologiesStep = ({
                     <TagsInputInput
                       placeholder="Search tools and technologies"
                       allowCreateOption
+                      options={toolAutocompleteOptions}
+                      onInputValueChange={handleToolInputValueChange}
                       className="h-11 w-full rounded-[5px] border border-gray-300 bg-white px-[14px] py-2.5 pl-[42px] text-[16px] leading-6 text-gray-500/50 shadow-xs placeholder:text-gray-500/50 focus-visible:outline-none"
                     />
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {tagsInput.value.map((value, index) => (
-                      <TagsInputItem key={value} index={index} value={value}>
-                        <TagsInputItemPreview
-                          size="md"
-                          visual="gray"
-                          className="h-10 gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2.5 pl-4 text-sm leading-5 text-dark-blue-400 shadow-xs"
+                    {isGeneratingTools ? (
+                      [152, 176, 128, 164, 144].map((width) => (
+                        <span
+                          key={width}
+                          className="relative h-10 overflow-hidden rounded-lg border border-gray-300 bg-gray-100 shadow-xs"
+                          style={{ width }}
                         >
-                          <TagsInputItemText>{value}</TagsInputItemText>
-                          <TagsInputItemDeleteTrigger className="size-4 text-gray-400 opacity-100 hover:text-gray-700">
-                            <X2 className="size-4" />
-                          </TagsInputItemDeleteTrigger>
-                        </TagsInputItemPreview>
-                        <TagsInputItemInput />
-                      </TagsInputItem>
-                    ))}
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      ))
+                    ) : (
+                      tagsInput.value.map((value, index) => (
+                        <TagsInputItem key={value} index={index} value={value}>
+                          <TagsInputItemPreview
+                            size="md"
+                            visual="gray"
+                            className="h-10 gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2.5 pl-4 text-sm leading-5 text-dark-blue-400 shadow-xs"
+                          >
+                            <TagsInputItemText>{value}</TagsInputItemText>
+                            <TagsInputItemDeleteTrigger className="size-4 text-gray-400 opacity-100 hover:text-gray-700">
+                              <X2 className="size-4" />
+                            </TagsInputItemDeleteTrigger>
+                          </TagsInputItemPreview>
+                          <TagsInputItemInput />
+                        </TagsInputItem>
+                      ))
+                    )}
                   </div>
                 </TagsInputControl>
               )}
@@ -16308,68 +16385,6 @@ const ServiceScopeEditStep = ({
     );
   };
 
-  const addServiceQualityTask = () => {
-    const targetPhaseId = phases[0]?.id;
-
-    if (!targetPhaseId) return false;
-
-    setPhases((currentPhases) =>
-      currentPhases.map((phase) =>
-        phase.id !== targetPhaseId
-          ? phase
-          : {
-              ...phase,
-              rows: phase.rows.some((row) => row.task === "Quality Review")
-                ? phase.rows
-                : [
-                    ...phase.rows,
-                    {
-                      task: "Quality Review",
-                      role: "QA Specialist",
-                      location: "USA",
-                      experience: "Junior",
-                      duration: "10 hours",
-                    },
-                  ],
-            },
-      ),
-    );
-    setExpandedPhaseIds((currentIds) =>
-      currentIds.includes(targetPhaseId)
-        ? currentIds
-        : [...currentIds, targetPhaseId],
-    );
-
-    return true;
-  };
-
-  const applyServiceAssistantFallback = (message: string) => {
-    const normalizedMessage = normalizeSearchText(message);
-
-    if (!normalizedMessage) return false;
-
-    if (normalizedMessage.includes("budget")) {
-      let fallbackMessage = "";
-      setBudgetAmount((currentAmount) => {
-        const nextAmount = Math.max(1000, Math.round(currentAmount * 0.8));
-        fallbackMessage = `Applied: budget reduced to $${nextAmount.toLocaleString()} per ${budgetFrequency}.`;
-        return nextAmount;
-      });
-      return fallbackMessage;
-    } else if (
-      normalizedMessage.includes("quality") ||
-      normalizedMessage.includes("scope") ||
-      normalizedMessage.includes("improve")
-    ) {
-      const didAddTask = addServiceQualityTask();
-      return didAddTask
-        ? "Applied: added a Quality Review task to the setup phase."
-        : "No available phase found to update.";
-    } else {
-      return "Try one of the suggested actions: reduce the budget or improve scope quality.";
-    }
-  };
-
   const buildServiceAssistantScope = () => ({
     phases: phases.map((phase) => ({
       phaseName: `${phase.name} ${phase.customName ?? ""}`.trim(),
@@ -16491,14 +16506,11 @@ const ServiceScopeEditStep = ({
     setAssistantMessage("");
 
     if (!jobListingId) {
-      const fallbackResult = applyServiceAssistantFallback(prompt);
       completeServiceAssistantHistoryItem(
         historyId,
         prompt,
-        fallbackResult ||
-          "Smart Assistant needs a saved job draft first. Please try again in a moment.",
-        fallbackResult ? "success" : "error",
-        fallbackResult ? getServiceAssistantListingSnapshot() : undefined,
+        "Smart Assistant needs a saved job draft first. Please try again in a moment.",
+        "error",
       );
       return;
     }
@@ -16516,17 +16528,14 @@ const ServiceScopeEditStep = ({
       const data = response?.data ?? {};
 
       if (data.aiStatus === "AI_UNAVAILABLE") {
-        const fallbackResult = applyServiceAssistantFallback(prompt);
         completeServiceAssistantHistoryItem(
           historyId,
           prompt,
-          fallbackResult ||
-            getServiceAssistantResultText(
-              data.message,
-              "Smart Assistant is temporarily unavailable.",
-            ),
-          fallbackResult ? "success" : "error",
-          fallbackResult ? getServiceAssistantListingSnapshot() : undefined,
+          getServiceAssistantResultText(
+            data.message,
+            "Smart Assistant is temporarily unavailable.",
+          ),
+          "error",
         );
         return;
       }
@@ -16572,16 +16581,13 @@ const ServiceScopeEditStep = ({
         );
       }
     } catch (error: any) {
-      const fallbackResult = applyServiceAssistantFallback(prompt);
       completeServiceAssistantHistoryItem(
         historyId,
         prompt,
-        fallbackResult ||
-          error?.response?.data?.message ||
+        error?.response?.data?.message ||
           error?.message ||
           "Smart Assistant is temporarily unavailable.",
-        fallbackResult ? "success" : "error",
-        fallbackResult ? getServiceAssistantListingSnapshot() : undefined,
+        "error",
       );
     } finally {
       setIsAssistantLoading(false);

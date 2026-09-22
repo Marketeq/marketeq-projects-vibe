@@ -264,6 +264,13 @@ For every task consider:
 
 KEEP is a valid optimization decision.
 
+HARD CONSTRAINT: never remove or consolidate a task if doing so would leave
+its phase with zero tasks. Every phase must retain at least one task in
+the output, no matter how much cost that leaves on the table. If a phase
+has only one task left, that task may be changed (location, experience,
+hours) but not removed — reaching the reduction target is always secondary
+to this.
+
 LOCATION DECISION RULES
 
 A lower-cost location should only be selected when the task is appropriate
@@ -526,10 +533,22 @@ its EXPERIENCE LEVEL, or both. These are the only two levers.
 KEEP is a valid optimization decision.
 
 Do NOT change a task's estimatedHours for cost-optimization purposes.
-Do NOT remove or consolidate any task. Do NOT add new tasks. Hours and the
-task list itself are out of scope for this command — this differs from
-Project scopes, where reducing hours and removing/consolidating tasks are
-also available levers.
+Do NOT remove or consolidate any task, for any reason, no matter how low-
+value, low-priority, or "nice to have" that task or its phase may seem. Do
+NOT add new tasks, and do NOT add new phases. Hours and the task list
+itself are out of scope for this command — this differs from Project
+scopes, where reducing hours and removing/consolidating tasks are also
+available levers.
+
+This is a HARD CONSTRAINT, not a preference: the output must contain
+exactly the same phases (by phaseName and count) and exactly the same
+tasks within each phase (by taskName and count) as the input — only a
+task's location and/or experienceLevel may differ. If you cannot hit the
+target reduction using only location and experience changes, get as close
+as you reasonably can and STOP. Missing the target is always acceptable.
+Deleting a task, leaving any phase with fewer tasks than it started with,
+or outputting any phase not present in the input is never acceptable,
+regardless of how much closer to the target that would get you.
 
 LOCATION DECISION RULES
 
@@ -787,6 +806,11 @@ target without becoming unrealistic, removing or consolidating a genuinely
 unnecessary task is an acceptable last resort — same principle as when
 optimizing cost. Prefer reducing hours first; only remove or consolidate
 when that alone is not enough.
+
+HARD CONSTRAINT: never remove or consolidate a task if doing so would leave
+its phase with zero tasks. Every phase must retain at least one task in
+the output. If a phase has only one task left, reduce its hours instead of
+removing it, even if that alone cannot fully reach the target.
 `;
 
 // ── Smart Assistant scope-quality prompt ─────────────────────────────────
@@ -1455,27 +1479,86 @@ export class JobListingAiService {
     const result = await this.call<{ tools: string[] }>(
       {
         maxTokens: 2048,
-        temperature: 0.3,
+        temperature: 0.2,
         messages: [
           {
             role: "system",
-            content:
-              'You identify tools, technologies, frameworks, and platforms required for a software or digital project. Respond only with a JSON object: { "tools": ["string"] }. Return 5 to 15 tools. Use the exact common name for each tool (e.g. "React", "Node.js", "PostgreSQL", "Figma"). Do not include soft skills or methodologies.',
+            content: `
+You are a senior software architect selecting the technology stack for a real-world software or digital project.
+
+Your job is NOT to brainstorm technologies. Your job is to choose a small, coherent, production-appropriate set of tools that would realistically be used to deliver the project.
+
+Analyze the project requirements internally before selecting tools.
+
+Selection process:
+1. Determine what is actually being built from the work type, description, deliverables, and roles.
+2. Identify the technical capabilities required to build and deliver it.
+3. Select technologies that work well together as a coherent stack.
+4. Prefer tools directly relevant to the requested deliverables.
+5. Remove redundant tools, competing alternatives, and tools that are merely "nice to have".
+6. Prefer mature, widely adopted technologies unless the project clearly calls for something specialized.
+7. Choose the most appropriate tool for each responsibility instead of listing several interchangeable options.
+
+Selection criteria:
+- Strong fit for the project's actual requirements
+- Compatibility with the rest of the selected stack
+- Appropriate for the project's likely scale and complexity
+- Commonly used in production for this type of work
+- Relevant to the roles involved
+- Necessary or highly useful for producing the specified deliverables
+
+Important rules:
+- Return approximately 6-12 tools. Use fewer if the project is simple.
+- Do not fill the list just to reach a minimum.
+- Do not include multiple competing technologies for the same purpose unless the project genuinely requires both.
+  Bad: ["React", "Vue.js", "Angular"]
+  Good: ["React"]
+- Do not include generic concepts such as:
+  "REST API", "Microservices", "CI/CD", "Cloud", "Database", "Agile", "DevOps", "Machine Learning"
+- Do not include soft skills, methodologies, job roles, or abstract architectural concepts.
+- Programming languages are allowed when they are a meaningful part of the implementation.
+- Infrastructure, deployment, testing, design, analytics, and collaboration tools should only be included when the project actually needs them.
+- Avoid obscure or niche technologies when a standard industry tool is a better fit.
+- Do not select a technology simply because it appears in the project description; determine whether it is actually appropriate.
+- Use exact, commonly recognized product or technology names:
+  "React", "Next.js", "TypeScript", "Node.js", "PostgreSQL", "Redis", "Docker", "AWS", "Figma", "Playwright"
+- Do not add explanations, categories, markdown, or commentary.
+
+Before answering, internally verify:
+- Every selected tool has a clear purpose.
+- The technologies are compatible.
+- There are no unnecessary alternatives.
+- The stack could realistically be used by the listed roles to produce the requested deliverables.
+
+Respond with exactly this JSON structure:
+{
+  "tools": ["Tool 1", "Tool 2"]
+}
+`.trim(),
           },
           {
             role: "user",
-            content: [
-              `Work type: ${input.workType}`,
-              `Description: ${input.description}`,
-              `Deliverables: ${input.deliverables ?? "Not specified"}`,
-              `Roles: ${input.roles.join(", ")}`,
-            ].join("\n"),
+            content: `
+Select the most appropriate technology stack for this project.
+
+Work type:
+${input.workType}
+
+Project description:
+${input.description}
+
+Expected deliverables:
+${input.deliverables?.trim() || "Not specified"}
+
+Roles involved:
+${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
+`.trim(),
           },
         ],
       },
       "tools",
     );
-    return result.tools.slice(0, 20);
+    return result.tools.slice(0, 15);
   }
 
   async generateProjectScope(input: {
@@ -1826,7 +1909,8 @@ export class JobListingAiService {
   // appended, branched on workType (currently identical content — split so
   // they can diverge independently later) — the multiplier tables and
   // decision rules that keep the model from just racing every task to
-  // junior/cheapest region/minimum hours. Timeline-shortening commands get
+  // junior/cheapest region/minimum hours/zero tasks. Timeline-shortening
+  // commands get
   // TIMELINE_OPTIMIZATION_RULES, and scope-quality commands ("Improve scope
   // quality", "add more detail", ...) get SCOPE_QUALITY_RULES — each
   // independently of the others, so a command could in principle match more
@@ -1918,11 +2002,15 @@ GENERAL RULES:
 - Do not make unrelated changes.
 - Preserve existing IDs.
 - Never exceed 10 phases or 16 tasks per phase.
+- Never reduce a phase's task list to zero, even under cost or timeline
+  optimization — every phase must retain at least one task after your edit.
+  Remove a phase entirely only if the command explicitly asks to remove that
+  phase.
 - Keep the resulting scope realistic and internally consistent.
 - Consider relationships between tasks and phases.
 - Do not treat each task as an isolated row.
 - Do not invent unsupported enum values.
-- summary must be one sentence describing the important changes.
+- summary must be a detailed description of what changed exactly.
 - suggestions must contain 2-3 useful follow-up actions.
 `;
 
@@ -2063,6 +2151,36 @@ command gives an explicit target (a percentage, a day/week/month amount,
     if (isScopeQuality) {
       prompt += `\n${SCOPE_QUALITY_RULES}`;
     }
+
+    // Unconditional, appended last (models weight instructions near the end
+    // of a long prompt more heavily than ones buried earlier — the phase-
+    // preservation rule already stated above in GENERAL RULES, and again in
+    // COST_OPTIMIZATION_RULES_SERVICE/PROJECT and TIMELINE_OPTIMIZATION_RULES,
+    // was still violated in production: a service-scope "Reduce the budget"
+    // command emptied the Ongoing phase entirely despite an explicit "Do NOT
+    // remove or consolidate any task" rule earlier in the same prompt). This
+    // is a final, explicit self-check immediately before the model writes
+    // its JSON response.
+    prompt += `
+FINAL CHECK BEFORE YOU RESPOND
+
+Before writing your JSON response, count the tasks in each phase of
+updatedScope.
+
+If any phase has zero tasks — including a phase that started with tasks
+and had all of them removed — your response is INVALID. Go back and keep
+at least one task in that phase before responding. This applies regardless
+of a phase's type or name, and regardless of command type, including cost
+optimization and timeline optimization. No reduction target, optimization
+goal, or command justifies a phase with zero tasks. This check overrides
+every other instruction above.
+
+Also verify updatedScope.phases contains no phase you invented that isn't
+a direct edit of a phase already present in the current scope above,
+unless the command explicitly asked you to add a phase. Every phase in
+your response must have a real, specific phaseName — never leave phaseName
+blank or generic filler.
+`;
 
     return prompt;
   }

@@ -38,6 +38,7 @@ const JSON_DATA_TYPES = new Set([
   "companies",
   "universities",
   "locations",
+  "tool",
 ]);
 
 function resolveAutocompleteDataPath(type: string): string | null {
@@ -210,6 +211,7 @@ const AUTOCOMPLETE_ROUTE_TYPE_MAP: Partial<Record<string, EntryType>> = {
   certifications: EntryType.CERTIFICATION,
   industries: EntryType.INDUSTRY,
   project_types: EntryType.PROJECT_TYPE,
+  tool: EntryType.TOOL,
 };
 
 type PendingReviewEntry = {
