@@ -1497,30 +1497,36 @@ export function OfferDialog({
                           variant="outlined"
                           visual="gray"
                           onClick={() => {
-                            // FR-13/AC-20.1: this used to be
-                            // setOfferSent(false), reopening the draft form.
-                            // AC-20.1 says "review the SENT offer details" —
-                            // the draft form is what's being edited, not
-                            // what was sent. The checkout confirmation
-                            // page's own heading ("Please confirm your offer
-                            // details below") is what actually reviews the
-                            // submitted offer, and it's also the only entry
-                            // point into the Stripe flow anywhere in the app
-                            // (see the T4-B report) — this redirect used to
-                            // fire unconditionally on success; now it only
-                            // fires from here, so it can't be skipped.
-                            onOpenChange(false)
-                            router.push(
-                              `/talent-checkout/${checkoutSlug}?${buildCheckoutSearchParams().toString()}`
-                            )
+                            // QA bug fix / AC-10.06: this used to redirect to
+                            // /talent-checkout unconditionally — the same
+                            // page the bug is about, reached one click
+                            // later instead of automatically. There is no
+                            // offer id on this path (T2-14: nothing here
+                            // ever creates one), so per AC-10.06 ("If
+                            // 'Review Your Offer' fails to load the offer
+                            // detail (offer ID not found), an error toast is
+                            // shown... The user remains on the confirmation
+                            // screen") this is the not-found case, always.
+                            // No navigation, no modal close.
+                            toast({
+                              variant: "destructive",
+                              description:
+                                "We couldn't load this offer right now. Please try again.",
+                              duration: 5000,
+                            })
                           }}
                         >
                           Review Your Offer
                         </Button>
                         <Button
                           onClick={() => {
+                            // AC-10.03: "closes modal and returns to the
+                            // talent profile or marketplace" — Hire Me was
+                            // opened from the talent's profile, so closing
+                            // the modal alone already returns the client
+                            // there. /find-jobs is a talent-facing job
+                            // search; a client has no reason to land on it.
                             onOpenChange(false)
-                            router.push("/find-jobs")
                           }}
                         >
                           Continue Browsing
@@ -2850,13 +2856,29 @@ export function OfferDialog({
                     return
                   }
 
-                  // Reached only when there's no real submission to call
-                  // "successful": isStepFour (new-contract path — T2-14,
-                  // POST /contract-groups was never wired) and isEditMode
-                  // (editing an ALREADY-sent offer, not sending a new one —
-                  // "Offer Sent!" copy would be wrong here regardless of
-                  // wiring). Both keep exactly today's behaviour; FR-13 only
-                  // changes the path above that actually submits something.
+                  // QA bug fix: isStepFour (existing contracts, "create a new
+                  // contract" — T2-14, POST /contract-groups still isn't
+                  // wired) used to fall through to the router.push below,
+                  // same as the zero-existing-contracts case. AC-10.01
+                  // ("no full page navigation occurs") applies to both —
+                  // neither has a real submission to call "successful", but
+                  // both show the same in-modal confirmation the real
+                  // addContractGroupMember path above already shows, rather
+                  // than navigating away.
+                  if (!isEditMode) {
+                    onSaveOffer?.({
+                      selectedRate,
+                      schedule,
+                      selectedDuration: resolvedDuration,
+                      customRate: resolvedCustomRate,
+                    })
+                    setOfferSent(true)
+                    return
+                  }
+
+                  // Edit mode only from here down: editing an ALREADY-sent
+                  // offer, not sending a new one — "Offer Sent!" copy would
+                  // be wrong regardless of wiring. Unchanged.
                   onSaveOffer?.({
                     selectedRate,
                     schedule,
@@ -2864,11 +2886,6 @@ export function OfferDialog({
                     customRate: resolvedCustomRate,
                   })
                   onOpenChange(false)
-                  if (!isEditMode) {
-                    router.push(
-                      `/talent-checkout/${checkoutSlug}?${buildCheckoutSearchParams().toString()}`
-                    )
-                  }
                 }}
               >
                 {isSubmittingOffer
