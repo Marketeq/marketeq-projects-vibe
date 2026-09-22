@@ -45,8 +45,18 @@ export class OAuthService {
     this.redis = new Redis(redisUrl);
     this.stateTtl = parseInt(this.config.get('OAUTH_STATE_TTL_SECONDS', '600'), 10);
 
+    // PS-09 v2.0 §3: "Never regenerate this key after contractors have
+    // connected accounts — doing so will invalidate all stored tokens."
+    // A silent random-key fallback on a missing/malformed env var is
+    // exactly that failure mode on every restart, with no signal at boot
+    // time — fail fast instead so a misconfigured deploy never ships.
     const keyHex = this.config.get('OAUTH_TOKEN_ENCRYPTION_KEY', '');
-    this.encryptionKey = keyHex.length === 64 ? Buffer.from(keyHex, 'hex') : crypto.randomBytes(32);
+    if (keyHex.length !== 64) {
+      throw new Error(
+        'OAUTH_TOKEN_ENCRYPTION_KEY must be a 64-character hex string (32 bytes) — generate with `openssl rand -hex 32` and never regenerate it once contractors have connected accounts.',
+      );
+    }
+    this.encryptionKey = Buffer.from(keyHex, 'hex');
 
     // PS-09 v2.0 §3/§12: base URL is env-driven so sandbox (local dev,
     // staging) and production point at different hosts without a code
