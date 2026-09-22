@@ -815,170 +815,102 @@ removing it, even if that alone cannot fully reach the target.
 
 // ── Smart Assistant scope-quality prompt ─────────────────────────────────
 // Unlike cost/timeline, there is no numeric target here — the goal is
-// identifying genuinely vague/bundled tasks and decomposing them into
+// identifying a genuinely vague/bundled task and splitting it into two
 // specific sibling tasks in the SAME flat phase.tasks array (the data model
 // has no parent/child task relation — see job-listing-task.entity.ts — so
-// "decomposition" always means adding more entries to the same flat list,
+// "splitting" always means adding one more entry to the same flat list,
 // never nesting). normalizeProjectScope/normalizeServiceScope silently
-// .slice(0, 16) any phase over the cap, so the prompt must make the model
-// budget-aware rather than splitting indiscriminately.
+// .slice(0, 5) any phase over the cap, so this is deliberately narrow —
+// exactly one task split into exactly two, hard-gated by the 5-task-per-
+// phase cap, no partial workarounds when a phase is already at the cap —
+// rather than open-ended multi-candidate/multi-sibling decomposition.
+// Shared identically by both workTypes per explicit request.
 const SCOPE_QUALITY_RULES = `
 SCOPE QUALITY MODE
 
-The user's goal is to make the scope more specific and actionable by
-decomposing vague or overly broad tasks into multiple specific sibling
-tasks — NOT to add unrelated new work, NOT to inflate the budget or
-timeline, and NOT to touch tasks that are already well-scoped.
+This command has exactly ONE lever: splitting ONE genuinely vague or
+bundled task into exactly TWO specific sibling tasks, within the same
+phase. Nothing else may change.
 
-There is no parent/child or subtask relationship in this data model. A
-task's "children" ARE simply additional entries in the same phase's tasks
-array, at the same level as the task they replace. "Decompose task X into
-three sibling tasks" means: remove X, add three new tasks to that same
-phase.
+IDENTIFYING A CANDIDATE TASK
 
-IDENTIFYING GENERIC TASKS
-
-A task is a genuinely good candidate for decomposition when it shows one or
-more of these signals:
+A task is a genuine candidate for splitting when it shows one or more of
+these signals:
 
 - taskName bundles multiple distinct deliverables under one broad label
-  (e.g. "Build checkout" covering UI + payment integration + error
-  handling; "Set up backend" covering API + database + auth).
+  (e.g. "Build checkout" covering UI + payment integration).
 - taskName uses a broad verb + broad noun with no specific deliverable
-  named (e.g. "Build the app", "Handle user management", "Do testing").
+  named (e.g. "Build the app", "Do testing").
 - estimatedHours is unusually large for a single task relative to the
-  other tasks in the same phase (e.g. one 80-hour task sitting alongside
-  several 8-16 hour tasks is a strong signal it is actually several tasks
-  wearing one label).
-- The task, read on its own, gives an implementer no clear sense of what
-  "done" looks like without them making several unstated design decisions.
+  other tasks in the same phase.
 
-A task is NOT a candidate — leave it completely unchanged — when it is
-already specific and reasonably scoped:
+A task is NOT a candidate — leave it completely unchanged — when it
+already names one concrete deliverable or activity, or its estimatedHours
+is modest and in line with its phase's other tasks. Do not split a task
+just because you can technically split it further.
 
-- taskName already names one concrete deliverable or activity (e.g.
-  "Implement Stripe payment webhook handler", "Write unit tests for the
-  cart service", "Design the checkout page wireframe").
-- estimatedHours is modest and in line with the other tasks around it.
+THE 5-TASK-PER-PHASE CAP IS ABSOLUTE
 
-Do not decompose a task just because you can technically split it further.
-If a task is already clear and singular in purpose, preserve it exactly as
-is — this is consistent with the GENERAL RULES principle: preserve fields
-unless changing them is reasonably necessary.
+Every phase already has at most 5 tasks (the system-enforced cap).
+Splitting one task into two adds exactly one net task to that phase.
 
-HOW TO DECOMPOSE A CANDIDATE TASK
+- If a phase already has 5 tasks, it has NO room for a split. Do NOT split
+  any task in that phase, even if a genuinely bundled task exists there —
+  leave every task in that phase completely unchanged.
+- If a phase has fewer than 5 tasks, you may split AT MOST ONE task in
+  that phase. Never split more than one task per phase, even if multiple
+  candidates exist or there is room for more than one net addition.
+- Check headroom independently per phase — one phase being at the cap has
+  no bearing on another phase that has room.
+- If NO phase in the scope has both a genuine candidate task and headroom
+  under the cap, make NO changes at all and say so in the summary.
 
-For each task you decide to decompose:
+HOW TO SPLIT A CANDIDATE TASK
 
-1. Identify the distinct, concrete pieces of work actually bundled inside
-   it. Each piece should be something a single person could pick up and
-   understand without further clarification.
-2. Create one new sibling task per distinct piece, each with:
-   - taskName: a specific, actionable label naming the concrete deliverable
-     (e.g. split "Build checkout" into "Build checkout UI",
-     "Integrate payment gateway", "Implement checkout error handling").
-   - roleTitle: default to the SAME roleTitle as the original task, unless
-     a sub-piece clearly requires a different skill set (e.g. splitting a
-     bundled "Build feature" task into a frontend piece and a backend piece
-     genuinely may need different roleTitles). Do not invent role changes
-     that aren't clearly justified by the nature of the sub-piece.
-   - location, experienceLevel, workSchedule: inherit from the original
-     task unless the command or context gives a specific reason to change
-     one for a particular sibling.
-   - estimatedHours: see HOUR DISTRIBUTION below.
-3. Remove the original bundled task from the phase entirely — it is
-   replaced BY its siblings, not kept alongside them. Keeping both the
-   original and the new siblings double-counts the work and inflates
-   estimatedHours across the phase; this is not acceptable.
-4. Place the new sibling tasks in the same phase, in a sensible order
-   (e.g. design/setup work before implementation, implementation before
-   testing).
+1. Identify the two distinct, concrete pieces of work actually bundled
+   inside the task.
+2. Create exactly two new sibling tasks, each with:
+   - taskName: a specific, actionable label naming the concrete deliverable.
+   - roleTitle: the SAME roleTitle as the original task, unless one sibling
+     clearly requires a different skill set.
+   - location, experienceLevel, workSchedule: inherited from the original
+     task, unchanged.
+   - estimatedHours: split the original task's estimatedHours across the
+     two siblings in proportion to the realistic effort of each piece — the
+     two new values must sum to close to the original; do not inflate the
+     total.
+3. Remove the original task from the phase — it is replaced by its two
+   siblings, not kept alongside them.
+4. Place the two new sibling tasks in the same phase, in a sensible order.
 
-HOUR DISTRIBUTION
-
-This is a detail/clarity pass, not a scope-inflation pass.
-
-The sum of estimatedHours across a decomposed task's new siblings should
-stay close to the original task's estimatedHours. Distribute the original
-hours across the siblings in proportion to the realistic effort of each
-piece — do not split hours evenly by default if the pieces are not
-actually equal in effort.
-
-A modest total increase (roughly 10-20% over the original task's hours) is
-acceptable ONLY when decomposition makes genuinely missing work explicit
-that was implicitly bundled in before and had no visible hours anywhere
-(e.g. the original "Build checkout" task never had any separate testing or
-documentation task in the phase, and splitting it out now makes that work
-visible for the first time). This is the exception, not the default —
-most decompositions should redistribute the existing hours, not add to
-them.
-
-Never use decomposition as a way to multiply the total project budget or
-timeline. If you find yourself adding substantial extra hours across many
-tasks, you are scope-inflating, not clarifying — stop and reconsider.
-
-PHASE AND TASK CAPS — SILENT TRUNCATION WARNING
-
-The 16-tasks-per-phase and 10-phases caps from GENERAL RULES above are HARD
-caps enforced by the system AFTER your response — any tasks beyond the
-16th in a phase, or any phase beyond the 10th, are SILENTLY DROPPED with no
-error shown to you or the user. There is no warning when this happens; the
-extra work simply disappears from the scope.
-
-Because of this:
-
-- Before decomposing, count how many tasks are already in a phase and how
-  much headroom remains under 16.
-- Do NOT decompose every generic-looking task in a phase indiscriminately.
-  Prioritize the tasks that most need decomposition (the broadest, most
-  bundled, or largest-hours tasks) and leave clearly-adequate ones alone.
-- If a phase is already near 16 tasks, prefer decomposing fewer tasks into
-  fewer, well-chosen siblings (2-3) rather than many siblings, or skip
-  decomposition in that phase entirely if it would exceed the cap.
-- Never let your changes push any phase over 16 tasks or the scope over 10
-  phases, even if it means leaving some generic tasks undecomposed.
-
-If uncertain whether decomposing a task will fit within the cap, prefer
-leaving that task unchanged over risking silent data loss.
-
-APPLIES TO BOTH PROJECT AND SERVICE SCOPES
-
-This decomposition applies identically whether the scope is a project or a
-service — service tasks can be just as generic as project tasks, and the
-same identification and decomposition rules apply. For service scopes,
-continue to follow SERVICE RULES elsewhere in this prompt: do not change
-phaseType on existing phases, and do not introduce or imply a fixed
-completion date. Decomposing a task's tasks list within an existing phase
-does not conflict with either of those constraints.
+Do not touch any task in a phase you are not splitting a task in. Never
+add, remove, or rename a phase. Never change a phase-level field (its
+phaseType, recurrenceSchedule, or recurrenceCount, where the scope type
+has them). Never change a task's location, experienceLevel, or
+workSchedule except the straightforward inheritance in step 2 above.
 
 WORKED EXAMPLE
 
-Original task in an "Implementation" phase:
+Original task in a phase that currently has 3 tasks (2 below the 5-task
+cap, so it has room):
 
   taskName: "Build checkout"
   roleTitle: "Full-Stack Developer"
-  estimatedHours: 40
+  estimatedHours: 16
 
-This is a good candidate: broad verb+noun, no specific deliverable named,
-and 40 hours is noticeably larger than the phase's other tasks (e.g. most
-are 8-16 hours).
-
-Decomposed into three siblings, same phase, hours redistributed to sum
-close to the original 40 (here 42, a small increase to make testing
-explicit):
+Good candidate: broad verb+noun, no specific deliverable named. Split into
+exactly two siblings, same phase, hours redistributed to sum close to the
+original 16:
 
   1. taskName: "Build checkout UI"
      roleTitle: "Full-Stack Developer"
-     estimatedHours: 14
+     estimatedHours: 8
   2. taskName: "Integrate payment gateway"
      roleTitle: "Full-Stack Developer"
-     estimatedHours: 16
-  3. taskName: "Write checkout error handling and tests"
-     roleTitle: "Full-Stack Developer"
-     estimatedHours: 12
+     estimatedHours: 8
 
-The original "Build checkout" task is removed; only the three siblings
-remain in the phase.
+The original "Build checkout" task is removed; only the two siblings
+remain in the phase, which now has 4 tasks — still within the cap.
 `;
 
 @Injectable()
@@ -1241,7 +1173,7 @@ export class JobListingAiService {
   private normalizeProjectScope(
     scope: Partial<GeneratedProjectScope>,
     maxPhases = 10,
-    maxTasks = 16,
+    maxTasks = 5,
   ): GeneratedProjectScope {
     const phases = Array.isArray(scope.phases) ? scope.phases : [];
 
@@ -1261,7 +1193,7 @@ export class JobListingAiService {
   private normalizeServiceScope(
     scope: Partial<GeneratedServiceScope>,
     maxPhases = 10,
-    maxTasks = 16,
+    maxTasks = 5,
   ): GeneratedServiceScope {
     const phases = Array.isArray(scope.phases) ? scope.phases : [];
     const normalized = phases.slice(0, maxPhases).map((phase, phaseIndex) => {
@@ -1575,7 +1507,7 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
 
     const result = await this.call<GeneratedProjectScope>(
       {
-        maxTokens: 6144,
+        maxTokens: 9216,
         temperature: 0.3,
         messages: [
           {
@@ -1586,7 +1518,7 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
               '{ "phases": [{ "phaseName": "string", "tasks": [{ "taskName": "string", ' +
               '"roleTitle": "string", "location": "string", "experienceLevel": "string", ' +
               '"workSchedule": "full_time|part_time", "estimatedHours": number }] }] }. ' +
-              "Maximum 10 phases. Maximum 16 tasks per phase. " +
+              "Maximum 10 phases. Maximum 5 tasks per phase. " +
               `experienceLevel must be one of: ${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}. ` +
               `location must be one of these countries: ${VALID_COUNTRIES_PROMPT_LIST}. ` +
               "estimatedHours must be a positive number. Do not include markdown or prose.",
@@ -1625,7 +1557,7 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
 
     const result = await this.call<GeneratedServiceScope>(
       {
-        maxTokens: 6144,
+        maxTokens: 9216,
         temperature: 0.3,
         messages: [
           {
@@ -1638,7 +1570,7 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
               '"roleTitle": "string", "location": "string", "experienceLevel": "string", ' +
               '"workSchedule": "full_time|part_time", "estimatedHours": number }] }] }. ' +
               "Rules: Exactly one setup phase (first). One or more recurring phases (middle). " +
-              "Exactly one ongoing phase (last). Maximum 10 phases total. Maximum 16 tasks per phase. " +
+              "Exactly one ongoing phase (last). Maximum 10 phases total. Maximum 5 tasks per phase. " +
               "setup and ongoing phases have recurrenceSchedule: null and recurrenceCount: null. " +
               "recurring phases must have recurrenceSchedule and recurrenceCount >= 1. " +
               "Do not include a duration field — services have no fixed end date. " +
@@ -1682,13 +1614,13 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
       ? "You generate a complete service scope from a brief description. The client is unsure " +
         "what they need beyond the basic description. Make reasonable assumptions. " +
         'Respond only with a JSON object: { "phases": [...] } following the service scope structure ' +
-        "(one setup, one or more recurring, one ongoing). Maximum 8 phases. Maximum 12 tasks per phase. " +
+        "(one setup, one or more recurring, one ongoing). Maximum 8 phases. Maximum 5 tasks per phase. " +
         "Include role, location, experienceLevel, workSchedule, estimatedHours on every task. " +
         `experienceLevel must be one of: ${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}.`
       : "You generate a complete project scope from a brief description. The client is unsure " +
         "what they need beyond the basic description. Make reasonable assumptions. " +
         'Respond only with a JSON object: { "phases": [...] } following the project scope structure. ' +
-        "Maximum 8 phases. Maximum 12 tasks per phase. " +
+        "Maximum 8 phases. Maximum 5 tasks per phase. " +
         "Include role, location, experienceLevel, workSchedule, estimatedHours on every task. " +
         `experienceLevel must be one of: ${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}.`;
 
@@ -1696,7 +1628,7 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
       GeneratedProjectScope | GeneratedServiceScope
     >(
       {
-        maxTokens: 6144,
+        maxTokens: 9216,
         temperature: 0.5,
         messages: [
           { role: "system", content: systemPrompt },
@@ -1719,12 +1651,12 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
       ? this.normalizeServiceScope(
           result as Partial<GeneratedServiceScope>,
           8,
-          12,
+          5,
         )
       : this.normalizeProjectScope(
           result as Partial<GeneratedProjectScope>,
           8,
-          12,
+          5,
         );
   }
 
@@ -1912,10 +1844,11 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
   // junior/cheapest region/minimum hours/zero tasks. Timeline-shortening
   // commands get
   // TIMELINE_OPTIMIZATION_RULES, and scope-quality commands ("Improve scope
-  // quality", "add more detail", ...) get SCOPE_QUALITY_RULES — each
-  // independently of the others, so a command could in principle match more
-  // than one and get multiple blocks appended. Non-matching commands (e.g.
-  // "add a QA phase") skip all three to keep the prompt short and on-topic.
+  // quality", "add more detail", ...) get SCOPE_QUALITY_RULES (same content
+  // for both workTypes — see its own comment) — each independently of the
+  // others, so a command could in principle match more than one and get
+  // multiple blocks appended. Non-matching commands (e.g. "add a QA phase")
+  // skip all three to keep the prompt short and on-topic.
   // Shared with handleSmartAssistantScopeEdit, which uses the same checks to
   // decide maxTokens — a cost-optimization command needs more careful,
   // multi-task arithmetic to hit its reduction target than a simple
@@ -2001,7 +1934,7 @@ GENERAL RULES:
 - Preserve fields unless changing them is reasonably necessary to satisfy the command.
 - Do not make unrelated changes.
 - Preserve existing IDs.
-- Never exceed 10 phases or 16 tasks per phase.
+- Never exceed 10 phases or 5 tasks per phase.
 - Never reduce a phase's task list to zero, even under cost or timeline
   optimization — every phase must retain at least one task after your edit.
   Remove a phase entirely only if the command explicitly asks to remove that
@@ -2232,17 +2165,15 @@ blank or generic filler.
 
     // GROQ_REASONING_EFFORT's reasoning trace can consume most of a smaller
     // maxTokens budget before the model ever writes the JSON body —
-    // measured close to the old 4096 ceiling even on a small scope. 6144
-    // leaves headroom regardless of how heavy a given command's reasoning
-    // turns out to be, cost-optimization or not; otherwise Groq's reasoning
-    // trace can crowd the JSON body out entirely (json_validate_failed —
-    // see GroqUnavailableException call sites). Scope-quality decomposition
-    // grows both the system prompt (SCOPE_QUALITY_RULES, ~150 lines) and
-    // the expected JSON output (more tasks = more JSON) versus cost/timeline
-    // edits, which only ever change existing fields rather than adding new
-    // ones — bump to 9216 for this mode only.
-    const isScopeQuality = this.isScopeQualityCommand(input.command);
-    const maxTokens = isScopeQuality ? 9216 : 6144;
+    // measured close to the old 4096 ceiling even on a small scope. 9216
+    // leaves real headroom for every Step 4 scope-edit command (cost,
+    // timeline, scope-quality, or a plain structural edit) regardless of how
+    // heavy that command's reasoning turns out to be; otherwise Groq's
+    // reasoning trace can crowd the JSON body out entirely, silently
+    // truncating the tail of the response (summary, suggestions, or the
+    // last phase's last tasks) since parseGroqJson has no way to detect a
+    // truncated completion.
+    const maxTokens = 9216;
 
     const result = await this.call<{
       updatedScope: GeneratedProjectScope | GeneratedServiceScope;
