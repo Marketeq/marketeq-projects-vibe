@@ -109,7 +109,13 @@ export class PayoutController {
     return this.payoutService.listAwaitingEDD();
   }
 
-  // PS-15 §6.2: Admin — release a payout past EDD review, straight to QUEUED.
+  // PS-15 §6.2/§6.3: Admin — release a payout past EDD review. Sends the
+  // contractor a fresh magic link to re-confirm rather than auto-queuing —
+  // see the comment on PayoutService.releaseEDD(). req.user here is the
+  // approving admin, not the contractor, so no contractorEmail is available
+  // to pass through (same "no email-lookup contract exists" reasoning as
+  // magic-link.service.ts's cron-expiry path) — publishMagicLinkEvent()
+  // already degrades gracefully to a dev-log fallback when this is unset.
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @Post(':id/release-edd')

@@ -8,13 +8,17 @@
 import { Controller, Post, Req, Headers, HttpCode, Logger, BadRequestException } from '@nestjs/common';
 import type { Request } from 'express';
 import { StripeProvider } from './stripe.provider';
+import { CardPayoutExecutorService } from '../card/card-payout-executor.service';
 import { Public } from '../decorators/public.decorator';
 
 @Controller('v1/webhooks')
 export class StripeWebhookController {
   private readonly logger = new Logger(StripeWebhookController.name);
 
-  constructor(private readonly stripeProvider: StripeProvider) {}
+  constructor(
+    private readonly stripeProvider: StripeProvider,
+    private readonly cardPayoutExecutor: CardPayoutExecutorService,
+  ) {}
 
   // Stripe's servers call this directly — no Marketeq JWT exists to send.
   // Authenticity is verified entirely via the Stripe-Signature header below,
@@ -71,6 +75,11 @@ export class StripeWebhookController {
         break;
       case 'account.updated':
         await this.stripeProvider.handleAccountUpdated(event.data.object);
+        break;
+      // PS-13 §4 step 5: confirms a Marketeq Debit Card transaction — no
+      // handler existed for this event before.
+      case 'issuing_transaction.created':
+        await this.cardPayoutExecutor.handleIssuingTransactionCreated(event.data.object);
         break;
       default:
         this.logger.log(`Stripe webhook: unhandled event type ${event.type}`);

@@ -13,7 +13,6 @@ import Redis from 'ioredis';
 import { Cron } from '@nestjs/schedule';
 
 import { MagicLinkVerification } from '../entities/magic-link-verification.entity';
-import { MagicLinkToken } from '../entities/magic-link-token.entity';
 import { PayoutRequest, PayoutStatus } from '../entities/payout-request.entity';
 import { DepositMethod } from '../entities/deposit-method.entity';
 import { AuditService } from '../audit/audit.service';
@@ -37,8 +36,6 @@ export class MagicLinkService {
   constructor(
     @InjectRepository(MagicLinkVerification)
     private readonly verificationRepo: Repository<MagicLinkVerification>,
-    @InjectRepository(MagicLinkToken)
-    private readonly mlTokenRepo: Repository<MagicLinkToken>,
     @InjectRepository(PayoutRequest)
     private readonly payoutRepo: Repository<PayoutRequest>,
     @InjectRepository(DepositMethod)

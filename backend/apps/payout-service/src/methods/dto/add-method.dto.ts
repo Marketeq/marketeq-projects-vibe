@@ -29,6 +29,8 @@ export class AddMethodDto {
   // Japan
   @IsOptional() @IsString() bankCode?: string;
   @IsOptional() @IsString() bankBranchCode?: string;
+  // Zengin accountType — PS-36 §7 requires FUTSU (ordinary) or TOUZA (current).
+  @IsOptional() @IsIn(['FUTSU', 'TOUZA']) bankAccountType?: string;
 
   // Canada (SG-07)
   @IsOptional() @IsString() bankInstitutionNumber?: string;
