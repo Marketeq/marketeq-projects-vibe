@@ -25,6 +25,7 @@ import { InitiatePayoutDto, InitiatePayoutResponseDto } from './dto/initiate-pay
 import { VerifyResponseDto }  from './dto/verify-response.dto';
 import { PayoutPublisher }    from '../publishers/payout.publisher';
 import { PayoutFeeService }   from '../fees/payout-fee.service';
+import { PauseStatusService } from '../pause/pause-status.service';
 
 const INSTANT_FEE = '1.75';
 
@@ -53,6 +54,7 @@ export class PayoutService {
     private readonly eddService: EddService,
     private readonly publisher: PayoutPublisher,
     private readonly feeService: PayoutFeeService,
+    private readonly pauseStatusService: PauseStatusService,
     @InjectQueue('payout-processing') private readonly queue: Queue,
   ) {
     this.payoutMinimum = parseFloat(this.config.get('PAYOUT_MINIMUM_USD', '50'));
@@ -190,6 +192,13 @@ export class PayoutService {
     // PS-19 §3.1: Idempotency check
     const existing = await this.payoutRepo.findOne({ where: { idempotencyKey: dto.idempotencyKey } });
     if (existing) return { ...this.toInitiateResponse(existing), replayed: true };
+
+    // PS-16 §6: "payout-service must check for active pause conditions
+    // before every withdrawal initiation" — assertNotPaused() was already
+    // wired into the scheduled-payout cron but never called here, so manual
+    // withdrawals silently skipped NO_DEFAULT_METHOD/DEFAULT_METHOD_DEACTIVATED
+    // (the two conditions with no equivalent inline check below).
+    await this.pauseStatusService.assertNotPaused(contractorId);
 
     // PS-19 §3.2: Rate limit — 5 manual withdrawals per hour
     await this.rateLimitService.checkWithdrawalRateLimit(contractorId);
@@ -659,6 +668,15 @@ export class PayoutService {
         });
       }
     }
+
+    // PS-14 §10, PS-23 §3.5: the dedicated event, additive to the balance
+    // restoration above — notification-service's spec'd consumer.
+    await this.publisher.publishPayoutCancelled({
+      payoutRequestId: request.id,
+      contractorId,
+      reason: 'contractor_cancelled',
+      message: 'Your withdrawal request was cancelled.',
+    });
 
     return { status: 'cancelled' };
   }

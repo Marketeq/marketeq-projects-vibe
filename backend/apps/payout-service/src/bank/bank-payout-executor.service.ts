@@ -14,6 +14,8 @@ import { AuditService } from '../audit/audit.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
 import { WisePlatformService } from '../execution/wise-platform.service';
 import { PayoutFeeService } from '../fees/payout-fee.service';
+import { isOfacBlockedCountry } from '../common/ofac-countries';
+import { OAuthService } from '../oauth/oauth.service';
 
 @Injectable()
 export class BankPayoutExecutorService {
@@ -30,6 +32,7 @@ export class BankPayoutExecutorService {
     private readonly publisher: PayoutPublisher,
     private readonly wisePlatformService: WisePlatformService,
     private readonly feeService: PayoutFeeService,
+    private readonly oauthService: OAuthService,
   ) {
     const key = this.config.get('STRIPE_SECRET_KEY', '');
     if (key && key !== 'sk_test_YOUR_TEST_KEY_HERE') {
@@ -68,6 +71,20 @@ export class BankPayoutExecutorService {
       return;
     }
 
+    // PS-21 §6.1: "At every payout initiation" — checkOFACAtExecution().
+    // bank-validation.service.ts only screens the country once, at deposit
+    // method creation; OFAC's sanctioned-country list can change between
+    // then and any later payout, so it must be re-checked here too, before
+    // the bridge API call. Crypto payouts already have their own
+    // per-execution screening (chainalysis.service.ts); this was the
+    // bank-rail gap.
+    if (isOfacBlockedCountry(method.bankCountry)) {
+      await this.failPayout(payout,
+        'Payouts to this country are not currently supported.',
+        'ERR_PAYOUT_OFAC_BLOCKED');
+      return;
+    }
+
     // PS-09 v2.0 §11: a token-refresh failure sets reauthRequired and blocks
     // payouts to this method until the contractor re-authorizes.
     if ((method as any).reauthRequired) {
@@ -75,6 +92,27 @@ export class BankPayoutExecutorService {
         'Your Wise/Payoneer connection needs to be re-authorized before this payout can proceed.',
         'ERR_PAYOUT_METHOD_REAUTH_REQUIRED');
       return;
+    }
+
+    // PS-09 v2.0 §11: ensureFreshToken() was fully built but never called
+    // from anywhere — a revoked Wise/Payoneer OAuth grant was never
+    // detected until whatever hypothetical future caller invoked it. This
+    // is that caller: proactively refresh (or flip reauthRequired) right
+    // before the payout actually executes, since it's the only real
+    // point-of-use for a still-valid grant. Execution itself doesn't
+    // consume the access token (WISE/PAYONEER route through Stripe via
+    // stripeExternalAccountId below, per PS-09 v2.0 §2) — this call exists
+    // purely to detect a revoked grant and fail closed instead of letting
+    // it go undetected indefinitely.
+    if (method.methodType === MethodType.WISE || method.methodType === MethodType.PAYONEER) {
+      try {
+        await this.oauthService.ensureFreshToken(method);
+      } catch {
+        await this.failPayout(payout,
+          'Your Wise/Payoneer connection needs to be re-authorized before this payout can proceed.',
+          'ERR_PAYOUT_METHOD_REAUTH_REQUIRED');
+        return;
+      }
     }
 
     // PS-34 §2/§6: BANK_MANUAL methods outside Stripe's cross-border

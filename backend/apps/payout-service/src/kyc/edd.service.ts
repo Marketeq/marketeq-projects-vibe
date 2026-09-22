@@ -53,10 +53,13 @@ export class EddService {
     depositMethodId: string;
     methodType: string;
   }): Promise<void> {
-    // In production: publish to RabbitMQ for compliance-service
-    this.logger.log(`[EDD] Publishing payout.edd.triggered for payout ${payload.payoutRequestId}`);
-    this.logger.log(`[EDD] Amount: $${payload.amountUSD}, Contractor: ${payload.contractorId}`);
-    // Full amqplib implementation in future PS doc
+    await this.publisher.publishEddTriggered({
+      contractorId: payload.contractorId,
+      payoutRequestId: payload.payoutRequestId,
+      amountUsd: payload.amountUSD,
+      triggerReason: `Amount $${payload.amountUSD} met the $${EDD_THRESHOLD} EDD threshold.`,
+    });
+    this.logger.log(`[EDD] payout.edd.triggered published for payout ${payload.payoutRequestId}`);
   }
 
   /**

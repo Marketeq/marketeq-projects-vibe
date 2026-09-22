@@ -934,6 +934,29 @@ export class StripeProvider {
         metadata: { depositMethodId: payout.depositMethodId, achReturnCode: stripePayout.failure_code },
       });
       this.logger.warn(`Deposit method ${payout.depositMethodId} deactivated — ACH return ${stripePayout.failure_code}`);
+
+      // PS-23 §3.5: dedicated event, additive to the audit log above —
+      // notification-service/pause-evaluator's spec'd consumer.
+      await this.publisher.publishMethodDeactivated({
+        contractorId: payout.contractorId,
+        depositMethodId: payout.depositMethodId,
+        methodType: 'BANK',
+        reason: stripePayout.failure_code,
+      });
+
+      // debit_not_authorized is the closest Stripe equivalent to NACHA R10
+      // (unauthorized debit) — the one deactivation code that signals
+      // possible fraud/dispute risk rather than a routine dead account, so
+      // it's the one that also escalates to trust-safety-service.
+      if (stripePayout.failure_code === 'debit_not_authorized') {
+        await this.publisher.publishTrustSafetyEscalation({
+          contractorId: payout.contractorId,
+          depositMethodId: payout.depositMethodId,
+          payoutRequestId: payout.id,
+          achReturnCode: stripePayout.failure_code,
+          reason: 'Contractor\'s bank reported this debit as unauthorized.',
+        });
+      }
     }
 
     await this.publisher.publishPayoutFailed({
@@ -973,24 +996,6 @@ export class StripeProvider {
           metadata: { transferId, error: err.message },
         });
       }
-    }
-
-    // PS-33 §8: certain failure codes mean the destination itself is bad
-    // (closed account, wrong routing+account combo, ACH debits blocked) —
-    // retrying the same destination will only fail again, so deactivate the
-    // method and make the contractor add a new one rather than silently
-    // re-attempting on the next payout cycle.
-    const deactivateOn = ['account_closed', 'no_account', 'debit_not_authorized', 'account_frozen'];
-    if (payout.depositMethodId && deactivateOn.includes(stripePayout.failure_code)) {
-      await this.methodRepo.update(payout.depositMethodId, {
-        isActive: false, deactivatedAt: new Date(),
-      } as any);
-      await this.auditService.log({
-        contractorId: payout.contractorId,
-        actorType: 'service', actorId: 'stripe-webhook',
-        action: 'method.deactivated',
-        metadata: { depositMethodId: payout.depositMethodId, reason: stripePayout.failure_code },
-      });
     }
   }
 
@@ -1126,6 +1131,16 @@ export class StripeProvider {
     // and are unaffected — this only ever touches rows still PENDING.
     const transfers = account.capabilities?.transfers;
     if (transfers === 'active') {
+      // Fetch the rows this update is about to touch first — publishStripeKycVerified
+      // (PS-40 §3.3) needs the per-method contractorId/depositMethodId/bankCountry,
+      // which update()'s UpdateResult (just an affected count) doesn't carry.
+      const affectedMethods = await this.methodRepo.find({
+        where: {
+          stripeConnectAccountId: account.id,
+          methodType: MethodType.BANK_MANUAL,
+          verificationStatus: VerificationStatus.PENDING,
+        } as any,
+      });
       const result = await this.methodRepo.update(
         {
           stripeConnectAccountId: account.id,
@@ -1136,6 +1151,14 @@ export class StripeProvider {
       );
       if (result.affected) {
         this.logger.log(`account.updated: transfers active — ${result.affected} method(s) on ${account.id} marked VERIFIED`);
+        for (const method of affectedMethods) {
+          await this.publisher.publishStripeKycVerified({
+            contractorId: method.contractorId,
+            depositMethodId: method.id,
+            stripeConnectedAccountId: account.id,
+            bankCountry: method.bankCountry ?? '',
+          });
+        }
       }
       return;
     }
@@ -1146,6 +1169,13 @@ export class StripeProvider {
         (r) => r.includes('proof_of_liveness') || r.includes('id_number') || r.includes('document'),
       );
       if (needsId) {
+        const affectedMethods = await this.methodRepo.find({
+          where: {
+            stripeConnectAccountId: account.id,
+            methodType: MethodType.BANK_MANUAL,
+            verificationStatus: VerificationStatus.PENDING,
+          } as any,
+        });
         const result = await this.methodRepo.update(
           {
             stripeConnectAccountId: account.id,
@@ -1156,9 +1186,36 @@ export class StripeProvider {
         );
         if (result.affected) {
           this.logger.log(`account.updated: Stripe escalated ${account.id} to government ID + selfie — ${result.affected} method(s) marked PENDING_ADDITIONAL_KYC`);
+          const kycUrl = await this.createAccountLink(account.id);
+          for (const method of affectedMethods) {
+            await this.publisher.publishAdditionalKycRequired({
+              contractorId: method.contractorId,
+              depositMethodId: method.id,
+              kycUrl,
+              requirements,
+            });
+          }
         }
       }
     }
+  }
+
+  // PS-40 §3.4: the additional_kyc_required event carries a Stripe Account
+  // Link URL the contractor follows to complete government ID + selfie.
+  // account_onboarding (not account_update) since PENDING_ADDITIONAL_KYC
+  // methods haven't finished onboarding yet — Stripe still has outstanding
+  // currently_due requirements on the account at this point.
+  private async createAccountLink(stripeConnectAccountId: string): Promise<string> {
+    if (!this.stripe || !this.isRealStripeKey()) {
+      return this.fcReturnUrl;
+    }
+    const link = await this.stripe.accountLinks.create({
+      account: stripeConnectAccountId,
+      refresh_url: this.fcReturnUrl,
+      return_url: this.fcReturnUrl,
+      type: 'account_onboarding',
+    });
+    return link.url;
   }
 
   // ─── PS-34 §4.2: Submit DOB to unlock cross-border transfers ────

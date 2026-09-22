@@ -324,4 +324,29 @@ export class WisePlatformService {
     const usdBalance = Array.isArray(data) ? data.find((b: any) => b.currency === 'USD') : null;
     return usdBalance?.amount?.value ?? 0;
   }
+
+  // ── Transfer lookup (PS-40 §3.1/§3.2) ────────────────────────────
+  // GET /v1/transfers/{id} — the webhook only carries the transfer id and
+  // state, not the amounts; the wise_platform.transfer_sent/failed events
+  // need targetCurrency/targetAmount, which only this lookup has.
+  // Docs: https://docs.wise.com/api-docs/api-reference/transfer#get-by-id
+  async getTransfer(transferId: string): Promise<{
+    sourceValue: number;
+    targetValue: number;
+    targetCurrency: string;
+  }> {
+    this.assertConfigured();
+    const res = await fetch(`${this.baseUrl}/v1/transfers/${transferId}`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) {
+      throw new PayoutError('Failed to look up Wise Platform transfer.', HttpStatus.BAD_GATEWAY, 'ERR_WISE_PLATFORM_TRANSFER_LOOKUP_FAILED');
+    }
+    const data: any = await res.json();
+    return {
+      sourceValue: data.sourceValue,
+      targetValue: data.targetValue,
+      targetCurrency: data.targetCurrency,
+    };
+  }
 }
