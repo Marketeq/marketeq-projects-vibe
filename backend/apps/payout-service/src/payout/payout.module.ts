@@ -19,6 +19,7 @@ import { CardModule }      from '../card/card.module';
 import { BankModule }      from '../bank/bank.module';
 import { PublishersModule } from '../publishers/publishers.module';
 import { FeesModule }      from '../fees/fees.module';
+import { PauseModule }     from '../pause/pause.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { FeesModule }      from '../fees/fees.module';
     BankModule,
     PublishersModule,
     FeesModule,
+    PauseModule,        // PauseStatusService.assertNotPaused — PS-16 §6
   ],
   controllers: [PayoutController],
   providers: [PayoutService, WithdrawalRateLimitService, PayoutQueueProcessor],

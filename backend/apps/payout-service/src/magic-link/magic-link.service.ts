@@ -438,6 +438,15 @@ export class MagicLinkService {
         failedAt: new Date().toISOString(),
       });
 
+      // PS-14 §10: the dedicated event, additive to payout.failed above —
+      // notification-service's spec'd consumer for this exact message.
+      await this.publisher.publishPayoutCancelled({
+        payoutRequestId: payout.id,
+        contractorId: payout.contractorId,
+        reason: 'magic_link_expired',
+        message: 'Your withdrawal request expired because the email link was not confirmed. Your balance is unchanged.',
+      });
+
       this.logger.log(`Cancelled expired payout: ${payout.id}`);
     }
 
