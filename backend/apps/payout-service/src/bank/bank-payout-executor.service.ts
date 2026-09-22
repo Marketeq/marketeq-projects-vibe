@@ -16,6 +16,7 @@ import { WisePlatformService } from '../execution/wise-platform.service';
 import { PayoutFeeService } from '../fees/payout-fee.service';
 import { isOfacBlockedCountry } from '../common/ofac-countries';
 import { OAuthService } from '../oauth/oauth.service';
+import { PayoutError } from '../common/errors/payout.error';
 
 @Injectable()
 export class BankPayoutExecutorService {
@@ -107,10 +108,22 @@ export class BankPayoutExecutorService {
     if (method.methodType === MethodType.WISE || method.methodType === MethodType.PAYONEER) {
       try {
         await this.oauthService.ensureFreshToken(method);
-      } catch {
+      } catch (err: any) {
+        // ensureFreshToken() now distinguishes a genuinely revoked grant
+        // from a transient refresh failure (Wise 5xx, network blip) — only
+        // the former should tell the contractor to re-authorize. A
+        // transient failure fails just this attempt with a retryable
+        // message, matching everything else that reaches the generic
+        // catch below rather than a wrong, alarming "reauthorize" message.
+        if (err instanceof PayoutError && err.errorCode === 'ERR_OAUTH_REAUTH_REQUIRED') {
+          await this.failPayout(payout,
+            'Your Wise/Payoneer connection needs to be re-authorized before this payout can proceed.',
+            'ERR_PAYOUT_METHOD_REAUTH_REQUIRED');
+          return;
+        }
         await this.failPayout(payout,
-          'Your Wise/Payoneer connection needs to be re-authorized before this payout can proceed.',
-          'ERR_PAYOUT_METHOD_REAUTH_REQUIRED');
+          'This withdrawal could not be processed right now. Please try again shortly.',
+          'ERR_PAYOUT_METHOD_TOKEN_REFRESH_FAILED');
         return;
       }
     }
@@ -287,6 +300,21 @@ export class BankPayoutExecutorService {
 
     try {
       const amountUsd = parseFloat(payout.netAmountUsd);
+
+      // PS-36 §11: check Marketeq's own Wise Platform float before funding —
+      // getWisePlatformBalanceUsd() existed with zero callers, so an
+      // insufficient float surfaced only as a raw fundTransfer() 502
+      // (ERR_WISE_PLATFORM_FUND_FAILED) instead of this doc's distinct,
+      // finance-actionable pre-flight error.
+      const platformBalanceUsd = await this.wisePlatformService.getWisePlatformBalanceUsd();
+      if (platformBalanceUsd < amountUsd) {
+        this.logger.error(`Wise Platform float insufficient: balance $${platformBalanceUsd} < required $${amountUsd} for payout ${payout.id}`);
+        await this.failPayout(payout,
+          'This withdrawal could not be processed right now. Please try again shortly.',
+          'ERR_WISE_PLATFORM_INSUFFICIENT_BALANCE');
+        return;
+      }
+
       const quote = await this.wisePlatformService.getQuote({
         sourceCurrency: 'USD',
         targetCurrency: method.bankCurrency ?? 'USD',
