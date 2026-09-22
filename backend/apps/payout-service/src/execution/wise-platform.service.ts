@@ -320,8 +320,8 @@ export class WisePlatformService {
     if (!res.ok) {
       throw new PayoutError('Failed to check Wise Platform balance.', HttpStatus.BAD_GATEWAY, 'ERR_WISE_PLATFORM_FUND_FAILED');
     }
-    const data: any = await res.json();
-    const usdBalance = Array.isArray(data) ? data.find((b: any) => b.currency === 'USD') : null;
+    const data: Array<{ currency: string; amount: { value: number } }> = await res.json();
+    const usdBalance = Array.isArray(data) ? data.find((b) => b.currency === 'USD') : null;
     return usdBalance?.amount?.value ?? 0;
   }
 
