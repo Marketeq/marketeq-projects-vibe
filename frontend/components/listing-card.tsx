@@ -274,7 +274,6 @@ function ProjectListingCard({
   const effectiveOnClaim = rawOnClaim
     ? async () => {
         await rawOnClaim()
-        setClaimedByMe(true)
       }
     : undefined
   const computedHref =
@@ -777,6 +776,7 @@ function ProjectListingCard({
                   <NoTeamAssigned
                     kind={kind === "service" ? "service" : "project"}
                     onClaim={effectiveOnClaim}
+                    onClaimComplete={() => setClaimedByMe(true)}
                     editHref={`/my-listings/${id}`}
                   />
                 ) : (
@@ -1008,6 +1008,7 @@ function ProjectListingCard({
               <NoTeamAssigned
                 kind={kind === "service" ? "service" : "project"}
                 onClaim={effectiveOnClaim}
+                onClaimComplete={() => setClaimedByMe(true)}
                 editHref={`/my-listings/${id}`}
               />
             ) : (
