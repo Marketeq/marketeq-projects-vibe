@@ -96,9 +96,33 @@ interface OfferFlowDialogProps {
    * (isAcceptState/isDeclineState below) — disables the submit action and
    * shows this text instead of pulling them out of the sub-flow. */
   liveTerminalNotice?: string
+  /** PMCM-392 AC-40.03/40.06: the real contracts-service contract id, once
+   * one exists — a different thing from any offer id. Undefined/null means
+   * no contract yet (AC-40.07: an indefinite, honest wait, not a stub). */
+  contractId?: string | null
+  /** PMCM-392 AC-40.05: caller navigates (existing /active-project/[id]
+   * route, unmodified) — this component never does its own routing. */
+  onViewContract?: () => void
 }
 
 const OFFLINE_NOTICE = "You're offline. Some actions may not be available."
+
+// PMCM-392 AC-40.02: "Monday, Jan 30, 2025" — the weekday variant, matching
+// offer-service's own OfferResponse.startDateDisplay spec and the identical
+// toLocaleDateString call already in hire-me-button.tsx. This reformats at
+// display time only — data.startDate itself (already "Jan 30, 2025", no
+// weekday) is untouched everywhere else it renders in this file.
+const formatAcceptedHeadlineDate = (startDate: string): string => {
+  const parsed = new Date(startDate)
+  return Number.isNaN(parsed.getTime())
+    ? startDate
+    : parsed.toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+}
 
 const DECLINE_REASONS = [
   "Budget doesn’t work",
@@ -152,6 +176,8 @@ export function OfferFlowDialog({
   showReconnecting = false,
   offline = false,
   liveTerminalNotice,
+  contractId,
+  onViewContract,
 }: OfferFlowDialogProps) {
   const isAcceptState =
     variant === "accept-offer-empty" || variant === "accept-offer-ready"
@@ -162,12 +188,15 @@ export function OfferFlowDialog({
   const isCounterDetailsState = variant === "counter-offer-details"
   const isDeclinedTerminalState = variant === "offer-declined"
   const isWithdrawnTerminalState = variant === "offer-withdrawn"
+  const isAcceptedTerminalState = variant === "offer-accepted"
   const isDetailedTerminalState =
     isDeclinedTerminalState || isWithdrawnTerminalState
   const terminalState =
     variant === "offer-accepted"
       ? {
-          title: "Offer Accepted",
+          title: data.startDate
+            ? `Offer Accepted — Starts on ${formatAcceptedHeadlineDate(data.startDate)}`
+            : "Offer Accepted",
           notice: data.statusDateLabel
             ? `This offer was accepted ${data.statusDateLabel}.`
             : "This offer was accepted.",
@@ -1268,7 +1297,22 @@ export function OfferFlowDialog({
                     </p>
                   )}
 
-                  {terminalState ? null : (
+                  {isAcceptedTerminalState ? (
+                    contractId ? (
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        onClick={onViewContract}
+                      >
+                        View Contract
+                      </Button>
+                    ) : (
+                      <p className="text-sm leading-6 text-gray-400">
+                        Contract being prepared...
+                      </p>
+                    )
+                  ) : terminalState ? null : (
                     <div className="flex items-center justify-between gap-3">
                       {isHistoryState ? null : (
                         <Button

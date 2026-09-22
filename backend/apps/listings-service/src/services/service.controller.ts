@@ -10,6 +10,7 @@ import {
   HttpStatus,
   UseGuards,
   ParseUUIDPipe,
+  Req,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ServicesService } from './service.service';
@@ -41,6 +42,12 @@ export class ServicesController {
   @UseGuards(JwtAuthGuard)
   create(@Body() dto: CreateServiceDto, @CurrentUser('id') userId: string) {
     return this.service.create(dto, userId);
+  }
+
+  @Post(':id/claim')
+  @UseGuards(JwtAuthGuard)
+  claim(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.service.claim(id, req.user?.sub ?? req.user?.id ?? req.user?.userId);
   }
 
   @Put(':id')

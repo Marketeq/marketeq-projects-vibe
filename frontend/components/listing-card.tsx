@@ -47,7 +47,7 @@ import {
 import { Money } from "@/components/money"
 import { NextImage } from "@/components/next-image"
 import { NextLink } from "@/components/next-link"
-import { claimProject } from "@/src/lib/api/claim"
+import { claimProject, claimService } from "@/src/lib/api/claim"
 import {
   isTalentAccount,
   NoTeamAssigned,
@@ -103,6 +103,8 @@ interface ProjectLikeProps {
   status?: ListingStatus
   /** Avatar URLs to render in the bottom avatar group. Ignored if avatarsSlot is provided. */
   collaborators: string[]
+  /** Rich team member info — when 1 member, shows name + avatar inline. */
+  teamMembers?: Array<{ avatarUrl: string; firstName: string; username: string }>
   /**
    * Custom element to render in place of the default AvatarGroup.
    * Use this when you need tooltips, custom images, or other complex behavior.
@@ -234,6 +236,7 @@ function ProjectListingCard({
   reviewCount,
   status,
   collaborators,
+  teamMembers,
   avatarsSlot,
   badge,
   href,
@@ -254,7 +257,25 @@ function ProjectListingCard({
   // The unclaimed-team empty state is a talent-facing call to action. Clients
   // and signed-out visitors just don't see the row until somebody owns it.
   const isTalent = isTalentAccount(user)
-  const hasTeam = !!collaborators && collaborators.length > 0
+  // Optimistic: after a successful claim, show the claiming user's avatar
+  // immediately without waiting for the parent to re-fetch collaborators.
+  const [claimedByMe, setClaimedByMe] = React.useState(false)
+  const hasTeam = claimedByMe || (!!collaborators && collaborators.length > 0)
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  const rawOnClaim =
+    onClaim ??
+    (isUuid
+      ? kind === "service"
+        ? () => claimService(id)
+        : kind === "project"
+          ? () => claimProject(id)
+          : undefined
+      : undefined)
+  const effectiveOnClaim = rawOnClaim
+    ? async () => {
+        await rawOnClaim()
+      }
+    : undefined
   const computedHref =
     href ??
     (cardVariant === "job" || cardVariant === "job-grid"
@@ -750,25 +771,68 @@ function ProjectListingCard({
             </div>
 
             {avatarsSlot ??
-              (hasTeam ? (
-                <AvatarGroup
-                  max={5}
-                  size="sm"
-                  excess
-                  excessClassName="border-gray-300 text-gray-500"
-                >
-                  {collaborators.map((src, i) => (
-                    <Avatar
-                      key={i}
+              (!hasTeam ? (
+                isTalent ? (
+                  <NoTeamAssigned
+                    kind={kind === "service" ? "service" : "project"}
+                    onClaim={effectiveOnClaim}
+                    onClaimComplete={() => setClaimedByMe(true)}
+                    editHref={`/my-listings/${id}`}
+                  />
+                ) : (
+                  <span />
+                )
+              ) : (
+                (() => {
+                  const solo = claimedByMe && collaborators.length === 0
+                    ? { avatarUrl: (user as any)?.avatarUrl ?? "", firstName: (user as any)?.firstName || (user as any)?.username || "You", username: (user as any)?.username ?? "" }
+                    : collaborators.length === 1 && teamMembers?.[0]
+                      ? teamMembers[0]
+                      : null
+                  if (solo) {
+                    return (
+                      <div className="flex items-center gap-x-2 min-w-0">
+                        <Avatar
+                          size="sm"
+                          className="shrink-0 border-2 border-white hover:ring-0 active:ring-0"
+                        >
+                          {solo.avatarUrl ? (
+                            <AvatarImage src={solo.avatarUrl} alt={solo.firstName || "Team"} />
+                          ) : null}
+                          <AvatarFallback>
+                            {(solo.firstName || solo.username || "?").charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-xs text-dark-blue-400 font-medium leading-none truncate">
+                          {solo.firstName || solo.username}
+                          {solo.username && solo.firstName ? (
+                            <span className="font-extralight text-gray-400"> @{solo.username}</span>
+                          ) : null}
+                        </span>
+                      </div>
+                    )
+                  }
+                  return (
+                    <AvatarGroup
+                      max={5}
                       size="sm"
-                      className="border-2 border-white hover:ring-0 active:ring-0"
+                      excess
+                      excessClassName="border-gray-300 text-gray-500"
                     >
-                      <AvatarImage src={src} alt="Collaborator" />
-                      <AvatarFallback />
-                    </Avatar>
-                  ))}
-                </AvatarGroup>
-              ) : null)}
+                      {collaborators.map((src, i) => (
+                        <Avatar
+                          key={i}
+                          size="sm"
+                          className="border-2 border-white hover:ring-0 active:ring-0"
+                        >
+                          <AvatarImage src={src} alt="Collaborator" />
+                          <AvatarFallback />
+                        </Avatar>
+                      ))}
+                    </AvatarGroup>
+                  )
+                })()
+              ))}
           </div>
 
           <div className="flex items-end justify-between gap-x-6">
@@ -943,36 +1007,63 @@ function ProjectListingCard({
             isTalent ? (
               <NoTeamAssigned
                 kind={kind === "service" ? "service" : "project"}
-                onClaim={
-                onClaim ??
-                (kind === "project" ? () => claimProject(id) : undefined)
-              }
-              // /my-listings/:id is the in-line editor (edit in place with a
-              // client-view preview). /edit-listing/:id is the full edit flow.
-              editHref={`/my-listings/${id}`}
+                onClaim={effectiveOnClaim}
+                onClaimComplete={() => setClaimedByMe(true)}
+                editHref={`/my-listings/${id}`}
               />
             ) : (
               <span />
             )
           ) : (
-          <AvatarGroup
-            max={5}
-            size="sm"
-            excess
-            excessClassName="border-gray-300 text-gray-500"
-          >
-            {collaborators.map((src, i) => (
-              <Avatar
-                key={i}
+          (() => {
+            const solo = claimedByMe && collaborators.length === 0
+              ? { avatarUrl: (user as any)?.avatarUrl ?? "", firstName: (user as any)?.firstName || (user as any)?.username || "You", username: (user as any)?.username ?? "" }
+              : collaborators.length === 1 && teamMembers?.[0]
+                ? teamMembers[0]
+                : null
+            if (solo) {
+              return (
+                <div className="flex items-center gap-x-2 min-w-0">
+                  <Avatar
+                    size="sm"
+                    className="shrink-0 border-2 border-white hover:ring-0 active:ring-0"
+                  >
+                    {solo.avatarUrl ? (
+                      <AvatarImage src={solo.avatarUrl} alt={solo.firstName || "Team"} />
+                    ) : null}
+                    <AvatarFallback>
+                      {(solo.firstName || solo.username || "?").charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-xs text-dark-blue-400 font-medium leading-none truncate">
+                    {solo.firstName || solo.username}
+                    {solo.username && solo.firstName ? (
+                      <span className="font-extralight text-gray-400"> @{solo.username}</span>
+                    ) : null}
+                  </span>
+                </div>
+              )
+            }
+            return (
+              <AvatarGroup
+                max={5}
                 size="sm"
-                className="border-2 border-white hover:ring-0 active:ring-0"
+                excess
+                excessClassName="border-gray-300 text-gray-500"
               >
-                <AvatarImage src={src} alt="Collaborator" />
-                <AvatarFallback />
-              </Avatar>
-            ))}
-          </AvatarGroup>
-          ))}
+                {collaborators.map((src, i) => (
+                  <Avatar
+                    key={i}
+                    size="sm"
+                    className="border-2 border-white hover:ring-0 active:ring-0"
+                  >
+                    <AvatarImage src={src} alt="Collaborator" />
+                    <AvatarFallback />
+                  </Avatar>
+                ))}
+              </AvatarGroup>
+            )
+          })()))}
 
         {cardVariant === "is-favorited" && optionsSlot ? (
           <span
