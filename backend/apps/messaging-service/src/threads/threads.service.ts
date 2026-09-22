@@ -18,6 +18,16 @@ import { AblyService } from "../ably/ably.service";
 import { BlockEnforcementService } from "../blocks/block-enforcement.service";
 import { BulkAction } from "./dtos/thread-list.dto";
 
+// Thread ids are `uuid` columns. A non-uuid string reaches Postgres as
+// `WHERE id = 'not-a-uuid'` and fails with 22P02 (invalid input syntax for
+// type uuid) *before* the lookup can return nothing — so what should be a
+// 404 surfaces as an unhandled QueryFailedError and a 500. Deliberately
+// permissive about the version/variant nibbles: this only has to match what
+// Postgres itself would accept, so a legacy non-v4 id already in the table
+// still resolves instead of 404-ing.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 type StateFlag =
   | "isPinned"
   | "isStarred"
@@ -140,6 +150,7 @@ export class ThreadsService {
   }
 
   async findOne(id: string, userId: string) {
+    if (!UUID_RE.test(id ?? "")) throw new NotFoundException("Thread not found");
     const thread = await this.repo.findOne({ where: { id } });
     if (!thread) throw new NotFoundException("Thread not found");
     if (!thread.participantIds.includes(userId)) {
@@ -149,6 +160,13 @@ export class ThreadsService {
   }
 
   async assertUserIsParticipant(threadId: string, userId: string) {
+    // Reachable from a normal client, not just a malformed request: the inbox
+    // mints synthetic conversation ids (`offer-notifications-<actorId>`) for
+    // offer threads that have no real thread row yet, and the Ably token hook
+    // passes that id straight through as ?threadId=.
+    if (!UUID_RE.test(threadId ?? "")) {
+      throw new NotFoundException("Thread not found");
+    }
     const thread = await this.repo.findOne({ where: { id: threadId } });
     if (!thread) throw new NotFoundException("Thread not found");
     if (!thread.participantIds.includes(userId)) {
