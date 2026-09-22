@@ -14,6 +14,7 @@ import { MagicLinkToken }     from '../entities/magic-link-token.entity';
 import { PayoutSchedule }     from '../entities/payout-schedule.entity';
 import { EarningsClient }     from '../common/earnings.client';
 import { KycClient }          from '../common/kyc.client';
+import { UserClient }         from '../common/user.client';
 import { AuditService }       from '../audit/audit.service';
 import { MagicLinkService }   from '../magic-link/magic-link.service';
 import { WithdrawalRateLimitService } from './withdrawal-rate-limit.service';
@@ -47,6 +48,7 @@ export class PayoutService {
     private readonly config: ConfigService,
     private readonly earningsClient: EarningsClient,
     private readonly kycClient: KycClient,
+    private readonly userClient: UserClient,
     private readonly auditService: AuditService,
     private readonly magicLinkService: MagicLinkService,
     private readonly rateLimitService: WithdrawalRateLimitService,
@@ -599,8 +601,15 @@ export class PayoutService {
       });
     });
 
+    // Reviewer-caught bug: the approving admin's JWT carries the ADMIN's
+    // email, not the contractor's — without resolving the real one here,
+    // publishMagicLinkEvent() silently sends nothing (it only logs a dev
+    // warning when contractorEmail is unset) and the contractor is never
+    // told there's a link to click.
+    const resolvedEmail = contractorEmail ?? await this.userClient.getContractorEmail(request.contractorId) ?? undefined;
+
     const rawToken = await this.magicLinkService.generateAndStore(request.id, request.contractorId);
-    await this.magicLinkService.publishMagicLinkEvent(request, rawToken, contractorEmail);
+    await this.magicLinkService.publishMagicLinkEvent(request, rawToken, resolvedEmail);
 
     return { status: 'pending_verification' };
   }
