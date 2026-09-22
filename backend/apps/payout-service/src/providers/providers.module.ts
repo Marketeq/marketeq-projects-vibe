@@ -13,11 +13,13 @@ import { DepositMethod }      from '../entities/deposit-method.entity';
 import { DepositMethodVerification } from '../entities/deposit-method-verification.entity';
 import { PayoutRequest }      from '../entities/payout-request.entity';
 import { PublishersModule }   from '../publishers/publishers.module';
+import { CardModule }         from '../card/card.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([DepositMethod, DepositMethodVerification, PayoutRequest]),
     PublishersModule,
+    CardModule,   // CardPayoutExecutorService.handleIssuingTransactionCreated — PS-13 §4
   ],
   controllers: [StripeWebhookController, WisePlatformWebhookController],
   // WisePlatformService is registered here too (also lives in

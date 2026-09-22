@@ -6,14 +6,13 @@
 
 import { Injectable, Logger, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, LessThan } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import Redis from 'ioredis';
 import { Cron } from '@nestjs/schedule';
 
 import { MagicLinkVerification } from '../entities/magic-link-verification.entity';
-import { MagicLinkToken } from '../entities/magic-link-token.entity';
 import { PayoutRequest, PayoutStatus } from '../entities/payout-request.entity';
 import { DepositMethod } from '../entities/deposit-method.entity';
 import { AuditService } from '../audit/audit.service';
@@ -37,8 +36,6 @@ export class MagicLinkService {
   constructor(
     @InjectRepository(MagicLinkVerification)
     private readonly verificationRepo: Repository<MagicLinkVerification>,
-    @InjectRepository(MagicLinkToken)
-    private readonly mlTokenRepo: Repository<MagicLinkToken>,
     @InjectRepository(PayoutRequest)
     private readonly payoutRepo: Repository<PayoutRequest>,
     @InjectRepository(DepositMethod)
@@ -389,16 +386,38 @@ export class MagicLinkService {
   }
 
   // ─── PS-14 §10: Cancel Expired Payout Requests (every 5 min) ──
+  // Reviewer-caught bug: this used to key off payout.createdAt, which is
+  // only a correct proxy for "when did the active verification link expire"
+  // in the single case where the link was issued at initiation and never
+  // resent. It breaks two real ways: PS-15 §6.2 EDD-released payouts have a
+  // createdAt from days before release (already older than the TTL the
+  // instant they enter PENDING_VERIFICATION — cancelled on the very next
+  // tick), and any resent link (PS-14 §7) gets a fresh expiresAt that this
+  // never looked at, so a legitimately-still-valid resent link could be
+  // cancelled out from under the contractor. Keying off the actual
+  // non-superseded verification record's own expiresAt is correct for both.
   @Cron('*/5 * * * *')
   async cancelExpiredVerifications(): Promise<void> {
-    const cutoff = new Date(Date.now() - this.ttlSeconds * 1000);
+    const now = new Date();
 
-    const expired = await this.payoutRepo.find({
-      where: {
-        status: PayoutStatus.PENDING_VERIFICATION,
-        createdAt: LessThan(cutoff),
-      },
+    const pending = await this.payoutRepo.find({
+      where: { status: PayoutStatus.PENDING_VERIFICATION },
     });
+    if (pending.length === 0) return;
+
+    const expired: PayoutRequest[] = [];
+    for (const payout of pending) {
+      const activeVerification = await this.verificationRepo.findOne({
+        where: { payoutRequestId: payout.id, superseded: false, used: false },
+        order: { createdAt: 'DESC' },
+      });
+      // No active verification record at all shouldn't happen in practice
+      // (generateAndStore() always runs before this status is set) but
+      // fails toward cancelling rather than leaving the payout stuck forever.
+      if (!activeVerification || activeVerification.expiresAt < now) {
+        expired.push(payout);
+      }
+    }
 
     for (const payout of expired) {
       await this.dataSource.transaction(async (em) => {

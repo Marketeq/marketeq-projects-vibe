@@ -14,6 +14,7 @@ import { MagicLinkToken }     from '../entities/magic-link-token.entity';
 import { PayoutSchedule }     from '../entities/payout-schedule.entity';
 import { EarningsClient }     from '../common/earnings.client';
 import { KycClient }          from '../common/kyc.client';
+import { UserClient }         from '../common/user.client';
 import { AuditService }       from '../audit/audit.service';
 import { MagicLinkService }   from '../magic-link/magic-link.service';
 import { WithdrawalRateLimitService } from './withdrawal-rate-limit.service';
@@ -47,6 +48,7 @@ export class PayoutService {
     private readonly config: ConfigService,
     private readonly earningsClient: EarningsClient,
     private readonly kycClient: KycClient,
+    private readonly userClient: UserClient,
     private readonly auditService: AuditService,
     private readonly magicLinkService: MagicLinkService,
     private readonly rateLimitService: WithdrawalRateLimitService,
@@ -564,11 +566,19 @@ export class PayoutService {
     });
   }
 
-  // ─── PS-15 §6.2: Admin — release a payout past EDD review ──────
-  // No magic-link step for an EDD payout (see initiate() above) — compliance
-  // sign-off here IS the confirmation, so this goes straight to QUEUED and
-  // onto the same processing queue every verified payout uses.
-  async releaseEDD(payoutRequestId: string, actorId: string): Promise<{ status: string }> {
+  // ─── PS-15 §6.2/§6.3: Admin — release a payout past EDD review ──
+  // PS-15 §6.3's callout is explicit: "When a payout is approved after EDD
+  // review, a fresh magic link is sent to the contractor... This ensures the
+  // contractor re-confirms the withdrawal after the compliance delay, in
+  // case the contractor's intent has changed during the review period."
+  // Previously went straight to QUEUED — compliance approval was being
+  // treated as the contractor's confirmation, skipping the re-confirmation
+  // step entirely. Now mirrors §7 check 6 exactly: PENDING_VERIFICATION +
+  // a fresh magic link, same as the normal (non-EDD) flow. The existing
+  // GET /v1/payouts/verify-email endpoint (magicLinkService.verifyEmailToken)
+  // handles the balance hold + QUEUED transition + enqueue once the
+  // contractor actually clicks it — nothing EDD-specific needed there.
+  async releaseEDD(payoutRequestId: string, actorId: string, contractorEmail?: string): Promise<{ status: string }> {
     const request = await this.payoutRepo.findOne({ where: { id: payoutRequestId } });
     if (!request) throw new PayoutError('Payout request not found.',
       HttpStatus.NOT_FOUND, 'ERR_PAYOUT_NOT_FOUND');
@@ -579,9 +589,7 @@ export class PayoutService {
 
     await this.dataSource.transaction(async (em) => {
       await em.update(PayoutRequest, request.id, {
-        status: PayoutStatus.QUEUED,
-        verifiedAt: new Date(),
-        queuedAt: new Date(),
+        status: PayoutStatus.PENDING_VERIFICATION,
       });
       await this.auditService.log({
         contractorId: request.contractorId,
@@ -589,13 +597,21 @@ export class PayoutService {
         actorType: 'admin', actorId,
         action: 'edd.released',
         previousStatus: PayoutStatus.AWAITING_EDD,
-        newStatus: PayoutStatus.QUEUED,
+        newStatus: PayoutStatus.PENDING_VERIFICATION,
       });
     });
 
-    await this.enqueueForProcessing(request.id);
+    // Reviewer-caught bug: the approving admin's JWT carries the ADMIN's
+    // email, not the contractor's — without resolving the real one here,
+    // publishMagicLinkEvent() silently sends nothing (it only logs a dev
+    // warning when contractorEmail is unset) and the contractor is never
+    // told there's a link to click.
+    const resolvedEmail = contractorEmail ?? await this.userClient.getContractorEmail(request.contractorId) ?? undefined;
 
-    return { status: 'queued' };
+    const rawToken = await this.magicLinkService.generateAndStore(request.id, request.contractorId);
+    await this.magicLinkService.publishMagicLinkEvent(request, rawToken, resolvedEmail);
+
+    return { status: 'pending_verification' };
   }
 
   // ─── Cancel ───────────────────────────────────────────────────

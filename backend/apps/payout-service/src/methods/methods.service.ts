@@ -140,6 +140,20 @@ export class MethodsService {
         token: dto.cryptoCurrency ?? 'ETH',
       });
 
+      // PS-35 §2/§5.2: "any new payout method added" — this branch used to
+      // return before the biometric gate below was ever reached, a real gap
+      // the doc-audit flagged explicitly (crypto wallets were never gated).
+      const cryptoBiometric = await this.checkMethodBiometricGate(contractorId, cryptoMethod.id);
+      if (cryptoBiometric.gate === 'REQUIRED') {
+        return {
+          depositMethodId: cryptoMethod.id,
+          verificationStatus: 'pending_biometric',
+          biometricRequired: true,
+          sessionUrl: cryptoBiometric.sessionUrl,
+          errorCode: 'ERR_BIOMETRIC_VERIFICATION_REQUIRED',
+        };
+      }
+
       return {
         depositMethodId: cryptoMethod.id,
         verificationStatus: 'verified',
@@ -159,6 +173,23 @@ export class MethodsService {
     // must never run for these method types.
     if (dto.methodType === 'WISE' || dto.methodType === 'PAYONEER') {
       const result = await this.oauthService.initiateOAuth(contractorId, dto.methodType as MethodType);
+
+      // PS-35 §2/§5.2: same gap as CRYPTO above — WISE/PAYONEER previously
+      // returned before ever reaching the biometric gate. Checked here,
+      // before the contractor is sent into the OAuth flow, rather than
+      // after the callback completes — consistent with "gate fires when the
+      // method is added," not when the async provider verification finishes.
+      const wiseBiometric = await this.checkMethodBiometricGate(contractorId, result.depositMethodId);
+      if (wiseBiometric.gate === 'REQUIRED') {
+        return {
+          depositMethodId: result.depositMethodId,
+          verificationStatus: 'pending_biometric',
+          biometricRequired: true,
+          sessionUrl: wiseBiometric.sessionUrl,
+          errorCode: 'ERR_BIOMETRIC_VERIFICATION_REQUIRED',
+        };
+      }
+
       return {
         depositMethodId: result.depositMethodId,
         verificationStatus: 'pending',
@@ -237,44 +268,21 @@ export class MethodsService {
 
     // PS-35 §2/§5.2: biometric gate fires for every new payout method, on
     // top of whatever provider verification (Stripe/Wise/micro-deposit)
-    // just ran above — checked here, covering the BANK_MANUAL/BANK_STRIPE
-    // path. CRYPTO (returns earlier, via cryptoConnectionService) and
-    // WISE/PAYONEER (returns earlier via oauthService.initiateOAuth, whose
-    // own callback flow completes asynchronously) are not yet gated here —
-    // a real gap against PS-35's "any new payout method" scope, left for a
-    // follow-up rather than reshaping the OAuth callback flow blind.
-    //
-    // FEATURE_BIOMETRIC_GATE_ENABLED defaults false — same reasoning as
-    // schedule.service.ts's updateSchedule(): identity-service doesn't
-    // implement this endpoint yet, and failing closed (PS-35 §8) with the
-    // gate always-on would 503 every new payout method for every
-    // contractor. Flip this on once identity-service ships PS-35.
-    const biometricGateEnabled = this.config.get('FEATURE_BIOMETRIC_GATE_ENABLED', 'false') === 'true';
-    const biometric = biometricGateEnabled
-      ? await this.identityService.getMethodGateStatus(contractorId, method.id)
-      : { gate: 'VERIFIED' as const };
-
-    if (biometric.gate === 'FAILED') {
-      await this.methodRepo.update(method.id, {
-        isActive: false,
-        verificationStatus: VerificationStatus.VERIFICATION_FAILED,
-      } as any);
-      throw new PayoutError(
-        'Identity verification failed. This payout method cannot be activated.',
-        HttpStatus.FORBIDDEN, 'ERR_BIOMETRIC_VERIFICATION_FAILED',
-      );
-    }
+    // just ran above — covers BANK_MANUAL/BANK_STRIPE here; CRYPTO and
+    // WISE/PAYONEER call the same checkMethodBiometricGate() helper earlier
+    // in this method, right after their own method row is created.
+    const biometric = await this.checkMethodBiometricGate(contractorId, method.id);
 
     if (biometric.gate === 'REQUIRED') {
       // Overrides whatever provider verification computed above — the
       // method exists and is visible, but not usable for payouts until
       // biometric clears (payout.method.biometric.verified consumer).
-      await this.methodRepo.update(method.id, { verificationStatus: VerificationStatus.PENDING_BIOMETRIC } as any);
       return {
         depositMethodId: method.id,
         verificationStatus: 'pending_biometric',
         biometricRequired: true,
         sessionUrl: biometric.sessionUrl,
+        errorCode: 'ERR_BIOMETRIC_VERIFICATION_REQUIRED',
         verification,
       };
     }
@@ -784,6 +792,10 @@ export class MethodsService {
     if (dto.bankBsbNumber) fields.bsbCode = dto.bankBsbNumber;
     if (dto.bankCode) fields.bankCode = dto.bankCode;
     if (dto.bankBranchCode) fields.branchCode = dto.bankBranchCode;
+    // PS-36 §7: Japan's Zengin recipient requires accountType (FUTSU/TOUZA)
+    // — was entirely absent from this payload before, so every Japan
+    // recipient creation was missing a Wise-required field.
+    if (country === 'JP' && dto.bankAccountType) fields.accountType = dto.bankAccountType;
 
     const validation = await this.wisePlatformService.validateBankAccount({
       bankCountry: country,
@@ -862,6 +874,42 @@ export class MethodsService {
       this.logger.warn(`Wise account-requirements lookup failed for ${country}/${currency}: ${err.message} — falling back to ${fallback}`);
       return fallback;
     }
+  }
+
+  // PS-35 §2/§5.2/§8: biometric gate check, shared by all three
+  // addMethod() branches (CRYPTO, WISE/PAYONEER, BANK_MANUAL/BANK_STRIPE) —
+  // previously only the last of these actually called it, leaving crypto
+  // and OAuth-based methods entirely ungated against the doc's "any new
+  // payout method added" scope. FEATURE_BIOMETRIC_GATE_ENABLED defaults
+  // false — identity-service doesn't implement the biometric endpoints yet
+  // (PS-35 §8 fails closed/503 when it's asked), so leaving the gate
+  // always-on would 503 every new payout method for every contractor until
+  // that service ships. Flip this on once it does — see .env.local.example.
+  private async checkMethodBiometricGate(
+    contractorId: string, methodId: string,
+  ): Promise<{ gate: 'VERIFIED' | 'REQUIRED'; sessionUrl?: string }> {
+    const biometricGateEnabled = this.config.get('FEATURE_BIOMETRIC_GATE_ENABLED', 'false') === 'true';
+    const biometric = biometricGateEnabled
+      ? await this.identityService.getMethodGateStatus(contractorId, methodId)
+      : { gate: 'VERIFIED' as const };
+
+    if (biometric.gate === 'FAILED') {
+      await this.methodRepo.update(methodId, {
+        isActive: false,
+        verificationStatus: VerificationStatus.VERIFICATION_FAILED,
+      } as any);
+      throw new PayoutError(
+        'Identity verification failed. This payout method cannot be activated.',
+        HttpStatus.FORBIDDEN, 'ERR_BIOMETRIC_VERIFICATION_FAILED',
+      );
+    }
+
+    if (biometric.gate === 'REQUIRED') {
+      await this.methodRepo.update(methodId, { verificationStatus: VerificationStatus.PENDING_BIOMETRIC } as any);
+    }
+
+    // FAILED always throws above, so only VERIFIED/REQUIRED ever reach here.
+    return biometric as { gate: 'VERIFIED' | 'REQUIRED'; sessionUrl?: string };
   }
 
   private verificationMessage(status: VerificationStatus): string {
