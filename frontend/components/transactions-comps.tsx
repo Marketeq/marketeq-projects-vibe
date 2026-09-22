@@ -5618,7 +5618,7 @@ export const OverviewTab = ({
                             !addForm.bankAccountNumber.trim()))
 
                       return (
-                        <div className="p-6">
+                        <div className="p-6 overflow-y-auto flex-1 min-h-0">
                           <div className="flex items-center gap-2 mb-4">
                             <IconButton
                               size="sm"
