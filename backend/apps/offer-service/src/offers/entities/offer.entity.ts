@@ -107,6 +107,13 @@ export class Offer extends OfferServiceBaseEntity {
   @Column({ name: 'original_offer_id', type: 'uuid', nullable: true, default: null })
   originalOfferId: string | null;
 
+  // ---- Contract handoff (PMCM-392 AC-40.06) ----
+  // Set once contracts-service creates the contract for this (accepted)
+  // offer. Null until then, and null forever for an offer that never gets
+  // that far. No FK: contracts-service owns this id in its own schema.
+  @Column({ name: 'contract_id', type: 'uuid', nullable: true, default: null })
+  contractId: string | null;
+
   // ---- Relations ----
   @OneToMany(() => CounterOffer, (co) => co.offer, { cascade: false })
   counterOffers: CounterOffer[];

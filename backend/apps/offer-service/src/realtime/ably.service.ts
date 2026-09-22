@@ -224,6 +224,7 @@ export class AblyService {
       workSchedule: offer.workSchedule,
       startDate: offer.startDate,
       message: offer.message,
+      contractId: offer.contractId,
       expiresAt: offer.expiresAt instanceof Date ? offer.expiresAt.toISOString() : offer.expiresAt,
       acceptedAt: offer.acceptedAt instanceof Date ? offer.acceptedAt.toISOString() : offer.acceptedAt ?? null,
       declinedAt: offer.declinedAt instanceof Date ? offer.declinedAt.toISOString() : offer.declinedAt ?? null,

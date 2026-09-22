@@ -238,6 +238,11 @@ export default function InboxRoot() {
                   // created). The seeded-fixture catch branch below has no
                   // live offer to source this from and must leave it unset.
                   offerStatus: offer.status,
+                  // PMCM-392 AC-40.06: same rule as offerStatus above — real,
+                  // live signal only. The seeded-fixture catch branch has no
+                  // live offer to source this from and must leave it unset,
+                  // not invent one.
+                  realContractId: offer.contractId,
                   event: item.event?.toLowerCase() || "offer.received",
                   title: item.title,
                   body: item.body,
