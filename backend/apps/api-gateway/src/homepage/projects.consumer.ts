@@ -3,7 +3,7 @@ import { EventPattern, Payload, Ctx, RmqContext } from '@nestjs/microservices';
 import { HomepageService } from './homepage.service';
 
 interface ProjectEvent {
-  event: 'project.saved' | 'project.deleted';
+  event: 'project.saved' | 'project.deleted' | 'project.updated';
   id: string;
   slug?: string;
   payloadId?: number | string;

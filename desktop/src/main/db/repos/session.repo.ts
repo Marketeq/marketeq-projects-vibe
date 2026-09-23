@@ -2,9 +2,16 @@
 // All session writes go through this repository. The TimerService (future
 // phases) and SyncQueue call into here. Renderers never see SQL.
 
+import { z } from 'zod';
 import type { DbHandle } from '../connection';
 import { SessionRow } from '../schema';
 import { one, many, run, tx } from './base';
+
+const DailyContractTotalRow = z.object({
+  contract_id: z.string().min(1),
+  total_billable_seconds: z.number().int().nonnegative(),
+});
+export type DailyContractTotal = z.infer<typeof DailyContractTotalRow>;
 
 export function createSessionRepo(db: DbHandle) {
   return {
@@ -79,12 +86,87 @@ export function createSessionRepo(db: DbHandle) {
       });
     },
 
+    /**
+     * Crash-recovery sweep: close every session a previous process left open
+     * (ended_at IS NULL). A raw local UPDATE — not an FSM transition, never a
+     * DELETE. Mirrors closeActive's time_entry close, minus the per-session
+     * filter. Deliberately does NOT rewrite billable_seconds — whatever was
+     * persisted stays. Returns each closed row's id/endedAt/endReason/
+     * billableSeconds — everything the caller needs to enqueue a backend
+     * session.close — without a second lookup query.
+     */
+    closeAllOpen(input: {
+      endedAt: number;
+      reason: SessionRow['end_reason'];
+    }): Array<{
+      id: string;
+      endedAt: number;
+      endReason: SessionRow['end_reason'];
+      billableSeconds: number;
+    }> {
+      return tx(db, () => {
+        const open = many(
+          db,
+          SessionRow,
+          `SELECT * FROM session WHERE ended_at IS NULL`,
+        );
+        run(
+          db,
+          `UPDATE session SET ended_at = ?, end_reason = ?, updated_at = ?
+             WHERE ended_at IS NULL`,
+          [input.endedAt, input.reason, input.endedAt],
+        );
+        run(
+          db,
+          `UPDATE time_entry SET ended_at = ?, duration_seconds = CAST((? - started_at) / 1000 AS INTEGER)
+             WHERE ended_at IS NULL`,
+          [input.endedAt, input.endedAt],
+        );
+        return open.map((r) => ({
+          id: r.id,
+          endedAt: input.endedAt,
+          endReason: input.reason,
+          billableSeconds: r.billable_seconds,
+        }));
+      });
+    },
+
     listForUser(userId: string, limit = 200): SessionRow[] {
       return many(
         db,
         SessionRow,
         `SELECT * FROM session WHERE user_id = ? ORDER BY started_at DESC LIMIT ?`,
         [userId, limit],
+      );
+    },
+
+    /**
+     * Sums billable_seconds per contract for CLOSED sessions belonging to
+     * userId whose started_at falls in [startAt, endAt). Excludes the
+     * currently-open session (ended_at IS NULL) — its billable_seconds
+     * isn't finalized yet; the caller adds the live elapsed seconds from
+     * TimerService.getSnapshot() for that one.
+     *
+     * Known limitation: a session that starts before startAt and is still
+     * running past it is bucketed entirely under the day it started — no
+     * midnight-crossing split. Acceptable for v1.
+     */
+    sumBillableSecondsByContract(input: {
+      userId: string;
+      startAt: number;
+      endAt: number;
+    }): DailyContractTotal[] {
+      return many(
+        db,
+        DailyContractTotalRow,
+        `SELECT contract_id, SUM(billable_seconds) AS total_billable_seconds
+           FROM session
+          WHERE user_id = ?
+            AND ended_at IS NOT NULL
+            AND started_at >= ?
+            AND started_at < ?
+          GROUP BY contract_id`,
+        [input.userId, input.startAt, input.endAt],
       );
     },
   };

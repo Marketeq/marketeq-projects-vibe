@@ -10,6 +10,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { PayoutRequest, PayoutStatus } from '../entities/payout-request.entity';
 import { AuditService } from '../audit/audit.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
+import { WisePlatformService } from '../execution/wise-platform.service';
 
 @Injectable()
 export class WisePlatformWebhookService {
@@ -22,8 +23,26 @@ export class WisePlatformWebhookService {
     private readonly config: ConfigService,
     private readonly auditService: AuditService,
     private readonly publisher: PayoutPublisher,
+    private readonly wisePlatform: WisePlatformService,
   ) {
     this.webhookSecret = this.config.get('WISE_PLATFORM_WEBHOOK_SECRET', '');
+  }
+
+  // PS-40 §3.1/§3.2: the webhook payload only has the transfer id + state,
+  // not amounts — look the transfer up for targetCurrency/targetAmount.
+  // Best-effort: a lookup failure must not block the balance-affecting
+  // completed/failed handling above it, so this swallows and logs rather
+  // than throwing.
+  private async lookupTransferAmounts(
+    transferId: string,
+  ): Promise<{ targetAmount: number; targetCurrency: string } | null> {
+    try {
+      const transfer = await this.wisePlatform.getTransfer(transferId);
+      return { targetAmount: transfer.targetValue, targetCurrency: transfer.targetCurrency };
+    } catch (err) {
+      this.logger.warn(`Could not look up Wise transfer ${transferId} amounts for event payload: ${err}`);
+      return null;
+    }
   }
 
   private verifySignature(rawBody: Buffer, signature: string): boolean {
@@ -50,7 +69,10 @@ export class WisePlatformWebhookService {
       return;
     }
 
-    const payout = await this.payoutRepo.findOne({ where: { wisePlatformTransferId: transferId } });
+    const payout = await this.payoutRepo.findOne({
+      where: { wisePlatformTransferId: transferId },
+      relations: ['depositMethod'],
+    });
     if (!payout) {
       this.logger.warn(`No payout request for Wise transfer ${transferId}`);
       return;
@@ -105,6 +127,20 @@ export class WisePlatformWebhookService {
       settledAt: new Date().toISOString(),
       wisePlatformTransferId: transferId,
     });
+
+    // PS-40 §3.1: additive, dedicated event for consumers bound specifically
+    // to the Wise-Platform routing key (e.g. a finance alert queue) rather
+    // than the generic payout.completed above.
+    const amounts = await this.lookupTransferAmounts(transferId);
+    await this.publisher.publishWisePlatformTransferSent({
+      payoutRequestId: payout.id,
+      contractorId: payout.contractorId,
+      wisePlatformTransferId: transferId,
+      amountUsd: Number(payout.amountUsd),
+      targetCurrency: amounts?.targetCurrency ?? payout.depositMethod?.bankCurrency ?? '',
+      targetAmount: amounts?.targetAmount ?? Number(payout.amountUsd),
+      bankCountry: payout.depositMethod?.bankCountry ?? '',
+    });
   }
 
   private async handleFailed(payout: PayoutRequest, transferId: string, reasonCode: string): Promise<void> {
@@ -142,6 +178,17 @@ export class WisePlatformWebhookService {
       reason,
       failedAt: new Date().toISOString(),
       wisePlatformTransferId: transferId,
+    });
+
+    // PS-40 §3.2: additive, dedicated event — same rationale as
+    // publishWisePlatformTransferSent in handleCompleted above.
+    await this.publisher.publishWisePlatformTransferFailed({
+      payoutRequestId: payout.id,
+      contractorId: payout.contractorId,
+      wisePlatformTransferId: transferId,
+      amountUsd: Number(payout.amountUsd),
+      failureReason: reasonCode,
+      bankCountry: payout.depositMethod?.bankCountry ?? '',
     });
   }
 

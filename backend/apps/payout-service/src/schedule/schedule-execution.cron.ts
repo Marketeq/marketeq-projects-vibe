@@ -250,9 +250,20 @@ export class ScheduleExecutionCron {
       if (schedule.splitEnabled && schedule.secondaryMethodId) {
         await this.executeSplit(schedule, payoutUSD, primaryMethod);
       } else {
-        await this.executeSinglePayout(schedule, primaryMethod, payoutUSD, 'primary');
+        const result = await this.executeSinglePayout(schedule, primaryMethod, payoutUSD, 'primary');
         await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
         await this.scheduleRepo.update(schedule.id, { consecutiveMissCount: 0 });
+
+        // PS-17 §7, PS-23 §3.5: dedicated event on successful execution —
+        // notification-service/analytics-service's spec'd consumer.
+        if (result.status !== 'failed' && result.payoutRequestId) {
+          await this.publisher.publishScheduleCompleted({
+            contractorId: schedule.contractorId,
+            scheduleId: schedule.id,
+            payoutRequestId: result.payoutRequestId,
+            amountUsd: payoutUSD,
+          });
+        }
       }
 
       await this.auditService.log({
@@ -345,6 +356,16 @@ export class ScheduleExecutionCron {
         action: 'schedule.partial_failure',
         metadata: { scheduleId: schedule.id, primaryUSD, secondaryUSD, secondaryMethodId: secondaryMethod.id },
       });
+
+      // PS-17 §8.3, PS-23 §3.5: dedicated event, additive to the audit log
+      // above — notification-service/finance-service's spec'd consumer.
+      await this.publisher.publishSchedulePartialFailure({
+        contractorId: schedule.contractorId,
+        scheduleId: schedule.id,
+        splitGroupId: schedule.id,
+        succeededPayoutIds: primaryResult.payoutRequestId ? [primaryResult.payoutRequestId] : [],
+        failedPayoutIds: secondaryResult.payoutRequestId ? [secondaryResult.payoutRequestId] : [],
+      });
     }
 
     await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
@@ -412,6 +433,16 @@ export class ScheduleExecutionCron {
       actorType: 'service', actorId: 'schedule-execution-cron',
       action: 'schedule.secondary.failed',
       metadata: { scheduleId: schedule.id, secondaryMethodId, amountUSD, attempts: overallAttempt, requiresManualReview: true },
+    });
+
+    // PS-17 §8.4, PS-23 §3.5: dedicated event, additive to the audit log
+    // above — finance-service's spec'd alert-queue consumer.
+    await this.publisher.publishSecondaryFailed({
+      contractorId: schedule.contractorId,
+      scheduleId: schedule.id,
+      payoutRequestId: `schedule-secondary-${schedule.id}-${secondaryMethodId}`,
+      splitGroupId: schedule.id,
+      reason: `Secondary payout failed after ${overallAttempt} attempts — manual review required.`,
     });
   }
 

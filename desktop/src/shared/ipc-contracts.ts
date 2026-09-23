@@ -113,6 +113,8 @@ export const IPC = {
   contractsGetMine: 'contracts:get-mine',
   contractsGetTasks: 'contracts:get-tasks',
 
+  // --- Local "Today" stats (computed entirely from local SQLite) ---
+  statsGetToday: 'stats:get-today',
 
   // --- Shell helpers ---
   shellOpenExternal: 'shell:open-external',
@@ -224,6 +226,15 @@ export interface TimerSnapshotDTO {
         seconds: number;
       };
   updatedAt: number;
+}
+
+// ---------- Local "Today" stats contracts ----------
+
+export interface TodayStatsDTO {
+  trackedSeconds: number;
+  earnedCents: number;
+  currency: string;
+  goalSeconds: number;
 }
 
 export interface TimerStartArgs {

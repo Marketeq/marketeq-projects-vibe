@@ -14,6 +14,7 @@ import { CryptoPayoutExecutorService } from '../execution/crypto-payout-executor
 import { CardPayoutExecutorService } from '../card/card-payout-executor.service';
 import { BankPayoutExecutorService } from '../bank/bank-payout-executor.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
+import { PayoutService } from './payout.service';
 
 @Processor({ name: 'payout-processing' })
 export class PayoutQueueProcessor {
@@ -26,6 +27,7 @@ export class PayoutQueueProcessor {
     private readonly cardExecutor: CardPayoutExecutorService,
     private readonly bankExecutor: BankPayoutExecutorService,
     private readonly publisher: PayoutPublisher,
+    private readonly payoutService: PayoutService,
   ) {}
 
   @Process('process-payout')
@@ -66,6 +68,19 @@ export class PayoutQueueProcessor {
       this.logger.warn(`process-payout job for already-${payout.status} payout skipped: ${payoutRequestId}`);
       return;
     }
+
+    // PS-19 §3.3/§3.4: execution-time re-checks. These methods already
+    // existed (recheckBalanceAtExecution/recheckKycAtExecution) and fail the
+    // payout + write failureReason themselves, but had zero callers — this
+    // is the actual dispatch point where they belong, run right before
+    // handing off to an executor that would otherwise move real money
+    // against a balance/KYC state that's gone stale since initiation.
+    const balanceOk = await this.payoutService.recheckBalanceAtExecution(
+      payout.contractorId, payoutRequestId, parseFloat(payout.amountUsd),
+    );
+    if (!balanceOk) return;
+    const kycOk = await this.payoutService.recheckKycAtExecution(payout.contractorId, payoutRequestId);
+    if (!kycOk) return;
 
     switch (payout.depositMethod.methodType) {
       case MethodType.CRYPTO:

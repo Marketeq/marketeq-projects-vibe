@@ -3,7 +3,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MagicLinkService } from './magic-link.service';
-import { MagicLinkToken } from '../entities/magic-link-token.entity';
 import { MagicLinkVerification } from '../entities/magic-link-verification.entity';
 import { PayoutRequest } from '../entities/payout-request.entity';
 import { DepositMethod } from '../entities/deposit-method.entity';
@@ -12,7 +11,12 @@ import { BrevoMailService } from '../notifications/brevo-mail.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([MagicLinkToken, MagicLinkVerification, PayoutRequest, DepositMethod]),
+    // MagicLinkToken (PS-01's original table) is intentionally not
+    // registered here — MagicLinkService only ever uses MagicLinkVerification
+    // (PS-14 §9). MagicLinkToken is still real, used elsewhere by
+    // PayoutService.verifyMagicLink()/micro-deposit.service.ts, each
+    // registering it in their own module.
+    TypeOrmModule.forFeature([MagicLinkVerification, PayoutRequest, DepositMethod]),
     PublishersModule,
   ],
   providers: [MagicLinkService, BrevoMailService],

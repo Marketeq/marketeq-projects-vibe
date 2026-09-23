@@ -74,10 +74,12 @@ export const PROVIDER_REGISTRY: Record<CryptoProvider, ProviderConfig> = {
     supportsManualEntry: true,
     defaultNetwork: 'ethereum',
     defaultToken: 'ETH',
+    // PS-11 §4.1/§4.3: "payout-service limits to ETH, USDC, and BNB for the
+    // initial release" — a Solana entry existed here with no doc backing;
+    // removed to match the documented initial-release scope.
     supportedNetworks: [
       { network: 'ethereum', tokens: ['ETH', 'USDC'], walletConnectChainId: 'eip155:1' },
       { network: 'bsc',      tokens: ['BNB'],         walletConnectChainId: 'eip155:56' },
-      { network: 'solana',   tokens: ['SOL'],         walletConnectChainId: null },
     ],
     walletConnectChainId: 'eip155:1',
     requiresApiKey: true,
@@ -96,7 +98,9 @@ export const PROVIDER_REGISTRY: Record<CryptoProvider, ProviderConfig> = {
       { network: 'ethereum', tokens: ['ETH', 'USDC'], walletConnectChainId: 'eip155:1' },
       { network: 'polygon',  tokens: ['USDC'],        walletConnectChainId: 'eip155:137' },
       { network: 'bitcoin',  tokens: ['BTC'],         walletConnectChainId: null },
-      { network: 'solana',   tokens: ['SOL'],         walletConnectChainId: null },
+      // PS-11 §5.3: Coinbase's SOL row lists a WalletConnect chainId ("solana
+      // mainnet") — was null here, incorrectly marking it manual-only.
+      { network: 'solana',   tokens: ['SOL'],         walletConnectChainId: 'solana:4sGjMW1sUnHzSxGspuhpqLDx6wiyjNtZ' },
     ],
     walletConnectChainId: 'eip155:1',
     requiresApiKey: true,

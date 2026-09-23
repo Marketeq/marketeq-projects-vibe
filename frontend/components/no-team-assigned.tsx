@@ -63,12 +63,15 @@ export const isTalentAccount = (
 export const NoTeamAssigned = ({
   kind,
   onClaim,
+  onClaimComplete,
   editHref,
   learnMoreHref,
 }: {
   kind: "project" | "service"
   /** Persists the claim. Resolve to move the dialog to its success step. */
   onClaim?: () => void | Promise<void>
+  /** Called when the success dialog is dismissed, so the parent can update. */
+  onClaimComplete?: () => void
   /** Where "Edit Project" goes once the claim succeeds. */
   editHref?: string
   /** Optional guide linked from the success step. Omit and the link is hidden. */
@@ -87,6 +90,7 @@ export const NoTeamAssigned = ({
     "closed" | "confirm" | "done" | "taken"
   >("closed")
   const [claiming, setClaiming] = useState(false)
+  const [claimedOk, setClaimedOk] = useState(false)
 
   // Radix dismisses both Tooltip and HoverCard on the trigger's pointerdown,
   // and will not reopen until the pointer leaves and returns. Passing `open`
@@ -115,6 +119,7 @@ export const NoTeamAssigned = ({
     setError(null)
     try {
       await onClaim?.()
+      setClaimedOk(true)
       setStep("done")
     } catch (e) {
       if (e instanceof ClaimConflictError) {
@@ -132,9 +137,39 @@ export const NoTeamAssigned = ({
   }
 
   const closeDialog = () => {
+    const wasSuccess = claimedOk
     setStep("closed")
     setError(null)
+    if (wasSuccess) onClaimComplete?.()
   }
+
+  // After a successful claim, hide the trigger entirely — the parent will
+  // re-render with real team data on its next fetch.
+  if (claimedOk && step === "closed") return null
+
+  // Static empty state (three circles + text) used when claim isn't available
+  // and as the HoverCard trigger when it is.
+  const emptyState = (
+    <div className="group/noteam flex items-center gap-x-2 cursor-pointer">
+      <div className="flex items-center -space-x-2">
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="size-8 rounded-full border border-dashed border-gray-300 bg-gray-100 flex items-center justify-center ring-2 ring-white transition-colors duration-300 group-hover/noteam:border-gray-400 group-hover/noteam:bg-gray-200"
+          >
+            <User01 className="size-3.5 text-gray-400" />
+          </div>
+        ))}
+      </div>
+      <span className="text-xs text-gray-400 font-extralight leading-none">
+        No team assigned yet
+      </span>
+    </div>
+  )
+
+  // No claim handler — just render the static empty state, no HoverCard.
+  if (!onClaim) return emptyState
+
   return (
     <>
     <HoverCard open={hoverOpen}>
