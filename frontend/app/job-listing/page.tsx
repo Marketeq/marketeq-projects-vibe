@@ -13780,7 +13780,7 @@ const ProjectScopeEditStep = ({
             </div>
           </div>
 
-          <div className="flex h-[654px] w-full shrink-0 flex-col rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1180px]:w-[322px] self-start">
+          <div className="flex h-[calc(100vh-248px)] min-h-0 w-full shrink-0 flex-col self-stretch rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1180px]:sticky min-[1180px]:top-[50px] min-[1180px]:w-[322px] min-[1180px]:self-start">
             <div className="flex h-12 shrink-0 self-stretch items-start justify-between gap-2 border-b border-gray-200 px-5 py-3">
               <h2 className="h-6 flex-1 text-base leading-6 font-semibold text-dark-blue-400">
                 Smart Assistant
@@ -13796,7 +13796,7 @@ const ProjectScopeEditStep = ({
             </div>
             <div
               ref={assistantChatScrollRef}
-              className="flex h-[466px] shrink-0 grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
+              className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
             >
               <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
                 <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
@@ -13953,7 +13953,7 @@ const ProjectScopeEditStep = ({
                 </div>
               ) : null}
             </div>
-            <div className="flex h-[140px] w-[322px] shrink-0 flex-col items-start gap-2 self-stretch p-5">
+            <div className="flex h-[140px] w-full shrink-0 flex-col items-start gap-2 self-stretch p-5">
               <div className="flex h-[100px] w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
                 <Textarea
                   className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-gray-500 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-gray-400 focus:ring-0"
@@ -17773,7 +17773,7 @@ const ServiceScopeEditStep = ({
               )}
             </div>
 
-            <div className="flex h-[654px] w-full shrink-0 flex-col rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1180px]:w-[322px] self-start">
+            <div className="flex h-[calc(100vh-248px)] min-h-0 w-full shrink-0 flex-col self-stretch rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1180px]:sticky min-[1180px]:top-[50px] min-[1180px]:w-[322px] min-[1180px]:self-start">
               <div className="flex h-12 shrink-0 self-stretch items-start justify-between gap-2 border-b border-gray-200 px-5 py-3">
                 <h2 className="h-6 flex-1 text-base leading-6 font-semibold text-dark-blue-400">
                   Smart Assistant
@@ -17789,7 +17789,7 @@ const ServiceScopeEditStep = ({
               </div>
               <div
                 ref={assistantChatScrollRef}
-                className="flex h-[466px] shrink-0 grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
+                className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
               >
                 <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
                   <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
@@ -17951,7 +17951,7 @@ const ServiceScopeEditStep = ({
                   </div>
                 ) : null}
               </div>
-              <div className="flex h-[140px] w-[322px] shrink-0 flex-col items-start gap-2 self-stretch p-5">
+              <div className="flex h-[140px] w-full shrink-0 flex-col items-start gap-2 self-stretch p-5">
                 <div className="flex h-[100px] w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
                   <Textarea
                     className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-gray-500 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-gray-400 focus:ring-0"
