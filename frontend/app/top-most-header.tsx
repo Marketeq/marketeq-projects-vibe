@@ -840,7 +840,7 @@ const Notifications = () => {
       return
     }
 
-    if (item.href) {
+    if (item.href && item.href !== "/notifications") {
       setOpen(false)
       router.push(item.href)
       return
@@ -1050,7 +1050,7 @@ const Notifications = () => {
             {item.description}
           </div>
           {item.ctaLabel ? (
-            <div className="mt-1 text-xs font-semibold leading-5 text-primary-500 underline underline-offset-2">
+            <div className="mt-1 text-xs font-semibold leading-5 text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500 transition-colors duration-300 underline-offset-2">
               {item.ctaLabel}
             </div>
           ) : null}

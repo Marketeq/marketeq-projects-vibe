@@ -38,6 +38,7 @@ interface GetHomepageOptions {
   variant?: string;
   preview?: boolean;
   previewToken?: string;
+  skipCache?: boolean;
 }
 
 /**
@@ -79,7 +80,7 @@ export class HomepageService {
       config.get<string>('USER_SERVICE_URL') || 'http://localhost:3002';
     this.cmsUrl = config.get<string>('CMS_SERVICE_URL') || null;
     this.previewSecret = config.get<string>('PREVIEW_SECRET') || null;
-    this.cacheTtl = config.get<number>('HOMEPAGE_CACHE_TTL') || 300;
+    this.cacheTtl = config.get<number>('HOMEPAGE_CACHE_TTL') || 15;
 
     const redisUrl = config.get<string>('REDIS_URL');
     if (redisUrl) {
@@ -107,7 +108,7 @@ export class HomepageService {
    * 3. On miss, fetch CMS config (with static fallback), assemble, cache
    */
   async getHomepage(options: GetHomepageOptions = {}): Promise<HomepagePayload> {
-    const { variant, preview, previewToken } = options;
+    const { variant, preview, previewToken, skipCache } = options;
     const startedAt = Date.now();
 
     // Preview mode — bypass cache, validate token
@@ -124,7 +125,7 @@ export class HomepageService {
 
     // Check cache — use "default" when no variant to avoid empty-string collisions
     const cacheKey = `hp:home:${variant || 'default'}`;
-    if (this.redis) {
+    if (this.redis && !skipCache) {
       try {
         const cached = await this.redis.get(cacheKey);
         if (cached) {
@@ -743,6 +744,7 @@ export class HomepageService {
       tags: raw.tags ?? [],
       createdAt: raw.createdAt,
       collaborators: raw.teamAvatars ?? raw.collaborators ?? [],
+      teamMembers: raw.teamMembers ?? [],
       ...this.extractScoring(raw),
     };
   }
@@ -763,6 +765,8 @@ export class HomepageService {
       skills: raw.skills ?? [],
       tags: raw.tags ?? [],
       createdAt: raw.createdAt,
+      collaborators: raw.teamAvatars ?? raw.collaborators ?? [],
+      teamMembers: raw.teamMembers ?? [],
       ...this.extractScoring(raw),
     };
   }
