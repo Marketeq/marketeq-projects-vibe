@@ -13,7 +13,7 @@ import { getPublicApiUrl } from "@/lib/runtime-urls"
  */
 export async function persistActiveRole(activeRole: string): Promise<void> {
   const base = (getPublicApiUrl() || "http://localhost:4000").replace(/\/$/, "")
-  await fetch(`${base}/users/active-role`, {
+  await fetch(`${base}/user/active-role`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     credentials: "include",

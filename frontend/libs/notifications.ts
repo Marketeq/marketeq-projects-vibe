@@ -546,14 +546,14 @@ export const getNotificationCta = (
 
   switch (kind) {
     case "message":
-      return "Open conversation"
+      return "Open Conversation"
     case "team":
       return "View Invite"
     case "project":
-      return "Open details"
+      return "Open Details"
     case "system":
     default:
-      return "View details"
+      return "View Details"
   }
 }
 
