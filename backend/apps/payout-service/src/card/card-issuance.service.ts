@@ -10,6 +10,7 @@ import { DepositMethod, MethodType, VerificationStatus } from '../entities/depos
 import { AuditService } from '../audit/audit.service';
 import { PayoutError } from '../common/errors/payout.error';
 import { KycClient } from '../common/kyc.client';
+import { UpdateSpendingLimitsDto } from './dto/update-spending-limits.dto';
 
 // PS-13 §5: Default spending limits (in cents)
 const DEFAULT_DAILY_LIMIT   = 500_00;   // $500.00
@@ -324,8 +325,16 @@ export class CardIssuanceService {
   async adminUpdateSpendingLimits(
     depositMethodId: string,
     adminId: string,
-    limits: { dailyCents?: number; weeklyCents?: number; monthlyCents?: number; singleCents?: number },
+    limits: UpdateSpendingLimitsDto,
   ): Promise<{ updated: boolean }> {
+    if (
+      limits.dailyCents === undefined && limits.weeklyCents === undefined &&
+      limits.monthlyCents === undefined && limits.singleCents === undefined
+    ) {
+      throw new PayoutError('At least one spending limit must be provided.',
+        HttpStatus.BAD_REQUEST, 'ERR_CARD_SPENDING_LIMIT_EMPTY_UPDATE');
+    }
+
     const method = await this.methodRepo.findOne({
       where: { id: depositMethodId, methodType: MethodType.MARKETEQ_DEBIT_CARD },
     });
@@ -337,6 +346,18 @@ export class CardIssuanceService {
     const weeklyCents = limits.weeklyCents ?? method.cardWeeklyLimitCents ?? DEFAULT_WEEKLY_LIMIT;
     const monthlyCents = limits.monthlyCents ?? method.cardMonthlyLimitCents ?? DEFAULT_MONTHLY_LIMIT;
     const singleCents = limits.singleCents ?? method.cardSingleLimitCents ?? DEFAULT_SINGLE_LIMIT;
+
+    // Reviewer-suggested: enforce the doc's implicit ordering on the
+    // resolved (provided-or-existing) values, not just the payload in
+    // isolation — a partial update (e.g. only dailyCents) must still be
+    // checked against whatever weekly/monthly it's about to coexist with.
+    if (singleCents > dailyCents || dailyCents > weeklyCents || weeklyCents > monthlyCents) {
+      throw new PayoutError(
+        'Spending limits must satisfy single ≤ daily ≤ weekly ≤ monthly.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_CARD_SPENDING_LIMIT_ORDER_INVALID',
+        { singleCents, dailyCents, weeklyCents, monthlyCents },
+      );
+    }
 
     if (this.stripe && method.stripeCardId && !method.stripeCardId.startsWith('ic_stub')) {
       try {
@@ -362,7 +383,7 @@ export class CardIssuanceService {
       cardWeeklyLimitCents: weeklyCents,
       cardMonthlyLimitCents: monthlyCents,
       cardSingleLimitCents: singleCents,
-    } as any);
+    });
 
     await this.auditService.log({
       contractorId: method.contractorId, actorType: 'admin', actorId: adminId,

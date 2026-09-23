@@ -31,6 +31,7 @@ import { OfferHistoryService } from '../offer-history/offer-history.service';
 import { OfferTermsSnapshot } from '../offer-history/entities/offer-history-event.entity';
 import { normalizeDateOnly } from '../common/utils/normalize-date-only';
 import { calculateExpiresAt } from '../scheduler/ttl.helper';
+import { CounterOfferNotActionableException } from '../common/exceptions/offer.exceptions';
 
 @Injectable()
 export class CounterOffersService {
@@ -260,9 +261,11 @@ export class CounterOffersService {
     const co = await this.findCOByIdOrThrow(coId, offerId);
 
     OfferStateMachine.assertIsSubmitter(co, requesterId);
-    OfferStateMachine.assertCanTransitionCO(co.status, CounterOfferStatus.WITHDRAWN);
+    if (co.status !== CounterOfferStatus.PENDING) {
+      throw new CounterOfferNotActionableException(co.status);
+    }
 
-    const withdrawalMessage = dto?.withdrawalMessage ?? dto?.message ?? null;
+    const withdrawalMessage = dto?.message ?? null;
 
     const { withdrawnCO, restoredOffer } = await this.dataSource.transaction(async (em) => {
       const coResult = await em.query(`
@@ -371,7 +374,9 @@ export class CounterOffersService {
     const co = await this.findCOByIdOrThrow(id, offerId);
 
     OfferStateMachine.assertIsSubmitter(co, userId);
-    OfferStateMachine.assertCanTransitionCO(co.status, CounterOfferStatus.PENDING); // must be PENDING
+    if (co.status !== CounterOfferStatus.PENDING) {
+      throw new CounterOfferNotActionableException(co.status);
+    }
 
     const previousTerms = this.termsFromCO(co);
 
