@@ -214,6 +214,7 @@ export class ScheduleService {
         return {
           status: 'VERIFICATION_REQUIRED' as const,
           sessionUrl: biometric.sessionUrl,
+          errorCode: 'ERR_BIOMETRIC_VERIFICATION_REQUIRED',
           message: 'Identity verification required before your first automatic payout schedule can be activated.',
         };
       }

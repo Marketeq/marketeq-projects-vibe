@@ -9,13 +9,17 @@ export class BankEncryptionService {
   private readonly ALG = 'aes-256-gcm' as const;
 
   constructor(private readonly config: ConfigService) {
+    // A silent random-key fallback here means every restart with a
+    // missing/malformed env var invisibly invalidates every already-encrypted
+    // bank account number — same failure mode fixed for OAUTH_TOKEN_ENCRYPTION_KEY
+    // in oauth.service.ts. Fail fast instead.
     const keyHex = this.config.get('BANK_ENCRYPTION_KEY', '');
-    if (keyHex.length === 64) {
-      this.KEY = Buffer.from(keyHex, 'hex');
-    } else {
-      this.logger.warn('BANK_ENCRYPTION_KEY not configured or invalid — encryption disabled');
-      this.KEY = randomBytes(32); // fallback for dev
+    if (keyHex.length !== 64) {
+      throw new Error(
+        'BANK_ENCRYPTION_KEY must be a 64-character hex string (32 bytes) — generate with `openssl rand -hex 32` and never regenerate it once bank accounts have been stored.',
+      );
     }
+    this.KEY = Buffer.from(keyHex, 'hex');
   }
 
   encrypt(plaintext: string): string {

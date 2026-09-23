@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsIn, IsNotEmpty } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsNotEmpty, Matches } from 'class-validator';
 
 export class AddMethodDto {
   @IsIn(['BANK_STRIPE', 'BANK_MANUAL', 'WISE', 'PAYONEER', 'CRYPTO', 'MARKETEQ_DEBIT_CARD', 'TEQ_COIN'])
@@ -29,6 +29,8 @@ export class AddMethodDto {
   // Japan
   @IsOptional() @IsString() bankCode?: string;
   @IsOptional() @IsString() bankBranchCode?: string;
+  // Zengin accountType — PS-36 §7 requires FUTSU (ordinary) or TOUZA (current).
+  @IsOptional() @IsIn(['FUTSU', 'TOUZA']) bankAccountType?: string;
 
   // Canada (SG-07)
   @IsOptional() @IsString() bankInstitutionNumber?: string;
@@ -48,6 +50,18 @@ export class AddMethodDto {
   @IsOptional() @IsString() bankCpfCnpj?: string;
   @IsOptional() @IsString() bankAgencia?: string;
   @IsOptional() @IsString() bankConta?: string;
+
+  // PS-34 §4.1/§4.2: DOB + legal name, required for UK/SEPA/AU/CA
+  // (Stripe cross-border) BANK_MANUAL methods — added to the bank entry
+  // form (PS-06) to unlock the transfers capability via
+  // StripeProvider.submitDob(). Strictly YYYY-MM-DD — @IsDateString()
+  // accepts any ISO 8601 string including a full timestamp
+  // ("1990-04-17T00:00:00Z"), which methods.service.ts's
+  // `.split('-').map(Number)` parser would silently mis-parse (the day
+  // segment becomes "17T00:00:00Z" -> NaN) and send a malformed DOB to Stripe.
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'dateOfBirth must be in YYYY-MM-DD format' }) dateOfBirth?: string;
+  @IsOptional() @IsString() legalFirstName?: string;
+  @IsOptional() @IsString() legalLastName?: string;
 
   // OAuth fields
   @IsOptional() @IsString() wiseEmail?: string;

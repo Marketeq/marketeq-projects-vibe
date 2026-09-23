@@ -140,6 +140,20 @@ export class MethodsService {
         token: dto.cryptoCurrency ?? 'ETH',
       });
 
+      // PS-35 §2/§5.2: "any new payout method added" — this branch used to
+      // return before the biometric gate below was ever reached, a real gap
+      // the doc-audit flagged explicitly (crypto wallets were never gated).
+      const cryptoBiometric = await this.checkMethodBiometricGate(contractorId, cryptoMethod.id);
+      if (cryptoBiometric.gate === 'REQUIRED') {
+        return {
+          depositMethodId: cryptoMethod.id,
+          verificationStatus: 'pending_biometric',
+          biometricRequired: true,
+          sessionUrl: cryptoBiometric.sessionUrl,
+          errorCode: 'ERR_BIOMETRIC_VERIFICATION_REQUIRED',
+        };
+      }
+
       return {
         depositMethodId: cryptoMethod.id,
         verificationStatus: 'verified',
@@ -159,6 +173,23 @@ export class MethodsService {
     // must never run for these method types.
     if (dto.methodType === 'WISE' || dto.methodType === 'PAYONEER') {
       const result = await this.oauthService.initiateOAuth(contractorId, dto.methodType as MethodType);
+
+      // PS-35 §2/§5.2: same gap as CRYPTO above — WISE/PAYONEER previously
+      // returned before ever reaching the biometric gate. Checked here,
+      // before the contractor is sent into the OAuth flow, rather than
+      // after the callback completes — consistent with "gate fires when the
+      // method is added," not when the async provider verification finishes.
+      const wiseBiometric = await this.checkMethodBiometricGate(contractorId, result.depositMethodId);
+      if (wiseBiometric.gate === 'REQUIRED') {
+        return {
+          depositMethodId: result.depositMethodId,
+          verificationStatus: 'pending_biometric',
+          biometricRequired: true,
+          sessionUrl: wiseBiometric.sessionUrl,
+          errorCode: 'ERR_BIOMETRIC_VERIFICATION_REQUIRED',
+        };
+      }
+
       return {
         depositMethodId: result.depositMethodId,
         verificationStatus: 'pending',
@@ -237,44 +268,21 @@ export class MethodsService {
 
     // PS-35 §2/§5.2: biometric gate fires for every new payout method, on
     // top of whatever provider verification (Stripe/Wise/micro-deposit)
-    // just ran above — checked here, covering the BANK_MANUAL/BANK_STRIPE
-    // path. CRYPTO (returns earlier, via cryptoConnectionService) and
-    // WISE/PAYONEER (returns earlier via oauthService.initiateOAuth, whose
-    // own callback flow completes asynchronously) are not yet gated here —
-    // a real gap against PS-35's "any new payout method" scope, left for a
-    // follow-up rather than reshaping the OAuth callback flow blind.
-    //
-    // FEATURE_BIOMETRIC_GATE_ENABLED defaults false — same reasoning as
-    // schedule.service.ts's updateSchedule(): identity-service doesn't
-    // implement this endpoint yet, and failing closed (PS-35 §8) with the
-    // gate always-on would 503 every new payout method for every
-    // contractor. Flip this on once identity-service ships PS-35.
-    const biometricGateEnabled = this.config.get('FEATURE_BIOMETRIC_GATE_ENABLED', 'false') === 'true';
-    const biometric = biometricGateEnabled
-      ? await this.identityService.getMethodGateStatus(contractorId, method.id)
-      : { gate: 'VERIFIED' as const };
-
-    if (biometric.gate === 'FAILED') {
-      await this.methodRepo.update(method.id, {
-        isActive: false,
-        verificationStatus: VerificationStatus.VERIFICATION_FAILED,
-      } as any);
-      throw new PayoutError(
-        'Identity verification failed. This payout method cannot be activated.',
-        HttpStatus.FORBIDDEN, 'ERR_BIOMETRIC_VERIFICATION_FAILED',
-      );
-    }
+    // just ran above — covers BANK_MANUAL/BANK_STRIPE here; CRYPTO and
+    // WISE/PAYONEER call the same checkMethodBiometricGate() helper earlier
+    // in this method, right after their own method row is created.
+    const biometric = await this.checkMethodBiometricGate(contractorId, method.id);
 
     if (biometric.gate === 'REQUIRED') {
       // Overrides whatever provider verification computed above — the
       // method exists and is visible, but not usable for payouts until
       // biometric clears (payout.method.biometric.verified consumer).
-      await this.methodRepo.update(method.id, { verificationStatus: VerificationStatus.PENDING_BIOMETRIC } as any);
       return {
         depositMethodId: method.id,
         verificationStatus: 'pending_biometric',
         biometricRequired: true,
         sessionUrl: biometric.sessionUrl,
+        errorCode: 'ERR_BIOMETRIC_VERIFICATION_REQUIRED',
         verification,
       };
     }
@@ -641,26 +649,96 @@ export class MethodsService {
           return await this.verifyViaWisePlatform(method, dto);
         }
 
-        // UK/SEPA/AU/CA (Stripe cross-border): PS-34 §4.2 replaces this with
-        // DOB-gated Stripe KYC (StripeProvider.submitDob(), watched via the
-        // account.updated webhook — see providers/stripe.provider.ts). That
-        // requires attaching the international bank_account as a Stripe
-        // external_account first, and neither PS-33 nor PS-34 documents the
-        // non-US external-account field mapping (sort_code/IBAN/BSB per
-        // country) — PS-33 §3.4 only specifies the US routing_number case.
-        // Rather than guess a Stripe API contract that isn't written down
-        // anywhere in the doc set, these countries keep the interim
-        // micro-deposit flow below until that mapping is specified.
-        const amount1 = Math.floor(Math.random() * 99) + 1;
-        const amount2 = Math.floor(Math.random() * 99) + 1;
-        const manualVerify = this.verifyRepo.create({
-          depositMethodId: method.id, contractorId: method.contractorId,
-          verificationType: 'micro_deposit', status: VerificationStatus.PENDING,
-          amount1Cents: amount1, amount2Cents: amount2,
-          maxAttempts: 3, expiresAt,
+        // UK/SEPA/AU/CA (Stripe cross-border): PS-34 §4.2 — DOB-gated Stripe
+        // KYC. Field mapping confirmed against Stripe's own API reference
+        // (see attachInternationalExternalAccount()'s comment in
+        // stripe.provider.ts). Attach the bank account as a Stripe
+        // external_account, submit DOB to unlock the transfers capability,
+        // then wait for the account.updated webhook (handleAccountUpdated)
+        // to confirm — same async pattern as BANK_STRIPE/Financial
+        // Connections, never marked VERIFIED synchronously here.
+        //
+        // Reviewer-caught bug: AddMethodDto marks dateOfBirth/legalFirstName/
+        // legalLastName @IsOptional() (PS-34 §4.1's bank-form addition — no
+        // PR in this stack ships the frontend change), so hard-throwing here
+        // when they're absent turned every UK/SEPA/AU/CA verification into a
+        // guaranteed 422 the moment this merges — strictly worse than the
+        // old fake-but-functional micro-deposit flow it replaced. Falls back
+        // to that same interim flow when the fields aren't sent, so this
+        // activates automatically the day the frontend form ships instead of
+        // needing to land in lockstep with it.
+        if (!dto.dateOfBirth || !dto.legalFirstName || !dto.legalLastName) {
+          const amount1 = Math.floor(Math.random() * 99) + 1;
+          const amount2 = Math.floor(Math.random() * 99) + 1;
+          const manualVerify = this.verifyRepo.create({
+            depositMethodId: method.id, contractorId: method.contractorId,
+            verificationType: 'micro_deposit', status: VerificationStatus.PENDING,
+            amount1Cents: amount1, amount2Cents: amount2,
+            maxAttempts: 3, expiresAt,
+          });
+          await this.verifyRepo.save(manualVerify);
+          return {
+            type: 'micro_deposit',
+            message: 'Two small deposits will arrive in your account within 2 business days.',
+            expiresAt: manualVerify.expiresAt!.toISOString(), maxAttempts: 3,
+          };
+        }
+        const [dobYear, dobMonth, dobDay] = dto.dateOfBirth.split('-').map(Number);
+
+        // Reviewer-caught bug: bank-validation.service.ts only enforces an
+        // exact currency match for GB/AU/etc — for SEPA and CA it's a
+        // conditional check (`if (dto.bankCurrency && ...)`), so an omitted
+        // bankCurrency passes validation with method.bankCurrency left null.
+        // Defaulting that to 'usd' silently attached a EUR-country account
+        // as USD. Fail loudly instead of guessing — Stripe requires an
+        // exact currency and a wrong one creates a broken external account.
+        if (!method.bankCurrency) {
+          throw new PayoutError(
+            'A currency is required to verify this bank account.',
+            HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_BANK_ACCOUNT_VALIDATION_FAILED',
+          );
+        }
+
+        const attach = await this.stripeProvider.attachInternationalExternalAccount({
+          contractorId: method.contractorId,
+          depositMethodId: method.id,
+          bankCountry: method.bankCountry!,
+          currency: method.bankCurrency,
+          accountHolderName: dto.bankAccountName || method.nickname || `${dto.legalFirstName} ${dto.legalLastName}`,
+          iban: dto.bankIban,
+          accountNumber: dto.bankAccountNumber,
+          sortCode: dto.bankSortCode,
+          bsbNumber: dto.bankBsbNumber,
+          institutionNumber: dto.bankInstitutionNumber,
+          transitNumber: dto.bankTransitNumber,
         });
-        await this.verifyRepo.save(manualVerify);
-        return { type: 'micro_deposit', message: 'Two small deposits will arrive in your account within 2 business days.', expiresAt: manualVerify.expiresAt!.toISOString(), maxAttempts: 3 };
+
+        await this.stripeProvider.submitDob({
+          contractorStripeAccountId: attach.connectAccountId,
+          dateOfBirth: { day: dobDay, month: dobMonth, year: dobYear },
+          legalFirstName: dto.legalFirstName,
+          legalLastName: dto.legalLastName,
+        });
+
+        await this.methodRepo.update(method.id, {
+          stripeExternalAccountId: attach.externalAccountId,
+          stripeConnectAccountId: attach.connectAccountId,
+          connectPayoutsEnabled: attach.connectPayoutsEnabled,
+          connectRequirementsDue: attach.connectRequirementsDue,
+          verificationStatus: VerificationStatus.PENDING,
+        } as any);
+
+        await this.auditService.log({
+          contractorId: method.contractorId, actorType: 'contractor', actorId: method.contractorId,
+          action: 'method.stripe_kyc.submitted',
+          metadata: { methodId: method.id, methodType: 'BANK_MANUAL', bankCountry: method.bankCountry },
+        });
+
+        return {
+          type: 'stripe_kyc',
+          message: 'Your bank account is being verified. This usually takes a few minutes.',
+          expiresAt: expiresAt.toISOString(),
+        };
       }
 
       // WISE/PAYONEER no longer reach this method — addMethod()
@@ -714,6 +792,10 @@ export class MethodsService {
     if (dto.bankBsbNumber) fields.bsbCode = dto.bankBsbNumber;
     if (dto.bankCode) fields.bankCode = dto.bankCode;
     if (dto.bankBranchCode) fields.branchCode = dto.bankBranchCode;
+    // PS-36 §7: Japan's Zengin recipient requires accountType (FUTSU/TOUZA)
+    // — was entirely absent from this payload before, so every Japan
+    // recipient creation was missing a Wise-required field.
+    if (country === 'JP' && dto.bankAccountType) fields.accountType = dto.bankAccountType;
 
     const validation = await this.wisePlatformService.validateBankAccount({
       bankCountry: country,
@@ -728,11 +810,22 @@ export class MethodsService {
       );
     }
 
+    // PS-36 §6/§7: "Always call this before creating a recipient to confirm
+    // field names. Do not hardcode field names." getAccountRequirements()
+    // existed with zero callers — WISE_RECIPIENT_TYPE only documents
+    // India/Japan/UAE, everything else blindly guessed 'iban'. Now those
+    // three keep their known-good type (Wise's requirements response is
+    // amount-sensitive but not type-sensitive for a given corridor, so this
+    // doesn't change their behavior); every other country gets its type
+    // from Wise's live catalog instead of a guess that could silently be
+    // wrong for a corridor never manually verified.
+    const recipientType = await this.resolveWiseRecipientType(country, method.bankCurrency ?? '');
+
     const recipientId = await this.wisePlatformService.createRecipient({
       currency: method.bankCurrency ?? '',
       bankCountry: country,
       accountHolderName: dto.bankAccountName || method.nickname || 'Account Holder',
-      recipientType: MethodsService.WISE_RECIPIENT_TYPE[country] ?? 'iban',
+      recipientType,
       bankDetails: fields,
     });
 
@@ -752,6 +845,71 @@ export class MethodsService {
       verified: true,
       message: 'Your bank account has been verified.',
     };
+  }
+
+  // PS-36 §6/§7: resolve the recipient `type` Wise actually expects for this
+  // corridor via GET /v1/account-requirements, rather than guessing. Falls
+  // back to WISE_RECIPIENT_TYPE / 'iban' only if the requirements call
+  // itself fails, so a Wise outage degrades to the previous best-effort
+  // behavior instead of blocking verification outright.
+  private async resolveWiseRecipientType(country: string, currency: string): Promise<string> {
+    const fallback = MethodsService.WISE_RECIPIENT_TYPE[country] ?? 'iban';
+    try {
+      const requirements = await this.wisePlatformService.getAccountRequirements({
+        sourceCurrency: 'USD',
+        targetCurrency: currency,
+        sourceAmount: 1000,
+      });
+      const types: string[] = Array.isArray(requirements)
+        ? requirements.map((r: any) => r?.type).filter((t: unknown): t is string => typeof t === 'string')
+        : [];
+      if (types.length === 0) {
+        this.logger.warn(`Wise account-requirements returned no usable types for ${country}/${currency} — falling back to ${fallback}`);
+        return fallback;
+      }
+      // Prefer the documented type if Wise's own catalog confirms it's valid
+      // for this corridor; otherwise take the first type Wise actually offers.
+      return types.includes(fallback) ? fallback : types[0];
+    } catch (err: any) {
+      this.logger.warn(`Wise account-requirements lookup failed for ${country}/${currency}: ${err.message} — falling back to ${fallback}`);
+      return fallback;
+    }
+  }
+
+  // PS-35 §2/§5.2/§8: biometric gate check, shared by all three
+  // addMethod() branches (CRYPTO, WISE/PAYONEER, BANK_MANUAL/BANK_STRIPE) —
+  // previously only the last of these actually called it, leaving crypto
+  // and OAuth-based methods entirely ungated against the doc's "any new
+  // payout method added" scope. FEATURE_BIOMETRIC_GATE_ENABLED defaults
+  // false — identity-service doesn't implement the biometric endpoints yet
+  // (PS-35 §8 fails closed/503 when it's asked), so leaving the gate
+  // always-on would 503 every new payout method for every contractor until
+  // that service ships. Flip this on once it does — see .env.local.example.
+  private async checkMethodBiometricGate(
+    contractorId: string, methodId: string,
+  ): Promise<{ gate: 'VERIFIED' | 'REQUIRED'; sessionUrl?: string }> {
+    const biometricGateEnabled = this.config.get('FEATURE_BIOMETRIC_GATE_ENABLED', 'false') === 'true';
+    const biometric = biometricGateEnabled
+      ? await this.identityService.getMethodGateStatus(contractorId, methodId)
+      : { gate: 'VERIFIED' as const };
+
+    if (biometric.gate === 'FAILED') {
+      await this.methodRepo.update(methodId, {
+        isActive: false,
+        verificationStatus: VerificationStatus.VERIFICATION_FAILED,
+      } as any);
+      throw new PayoutError(
+        'Identity verification failed. This payout method cannot be activated.',
+        HttpStatus.FORBIDDEN, 'ERR_BIOMETRIC_VERIFICATION_FAILED',
+      );
+    }
+
+    if (biometric.gate === 'REQUIRED') {
+      await this.methodRepo.update(methodId, { verificationStatus: VerificationStatus.PENDING_BIOMETRIC } as any);
+    }
+
+    // FAILED always throws above, so only VERIFIED/REQUIRED ever reach here.
+    return biometric as { gate: 'VERIFIED' | 'REQUIRED'; sessionUrl?: string };
   }
 
   private verificationMessage(status: VerificationStatus): string {

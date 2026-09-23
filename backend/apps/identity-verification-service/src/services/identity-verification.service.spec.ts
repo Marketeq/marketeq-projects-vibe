@@ -89,6 +89,7 @@ describe('IdentityVerificationService', () => {
     };
     const objectStorageProvider = { createUploadUrl: jest.fn() };
     const events = { publish: jest.fn().mockResolvedValue(undefined) };
+    const locationProvider = { resolve: jest.fn().mockResolvedValue(null) };
 
     const service = new IdentityVerificationService(
       profileRepository as any,
@@ -98,6 +99,7 @@ describe('IdentityVerificationService', () => {
       dataSource as any,
       documentVerificationProvider as any,
       vpnProxyDetectionProvider as any,
+      locationProvider as any,
       objectStorageProvider as any,
       events as any,
     );
