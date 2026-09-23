@@ -8213,12 +8213,27 @@ export const PayoutScheduleDialog = ({
     if (dailyDisabled && frequency === "daily") setFrequency("weekly")
   }, [dailyDisabled, frequency])
 
+  // Figma (dev-mode dropdown, authoritative — supersedes an earlier, wrong
+  // reference this branch briefly matched instead): exactly 5 options —
+  // Weekly (every X), Bi-Weekly (every other X), Monthly (Nth of each
+  // month), Daily (every day), Set Custom Schedule. No "every 2 days"/
+  // "every 2 months" presets — those aren't in the spec, so they don't
+  // belong in the main dropdown; the modal already covers that interval.
+  // Day of month runs 1–28, so 21/22/23 need "st"/"nd"/"rd" too, while
+  // 11/12/13 stay "th".
+  const ordinalSuffix = (n: number) => {
+    const mod100 = n % 100
+    if (mod100 >= 11 && mod100 <= 13) return "th"
+    const mod10 = n % 10
+    return mod10 === 1 ? "st" : mod10 === 2 ? "nd" : mod10 === 3 ? "rd" : "th"
+  }
+
   const getScheduleLabel = () => {
     if (frequency === "weekly") return `Weekly (every ${selectedDayFull})`
     if (frequency === "bi_weekly")
       return `Bi-Weekly (every other ${selectedDayFull})`
     if (frequency === "monthly")
-      return `Monthly (on the ${dayOfMonth}${dayOfMonth === 1 ? "st" : dayOfMonth === 2 ? "nd" : dayOfMonth === 3 ? "rd" : "th"})`
+      return `Monthly (${dayOfMonth}${ordinalSuffix(dayOfMonth)} of each month)`
     if (frequency === "daily") return "Daily (every day)"
     if (frequency === "custom")
       return `Every ${customIntervalCount} ${customIntervalCount === 1 ? customIntervalUnit.slice(0, -1) : customIntervalUnit}`
@@ -8760,7 +8775,8 @@ export const PayoutScheduleDialog = ({
                           Bi-Weekly (every other {selectedDayFull})
                         </SelectItem>
                         <SelectItem value="monthly">
-                          Monthly (on the {dayOfMonth})
+                          Monthly ({dayOfMonth}
+                          {ordinalSuffix(dayOfMonth)} of each month)
                         </SelectItem>
                         <SelectItem value="daily" disabled={dailyDisabled}>
                           Daily (every day)
