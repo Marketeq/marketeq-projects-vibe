@@ -8183,11 +8183,12 @@ export const PayoutScheduleDialog = ({
   const [reserveCustomOpen, setReserveCustomOpen] = useState(false)
   const [reserveCustomValue, setReserveCustomValue] = useState("")
 
-  // Split payout — Figma's "Auto Split" toggle switches between a fixed
-  // 50/50 default and manual per-side percent entry; there's no backend
-  // auto-balance algorithm (primarySplitPercent is the only stored value,
-  // secondarySplitPercent is just its complement), so "auto" just means
-  // "keep it at 50/50 and don't let the user type a number".
+  // Split payout — there's no backend auto-balance algorithm
+  // (primarySplitPercent is the only stored value, secondarySplitPercent is
+  // just its complement). "Auto Split" only sets the starting point: turning
+  // it on snaps the split back to 50/50, but the percent field stays
+  // editable in both states — QA-confirmed bug: it used to also lock the
+  // field while Auto Split was on, which shouldn't gate editability at all.
   const [autoSplit, setAutoSplit] = useState(true)
 
   // Authorization
@@ -8670,7 +8671,7 @@ export const PayoutScheduleDialog = ({
                                 min={0}
                                 max={100}
                                 className="w-full h-full text-center pl-2 pr-5 text-base"
-                                disabled={autoSplit || !row.isPrimary}
+                                disabled={!row.isPrimary}
                                 value={row.pct}
                                 // AC-23.03/23.04: accept the raw value (including 0/100) so the
                                 // inline error below can actually be seen — clamping silently
