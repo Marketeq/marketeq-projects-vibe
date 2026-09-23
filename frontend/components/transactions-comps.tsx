@@ -8217,17 +8217,46 @@ export const PayoutScheduleDialog = ({
     if (dailyDisabled && frequency === "daily") setFrequency("weekly")
   }, [dailyDisabled, frequency])
 
+  // Figma: dropdown option copy is exact — "Weekly (every week on X)",
+  // "Bi-Weekly (every 2 weeks on X)", "Monthly (every month on the Nth)".
+  const ordinalSuffix = (n: number) =>
+    n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"
+
+  // Figma's "Daily (every 2 days)" / "Monthly (every 2 months on the Nth)"
+  // presets are the existing CUSTOM frequency (customIntervalUnit/Count) —
+  // the "Set Custom Schedule" modal already supports arbitrary intervals in
+  // this unit; these are just one-click shortcuts into the same mechanism,
+  // not a new backend capability.
   const getScheduleLabel = () => {
-    if (frequency === "weekly") return `Weekly (every ${selectedDayFull})`
-    if (frequency === "bi_weekly")
-      return `Bi-Weekly (every other ${selectedDayFull})`
-    if (frequency === "monthly")
-      return `Monthly (on the ${dayOfMonth}${dayOfMonth === 1 ? "st" : dayOfMonth === 2 ? "nd" : dayOfMonth === 3 ? "rd" : "th"})`
     if (frequency === "daily") return "Daily (every day)"
-    if (frequency === "custom")
+    if (frequency === "weekly")
+      return `Weekly (every week on ${selectedDayFull})`
+    if (frequency === "bi_weekly")
+      return `Bi-Weekly (every 2 weeks on ${selectedDayFull})`
+    if (frequency === "monthly")
+      return `Monthly (every month on the ${dayOfMonth}${ordinalSuffix(dayOfMonth)})`
+    if (frequency === "custom") {
+      if (customIntervalUnit === "days" && customIntervalCount === 2)
+        return "Daily (every 2 days)"
+      if (customIntervalUnit === "months" && customIntervalCount === 2)
+        return `Monthly (every 2 months on the ${dayOfMonth}${ordinalSuffix(dayOfMonth)})`
       return `Every ${customIntervalCount} ${customIntervalCount === 1 ? customIntervalUnit.slice(0, -1) : customIntervalUnit}`
+    }
     return "Select schedule"
   }
+
+  // Distinct from raw `frequency` so the two custom-interval presets below
+  // (Daily every 2 days, Monthly every 2 months) highlight as themselves in
+  // the open dropdown instead of collapsing into the generic "custom" row
+  // that opens the Set Custom Schedule modal.
+  const scheduleSelectValue =
+    frequency === "custom"
+      ? customIntervalUnit === "days" && customIntervalCount === 2
+        ? "daily_every_2"
+        : customIntervalUnit === "months" && customIntervalCount === 2
+          ? "monthly_every_2"
+          : "custom"
+      : frequency
 
   const loadSchedule = React.useCallback(async () => {
     setLoading(true)
@@ -8726,7 +8755,7 @@ export const PayoutScheduleDialog = ({
                     </p>
 
                     <Select
-                      value={frequency}
+                      value={scheduleSelectValue}
                       onValueChange={(v) => {
                         if (v === "custom") {
                           // Figma: "Set Custom Schedule" opens its own modal rather
@@ -8743,6 +8772,23 @@ export const PayoutScheduleDialog = ({
                           setCustomModalOpen(true)
                           return
                         }
+                        // Figma's "every 2 days"/"every 2 months" rows are
+                        // one-click shortcuts into the same CUSTOM frequency
+                        // the modal above already drives — no new backend
+                        // behavior, just skipping the modal for this pair of
+                        // fixed intervals.
+                        if (v === "daily_every_2") {
+                          setFrequency("custom")
+                          setCustomIntervalUnit("days")
+                          setCustomIntervalCount(2)
+                          return
+                        }
+                        if (v === "monthly_every_2") {
+                          setFrequency("custom")
+                          setCustomIntervalUnit("months")
+                          setCustomIntervalCount(2)
+                          return
+                        }
                         setFrequency(v)
                       }}
                     >
@@ -8750,17 +8796,28 @@ export const PayoutScheduleDialog = ({
                         <SelectValue>{getScheduleLabel()}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="weekly">
-                          Weekly (every {selectedDayFull})
-                        </SelectItem>
-                        <SelectItem value="bi_weekly">
-                          Bi-Weekly (every other {selectedDayFull})
-                        </SelectItem>
-                        <SelectItem value="monthly">
-                          Monthly (on the {dayOfMonth})
-                        </SelectItem>
                         <SelectItem value="daily" disabled={dailyDisabled}>
                           Daily (every day)
+                        </SelectItem>
+                        <SelectItem
+                          value="daily_every_2"
+                          disabled={dailyDisabled}
+                        >
+                          Daily (every 2 days)
+                        </SelectItem>
+                        <SelectItem value="weekly">
+                          Weekly (every week on {selectedDayFull})
+                        </SelectItem>
+                        <SelectItem value="bi_weekly">
+                          Bi-Weekly (every 2 weeks on {selectedDayFull})
+                        </SelectItem>
+                        <SelectItem value="monthly">
+                          Monthly (every month on the {dayOfMonth}
+                          {ordinalSuffix(dayOfMonth)})
+                        </SelectItem>
+                        <SelectItem value="monthly_every_2">
+                          Monthly (every 2 months on the {dayOfMonth}
+                          {ordinalSuffix(dayOfMonth)})
                         </SelectItem>
                         <SelectItem value="custom">
                           Set Custom Schedule
