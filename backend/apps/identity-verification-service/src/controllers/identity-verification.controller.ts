@@ -12,6 +12,7 @@ import {
 import { Request } from 'express';
 import { IdentityVerificationService } from '../services/identity-verification.service';
 import { BearerAuthGuard } from '../common/guards/bearer-auth.guard';
+import { extractClientIp } from '../common/utils/extract-client-ip';
 import { TravelClassificationRequestDto } from '../dto/request/travel-classification.request.dto';
 import { TravelDurationRequestDto } from '../dto/request/travel-duration.request.dto';
 import { DocumentUploadUrlRequestDto } from '../dto/request/document-upload-url.request.dto';
@@ -32,14 +33,14 @@ export class IdentityVerificationController {
 
   @Get('me')
   async getMyStatus(@Req() req: AuthenticatedRequest): Promise<ProfileStatusResponseDto> {
-    const profile = await this.service.getOrCreateProfile(req.userId);
+    const profile = await this.service.getOrCreateProfile(req.userId, extractClientIp(req));
     return ProfileStatusResponseDto.fromEntity(profile);
   }
 
   @Post('home-country/confirm')
   @HttpCode(HttpStatus.OK)
   async confirmHomeCountry(@Req() req: AuthenticatedRequest): Promise<ProfileStatusResponseDto> {
-    const profile = await this.service.confirmHomeCountry(req.userId);
+    const profile = await this.service.confirmHomeCountry(req.userId, extractClientIp(req));
     return ProfileStatusResponseDto.fromEntity(profile);
   }
 

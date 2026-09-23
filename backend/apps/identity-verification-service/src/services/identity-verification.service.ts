@@ -36,6 +36,10 @@ import {
   VPN_PROXY_DETECTION_PROVIDER,
 } from '../providers/vpn-proxy/vpn-proxy-detection-provider.interface';
 import {
+  LocationProvider,
+  LOCATION_PROVIDER,
+} from '../providers/location/location-provider.interface';
+import {
   ObjectStorageProvider,
   OBJECT_STORAGE_PROVIDER,
 } from '../providers/storage/object-storage-provider.interface';
@@ -65,21 +69,50 @@ export class IdentityVerificationService {
     private readonly documentVerificationProvider: DocumentVerificationProvider,
     @Inject(VPN_PROXY_DETECTION_PROVIDER)
     private readonly vpnProxyDetectionProvider: VpnProxyDetectionProvider,
+    @Inject(LOCATION_PROVIDER)
+    private readonly locationProvider: LocationProvider,
     @Inject(OBJECT_STORAGE_PROVIDER)
     private readonly objectStorageProvider: ObjectStorageProvider,
     @Inject(NOTIFICATION_EVENT_PUBLISHER)
     private readonly events: NotificationEventPublisher,
   ) {}
 
-  async getOrCreateProfile(userId: string): Promise<IdentityVerificationProfile> {
+  /**
+   * ipAddress is optional and only ever passed by callers that have a raw
+   * request to extract it from (currently getMyStatus and
+   * confirmHomeCountry). When present and the profile has no detected
+   * location yet, this backfills it via the LocationProvider boundary
+   * (Technical Architecture §11) — country-level only, never overwriting an
+   * already-detected value. Which caller should trigger this, and on what
+   * cadence (every call vs. once), is left as the still-undecided
+   * LocationProvider integration point the docs flag (§11); this is the
+   * minimal default that makes "detected location" actually populate.
+   */
+  async getOrCreateProfile(
+    userId: string,
+    ipAddress?: string | null,
+  ): Promise<IdentityVerificationProfile> {
     const existing = await this.profileRepository.findOne({ where: { userId } });
-    if (existing) return existing;
-    const created = this.profileRepository.create({ userId });
-    return this.profileRepository.save(created);
+    const profile = existing ?? this.profileRepository.create({ userId });
+
+    if (!profile.detectedCountry && ipAddress) {
+      const detected = await this.locationProvider.resolve({ ipAddress });
+      if (detected) {
+        profile.detectedCountry = detected.countryCode;
+        profile.detectedRegionState = detected.regionState;
+        profile.detectedCity = detected.city;
+        return this.profileRepository.save(profile);
+      }
+    }
+
+    return existing ?? this.profileRepository.save(profile);
   }
 
-  async confirmHomeCountry(userId: string): Promise<IdentityVerificationProfile> {
-    const profile = await this.getOrCreateProfile(userId);
+  async confirmHomeCountry(
+    userId: string,
+    ipAddress?: string | null,
+  ): Promise<IdentityVerificationProfile> {
+    const profile = await this.getOrCreateProfile(userId, ipAddress);
     if (!profile.detectedCountry) {
       throw new NoDetectedLocationException();
     }
