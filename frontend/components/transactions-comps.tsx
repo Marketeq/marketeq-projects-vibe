@@ -8670,20 +8670,27 @@ export const PayoutScheduleDialog = ({
                                 type="number"
                                 min={0}
                                 max={100}
-                                className="w-full h-full text-center pl-2 pr-5 text-base"
-                                disabled={!row.isPrimary}
+                                className="w-full h-full text-center pl-2 pr-5 text-base [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:m-0"
+                                // Only primarySplitPercent is actually stored — the
+                                // other side is always its complement — but that's a
+                                // storage detail, not a reason to lock the secondary
+                                // input. QA-reported: neither field was editable when
+                                // it should be either, as long as a method is picked
+                                // for that side (nothing to split into otherwise).
+                                disabled={!row.id}
                                 value={row.pct}
                                 // AC-23.03/23.04: accept the raw value (including 0/100) so the
                                 // inline error below can actually be seen — clamping silently
                                 // would make those values impossible to type in the first place.
-                                onChange={(e) =>
-                                  setPrimarySplitPercent(
-                                    Math.min(
-                                      100,
-                                      Math.max(0, parseInt(e.target.value) || 0)
-                                    )
+                                onChange={(e) => {
+                                  const typed = Math.min(
+                                    100,
+                                    Math.max(0, parseInt(e.target.value) || 0)
                                   )
-                                }
+                                  setPrimarySplitPercent(
+                                    row.isPrimary ? typed : 100 - typed
+                                  )
+                                }}
                               />
                               <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-base text-gray-400 pointer-events-none">
                                 %
