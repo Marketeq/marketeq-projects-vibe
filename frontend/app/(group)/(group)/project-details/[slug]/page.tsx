@@ -918,6 +918,26 @@ export default function ProjectDetails({
   const { user, openAuthModal } = useAuth()
   const [project, setProject] = React.useState<any>(null)
   const [loading, setLoading] = React.useState(true)
+  const [refetchKey, setRefetchKey] = React.useState(0)
+  const [claimed, setClaimed] = React.useState(false)
+  const [claimStep, setClaimStep] = React.useState<"closed" | "confirm" | "done">("closed")
+  const [claimBusy, setClaimBusy] = React.useState(false)
+  const [claimError, setClaimError] = React.useState<string | null>(null)
+  const handlePageClaim = React.useCallback(async () => {
+    if (!project?.id) return
+    setClaimBusy(true)
+    setClaimError(null)
+    try {
+      await claimProject(String(project.id))
+      setClaimed(true)
+      setRefetchKey((k) => k + 1)
+      setClaimStep("done")
+    } catch (e: any) {
+      setClaimError(e?.message ?? "Could not claim this project right now")
+    } finally {
+      setClaimBusy(false)
+    }
+  }, [project?.id])
   const [selected, setSelected] = React.useState<string>("Details")
   const [pendingQuestion, setPendingQuestion] = React.useState("")
   const [askErrored, setAskErrored] = React.useState(false)
@@ -1065,13 +1085,31 @@ export default function ProjectDetails({
         isOnline: true,
       })
     }
+    // Optimistic: if the user just claimed but the re-fetch hasn't arrived,
+    // inject them so the claim UI disappears immediately.
+    if (claimed && base.length === 0 && user?.id) {
+      base.push({
+        id: String(user.id),
+        userId: String(user.id),
+        firstName:
+          (user as any).firstName || (user as any).username || "You",
+        username: (user as any).username || "",
+        avatarUrl: (user as any).avatarUrl ?? null,
+        location: (user as any).location ?? null,
+        languages: [],
+        skills: [],
+        role: "owner",
+        isLead: true,
+        isOnline: true,
+      })
+    }
     const isOwnerMember = (m: any) =>
       m?.role === "owner" ||
       (!!ownerId && String(m?.userId ?? m?.id ?? "") === ownerId)
     return [...base].sort(
       (a, b) => (isOwnerMember(a) ? 0 : 1) - (isOwnerMember(b) ? 0 : 1)
     )
-  }, [project, user, ownerProfile, projectOwnerId])
+  }, [project, user, ownerProfile, projectOwnerId, claimed])
 
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [isFavorited, setIsFavorited] = React.useState(false)
@@ -1230,7 +1268,7 @@ export default function ProjectDetails({
         let res: Response | null = null
         let slug = rawSlug
         for (const candidate of candidates) {
-          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`)
+          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`, { cache: 'no-store' })
           if (r.ok) {
             res = r
             slug = candidate
@@ -1240,7 +1278,7 @@ export default function ProjectDetails({
         if (!res) {
           // last attempt — assign the final failing response so the fallback
           // branches below can run against the last tried slug
-          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`)
+          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, { cache: 'no-store' })
         }
         if (!res.ok) {
           // Try as a service. Service URLs are also generated as
@@ -1476,7 +1514,7 @@ export default function ProjectDetails({
     }
 
     fetchProject()
-  }, [params.slug, router])
+  }, [params.slug, router, refetchKey])
 
   // Track view when project loads — skip in owner preview
   React.useEffect(() => {
@@ -2558,7 +2596,17 @@ export default function ProjectDetails({
                               </p>
 
                               <div className="mt-5">
-                                <Button size="md" visual="primary">
+                                <Button
+                                  size="md"
+                                  visual="primary"
+                                  onClick={() => {
+                                    if (!user?.id) {
+                                      openAuthModal("sign-in")
+                                      return
+                                    }
+                                    setClaimStep("confirm")
+                                  }}
+                                >
                                   Claim this Project
                                 </Button>
                               </div>
@@ -5403,6 +5451,37 @@ export default function ProjectDetails({
                 </span>
 
                 {Array.isArray(currentTeam) && currentTeam.length > 0 ? (
+                  currentTeam.length === 1 ? (
+                    <div className="flex items-center gap-x-2 min-w-0">
+                      <Avatar
+                        size="sm"
+                        className="shrink-0 border-2 border-white hover:ring-0 active:ring-0"
+                      >
+                        {currentTeam[0].avatarUrl ? (
+                          <AvatarImage
+                            src={currentTeam[0].avatarUrl}
+                            alt={currentTeam[0].firstName}
+                          />
+                        ) : null}
+                        <AvatarFallback>
+                          {(currentTeam[0].firstName || currentTeam[0].username || "?").charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs text-dark-blue-400 font-medium leading-none truncate">
+                          {currentTeam[0].firstName || currentTeam[0].username}
+                          {currentTeam[0].username && currentTeam[0].firstName ? (
+                            <span className="font-extralight text-gray-400"> @{currentTeam[0].username}</span>
+                          ) : null}
+                        </span>
+                        {(currentTeam[0].role && currentTeam[0].role !== "owner") ? (
+                          <span className="mt-1 text-[11px] text-gray-400 font-extralight leading-none truncate">
+                            {currentTeam[0].role}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -5479,12 +5558,17 @@ export default function ProjectDetails({
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  )
                 ) : (
                   <NoTeamAssigned
                     kind="project"
                     onClaim={
                       project?.id
-                        ? () => claimProject(String(project.id))
+                        ? async () => {
+                            await claimProject(String(project.id))
+                            setClaimed(true)
+                            setRefetchKey((k) => k + 1)
+                          }
                         : undefined
                     }
                     editHref={
@@ -5797,6 +5881,89 @@ export default function ProjectDetails({
       </div>
       )}
 
+      {/* Page-level claim confirmation dialog (triggered by main content button) */}
+      <Dialog
+        open={claimStep !== "closed"}
+        onOpenChange={(next) => {
+          if (!next) {
+            setClaimStep("closed")
+            setClaimError(null)
+          }
+        }}
+      >
+        <DialogContent className="w-[440px] max-w-[440px] p-6">
+          {claimStep === "confirm" ? (
+            <>
+              <DialogTitle className="text-lg font-semibold leading-7 text-dark-blue-400">
+                Claim this Project?
+              </DialogTitle>
+              <p className="mt-2 text-sm font-light leading-[1.5] text-gray-500">
+                You will become the owner of this project. That means building
+                it out properly, assembling the team and leading it to delivery,
+                so it looks credible to the client. Only claim what you intend
+                to run.
+              </p>
+              {claimError && (
+                <p className="mt-3 text-sm font-medium leading-[1.5] text-error-500">
+                  {claimError}
+                </p>
+              )}
+              <div className="mt-6 flex items-center justify-end gap-x-3">
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  onClick={() => {
+                    setClaimStep("closed")
+                    setClaimError(null)
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  visual="primary"
+                  disabled={claimBusy}
+                  onClick={handlePageClaim}
+                >
+                  {claimBusy ? "Claiming\u2026" : "Yes, Claim It"}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex size-12 items-center justify-center rounded-full bg-success-50">
+                <CheckCircle className="size-6 text-success-500" />
+              </div>
+              <DialogTitle className="mt-4 text-lg font-semibold leading-7 text-dark-blue-400">
+                This project is yours
+              </DialogTitle>
+              <p className="mt-2 text-sm font-light leading-[1.5] text-gray-500">
+                Make it yours. Swap the stock images for your own, then shape
+                the description and scope around your expertise. Invite your
+                team once it is ready.
+              </p>
+              <div className="mt-6 flex items-center justify-end gap-x-3">
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  onClick={() => {
+                    setClaimStep("closed")
+                    setClaimError(null)
+                  }}
+                >
+                  Close
+                </Button>
+                {project?.id && (
+                  <Button visual="primary" asChild>
+                    <NextLink href={`/my-listings/${project.id}`}>
+                      Edit My Project
+                    </NextLink>
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

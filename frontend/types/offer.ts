@@ -102,6 +102,11 @@ export interface Offer {
   // chats-comp.tsx's OfferNotificationMessageData.contractId, which is a
   // pre-existing misnomer for the offer's own id — do not conflate the two.
   contractId?: string | null
+  // PMCM-376: added by feat/PMCM-376-expose-latest-counter-offer (not yet
+  // merged) — absent/undefined until that PR lands, null when the offer
+  // has never had a counter offer. Only `id` is typed here; nothing on the
+  // frontend consumes the rest of the backend's LatestCounterOfferSummary.
+  latestCounterOffer?: { id: string } | null
   createdAt: IsoDateString
   updatedAt: IsoDateString
 }
