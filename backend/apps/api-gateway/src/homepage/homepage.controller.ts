@@ -38,6 +38,7 @@ export class HomepageController {
   private async buildHomepage(
     @Req() req: Request,
     @Query('preview') preview?: string,
+    @Query('fresh') fresh?: string,
     @Headers('x-preview-token') previewToken?: string,
   ): Promise<HomepagePayload> {
     const rawVariant = (req as any).cookies?.mktq_hp_variant as string | undefined;
@@ -56,6 +57,7 @@ export class HomepageController {
       variant,
       preview: preview === '1',
       previewToken: previewToken || undefined,
+      skipCache: fresh === '1',
     });
   }
 
@@ -63,26 +65,29 @@ export class HomepageController {
   async getHomepage(
     @Req() req: Request,
     @Query('preview') preview?: string,
+    @Query('fresh') fresh?: string,
     @Headers('x-preview-token') previewToken?: string,
   ): Promise<HomepagePayload> {
-    return this.buildHomepage(req, preview, previewToken)
+    return this.buildHomepage(req, preview, fresh, previewToken)
   }
 
   @Get('v1/homepage')
   async getHomepageV1(
     @Req() req: Request,
     @Query('preview') preview?: string,
+    @Query('fresh') fresh?: string,
     @Headers('x-preview-token') previewToken?: string,
   ): Promise<HomepagePayload> {
-    return this.buildHomepage(req, preview, previewToken)
+    return this.buildHomepage(req, preview, fresh, previewToken)
   }
 
   @Get('api/homepage')
   async getHomepageApi(
     @Req() req: Request,
     @Query('preview') preview?: string,
+    @Query('fresh') fresh?: string,
     @Headers('x-preview-token') previewToken?: string,
   ): Promise<HomepagePayload> {
-    return this.buildHomepage(req, preview, previewToken)
+    return this.buildHomepage(req, preview, fresh, previewToken)
   }
 }

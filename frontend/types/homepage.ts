@@ -18,6 +18,7 @@ export interface ProjectCard {
   adminBoost?: number
   featured?: boolean
   collaborators?: string[]
+  teamMembers?: Array<{ avatarUrl: string; firstName: string; username: string }>
 }
 
 export interface ServiceCard {
@@ -41,6 +42,7 @@ export interface ServiceCard {
   adminBoost?: number
   featured?: boolean
   collaborators?: string[]
+  teamMembers?: Array<{ avatarUrl: string; firstName: string; username: string }>
 }
 
 export interface TeamCard {
