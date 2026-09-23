@@ -8219,8 +8219,14 @@ export const PayoutScheduleDialog = ({
   // month), Daily (every day), Set Custom Schedule. No "every 2 days"/
   // "every 2 months" presets — those aren't in the spec, so they don't
   // belong in the main dropdown; the modal already covers that interval.
-  const ordinalSuffix = (n: number) =>
-    n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"
+  // Day of month runs 1–28, so 21/22/23 need "st"/"nd"/"rd" too, while
+  // 11/12/13 stay "th".
+  const ordinalSuffix = (n: number) => {
+    const mod100 = n % 100
+    if (mod100 >= 11 && mod100 <= 13) return "th"
+    const mod10 = n % 10
+    return mod10 === 1 ? "st" : mod10 === 2 ? "nd" : mod10 === 3 ? "rd" : "th"
+  }
 
   const getScheduleLabel = () => {
     if (frequency === "weekly") return `Weekly (every ${selectedDayFull})`
