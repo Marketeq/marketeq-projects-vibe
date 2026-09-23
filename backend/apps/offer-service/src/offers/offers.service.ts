@@ -11,6 +11,8 @@ import {
   ActiveOfferAlreadyExistsException,
   OfferNotResendableException,
   InternalOfferException,
+  OfferAlreadyAcceptedException,
+  OfferExpiredException,
 } from '../common/exceptions/offer.exceptions';
 import { OutboxService } from '../outbox/outbox.service';
 import { AblyService } from '../realtime/ably.service';
@@ -369,19 +371,34 @@ export class OffersService {
 
     OfferStateMachine.assertIsClient(offer, requesterId);
 
+    if (offer.status === OfferStatus.ACCEPTED) {
+      throw new OfferAlreadyAcceptedException();
+    }
+    if (
+      offer.status === OfferStatus.EXPIRED ||
+      (offer.status === OfferStatus.PENDING && offer.expiresAt <= new Date())
+    ) {
+      throw new OfferExpiredException();
+    }
+
     // Withdrawal is allowed from PENDING or COUNTERED.
     if (offer.status !== OfferStatus.PENDING && offer.status !== OfferStatus.COUNTERED) {
       OfferStateMachine.assertCanTransition(offer.status, OfferStatus.WITHDRAWN);
     }
 
-    const withdrawalMessage = dto?.withdrawalMessage ?? dto?.message ?? null;
+    const withdrawalMessage = dto?.message ?? null;
 
     const updatedOffer = await this.dataSource.transaction(async (em) => {
-      // CAS: accept PENDING or COUNTERED as expected status.
+      // CAS: COUNTERED is accepted unconditionally (deliberate — see the
+      // comment above). PENDING is accepted only if still not expired —
+      // closes the race where expires_at has passed but the TTL sweeper
+      // hasn't flipped the status yet, which the pre-transaction check
+      // above can't fully close on its own.
       const result = await em.query(`
         UPDATE offer_service.offers
           SET status = 'WITHDRAWN', withdrawn_at = NOW(), withdrawal_message = $2, updated_at = NOW()
-        WHERE id = $1 AND status IN ('PENDING', 'COUNTERED')
+        WHERE id = $1
+          AND (status = 'COUNTERED' OR (status = 'PENDING' AND expires_at > NOW()))
         RETURNING *
       `, [offerId, withdrawalMessage]);
 

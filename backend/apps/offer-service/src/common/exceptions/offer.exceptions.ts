@@ -118,7 +118,7 @@ export class OfferNotActionableException extends OfferServiceException {
 
 export class OfferAlreadyAcceptedException extends OfferServiceException {
   constructor() {
-    super('OFFER_ALREADY_ACCEPTED', 'This offer has already been accepted.', HttpStatus.CONFLICT);
+    super('OFFER_ALREADY_ACCEPTED', 'This offer was already accepted and cannot be withdrawn.', HttpStatus.CONFLICT);
   }
 }
 
@@ -138,7 +138,7 @@ export class OfferExpiredException extends OfferServiceException {
   constructor() {
     super(
       'OFFER_EXPIRED',
-      'This offer has expired. The client can resend it if you are still interested.',
+      'This offer has already expired. You can resend it from the details screen.',
       HttpStatus.CONFLICT,
     );
   }
