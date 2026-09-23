@@ -11,6 +11,12 @@ import {
   checkVpnProxy,
   type VpnProxyDetectionOutcome,
 } from "@/src/lib/api/vpn-proxy-detection"
+import { checkIdentityVerificationStatus } from "@/src/lib/api/identity-verification-status"
+import {
+  getDetectedLocation,
+  type DetectedLocation,
+} from "@/src/lib/api/detected-location"
+import { IdentityVerificationFlow } from "@/components/identity-verification-flow"
 import {
   BecomeTopSeller,
   Carousel,
@@ -94,6 +100,23 @@ export default function TalentDashboard() {
   const [vpnProxyModalOpen, setVpnProxyModalOpen] = useState(false)
   const vpnProxyCheckStartedRef = useRef(false)
 
+  // Identity verification entry prompt. Only checked once the VPN/proxy
+  // check comes back clean — location verification can't meaningfully
+  // start while the connection is masked. Only opens for an account that
+  // hasn't started verification yet (UNSTARTED); an in-progress, blocked,
+  // or already-verified account is untouched here.
+  const [identityFlowOpen, setIdentityFlowOpen] = useState(false)
+  const [detectedLocation, setDetectedLocation] =
+    useState<DetectedLocation | null>(null)
+
+  const runIdentityVerificationCheck = useCallback(async () => {
+    const status = await checkIdentityVerificationStatus()
+    if (status !== "unstarted") return
+    const location = await getDetectedLocation()
+    setDetectedLocation(location)
+    setIdentityFlowOpen(true)
+  }, [])
+
   const runVpnProxyCheck = useCallback(async () => {
     setVpnProxyResult("checking")
     const outcome = await checkVpnProxy()
@@ -104,14 +127,17 @@ export default function TalentDashboard() {
       outcome === "vpn_and_proxy_detected"
     ) {
       setVpnProxyModalOpen(true)
+    } else if (outcome === "none") {
+      setVpnProxyModalOpen(false)
+      void runIdentityVerificationCheck()
     } else {
-      // "none" clears the warning; "unavailable" is a distinct state with
-      // no modal of its own (no confirmed source defines what should
-      // happen when the signal can't be obtained) — it must not be
-      // treated as a clean result either.
+      // "unavailable" is a distinct state with no modal of its own (no
+      // confirmed source defines what should happen when the signal can't
+      // be obtained) — it must not be treated as a clean result either,
+      // so the identity-verification check is not run in this case.
       setVpnProxyModalOpen(false)
     }
-  }, [])
+  }, [runIdentityVerificationCheck])
 
   useEffect(() => {
     if (!user) return
@@ -207,6 +233,14 @@ export default function TalentDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {detectedLocation && (
+        <IdentityVerificationFlow
+          open={identityFlowOpen}
+          onOpenChange={setIdentityFlowOpen}
+          detectedLocation={detectedLocation}
+        />
+      )}
 
       <AuthenticatedRoute>
         <div className="flex bg-gray-50">
