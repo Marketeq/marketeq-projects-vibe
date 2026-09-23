@@ -104,7 +104,14 @@ function Calendar({
         setDate(format(value, "LLL d, yyyy"))
       }
     },
-    defaultValue: new Date(),
+    // No defaultValue: an unselected calendar must have no selection, only
+    // today's distinct `data-today` highlight (gray, not the primary
+    // "selected" fill). Defaulting this to `new Date()` made AriaCalendar
+    // treat today as already selected before any click, so a click on
+    // today's cell was a same-value no-op — shouldUpdate below rejected it
+    // (prev === next) and onValueChange never fired, leaving the field
+    // empty. Picking any other date first, then today again, worked only
+    // because prev then differed from next.
     shouldUpdate: (prev, next) => {
       if (!prev && !next) return false
       if (!prev || !next) return true
