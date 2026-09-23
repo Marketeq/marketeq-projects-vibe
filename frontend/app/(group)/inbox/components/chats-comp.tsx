@@ -8,7 +8,7 @@ import { exportPrivateKey, republishPublicKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { ApiError, apiFetch } from "@/src/lib/api"
 import { formatNotificationTime } from "@/libs/notifications"
-import { createCounterOffer, withdrawCounterOffer } from "@/service/http/offers"
+import { createCounterOffer, withdrawCounterOffer, withdrawOffer } from "@/service/http/offers"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
@@ -571,6 +571,7 @@ export function Chats({
     useState("")
   const [submittingCounterOffer, setSubmittingCounterOffer] = useState(false)
   const [withdrawingCounterOffer, setWithdrawingCounterOffer] = useState(false)
+  const [withdrawingOffer, setWithdrawingOffer] = useState(false)
   const [declinedCounterOfferMessage, setDeclinedCounterOfferMessage] =
     useState<OfferNotificationMessageData | null>(null)
   const [acceptedCounterOfferMessage, setAcceptedCounterOfferMessage] =
@@ -7476,7 +7477,7 @@ export function Chats({
                     variant="ghost"
                     visual="gray"
                     size="sm"
-                    disabled={withdrawingCounterOffer}
+                    disabled={withdrawingCounterOffer || withdrawingOffer}
                     onClick={() =>
                       setNotificationOfferStep(
                         selectedNotificationOfferIsTalentCounter
@@ -7490,7 +7491,7 @@ export function Chats({
                   <Button
                     visual="error"
                     size="sm"
-                    loading={withdrawingCounterOffer}
+                    loading={withdrawingCounterOffer || withdrawingOffer}
                     disabled={
                       selectedNotificationOfferIsTalentCounter &&
                       !selectedNotificationOffer?.latestCounterOfferId
@@ -7544,15 +7545,43 @@ export function Chats({
                         }
                         return
                       }
-                      setWithdrawnClientOfferMessage({
-                        ...selectedNotificationOffer,
-                        event: "offer.withdrawn",
-                        withdrawnByViewer: true,
-                        withdrawalMessage:
-                          notificationWithdrawalMessage.trim(),
-                      })
-                      setSelectedNotificationOffer(null)
-                      setNotificationOfferStep("event")
+                      const trimmedOfferMessage =
+                        notificationWithdrawalMessage.trim()
+                      setWithdrawingOffer(true)
+                      try {
+                        await withdrawOffer(
+                          selectedNotificationOffer.contractId,
+                          trimmedOfferMessage
+                            ? { message: trimmedOfferMessage }
+                            : undefined
+                        )
+                        // PMCM-379: fire the refetch explicitly — the
+                        // backend's Ably publish in OffersService.withdraw()
+                        // is also not awaited, and the channel tears down as
+                        // soon as selectedNotificationOffer is nulled below,
+                        // so waiting on the offer.updated event would
+                        // reliably lose that race — same reasoning as the
+                        // counter-offer branch above.
+                        onOfferUpdateRequested?.()
+                        setWithdrawnClientOfferMessage({
+                          ...selectedNotificationOffer,
+                          event: "offer.withdrawn",
+                          withdrawnByViewer: true,
+                          withdrawalMessage: trimmedOfferMessage,
+                        })
+                        setSelectedNotificationOffer(null)
+                        setNotificationOfferStep("event")
+                        setNotificationWithdrawalMessage("")
+                      } catch (error) {
+                        console.error("Offer withdrawal failed", error)
+                        toast({
+                          variant: "destructive",
+                          title: "Couldn't withdraw the offer",
+                          description: "Please try again.",
+                        })
+                      } finally {
+                        setWithdrawingOffer(false)
+                      }
                     }}
                   >
                     {selectedNotificationOfferIsTalentCounter
