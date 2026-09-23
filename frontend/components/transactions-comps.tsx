@@ -4249,14 +4249,13 @@ export const OverviewTab = ({
                           visual="gray"
                           className="text-dark-blue-400"
                           onClick={() => {
-                            if (verifyState?.methodId)
-                              deleteMethod(verifyState.methodId)
+                            // The method already exists (pending micro-deposit
+                            // verification) — dismissing this reminder must not
+                            // delete it, or a contractor who closes it to verify
+                            // later loses the bank account they just added.
                             setVerifyState(null)
-                            setShowAddMethod(true)
-                            setAddForm((f) => ({
-                              ...f,
-                              methodType: "BANK_MANUAL",
-                            }))
+                            setShowAddMethod(false)
+                            fetchMethods()
                           }}
                         >
                           <ArrowLeft className="size-4" />
@@ -4270,8 +4269,6 @@ export const OverviewTab = ({
                           visual="gray"
                           className="absolute right-2.5 top-2.5"
                           onClick={() => {
-                            if (verifyState?.methodId)
-                              deleteMethod(verifyState.methodId)
                             setVerifyState(null)
                             setShowAddMethod(false)
                             fetchMethods()
@@ -4319,14 +4316,12 @@ export const OverviewTab = ({
                             visual="gray"
                             size="sm"
                             onClick={() => {
-                              if (verifyState?.methodId)
-                                deleteMethod(verifyState.methodId)
+                              // Same as the header close controls above — the
+                              // method already exists as "pending", so closing
+                              // this reminder must not delete it.
                               setVerifyState(null)
-                              setShowAddMethod(true)
-                              setAddForm((f) => ({
-                                ...f,
-                                methodType: "BANK_MANUAL",
-                              }))
+                              setShowAddMethod(false)
+                              fetchMethods()
                             }}
                           >
                             Back
