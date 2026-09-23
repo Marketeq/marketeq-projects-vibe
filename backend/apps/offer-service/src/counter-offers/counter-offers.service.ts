@@ -220,13 +220,31 @@ export class CounterOffersService {
       const coCount = typeof coResult[1] === 'number' ? coResult[1] : coRows.length;
       if (coCount === 0) throw new OfferConcurrentModificationException(coId);
 
-      // Restore parent offer to PENDING.
-      const offerResult = await em.query(`
-        UPDATE offer_service.offers
-          SET status = 'PENDING', updated_at = NOW(), expires_at = $2, warning_sent_at = NULL
-        WHERE id = $1 AND status = 'COUNTERED'
-        RETURNING *
-      `, [offerId, calculateExpiresAt().toISOString()]);
+      // AC-28.03: the primary offer only restores to PENDING if it hasn't
+      // independently expired while sitting COUNTERED. The TTL sweeper only
+      // ever targets status = 'PENDING' — a COUNTERED row's expires_at can
+      // drift into the past with no one ever flipping it to EXPIRED, so
+      // decline() has to make that determination itself, from the offer
+      // already fetched before this transaction opened. When it has expired,
+      // write the exact shape the sweeper would have written (status +
+      // expired_at only — expires_at stays as the historical expiry,
+      // warning_sent_at is untouched, since it's only meaningful for PENDING
+      // offers). Otherwise, restore to PENDING exactly as before.
+      const hasIndependentlyExpired = offer.expiresAt <= new Date();
+
+      const offerResult = hasIndependentlyExpired
+        ? await em.query(`
+            UPDATE offer_service.offers
+              SET status = 'EXPIRED', expired_at = NOW(), updated_at = NOW()
+            WHERE id = $1 AND status = 'COUNTERED'
+            RETURNING *
+          `, [offerId])
+        : await em.query(`
+            UPDATE offer_service.offers
+              SET status = 'PENDING', updated_at = NOW(), expires_at = $2, warning_sent_at = NULL
+            WHERE id = $1 AND status = 'COUNTERED'
+            RETURNING *
+          `, [offerId, calculateExpiresAt().toISOString()]);
 
       const offerRows = Array.isArray(offerResult[0]) ? offerResult[0] : offerResult;
       const restoredOffer = offerRows.length > 0 ? this.mapRawToOffer(offerRows[0]) : offer;
