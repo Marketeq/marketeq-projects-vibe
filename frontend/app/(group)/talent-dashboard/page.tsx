@@ -17,6 +17,7 @@ import {
   type DetectedLocation,
 } from "@/src/lib/api/detected-location"
 import { IdentityVerificationFlow } from "@/components/identity-verification-flow"
+import { AccountVerificationGate } from "@/components/account-verification-gate"
 import {
   BecomeTopSeller,
   Carousel,
@@ -105,6 +106,11 @@ export default function TalentDashboard() {
   // start while the connection is masked. Only opens for an account that
   // hasn't started verification yet (UNSTARTED); an in-progress, blocked,
   // or already-verified account is untouched here.
+  //
+  // Every such login first shows the blocking AccountVerificationGate
+  // (Figma node 13101-47588) — location/document verification only starts
+  // once the user clicks "Verify My Account" on that gate, not immediately.
+  const [verificationGateOpen, setVerificationGateOpen] = useState(false)
   const [identityFlowOpen, setIdentityFlowOpen] = useState(false)
   const [detectedLocation, setDetectedLocation] =
     useState<DetectedLocation | null>(null)
@@ -112,6 +118,11 @@ export default function TalentDashboard() {
   const runIdentityVerificationCheck = useCallback(async () => {
     const status = await checkIdentityVerificationStatus()
     if (status !== "unstarted") return
+    setVerificationGateOpen(true)
+  }, [])
+
+  const handleVerifyMyAccount = useCallback(async () => {
+    setVerificationGateOpen(false)
     const location = await getDetectedLocation()
     setDetectedLocation(location)
     setIdentityFlowOpen(true)
@@ -233,6 +244,11 @@ export default function TalentDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AccountVerificationGate
+        open={verificationGateOpen}
+        onVerify={() => void handleVerifyMyAccount()}
+      />
 
       {detectedLocation && (
         <IdentityVerificationFlow

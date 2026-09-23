@@ -18,13 +18,16 @@
 //      toast and never closes) — otherwise a user finishing setup would be
 //      stuck with the modal open.
 //
-// Document submission and the captured location/status inputs are all
-// backed by temporary, isolated mocks (src/lib/api/*) — see each mock
-// file's own header for why, and what a real backend integration swaps in.
+// Document submission and identity-verification-status are still backed by
+// temporary, isolated mocks (src/lib/api/*) — see each mock file's own
+// header for why. Detected location is a real backend integration
+// (identity-verification-service + location-service, both via api-gateway —
+// see detected-location.ts's header for the split and why).
 
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useMountedState } from "react-use"
+import type { Map as LeafletMap } from "leaflet"
 import {
   ArrowLeft,
   Camera,
@@ -44,6 +47,11 @@ import {
   X,
 } from "@blend-metrics/icons"
 import { WebCamera, WebCameraHandler } from "@shivantra/react-web-camera"
+import { cn } from "@/utils/functions"
+import {
+  useDocumentPresenceDetector,
+  type GuideBoxRect,
+} from "@/utils/useDocumentPresenceDetector"
 import {
   Alert,
   AlertContent,
@@ -141,6 +149,248 @@ const DotSpinner = ({ size = 56 }: { size?: number }) => {
   )
 }
 
+// Renders the account's approximate detected location on a real, interactive
+// map — Leaflet, tiled by LocationIQ (the provider already used elsewhere in
+// this codebase, via location-service's reverse-geocode call — reusing it
+// here instead of introducing a second, unrelated map provider). Coordinates
+// are IP-derived and approximate (city-level, from location-service — see
+// detected-location.ts's header for why identity-verification-service isn't
+// the source of these). Deliberately never uses the browser Geolocation
+// API: that would need browser permission for precise device location,
+// which Technical Architecture §11 explicitly scopes out for this flow
+// ("country-level resolution only, not precise/coordinate-based"). Zoom is
+// capped at city-level (10) so the marker doesn't imply more precision than
+// IP geolocation actually has.
+//
+// LOCATIONIQ_TILES_KEY is intentionally a *different* key from the
+// LOCATIONIQ_API_KEY location-service's reverse-geocode call uses
+// server-side. This one is embedded directly in tile request URLs the
+// browser makes, so it must be a separate, HTTP-Referrer-restricted access
+// token generated for that purpose (LocationIQ's own recommended pattern —
+// docs.locationiq.com/docs/maps) — never the backend's unrestricted key.
+//
+// Attribution is mandatory on every tile view (LocationIQ's commercial-use
+// terms require a link back on the free plan; OpenStreetMap's data license
+// separately requires its own credit) — passed straight to Leaflet's
+// attribution control, which renders it automatically; never removed.
+const LEAFLET_VERSION = "1.9.4" // pinned to the installed leaflet package.json version
+const LOCATIONIQ_TILE_ATTRIBUTION =
+  '<a href="https://locationiq.com/" target="_blank" rel="noreferrer">Search by LocationIQ.com</a> | © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
+
+let leafletCssInjected = false
+function ensureLeafletCss() {
+  if (leafletCssInjected || typeof document === "undefined") return
+  leafletCssInjected = true
+  const link = document.createElement("link")
+  link.rel = "stylesheet"
+  link.href = `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/leaflet.css`
+  document.head.appendChild(link)
+}
+
+type LocationMapState =
+  | "loading"
+  | "ready"
+  | "error"
+  | "no-key"
+  | "no-location"
+  | "service-unavailable"
+
+const DetectedLocationMap = ({
+  latitude,
+  longitude,
+  serviceUnavailable,
+}: {
+  latitude: number | null
+  longitude: number | null
+  serviceUnavailable: boolean
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<LeafletMap | null>(null)
+  const [state, setState] = useState<LocationMapState>("loading")
+
+  useEffect(() => {
+    if (serviceUnavailable) {
+      setState("service-unavailable")
+      return
+    }
+
+    if (latitude == null || longitude == null) {
+      setState("no-location")
+      return
+    }
+
+    const apiKey = process.env.NEXT_PUBLIC_LOCATIONIQ_TILES_KEY
+    if (!apiKey) {
+      setState("no-key")
+      return
+    }
+
+    let cancelled = false
+    setState("loading")
+    ensureLeafletCss()
+
+    import("leaflet")
+      .then((L) => {
+        if (cancelled || !containerRef.current) return
+
+        // webpack/Next can't resolve Leaflet's default marker icon's
+        // relative asset paths — point them at the same CDN version
+        // instead of the (broken) local bundle path.
+        delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })
+          ._getIconUrl
+        L.Icon.Default.mergeOptions({
+          iconRetinaUrl: `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/images/marker-icon-2x.png`,
+          iconUrl: `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/images/marker-icon.png`,
+          shadowUrl: `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/images/marker-shadow.png`,
+        })
+
+        mapRef.current?.remove()
+        const map = L.map(containerRef.current, {
+          center: [latitude, longitude],
+          zoom: 10,
+          zoomControl: true,
+        })
+        mapRef.current = map
+
+        // {s} = tile subdomain (a/b/c), lets the browser parallelize tile
+        // fetches past the per-domain connection limit — LocationIQ's own
+        // documented pattern (docs.locationiq.com/docs/maps).
+        const tileUrl = `https://{s}-tiles.locationiq.com/v3/streets/r/{z}/{x}/{y}.png?key=${apiKey}`
+        L.tileLayer(tileUrl, {
+          attribution: LOCATIONIQ_TILE_ATTRIBUTION,
+          subdomains: "abc",
+          maxZoom: 20,
+        }).addTo(map)
+
+        L.marker([latitude, longitude]).addTo(map)
+
+        setState("ready")
+      })
+      .catch(() => {
+        if (!cancelled) setState("error")
+      })
+
+    return () => {
+      cancelled = true
+      mapRef.current?.remove()
+      mapRef.current = null
+    }
+  }, [latitude, longitude, serviceUnavailable])
+
+  return (
+    <div className="rounded-lg overflow-hidden relative mt-6 h-[170px] bg-gray-100">
+      <div ref={containerRef} className="absolute inset-0" />
+      {state !== "ready" && (
+        <div className="absolute inset-0 z-[1000] flex items-center justify-center bg-gray-100 px-4">
+          {state === "loading" && <DotSpinner size={28} />}
+          {state === "service-unavailable" && (
+            <span className="text-xs text-center text-gray-500">
+              Location service temporarily unavailable.
+            </span>
+          )}
+          {state === "no-location" && (
+            <span className="text-xs text-center text-gray-500">
+              We couldn&rsquo;t detect your location
+            </span>
+          )}
+          {state === "no-key" && (
+            <span className="text-xs text-center text-gray-500">
+              Map unavailable — LocationIQ tiles key not configured
+            </span>
+          )}
+          {state === "error" && (
+            <span className="text-xs text-center text-gray-500">
+              Map failed to load
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const HOW_TO_SCAN_TIPS = [
+  "Use a well-lit space (avoid shadows or glare)",
+  "Place your document on a dark, flat surface",
+  "Hold your camera steady",
+  "Ensure all edges and text are visible",
+  "Avoid using flash directly on the document",
+]
+
+// Figma's "Tooltip/True/Dark/Bottom center" — centered over the camera
+// preview box itself (its own absolute-position CSS resolves to the exact
+// center of a 602x373 box, not the whole dialog), not anchored to the "How
+// to Scan" link with a pointer/arrow. Toggled by clicking that link; reset
+// closed on every screen change so it doesn't carry over from scan into
+// loading/back-scan on the auto-advance timers.
+const HowToScanTooltip = () => (
+  <div className="pointer-events-none absolute left-1/2 top-1/2 w-[320px] -translate-x-1/2 -translate-y-1/2 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08),0px_4px_6px_-2px_rgba(16,24,40,0.03)]">
+    <div className="flex flex-col gap-1 rounded-[5px] bg-gray-900 p-3">
+      <p className="text-xs font-semibold leading-[18px] text-white">
+        Tips for a clear scan
+      </p>
+      <ul className="space-y-0">
+        {HOW_TO_SCAN_TIPS.map((tip) => (
+          <li
+            key={tip}
+            className="flex gap-1.5 text-xs font-normal leading-[18px] text-white"
+          >
+            <span>&bull;</span>
+            <span>{tip}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </div>
+)
+
+// Camera box is a fixed 602x373 (WebCamera's own `style` prop, both
+// scan/back-scan screens) — guide-box rects below are in that same
+// coordinate space, matching each screen's corner-bracket guide div's
+// Tailwind classes exactly (kept in sync by hand; Tailwind classes can't be
+// read back at runtime). Used by useDocumentPresenceDetector to know which
+// region of the live video to sample.
+const CAMERA_BOX_WIDTH = 602
+const CAMERA_BOX_HEIGHT = 373
+
+// Matches the front-scan guide: inset-x-0 mx-auto bottom-[22px] h-[43px] w-[306px]
+const SCAN_GUIDE_BOX: GuideBoxRect = {
+  left: (CAMERA_BOX_WIDTH - 306) / 2,
+  top: CAMERA_BOX_HEIGHT - 22 - 43,
+  width: 306,
+  height: 43,
+}
+
+// Matches the back-scan guide: left-1/2 -translate-x-1/2 top-[26%] h-[62px] w-[247px]
+const BACK_SCAN_GUIDE_BOX: GuideBoxRect = {
+  left: (CAMERA_BOX_WIDTH - 247) / 2,
+  top: CAMERA_BOX_HEIGHT * 0.26,
+  width: 247,
+  height: 62,
+}
+
+// Figma's "No ID on screen" state (node 18021-2310) reuses the same dark
+// "Tooltip/True/Dark" box as the How-to-Scan tooltip, title-only (Figma's
+// supporting-text row is display:none) — 228x42, centered in the camera box.
+// Shown only while useDocumentPresenceDetector reports "no-document";
+// camera-loading/permission-denied/detection-unavailable are deliberately
+// NOT this same copy (Chris's feedback: don't label those "no document
+// detected").
+// Figma's frame is sized "Hug" on both axes (228x42 is just the resulting
+// size for "Place your ID in front of the camera", not a fixed box) — it
+// grows to fit the text on one line rather than wrapping. Longer labels
+// (Driver's License, Residence Permit, Birth Certificate) need the same
+// auto-width behavior or they'd wrap inside a fixed-width box and overflow
+// the fixed height. An absolutely-positioned element with no explicit
+// width/height shrink-wraps its content by default, matching Figma's Hug.
+const NoDocumentOverlay = ({ label }: { label: string }) => (
+  <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[5px] bg-gray-900 p-3">
+    <p className="whitespace-nowrap text-xs font-semibold leading-[18px] text-white">
+      Place your {label} in front of the camera
+    </p>
+  </div>
+)
+
 type DocumentTypeOption = {
   id: "passport" | "drivers_licence" | "residence_permit" | "birth_certificate"
   label: string
@@ -230,6 +480,10 @@ export function IdentityVerificationFlow({
       "current-location-showcase": {
         BACK: "ideal",
         NEXT: "traveling-showcase",
+        // "Permanently relocated" re-enters location verification from the
+        // top (re-confirm home country) rather than asking a trip
+        // duration, which only makes sense for "Temporarily traveling".
+        RELOCATED: "ideal",
         UPDATE_LOCATION: "current-location-showcase",
       },
       "traveling-showcase": {
@@ -257,6 +511,46 @@ export function IdentityVerificationFlow({
   // short fixed delay instead of the real duration.
   const [travelReminderOpen, setTravelReminderOpen] = useState(false)
 
+  // "How to Scan" tooltip (Figma node 13101-47041), shared across the
+  // scan/loading/back-scan screens' identical "How to Scan" link. Reset
+  // closed on every screen change so it doesn't carry over across the
+  // scan -> loading -> back-scan auto-advance timers.
+  const [howToScanOpen, setHowToScanOpen] = useState(false)
+  useEffect(() => {
+    setHowToScanOpen(false)
+  }, [state])
+
+  // Real-time "is a document actually in frame" detection for the
+  // scan/back-scan screens (Chris's feedback + Figma node 18021-2310, "No ID
+  // on screen") — see useDocumentPresenceDetector's header for the approach
+  // and its limitations (a homegrown edge-density heuristic, not real
+  // document recognition; no CV/ML capability exists anywhere else in this
+  // codebase to reuse instead). Only one of scan/back-scan is ever mounted
+  // at a time, so both hooks safely share the same container ref; the
+  // inactive one just idles in "camera-loading".
+  const cameraBoxRef = useRef<HTMLDivElement>(null)
+  const [cameraError, setCameraError] = useState(false)
+  useEffect(() => {
+    setCameraError(false)
+  }, [state])
+
+  const scanPresence = useDocumentPresenceDetector({
+    active: state === "scan",
+    cameraError,
+    containerRef: cameraBoxRef,
+    containerWidth: CAMERA_BOX_WIDTH,
+    containerHeight: CAMERA_BOX_HEIGHT,
+    guideBox: SCAN_GUIDE_BOX,
+  })
+  const backScanPresence = useDocumentPresenceDetector({
+    active: state === "back-scan",
+    cameraError,
+    containerRef: cameraBoxRef,
+    containerWidth: CAMERA_BOX_WIDTH,
+    containerHeight: CAMERA_BOX_HEIGHT,
+    guideBox: BACK_SCAN_GUIDE_BOX,
+  })
+
   const activateTravelMode = () => {
     setTravelModeNotificationOpen(true)
     onOpenChange(false)
@@ -267,29 +561,28 @@ export function IdentityVerificationFlow({
     })
   }
 
+  // Guards against a second capture firing (e.g. a fast double-click) while
+  // the first one is still submitting — capture is now a manual, user-timed
+  // action (see the "scan" screen's onClick below), not a blind timer, so
+  // this replaces the timer's natural one-shot behavior.
+  const capturingRef = useRef(false)
+
   const handleCapture = async () => {
-    const file = (await cameraHandler.current?.capture()) ?? null
-    await submitIdentityDocument({
-      documentType: selectedDocument?.id ?? "passport",
-      capturedFile: file,
-    })
-    if (getIsMounted()) {
-      send("NEXT")
+    if (capturingRef.current) return
+    capturingRef.current = true
+    try {
+      const file = (await cameraHandler.current?.capture()) ?? null
+      await submitIdentityDocument({
+        documentType: selectedDocument?.id ?? "passport",
+        capturedFile: file,
+      })
+      if (getIsMounted()) {
+        send("NEXT")
+      }
+    } finally {
+      capturingRef.current = false
     }
   }
-
-  // Figma's scan screen has no capture button — the corner-bracket guide
-  // and success alert imply auto-capture once the document is framed.
-  // There's no real alignment detection to trigger off of, so this
-  // approximates it with a fixed delay after entering the screen.
-  useEffect(() => {
-    if (state !== "scan") return
-    const timer = setTimeout(() => {
-      void handleCapture()
-    }, 2000)
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state])
 
   // Loading screen auto-advances once processing finishes — no source
   // gives a real duration, so this is a fixed delay standing in for it.
@@ -309,11 +602,22 @@ export function IdentityVerificationFlow({
           <div className="flex items-start justify-between gap-x-3">
             <div className="space-y-2 flex-auto">
               <h1 className="text-lg leading-none text-dark-blue-400">
-                We detected your current location as:
+                {detectedLocation.serviceUnavailable
+                  ? "Location service temporarily unavailable."
+                  : detectedLocation.detected
+                    ? "We detected your current location as:"
+                    : "We couldn’t detect your current location"}
               </h1>
-              <p className="text-lg font-bold text-dark-blue-400">
-                {detectedLocationLabel}
-              </p>
+              {detectedLocation.detected && (
+                <>
+                  <p className="text-lg font-bold text-dark-blue-400">
+                    {detectedLocationLabel}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Approximate location, based on your IP address
+                  </p>
+                </>
+              )}
             </div>
 
             <DialogClose asChild>
@@ -328,15 +632,11 @@ export function IdentityVerificationFlow({
             </DialogClose>
           </div>
 
-          {/* No real map integration exists yet (no maps API key/dependency
-              anywhere in this app, and the backend only stores city/region
-              as text, not coordinates) — labeled placeholder in its place,
-              same size/position as the Figma map, swappable later. */}
-          <div className="rounded-lg overflow-hidden relative mt-6 h-[170px] bg-gray-100 flex items-center justify-center">
-            <span className="text-xs text-gray-500">
-              Map preview unavailable
-            </span>
-          </div>
+          <DetectedLocationMap
+            latitude={detectedLocation.latitude}
+            longitude={detectedLocation.longitude}
+            serviceUnavailable={detectedLocation.serviceUnavailable}
+          />
 
           <div className="mt-[50px]">
             <h1 className="text-lg font-semibold text-center text-dark-blue-400">
@@ -547,7 +847,11 @@ export function IdentityVerificationFlow({
             </div>
 
             <div className="flex items-center gap-x-7">
-              <Button className="underline underline-offset-4" variant="link">
+              <Button
+                className="underline underline-offset-4"
+                variant="link"
+                onClick={() => setHowToScanOpen((open) => !open)}
+              >
                 How to Scan
               </Button>
               <DialogClose asChild>
@@ -563,20 +867,25 @@ export function IdentityVerificationFlow({
             </div>
           </div>
 
-          <div className="relative rounded-lg overflow-hidden mt-3 border border-gray-200 h-[373px] bg-gray-900">
+          <div
+            ref={cameraBoxRef}
+            onClick={() => void handleCapture()}
+            className="relative rounded-lg overflow-hidden mt-3 border border-gray-200 h-[373px] bg-gray-900 cursor-pointer"
+          >
             <WebCamera
               style={{ height: 373, width: 602 }}
               videoStyle={{ borderRadius: 8, objectFit: "cover" }}
               captureMode="back"
               ref={cameraHandler}
-              onError={() =>
+              onError={() => {
+                setCameraError(true)
                 toast({
                   title: "Camera unavailable",
                   description:
                     "Check camera permissions for this site and try again.",
                   variant: "destructive",
                 })
-              }
+              }}
             />
 
             {/* Machine-readable-zone viewfinder guide. Figma's reference
@@ -585,13 +894,57 @@ export function IdentityVerificationFlow({
                 there's no fixed document to align pixel-for-pixel to, so
                 this is a proportionally-placed approximation of the same
                 corner-bracket guide (306x43px, centered near the bottom),
-                not a literal copy of Figma's absolute coordinates. */}
-            <div className="pointer-events-none absolute inset-x-0 bottom-[22px] mx-auto h-[43px] w-[306px] rounded-[4px] bg-success-500/20 shadow-[1px_4px_4px_rgba(0,0,0,0.25)]">
-              <span className="absolute left-0 top-0 size-3 rounded-[4px] border-[3px] border-success-500" />
-              <span className="absolute right-0 top-0 size-3 rounded-[4px] border-[3px] border-success-500" />
-              <span className="absolute left-0 bottom-0 size-3 rounded-[4px] border-[3px] border-success-500" />
-              <span className="absolute right-0 bottom-0 size-3 rounded-[4px] border-[3px] border-success-500" />
+                not a literal copy of Figma's absolute coordinates.
+                Neutral/white until scanPresence actually reports a document
+                in frame — green is a detection signal, not a verification
+                result (Figma node 18021-2310, "No ID on screen"). */}
+            <div
+              className={cn(
+                "pointer-events-none absolute inset-x-0 bottom-[22px] mx-auto h-[43px] w-[306px] rounded-[4px] shadow-[1px_4px_4px_rgba(0,0,0,0.25)]",
+                scanPresence === "document-detected" && "bg-success-500/20"
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute left-0 top-0 size-3 rounded-[4px] border-[3px]",
+                  scanPresence === "document-detected"
+                    ? "border-success-500"
+                    : "border-white"
+                )}
+              />
+              <span
+                className={cn(
+                  "absolute right-0 top-0 size-3 rounded-[4px] border-[3px]",
+                  scanPresence === "document-detected"
+                    ? "border-success-500"
+                    : "border-white"
+                )}
+              />
+              <span
+                className={cn(
+                  "absolute left-0 bottom-0 size-3 rounded-[4px] border-[3px]",
+                  scanPresence === "document-detected"
+                    ? "border-success-500"
+                    : "border-white"
+                )}
+              />
+              <span
+                className={cn(
+                  "absolute right-0 bottom-0 size-3 rounded-[4px] border-[3px]",
+                  scanPresence === "document-detected"
+                    ? "border-success-500"
+                    : "border-white"
+                )}
+              />
             </div>
+
+            {scanPresence === "no-document" && (
+              <NoDocumentOverlay
+                label={selectedDocument?.label ?? "Passport"}
+              />
+            )}
+
+            {howToScanOpen && <HowToScanTooltip />}
           </div>
 
           <Alert variant="success" className="rounded-[5px] mt-3">
@@ -625,7 +978,11 @@ export function IdentityVerificationFlow({
             </div>
 
             <div className="flex items-center gap-x-7">
-              <Button className="underline underline-offset-4" variant="link">
+              <Button
+                className="underline underline-offset-4"
+                variant="link"
+                onClick={() => setHowToScanOpen((open) => !open)}
+              >
                 How to Scan
               </Button>
               <DialogClose asChild>
@@ -667,6 +1024,8 @@ export function IdentityVerificationFlow({
                 </p>
               </div>
             </div>
+
+            {howToScanOpen && <HowToScanTooltip />}
           </div>
 
           <Alert variant="success" className="rounded-[5px] mt-3">
@@ -700,7 +1059,11 @@ export function IdentityVerificationFlow({
             </div>
 
             <div className="flex items-center gap-x-7">
-              <Button className="underline underline-offset-4" variant="link">
+              <Button
+                className="underline underline-offset-4"
+                variant="link"
+                onClick={() => setHowToScanOpen((open) => !open)}
+              >
                 How to Scan
               </Button>
               <DialogClose asChild>
@@ -716,29 +1079,90 @@ export function IdentityVerificationFlow({
             </div>
           </div>
 
-          <div className="relative rounded-lg overflow-hidden mt-3 border border-gray-200 h-[373px] bg-gray-900">
+          <div
+            ref={cameraBoxRef}
+            className="relative rounded-lg overflow-hidden mt-3 border border-gray-200 h-[373px] bg-gray-900"
+          >
             <WebCamera
               style={{ height: 373, width: 602 }}
               videoStyle={{ borderRadius: 8, objectFit: "cover" }}
               captureMode="back"
+              onError={() => {
+                setCameraError(true)
+                toast({
+                  title: "Camera unavailable",
+                  description:
+                    "Check camera permissions for this site and try again.",
+                  variant: "destructive",
+                })
+              }}
             />
 
             {/* Wider guide covering the whole back-page area, proportioned
                 from Figma's 247x62 box (~41%x17%) positioned in the upper
                 third — this pass's own proportional placement, same
                 reasoning as the front-scan guide (no fixed document to
-                match Figma's absolute static-photo coordinates to). */}
-            <div className="pointer-events-none absolute left-1/2 top-[26%] -translate-x-1/2 h-[62px] w-[247px] rounded-[4px] bg-success-500/25 shadow-[1px_4px_4px_rgba(0,0,0,0.25)]">
-              <span className="absolute left-0 top-0 size-4 rounded-[4px] border-[3px] border-success-500" />
-              <span className="absolute right-0 top-0 size-4 rounded-[4px] border-[3px] border-success-500" />
-              <span className="absolute left-0 bottom-0 size-4 rounded-[4px] border-[3px] border-success-500" />
-              <span className="absolute right-0 bottom-0 size-4 rounded-[4px] border-[3px] border-success-500" />
+                match Figma's absolute static-photo coordinates to).
+                Neutral/white until backScanPresence actually reports a
+                document in frame, same as the front-scan guide (Figma node
+                18021-2310, "No ID on screen"). */}
+            <div
+              className={cn(
+                "pointer-events-none absolute left-1/2 top-[26%] -translate-x-1/2 h-[62px] w-[247px] rounded-[4px] shadow-[1px_4px_4px_rgba(0,0,0,0.25)]",
+                backScanPresence === "document-detected" &&
+                  "bg-success-500/25"
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute left-0 top-0 size-4 rounded-[4px] border-[3px]",
+                  backScanPresence === "document-detected"
+                    ? "border-success-500"
+                    : "border-white"
+                )}
+              />
+              <span
+                className={cn(
+                  "absolute right-0 top-0 size-4 rounded-[4px] border-[3px]",
+                  backScanPresence === "document-detected"
+                    ? "border-success-500"
+                    : "border-white"
+                )}
+              />
+              <span
+                className={cn(
+                  "absolute left-0 bottom-0 size-4 rounded-[4px] border-[3px]",
+                  backScanPresence === "document-detected"
+                    ? "border-success-500"
+                    : "border-white"
+                )}
+              />
+              <span
+                className={cn(
+                  "absolute right-0 bottom-0 size-4 rounded-[4px] border-[3px]",
+                  backScanPresence === "document-detected"
+                    ? "border-success-500"
+                    : "border-white"
+                )}
+              />
             </div>
 
-            {/* Success badge, centered in the whole camera box. */}
-            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center size-10 rounded-full bg-success-500">
-              <Check className="size-5 text-white" />
-            </div>
+            {/* Success badge, centered in the whole camera box — only once
+                a document is actually detected, not unconditionally
+                (previously always rendered regardless of camera content). */}
+            {backScanPresence === "document-detected" && (
+              <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center size-10 rounded-full bg-success-500">
+                <Check className="size-5 text-white" />
+              </div>
+            )}
+
+            {backScanPresence === "no-document" && (
+              <NoDocumentOverlay
+                label={selectedDocument?.label ?? "Passport"}
+              />
+            )}
+
+            {howToScanOpen && <HowToScanTooltip />}
           </div>
 
           <div className="flex items-center justify-end gap-x-3 mt-3">
@@ -829,7 +1253,7 @@ export function IdentityVerificationFlow({
               <ChevronRight className="size-5 text-gray-500" />
             </button>
             <button
-              onClick={() => send("NEXT")}
+              onClick={() => send("RELOCATED")}
               className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg"
             >
               <div className="inline-flex items-center gap-x-3">
