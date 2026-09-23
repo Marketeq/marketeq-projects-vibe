@@ -477,7 +477,8 @@ function renderProjectCarousel(item: ProjectCard) {
       duration={formatDuration(item.duration)}
       rating={item.rating ?? 4.9}
       reviewCount={item.reviewCount ?? 5}
-      collaborators={item.collaborators}
+      collaborators={item.collaborators ?? []}
+      teamMembers={item.teamMembers}
       favoriteSlot={<FavoriteButton />}
     />
   )
@@ -502,6 +503,7 @@ function renderServiceCarousel(item: ServiceCard) {
       rating={item.rating}
       reviewCount={item.reviewCount}
       collaborators={item.collaborators ?? []}
+      teamMembers={item.teamMembers}
       favoriteSlot={<FavoriteButton />}
     />
   )
