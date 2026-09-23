@@ -4249,14 +4249,13 @@ export const OverviewTab = ({
                           visual="gray"
                           className="text-dark-blue-400"
                           onClick={() => {
-                            if (verifyState?.methodId)
-                              deleteMethod(verifyState.methodId)
+                            // The method already exists (pending micro-deposit
+                            // verification) — dismissing this reminder must not
+                            // delete it, or a contractor who closes it to verify
+                            // later loses the bank account they just added.
                             setVerifyState(null)
-                            setShowAddMethod(true)
-                            setAddForm((f) => ({
-                              ...f,
-                              methodType: "BANK_MANUAL",
-                            }))
+                            setShowAddMethod(false)
+                            fetchMethods()
                           }}
                         >
                           <ArrowLeft className="size-4" />
@@ -4270,8 +4269,6 @@ export const OverviewTab = ({
                           visual="gray"
                           className="absolute right-2.5 top-2.5"
                           onClick={() => {
-                            if (verifyState?.methodId)
-                              deleteMethod(verifyState.methodId)
                             setVerifyState(null)
                             setShowAddMethod(false)
                             fetchMethods()
@@ -4319,14 +4316,12 @@ export const OverviewTab = ({
                             visual="gray"
                             size="sm"
                             onClick={() => {
-                              if (verifyState?.methodId)
-                                deleteMethod(verifyState.methodId)
+                              // Same as the header close controls above — the
+                              // method already exists as "pending", so closing
+                              // this reminder must not delete it.
                               setVerifyState(null)
-                              setShowAddMethod(true)
-                              setAddForm((f) => ({
-                                ...f,
-                                methodType: "BANK_MANUAL",
-                              }))
+                              setShowAddMethod(false)
+                              fetchMethods()
                             }}
                           >
                             Back
@@ -8183,11 +8178,12 @@ export const PayoutScheduleDialog = ({
   const [reserveCustomOpen, setReserveCustomOpen] = useState(false)
   const [reserveCustomValue, setReserveCustomValue] = useState("")
 
-  // Split payout — Figma's "Auto Split" toggle switches between a fixed
-  // 50/50 default and manual per-side percent entry; there's no backend
-  // auto-balance algorithm (primarySplitPercent is the only stored value,
-  // secondarySplitPercent is just its complement), so "auto" just means
-  // "keep it at 50/50 and don't let the user type a number".
+  // Split payout — there's no backend auto-balance algorithm
+  // (primarySplitPercent is the only stored value, secondarySplitPercent is
+  // just its complement). "Auto Split" only sets the starting point: turning
+  // it on snaps the split back to 50/50, but the percent field stays
+  // editable in both states — QA-confirmed bug: it used to also lock the
+  // field while Auto Split was on, which shouldn't gate editability at all.
   const [autoSplit, setAutoSplit] = useState(true)
 
   // Authorization
@@ -8669,20 +8665,27 @@ export const PayoutScheduleDialog = ({
                                 type="number"
                                 min={0}
                                 max={100}
-                                className="w-full h-full text-center pl-2 pr-5 text-base"
-                                disabled={autoSplit || !row.isPrimary}
+                                className="w-full h-full text-center pl-2 pr-5 text-base [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-outer-spin-button]:m-0"
+                                // Only primarySplitPercent is actually stored — the
+                                // other side is always its complement — but that's a
+                                // storage detail, not a reason to lock the secondary
+                                // input. QA-reported: neither field was editable when
+                                // it should be either, as long as a method is picked
+                                // for that side (nothing to split into otherwise).
+                                disabled={!row.id}
                                 value={row.pct}
                                 // AC-23.03/23.04: accept the raw value (including 0/100) so the
                                 // inline error below can actually be seen — clamping silently
                                 // would make those values impossible to type in the first place.
-                                onChange={(e) =>
-                                  setPrimarySplitPercent(
-                                    Math.min(
-                                      100,
-                                      Math.max(0, parseInt(e.target.value) || 0)
-                                    )
+                                onChange={(e) => {
+                                  const typed = Math.min(
+                                    100,
+                                    Math.max(0, parseInt(e.target.value) || 0)
                                   )
-                                }
+                                  setPrimarySplitPercent(
+                                    row.isPrimary ? typed : 100 - typed
+                                  )
+                                }}
                               />
                               <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-base text-gray-400 pointer-events-none">
                                 %
@@ -8846,11 +8849,11 @@ export const PayoutScheduleDialog = ({
                     calendar date, and formatting it in the viewer's local zone shifts
                     the displayed weekday/date back a day for anyone west of UTC. */}
                   {nextRunAt && (
-                    <div className="rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                      <span className="text-sm font-medium text-primary-600">
+                    <div className="w-full max-w-full rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 flex flex-nowrap items-baseline gap-x-2 overflow-hidden [contain:inline-size]">
+                      <span className="text-sm font-medium text-primary-600 truncate min-w-0 flex-1">
                         Next Deposit (based on your schedule)
                       </span>
-                      <span className="text-sm font-bold text-primary-600">
+                      <span className="text-sm font-bold text-primary-600 whitespace-nowrap shrink-0">
                         {new Date(nextRunAt).toLocaleDateString("en-US", {
                           weekday: "long",
                           month: "long",
