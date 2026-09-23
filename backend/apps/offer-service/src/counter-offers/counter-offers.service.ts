@@ -31,7 +31,11 @@ import { OfferHistoryService } from '../offer-history/offer-history.service';
 import { OfferTermsSnapshot } from '../offer-history/entities/offer-history-event.entity';
 import { normalizeDateOnly } from '../common/utils/normalize-date-only';
 import { calculateExpiresAt } from '../scheduler/ttl.helper';
-import { CounterOfferNotActionableException } from '../common/exceptions/offer.exceptions';
+import {
+  CounterOfferNotActionableException,
+  CounterOfferWithdrawnException,
+  CounterOfferExpiredException,
+} from '../common/exceptions/offer.exceptions';
 
 @Injectable()
 export class CounterOffersService {
@@ -147,14 +151,29 @@ export class CounterOffersService {
     const co = await this.findCOByIdOrThrow(coId, offerId);
 
     OfferStateMachine.assertIsNonSubmitter(co, offer, requesterId);
+
+    if (co.status === CounterOfferStatus.WITHDRAWN) {
+      throw new CounterOfferWithdrawnException();
+    }
+    if (
+      co.status === CounterOfferStatus.EXPIRED ||
+      (co.status === CounterOfferStatus.PENDING && co.expiresAt <= new Date())
+    ) {
+      throw new CounterOfferExpiredException();
+    }
+
     OfferStateMachine.assertCanTransitionCO(co.status, CounterOfferStatus.ACCEPTED);
 
     const { acceptedCO, acceptedOffer } = await this.dataSource.transaction(async (em) => {
-      // CAS on counter offer.
+      // CAS on counter offer. expires_at > NOW() closes the race where the
+      // counter offer has passed its expiry but the TTL sweeper hasn't
+      // flipped its status yet — the pre-transaction check above can't
+      // fully close that on its own. Only ever evaluated when status is
+      // already 'PENDING', so no other status is affected by this.
       const coResult = await em.query(`
         UPDATE offer_service.counter_offers
           SET status = 'ACCEPTED', accepted_at = NOW(), updated_at = NOW()
-        WHERE id = $1 AND status = 'PENDING'
+        WHERE id = $1 AND status = 'PENDING' AND expires_at > NOW()
         RETURNING *
       `, [coId]);
 
