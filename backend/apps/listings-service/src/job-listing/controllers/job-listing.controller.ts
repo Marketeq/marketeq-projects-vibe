@@ -52,10 +52,6 @@ import {
   GeneratedScopePhaseInput,
   JobListingScopeService,
 } from "../services/job-listing-scope.service";
-import {
-  JobListingBudgetService,
-  calculateTotalWorkingDays,
-} from "../services/job-listing-budget.service";
 
 @UseGuards(JwtAuthGuard)
 @Controller("v1/job-listings")
@@ -67,7 +63,6 @@ export class JobListingController {
     private readonly publishService: JobListingPublishService,
     private readonly aiService: JobListingAiService,
     private readonly scopeService: JobListingScopeService,
-    private readonly budgetService: JobListingBudgetService,
   ) {}
 
   private getUserId(req: any): string {
@@ -618,62 +613,11 @@ export class JobListingController {
             })),
           })),
         };
-        // The UI already computes this to render the current budget on
-        // screen (same pricing-service rate lookups this service would
-        // otherwise have to repeat), so it's passed straight through from
-        // the request rather than recalculated here. Only recalculated as a
-        // fallback for callers that don't have it on hand — a stale or
-        // absent figure just weakens the AI's default reduction target, it
-        // never gets persisted or trusted for anything financial.
-        let currentTotalBudgetUsdCents = dto.currentTotalBudgetUsdCents;
-        if (currentTotalBudgetUsdCents === undefined) {
-          // Mirrors buildSmartAssistantPrompt's own cost-optimization check
-          // in job-listing-ai.service.ts (kept local rather than shared for
-          // one small regex — same call made for EXPERIENCE_LEVEL_MAP
-          // there). Gated on this so the fallback's pricing-service round
-          // trips only happen for commands that actually need the target.
-          const isCostOptimizationCommand =
-            /\b(reduce|lower|cut|optimi[sz]e|decrease|save)\b.*\b(cost|costs|budget|spend|spending)\b|\bcheaper\b/i.test(
-              dto.command,
-            );
-
-          if (isCostOptimizationCommand) {
-            try {
-              currentTotalBudgetUsdCents =
-                await this.budgetService.calculateTotalBudget(
-                  (currentScope as { phases: unknown[] }).phases as any,
-                );
-            } catch (error) {
-              this.logger.warn(
-                `Failed to compute current budget for Smart Assistant cost target: ${(error as Error).message}`,
-              );
-            }
-          }
-        }
-
-        // Same pattern as currentTotalBudgetUsdCents above, but the
-        // fallback here is a pure, synchronous sum (calculateTotalWorkingDays
-        // does no pricing-service I/O) — cheap enough to skip the try/catch.
-        let currentTotalTimelineDays = dto.currentTotalTimelineDays;
-        if (currentTotalTimelineDays === undefined) {
-          const isTimelineShorteningCommand =
-            /shorten.*timeline|reduce.*duration|faster|speed up/i.test(
-              dto.command,
-            );
-
-          if (isTimelineShorteningCommand) {
-            currentTotalTimelineDays = calculateTotalWorkingDays(
-              (currentScope as { phases: unknown[] }).phases as any,
-            );
-          }
-        }
 
         const result = await this.aiService.handleSmartAssistantScopeEdit({
           command: dto.command,
           currentScope: currentScope as any,
           workType,
-          currentTotalBudgetUsdCents,
-          currentTotalTimelineDays,
         });
 
         const persisted = await this.scopeService.applySmartAssistantScopeEdit(

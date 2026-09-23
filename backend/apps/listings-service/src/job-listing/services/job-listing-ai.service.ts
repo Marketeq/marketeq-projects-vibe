@@ -72,23 +72,30 @@ interface GroqCallOptions {
   temperature?: number;
 }
 
-const DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant";
 const DEFAULT_GROQ_MAX_TOKENS = 2048;
 const DEFAULT_GROQ_TEMPERATURE = 0.3;
 // Reasoning models (the "openai/gpt-oss*" and "qwen/*" families on Groq)
 // spend a chunk of the completion token budget on an internal reasoning
 // trace before producing the actual JSON content. reasoning_effort controls
-// how much: "low" is cheaper and more reliable per call, but was measured
-// to overshoot a Smart Assistant scope-edit's own numeric targets (e.g. a
-// 20% budget-reduction target landing at ~60%+) because it doesn't verify
-// its arithmetic before answering; "medium" measured within a few dollars
-// of the same target. Always "medium" — a fixed choice, not
-// environment-configurable, so behavior can't silently drift per env.
-// It's rejected outright (400 "not supported with this model") on
-// non-reasoning models, so it must only be sent when the configured model
-// is actually a reasoning model.
+// how much: "medium" measured closer to a Smart Assistant scope-edit's own
+// numeric targets (e.g. a 20% budget-reduction target) than "low", which
+// doesn't verify its arithmetic before answering and was measured
+// overshooting to ~60%+. "low" is used anyway: this account runs on Groq's
+// free tier (8,000 tokens/minute, shared across every request to this
+// model), and "medium"'s longer reasoning trace was regularly consuming
+// most of a single request's token budget on its own, before max_tokens
+// was ever reached — a single smart_assistant call could need more total
+// tokens than the entire per-minute allowance, causing frequent 429s, and
+// even successful calls were seeing the reasoning trace crowd out the
+// tail of the JSON response (summary/suggestions silently missing). "low"
+// trades some accuracy on the default reduction target for actually
+// fitting in the free-tier budget. Revisit if the account moves to a paid
+// tier. Always explicit, not environment-configurable, so behavior can't
+// silently drift per env. It's rejected outright (400 "not supported with
+// this model") on non-reasoning models, so it must only be sent when the
+// configured model is actually a reasoning model.
 const REASONING_MODEL_PATTERN = /^openai\/gpt-oss|^qwen\//i;
-const GROQ_REASONING_EFFORT = "medium";
+const GROQ_REASONING_EFFORT = "low";
 
 interface GeneratedTask {
   taskName: string;
@@ -166,752 +173,114 @@ export class GroqUnavailableException extends Error {
   }
 }
 
-// ── Smart Assistant cost-optimization prompt ─────────────────────────────
-// These multiplier tables mirror hourlyRateForTask in
+// ── Smart Assistant scope-edit rules ─────────────────────────────────────
+// One shared rule block per command type, used identically for both project
+// and service scopes — no per-workType duplication. Each block is appended
+// to the generic base prompt in buildSmartAssistantPrompt() only when the
+// command matches that type (see isCostOptimizationCommand /
+// isTimelineShorteningCommand / isScopeQualityCommand below).
+// REDUCE_BUDGET_RULES's multiplier tables mirror hourlyRateForTask in
 // ../../shared/utils/pricing.ts — kept as separate prose here (rather than
 // importing and stringifying that function) because this is a natural
 // language prompt for the model to reason with, not a value the code itself
 // evaluates. If the source multipliers change, update both.
-const LOCATION_MULTIPLIERS = `
-LOCATION COST MULTIPLIERS
-
-Use these multipliers when evaluating location cost:
-
-- United States / Canada / UK / Australia: 1.00
-- Western Europe (Germany, Netherlands, France, Sweden, Norway, Denmark, etc.): 0.85
-- Eastern Europe (Poland, Romania, Ukraine, Bulgaria, etc.): 0.40
-- Southeast Asia / East Asia / Middle East: 0.30
-- Latin America (Brazil, Mexico, Argentina, Colombia, etc.): 0.35
-- South Asia (India, Pakistan, Bangladesh, Sri Lanka): 0.25
-- Africa: 0.25
-- Any location that does not clearly match one of the above regions: 0.40
-
-A lower multiplier means lower estimated labor cost.
-
-The multiplier represents COST ONLY.
-It does not mean that the location is more or less capable, productive, or suitable.
-`;
-
-const EXPERIENCE_MULTIPLIERS = `
-EXPERIENCE COST MULTIPLIERS
-
-Use these multipliers when evaluating experience-level cost:
-
-- student: 0.50
-- junior: 0.75
-- medior: 1.00
-- senior: 1.25
-- guru: 1.50
-
-A lower multiplier means lower estimated labor cost.
-
-The multiplier represents COST ONLY.
-It does not mean that a lower experience level is appropriate for every task,
-nor that a higher one is always the safer choice.
-`;
-
-// Split into a project and a service variant per explicit request, so each
-// can diverge independently later (e.g. a service-specific cost lever like
-// reducing recurrenceCount/recurrenceSchedule, which project scopes have no
-// equivalent of). Content is intentionally IDENTICAL right now — this is
-// just the branch point, not a behavior change. Keep both in sync until a
-// real divergence is asked for.
-const COST_OPTIMIZATION_RULES_PROJECT = `
-COST OPTIMIZATION MODE
-
-The user's goal is to reduce the total cost of the scope while preserving a
-realistic and deliverable project.
-
-${LOCATION_MULTIPLIERS}
-
-${EXPERIENCE_MULTIPLIERS}
-
-COST COMPARISON
-
-For each task, estimate relative labor cost as:
-
-relativeCost =
-  hours
-  × locationMultiplier
-  × experienceMultiplier
-
-If the task contains a base hourly rate or other base cost, use:
-
-estimatedCost =
-  baseRate
-  × hours
-  × locationMultiplier
-  × experienceMultiplier
-
-Use this formula to compare alternatives.
-
-Do not invent a base rate if none is provided.
-Relative cost is sufficient for comparing options.
-
-IMPORTANT:
-The mathematically cheapest option is NOT automatically the correct option.
-
-Optimize the whole project, not individual rows independently.
-
-For every task consider:
-
-1. KEEP unchanged
-2. Change LOCATION
-3. Change EXPERIENCE LEVEL
-4. Reduce HOURS
-5. Apply a combination of the above
-6. Remove or consolidate the task when genuinely unnecessary
-
-KEEP is a valid optimization decision.
-
-HARD CONSTRAINT: never remove or consolidate a task if doing so would leave
-its phase with zero tasks. Every phase must retain at least one task in
-the output, no matter how much cost that leaves on the table. If a phase
-has only one task left, that task may be changed (location, experience,
-hours) but not removed — reaching the reduction target is always secondary
-to this.
-
-LOCATION DECISION RULES
-
-A lower-cost location should only be selected when the task is appropriate
-for that delivery model.
-
-Changing location is more reasonable when:
-
-- the task is well defined
-- work can be done asynchronously
-- acceptance criteria are clear
-- stakeholder interaction is limited
-- the task is relatively independent
-- handoff requirements are low
-- timezone overlap is not important
-- the cost difference is meaningful
-
-Prefer keeping the current location when:
-
-- frequent stakeholder/customer interaction is required
-- timezone alignment is important
-- tasks are tightly coupled
-- there are frequent cross-task dependencies
-- rapid collaboration is important
-- continuity/domain knowledge is important
-- the financial savings are small compared with coordination overhead
-
-Evaluate related tasks together.
-
-Do not move one task to a cheaper location when doing so creates an awkward
-handoff between several tightly coupled tasks.
-
-Example:
-
-Moving an independent implementation task from a 1.00 location multiplier
-to a 0.25 location multiplier may provide substantial savings.
-
-Moving a highly collaborative task from 1.00 to 0.85 may not justify the
-additional coordination complexity.
-
-EXPERIENCE DECISION RULES
-
-Do not automatically move down the experience ladder (guru -> senior ->
-medior -> junior -> student) just because the multiplier is lower, and do
-not move up to guru just because a task sounds important.
-
-Guru resources are appropriate ONLY for:
-
-- work with genuinely severe consequences if done wrong (e.g. irreversible
-  data migrations, security architecture for sensitive systems, a technical
-  decision that locks in the platform's direction for years)
-- deep, narrow specialist expertise that a general senior would not have
-- rare, high-stakes escalations — this is not "senior but better," it is a
-  distinct, uncommon tier
-
-Prefer senior resources for:
-
-- architecture
-- ambiguous requirements
-- product or technical strategy
-- stakeholder management
-- security-sensitive work
-- complex integrations
-- difficult technical decisions
-- high-impact design decisions
-- tasks where mistakes could cause substantial downstream rework
-
-Medior-level resources are appropriate for:
-
-- standard implementation
-- moderately complex development
-- tasks with reasonably clear requirements
-- work requiring some independent judgment
-
-Junior resources are more appropriate for:
-
-- well-defined execution
-- repetitive work
-- straightforward implementation
-- documentation
-- routine testing
-- data preparation
-- tasks with clear acceptance criteria
-- work that can be efficiently reviewed by a more experienced person
-
-Student resources are appropriate ONLY for:
-
-- extremely simple, fully-specified, low-risk work with no ambiguity at all
-  (e.g. basic data entry, running a pre-written script, formatting content
-  to a template)
-- tasks where an error is trivial to catch and cheap to fix
-- do not use this tier just because a task is cheap to have done fast —
-  it must genuinely require no independent judgment
-
-Compare savings against the potential cost of errors and rework.
-
-For example:
-
-senior = 1.25
-medior = 1.00
-
-Changing senior -> medior saves 20% of the experience-adjusted portion of
-the cost.
-
-Do it only when the task does not genuinely require senior expertise. Apply
-the same reasoning one step at a time between any two adjacent tiers —
-never skip a tier (e.g. senior straight to junior) without considering
-whether medior is the more defensible stop.
-
-HOURS DECISION RULES
-
-Do not reduce hours simply because fewer hours reduces cost.
-
-Hours may be reduced when there is a defensible reason such as:
-
-- narrowing the task to MVP scope
-- removing unnecessary documentation
-- reducing unnecessary polish
-- removing duplicated work
-- reducing low-value edge cases
-- using templates
-- reusing existing components
-- using automation
-- merging overlapping activities
-- simplifying the deliverable
-
-Never reduce hours below what is realistically required to achieve the
-task's purpose.
-
-COMBINED CHANGES
-
-Multiple optimizations may be applied to the same task, but be more
-conservative when stacking changes.
-
-For example, a task currently US + Senior + 16 hours has relative cost
-1.00 × 1.25 × 16 = 20.00. Moving it to South Asia + Medior + 12 hours gives
-0.25 × 1.00 × 12 = 3.00 — substantially cheaper mathematically, but that
-does NOT mean the second configuration is appropriate.
-
-Before applying multiple changes, determine whether:
-
-- the task can reasonably move locations
-- the task can reasonably use lower experience
-- the task can realistically be completed in fewer hours
-
-Critical tasks should generally not receive several risk-increasing changes
-at once.
-
-PROJECT-LEVEL OPTIMIZATION
-
-Before modifying the scope:
-
-1. Understand the overall project objective.
-2. Understand what each phase is intended to accomplish.
-3. Identify high-impact and critical tasks.
-4. Identify dependencies and tightly coupled tasks.
-5. Identify tasks requiring significant stakeholder interaction.
-6. Identify tasks that genuinely require senior experience.
-7. Identify independent work suitable for lower-cost locations.
-8. Identify well-defined work suitable for lower experience.
-9. Identify effort that can realistically be reduced.
-10. Consider downstream rework and coordination costs.
-11. Prefer meaningful savings with low or moderate execution risk.
-
-Do NOT attempt to force every task toward:
-
-lowest-location-multiplier
-+ student
-+ minimum-hours.
-
-The goal is the lowest-cost REALISTIC delivery plan, not the lowest possible
-mathematical score.
-
-If two alternatives have similar cost:
-
-- prefer fewer changes
-- prefer lower delivery risk
-- prefer preserving team continuity
-- prefer fewer cross-location handoffs
-
-LOCATION CLASSIFICATION AND OUTPUT
-
-A task's "location" field is always one specific real country — never a
-region name — both when you read the current scope and when you write the
-updated one. The UI only offers a country picker; there is no way to select
-a region directly.
-
-To reason about cost, first translate a task's country into its region using
-the reference below, then apply that region's multiplier from LOCATION COST
-MULTIPLIERS above.
-
-REGION -> COUNTRY REFERENCE
+const REDUCE_BUDGET_RULES = `
+COST REDUCTION
+
+You may ONLY change a task's location and/or experienceLevel. Never change
+estimatedHours, and never add, remove, or reorder a phase or task.
+
+relativeCost = hours × locationMultiplier × experienceMultiplier
+(hours is a fixed input here, never something you change)
+
+Location multipliers:
+US/Canada/UK/Australia 1.00 · Western Europe 0.85 · Eastern Europe 0.40 ·
+Southeast/East Asia/Middle East 0.30 · Latin America 0.35 · South Asia 0.25 ·
+Africa 0.25 · unclassifiable 0.40
+
+Experience multipliers:
+student 0.50 · junior 0.75 · medior 1.00 · senior 1.25 · guru 1.50
+
+Only relocate work that is async, well-defined, low-interaction, and
+independent; keep collaborative, tightly-coupled, or timezone-sensitive
+work where it is. Only lower a task's experience tier when the task
+genuinely doesn't need its current tier's judgment; keep senior/guru for
+architecture, security, ambiguity, or high delivery risk.
+
+Location must always be one real country, never a region name. Use this
+reference to classify a task's current country and to pick a new one:
 
 ${REGION_COUNTRY_REFERENCE}
 
-When you decide a task should move to a different region for cost reasons,
-pick one specific real country from that region's list above to write into
-"location". Vary your choice across the countries listed for a region
-instead of always defaulting to the same one or two countries — different
-tasks moving to the same region should not all land on an identical country
-unless there is a specific reason to group them together (e.g. they hand off
-work to each other).
+If no reduction target is given, aim to reduce the sum of relativeCost
+across all tasks by approximately 20%. Don't overshoot meaningfully once
+you're close. If the command gives an explicit target as a percentage or
+fraction ("by 30%", "in half"), use that instead. A dollar figure in the
+command (e.g. "cut $500") is directional only — you have no real dollar
+baseline for this scope, so treat it as "meaningfully more than the 20%
+default" rather than a number to hit exactly.
 
-Never write a region name itself (e.g. "South Asia") into a task's
-"location" field.
+If you can't reasonably reach the target within these constraints, get as
+close as you can without making unrealistic changes, then stop. Note in
+the summary that the full target wasn't reached and why.
 
-If a task's current location cannot confidently be classified into any
-region, treat it as the default multiplier tier (0.40) and leave the task's
-location unchanged.
+Before responding, verify the only differences from the input are
+location and/or experienceLevel — phases, tasks, hours, IDs, and names
+must be identical.
 `;
 
-const COST_OPTIMIZATION_RULES_SERVICE = `
-COST OPTIMIZATION MODE
+const SHORTEN_TIMELINE_RULES = `
+TIMELINE SHORTENING
 
-The user's goal is to reduce the total cost of the scope while preserving a
-realistic and deliverable service.
+The only lever is a task's estimatedHours. Never change location,
+experienceLevel, or the phase/task list.
 
-${LOCATION_MULTIPLIERS}
+durationDays = ceil(estimatedHours / hoursPerDay); the project timeline is
+the sum of every task's durationDays (fully sequential, no parallelism).
 
-${EXPERIENCE_MULTIPLIERS}
+Reduce estimatedHours on the task(s) best able to absorb it, preferring
+the fewest tasks changed. Never reduce a task's hours below what's
+realistically required for its purpose.
 
-COST COMPARISON
+If no reduction target is given, aim to reduce the sum of durationDays
+across all tasks by approximately 20%. If a real target is given (a %, a
+day/week amount, "in half", etc.), use that instead.
 
-For each task, estimate relative labor cost as:
+If you can't reasonably reach the target within these constraints, get as
+close as you can without making unrealistic changes, then stop. Note in
+the summary that the full target wasn't reached and why.
 
-relativeCost =
-  hours
-  × locationMultiplier
-  × experienceMultiplier
-
-If the task contains a base hourly rate or other base cost, use:
-
-estimatedCost =
-  baseRate
-  × hours
-  × locationMultiplier
-  × experienceMultiplier
-
-Use this formula to compare alternatives. hours here is read from the
-task's current estimatedHours — it is an INPUT to the comparison, never a
-value you change. See AVAILABLE LEVERS below.
-
-Do not invent a base rate if none is provided.
-Relative cost is sufficient for comparing options.
-
-IMPORTANT:
-The mathematically cheapest option is NOT automatically the correct option.
-
-Optimize the whole scope, not individual rows independently.
-
-AVAILABLE LEVERS
-
-For a Service scope, cost optimization may ONLY change a task's LOCATION,
-its EXPERIENCE LEVEL, or both. These are the only two levers.
-
-1. KEEP unchanged
-2. Change LOCATION
-3. Change EXPERIENCE LEVEL
-4. Apply a combination of LOCATION and EXPERIENCE LEVEL
-
-KEEP is a valid optimization decision.
-
-Do NOT change a task's estimatedHours for cost-optimization purposes.
-Do NOT remove or consolidate any task, for any reason, no matter how low-
-value, low-priority, or "nice to have" that task or its phase may seem. Do
-NOT add new tasks, and do NOT add new phases. Hours and the task list
-itself are out of scope for this command — this differs from Project
-scopes, where reducing hours and removing/consolidating tasks are also
-available levers.
-
-This is a HARD CONSTRAINT, not a preference: the output must contain
-exactly the same phases (by phaseName and count) and exactly the same
-tasks within each phase (by taskName and count) as the input — only a
-task's location and/or experienceLevel may differ. If you cannot hit the
-target reduction using only location and experience changes, get as close
-as you reasonably can and STOP. Missing the target is always acceptable.
-Deleting a task, leaving any phase with fewer tasks than it started with,
-or outputting any phase not present in the input is never acceptable,
-regardless of how much closer to the target that would get you.
-
-LOCATION DECISION RULES
-
-A lower-cost location should only be selected when the task is appropriate
-for that delivery model.
-
-Changing location is more reasonable when:
-
-- the task is well defined
-- work can be done asynchronously
-- acceptance criteria are clear
-- stakeholder interaction is limited
-- the task is relatively independent
-- handoff requirements are low
-- timezone overlap is not important
-- the cost difference is meaningful
-
-Prefer keeping the current location when:
-
-- frequent stakeholder/customer interaction is required
-- timezone alignment is important
-- tasks are tightly coupled
-- there are frequent cross-task dependencies
-- rapid collaboration is important
-- continuity/domain knowledge is important
-- the financial savings are small compared with coordination overhead
-
-Evaluate related tasks together.
-
-Do not move one task to a cheaper location when doing so creates an awkward
-handoff between several tightly coupled tasks.
-
-Example:
-
-Moving an independent implementation task from a 1.00 location multiplier
-to a 0.25 location multiplier may provide substantial savings.
-
-Moving a highly collaborative task from 1.00 to 0.85 may not justify the
-additional coordination complexity.
-
-EXPERIENCE DECISION RULES
-
-Do not automatically move down the experience ladder (guru -> senior ->
-medior -> junior -> student) just because the multiplier is lower, and do
-not move up to guru just because a task sounds important.
-
-Guru resources are appropriate ONLY for:
-
-- work with genuinely severe consequences if done wrong (e.g. irreversible
-  data migrations, security architecture for sensitive systems, a technical
-  decision that locks in the platform's direction for years)
-- deep, narrow specialist expertise that a general senior would not have
-- rare, high-stakes escalations — this is not "senior but better," it is a
-  distinct, uncommon tier
-
-Prefer senior resources for:
-
-- architecture
-- ambiguous requirements
-- product or technical strategy
-- stakeholder management
-- security-sensitive work
-- complex integrations
-- difficult technical decisions
-- high-impact design decisions
-- tasks where mistakes could cause substantial downstream rework
-
-Medior-level resources are appropriate for:
-
-- standard implementation
-- moderately complex development
-- tasks with reasonably clear requirements
-- work requiring some independent judgment
-
-Junior resources are more appropriate for:
-
-- well-defined execution
-- repetitive work
-- straightforward implementation
-- documentation
-- routine testing
-- data preparation
-- tasks with clear acceptance criteria
-- work that can be efficiently reviewed by a more experienced person
-
-Student resources are appropriate ONLY for:
-
-- extremely simple, fully-specified, low-risk work with no ambiguity at all
-  (e.g. basic data entry, running a pre-written script, formatting content
-  to a template)
-- tasks where an error is trivial to catch and cheap to fix
-- do not use this tier just because a task is cheap to have done fast —
-  it must genuinely require no independent judgment
-
-Compare savings against the potential cost of errors and rework.
-
-For example:
-
-senior = 1.25
-medior = 1.00
-
-Changing senior -> medior saves 20% of the experience-adjusted portion of
-the cost.
-
-Do it only when the task does not genuinely require senior expertise. Apply
-the same reasoning one step at a time between any two adjacent tiers —
-never skip a tier (e.g. senior straight to junior) without considering
-whether medior is the more defensible stop.
-
-COMBINED CHANGES
-
-Location and experience level may both be changed on the same task, but be
-more conservative when stacking changes.
-
-For example, a task currently US + Senior has a relative per-hour cost of
-1.00 × 1.25 = 1.25. Moving it to South Asia + Medior gives
-0.25 × 1.00 = 0.25 per hour — substantially cheaper mathematically, but
-that does NOT mean the second configuration is appropriate.
-
-Before combining changes, determine whether:
-
-- the task can reasonably move locations
-- the task can reasonably use lower experience
-
-Critical tasks should generally not receive several risk-increasing changes
-at once.
-
-SCOPE-LEVEL OPTIMIZATION
-
-Before modifying the scope:
-
-1. Understand the overall service objective.
-2. Understand what each phase is intended to accomplish.
-3. Identify high-impact and critical tasks.
-4. Identify dependencies and tightly coupled tasks.
-5. Identify tasks requiring significant stakeholder interaction.
-6. Identify tasks that genuinely require senior experience.
-7. Identify independent work suitable for lower-cost locations.
-8. Identify well-defined work suitable for lower experience.
-9. Consider downstream rework and coordination costs.
-10. Prefer meaningful savings with low or moderate execution risk.
-
-Do NOT attempt to force every task toward:
-
-lowest-location-multiplier
-+ student.
-
-The goal is the lowest-cost REALISTIC delivery plan, not the lowest possible
-mathematical score.
-
-If two alternatives have similar cost:
-
-- prefer fewer changes
-- prefer lower delivery risk
-- prefer preserving team continuity
-- prefer fewer cross-location handoffs
-
-LOCATION CLASSIFICATION AND OUTPUT
-
-A task's "location" field is always one specific real country — never a
-region name — both when you read the current scope and when you write the
-updated one. The UI only offers a country picker; there is no way to select
-a region directly.
-
-To reason about cost, first translate a task's country into its region using
-the reference below, then apply that region's multiplier from LOCATION COST
-MULTIPLIERS above.
-
-REGION -> COUNTRY REFERENCE
-
-${REGION_COUNTRY_REFERENCE}
-
-When you decide a task should move to a different region for cost reasons,
-pick one specific real country from that region's list above to write into
-"location". Vary your choice across the countries listed for a region
-instead of always defaulting to the same one or two countries — different
-tasks moving to the same region should not all land on an identical country
-unless there is a specific reason to group them together (e.g. they hand off
-work to each other).
-
-Never write a region name itself (e.g. "South Asia") into a task's
-"location" field.
-
-If a task's current location cannot confidently be classified into any
-region, treat it as the default multiplier tier (0.40) and leave the task's
-location unchanged.
+Before responding, verify only estimatedHours values differ from the
+input — phases, tasks, locations, experience levels, and IDs must be
+identical.
 `;
 
-// ── Smart Assistant timeline-shortening prompt ───────────────────────────
-// Unlike cost, timeline has exactly one lever — a task's estimatedHours —
-// because the schedule is a fully sequential sum with no parallelism
-// modeled at all (see assignTaskDays/calculateTotalWorkingDays in
-// job-listing-budget.service.ts). No multiplier tables are needed here.
-const TIMELINE_OPTIMIZATION_RULES = `
-TIMELINE OPTIMIZATION MODE
+const IMPROVE_SCOPE_RULES = `
+SCOPE QUALITY
 
-The user's goal is to shorten the overall project timeline while preserving
-a realistic and deliverable project.
+The only lever: split ONE genuinely vague or bundled task into exactly TWO
+specific sibling tasks in the same phase. Nothing else may change.
 
-HOW THE TIMELINE IS CALCULATED
+A task is a candidate when it bundles multiple deliverables under one
+broad label, uses a broad verb+noun with no specific deliverable named, or
+has unusually large hours versus its phase's other tasks. Leave every
+other task unchanged.
 
-Every task's duration in working days is:
+Each phase already caps at 5 tasks. Only split a task in a phase with room
+(fewer than 5 tasks), and split at most one task per phase. If no phase
+has both a candidate and headroom, make no changes and say so in the
+summary.
 
-durationDays = ceil(estimatedHours / hoursPerDay)
-
-where hoursPerDay is 8 for full_time, 4 for part_time, or derived from
-customHours/customFrequency for a custom schedule.
-
-Tasks run fully sequentially — every task, in every phase, in order, with
-no parallelism. The project's total timeline is simply the sum of every
-task's durationDays. Reducing any one task's estimatedHours therefore
-reduces the OVERALL project timeline by the same number of working days
-that task's own duration drops by.
-
-Location and experienceLevel do not affect timeline at all. Do not change
-either field in response to a timeline command — the only lever is hours.
-
-TASK SELECTION
-
-Prefer changing the hours of exactly ONE task — the single most suitable
-candidate that can absorb the needed reduction. Only touch a second or
-third task if that one task's hours cannot reasonably be reduced enough
-without making its own scope unrealistic (e.g. cutting it to near-zero
-hours).
-
-A task is a reasonable candidate to compress when:
-
-- it is well defined, with clear acceptance criteria
-- it has a large enough duration to meaningfully move the total (a 2-day
-  task cannot realistically absorb a 10-day cut)
-- it can reasonably be scoped down: MVP scoping, removing unnecessary
-  documentation or polish, removing duplicated work, using templates,
-  reusing existing components, using automation, merging overlapping
-  activities, simplifying the deliverable
-
-Prefer to leave unchanged, or compress only slightly, tasks that genuinely
-need the time:
-
-- architecture
-- ambiguous requirements
-- complex integrations
-- high-impact design decisions
-- tasks where mistakes would cause substantial downstream rework
-
-Never reduce a task's hours below what is realistically required to
-achieve its purpose. Do not force an unrealistic cut onto a single task
-just to avoid touching a second one — if no single task can reasonably
-absorb the full reduction, spread it across the smallest number of
-reasonable tasks that can.
-
-LAST RESORT: REMOVE OR CONSOLIDATE
-
-If reducing hours on a small number of reasonable tasks cannot reach the
-target without becoming unrealistic, removing or consolidating a genuinely
-unnecessary task is an acceptable last resort — same principle as when
-optimizing cost. Prefer reducing hours first; only remove or consolidate
-when that alone is not enough.
-
-HARD CONSTRAINT: never remove or consolidate a task if doing so would leave
-its phase with zero tasks. Every phase must retain at least one task in
-the output. If a phase has only one task left, reduce its hours instead of
-removing it, even if that alone cannot fully reach the target.
+To split: name each sibling for its specific piece of work, divide
+estimatedHours between them proportionally to sum close to the original,
+then remove the original task and place both siblings in its phase.
+Inherit location, experienceLevel, and workSchedule unchanged from the
+original — no exceptions. roleTitle is also inherited by default, unless
+one sibling clearly performs a different skill than the other (e.g. a UI
+task vs. an integration task), in which case that sibling's roleTitle may
+differ.
 `;
 
-// ── Smart Assistant scope-quality prompt ─────────────────────────────────
-// Unlike cost/timeline, there is no numeric target here — the goal is
-// identifying a genuinely vague/bundled task and splitting it into two
-// specific sibling tasks in the SAME flat phase.tasks array (the data model
-// has no parent/child task relation — see job-listing-task.entity.ts — so
-// "splitting" always means adding one more entry to the same flat list,
-// never nesting). normalizeProjectScope/normalizeServiceScope silently
-// .slice(0, 5) any phase over the cap, so this is deliberately narrow —
-// exactly one task split into exactly two, hard-gated by the 5-task-per-
-// phase cap, no partial workarounds when a phase is already at the cap —
-// rather than open-ended multi-candidate/multi-sibling decomposition.
-// Shared identically by both workTypes per explicit request.
-const SCOPE_QUALITY_RULES = `
-SCOPE QUALITY MODE
-
-This command has exactly ONE lever: splitting ONE genuinely vague or
-bundled task into exactly TWO specific sibling tasks, within the same
-phase. Nothing else may change.
-
-IDENTIFYING A CANDIDATE TASK
-
-A task is a genuine candidate for splitting when it shows one or more of
-these signals:
-
-- taskName bundles multiple distinct deliverables under one broad label
-  (e.g. "Build checkout" covering UI + payment integration).
-- taskName uses a broad verb + broad noun with no specific deliverable
-  named (e.g. "Build the app", "Do testing").
-- estimatedHours is unusually large for a single task relative to the
-  other tasks in the same phase.
-
-A task is NOT a candidate — leave it completely unchanged — when it
-already names one concrete deliverable or activity, or its estimatedHours
-is modest and in line with its phase's other tasks. Do not split a task
-just because you can technically split it further.
-
-THE 5-TASK-PER-PHASE CAP IS ABSOLUTE
-
-Every phase already has at most 5 tasks (the system-enforced cap).
-Splitting one task into two adds exactly one net task to that phase.
-
-- If a phase already has 5 tasks, it has NO room for a split. Do NOT split
-  any task in that phase, even if a genuinely bundled task exists there —
-  leave every task in that phase completely unchanged.
-- If a phase has fewer than 5 tasks, you may split AT MOST ONE task in
-  that phase. Never split more than one task per phase, even if multiple
-  candidates exist or there is room for more than one net addition.
-- Check headroom independently per phase — one phase being at the cap has
-  no bearing on another phase that has room.
-- If NO phase in the scope has both a genuine candidate task and headroom
-  under the cap, make NO changes at all and say so in the summary.
-
-HOW TO SPLIT A CANDIDATE TASK
-
-1. Identify the two distinct, concrete pieces of work actually bundled
-   inside the task.
-2. Create exactly two new sibling tasks, each with:
-   - taskName: a specific, actionable label naming the concrete deliverable.
-   - roleTitle: the SAME roleTitle as the original task, unless one sibling
-     clearly requires a different skill set.
-   - location, experienceLevel, workSchedule: inherited from the original
-     task, unchanged.
-   - estimatedHours: split the original task's estimatedHours across the
-     two siblings in proportion to the realistic effort of each piece — the
-     two new values must sum to close to the original; do not inflate the
-     total.
-3. Remove the original task from the phase — it is replaced by its two
-   siblings, not kept alongside them.
-4. Place the two new sibling tasks in the same phase, in a sensible order.
-
-Do not touch any task in a phase you are not splitting a task in. Never
-add, remove, or rename a phase. Never change a phase-level field (its
-phaseType, recurrenceSchedule, or recurrenceCount, where the scope type
-has them). Never change a task's location, experienceLevel, or
-workSchedule except the straightforward inheritance in step 2 above.
-
-WORKED EXAMPLE
-
-Original task in a phase that currently has 3 tasks (2 below the 5-task
-cap, so it has room):
-
-  taskName: "Build checkout"
-  roleTitle: "Full-Stack Developer"
-  estimatedHours: 16
-
-Good candidate: broad verb+noun, no specific deliverable named. Split into
-exactly two siblings, same phase, hours redistributed to sum close to the
-original 16:
-
-  1. taskName: "Build checkout UI"
-     roleTitle: "Full-Stack Developer"
-     estimatedHours: 8
-  2. taskName: "Integrate payment gateway"
-     roleTitle: "Full-Stack Developer"
-     estimatedHours: 8
-
-The original "Build checkout" task is removed; only the two siblings
-remain in the phase, which now has 4 tasks — still within the cap.
-`;
 
 @Injectable()
 export class JobListingAiService {
@@ -960,6 +329,10 @@ export class JobListingAiService {
     if (candidate.code) return candidate.code;
     if (candidate.message === "GROQ_API_KEY is not configured")
       return "missing_api_key";
+    if (candidate.message === "GROQ_MODEL is not configured")
+      return "missing_model";
+    if (candidate.message === "GROQ_RESPONSE_TRUNCATED")
+      return "truncated_response";
     if (candidate instanceof SyntaxError) return "invalid_json_response";
     return candidate.name ?? "unknown";
   }
@@ -1317,7 +690,10 @@ export class JobListingAiService {
 
       const apiUrl =
         this.config.get<string>("GROQ_API_URL") ?? this.defaultApiUrl;
-      const model = this.config.get<string>("GROQ_MODEL") ?? DEFAULT_GROQ_MODEL;
+      const model = this.config.get<string>("GROQ_MODEL");
+      if (!model) {
+        throw new Error("GROQ_MODEL is not configured");
+      }
       const maxTokens =
         options.maxTokens ??
         this.configNumber("GROQ_MAX_TOKENS", DEFAULT_GROQ_MAX_TOKENS);
@@ -1343,7 +719,21 @@ export class JobListingAiService {
         }),
       );
 
-      const raw = response.data.choices[0].message.content;
+      const choice = response.data.choices[0];
+      // finish_reason "length" means Groq stopped generating because it hit
+      // max_tokens, not because it finished the JSON object. The cut-off
+      // text can still happen to be well-formed JSON (e.g. truncated right
+      // after updatedScope's closing brace, before summary/suggestions were
+      // ever written) — parseGroqJson would accept that silently as a
+      // complete, valid result. Checking finish_reason catches this
+      // regardless of whether the truncated text happens to parse, so a
+      // half-finished response surfaces as AI_UNAVAILABLE instead of being
+      // returned to the caller as if it were complete.
+      if (choice.finish_reason === "length") {
+        throw new Error("GROQ_RESPONSE_TRUNCATED");
+      }
+
+      const raw = choice.message.content;
       const latencyMs = Date.now() - startMs;
       this.logger.log(
         `jl_ai_generation_latency_ms type=${generationType} latency=${latencyMs}`,
@@ -1518,7 +908,7 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
               '{ "phases": [{ "phaseName": "string", "tasks": [{ "taskName": "string", ' +
               '"roleTitle": "string", "location": "string", "experienceLevel": "string", ' +
               '"workSchedule": "full_time|part_time", "estimatedHours": number }] }] }. ' +
-              "Maximum 10 phases. Maximum 5 tasks per phase. " +
+              "Maximum 5 phases. Maximum 5 tasks per phase. " +
               `experienceLevel must be one of: ${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}. ` +
               `location must be one of these countries: ${VALID_COUNTRIES_PROMPT_LIST}. ` +
               "estimatedHours must be a positive number. Do not include markdown or prose.",
@@ -1570,7 +960,7 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
               '"roleTitle": "string", "location": "string", "experienceLevel": "string", ' +
               '"workSchedule": "full_time|part_time", "estimatedHours": number }] }] }. ' +
               "Rules: Exactly one setup phase (first). One or more recurring phases (middle). " +
-              "Exactly one ongoing phase (last). Maximum 10 phases total. Maximum 5 tasks per phase. " +
+              "Exactly one ongoing phase (last). Maximum 5 phases total. Maximum 5 tasks per phase. " +
               "setup and ongoing phases have recurrenceSchedule: null and recurrenceCount: null. " +
               "recurring phases must have recurrenceSchedule and recurrenceCount >= 1. " +
               "Do not include a duration field — services have no fixed end date. " +
@@ -1614,13 +1004,13 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
       ? "You generate a complete service scope from a brief description. The client is unsure " +
         "what they need beyond the basic description. Make reasonable assumptions. " +
         'Respond only with a JSON object: { "phases": [...] } following the service scope structure ' +
-        "(one setup, one or more recurring, one ongoing). Maximum 8 phases. Maximum 5 tasks per phase. " +
+        "(one setup, one or more recurring, one ongoing). Maximum 5 phases. Maximum 5 tasks per phase. " +
         "Include role, location, experienceLevel, workSchedule, estimatedHours on every task. " +
         `experienceLevel must be one of: ${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}.`
       : "You generate a complete project scope from a brief description. The client is unsure " +
         "what they need beyond the basic description. Make reasonable assumptions. " +
         'Respond only with a JSON object: { "phases": [...] } following the project scope structure. ' +
-        "Maximum 8 phases. Maximum 5 tasks per phase. " +
+        "Maximum 5 phases. Maximum 5 tasks per phase. " +
         "Include role, location, experienceLevel, workSchedule, estimatedHours on every task. " +
         `experienceLevel must be one of: ${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}.`;
 
@@ -1837,24 +1227,13 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
 
   // Builds the system prompt for handleSmartAssistantScopeEdit. Cost-related
   // commands ("reduce the budget", "make it cheaper", ...) get
-  // COST_OPTIMIZATION_RULES_PROJECT or COST_OPTIMIZATION_RULES_SERVICE
-  // appended, branched on workType (currently identical content — split so
-  // they can diverge independently later) — the multiplier tables and
-  // decision rules that keep the model from just racing every task to
-  // junior/cheapest region/minimum hours/zero tasks. Timeline-shortening
-  // commands get
-  // TIMELINE_OPTIMIZATION_RULES, and scope-quality commands ("Improve scope
-  // quality", "add more detail", ...) get SCOPE_QUALITY_RULES (same content
-  // for both workTypes — see its own comment) — each independently of the
-  // others, so a command could in principle match more than one and get
-  // multiple blocks appended. Non-matching commands (e.g. "add a QA phase")
-  // skip all three to keep the prompt short and on-topic.
-  // Shared with handleSmartAssistantScopeEdit, which uses the same checks to
-  // decide maxTokens — a cost-optimization command needs more careful,
-  // multi-task arithmetic to hit its reduction target than a simple
-  // structural edit does, and a scope-quality command's decomposition grows
-  // the expected JSON output. Single source of truth so the two never
-  // disagree on what counts as which kind of command.
+  // REDUCE_BUDGET_RULES appended, timeline-shortening commands get
+  // SHORTEN_TIMELINE_RULES, and scope-quality commands ("Improve scope
+  // quality", "add more detail", ...) get IMPROVE_SCOPE_RULES — each
+  // identical for both project and service scopes, appended independently
+  // of the others, so a command could in principle match more than one.
+  // Non-matching commands (e.g. "add a QA phase") skip all three to keep
+  // the prompt short and on-topic.
   private isCostOptimizationCommand(command: string): boolean {
     return /\b(reduce|lower|cut|optimi[sz]e|decrease|save)\b.*\b(cost|costs|budget|spend|spending)\b|\bcheaper\b/i.test(
       command,
@@ -1879,8 +1258,7 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
   // Independent of isCostOptimizationCommand and isTimelineShorteningCommand
   // — a command could theoretically match more than one; buildSmartAssistant-
   // Prompt appends whichever blocks match, same pattern cost+timeline already
-  // use today. Shared with handleSmartAssistantScopeEdit's maxTokens gate —
-  // decomposition grows both the prompt and the expected JSON output.
+  // use today.
   private isScopeQualityCommand(command: string): boolean {
     return /\b(improve|increase|add|more)\b.*\b(scope|detail|granularity|specificity)\b|\b(break\s*down|breakdown|expand)\b.*\b(tasks?|scope)\b|\bmore\s+(detailed|granular|specific)\b|\bsplit\b.*\btasks?\b/i.test(
       command,
@@ -1890,8 +1268,6 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
   private buildSmartAssistantPrompt(input: {
     command: string;
     workType: "project" | "service";
-    currentTotalBudgetUsdCents?: number;
-    currentTotalTimelineDays?: number;
   }): string {
     const isCostOptimization = this.isCostOptimizationCommand(input.command);
     const isTimelineShortening = this.isTimelineShorteningCommand(
@@ -1899,221 +1275,55 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
     );
     const isScopeQuality = this.isScopeQualityCommand(input.command);
 
-    // Whether the command already names a target — a percentage, a dollar
-    // amount, or a fraction like "in half" — as opposed to just "reduce the
-    // budget" with no target at all. Only the latter gets the default target
-    // below; an explicit target in the command always wins.
-    const hasExplicitReductionTarget =
-      /\d+(\.\d+)?\s*(%|percent)|\$\s*\d|\bby\s+\$?\d|\bto\s+\$?\d|\bin half\b|\bhalve[ds]?\b|\bdouble\b|\btriple\b|\bquarter\b/i.test(
-        input.command,
-      );
-
-    // Same idea, for a timeline target (days/weeks/months instead of a
-    // dollar amount) — "shorten the timeline by 2 weeks" vs. just "shorten
-    // the project timeline" with no target named.
-    const hasExplicitTimelineTarget =
-      /\d+(\.\d+)?\s*(%|percent)|\d+(\.\d+)?\s*(day|days|week|weeks|month|months)|\bby\s+\d|\bto\s+\d|\bin half\b|\bhalve[ds]?\b|\bdouble\b|\btriple\b|\bquarter\b/i.test(
-        input.command,
-      );
+    const serviceRule =
+      input.workType === "service"
+        ? `
+- Service scopes have no fixed end date: never shorten a service's overall
+  timeline, and never change an existing phase's phaseType.`
+        : "";
 
     let prompt = `
-You are a Smart Assistant that edits project scopes based on natural-language commands.
+You are a Smart Assistant that edits ${input.workType} scopes based on
+natural-language commands. Act as an experienced Product Manager and
+Delivery Planner.
 
-Act as an experienced Product Manager and Delivery Planner.
-
-Respond ONLY with a valid JSON object:
+Respond ONLY with a valid JSON object, with the keys in this exact order:
 
 {
-  "updatedScope": {...},
   "summary": "string",
-  "suggestions": ["string"]
+  "suggestions": ["string"],
+  "updatedScope": {...}
 }
 
-GENERAL RULES:
+Write "summary" and "suggestions" FIRST, before "updatedScope". summary is
+REQUIRED and must never be omitted or left blank — it must name exactly
+which tasks or fields you changed and what you changed them to (e.g.
+"Changed 'Set up database schema' from Poland/medior to South Asia/junior;
+changed 'Configure environment' from 12 to 9 hours"), not a vague
+restatement of the command.
 
-- Preserve fields unless changing them is reasonably necessary to satisfy the command.
-- Do not make unrelated changes.
-- Preserve existing IDs.
-- Never exceed 10 phases or 5 tasks per phase.
-- Never reduce a phase's task list to zero, even under cost or timeline
-  optimization — every phase must retain at least one task after your edit.
-  Remove a phase entirely only if the command explicitly asks to remove that
-  phase.
-- Keep the resulting scope realistic and internally consistent.
-- Consider relationships between tasks and phases.
-- Do not treat each task as an isolated row.
-- Do not invent unsupported enum values.
-- summary must be a detailed description of what changed exactly.
-- suggestions must contain 2-3 useful follow-up actions.
+RULES:
+- Preserve every field unless the command requires changing it. Preserve all IDs.
+- Never exceed 5 phases or 5 tasks per phase.
+- Don't add, remove, or reorder a phase or task unless the command clearly
+  asks for it; if you do remove a task, never leave a phase with zero tasks.
+- suggestions must contain 2-3 useful follow-up actions.${serviceRule}
 `;
-
-    if (input.workType === "service") {
-      prompt += `
-SERVICE RULES:
-
-- Service scopes have no fixed completion date.
-- Do not shorten an overall service timeline.
-- Do not change phaseType on existing service phases.
-`;
-    }
 
     if (isCostOptimization) {
-      prompt +=
-        input.workType === "service"
-          ? `\n${COST_OPTIMIZATION_RULES_SERVICE}`
-          : `\n${COST_OPTIMIZATION_RULES_PROJECT}`;
-
-      if (!hasExplicitReductionTarget) {
-        const currentBudgetUsd =
-          typeof input.currentTotalBudgetUsdCents === "number" &&
-          input.currentTotalBudgetUsdCents > 0
-            ? input.currentTotalBudgetUsdCents / 100
-            : undefined;
-
-        prompt +=
-          currentBudgetUsd !== undefined
-            ? `
-DEFAULT REDUCTION TARGET
-
-The command did not specify how much to reduce cost by (no percentage,
-dollar amount, or fraction such as "in half").
-
-Current total budget: $${currentBudgetUsd.toFixed(2)}
-Target total budget: approximately $${(currentBudgetUsd * 0.8).toFixed(2)} (a 20% reduction) — a real dollar figure, not the relative cost unit used elsewhere in this prompt.
-
-The scope below does not include real per-task hourly rates, so you cannot
-compute each task's exact dollar cost. Instead:
-
-1. Compute the scope's current total relative cost as the sum, across every
-   task, of hours × locationMultiplier × experienceMultiplier.
-2. Treat that relative-cost total as corresponding to the real current
-   budget above ($${currentBudgetUsd.toFixed(2)}) — i.e. reducing the relative-cost
-   total by roughly 20% should correspond to roughly a 20% reduction in the
-   real total.
-3. Use the real dollar figures above as a sanity check on the SCALE of
-   change needed (e.g. a large budget with many tasks likely needs changes
-   spread across several tasks; a small one may need only one), not as a
-   number to hit exactly.
-
-Stop making changes once you estimate you are close to the target — do not
-keep minimizing cost further, and do not land significantly below the
-target.
-
-This 20% default applies ONLY because no target was specified. If the
-command gives an explicit target (a percentage, a dollar amount, "in half",
-etc.), follow that target instead and ignore this default.
-`
-            : `
-DEFAULT REDUCTION TARGET
-
-The command did not specify how much to reduce cost by (no percentage,
-dollar amount, or fraction such as "in half").
-
-Compute the scope's current total relative cost as the sum, across every
-task, of:
-
-  hours × locationMultiplier × experienceMultiplier
-
-Target a new total relative cost of approximately 80% of that value — a
-reduction of roughly 20%. Do not go meaningfully below that target. Stop
-once you are close to it rather than continuing to minimize cost further.
-
-This 20% default applies ONLY because no target was specified. If the
-command gives an explicit target (a percentage, a dollar amount, "in half",
-etc.), follow that target instead and ignore this default.
-`;
-      }
+      prompt += `\n${REDUCE_BUDGET_RULES}`;
     }
 
     // Only reachable for project scopes — handleSmartAssistantScopeEdit
     // rejects timeline-shortening commands for services before the prompt
     // is ever built.
     if (isTimelineShortening) {
-      prompt += `\n${TIMELINE_OPTIMIZATION_RULES}`;
-
-      if (!hasExplicitTimelineTarget) {
-        const currentDays =
-          typeof input.currentTotalTimelineDays === "number" &&
-          input.currentTotalTimelineDays > 0
-            ? input.currentTotalTimelineDays
-            : undefined;
-
-        prompt +=
-          currentDays !== undefined
-            ? `
-DEFAULT TIMELINE REDUCTION TARGET
-
-The command did not specify how much to shorten the timeline by (no
-percentage, day/week/month amount, or fraction such as "in half").
-
-Current total timeline: ${currentDays} working days
-Target total timeline: approximately ${Math.round(currentDays * 0.8)} working days (a 20% reduction)
-
-Since every task's duration is ceil(estimatedHours / hoursPerDay) and the
-schedule is fully sequential, this is direct: the reduction in estimatedHours
-you make (converted to working days) should sum to roughly ${currentDays - Math.round(currentDays * 0.8)} working days
-across the task(s) you change.
-
-Stop once you estimate you are close to the target — do not keep cutting
-hours further, and do not land significantly below the target.
-
-This 20% default applies ONLY because no target was specified. If the
-command gives an explicit target (a percentage, a day/week/month amount,
-"in half", etc.), follow that target instead and ignore this default.
-`
-            : `
-DEFAULT TIMELINE REDUCTION TARGET
-
-The command did not specify how much to shorten the timeline by (no
-percentage, day/week/month amount, or fraction such as "in half").
-
-Compute the scope's current total timeline as the sum, across every task,
-of ceil(estimatedHours / hoursPerDay).
-
-Target a new total of approximately 80% of that value — a reduction of
-roughly 20%. Do not go meaningfully below that target. Stop once you are
-close to it rather than continuing to cut hours further.
-
-This 20% default applies ONLY because no target was specified. If the
-command gives an explicit target (a percentage, a day/week/month amount,
-"in half", etc.), follow that target instead and ignore this default.
-`;
-      }
+      prompt += `\n${SHORTEN_TIMELINE_RULES}`;
     }
 
     if (isScopeQuality) {
-      prompt += `\n${SCOPE_QUALITY_RULES}`;
+      prompt += `\n${IMPROVE_SCOPE_RULES}`;
     }
-
-    // Unconditional, appended last (models weight instructions near the end
-    // of a long prompt more heavily than ones buried earlier — the phase-
-    // preservation rule already stated above in GENERAL RULES, and again in
-    // COST_OPTIMIZATION_RULES_SERVICE/PROJECT and TIMELINE_OPTIMIZATION_RULES,
-    // was still violated in production: a service-scope "Reduce the budget"
-    // command emptied the Ongoing phase entirely despite an explicit "Do NOT
-    // remove or consolidate any task" rule earlier in the same prompt). This
-    // is a final, explicit self-check immediately before the model writes
-    // its JSON response.
-    prompt += `
-FINAL CHECK BEFORE YOU RESPOND
-
-Before writing your JSON response, count the tasks in each phase of
-updatedScope.
-
-If any phase has zero tasks — including a phase that started with tasks
-and had all of them removed — your response is INVALID. Go back and keep
-at least one task in that phase before responding. This applies regardless
-of a phase's type or name, and regardless of command type, including cost
-optimization and timeline optimization. No reduction target, optimization
-goal, or command justifies a phase with zero tasks. This check overrides
-every other instruction above.
-
-Also verify updatedScope.phases contains no phase you invented that isn't
-a direct edit of a phase already present in the current scope above,
-unless the command explicitly asked you to add a phase. Every phase in
-your response must have a real, specific phaseName — never leave phaseName
-blank or generic filler.
-`;
 
     return prompt;
   }
@@ -2122,18 +1332,6 @@ blank or generic filler.
     command: string;
     currentScope: GeneratedProjectScope | GeneratedServiceScope;
     workType: "project" | "service";
-    // Real current total budget in USD cents. Normally passed straight
-    // through from the client, which already computed it to render the
-    // current budget on screen; the controller only falls back to
-    // computing it itself (a pricing-service round trip per task) when the
-    // client didn't send one. Lets the default 20%-reduction target (below)
-    // anchor to a real dollar figure instead of a purely abstract one.
-    currentTotalBudgetUsdCents?: number;
-    // Real current total project timeline in working days. Same pass-
-    // through pattern as currentTotalBudgetUsdCents, but the controller's
-    // fallback here is a cheap synchronous sum (calculateTotalWorkingDays),
-    // not a pricing-service round trip.
-    currentTotalTimelineDays?: number;
   }): Promise<{
     updatedScope: GeneratedProjectScope | GeneratedServiceScope;
     summary: string;
@@ -2159,8 +1357,6 @@ blank or generic filler.
     const systemPrompt = this.buildSmartAssistantPrompt({
       command: input.command,
       workType: input.workType,
-      currentTotalBudgetUsdCents: input.currentTotalBudgetUsdCents,
-      currentTotalTimelineDays: input.currentTotalTimelineDays,
     });
 
     // GROQ_REASONING_EFFORT's reasoning trace can consume most of a smaller
