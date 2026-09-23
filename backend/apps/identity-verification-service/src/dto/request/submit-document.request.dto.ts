@@ -16,6 +16,13 @@ export class SubmitDocumentRequestDto {
   })
   documentType!: DocumentType;
 
+  // Display-only, never used for gate/business logic (TRVG2 §1.4).
+  // documentType above remains the canonical, vendor-aligned value.
+  @IsOptional()
+  @IsString()
+  @Length(1, 100)
+  documentTypeLabel?: string;
+
   @IsString()
   @Length(2, 2)
   @Matches(/^[A-Z]{2}$/, { message: 'issuingCountry must be a 2-letter uppercase ISO country code' })
@@ -25,10 +32,14 @@ export class SubmitDocumentRequestDto {
   @Length(1, 64)
   documentNumber!: string;
 
+  // Required for every document type except drivers_licence, where Figma marks
+  // it optional. When supplied for a drivers_licence too, it must still pass
+  // the same format and not-past-date checks as every other document type.
+  @ValidateIf((o) => o.documentType !== DocumentType.DRIVERS_LICENCE || o.expirationDate !== undefined)
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'expirationDate must be in YYYY-MM-DD format' })
   @IsNotPastDate()
-  expirationDate!: string;
+  expirationDate?: string;
 
   @ValidateIf((o) => o.documentType === DocumentType.DRIVERS_LICENCE)
   @IsString()

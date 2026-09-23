@@ -120,6 +120,15 @@ export const ERROR_CODE_CATALOG: readonly ErrorCatalogEntry[] = [
     messagingNote: 'Caller is Didit — message is generic and safe.',
   },
   {
+    code: 'RATE_LIMITED',
+    httpStatus: 429,
+    meaning: 'Too many requests to a rate-limited endpoint in the current window.',
+    source: 'TRVG2 §6.2 — POST .../documents must be rate-limited to prevent probing which documents exist in the system. No threshold is specified by any source; this pass follows the same @nestjs/throttler convention already used by favorites-service.',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message is a plain, user-safe sentence and does not reveal the configured threshold.',
+  },
+  {
     code: 'REQUEST_FAILED',
     httpStatus: 'varies',
     meaning: 'Fallback for any NestJS HttpException not covered by the codes above.',

@@ -8,6 +8,7 @@ import { IdentityDocument } from '../../entities/identity-document.entity';
 export class DocumentResponseDto {
   id!: string;
   documentType!: DocumentType;
+  documentTypeLabel!: string | null;
   issuingCountry!: string;
   expirationDate!: string;
   issuingState!: string | null;
@@ -20,6 +21,7 @@ export class DocumentResponseDto {
     const dto = new DocumentResponseDto();
     dto.id = document.id;
     dto.documentType = document.documentType;
+    dto.documentTypeLabel = document.documentTypeLabel;
     dto.issuingCountry = document.issuingCountry;
     dto.expirationDate = document.expirationDate;
     dto.issuingState = document.issuingState;
