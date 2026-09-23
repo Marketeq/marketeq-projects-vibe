@@ -338,6 +338,16 @@ export class PayoutService {
       }
     }
 
+    // The external first-payout hold kyc-identity-service signals (PS-00 §5).
+    // checkGate() above only computes the local, payout-history-based hold, so
+    // without this the pre-flight gate-check (which honours both) would show
+    // "on hold" while submit went straight through. Checked last, after the
+    // tiers, to match the pre-flight order.
+    if (kyc.firstPayoutHold) {
+      throw new PayoutError('Your first payout is on hold. This is a standard verification step.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_FIRST_HOLD');
+    }
+
     // Calculate fee — instant-speed surcharge (PS-19) plus, for
     // international BANK_MANUAL methods, PS-34 §3's country-based transfer
     // fee (both contractor-paid, both shown before the contractor already
