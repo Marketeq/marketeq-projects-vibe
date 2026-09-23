@@ -550,7 +550,7 @@ function ForgotPassword() {
                         key={id}
                         type="button"
                         onClick={() => handleRecoverySelect(id)}
-                        variant="ghost"
+                        variant="outlined"
                         visual="gray"
                         size="sm"
                         className="flex h-[68px] w-full items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
