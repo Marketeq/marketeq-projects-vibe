@@ -85,6 +85,24 @@ export class PayoutService {
     // AC-30.04: KYC service unreachable → fail-closed, never fail-open.
     if (kyc.tier === 'unknown') return { allowed: false, blockedBy: 'KYC_SERVICE_UNAVAILABLE' };
     if (kyc.suspended) return { allowed: false, blockedBy: 'ACCOUNT_SUSPENDED' };
+
+    // PS-15 §3.1/§7 checks 1-2: account-level tiers, checkable before the
+    // contractor has picked a method (Tier 3 is method-scoped — checked in
+    // initiate() once dto.depositMethodId exists, not here). Additive
+    // alongside the kyc.status checks below, which come from a different,
+    // already-integrated field this pre-flight endpoint also honors.
+    // Caught rather than left to propagate — this endpoint's contract is
+    // "always return a structured { allowed, blockedBy } body," never a
+    // thrown 503, and getGateStatus() throws independently of the kyc.tier
+    // check above (a separate network call that can fail on its own).
+    try {
+      const gateStatus = await this.kycClient.getGateStatus(contractorId);
+      if (gateStatus.tier1.blocksWithdrawal) return { allowed: false, blockedBy: 'TIER_1' };
+      if (gateStatus.tier2.blocksWithdrawal) return { allowed: false, blockedBy: 'TIER_2' };
+    } catch {
+      return { allowed: false, blockedBy: 'KYC_SERVICE_UNAVAILABLE' };
+    }
+
     // Doc08 ERR-35/36/37: identity-review status, when kyc-identity-service
     // returns one — undefined `status` (current MVP contract) falls through to
     // the existing tier-based checks below rather than blocking on absence,
@@ -223,16 +241,45 @@ export class PayoutService {
 
     await this.checkReserveBalance(contractorId, requestedAmount, parseFloat(balance.availableBalance), dto.ignoreReserve);
 
-    // PS-19 §3.4: KYC check at initiation — kept consistent with checkGate() so a
-    // contractor who passes the pre-flight gate can't still be blocked here (or
-    // vice versa) by two different hold computations.
+    // PS-15 §3.2/§7: the real tiered gate — checkGate() throws for
+    // suspended/service-unavailable and returns { allowed: false,
+    // blockedBy: 'TIER_1'|'TIER_2'|'TIER_3'|'FIRST_PAYOUT_HOLD' } for
+    // everything else. This used to be an ad-hoc, non-tiered check against
+    // a different (already-integrated) status field — PS-15's own error
+    // codes (ERR_KYC_TIER1_REQUIRED/TIER2_REQUIRED/TIER3_REQUIRED) never
+    // existed anywhere in code. Tier1/Tier2 are new here; Tier3 and the
+    // first-payout hold were already correctly gated below and are now
+    // folded into the same single check instead of two separate ones.
+    const gate = await this.kycGateService.checkGate(contractorId, dto.depositMethodId);
+    if (!gate.allowed) {
+      switch (gate.blockedBy) {
+        case 'TIER_1':
+          throw new PayoutError('You need to complete identity verification before you can withdraw funds.',
+            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER1_REQUIRED');
+        case 'TIER_2':
+          throw new PayoutError('You need to add your tax information before you can withdraw funds.',
+            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER2_REQUIRED', { subType: gate.tier2SubType });
+        case 'TIER_3':
+          throw new PayoutError('This bank account has not been verified yet.',
+            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER3_REQUIRED', { depositMethodId: gate.depositMethodId });
+        case 'FIRST_PAYOUT_HOLD':
+          throw new PayoutError(
+            'Your first payout is on hold. This is a standard verification step.',
+            HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_FIRST_HOLD', { holdReleasesAt: gate.holdReleasesAt });
+      }
+    }
+
+    // Legacy checks, kept as a secondary net: kyc.status/firstPayoutHold
+    // come from KycClient.getStatus()'s separate, already-integrated flat
+    // contract (a different field set than the tiered gate above) — not
+    // removed since another caller populating `status` in production
+    // shouldn't lose this check just because the tiered gate above doesn't
+    // independently know about it yet.
     const kyc = await this.kycClient.getStatus(contractorId);
-    const hold = await this.kycGateService.checkFirstPayoutHold(contractorId);
     if (kyc.suspended) {
       throw new PayoutError('Your account is suspended.',
         HttpStatus.FORBIDDEN, 'ERR_PAYOUT_ACCOUNT_SUSPENDED');
     }
-    // ERR-35/36/37: kept consistent with checkGate() — see comment there.
     if (kyc.status === 'not_started') {
       throw new PayoutError('You need to complete identity verification before you can withdraw funds.',
         HttpStatus.FORBIDDEN, 'ERR_KYC_NOT_STARTED');
@@ -245,7 +292,7 @@ export class PayoutService {
       throw new PayoutError('Your identity verification was unsuccessful. Please contact support for assistance.',
         HttpStatus.FORBIDDEN, 'ERR_KYC_REJECTED', { rejectionReason: kyc.rejectionReason });
     }
-    if (kyc.firstPayoutHold || hold.holdActive) {
+    if (kyc.firstPayoutHold) {
       throw new PayoutError(
         'Your first payout is on hold. This is a standard verification step.',
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_FIRST_HOLD');

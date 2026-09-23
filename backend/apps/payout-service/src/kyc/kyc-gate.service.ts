@@ -50,7 +50,9 @@ export class KycGateService {
     contractorId: string,
     depositMethodId: string,
   ): Promise<KycGateResult> {
-    // Fetch KYC status from kyc-identity-service
+    // Fetch KYC status from kyc-identity-service — old flat contract, still
+    // used here only for the account-suspended flag (a different field this
+    // service's other callers also rely on; not part of PS-15's tier system).
     const kyc = await this.kycClient.getStatus(contractorId);
 
     // If KYC service is down (tier=unknown), block for safety
@@ -71,15 +73,67 @@ export class KycGateService {
       );
     }
 
+    // PS-15 §3.1/§3.2/§7: the real tiered gate-status contract.
+    // getGateStatus() throws ERR_KYC_SERVICE_UNAVAILABLE itself on failure
+    // (once KYC_SERVICE_URL is configured) — not caught here, propagates up
+    // per §8's "withdrawal blocked as safe default."
+    const gateStatus = await this.kycClient.getGateStatus(contractorId);
+
     // ── Check 1: Tier 1 — Government ID (PS-15 §4.1) ──
-    // In dev mode (tier='basic'), we treat as verified
-    // In production, kyc-identity-service would return full tier data
-    // For now, tier='basic' means Tier 1 passed (dev mode)
+    if (gateStatus.tier1.blocksWithdrawal) {
+      return {
+        allowed: false,
+        blockedBy: 'TIER_1',
+        tier1Status: gateStatus.tier1.status,
+        screenContent: {
+          title: 'Verify your identity to withdraw',
+          body: 'Before you can withdraw your earnings, we need to verify your identity. This is a one-time step required by financial regulations.',
+          cta: 'Verify my identity',
+        },
+      };
+    }
 
     // ── Check 2: Tier 2 — Tax Identity (PS-15 §4.2/§4.3) ──
-    // In dev mode, skip. In production, check tier2 from gate-status endpoint
+    if (gateStatus.tier2.blocksWithdrawal) {
+      return {
+        allowed: false,
+        blockedBy: 'TIER_2',
+        tier2Status: gateStatus.tier2.status,
+        tier2SubType: gateStatus.tier2.subType ?? undefined,
+        screenContent: gateStatus.tier2.subType === 'w8ben'
+          ? {
+              title: 'Complete your tax certification to withdraw',
+              body: 'International contractors must complete a W-8BEN form to certify their non-US tax status. This is required by US tax law before any payments can be made.',
+              cta: 'Complete W-8BEN',
+            }
+          : {
+              title: 'Add your tax information to withdraw',
+              body: 'US contractors must provide a Social Security Number (SSN) or Individual Taxpayer Identification Number (ITIN) before withdrawing. This is required for IRS 1099 reporting.',
+              cta: 'Add tax information',
+            },
+      };
+    }
 
     // ── Check 3: Tier 3 — Bank ownership (method-scoped, PS-15 §4.4) ──
+    // Two sources merged: kyc-identity-service's own per-method tier3 status
+    // (once it reports one for this depositMethodId) and the existing local
+    // verificationStatus check (already correct today — a BANK_STRIPE/
+    // BANK_MANUAL method's own micro-deposit/Financial-Connections state IS
+    // the tier3 signal until kyc-identity-service independently tracks it).
+    const remoteTier3 = gateStatus.tier3.methods[depositMethodId];
+    if (remoteTier3?.blocksWithdrawal) {
+      return {
+        allowed: false,
+        blockedBy: 'TIER_3',
+        tier3Status: remoteTier3.status,
+        depositMethodId,
+        screenContent: {
+          title: 'Verify your bank account to withdraw',
+          body: 'Before sending funds to your bank account, we need to confirm you own it.',
+          cta: 'Enter deposit amounts',
+        },
+      };
+    }
     const method = await this.methodRepo.findOne({ where: { id: depositMethodId } });
     if (method) {
       const isBankMethod = method.methodType === MethodType.BANK_STRIPE || method.methodType === MethodType.BANK_MANUAL;
