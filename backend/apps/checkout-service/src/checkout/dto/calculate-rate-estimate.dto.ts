@@ -22,6 +22,11 @@ export class CheckoutRateSelectionDto {
   @IsString()
   @MaxLength(100)
   location?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  roleTitle?: string;
 }
 
 export class CalculateRateEstimateDto {

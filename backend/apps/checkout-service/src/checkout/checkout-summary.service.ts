@@ -166,6 +166,17 @@ export class CheckoutSummaryService {
       }
     }
 
+    for (const selection of selections) {
+      const roleKey = normalizeRoleKey(selection.roleKey);
+      if (groups.has(roleKey) || !selection.roleTitle) continue;
+      groups.set(roleKey, {
+        roleTitle: selection.roleTitle,
+        experience: selection.experience ?? null,
+        location: selection.location ?? null,
+        estimatedHours: 0,
+      });
+    }
+
     if (groups.size === 0) {
       return { listingId, rates: [] };
     }

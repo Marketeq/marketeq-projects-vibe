@@ -13,6 +13,8 @@ interface UserProfileUpdatedFields {
   lastName?: string;
   bio?: string | Record<string, any>;
   location?: string;
+  headline?: string;
+  avatarUrl?: string;
   timezone?: string;
   availability?: string;
   rate?: number;
@@ -37,6 +39,105 @@ export function extractProfileUpdatedEvent(
   const data = outer.data as UserProfileUpdatedFields;
   if (!data || !data.id || !data.username) return null;
   return data;
+}
+
+function sanitizeSkills(skills?: any[]): { name: string }[] | undefined {
+  if (!Array.isArray(skills)) return undefined;
+  const seen = new Set<string>();
+  const result: { name: string }[] = [];
+  for (const s of skills) {
+    const name =
+      typeof s === 'string' ? s.trim() : typeof s?.name === 'string' ? s.name.trim() : '';
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ name });
+  }
+  return result.length > 0 ? result : undefined;
+}
+
+// LinkedIn-imported dates are freeform strings ("Jan 2026", "Part"/"time",
+// "Seasonal") — only pass through what actually parses as a real, non-future
+// date, since the collection's own validators throw on anything else and
+// would fail the whole sync.
+function sanitizeDate(value: any): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const parsed = new Date(value.trim());
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  if (parsed.getTime() > Date.now()) return undefined;
+  return parsed.toISOString();
+}
+
+function sanitizeWorkExperience(items?: any[]): any[] | undefined {
+  if (!Array.isArray(items)) return undefined;
+  const result = items
+    .filter(
+      (w) =>
+        typeof w?.role === 'string' &&
+        w.role.trim() &&
+        typeof w?.company === 'string' &&
+        w.company.trim(),
+    )
+    .map((w) => {
+      const startDate = sanitizeDate(w.startDate);
+      let endDate = sanitizeDate(w.endDate);
+      if (startDate && endDate && new Date(endDate) < new Date(startDate)) {
+        endDate = undefined;
+      }
+      return {
+        role: w.role.trim(),
+        company: w.company.trim(),
+        startDate,
+        endDate,
+        description:
+          typeof w.description === 'string' && w.description.trim()
+            ? w.description.trim()
+            : undefined,
+      };
+    });
+  return result.length > 0 ? result : undefined;
+}
+
+// Real usernames carry characters the collection's own regex rejects (e.g. a
+// leading "@"). Strip anything outside [a-z0-9._-] rather than letting the
+// collection's beforeValidate hook throw and nack the message forever.
+function sanitizeUsername(username: string, fallbackId: string): string {
+  const cleaned = username.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+  return cleaned.length >= 3 ? cleaned : `talent-${fallbackId.slice(0, 8)}`;
+}
+
+const VALID_AVAILABILITY_VALUES = new Set(['10', '20', '30', '40']);
+
+// user-service allows freeform/other availability values (e.g. "CUSTOM") that
+// aren't in the CMS collection's fixed select options — passing one through
+// throws a Postgres enum error and nacks forever.
+function sanitizeAvailability(value: any): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  return VALID_AVAILABILITY_VALUES.has(value) ? value : undefined;
+}
+
+function buildJobTitles(
+  event: UserProfileUpdatedFields,
+): { headline: string; rate: number }[] | undefined {
+  if (Array.isArray(event.jobTitles) && event.jobTitles.length > 0) {
+    const mapped = event.jobTitles
+      .filter((jt: any) => typeof jt?.headline === 'string' && jt.headline.trim())
+      .map((jt: any) => ({
+        headline: jt.headline.trim(),
+        rate: Number.isInteger(jt.rate) ? jt.rate : 0,
+      }));
+    if (mapped.length > 0) return mapped;
+  }
+  if (typeof event.headline === 'string' && event.headline.trim()) {
+    return [
+      {
+        headline: event.headline.trim(),
+        rate: Number.isInteger(event.rate) ? (event.rate as number) : 0,
+      },
+    ];
+  }
+  return undefined;
 }
 
 export class UserEventConsumer {
@@ -105,13 +206,27 @@ export class UserEventConsumer {
       overrideAccess: true,
     });
 
+    const username = sanitizeUsername(event.username, event.id);
+
     const data: Record<string, any> = {
-      username: event.username,
+      username,
       firstName: event.firstName || event.username,
-      lastName: event.lastName || '',
-      availability: event.availability,
-      rate: event.rate,
+      // lastName is required and can't be an empty string — some real users
+      // never entered one (e.g. OAuth signups that only capture a first name).
+      lastName: event.lastName || event.username || 'Talent',
+      availability: sanitizeAvailability(event.availability),
+      location: typeof event.location === 'string' && event.location.trim() ? event.location.trim() : undefined,
+      avatarUrl: typeof event.avatarUrl === 'string' && event.avatarUrl.trim() ? event.avatarUrl.trim() : undefined,
     };
+
+    const jobTitles = buildJobTitles(event);
+    if (jobTitles) data.jobTitles = jobTitles;
+
+    const skills = sanitizeSkills(event.skills);
+    if (skills) data.skills = skills;
+
+    const workExperience = sanitizeWorkExperience(event.workExperience);
+    if (workExperience) data.workExperience = workExperience;
 
     // Handle overview/bio (Lexical or string)
     if (event.bio) {
@@ -154,14 +269,14 @@ export class UserEventConsumer {
         context: { skipSync: true },
       });
       this.payload.logger.info(
-        `[UserEventConsumer] updated talent profile ${event.username} (id=${docId})`,
+        `[UserEventConsumer] updated talent profile ${username} (id=${docId})`,
       );
     } else {
       // No CMS profile exists yet — create one so old user-service data appears in the CMS.
       // Guard against duplicate username (profile may exist under a different sourceId).
       const byUsername = await this.payload.find({
         collection: 'talent-profiles',
-        where: { username: { equals: event.username } },
+        where: { username: { equals: username } },
         limit: 1,
         depth: 0,
         overrideAccess: true,
@@ -178,7 +293,7 @@ export class UserEventConsumer {
           context: { skipSync: true },
         });
         this.payload.logger.info(
-          `[UserEventConsumer] linked & updated existing talent profile "${event.username}" (id=${existingDocId}) with sourceId ${event.id}`,
+          `[UserEventConsumer] linked & updated existing talent profile "${username}" (id=${existingDocId}) with sourceId ${event.id}`,
         );
       } else {
         // Fully new profile — create it.
@@ -197,7 +312,7 @@ export class UserEventConsumer {
           context: { skipSync: true },
         });
         this.payload.logger.info(
-          `[UserEventConsumer] created new talent profile "${event.username}" (id=${(created as any).id}) from user-service data`,
+          `[UserEventConsumer] created new talent profile "${username}" (id=${(created as any).id}) from user-service data`,
         );
       }
     }

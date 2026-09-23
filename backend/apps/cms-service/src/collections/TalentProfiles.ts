@@ -257,7 +257,7 @@ export const TalentProfiles: CollectionConfig = {
               maxLength: 120,
               admin: {
                 description:
-                  "Username should be lowercase, minimum 3 characters. Allowed: a-z, 0-9, underscore (_).",
+                  "Username should be lowercase, minimum 3 characters. Allowed: a-z, 0-9, underscore (_), hyphen (-), period (.).",
               },
               hooks: {
                 beforeValidate: [
@@ -266,12 +266,12 @@ export const TalentProfiles: CollectionConfig = {
                     const normalized = value.trim().toLowerCase();
                     if (normalized.length < 3) {
                       throw new Error(
-                        "Username must contain at least 3 valid characters (a-z, 0-9, ., _)",
+                        "Username must contain at least 3 valid characters (a-z, 0-9, ., _, -)",
                       );
                     }
-                    if (!/^[a-z0-9._]+$/.test(normalized)) {
+                    if (!/^[a-z0-9._-]+$/.test(normalized)) {
                       throw new Error(
-                        "Username can only contain letters, numbers, periods, and underscores",
+                        "Username can only contain letters, numbers, periods, underscores, and hyphens",
                       );
                     }
                     return normalized;
@@ -298,6 +298,18 @@ export const TalentProfiles: CollectionConfig = {
               type: "richText",
               label: "About Me",
               admin: { description: "Full professional bio" },
+            },
+            {
+              name: "location",
+              type: "text",
+              label: "Location",
+              admin: { description: "City/region, as provided by the talent." },
+            },
+            {
+              name: "avatarUrl",
+              type: "text",
+              label: "Avatar URL",
+              admin: { description: "Profile photo URL, synced from user-service." },
             },
             {
               name: "status",

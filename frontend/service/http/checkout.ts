@@ -13,6 +13,7 @@ export type CheckoutRateSelection = {
   roleKey: string
   experience?: string
   location?: string
+  roleTitle?: string
 }
 
 export type CheckoutRateEstimate = {
