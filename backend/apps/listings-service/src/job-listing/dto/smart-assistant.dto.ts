@@ -20,6 +20,10 @@ export class SmartAssistantDto {
   @MaxLength(1000)
   command: string;
 
+  // Accepted for wire-contract compatibility but ignored by the scope-edit
+  // path — the controller always rebuilds currentScope server-side from the
+  // listing's persisted phases so its index-addressed operations resolve
+  // against the exact same ordering the LLM was shown.
   @ValidateIf((dto) => (dto.mode ?? (dto.field === 'scope' ? 'scope' : 'field')) === 'scope' && dto.currentScope !== undefined)
   @IsObject()
   currentScope?: Record<string, unknown>;
@@ -78,6 +82,8 @@ export class SmartAssistantScopeDto {
   @MaxLength(1000)
   command: string;
 
+  // Accepted for wire-contract compatibility but ignored — see
+  // SmartAssistantDto's field of the same name for the rationale.
   @IsOptional()
   @IsObject()
   currentScope?: Record<string, unknown>;

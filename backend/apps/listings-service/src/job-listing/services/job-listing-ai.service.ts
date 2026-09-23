@@ -2,7 +2,20 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
-import { COUNTRY_TO_REGION, REGION_TO_COUNTRIES } from "./job-listing-budget.service";
+import {
+  COUNTRY_TO_REGION,
+  REGION_TO_COUNTRIES,
+  calculateTotalWorkingDays,
+} from "./job-listing-budget.service";
+import { applyOperationsToSnapshot } from "./job-listing-scope.service";
+import {
+  ScopeOperation,
+  ScopeSnapshotPhase,
+  TaskOperationFields,
+  PhaseOperationFields,
+  NewTaskInput,
+  NewPhaseInput,
+} from "./job-listing-ai-operations.types";
 
 // The 56 countries job-listing-budget.service.ts's normalizeLocation() can
 // actually resolve to a pricing-service region. Reused here (not
@@ -61,6 +74,34 @@ const REGION_COUNTRY_REFERENCE = VALID_REGIONS.map(
 const VALID_EXPERIENCE_LEVELS = ["student", "junior", "medior", "senior", "guru"];
 const VALID_EXPERIENCE_LEVELS_PROMPT_LIST = VALID_EXPERIENCE_LEVELS.join(", ");
 
+// Smart Assistant scope-edit operation caps — matches the prompt's own
+// stated "Never exceed 5 phases or 5 tasks per phase" rule. Enforced here
+// (not just asked of the model) since normalizeSmartAssistantOperations
+// rejects the whole batch on violation rather than silently truncating.
+const SMART_ASSISTANT_MAX_PHASES = 5;
+const SMART_ASSISTANT_MAX_TASKS_PER_PHASE = 5;
+
+// Human-readable labels for buildOperationsSummary's mechanically-written
+// summary — deliberately not the raw field name (e.g. "hours" not
+// "estimatedHours").
+const TASK_FIELD_LABELS: Record<string, string> = {
+  taskName: "name",
+  roleTitle: "role",
+  location: "location",
+  experienceLevel: "experience level",
+  workSchedule: "work schedule",
+  customHours: "custom hours",
+  customFrequency: "custom frequency",
+  estimatedHours: "hours",
+};
+
+const PHASE_FIELD_LABELS: Record<string, string> = {
+  phaseName: "name",
+  recurrenceSchedule: "recurrence schedule",
+  recurrenceCount: "recurrence count",
+  durationDays: "duration (days)",
+};
+
 interface GroqMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -80,22 +121,31 @@ const DEFAULT_GROQ_TEMPERATURE = 0.3;
 // how much: "medium" measured closer to a Smart Assistant scope-edit's own
 // numeric targets (e.g. a 20% budget-reduction target) than "low", which
 // doesn't verify its arithmetic before answering and was measured
-// overshooting to ~60%+. "low" is used anyway: this account runs on Groq's
-// free tier (8,000 tokens/minute, shared across every request to this
-// model), and "medium"'s longer reasoning trace was regularly consuming
-// most of a single request's token budget on its own, before max_tokens
-// was ever reached — a single smart_assistant call could need more total
-// tokens than the entire per-minute allowance, causing frequent 429s, and
-// even successful calls were seeing the reasoning trace crowd out the
-// tail of the JSON response (summary/suggestions silently missing). "low"
-// trades some accuracy on the default reduction target for actually
-// fitting in the free-tier budget. Revisit if the account moves to a paid
-// tier. Always explicit, not environment-configurable, so behavior can't
-// silently drift per env. It's rejected outright (400 "not supported with
-// this model") on non-reasoning models, so it must only be sent when the
-// configured model is actually a reasoning model.
+// overshooting to ~60%+. "low" was originally chosen over "medium" because,
+// at the time, this account appeared to be rate-limited around 8,000
+// tokens/minute and "medium"'s reasoning trace alone regularly exhausted
+// that, causing frequent 429s and, on successful calls, crowding out the
+// tail of the JSON response.
+//
+// CURRENTLY SET TO "high" (2026-09-23). Re-tested after the operations-
+// based response format (see handleSmartAssistantScopeEdit) shrunk the JSON
+// output itself to a fraction of the old full-scope-echo size — with
+// reasoning_effort at "high", two back-to-back scope-edit calls totaling
+// 13,159 prompt+completion tokens within a 14-second window both succeeded
+// with zero errors, well over the previously-assumed 8,000/minute ceiling.
+// Whatever the earlier rate limit was (free-tier cap that's since changed,
+// a stricter effective limit under the old full-tree-echo format's larger
+// payloads, or something else), it is not reproducing now. If
+// `jl_ai_generation_failed ... reason=http_429` starts showing up in the
+// logs again, that's the signal to step back down to "medium" or "low" —
+// nothing else needs to change to do so, it's this one constant. Always
+// explicit, not environment-configurable, so behavior can't silently drift
+// per env. It's
+// rejected outright (400 "not supported with this model") on non-reasoning
+// models, so it must only be sent when the configured model is actually a
+// reasoning model.
 const REASONING_MODEL_PATTERN = /^openai\/gpt-oss|^qwen\//i;
-const GROQ_REASONING_EFFORT = "low";
+const GROQ_REASONING_EFFORT = "high";
 
 interface GeneratedTask {
   taskName: string;
@@ -221,12 +271,13 @@ baseline for this scope, so treat it as "meaningfully more than the 20%
 default" rather than a number to hit exactly.
 
 If you can't reasonably reach the target within these constraints, get as
-close as you can without making unrealistic changes, then stop. Note in
-the summary that the full target wasn't reached and why.
+close as you can without making unrealistic changes, then stop. Add a
+suggestion explaining that the full target wasn't reached and why.
 
-Before responding, verify the only differences from the input are
-location and/or experienceLevel — phases, tasks, hours, IDs, and names
-must be identical.
+Before responding, verify every operation is an update_task op whose
+fields contains only location and/or experienceLevel — no add_task,
+remove_task, add_phase, remove_phase, or update_phase operations, and no
+other key inside fields.
 `;
 
 const SHORTEN_TIMELINE_RULES = `
@@ -247,12 +298,12 @@ across all tasks by approximately 20%. If a real target is given (a %, a
 day/week amount, "in half", etc.), use that instead.
 
 If you can't reasonably reach the target within these constraints, get as
-close as you can without making unrealistic changes, then stop. Note in
-the summary that the full target wasn't reached and why.
+close as you can without making unrealistic changes, then stop. Add a
+suggestion explaining that the full target wasn't reached and why.
 
-Before responding, verify only estimatedHours values differ from the
-input — phases, tasks, locations, experience levels, and IDs must be
-identical.
+Before responding, verify every operation is an update_task op whose
+fields contains only estimatedHours — no add_task, remove_task, add_phase,
+remove_phase, or update_phase operations, and no other key inside fields.
 `;
 
 const IMPROVE_SCOPE_RULES = `
@@ -268,17 +319,17 @@ other task unchanged.
 
 Each phase already caps at 5 tasks. Only split a task in a phase with room
 (fewer than 5 tasks), and split at most one task per phase. If no phase
-has both a candidate and headroom, make no changes and say so in the
-summary.
+has both a candidate and headroom, return no operations and add a
+suggestion explaining why.
 
 To split: name each sibling for its specific piece of work, divide
 estimatedHours between them proportionally to sum close to the original,
-then remove the original task and place both siblings in its phase.
-Inherit location, experienceLevel, and workSchedule unchanged from the
-original — no exceptions. roleTitle is also inherited by default, unless
-one sibling clearly performs a different skill than the other (e.g. a UI
-task vs. an integration task), in which case that sibling's roleTitle may
-differ.
+then emit one remove_task operation for the original and two add_task
+operations (in the same phase) for the siblings. Inherit location,
+experienceLevel, and workSchedule unchanged from the original — no
+exceptions. roleTitle is also inherited by default, unless one sibling
+clearly performs a different skill than the other (e.g. a UI task vs. an
+integration task), in which case that sibling's roleTitle may differ.
 `;
 
 
@@ -647,34 +698,366 @@ export class JobListingAiService {
     return { phases: normalized.slice(0, maxPhases) };
   }
 
-  private preserveExistingServicePhaseTypes(
-    updatedScope: GeneratedProjectScope | GeneratedServiceScope,
-    currentScope: GeneratedProjectScope | GeneratedServiceScope,
-  ): GeneratedServiceScope {
-    const updatedPhases = Array.isArray(
-      (updatedScope as GeneratedServiceScope).phases,
-    )
-      ? (updatedScope as GeneratedServiceScope).phases
-      : [];
-    const currentPhases = Array.isArray(
-      (currentScope as GeneratedServiceScope).phases,
-    )
-      ? (currentScope as GeneratedServiceScope).phases
-      : [];
+  // ── Smart Assistant operations: per-field coercion ─────────────────────────
+  // Non-fatal coercion, same posture as normalizeTask above: a bad/missing
+  // value inside a field that IS being changed gets a safe default rather
+  // than rejecting the batch. A field simply absent from the raw payload is
+  // left out of the returned object entirely (not set to undefined) so
+  // applyOperationsToSnapshot's `{ ...task, ...patch }` merge never
+  // overwrites an untouched field with undefined.
+  private coerceTaskFields(raw: unknown): TaskOperationFields {
+    const fields = (raw ?? {}) as Record<string, unknown>;
+    const coerced: TaskOperationFields = {};
+
+    if (typeof fields.taskName === "string" && fields.taskName.trim()) {
+      coerced.taskName = fields.taskName.trim();
+    }
+    if (typeof fields.roleTitle === "string" && fields.roleTitle.trim()) {
+      coerced.roleTitle = fields.roleTitle.trim();
+    }
+    if (fields.location !== undefined) {
+      coerced.location = this.resolveTaskLocation(fields.location);
+    }
+    if (fields.experienceLevel !== undefined) {
+      const level = String(fields.experienceLevel).toLowerCase();
+      coerced.experienceLevel = VALID_EXPERIENCE_LEVELS.includes(level)
+        ? level
+        : "medior";
+    }
+    if (fields.workSchedule !== undefined) {
+      coerced.workSchedule =
+        fields.workSchedule === "part_time" ? "part_time" : "full_time";
+    }
+    if (fields.customHours !== undefined) {
+      const hours = Number(fields.customHours);
+      coerced.customHours = Number.isFinite(hours) && hours > 0 ? hours : null;
+    }
+    if (fields.customFrequency !== undefined) {
+      coerced.customFrequency =
+        typeof fields.customFrequency === "string" && fields.customFrequency.trim()
+          ? fields.customFrequency.trim()
+          : null;
+    }
+    if (fields.estimatedHours !== undefined) {
+      const hours = Number(fields.estimatedHours);
+      coerced.estimatedHours = Number.isFinite(hours) && hours > 0 ? hours : 10;
+    }
+
+    return coerced;
+  }
+
+  private coercePhaseFields(raw: unknown): PhaseOperationFields {
+    const fields = (raw ?? {}) as Record<string, unknown>;
+    const coerced: PhaseOperationFields = {};
+
+    if (typeof fields.phaseName === "string" && fields.phaseName.trim()) {
+      coerced.phaseName = fields.phaseName.trim();
+    }
+    if (fields.recurrenceSchedule !== undefined) {
+      coerced.recurrenceSchedule = ["weekly", "monthly", "quarterly"].includes(
+        String(fields.recurrenceSchedule),
+      )
+        ? String(fields.recurrenceSchedule)
+        : null;
+    }
+    if (fields.recurrenceCount !== undefined) {
+      const count = Number(fields.recurrenceCount);
+      coerced.recurrenceCount =
+        Number.isFinite(count) && count >= 1 ? Math.floor(count) : null;
+    }
+    if (fields.durationDays !== undefined) {
+      const days = Number(fields.durationDays);
+      coerced.durationDays = Number.isFinite(days) && days > 0 ? Math.round(days) : null;
+    }
+
+    return coerced;
+  }
+
+  // Full task payload for add_task / a new phase's initial tasks. Reuses
+  // normalizeTask for the fields it already knows how to default (taskName,
+  // roleTitle, location, experienceLevel, workSchedule, estimatedHours), and
+  // layers customHours/customFrequency on top — normalizeTask predates those
+  // two fields and isn't otherwise touched here.
+  private coerceNewTask(raw: unknown): NewTaskInput {
+    const task = (raw ?? {}) as Record<string, unknown>;
+    const base = this.normalizeTask(task as Partial<GeneratedTask>, 0);
+    const customHours = Number(task.customHours);
+    const customFrequency = task.customFrequency;
 
     return {
-      phases: updatedPhases.map((phase, index) => {
-        const matchingCurrentPhase =
-          currentPhases.find(
-            (currentPhase) => currentPhase.phaseName === phase.phaseName,
-          ) ?? currentPhases[index];
-
-        return {
-          ...phase,
-          phaseType: matchingCurrentPhase?.phaseType ?? phase.phaseType,
-        };
-      }),
+      ...base,
+      customHours: Number.isFinite(customHours) && customHours > 0 ? customHours : null,
+      customFrequency:
+        typeof customFrequency === "string" && customFrequency.trim()
+          ? customFrequency.trim()
+          : null,
     };
+  }
+
+  private coerceNewPhase(raw: unknown, workType: "project" | "service"): NewPhaseInput {
+    const phase = (raw ?? {}) as Record<string, unknown>;
+    const phaseName =
+      typeof phase.phaseName === "string" && phase.phaseName.trim()
+        ? phase.phaseName.trim()
+        : "New Phase";
+    const phaseType =
+      workType === "service" &&
+      ["setup", "recurring", "ongoing"].includes(String(phase.phaseType))
+        ? String(phase.phaseType)
+        : "setup";
+    const isRecurring = phaseType === "recurring";
+    const tasks = Array.isArray(phase.tasks)
+      ? phase.tasks.map((t) => this.coerceNewTask(t))
+      : [];
+    const durationDays = Number(phase.durationDays);
+
+    return {
+      phaseName,
+      phaseType,
+      recurrenceSchedule: isRecurring
+        ? ["weekly", "monthly", "quarterly"].includes(String(phase.recurrenceSchedule))
+          ? String(phase.recurrenceSchedule)
+          : "monthly"
+        : null,
+      recurrenceCount: isRecurring
+        ? Math.max(
+            1,
+            Number.isFinite(Number(phase.recurrenceCount))
+              ? Number(phase.recurrenceCount)
+              : 3,
+          )
+        : null,
+      durationDays: Number.isFinite(durationDays) && durationDays > 0 ? Math.round(durationDays) : null,
+      tasks,
+    };
+  }
+
+  // ── Smart Assistant operations: structural validation ──────────────────────
+  // Parses and coerces the LLM's raw "operations" array into ScopeOperation[],
+  // resolving every phaseIndex/taskIndex against snapshotPhases (the exact
+  // scope the model was shown). Per-field VALUE problems are coerced (see
+  // coerceTaskFields/coercePhaseFields above); STRUCTURAL problems — an
+  // unrecognized op, an out-of-range index, a batch that would exceed the
+  // phase/task caps, leave a phase with zero tasks, or (service scopes)
+  // shorten the total timeline — reject the WHOLE batch by throwing
+  // GroqUnavailableException, matching this file's existing zero-partial-
+  // apply precedent (a truncated/malformed Groq response already fails
+  // closed the same way). Reasons are distinct strings for log
+  // observability only — they all surface to the client as the same
+  // AI_UNAVAILABLE fallback.
+  private normalizeSmartAssistantOperations(
+    rawOperations: unknown,
+    snapshotPhases: ScopeSnapshotPhase[],
+    workType: "project" | "service",
+  ): ScopeOperation[] {
+    if (!Array.isArray(rawOperations)) {
+      throw new GroqUnavailableException("invalid_operation");
+    }
+
+    const operations: ScopeOperation[] = [];
+
+    for (const raw of rawOperations as Array<Record<string, unknown>>) {
+      if (!raw || typeof raw !== "object" || typeof raw.op !== "string") {
+        throw new GroqUnavailableException("invalid_operation");
+      }
+
+      switch (raw.op) {
+        case "update_task": {
+          const phaseIndex = Number(raw.phaseIndex);
+          const taskIndex = Number(raw.taskIndex);
+          const phase = snapshotPhases[phaseIndex];
+          if (!phase || !phase.tasks[taskIndex]) {
+            throw new GroqUnavailableException("operation_index_out_of_range");
+          }
+          operations.push({
+            op: "update_task",
+            phaseIndex,
+            taskIndex,
+            fields: this.coerceTaskFields(raw.fields),
+          });
+          break;
+        }
+        case "add_task": {
+          const phaseIndex = Number(raw.phaseIndex);
+          if (!snapshotPhases[phaseIndex]) {
+            throw new GroqUnavailableException("operation_index_out_of_range");
+          }
+          operations.push({
+            op: "add_task",
+            phaseIndex,
+            task: this.coerceNewTask(raw.task),
+          });
+          break;
+        }
+        case "remove_task": {
+          const phaseIndex = Number(raw.phaseIndex);
+          const taskIndex = Number(raw.taskIndex);
+          const phase = snapshotPhases[phaseIndex];
+          if (!phase || !phase.tasks[taskIndex]) {
+            throw new GroqUnavailableException("operation_index_out_of_range");
+          }
+          operations.push({ op: "remove_task", phaseIndex, taskIndex });
+          break;
+        }
+        case "update_phase": {
+          const phaseIndex = Number(raw.phaseIndex);
+          if (!snapshotPhases[phaseIndex]) {
+            throw new GroqUnavailableException("operation_index_out_of_range");
+          }
+          operations.push({
+            op: "update_phase",
+            phaseIndex,
+            fields: this.coercePhaseFields(raw.fields),
+          });
+          break;
+        }
+        case "add_phase": {
+          const rawAfter = raw.afterPhaseIndex;
+          const afterPhaseIndex =
+            rawAfter === undefined || rawAfter === null
+              ? undefined
+              : Number(rawAfter);
+          if (
+            afterPhaseIndex !== undefined &&
+            !snapshotPhases[afterPhaseIndex]
+          ) {
+            throw new GroqUnavailableException("operation_index_out_of_range");
+          }
+          operations.push({
+            op: "add_phase",
+            phase: this.coerceNewPhase(raw.phase, workType),
+            afterPhaseIndex,
+          });
+          break;
+        }
+        case "remove_phase": {
+          const phaseIndex = Number(raw.phaseIndex);
+          if (!snapshotPhases[phaseIndex]) {
+            throw new GroqUnavailableException("operation_index_out_of_range");
+          }
+          operations.push({ op: "remove_phase", phaseIndex });
+          break;
+        }
+        default:
+          throw new GroqUnavailableException("invalid_operation");
+      }
+    }
+
+    const resultingPhases = applyOperationsToSnapshot(snapshotPhases, operations);
+
+    if (resultingPhases.length > SMART_ASSISTANT_MAX_PHASES) {
+      throw new GroqUnavailableException("operation_cap_violation");
+    }
+    for (const phase of resultingPhases) {
+      if (phase.tasks.length === 0) {
+        throw new GroqUnavailableException("operation_would_empty_phase");
+      }
+      if (phase.tasks.length > SMART_ASSISTANT_MAX_TASKS_PER_PHASE) {
+        throw new GroqUnavailableException("operation_cap_violation");
+      }
+    }
+
+    // Services have no fixed end date — a batch that would shrink the total
+    // working-day timeline breaks that invariant. Previously this was a
+    // prompt-only rule with no runtime check; calculateTotalWorkingDays only
+    // reads estimatedHours/workSchedule/customHours/customFrequency off each
+    // task, all present on ScopeSnapshotTask, so the same pure function used
+    // for real JobListingPhase[] elsewhere works here without needing real
+    // entities.
+    if (workType === "service") {
+      const before = calculateTotalWorkingDays(snapshotPhases as any);
+      const after = calculateTotalWorkingDays(resultingPhases as any);
+      if (after < before) {
+        throw new GroqUnavailableException("service_timeline_shrink");
+      }
+    }
+
+    return operations;
+  }
+
+  // ── Smart Assistant operations: deterministic summary ──────────────────────
+  // The AI is asked to write its own plain-English summary of what it
+  // changed, but since operations are addressed by index (phase 0, task 1),
+  // the model's own summary text sometimes slips into referencing those same
+  // indices instead of real names, even though the prompt tells it not to —
+  // instruction-following isn't guaranteed. Rather than trust that text, the
+  // summary shown to the client is built HERE, mechanically, from the
+  // validated operations plus the real names/values already in
+  // snapshotPhases — so it can never contain an index, independent of
+  // whether the model followed instructions.
+  private formatSmartAssistantFieldValue(value: unknown): string {
+    if (value === null || value === undefined || value === "") return "none";
+    return String(value);
+  }
+
+  private buildOperationsSummary(
+    operations: ScopeOperation[],
+    snapshotPhases: ScopeSnapshotPhase[],
+  ): string {
+    if (operations.length === 0) {
+      return "No changes were made.";
+    }
+
+    const parts: string[] = [];
+
+    for (const op of operations) {
+      switch (op.op) {
+        case "update_task": {
+          const originalTask = snapshotPhases[op.phaseIndex]?.tasks[op.taskIndex];
+          const changes = Object.entries(op.fields)
+            .map(([key, newValue]) => {
+              const label = TASK_FIELD_LABELS[key] ?? key;
+              const oldValue = (originalTask as unknown as Record<string, unknown>)?.[key];
+              return `${label} from ${this.formatSmartAssistantFieldValue(oldValue)} to ${this.formatSmartAssistantFieldValue(newValue)}`;
+            })
+            .join(", ");
+          if (changes) {
+            parts.push(`Changed '${originalTask?.taskName ?? "task"}': ${changes}.`);
+          }
+          break;
+        }
+        case "add_task": {
+          const phaseName = snapshotPhases[op.phaseIndex]?.phaseName ?? "the phase";
+          parts.push(`Added task '${op.task.taskName}' to '${phaseName}'.`);
+          break;
+        }
+        case "remove_task": {
+          const originalTask = snapshotPhases[op.phaseIndex]?.tasks[op.taskIndex];
+          const phaseName = snapshotPhases[op.phaseIndex]?.phaseName ?? "the phase";
+          parts.push(`Removed task '${originalTask?.taskName ?? "task"}' from '${phaseName}'.`);
+          break;
+        }
+        case "update_phase": {
+          const originalPhase = snapshotPhases[op.phaseIndex];
+          const changes = Object.entries(op.fields)
+            .map(([key, newValue]) => {
+              const label = PHASE_FIELD_LABELS[key] ?? key;
+              const oldValue = (originalPhase as unknown as Record<string, unknown>)?.[key];
+              return `${label} from ${this.formatSmartAssistantFieldValue(oldValue)} to ${this.formatSmartAssistantFieldValue(newValue)}`;
+            })
+            .join(", ");
+          if (changes) {
+            parts.push(`Changed phase '${originalPhase?.phaseName ?? "phase"}': ${changes}.`);
+          }
+          break;
+        }
+        case "add_phase": {
+          parts.push(`Added phase '${op.phase.phaseName}'.`);
+          break;
+        }
+        case "remove_phase": {
+          const originalPhase = snapshotPhases[op.phaseIndex];
+          parts.push(`Removed phase '${originalPhase?.phaseName ?? "phase"}'.`);
+          break;
+        }
+      }
+    }
+
+    // Joined with newlines, one change per line — the chat UI already splits
+    // on \n and renders each line as its own bullet (see assistantHistory's
+    // resultLines in job-listing/page.tsx), so this is what actually turns
+    // the summary into a bulleted list rather than one run-on sentence.
+    return parts.length > 0 ? parts.join("\n") : "No changes were made.";
   }
 
   private async call<T>(
@@ -723,8 +1106,8 @@ export class JobListingAiService {
       // finish_reason "length" means Groq stopped generating because it hit
       // max_tokens, not because it finished the JSON object. The cut-off
       // text can still happen to be well-formed JSON (e.g. truncated right
-      // after updatedScope's closing brace, before summary/suggestions were
-      // ever written) — parseGroqJson would accept that silently as a
+      // after suggestions' closing bracket, before operations was ever
+      // written) — parseGroqJson would accept that silently as a
       // complete, valid result. Checking finish_reason catches this
       // regardless of whether the truncated text happens to parse, so a
       // half-finished response surfaces as AI_UNAVAILABLE instead of being
@@ -735,8 +1118,20 @@ export class JobListingAiService {
 
       const raw = choice.message.content;
       const latencyMs = Date.now() - startMs;
+      // Groq's response is OpenAI-format and includes a `usage` block.
+      // Logged (not previously) specifically to measure the real
+      // prompt/completion token impact of the smart-assistant operations
+      // redesign vs. the old full-scope-echo format — see maxTokens'
+      // comment on handleSmartAssistantScopeEdit for why this number is
+      // what eventually right-sizes that constant.
+      const usage = response.data.usage as
+        | { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+        | undefined;
       this.logger.log(
-        `jl_ai_generation_latency_ms type=${generationType} latency=${latencyMs}`,
+        `jl_ai_generation_latency_ms type=${generationType} latency=${latencyMs}` +
+          (usage
+            ? ` prompt_tokens=${usage.prompt_tokens ?? "?"} completion_tokens=${usage.completion_tokens ?? "?"} total_tokens=${usage.total_tokens ?? "?"}`
+            : ""),
       );
       return this.parseGroqJson<T>(raw);
     } catch (error) {
@@ -1279,7 +1674,7 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
       input.workType === "service"
         ? `
 - Service scopes have no fixed end date: never shorten a service's overall
-  timeline, and never change an existing phase's phaseType.`
+  timeline.`
         : "";
 
     let prompt = `
@@ -1287,26 +1682,53 @@ You are a Smart Assistant that edits ${input.workType} scopes based on
 natural-language commands. Act as an experienced Product Manager and
 Delivery Planner.
 
-Respond ONLY with a valid JSON object, with the keys in this exact order:
+The current scope is given below as a list of phases (0-indexed) each
+containing a list of tasks (0-indexed within their phase). Respond ONLY
+with a valid JSON object, with the keys in this exact order:
 
 {
-  "summary": "string",
   "suggestions": ["string"],
-  "updatedScope": {...}
+  "operations": [ {...op...} ]
 }
 
-Write "summary" and "suggestions" FIRST, before "updatedScope". summary is
-REQUIRED and must never be omitted or left blank — it must name exactly
-which tasks or fields you changed and what you changed them to (e.g.
-"Changed 'Set up database schema' from Poland/medior to South Asia/junior;
-changed 'Configure environment' from 12 to 9 hours"), not a vague
-restatement of the command.
+Do not include a "summary" key or any other prose — the human-readable
+description of what changed is built separately from "operations", not
+from anything you write, so spending effort on one just wastes tokens.
+
+"operations" is a list of edits, NOT a copy of the scope. Only include an
+operation for something that actually changes. Never re-emit a task or
+phase that isn't changing. Each operation is one of:
+
+  { "op": "update_task", "phaseIndex": 0, "taskIndex": 1,
+    "fields": { "location": "Poland", "experienceLevel": "junior" } }
+    — fields contains ONLY the fields you are changing on that task.
+
+  { "op": "add_task", "phaseIndex": 0,
+    "task": { "taskName": "...", "roleTitle": "...", "location": "...",
+              "experienceLevel": "...", "workSchedule": "full_time",
+              "estimatedHours": 8 } }
+
+  { "op": "remove_task", "phaseIndex": 0, "taskIndex": 2 }
+
+  { "op": "update_phase", "phaseIndex": 1,
+    "fields": { "phaseName": "New name" } }
+
+  { "op": "add_phase",
+    "phase": { "phaseName": "QA", "tasks": [ {...task...} ] },
+    "afterPhaseIndex": 1 }
+    — afterPhaseIndex is optional; omit it to append at the end.
+
+  { "op": "remove_phase", "phaseIndex": 2 }
+
+Every phaseIndex/taskIndex refers to the ORIGINAL scope given below, not
+to any earlier operation in this same list — always index against the
+scope as given, never against your own edits.
 
 RULES:
-- Preserve every field unless the command requires changing it. Preserve all IDs.
-- Never exceed 5 phases or 5 tasks per phase.
+- Only emit operations for what the command actually asks you to change.
+- Never let the resulting scope exceed 5 phases or 5 tasks per phase.
 - Don't add, remove, or reorder a phase or task unless the command clearly
-  asks for it; if you do remove a task, never leave a phase with zero tasks.
+  asks for it; if you remove a task, never leave a phase with zero tasks.
 - suggestions must contain 2-3 useful follow-up actions.${serviceRule}
 `;
 
@@ -1330,12 +1752,12 @@ RULES:
 
   async handleSmartAssistantScopeEdit(input: {
     command: string;
-    currentScope: GeneratedProjectScope | GeneratedServiceScope;
+    currentScope: { phases: ScopeSnapshotPhase[] };
     workType: "project" | "service";
   }): Promise<{
-    updatedScope: GeneratedProjectScope | GeneratedServiceScope;
     summary: string;
     suggestions: string[];
+    operations: ScopeOperation[];
   }> {
     const isService = input.workType === "service";
 
@@ -1343,7 +1765,6 @@ RULES:
     // Reject timeline-shortening commands for service scopes.
     if (isService && this.isTimelineShorteningCommand(input.command)) {
       return {
-        updatedScope: input.currentScope,
         summary:
           "Timeline changes are not applicable to service scopes. Services run on a recurring schedule with no fixed end date. To adjust the workload, try reducing tasks or changing the recurrence frequency.",
         suggestions: [
@@ -1351,6 +1772,7 @@ RULES:
           "Improve scope quality",
           "Remove a recurring cycle",
         ],
+        operations: [],
       };
     }
 
@@ -1360,21 +1782,18 @@ RULES:
     });
 
     // GROQ_REASONING_EFFORT's reasoning trace can consume most of a smaller
-    // maxTokens budget before the model ever writes the JSON body —
-    // measured close to the old 4096 ceiling even on a small scope. 9216
-    // leaves real headroom for every Step 4 scope-edit command (cost,
-    // timeline, scope-quality, or a plain structural edit) regardless of how
-    // heavy that command's reasoning turns out to be; otherwise Groq's
-    // reasoning trace can crowd the JSON body out entirely, silently
-    // truncating the tail of the response (summary, suggestions, or the
-    // last phase's last tasks) since parseGroqJson has no way to detect a
-    // truncated completion.
+    // maxTokens budget before the model ever writes the JSON body. 9216 was
+    // sized to survive echoing the full scope back on every edit; now that
+    // the response is a short operations list instead, this ceiling is
+    // expected to be overly generous — leave it as-is until real
+    // completion_tokens numbers are measured post-rollout, rather than
+    // guessing a smaller value now (guessing too low risks reintroducing the
+    // exact truncation problem this change exists to fix).
     const maxTokens = 9216;
 
     const result = await this.call<{
-      updatedScope: GeneratedProjectScope | GeneratedServiceScope;
-      summary: string;
       suggestions: string[];
+      operations: unknown;
     }>(
       {
         maxTokens,
@@ -1399,21 +1818,21 @@ ${input.command}
       "smart_assistant",
     );
 
+    const operations = this.normalizeSmartAssistantOperations(
+      result.operations,
+      input.currentScope.phases,
+      input.workType,
+    );
+
     return {
-      ...result,
-      updatedScope: isService
-        ? this.normalizeServiceScope(
-            this.preserveExistingServicePhaseTypes(
-              result.updatedScope,
-              input.currentScope,
-            ),
-          )
-        : this.normalizeProjectScope(
-            result.updatedScope as Partial<GeneratedProjectScope>,
-          ),
+      // Built mechanically from `operations`, not taken from the model's own
+      // `result.summary` — see buildOperationsSummary's doc comment above
+      // for why.
+      summary: this.buildOperationsSummary(operations, input.currentScope.phases),
       suggestions: Array.isArray(result.suggestions)
         ? result.suggestions.slice(0, 3)
         : [],
+      operations,
     };
   }
 

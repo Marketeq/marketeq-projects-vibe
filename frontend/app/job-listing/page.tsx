@@ -16540,7 +16540,13 @@ const ServiceScopeEditStep = ({
         return;
       }
 
-      const nextPhases = applyGeneratedServiceScope(data.updatedScope);
+      // The smart-assistant/scope endpoint returns the server-persisted
+      // phases (real DB ids, budget/timeline already recalculated) rather
+      // than a raw LLM-echoed scope — applyGeneratedServiceScope already
+      // tolerates a phase carrying a real `id` (falls back to a generated
+      // one only when absent), so this is a drop-in, and now gets stable
+      // ids from the server instead of a fresh placeholder on every edit.
+      const nextPhases = applyGeneratedServiceScope({ phases: data.phases });
 
       if (nextPhases) {
         const totalBudgetUsdCents = toFiniteNumber(data.totalBudgetUsdCents);

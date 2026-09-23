@@ -51,7 +51,10 @@ import {
 import {
   GeneratedScopePhaseInput,
   JobListingScopeService,
+  buildScopeSnapshotForPrompt,
+  applyOperationsToSnapshot,
 } from "../services/job-listing-scope.service";
+import { JobListingPhase } from "../entities/job-listing-phase.entity";
 
 @UseGuards(JwtAuthGuard)
 @Controller("v1/job-listings")
@@ -594,42 +597,32 @@ export class JobListingController {
     try {
       if (mode === "scope") {
         const workType = dto.workType ?? listing.workType ?? "project";
-        const currentScope = dto.currentScope ?? {
-          phases: (listing.phases ?? []).map((phase) => ({
-            phaseName: phase.phaseName,
-            phaseType: phase.phaseType,
-            recurrenceSchedule: phase.recurrenceSchedule,
-            recurrenceCount: phase.recurrenceCount,
-            durationDays: phase.durationDays,
-            tasks: (phase.tasks ?? []).map((task) => ({
-              taskName: task.taskName,
-              roleTitle: task.roleTitle,
-              location: task.location,
-              experienceLevel: task.experienceLevel,
-              workSchedule: task.workSchedule,
-              customHours: task.customHours,
-              customFrequency: task.customFrequency,
-              estimatedHours: task.estimatedHours,
-            })),
-          })),
-        };
+        // Always built server-side from the listing's persisted phases, in
+        // positionOrder — dto.currentScope (still accepted for wire-contract
+        // compatibility) is ignored here. The operation-based response
+        // addresses phases/tasks by index into this exact array, so the
+        // indices the LLM is shown and the indices applySmartAssistantScope-
+        // Operations resolves against below must come from the same
+        // ordering; trusting a client-supplied scope could desync the two.
+        const currentScope = { phases: buildScopeSnapshotForPrompt(listing.phases ?? []) };
 
         const result = await this.aiService.handleSmartAssistantScopeEdit({
           command: dto.command,
-          currentScope: currentScope as any,
+          currentScope,
           workType,
         });
 
-        const persisted = await this.scopeService.applySmartAssistantScopeEdit(
+        const persisted = await this.scopeService.applySmartAssistantScopeOperations(
           listing,
-          result.updatedScope.phases as GeneratedScopePhaseInput[],
+          result.operations,
           dto.command,
         );
 
         return {
           aiStatus: "OK",
           mode: "scope",
-          ...result,
+          summary: result.summary,
+          suggestions: result.suggestions,
           phases: persisted.phases,
           totalBudgetUsdCents: persisted.totalBudgetUsdCents,
           isBudgetStale: persisted.isBudgetStale,
@@ -832,15 +825,30 @@ export class JobListingController {
     try {
       if (entry.field === "scope") {
         const workType = listing.workType ?? "project";
+        // entry.before is a full JobListingPhase[] snapshot (from history),
+        // heavier than the trimmed prompt shape — trim it the same way the
+        // live-edit path trims listing.phases, so the LLM sees the same
+        // shape and the resulting operations' indices resolve consistently.
+        const beforeSnapshot = buildScopeSnapshotForPrompt(
+          entry.before as unknown as JobListingPhase[],
+        );
         const result = await this.aiService.handleSmartAssistantScopeEdit({
           command: entry.command,
-          currentScope: entry.before as any,
+          currentScope: { phases: beforeSnapshot },
           workType,
         });
+        // Retry regenerates from the ORIGINAL pre-edit state (entry.before),
+        // not from the listing's current (post-edit) rows — so, unlike the
+        // live-edit path, there's no live DB row to target-mutate here.
+        // Materialize the operations against the trimmed snapshot in memory,
+        // then persist via the existing delete-all-reinsert path (same as
+        // this endpoint always used, just with `operations` as an
+        // intermediate step instead of the LLM handing back a full tree).
+        const fullScope = applyOperationsToSnapshot(beforeSnapshot, result.operations);
         const applied =
           await this.scopeService.applyGeneratedScopeAndRecalculate(
             id,
-            result.updatedScope.phases as GeneratedScopePhaseInput[],
+            fullScope as GeneratedScopePhaseInput[],
             true,
           );
         await this.scopeService.replaceLatestSmartAssistantScopeHistoryAfter(
@@ -851,7 +859,8 @@ export class JobListingController {
         return {
           aiStatus: "OK",
           mode: "scope",
-          ...result,
+          summary: result.summary,
+          suggestions: result.suggestions,
           phases: applied.phases,
           totalBudgetUsdCents: applied.totalBudgetUsdCents,
           isBudgetStale: applied.isBudgetStale,
