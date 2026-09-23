@@ -11,6 +11,7 @@ import {
   ActiveOfferAlreadyExistsException,
   OfferNotResendableException,
   InternalOfferException,
+  OfferNotActionableException,
 } from '../common/exceptions/offer.exceptions';
 import { OutboxService } from '../outbox/outbox.service';
 import { AblyService } from '../realtime/ably.service';
@@ -579,7 +580,9 @@ export class OffersService {
     const offer = await this.findByIdOrThrow(id);
 
     OfferStateMachine.assertIsClient(offer, userId);
-    OfferStateMachine.assertCanTransition(offer.status, OfferStatus.PENDING); // must be PENDING
+    if (offer.status !== OfferStatus.PENDING) {
+      throw new OfferNotActionableException(offer.status);
+    }
 
     const previousTerms = this.termsFromOffer(offer);
     const newExpiresAt = calculateExpiresAt();
