@@ -364,18 +364,25 @@ export class PayoutPublisher implements OnModuleDestroy {
   }
 
   /**
-   * Not in §8.1 but needed by PS-04 §7.1 — deactivation side-effect
-   * Publishes alert when default deposit method removed, pausing scheduled payouts
+   * PS-16 §7.1/§7.3, PS-23 §3.5: payout.paused
+   * Real consumer is notification-service (email + in-app on pause), not
+   * earnings-service — this previously went through emit(), which only
+   * reaches earnings-service's own inbound queue (no @MessagePattern for
+   * 'payouts.paused' exists there, confirmed via grep) and never reached
+   * notification-service at all. Switched to publishToExchange onto the
+   * real payout-service routing key instead. notification-service has no
+   * RabbitMQ consumer at all yet (zero @RabbitSubscribe usages, same as
+   * publishScheduleActivated below) — correctly wired but currently
+   * unconsumed, not a broken pipe.
    */
   async publishPayoutsPaused(contractorId: string, metadata: object): Promise<void> {
-    const ok = await this.emit('payouts.paused', {
+    await this.publishToExchange('payout.paused', {
       eventId: randomUUID(),
       contractorId,
+      occurredAt: new Date().toISOString(),
       ...metadata,
     });
-    if (ok) {
-      this.logger.log(`payouts.paused emitted for ${contractorId}`);
-    }
+    this.logger.log(`payout.paused published for ${contractorId}`);
   }
 
   /**
@@ -421,20 +428,318 @@ export class PayoutPublisher implements OnModuleDestroy {
   }
 
   /**
-   * PS-16 §7.2/§7.3: payout.resumed
-   * Mirrors publishPayoutsPaused above — same destination/mechanism. Was
-   * previously log-only ("In production: publish payout.resumed event" —
-   * pause-status.service.ts) even though the paused-side event already
-   * existed and was already wired to a real send() call.
+   * PS-40 §3.1: payout.wise_platform.transfer_sent
+   * Published when the Wise Platform webhook confirms outgoing_payment_sent.
+   * Consumed by: notification-service, analytics-service.
+   */
+  async publishWisePlatformTransferSent(payload: {
+    payoutRequestId: string;
+    contractorId: string;
+    wisePlatformTransferId: string;
+    amountUsd: number;
+    targetCurrency: string;
+    targetAmount: number;
+    bankCountry: string;
+  }): Promise<void> {
+    await this.publishToExchange('payout.wise_platform.transfer_sent', {
+      eventId: randomUUID(),
+      eventType: 'payout.wise_platform.transfer_sent',
+      occurredAt: new Date().toISOString(),
+      payoutRequestId: payload.payoutRequestId,
+      contractorId: payload.contractorId,
+      wisePlatformTransferId: payload.wisePlatformTransferId,
+      amountUsd: payload.amountUsd,
+      targetCurrency: payload.targetCurrency,
+      targetAmount: payload.targetAmount,
+      bankCountry: payload.bankCountry,
+    });
+  }
+
+  /**
+   * PS-40 §3.2: payout.wise_platform.transfer_failed
+   * Published when the Wise Platform webhook confirms funds_refunded.
+   * Consumed by: payout-service (restore earnings balance), notification-service,
+   * finance alert queue.
+   */
+  async publishWisePlatformTransferFailed(payload: {
+    payoutRequestId: string;
+    contractorId: string;
+    wisePlatformTransferId: string;
+    amountUsd: number;
+    failureReason: string;
+    bankCountry: string;
+  }): Promise<void> {
+    await this.publishToExchange('payout.wise_platform.transfer_failed', {
+      eventId: randomUUID(),
+      eventType: 'payout.wise_platform.transfer_failed',
+      occurredAt: new Date().toISOString(),
+      payoutRequestId: payload.payoutRequestId,
+      contractorId: payload.contractorId,
+      wisePlatformTransferId: payload.wisePlatformTransferId,
+      amountUsd: payload.amountUsd,
+      failureReason: payload.failureReason,
+      bankCountry: payload.bankCountry,
+    });
+  }
+
+  /**
+   * PS-40 §3.3: payout.method.stripe_kyc.verified
+   * Published when Stripe's account.updated webhook confirms
+   * capabilities.transfers = active for a UK/SEPA/AU/CA contractor.
+   * Consumed by: notification-service — "Your bank account is verified and
+   * ready for payouts."
+   */
+  async publishStripeKycVerified(payload: {
+    contractorId: string;
+    depositMethodId: string;
+    stripeConnectedAccountId: string;
+    bankCountry: string;
+  }): Promise<void> {
+    await this.publishToExchange('payout.method.stripe_kyc.verified', {
+      eventId: randomUUID(),
+      eventType: 'payout.method.stripe_kyc.verified',
+      occurredAt: new Date().toISOString(),
+      contractorId: payload.contractorId,
+      depositMethodId: payload.depositMethodId,
+      stripeConnectedAccountId: payload.stripeConnectedAccountId,
+      bankCountry: payload.bankCountry,
+    });
+  }
+
+  /**
+   * PS-40 §3.4: payout.method.additional_kyc_required
+   * Published when Stripe escalates beyond DOB — requires government ID +
+   * selfie. Consumed by: notification-service — sends contractor the Stripe
+   * Account Link URL to complete additional verification.
+   */
+  async publishAdditionalKycRequired(payload: {
+    contractorId: string;
+    depositMethodId: string;
+    kycUrl: string;
+    requirements: string[];
+  }): Promise<void> {
+    await this.publishToExchange('payout.method.additional_kyc_required', {
+      eventId: randomUUID(),
+      eventType: 'payout.method.additional_kyc_required',
+      occurredAt: new Date().toISOString(),
+      contractorId: payload.contractorId,
+      depositMethodId: payload.depositMethodId,
+      kycUrl: payload.kycUrl,
+      requirements: payload.requirements,
+    });
+  }
+
+  /**
+   * PS-16 §7.2/§7.3, PS-23 §3.5: payout.resumed
+   * Mirrors publishPayoutsPaused above — same destination/mechanism fix
+   * (publishToExchange onto the real payout-service routing key, not
+   * emit() into earnings-service's unconsumed queue).
    */
   async publishPayoutsResumed(contractorId: string, metadata: object): Promise<void> {
-    const ok = await this.emit('payout.resumed', {
+    await this.publishToExchange('payout.resumed', {
       eventId: randomUUID(),
       contractorId,
+      resolvedCondition: null,
+      occurredAt: new Date().toISOString(),
       ...metadata,
     });
-    if (ok) {
-      this.logger.log(`payout.resumed emitted for ${contractorId}`);
-    }
+    this.logger.log(`payout.resumed published for ${contractorId}`);
+  }
+
+  /**
+   * PS-14 §10, PS-23 §3.5: payout.cancelled
+   * Consumed by: notification-service, earnings-service. Additive to the
+   * existing publishPayoutFailed() call the expiry-cancellation job and
+   * contractor-initiated cancel() already make (which restores the
+   * balance hold) — this is the dedicated event so notification-service
+   * gets the spec'd routing key/message instead of only the generic
+   * payout.failed.
+   */
+  async publishPayoutCancelled(payload: {
+    payoutRequestId: string;
+    contractorId: string;
+    reason: string;
+    message: string;
+  }): Promise<void> {
+    await this.publishToExchange('payout.cancelled', {
+      eventId: randomUUID(),
+      payoutRequestId: payload.payoutRequestId,
+      contractorId: payload.contractorId,
+      reason: payload.reason,
+      message: payload.message,
+      occurredAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * PS-15 §6.2, PS-23 §3.5: payout.edd.triggered
+   * Consumed by: compliance-service, notification-service.
+   */
+  async publishEddTriggered(payload: {
+    contractorId: string;
+    payoutRequestId: string;
+    amountUsd: number;
+    triggerReason: string;
+  }): Promise<void> {
+    await this.publishToExchange('payout.edd.triggered', {
+      eventId: randomUUID(),
+      contractorId: payload.contractorId,
+      payoutRequestId: payload.payoutRequestId,
+      amountUsd: payload.amountUsd,
+      triggerReason: payload.triggerReason,
+      occurredAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * PS-17 §7, PS-23 §3.5: payout.schedule.completed
+   * Consumed by: notification-service, analytics-service.
+   */
+  async publishScheduleCompleted(payload: {
+    contractorId: string;
+    scheduleId: string;
+    payoutRequestId: string;
+    amountUsd: number;
+  }): Promise<void> {
+    await this.publishToExchange('payout.schedule.completed', {
+      eventId: randomUUID(),
+      contractorId: payload.contractorId,
+      scheduleId: payload.scheduleId,
+      payoutRequestId: payload.payoutRequestId,
+      amountUsd: payload.amountUsd,
+      occurredAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * PS-17 §5.2/§5.3, PS-23 §3.4: payout.scheduled.skipped
+   * (PS-23 §3.5 lists this as "payout.schedule.threshold_miss" in the
+   * subsidiary table, but §3.4 — the section with the actual payload
+   * shape — names the routing key payout.scheduled.skipped and models
+   * threshold-miss as one of several skipReason values alongside
+   * OUTSIDE_WINDOW/PAUSE_CONDITION/KYC_GATE_FAILED/EDD_TRIGGERED/
+   * ZERO_BALANCE. Implemented as §3.4 specifies — one routing key, a
+   * skipReason field — since that's the section with the real schema.)
+   * Consumed by: notification-service, analytics-service.
+   */
+  async publishScheduledSkipped(payload: {
+    scheduleId: string;
+    contractorId: string;
+    frequency: string;
+    skipReason: 'BELOW_THRESHOLD' | 'OUTSIDE_WINDOW' | 'PAUSE_CONDITION' | 'KYC_GATE_FAILED' | 'EDD_TRIGGERED' | 'ZERO_BALANCE';
+    thresholdUSD?: number | null;
+    currentBalanceUSD?: number | null;
+    consecutiveMissCount?: number | null;
+    notifyContractor: boolean;
+    pauseCondition?: string | null;
+    nextExecutionAt: string;
+  }): Promise<void> {
+    await this.publishToExchange('payout.scheduled.skipped', {
+      eventId: randomUUID(),
+      eventType: 'payout.scheduled.skipped',
+      occurredAt: new Date().toISOString(),
+      scheduleId: payload.scheduleId,
+      contractorId: payload.contractorId,
+      frequency: payload.frequency,
+      skipReason: payload.skipReason,
+      thresholdUSD: payload.thresholdUSD ?? null,
+      currentBalanceUSD: payload.currentBalanceUSD ?? null,
+      consecutiveMissCount: payload.consecutiveMissCount ?? null,
+      notifyContractor: payload.notifyContractor,
+      pauseCondition: payload.pauseCondition ?? null,
+      nextExecutionAt: payload.nextExecutionAt,
+    });
+  }
+
+  /**
+   * PS-17 §8.3, PS-23 §3.5: payout.schedule.partial_failure
+   * Published when a split-payout schedule execution completes some but
+   * not all legs. Consumed by: notification-service, finance-service.
+   */
+  async publishSchedulePartialFailure(payload: {
+    contractorId: string;
+    scheduleId: string;
+    splitGroupId: string;
+    succeededPayoutIds: string[];
+    failedPayoutIds: string[];
+  }): Promise<void> {
+    await this.publishToExchange('payout.schedule.partial_failure', {
+      eventId: randomUUID(),
+      contractorId: payload.contractorId,
+      scheduleId: payload.scheduleId,
+      splitGroupId: payload.splitGroupId,
+      succeededPayoutIds: payload.succeededPayoutIds,
+      failedPayoutIds: payload.failedPayoutIds,
+      occurredAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * PS-17 §8.4, PS-23 §3.5: payout.secondary.failed
+   * Published when a non-primary leg of a split payout fails. Consumed
+   * by: finance-service (alert queue).
+   */
+  async publishSecondaryFailed(payload: {
+    contractorId: string;
+    scheduleId: string;
+    payoutRequestId: string;
+    splitGroupId: string;
+    reason: string;
+  }): Promise<void> {
+    await this.publishToExchange('payout.secondary.failed', {
+      eventId: randomUUID(),
+      contractorId: payload.contractorId,
+      scheduleId: payload.scheduleId,
+      payoutRequestId: payload.payoutRequestId,
+      splitGroupId: payload.splitGroupId,
+      reason: payload.reason,
+      occurredAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * PS-23 §3.5 (ACH return handler): payout.method.deactivated
+   * Consumed by: notification-service, payout-service (pause evaluator —
+   * see pause-status.service.ts's evaluateAndPublishPauseChange, called
+   * separately by the same ACH-return call sites).
+   */
+  async publishMethodDeactivated(payload: {
+    contractorId: string;
+    depositMethodId: string;
+    methodType: string;
+    reason: string;
+  }): Promise<void> {
+    await this.publishToExchange('payout.method.deactivated', {
+      eventId: randomUUID(),
+      contractorId: payload.contractorId,
+      depositMethodId: payload.depositMethodId,
+      methodType: payload.methodType,
+      reason: payload.reason,
+      occurredAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * PS-23 §3.5 (ACH return handler): payout.trust_safety.escalation
+   * Published on ACH return codes indicating fraud/unauthorized-use risk
+   * (e.g. R10/R29), not routine NSF/account-closed returns. Consumed by:
+   * trust-safety-service.
+   */
+  async publishTrustSafetyEscalation(payload: {
+    contractorId: string;
+    depositMethodId: string;
+    payoutRequestId: string | null;
+    achReturnCode: string;
+    reason: string;
+  }): Promise<void> {
+    await this.publishToExchange('payout.trust_safety.escalation', {
+      eventId: randomUUID(),
+      contractorId: payload.contractorId,
+      depositMethodId: payload.depositMethodId,
+      payoutRequestId: payload.payoutRequestId,
+      achReturnCode: payload.achReturnCode,
+      reason: payload.reason,
+      occurredAt: new Date().toISOString(),
+    });
   }
 }

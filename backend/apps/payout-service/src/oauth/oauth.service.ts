@@ -45,8 +45,18 @@ export class OAuthService {
     this.redis = new Redis(redisUrl);
     this.stateTtl = parseInt(this.config.get('OAUTH_STATE_TTL_SECONDS', '600'), 10);
 
+    // PS-09 v2.0 §3: "Never regenerate this key after contractors have
+    // connected accounts — doing so will invalidate all stored tokens."
+    // A silent random-key fallback on a missing/malformed env var is
+    // exactly that failure mode on every restart, with no signal at boot
+    // time — fail fast instead so a misconfigured deploy never ships.
     const keyHex = this.config.get('OAUTH_TOKEN_ENCRYPTION_KEY', '');
-    this.encryptionKey = keyHex.length === 64 ? Buffer.from(keyHex, 'hex') : crypto.randomBytes(32);
+    if (keyHex.length !== 64) {
+      throw new Error(
+        'OAUTH_TOKEN_ENCRYPTION_KEY must be a 64-character hex string (32 bytes) — generate with `openssl rand -hex 32` and never regenerate it once contractors have connected accounts.',
+      );
+    }
+    this.encryptionKey = Buffer.from(keyHex, 'hex');
 
     // PS-09 v2.0 §3/§12: base URL is env-driven so sandbox (local dev,
     // staging) and production point at different hosts without a code
@@ -317,10 +327,22 @@ export class OAuthService {
         oauthTokenExpiresAt: refreshed.expiresAt,
       } as any);
       return refreshed.accessToken;
-    } catch {
-      await this.applyReauthRequired(method);
-      throw new PayoutError('Your connection needs to be re-authorized.',
-        HttpStatus.UNAUTHORIZED, 'ERR_OAUTH_REAUTH_REQUIRED',
+    } catch (err: any) {
+      // Reviewer-caught bug: this used to treat every failure — a Wise 5xx,
+      // a DNS hiccup, a fetch() timeout — as a revoked grant, permanently
+      // flipping reauthRequired and pausing the contractor's payouts over a
+      // transient blip. Only a genuine 4xx from the provider (invalid_grant)
+      // means re-authorization is actually needed; anything else fails this
+      // one attempt without touching the method's state, so a retry can
+      // still succeed.
+      if (err instanceof PayoutError && err.errorCode === 'ERR_OAUTH_REFRESH_INVALID_GRANT') {
+        await this.applyReauthRequired(method);
+        throw new PayoutError('Your connection needs to be re-authorized.',
+          HttpStatus.UNAUTHORIZED, 'ERR_OAUTH_REAUTH_REQUIRED',
+          { depositMethodId: method.id });
+      }
+      throw new PayoutError('Could not refresh your connection right now. Please try again shortly.',
+        HttpStatus.BAD_GATEWAY, 'ERR_OAUTH_REFRESH_UNAVAILABLE',
         { depositMethodId: method.id });
     }
   }
@@ -551,8 +573,15 @@ export class OAuthService {
     const data: any = await res.json().catch(() => ({}));
     if (!res.ok || !data.access_token) {
       this.logger.error(`[${methodType}] Token refresh failed: ${res.status} ${JSON.stringify(data)}`);
+      // Reviewer-caught bug: a provider 5xx/outage and a genuinely revoked
+      // refresh token (400/401 invalid_grant) both used to throw the exact
+      // same error, which ensureFreshToken() below then treated identically
+      // — flipping reauthRequired and pausing every future payout for the
+      // contractor over what could be a transient Wise/Payoneer blip. Only
+      // a 4xx here means the grant itself is actually invalid.
       throw new PayoutError('Unable to refresh authorization with the provider.',
-        HttpStatus.BAD_GATEWAY, 'ERR_OAUTH_TOKEN_REFRESH_FAILED');
+        HttpStatus.BAD_GATEWAY,
+        res.status >= 400 && res.status < 500 ? 'ERR_OAUTH_REFRESH_INVALID_GRANT' : 'ERR_OAUTH_TOKEN_REFRESH_FAILED');
     }
     return {
       accessToken: data.access_token,

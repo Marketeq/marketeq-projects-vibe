@@ -54,8 +54,16 @@ export class CryptoConnectionService {
       this.logger.warn(`Redis unavailable — WalletConnect sessions cannot be stored: ${err.message}`);
     });
 
+    // Same failure mode already fixed for OAUTH_TOKEN_ENCRYPTION_KEY and
+    // BANK_ENCRYPTION_KEY: a silent random-key fallback invisibly invalidates
+    // every already-encrypted wallet address on restart. Fail fast instead.
     const keyHex = this.config.get('CRYPTO_ADDRESS_ENCRYPTION_KEY', '');
-    this.encryptionKey = keyHex.length === 64 ? Buffer.from(keyHex, 'hex') : crypto.randomBytes(32);
+    if (keyHex.length !== 64) {
+      throw new Error(
+        'CRYPTO_ADDRESS_ENCRYPTION_KEY must be a 64-character hex string (32 bytes) — generate with `openssl rand -hex 32` and never regenerate it once wallet addresses have been stored.',
+      );
+    }
+    this.encryptionKey = Buffer.from(keyHex, 'hex');
     this.wcSessionTtl = parseInt(this.config.get('WALLETCONNECT_SESSION_TTL_SECONDS', '300'), 10);
   }
 

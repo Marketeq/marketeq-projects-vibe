@@ -39,6 +39,9 @@ export interface OfferResponse {
   withdrawnAt: string | null;
   expiredAt: string | null;
   warningSentAt: string | null;
+  // PMCM-392 AC-40.06: set once contracts-service creates the contract for
+  // this (accepted) offer; null otherwise.
+  contractId: string | null;
 }
 
 /** ResendOfferResponse — Returned by POST /v1/offers/:id/resend (201) */
@@ -128,6 +131,9 @@ export interface OfferListItem {
   withdrawnAt: Date | null;
   expiredAt: Date | null;
   warningSentAt: Date | null;
+  // PMCM-392 AC-40.06: set once contracts-service creates the contract for
+  // this (accepted) offer; null otherwise.
+  contractId: string | null;
   latestCounterOffer: LatestCounterOfferSummary | null;
   // Which side of this offer the authenticated caller is on. Derived from
   // clientId/talentId vs the JWT's userId — never from the `as` query
