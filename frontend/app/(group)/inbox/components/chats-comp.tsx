@@ -3245,13 +3245,16 @@ export function Chats({
                   (isActiveTalentOffer ||
                     isAcceptedOffer ||
                     isExpiredOffer ||
-                    isClientSentTalentCounter)
+                    isClientSentTalentCounter ||
+                    isDeclinedOffer ||
+                    (isWithdrawnOffer &&
+                      !item.event.includes("counter_withdrawn")))
                 const talentOfferDescription = isAcceptedOffer
                   ? `Starts on ${item.startDate}.`
                   : isDeclinedOffer
                     ? "This offer is now closed."
                     : isCounteredOffer
-                      ? `This offer expires ${item.expiresLabel}.`
+                      ? "This offer was replaced by new terms."
                       : isCounterDeclinedOffer
                         ? `This offer expires ${item.expiresLabel}.`
                       : isWithdrawnOffer
@@ -3553,9 +3556,7 @@ export function Chats({
                                   {state && !isClientSentTalentCounter ? (
                                     <Badge
                                       visual={
-                                        isTalentOffer &&
-                                        (isCounteredOffer ||
-                                          isCounterDeclinedOffer)
+                                        isTalentOffer && isCounterDeclinedOffer
                                           ? "warning"
                                           : showOriginalAsCountered
                                             ? "gray"
@@ -3570,9 +3571,7 @@ export function Chats({
                                           "ml-auto"
                                       )}
                                     >
-                                      {isTalentOffer &&
-                                      (isCounteredOffer ||
-                                        isCounterDeclinedOffer)
+                                      {isTalentOffer && isCounterDeclinedOffer
                                         ? "Offer Pending"
                                         : showOriginalAsCountered
                                           ? "Offer Countered"
@@ -3597,15 +3596,15 @@ export function Chats({
                                         : item.clientPerspective &&
                                             item.event.includes("withdrawn")
                                           ? "This offer was withdrawn."
-                                          : `This offer expires ${item.expiresLabel}.`}
+                                          : isCounteredOffer
+                                            ? "This offer was replaced by new terms."
+                                            : isExpiredOffer
+                                              ? `This offer expired on ${item.expiresLabel}.`
+                                              : `This offer expires ${item.expiresLabel}.`}
                                   </span>
                                 </div>
                               </div>
-                              {!(
-                                item.clientPerspective &&
-                                (item.event.includes("declined") ||
-                                  item.event.includes("withdrawn"))
-                              ) &&
+                              {!isCounteredOffer &&
                               (!isTalentOffer || showTalentOfferAction) ? (
                                 <Button
                                   size="sm"
@@ -3682,12 +3681,14 @@ export function Chats({
                                       ? "View Contract"
                                       : item.event.includes("accepted")
                                       ? "View Contract"
-                                      : item.event.includes("withdrawn")
+                                      : item.event.includes("counter_withdrawn")
                                         ? "View Active Offer"
-                                        : item.event.includes("declined") ||
-                                            item.event.includes("expired")
+                                        : item.event.includes("withdrawn")
                                           ? "View Details"
-                                          : "View Offer"}
+                                          : item.event.includes("declined") ||
+                                              item.event.includes("expired")
+                                            ? "View Details"
+                                            : "View Offer"}
                                 </Button>
                               ) : null}
                             </div>
