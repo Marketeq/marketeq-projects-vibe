@@ -8854,11 +8854,11 @@ export const PayoutScheduleDialog = ({
                     calendar date, and formatting it in the viewer's local zone shifts
                     the displayed weekday/date back a day for anyone west of UTC. */}
                   {nextRunAt && (
-                    <div className="rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                      <span className="text-sm font-medium text-primary-600">
+                    <div className="w-full max-w-full rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 flex flex-nowrap items-baseline gap-x-2 overflow-hidden [contain:inline-size]">
+                      <span className="text-sm font-medium text-primary-600 truncate min-w-0 flex-1">
                         Next Deposit (based on your schedule)
                       </span>
-                      <span className="text-sm font-bold text-primary-600">
+                      <span className="text-sm font-bold text-primary-600 whitespace-nowrap shrink-0">
                         {new Date(nextRunAt).toLocaleDateString("en-US", {
                           weekday: "long",
                           month: "long",
