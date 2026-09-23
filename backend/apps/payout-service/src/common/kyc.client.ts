@@ -95,9 +95,10 @@ export class KycClient {
         ),
       );
       return data;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `Failed to fetch KYC status for contractor ${contractorId}: ${err.message}`,
+        `Failed to fetch KYC status for contractor ${contractorId}: ${message}`,
       );
       // If KYC service is down, block payouts for safety
       return {
@@ -150,8 +151,9 @@ export class KycClient {
         ),
       );
       return data;
-    } catch (err: any) {
-      this.logger.error(`Failed to fetch KYC gate status for contractor ${contractorId}: ${err.message}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to fetch KYC gate status for contractor ${contractorId}: ${message}`);
       throw new PayoutError(
         'Identity verification service is temporarily unavailable. Please try again shortly.',
         HttpStatus.SERVICE_UNAVAILABLE,

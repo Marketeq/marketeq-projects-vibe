@@ -134,7 +134,7 @@ export class KycGateService {
         },
       };
     }
-    const method = await this.methodRepo.findOne({ where: { id: depositMethodId } });
+    const method = await this.methodRepo.findOne({ where: { id: depositMethodId, contractorId } });
     if (method) {
       const isBankMethod = method.methodType === MethodType.BANK_STRIPE || method.methodType === MethodType.BANK_MANUAL;
       if (isBankMethod && method.verificationStatus !== VerificationStatus.VERIFIED) {

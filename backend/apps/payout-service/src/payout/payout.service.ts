@@ -241,64 +241,12 @@ export class PayoutService {
 
     await this.checkReserveBalance(contractorId, requestedAmount, parseFloat(balance.availableBalance), dto.ignoreReserve);
 
-    // PS-15 §3.2/§7: the real tiered gate — checkGate() throws for
-    // suspended/service-unavailable and returns { allowed: false,
-    // blockedBy: 'TIER_1'|'TIER_2'|'TIER_3'|'FIRST_PAYOUT_HOLD' } for
-    // everything else. This used to be an ad-hoc, non-tiered check against
-    // a different (already-integrated) status field — PS-15's own error
-    // codes (ERR_KYC_TIER1_REQUIRED/TIER2_REQUIRED/TIER3_REQUIRED) never
-    // existed anywhere in code. Tier1/Tier2 are new here; Tier3 and the
-    // first-payout hold were already correctly gated below and are now
-    // folded into the same single check instead of two separate ones.
-    const gate = await this.kycGateService.checkGate(contractorId, dto.depositMethodId);
-    if (!gate.allowed) {
-      switch (gate.blockedBy) {
-        case 'TIER_1':
-          throw new PayoutError('You need to complete identity verification before you can withdraw funds.',
-            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER1_REQUIRED');
-        case 'TIER_2':
-          throw new PayoutError('You need to add your tax information before you can withdraw funds.',
-            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER2_REQUIRED', { subType: gate.tier2SubType });
-        case 'TIER_3':
-          throw new PayoutError('This bank account has not been verified yet.',
-            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER3_REQUIRED', { depositMethodId: gate.depositMethodId });
-        case 'FIRST_PAYOUT_HOLD':
-          throw new PayoutError(
-            'Your first payout is on hold. This is a standard verification step.',
-            HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_FIRST_HOLD', { holdReleasesAt: gate.holdReleasesAt });
-      }
-    }
-
-    // Legacy checks, kept as a secondary net: kyc.status/firstPayoutHold
-    // come from KycClient.getStatus()'s separate, already-integrated flat
-    // contract (a different field set than the tiered gate above) — not
-    // removed since another caller populating `status` in production
-    // shouldn't lose this check just because the tiered gate above doesn't
-    // independently know about it yet.
-    const kyc = await this.kycClient.getStatus(contractorId);
-    if (kyc.suspended) {
-      throw new PayoutError('Your account is suspended.',
-        HttpStatus.FORBIDDEN, 'ERR_PAYOUT_ACCOUNT_SUSPENDED');
-    }
-    if (kyc.status === 'not_started') {
-      throw new PayoutError('You need to complete identity verification before you can withdraw funds.',
-        HttpStatus.FORBIDDEN, 'ERR_KYC_NOT_STARTED');
-    }
-    if (kyc.status === 'in_review') {
-      throw new PayoutError('Your identity verification is under review.',
-        HttpStatus.FORBIDDEN, 'ERR_KYC_IN_REVIEW');
-    }
-    if (kyc.status === 'rejected') {
-      throw new PayoutError('Your identity verification was unsuccessful. Please contact support for assistance.',
-        HttpStatus.FORBIDDEN, 'ERR_KYC_REJECTED', { rejectionReason: kyc.rejectionReason });
-    }
-    if (kyc.firstPayoutHold) {
-      throw new PayoutError(
-        'Your first payout is on hold. This is a standard verification step.',
-        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_FIRST_HOLD');
-    }
-
-    // Validate deposit method
+    // Validate deposit method — kept ahead of the tiered gate below so an
+    // unverified/pending-biometric bank method keeps returning its existing,
+    // frontend-handled code (ERR_METHOD_PENDING_BIOMETRIC/
+    // ERR_PAYOUT_METHOD_UNVERIFIED) instead of being masked by the tiered
+    // gate's ERR_KYC_TIER3_REQUIRED, which transfer-funds/page.tsx and
+    // withdraw-funds-dialog.tsx don't know how to recover from.
     const method = await this.methodRepo.findOne({
       where: { id: dto.depositMethodId, contractorId, isActive: true },
     });
@@ -329,6 +277,65 @@ export class PayoutService {
     if (method.methodType === MethodType.TEQ_COIN && !this.config.get('FEATURE_TEQ_COIN_ENABLED', false)) {
       throw new PayoutError('This payout method is not currently available.',
         HttpStatus.BAD_REQUEST, 'ERR_PAYOUT_METHOD_UNAVAILABLE');
+    }
+
+    // Legacy kyc.status checks — kept ahead of the tiered gate below (and
+    // its FIRST_PAYOUT_HOLD case) so a not_started/in_review/rejected
+    // contractor keeps getting that specific code instead of the hold's
+    // "this will lift automatically" message, which would be wrong for
+    // them. This is the invariant the comment this replaced described:
+    // "kept consistent with checkGate() so a contractor who passes the
+    // pre-flight gate can't still be blocked here (or vice versa)" — the
+    // pre-flight GET /v1/payouts/gate-check runs these same checks first,
+    // so initiate() must match that order.
+    const kyc = await this.kycClient.getStatus(contractorId);
+    if (kyc.suspended) {
+      throw new PayoutError('Your account is suspended.',
+        HttpStatus.FORBIDDEN, 'ERR_PAYOUT_ACCOUNT_SUSPENDED');
+    }
+    if (kyc.status === 'not_started') {
+      throw new PayoutError('You need to complete identity verification before you can withdraw funds.',
+        HttpStatus.FORBIDDEN, 'ERR_KYC_NOT_STARTED');
+    }
+    if (kyc.status === 'in_review') {
+      throw new PayoutError('Your identity verification is under review.',
+        HttpStatus.FORBIDDEN, 'ERR_KYC_IN_REVIEW');
+    }
+    if (kyc.status === 'rejected') {
+      throw new PayoutError('Your identity verification was unsuccessful. Please contact support for assistance.',
+        HttpStatus.FORBIDDEN, 'ERR_KYC_REJECTED', { rejectionReason: kyc.rejectionReason });
+    }
+
+    // PS-15 §3.2/§7: the real tiered gate — checkGate() throws for
+    // suspended/service-unavailable and returns { allowed: false,
+    // blockedBy: 'TIER_1'|'TIER_2'|'TIER_3'|'FIRST_PAYOUT_HOLD' } for
+    // everything else. This used to be an ad-hoc, non-tiered check against
+    // a different (already-integrated) status field — PS-15's own error
+    // codes (ERR_KYC_TIER1_REQUIRED/TIER2_REQUIRED/TIER3_REQUIRED) never
+    // existed anywhere in code. Tier1/Tier2 are new here; Tier3 and the
+    // first-payout hold were already correctly gated above/below and are
+    // now folded into the same single check instead of two separate ones.
+    // By this point the method above is already confirmed VERIFIED and
+    // kyc.status already confirmed approved, so the only new things this
+    // can still block on are TIER_1/TIER_2 (kyc-identity-service tiers this
+    // service didn't check yet) and FIRST_PAYOUT_HOLD.
+    const gate = await this.kycGateService.checkGate(contractorId, dto.depositMethodId);
+    if (!gate.allowed) {
+      switch (gate.blockedBy) {
+        case 'TIER_1':
+          throw new PayoutError('You need to complete identity verification before you can withdraw funds.',
+            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER1_REQUIRED');
+        case 'TIER_2':
+          throw new PayoutError('You need to add your tax information before you can withdraw funds.',
+            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER2_REQUIRED', { subType: gate.tier2SubType });
+        case 'TIER_3':
+          throw new PayoutError('This bank account has not been verified yet.',
+            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER3_REQUIRED', { depositMethodId: gate.depositMethodId });
+        case 'FIRST_PAYOUT_HOLD':
+          throw new PayoutError(
+            'Your first payout is on hold. This is a standard verification step.',
+            HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_FIRST_HOLD', { holdReleasesAt: gate.holdReleasesAt });
+      }
     }
 
     // Calculate fee — instant-speed surcharge (PS-19) plus, for
