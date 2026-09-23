@@ -2,7 +2,7 @@
 // OS-11: PATCH /v1/offers/:id — all fields optional, at least one required (enforced in service)
 import {
   IsInt, IsString, IsOptional, MaxLength, Min, Max,
-  Length, IsUppercase, ValidateNested,
+  Length, IsUppercase, ValidateNested, IsNotEmpty,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { WorkScheduleDto } from '../../common/dto/work-schedule.dto';
@@ -50,6 +50,9 @@ export class EditOfferDto {
   startDate?: string;
 
   @IsOptional()
+  @IsNotEmpty({
+    message: 'contractTitle cannot be empty.',
+  })
   @IsString()
   @MaxLength(MAX_CONTRACT_TITLE_LENGTH, {
     message: `contractTitle cannot exceed ${MAX_CONTRACT_TITLE_LENGTH} characters.`,
