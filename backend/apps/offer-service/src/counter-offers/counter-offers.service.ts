@@ -31,6 +31,7 @@ import { OfferHistoryService } from '../offer-history/offer-history.service';
 import { OfferTermsSnapshot } from '../offer-history/entities/offer-history-event.entity';
 import { normalizeDateOnly } from '../common/utils/normalize-date-only';
 import { calculateExpiresAt } from '../scheduler/ttl.helper';
+import { CounterOfferNotActionableException } from '../common/exceptions/offer.exceptions';
 
 @Injectable()
 export class CounterOffersService {
@@ -371,7 +372,9 @@ export class CounterOffersService {
     const co = await this.findCOByIdOrThrow(id, offerId);
 
     OfferStateMachine.assertIsSubmitter(co, userId);
-    OfferStateMachine.assertCanTransitionCO(co.status, CounterOfferStatus.PENDING); // must be PENDING
+    if (co.status !== CounterOfferStatus.PENDING) {
+      throw new CounterOfferNotActionableException(co.status);
+    }
 
     const previousTerms = this.termsFromCO(co);
 
