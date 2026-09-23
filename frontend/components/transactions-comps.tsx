@@ -4883,7 +4883,7 @@ export const OverviewTab = ({
                           {[
                             {
                               type: "BANK_CONNECT",
-                              label: "Direct Deposit to U.S. Bank",
+                              label: "Direct Deposit to Bank",
                               sub: [
                                 "Transfer reflects in 1–2 business days",
                                 "Charges $0–$1 per transaction",
@@ -5139,7 +5139,7 @@ export const OverviewTab = ({
                     // Disabled, not deleted: this screen (our own bank-logo grid) was
                     // purely redundant — Stripe's own hosted Financial Connections modal
                     // re-asks for the institution regardless of what's picked here.
-                    // Selecting "Direct Deposit to U.S. Bank" now goes to the
+                    // Selecting "Direct Deposit to Bank" now goes to the
                     // 'BANK_CONNECT_CONFIRM' consent screen above instead. The two "back
                     // to bank connect" links elsewhere were repointed to 'PICK'
                     // accordingly. Flip `false &&` back on to re-enable.
