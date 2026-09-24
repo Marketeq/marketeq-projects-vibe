@@ -20,7 +20,7 @@ import { DiditDocumentVerificationProvider } from './providers/document-verifica
 import { VPN_PROXY_DETECTION_PROVIDER } from './providers/vpn-proxy/vpn-proxy-detection-provider.interface';
 import { ProxyCheckVpnProxyDetectionProvider } from './providers/vpn-proxy/proxycheck-vpn-proxy-detection.provider';
 import { LOCATION_PROVIDER } from './providers/location/location-provider.interface';
-import { GeoIpLiteLocationProvider } from './providers/location/geoip-lite-location.provider';
+import { LocationServiceHttpProvider } from './providers/location/location-service-http.provider';
 import { OBJECT_STORAGE_PROVIDER } from './providers/storage/object-storage-provider.interface';
 import { R2ObjectStorageProvider } from './providers/storage/r2-object-storage.provider';
 import { NOTIFICATION_EVENT_PUBLISHER } from './events/notification-event-publisher.interface';
@@ -59,7 +59,7 @@ import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
     VpnProxyCheckGuard,
     { provide: DOCUMENT_VERIFICATION_PROVIDER, useClass: DiditDocumentVerificationProvider },
     { provide: VPN_PROXY_DETECTION_PROVIDER, useClass: ProxyCheckVpnProxyDetectionProvider },
-    { provide: LOCATION_PROVIDER, useClass: GeoIpLiteLocationProvider },
+    { provide: LOCATION_PROVIDER, useClass: LocationServiceHttpProvider },
     { provide: OBJECT_STORAGE_PROVIDER, useClass: R2ObjectStorageProvider },
     { provide: NOTIFICATION_EVENT_PUBLISHER, useClass: RabbitMqNotificationEventPublisher },
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -592,7 +592,17 @@ export function IdentityVerificationFlow({
     return () => clearTimeout(timer)
   }, [state, send])
 
-  const detectedLocationLabel = `${detectedLocation.city}, ${detectedLocation.region}, ${detectedLocation.countryName}`
+  // city/region can be honestly empty (see detected-location.ts's header —
+  // location-service's resolve-ip response has no region/city fields today,
+  // so these are left unset rather than guessed) — filtered out here rather
+  // than rendered as stray leading/double commas.
+  const detectedLocationLabel = [
+    detectedLocation.city,
+    detectedLocation.region,
+    detectedLocation.countryName,
+  ]
+    .filter(Boolean)
+    .join(", ")
 
   return (
     <>

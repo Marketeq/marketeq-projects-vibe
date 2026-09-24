@@ -84,6 +84,15 @@ export const ERROR_CODE_CATALOG: readonly ErrorCatalogEntry[] = [
     messagingNote: 'Message is the fixed string "We couldn\'t check your connection. Please try again later." — never implies a VPN/proxy was actually detected.',
   },
   {
+    code: 'LOCATION_LOOKUP_UNAVAILABLE',
+    httpStatus: 503,
+    meaning: 'The IP-based location lookup (location-service) could not be reached, timed out, or returned a malformed response — distinct from a genuine "no location found" result, which returns null instead of throwing.',
+    source: 'location-service integration (LS-00) — resolve-ip transport failure.',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message is the fixed string "We couldn\'t detect your location. Please try again later." — never implies a location was actually found or that verification status changed.',
+  },
+  {
     code: 'VENDOR_UNAVAILABLE',
     httpStatus: 502,
     meaning: 'Didit could not be reached, returned a non-2xx response, or returned a malformed body.',

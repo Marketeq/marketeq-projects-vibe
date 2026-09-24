@@ -55,6 +55,13 @@ export class ConnectionCheckUnavailableException extends DomainException {
   }
 }
 
+export class LocationLookupUnavailableException extends DomainException {
+  readonly code = 'LOCATION_LOOKUP_UNAVAILABLE';
+  constructor(details?: Record<string, unknown>) {
+    super("We couldn't detect your location. Please try again later.", HttpStatus.SERVICE_UNAVAILABLE, details);
+  }
+}
+
 export class ProfileNotFoundException extends DomainException {
   readonly code = 'PROFILE_NOT_FOUND';
   constructor(details?: Record<string, unknown>) {
