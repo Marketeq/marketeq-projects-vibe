@@ -18,7 +18,7 @@ import { HealthModule } from './health/health.module';
 import { DOCUMENT_VERIFICATION_PROVIDER } from './providers/document-verification/document-verification-provider.interface';
 import { DiditDocumentVerificationProvider } from './providers/document-verification/didit-document-verification.provider';
 import { VPN_PROXY_DETECTION_PROVIDER } from './providers/vpn-proxy/vpn-proxy-detection-provider.interface';
-import { UnimplementedVpnProxyDetectionProvider } from './providers/vpn-proxy/unimplemented-vpn-proxy-detection.provider';
+import { ProxyCheckVpnProxyDetectionProvider } from './providers/vpn-proxy/proxycheck-vpn-proxy-detection.provider';
 import { LOCATION_PROVIDER } from './providers/location/location-provider.interface';
 import { GeoIpLiteLocationProvider } from './providers/location/geoip-lite-location.provider';
 import { OBJECT_STORAGE_PROVIDER } from './providers/storage/object-storage-provider.interface';
@@ -26,6 +26,7 @@ import { R2ObjectStorageProvider } from './providers/storage/r2-object-storage.p
 import { NOTIFICATION_EVENT_PUBLISHER } from './events/notification-event-publisher.interface';
 import { RabbitMqNotificationEventPublisher } from './events/rabbitmq-notification-event-publisher';
 import { MetricsModule } from './metrics/metrics.module';
+import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
 
 @Module({
   imports: [
@@ -55,8 +56,9 @@ import { MetricsModule } from './metrics/metrics.module';
     IdentityVerificationService,
     TravelModeReminderJob,
     StatusAutoClearJob,
+    VpnProxyCheckGuard,
     { provide: DOCUMENT_VERIFICATION_PROVIDER, useClass: DiditDocumentVerificationProvider },
-    { provide: VPN_PROXY_DETECTION_PROVIDER, useClass: UnimplementedVpnProxyDetectionProvider },
+    { provide: VPN_PROXY_DETECTION_PROVIDER, useClass: ProxyCheckVpnProxyDetectionProvider },
     { provide: LOCATION_PROVIDER, useClass: GeoIpLiteLocationProvider },
     { provide: OBJECT_STORAGE_PROVIDER, useClass: R2ObjectStorageProvider },
     { provide: NOTIFICATION_EVENT_PUBLISHER, useClass: RabbitMqNotificationEventPublisher },

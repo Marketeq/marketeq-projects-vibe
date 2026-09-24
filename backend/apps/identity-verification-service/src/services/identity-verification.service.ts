@@ -310,6 +310,7 @@ export class IdentityVerificationService {
   async startVerificationSession(
     userId: string,
     documentId: string,
+    ipAddress: string | null = null,
   ): Promise<{ vendorSessionId: string; vendorSessionUrl: string; attemptNumber: number }> {
     const profile = await this.getOrCreateProfile(userId);
     const document = await this.documentRepository.findOne({
@@ -322,7 +323,14 @@ export class IdentityVerificationService {
       throw new RetryLimitExceededException();
     }
 
-    const vpnProxyResult = await this.vpnProxyDetectionProvider.detect({ ipAddress: '' });
+    // VpnProxyCheckGuard already enforces this same check at the
+    // controller boundary — this call is a defense-in-depth re-check right
+    // before the vendor session actually starts, not the sole enforcement
+    // point (Technical Requirements §1.5: backend enforcement, not just
+    // the frontend gate).
+    const vpnProxyResult = await this.vpnProxyDetectionProvider.detect({
+      ipAddress: ipAddress ?? '',
+    });
     if (vpnProxyResult !== VpnProxyDetectionResult.NONE) {
       throw new VpnProxyDetectedException({ vpnProxyResult });
     }

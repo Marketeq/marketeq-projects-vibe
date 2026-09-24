@@ -1,23 +1,24 @@
 // frontend/src/lib/api/vpn-proxy-detection.ts
 //
-// Isolated VPN/proxy detection client. The real identity-verification-service
-// endpoint does not exist yet (backend work, tracked on a separate branch —
-// this file must never call it, create it, or assume its shape beyond the
-// outcome type below). This module is a temporary, self-contained mock so
-// the frontend can be built and tested against all outcomes without
-// depending on an unmerged backend branch. Swap `checkVpnProxy`'s body for
-// a real fetch call once the endpoint ships; the return type and call
-// sites do not need to change.
+// Real backend VPN/proxy connection check — identity-verification-service's
+// GET /v1/identity-verification/connection-check, guarded server-side by
+// VpnProxyCheckGuard (proxycheck.io-backed, real IP via extractClientIp).
+// Replaces the earlier mock; the outcome type and call sites are unchanged.
 //
-// Outcome values mirror identity-verification-service's own
-// VpnProxyDetectionResult enum (none / vpn_detected / proxy_detected /
-// vpn_and_proxy_detected) exactly, plus "unavailable" — a frontend-only
-// sentinel for "the check itself failed or produced no answer," which is
-// not a vendor signal and must never be treated the same as a clean
-// ("none") result. Whether an "unavailable" result should eventually
-// fail-open or fail-closed is an explicit, unresolved product/security
-// decision (see docs/md/Identity Verification Service) — this file does
-// not decide it, and neither does any caller of this function.
+// Blocked on the same pending gateway routing patch as detected-location.ts
+// (.claude/pending-review/proxy.service.cto-review.{patch,md}) — until
+// that's approved, this call 502s through the gateway, which this file
+// correctly reports as "unavailable", never "none".
+//
+// Settled failure policy (identity-verification-service's
+// ConnectionCheckUnavailableException / AllExceptionsFilter): a clean
+// result is the only thing that resolves "none". VPN/proxy/both map to
+// their own outcome from the backend's actual detected value — never
+// invented client-side. Everything else (network failure, timeout, 502,
+// 503, an unexpected response shape) resolves "unavailable". A caller
+// must never treat "unavailable" as "none" — the two are never conflated.
+import { IdentityVerificationAPI } from "@/service/http/identity-verification"
+
 export type VpnProxyDetectionOutcome =
   | "none"
   | "vpn_detected"
@@ -25,14 +26,6 @@ export type VpnProxyDetectionOutcome =
   | "vpn_and_proxy_detected"
   | "unavailable"
 
-// Dev-only override so every outcome can be exercised without a real
-// backend, e.g. in the browser console:
-//   localStorage.setItem("__mock_vpn_proxy_result", "vpn_detected")
-// then reload/retry. This override — and the "none" default below — are
-// ONLY read outside production builds. A production build always resolves
-// "unavailable", since there is genuinely no detection capability to ask
-// yet; it must never fabricate a clean result. This entire mock (override
-// mechanism included) is removed once the real endpoint is wired in.
 const MOCK_OVERRIDE_KEY = "__mock_vpn_proxy_result"
 const VALID_OUTCOMES: VpnProxyDetectionOutcome[] = [
   "none",
@@ -55,20 +48,41 @@ function readDevMockOverride(): VpnProxyDetectionOutcome | null {
   }
 }
 
+const DETECTED_RESULT_TO_OUTCOME: Record<string, VpnProxyDetectionOutcome> = {
+  vpn_detected: "vpn_detected",
+  proxy_detected: "proxy_detected",
+  vpn_and_proxy_detected: "vpn_and_proxy_detected",
+}
+
 /**
  * Checks whether the current connection is behind a VPN, a proxy, both, or
- * neither. TEMPORARY MOCK — see file header.
+ * neither. Real backend call — see file header for the failure policy.
  *
- * - Non-production: returns a dev override if one is set (see
- *   MOCK_OVERRIDE_KEY above), otherwise defaults to "none" purely for
- *   local development convenience.
- * - Production: always resolves "unavailable". There is no real backend
- *   endpoint to call yet, and this function must never silently assume a
- *   clean result in an environment real users reach.
+ * Dev-only override still works for testing without a real masked
+ * connection, e.g.:
+ *   localStorage.setItem('__mock_vpn_proxy_result', 'vpn_detected')
  */
 export async function checkVpnProxy(): Promise<VpnProxyDetectionOutcome> {
-  if (process.env.NODE_ENV !== "production") {
-    return readDevMockOverride() ?? "none"
+  const override = readDevMockOverride()
+  if (override) return override
+
+  try {
+    await IdentityVerificationAPI.checkConnection()
+    return "none"
+  } catch (err) {
+    const data = (err as { response?: { data?: { code?: string; details?: unknown } } })
+      ?.response?.data
+    const code = data?.code
+    const vpnProxyResult = (data?.details as { vpnProxyResult?: string } | undefined)
+      ?.vpnProxyResult
+
+    if (code === "VPN_PROXY_DETECTED" && vpnProxyResult) {
+      return DETECTED_RESULT_TO_OUTCOME[vpnProxyResult] ?? "unavailable"
+    }
+
+    // CONNECTION_CHECK_UNAVAILABLE, a network error, a gateway 502 (routing
+    // still pending CTO approval), or any other unexpected shape — all
+    // fold into "unavailable", never "none".
+    return "unavailable"
   }
-  return "unavailable"
 }

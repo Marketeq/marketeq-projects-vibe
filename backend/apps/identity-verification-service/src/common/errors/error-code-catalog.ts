@@ -75,6 +75,15 @@ export const ERROR_CODE_CATALOG: readonly ErrorCatalogEntry[] = [
     messagingNote: 'Message does not describe the detection mechanism.',
   },
   {
+    code: 'CONNECTION_CHECK_UNAVAILABLE',
+    httpStatus: 503,
+    meaning: 'The VPN/proxy connection check itself failed (timeout, provider outage, invalid credentials, exhausted quota, or a malformed response) — distinct from a confirmed clean or masked result.',
+    source: 'proxycheck.io integration — settled failure policy: never treat a failed check as "none".',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message is the fixed string "We couldn\'t check your connection. Please try again later." — never implies a VPN/proxy was actually detected.',
+  },
+  {
     code: 'VENDOR_UNAVAILABLE',
     httpStatus: 502,
     meaning: 'Didit could not be reached, returned a non-2xx response, or returned a malformed body.',

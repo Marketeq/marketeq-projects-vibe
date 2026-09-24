@@ -23,4 +23,15 @@ export const IdentityVerificationAPI = {
 
   confirmHomeCountry: () =>
     AxiosRequest.post("/v1/identity-verification/home-country/confirm", null),
+
+  // Real backend VPN/proxy connection check (proxycheck.io-backed,
+  // server-side only — see identity-verification-service's
+  // VpnProxyCheckGuard). Resolves { data: { ok: true } } on a clean
+  // result; a masked or failed check rejects with the matching status
+  // code (403 VPN_PROXY_DETECTED / 503 CONNECTION_CHECK_UNAVAILABLE) and
+  // error body, handled by the caller — never coerced into a clean pass.
+  checkConnection: () =>
+    AxiosRequest.get("/v1/identity-verification/connection-check") as Promise<{
+      data: { ok: true }
+    }>,
 }

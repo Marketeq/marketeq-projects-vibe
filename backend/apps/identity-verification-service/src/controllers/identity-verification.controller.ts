@@ -13,6 +13,7 @@ import { Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { IdentityVerificationService } from '../services/identity-verification.service';
 import { BearerAuthGuard } from '../common/guards/bearer-auth.guard';
+import { VpnProxyCheckGuard } from '../common/guards/vpn-proxy-check.guard';
 import { extractClientIp } from '../common/utils/extract-client-ip';
 import { TravelClassificationRequestDto } from '../dto/request/travel-classification.request.dto';
 import { TravelDurationRequestDto } from '../dto/request/travel-duration.request.dto';
@@ -32,7 +33,20 @@ interface AuthenticatedRequest extends Request {
 export class IdentityVerificationController {
   constructor(private readonly service: IdentityVerificationService) {}
 
+  // Standalone gate the frontend calls before location verification
+  // begins (Technical Requirements §1.5). Enforcement doesn't depend on
+  // this endpoint being called first — every route below that can advance
+  // location or document verification carries the same guard, so a direct
+  // API call skipping this can't bypass the check.
+  @Get('connection-check')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(VpnProxyCheckGuard)
+  connectionCheck(): { ok: true } {
+    return { ok: true };
+  }
+
   @Get('me')
+  @UseGuards(VpnProxyCheckGuard)
   async getMyStatus(@Req() req: AuthenticatedRequest): Promise<ProfileStatusResponseDto> {
     const profile = await this.service.getOrCreateProfile(req.userId, extractClientIp(req));
     return ProfileStatusResponseDto.fromEntity(profile);
@@ -40,6 +54,7 @@ export class IdentityVerificationController {
 
   @Post('home-country/confirm')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(VpnProxyCheckGuard)
   async confirmHomeCountry(@Req() req: AuthenticatedRequest): Promise<ProfileStatusResponseDto> {
     const profile = await this.service.confirmHomeCountry(req.userId, extractClientIp(req));
     return ProfileStatusResponseDto.fromEntity(profile);
@@ -47,6 +62,7 @@ export class IdentityVerificationController {
 
   @Post('travel-classification')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(VpnProxyCheckGuard)
   async recordTravelClassification(
     @Req() req: AuthenticatedRequest,
     @Body() dto: TravelClassificationRequestDto,
@@ -66,6 +82,7 @@ export class IdentityVerificationController {
   }
 
   @Post('documents/upload-url')
+  @UseGuards(VpnProxyCheckGuard)
   async createDocumentUploadUrl(
     @Req() req: AuthenticatedRequest,
     @Body() dto: DocumentUploadUrlRequestDto,
@@ -78,6 +95,7 @@ export class IdentityVerificationController {
   // own flagged default — no threshold is specified by any source.
   @Post('documents')
   @Throttle({ default: { limit: 10, ttl: 3600000 } })
+  @UseGuards(VpnProxyCheckGuard)
   async submitDocument(
     @Req() req: AuthenticatedRequest,
     @Body() dto: SubmitDocumentRequestDto,
@@ -87,11 +105,12 @@ export class IdentityVerificationController {
   }
 
   @Post('documents/:documentId/verify')
+  @UseGuards(VpnProxyCheckGuard)
   async startVerificationSession(
     @Req() req: AuthenticatedRequest,
     @Param('documentId') documentId: string,
   ): Promise<VerificationSessionResponseDto> {
-    return this.service.startVerificationSession(req.userId, documentId);
+    return this.service.startVerificationSession(req.userId, documentId, extractClientIp(req));
   }
 
   @Get('documents')

@@ -42,6 +42,19 @@ export class VendorUnavailableException extends DomainException {
   }
 }
 
+// Distinct from VpnProxyDetectedException: this fires when the connection
+// check itself could not produce a result (timeout, provider outage,
+// invalid credentials, exhausted quota, malformed response) — never a
+// confirmed clean or masked answer. Per the settled policy, this must
+// never be treated as "none" and must block continuation exactly like a
+// detected VPN/proxy would, without implying one was actually found.
+export class ConnectionCheckUnavailableException extends DomainException {
+  readonly code = 'CONNECTION_CHECK_UNAVAILABLE';
+  constructor(details?: Record<string, unknown>) {
+    super("We couldn't check your connection. Please try again later.", HttpStatus.SERVICE_UNAVAILABLE, details);
+  }
+}
+
 export class ProfileNotFoundException extends DomainException {
   readonly code = 'PROFILE_NOT_FOUND';
   constructor(details?: Record<string, unknown>) {
