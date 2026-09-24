@@ -17,7 +17,11 @@ import {
   type DetectedLocation,
 } from "@/src/lib/api/detected-location"
 import { IdentityVerificationFlow } from "@/components/identity-verification-flow"
-import { AccountVerificationGate } from "@/components/account-verification-gate"
+import {
+  AccountVerificationGate,
+  type AccountVerificationGateReason,
+  type ConnectionCheckState,
+} from "@/components/account-verification-gate"
 import {
   BecomeTopSeller,
   Carousel,
@@ -92,77 +96,100 @@ export default function TalentDashboard() {
 
   // VPN/proxy detection. `vpnProxyResult` always reflects the last real
   // check outcome (never cleared by dismissing the modal); `vpnProxyModalOpen`
-  // only controls visibility. Detection runs once per mount for an
-  // authenticated Talent session — every login, every first-time signup
-  // landing here, and every later session, not a one-time flag.
+  // only controls visibility of the separate real-detection warning (VPN/
+  // Proxy/both — exact Storybook reference copy, unchanged). This only runs
+  // when the user clicks "Verify My Account" inside AccountVerificationGate
+  // — showing that gate at all is decided purely by real identity-
+  // verification status (below), independent of the connection check.
   const [vpnProxyResult, setVpnProxyResult] = useState<
     VpnProxyDetectionOutcome | "checking" | null
   >(null)
   const [vpnProxyModalOpen, setVpnProxyModalOpen] = useState(false)
-  const vpnProxyCheckStartedRef = useRef(false)
 
-  // Identity verification entry prompt. Only checked once the VPN/proxy
-  // check comes back clean — location verification can't meaningfully
-  // start while the connection is masked. Only opens for an account that
-  // hasn't started verification yet (UNSTARTED); an in-progress, blocked,
-  // or already-verified account is untouched here.
-  //
-  // Every such login first shows the blocking AccountVerificationGate
-  // (Figma node 13101-47588) — location/document verification only starts
-  // once the user clicks "Verify My Account" on that gate, not immediately.
+  // Identity verification entry prompt (AccountVerificationGate, Figma node
+  // 13101-47588). Shown automatically on load/refresh whenever the real
+  // identity-verification status is "unstarted" OR couldn't be retrieved at
+  // all (`gateReason` distinguishes the two so the gate never claims the
+  // account is verified or unverified when the truth is simply unknown). A
+  // confirmed status other than "unstarted" (verified, pending, etc.) never
+  // opens the gate.
   const [verificationGateOpen, setVerificationGateOpen] = useState(false)
+  const [gateReason, setGateReason] =
+    useState<AccountVerificationGateReason>("unstarted")
+  // Tracks the real connection check attempted from inside the gate itself
+  // ("Verify My Account" / its Retry). "unavailable" keeps the gate open and
+  // renders the error+Retry state in place, per Chris's spec — it never
+  // opens a separate popup and never bypasses/fakes the check.
+  const [connectionCheckState, setConnectionCheckState] =
+    useState<ConnectionCheckState>("idle")
   const [identityFlowOpen, setIdentityFlowOpen] = useState(false)
   const [detectedLocation, setDetectedLocation] =
     useState<DetectedLocation | null>(null)
+  const identityStatusCheckStartedRef = useRef(false)
 
   const runIdentityVerificationCheck = useCallback(async () => {
     const status = await checkIdentityVerificationStatus()
-    if (status !== "unstarted") return
+    if (status === "unavailable") {
+      setGateReason("status_unavailable")
+      setVerificationGateOpen(true)
+      return
+    }
+    if (status !== "unstarted") {
+      setVerificationGateOpen(false)
+      return
+    }
+    setGateReason("unstarted")
     setVerificationGateOpen(true)
   }, [])
-
-  const handleVerifyMyAccount = useCallback(async () => {
-    setVerificationGateOpen(false)
-    const location = await getDetectedLocation()
-    setDetectedLocation(location)
-    setIdentityFlowOpen(true)
-  }, [])
-
-  const runVpnProxyCheck = useCallback(async () => {
-    setVpnProxyResult("checking")
-    const outcome = await checkVpnProxy()
-    setVpnProxyResult(outcome)
-    if (
-      outcome === "vpn_detected" ||
-      outcome === "proxy_detected" ||
-      outcome === "vpn_and_proxy_detected"
-    ) {
-      setVpnProxyModalOpen(true)
-    } else if (outcome === "none") {
-      setVpnProxyModalOpen(false)
-      void runIdentityVerificationCheck()
-    } else {
-      // "unavailable" is a distinct state with no modal of its own (no
-      // confirmed source defines what should happen when the signal can't
-      // be obtained) — it must not be treated as a clean result either,
-      // so the identity-verification check is not run in this case.
-      setVpnProxyModalOpen(false)
-    }
-  }, [runIdentityVerificationCheck])
 
   useEffect(() => {
     if (!user) return
     const role = resolveDashboardRole(user)
     if (role !== ROLE.TALENT) return
-    if (vpnProxyCheckStartedRef.current) return
-    vpnProxyCheckStartedRef.current = true
-    void runVpnProxyCheck()
-  }, [user, runVpnProxyCheck])
+    if (identityStatusCheckStartedRef.current) return
+    identityStatusCheckStartedRef.current = true
+    void runIdentityVerificationCheck()
+  }, [user, runIdentityVerificationCheck])
+
+  // Real required check, attempted only on "Verify My Account" / Retry.
+  // Never fakes a clean result and never marks anything verified itself —
+  // a "none" outcome only opens IdentityVerificationFlow, which still runs
+  // its own real submission/verification steps.
+  const handleVerifyMyAccount = useCallback(async () => {
+    setConnectionCheckState("checking")
+    setVpnProxyResult("checking")
+    const outcome = await checkVpnProxy()
+    setVpnProxyResult(outcome)
+
+    if (outcome === "none") {
+      setConnectionCheckState("idle")
+      setVpnProxyModalOpen(false)
+      setVerificationGateOpen(false)
+      const location = await getDetectedLocation()
+      setDetectedLocation(location)
+      setIdentityFlowOpen(true)
+      return
+    }
+
+    if (outcome === "unavailable") {
+      // Stays inside the same AccountVerificationGate dialog — no separate
+      // popup, no bypass.
+      setConnectionCheckState("unavailable")
+      setVpnProxyModalOpen(false)
+      setVerificationGateOpen(true)
+      return
+    }
+
+    // vpn_detected / proxy_detected / vpn_and_proxy_detected — the separate,
+    // pre-existing warning dialog (exact Storybook reference), unchanged.
+    setConnectionCheckState("idle")
+    setVerificationGateOpen(false)
+    setVpnProxyModalOpen(true)
+  }, [])
 
   // Exact copy/markup from the Storybook reference
   // (stories/identity-verification-entire.stories.tsx: VPNDetected,
-  // ProxyDetected, VPNProxyDetected) — not redesigned, just parameterized
-  // by which of the three flagged outcomes is current.
+  // ProxyDetected, VPNProxyDetected) — unchanged, only for a real detection.
   const vpnProxyModalCopy =
     vpnProxyResult === "vpn_detected"
       ? {
@@ -219,11 +246,13 @@ export default function TalentDashboard() {
             {vpnProxyModalCopy.description}
           </DialogDescription>
 
-          <div className="mt-6">
-            <p className="text-sm text-center text-dark-blue-400 leading-7">
-              {vpnProxyModalCopy.instruction}
-            </p>
-          </div>
+          {vpnProxyModalCopy.instruction && (
+            <div className="mt-6">
+              <p className="text-sm text-center text-dark-blue-400 leading-7">
+                {vpnProxyModalCopy.instruction}
+              </p>
+            </div>
+          )}
 
           <div className="mt-5 flex justify-center items-center gap-x-3">
             <Button
@@ -236,7 +265,7 @@ export default function TalentDashboard() {
             <Button
               className="text-primary-500 bg-primary-50 hover:text-white hover:bg-primary-500"
               size="md"
-              onClick={() => void runVpnProxyCheck()}
+              onClick={() => void handleVerifyMyAccount()}
             >
               <RefreshCw className="size-[15px]" />
               Reload
@@ -247,7 +276,11 @@ export default function TalentDashboard() {
 
       <AccountVerificationGate
         open={verificationGateOpen}
+        reason={gateReason}
+        connectionCheckState={connectionCheckState}
         onVerify={() => void handleVerifyMyAccount()}
+        onRetryConnectionCheck={() => void handleVerifyMyAccount()}
+        onDismissConnectionError={() => setConnectionCheckState("idle")}
       />
 
       {detectedLocation && (
