@@ -126,6 +126,14 @@ export class BankValidationService {
         if (!/^\d{3}$/.test(dto.bankBranchCode ?? '')) errors.push('ERR_BANK_BRANCH_CODE_INVALID');
         if (!/^\d{7}$/.test(dto.bankAccountNumber ?? '')) errors.push('ERR_BANK_ACCOUNT_NUMBER_INVALID');
         if (dto.bankCurrency !== 'JPY') errors.push('ERR_BANK_CURRENCY_MISMATCH');
+        // PS-36 §7: the Zengin recipient Wise creates from this method
+        // requires accountType (FUTSU/TOUZA) — this field existed on the DTO
+        // as optional with nothing ever enforcing it was actually sent, so a
+        // submission missing it sailed through this validator and only
+        // failed later, opaquely, inside verifyViaWisePlatform's Wise API
+        // call. Validating it here gives the contractor the same
+        // field-specific error every other JP field already gets instead.
+        if (!['FUTSU', 'TOUZA'].includes(dto.bankAccountType)) errors.push('ERR_BANK_ACCOUNT_TYPE_INVALID');
         break;
 
       case 'CA':

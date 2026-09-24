@@ -1208,7 +1208,8 @@ function createBlankEditBankForm(bankCountry = "") {
     bankTransitNumber: "",
     bankIban: "",
     bankSwiftBic: "",
-    bankBranchName: "",
+    bankCode: "",
+    bankBranchCode: "",
     bankAccountType: "",
     bankCountry,
   }
@@ -1230,6 +1231,8 @@ const isValidIfsc = (v: string) =>
 const isValidBsb = (v: string) => /^\d{6}$/.test(v.replace(/-/g, ""))
 const isValidCaInstitution = (v: string) => /^\d{3}$/.test(v)
 const isValidCaTransit = (v: string) => /^\d{5}$/.test(v)
+const isValidJpBankCode = (v: string) => /^\d{4}$/.test(v)
+const isValidJpBranchCode = (v: string) => /^\d{3}$/.test(v)
 const isValidSwiftBic = (v: string) =>
   /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(v.toUpperCase())
 const isValidIban = (iban: string) => {
@@ -1284,8 +1287,9 @@ function isEditBankInfoComplete(form: ReturnType<typeof createBlankEditBankForm>
       )
     case "JP":
       return (
-        !!form.bankBranchName.trim() &&
-        !!form.bankAccountType &&
+        isValidJpBankCode(form.bankCode) &&
+        isValidJpBranchCode(form.bankBranchCode) &&
+        (form.bankAccountType === "FUTSU" || form.bankAccountType === "TOUZA") &&
         /^\d{7}$/.test(form.bankAccountNumber)
       )
     case "SWIFT":
@@ -1320,6 +1324,7 @@ const BANK_FIELD_ERROR_MESSAGES: Record<string, string> = {
   ERR_BANK_BSB_INVALID: "BSB number must be 6 digits.",
   ERR_BANK_CODE_INVALID: "Bank code must be 4 digits.",
   ERR_BANK_BRANCH_CODE_INVALID: "Branch code must be 3 digits.",
+  ERR_BANK_ACCOUNT_TYPE_INVALID: "Select an account type.",
   ERR_BANK_INSTITUTION_INVALID: "Institution number must be 3 digits.",
   ERR_BANK_TRANSIT_INVALID: "Transit number must be 5 digits.",
   ERR_BANK_CLABE_INVALID: "CLABE must be 18 digits.",
@@ -2170,7 +2175,8 @@ export const OverviewTab = ({
     bankTransitNumber: "",
     bankIban: "",
     bankSwiftBic: "",
-    bankBranchName: "",
+    bankCode: "",
+    bankBranchCode: "",
     bankClabe: "",
     bankCnapsCode: "",
     bankBik: "",
@@ -2438,7 +2444,8 @@ export const OverviewTab = ({
             payload.bankTransitNumber = addForm.bankTransitNumber
             break
           case "JP":
-            payload.bankBranchName = addForm.bankBranchName
+            payload.bankCode = addForm.bankCode
+            payload.bankBranchCode = addForm.bankBranchCode
             payload.bankAccountType = addForm.accountType
             break
           case "MX":
@@ -2974,7 +2981,8 @@ export const OverviewTab = ({
             payload.bankTransitNumber = editBankForm.bankTransitNumber
             break
           case "JP":
-            payload.bankBranchName = editBankForm.bankBranchName
+            payload.bankCode = editBankForm.bankCode
+            payload.bankBranchCode = editBankForm.bankBranchCode
             payload.bankAccountType = editBankForm.bankAccountType
             break
           case "SEPA":
@@ -4731,7 +4739,8 @@ export const OverviewTab = ({
                     bankTransitNumber: "",
                     bankIban: "",
                     bankSwiftBic: "",
-                    bankBranchName: "",
+                    bankCode: "",
+                    bankBranchCode: "",
                     bankClabe: "",
                     bankCnapsCode: "",
                     bankBik: "",
@@ -5453,7 +5462,8 @@ export const OverviewTab = ({
                           bankTransitNumber: "",
                           bankIban: "",
                           bankSwiftBic: "",
-                          bankBranchName: "",
+                          bankCode: "",
+                          bankBranchCode: "",
                           bankClabe: "",
                           bankCnapsCode: "",
                           bankBik: "",
@@ -5483,8 +5493,10 @@ export const OverviewTab = ({
                           ) ||
                             !isValidCaTransit(addForm.bankTransitNumber))) ||
                         (region === "JP" &&
-                          (!addForm.bankBranchName.trim() ||
-                            !addForm.accountType ||
+                          (!isValidJpBankCode(addForm.bankCode) ||
+                            !isValidJpBranchCode(addForm.bankBranchCode) ||
+                            (addForm.accountType !== "FUTSU" &&
+                              addForm.accountType !== "TOUZA") ||
                             !/^\d{7}$/.test(addForm.bankAccountNumber))) ||
                         (region === "MX" && !isValidClabe(addForm.bankClabe)) ||
                         (region === "CN" &&
@@ -5669,21 +5681,53 @@ export const OverviewTab = ({
                               </div>
                             )}
                             {region === "JP" && (
-                              <div>
-                                <Label size="xs" className="text-gray-500 mb-1 block">
-                                  Branch Name
-                                </Label>
-                                <Input
-                                  className="w-full px-3 py-2 text-sm"
-                                  placeholder="e.g. Shinjuku"
-                                  value={addForm.bankBranchName}
-                                  onChange={(e) =>
-                                    setAddForm((f) => ({
-                                      ...f,
-                                      bankBranchName: e.target.value,
-                                    }))
-                                  }
-                                />
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
+                                    Bank Code
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
+                                    placeholder="4 digits"
+                                    value={addForm.bankCode}
+                                    onChange={(e) =>
+                                      setAddForm((f) => ({
+                                        ...f,
+                                        bankCode: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                  {addForm.bankCode.length > 0 &&
+                                    !isValidJpBankCode(addForm.bankCode) && (
+                                      <p className="text-xs text-red-500 mt-1">
+                                        4 digits required
+                                      </p>
+                                    )}
+                                </div>
+                                <div>
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
+                                    Branch Code
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
+                                    placeholder="3 digits"
+                                    value={addForm.bankBranchCode}
+                                    onChange={(e) =>
+                                      setAddForm((f) => ({
+                                        ...f,
+                                        bankBranchCode: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                  {addForm.bankBranchCode.length > 0 &&
+                                    !isValidJpBranchCode(
+                                      addForm.bankBranchCode
+                                    ) && (
+                                      <p className="text-xs text-red-500 mt-1">
+                                        3 digits required
+                                      </p>
+                                    )}
+                                </div>
                               </div>
                             )}
                             {region === "JP" && (
@@ -5691,6 +5735,12 @@ export const OverviewTab = ({
                                 <Label size="xs" className="text-gray-500 mb-1 block">
                                   Account Type
                                 </Label>
+                                {/* PS-36 §7: Wise's Zengin recipient needs FUTSU
+                                  (ordinary) or TOUZA (current) exactly — this
+                                  field previously didn't exist in the UI at all,
+                                  so every JP method submission was silently
+                                  missing a Wise-required field until it failed
+                                  deep inside verifyViaWisePlatform(). */}
                                 <Select
                                   value={addForm.accountType}
                                   onValueChange={(accountType) =>
@@ -5704,8 +5754,8 @@ export const OverviewTab = ({
                                     <SelectValue placeholder="Select" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="ORDINARY">Ordinary</SelectItem>
-                                    <SelectItem value="CURRENT">Current</SelectItem>
+                                    <SelectItem value="FUTSU">Ordinary (Futsu)</SelectItem>
+                                    <SelectItem value="TOUZA">Current (Touza)</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
@@ -7259,22 +7309,56 @@ export const OverviewTab = ({
                               <div className="space-y-1.5">
                                 <Label
                                   size="sm"
-                                  htmlFor="edit-bank-branch-name-jp"
+                                  htmlFor="edit-bank-code-jp"
                                 >
-                                  Branch Name
+                                  Bank Code
                                 </Label>
                                 <Input
-                                  id="edit-bank-branch-name-jp"
+                                  id="edit-bank-code-jp"
                                   type="text"
-                                  placeholder="e.g. Shinjuku"
-                                  value={editBankForm.bankBranchName}
+                                  placeholder="Enter 4 digit Bank Code here"
+                                  value={editBankForm.bankCode}
                                   onChange={(e) =>
                                     setEditBankForm((f) => ({
                                       ...f,
-                                      bankBranchName: e.target.value,
+                                      bankCode: e.target.value,
                                     }))
                                   }
                                 />
+                                {editBankForm.bankCode.length > 0 &&
+                                  !isValidJpBankCode(editBankForm.bankCode) && (
+                                    <p className="text-xs text-red-500">
+                                      Bank code must be 4 digits.
+                                    </p>
+                                  )}
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-branch-code-jp"
+                                >
+                                  Branch Code
+                                </Label>
+                                <Input
+                                  id="edit-bank-branch-code-jp"
+                                  type="text"
+                                  placeholder="Enter 3 digit Branch Code here"
+                                  value={editBankForm.bankBranchCode}
+                                  onChange={(e) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankBranchCode: e.target.value,
+                                    }))
+                                  }
+                                />
+                                {editBankForm.bankBranchCode.length > 0 &&
+                                  !isValidJpBranchCode(
+                                    editBankForm.bankBranchCode
+                                  ) && (
+                                    <p className="text-xs text-red-500">
+                                      Branch code must be 3 digits.
+                                    </p>
+                                  )}
                               </div>
                               <div className="space-y-1.5">
                                 <Label
@@ -7299,8 +7383,8 @@ export const OverviewTab = ({
                                     <SelectValue placeholder="Select" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="ORDINARY">Ordinary</SelectItem>
-                                    <SelectItem value="CURRENT">Current</SelectItem>
+                                    <SelectItem value="FUTSU">Ordinary (Futsu)</SelectItem>
+                                    <SelectItem value="TOUZA">Current (Touza)</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
