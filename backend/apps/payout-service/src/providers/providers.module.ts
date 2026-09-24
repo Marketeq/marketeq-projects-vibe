@@ -5,7 +5,6 @@ import { StripeWebhookController } from './stripe-webhook.controller';
 import { WisePlatformWebhookController } from './wise-platform-webhook.controller';
 import { WisePlatformWebhookService } from './wise-platform-webhook.service';
 import { WiseProvider }        from './wise.provider';
-import { PayoneerProvider }    from './payoneer.provider';
 import { CryptoPayoutProvider } from './crypto.provider';
 import { TeqCoinProvider }    from './teq-coin.provider';
 import { WisePlatformService } from '../execution/wise-platform.service';
@@ -27,7 +26,7 @@ import { CardModule }         from '../card/card.module';
   // this module already — ExecutionModule -> ProvidersModule -> ExecutionModule
   // would be circular. It's stateless (ConfigService only, no repository),
   // so a second instance here carries no state-sharing risk.
-  providers: [StripeProvider, WiseProvider, PayoneerProvider, CryptoPayoutProvider, TeqCoinProvider, WisePlatformWebhookService, WisePlatformService],
-  exports: [StripeProvider, WiseProvider, PayoneerProvider, CryptoPayoutProvider, TeqCoinProvider],
+  providers: [StripeProvider, WiseProvider, CryptoPayoutProvider, TeqCoinProvider, WisePlatformWebhookService, WisePlatformService],
+  exports: [StripeProvider, WiseProvider, CryptoPayoutProvider, TeqCoinProvider],
 })
 export class ProvidersModule {}

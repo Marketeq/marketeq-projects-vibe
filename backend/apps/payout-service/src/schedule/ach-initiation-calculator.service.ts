@@ -7,7 +7,7 @@
 //   1. push a weekend/holiday arrival day to the next business day, then
 //   2. count back 2 business days from that adjusted arrival to find the
 //      date payout-service must submit to Stripe.
-// WISE/PAYONEER/CRYPTO never call getACHInitiationDate() — for those,
+// WISE/CRYPTO never call getACHInitiationDate() — for those,
 // dayOfWeek/dayOfMonth IS the initiation day directly (see
 // NextExecutionService), since none of those rails are NACHA-bound.
 //
@@ -76,7 +76,7 @@ export class AchInitiationCalculatorService {
   }
 
   /**
-   * PS-17 v2.0 §3: for non-ACH methods (WISE, PAYONEER, CRYPTO), the
+   * PS-17 v2.0 §3: for non-ACH methods (WISE, CRYPTO), the
    * initiation date IS the selected day — no back-calculation, no
    * weekend/holiday adjustment (PS-32 §4.3 — those rails run 24/7).
    */

@@ -55,13 +55,13 @@ export class BankPayoutExecutorService {
       return;
     }
 
-    // PS-09 v2.0 §2: WISE/PAYONEER execute through this same Stripe ACH path
-    // — Marketeq never calls the Wise/Payoneer Payouts API directly. Once
+    // PS-09 v2.0 §2: WISE executes through this same Stripe ACH path
+    // — Marketeq never calls the Wise Payouts API directly. Once
     // OAuth has registered a Stripe external_account for the method
     // (oauth.service.ts's handleCallback), it is indistinguishable from a
     // regular bank payout from here on.
     const method = payout.depositMethod;
-    const bankLikeTypes = [MethodType.BANK_STRIPE, MethodType.BANK_MANUAL, MethodType.WISE, MethodType.PAYONEER];
+    const bankLikeTypes = [MethodType.BANK_STRIPE, MethodType.BANK_MANUAL, MethodType.WISE];
     if (!method || !bankLikeTypes.includes(method.methodType)) {
       this.logger.error(`Payout ${payoutRequestId} is not a bank-executed type`);
       return;
@@ -90,22 +90,22 @@ export class BankPayoutExecutorService {
     // payouts to this method until the contractor re-authorizes.
     if ((method as any).reauthRequired) {
       await this.failPayout(payout,
-        'Your Wise/Payoneer connection needs to be re-authorized before this payout can proceed.',
+        'Your Wise connection needs to be re-authorized before this payout can proceed.',
         'ERR_PAYOUT_METHOD_REAUTH_REQUIRED');
       return;
     }
 
     // PS-09 v2.0 §11: ensureFreshToken() was fully built but never called
-    // from anywhere — a revoked Wise/Payoneer OAuth grant was never
+    // from anywhere — a revoked Wise OAuth grant was never
     // detected until whatever hypothetical future caller invoked it. This
     // is that caller: proactively refresh (or flip reauthRequired) right
     // before the payout actually executes, since it's the only real
     // point-of-use for a still-valid grant. Execution itself doesn't
-    // consume the access token (WISE/PAYONEER route through Stripe via
+    // consume the access token (WISE routes through Stripe via
     // stripeExternalAccountId below, per PS-09 v2.0 §2) — this call exists
     // purely to detect a revoked grant and fail closed instead of letting
     // it go undetected indefinitely.
-    if (method.methodType === MethodType.WISE || method.methodType === MethodType.PAYONEER) {
+    if (method.methodType === MethodType.WISE) {
       try {
         await this.oauthService.ensureFreshToken(method);
       } catch (err: any) {
@@ -117,7 +117,7 @@ export class BankPayoutExecutorService {
         // catch below rather than a wrong, alarming "reauthorize" message.
         if (err instanceof PayoutError && err.errorCode === 'ERR_OAUTH_REAUTH_REQUIRED') {
           await this.failPayout(payout,
-            'Your Wise/Payoneer connection needs to be re-authorized before this payout can proceed.',
+            'Your Wise connection needs to be re-authorized before this payout can proceed.',
             'ERR_PAYOUT_METHOD_REAUTH_REQUIRED');
           return;
         }
