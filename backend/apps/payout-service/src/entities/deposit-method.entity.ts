@@ -195,6 +195,21 @@ export class DepositMethod {
   @Column({ name: 'card_balance_cap', type: 'numeric', precision: 18, scale: 8, default: 10000 })
   cardBalanceCap: string;
 
+  // PS-13 §5: admin-adjustable overrides — NULL means "use the hardcoded
+  // DEFAULT_*_LIMIT in card-issuance.service.ts." Only set once an admin
+  // actually calls the override endpoint.
+  @Column({ name: 'card_daily_limit_cents', type: 'int', nullable: true })
+  cardDailyLimitCents: number | null;
+
+  @Column({ name: 'card_weekly_limit_cents', type: 'int', nullable: true })
+  cardWeeklyLimitCents: number | null;
+
+  @Column({ name: 'card_monthly_limit_cents', type: 'int', nullable: true })
+  cardMonthlyLimitCents: number | null;
+
+  @Column({ name: 'card_single_limit_cents', type: 'int', nullable: true })
+  cardSingleLimitCents: number | null;
+
   @Column({ name: 'last_payout_at', type: 'timestamptz', nullable: true })
   lastPayoutAt: Date | null;
 

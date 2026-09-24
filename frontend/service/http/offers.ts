@@ -165,3 +165,16 @@ export const declineCounterOffer = async (
   )
   return res.data
 }
+
+export const withdrawCounterOffer = async (
+  offerId: string,
+  counterOfferId: string,
+  payload?: WithdrawOfferPayload
+): Promise<CounterOffer> => {
+  const res = await AxiosRequest.post(
+    `${OFFERS_BASE}/${encodeURIComponent(offerId)}/counter-offers/${encodeURIComponent(counterOfferId)}/withdraw`,
+    payload ?? {},
+    idempotencyConfig()
+  )
+  return res.data
+}

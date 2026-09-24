@@ -8,7 +8,7 @@ import { exportPrivateKey, republishPublicKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { ApiError, apiFetch } from "@/src/lib/api"
 import { formatNotificationTime } from "@/libs/notifications"
-import { createCounterOffer } from "@/service/http/offers"
+import { createCounterOffer, withdrawCounterOffer, withdrawOffer } from "@/service/http/offers"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
@@ -335,6 +335,12 @@ export interface OfferNotificationMessageData {
   // "no live signal" rule as offerStatus: never invent one, never treat
   // absence as an error.
   realContractId?: string | null
+  // PMCM-376: the id of this offer's own latest counter offer (whatever its
+  // status), sourced from getOffer()'s latestCounterOffer.id. Undefined
+  // means "no live signal" — the seeded catch branch in page.tsx never sets
+  // this, and neither does a pre-PMCM-376-backend-merge fetch. Never invent
+  // one; a withdraw action must stay disabled/hidden when this is absent.
+  latestCounterOfferId?: string
   event: string
   title: string
   body: string
@@ -564,6 +570,8 @@ export function Chats({
   const [notificationWithdrawalMessage, setNotificationWithdrawalMessage] =
     useState("")
   const [submittingCounterOffer, setSubmittingCounterOffer] = useState(false)
+  const [withdrawingCounterOffer, setWithdrawingCounterOffer] = useState(false)
+  const [withdrawingOffer, setWithdrawingOffer] = useState(false)
   const [declinedCounterOfferMessage, setDeclinedCounterOfferMessage] =
     useState<OfferNotificationMessageData | null>(null)
   const [acceptedCounterOfferMessage, setAcceptedCounterOfferMessage] =
@@ -7469,6 +7477,7 @@ export function Chats({
                     variant="ghost"
                     visual="gray"
                     size="sm"
+                    disabled={withdrawingCounterOffer || withdrawingOffer}
                     onClick={() =>
                       setNotificationOfferStep(
                         selectedNotificationOfferIsTalentCounter
@@ -7482,31 +7491,97 @@ export function Chats({
                   <Button
                     visual="error"
                     size="sm"
-                    onClick={() => {
+                    loading={withdrawingCounterOffer || withdrawingOffer}
+                    disabled={
+                      selectedNotificationOfferIsTalentCounter &&
+                      !selectedNotificationOffer?.latestCounterOfferId
+                    }
+                    onClick={async () => {
                       if (!selectedNotificationOffer) return
                       if (selectedNotificationOfferIsTalentCounter) {
-                        setWithdrawnClientOfferMessage(null)
-                        setWithdrawnTalentCounterOfferMessage({
+                        const counterOfferId =
+                          selectedNotificationOffer.latestCounterOfferId
+                        if (!counterOfferId) return
+                        const trimmedMessage =
+                          notificationWithdrawalMessage.trim()
+                        setWithdrawingCounterOffer(true)
+                        try {
+                          await withdrawCounterOffer(
+                            selectedNotificationOffer.contractId,
+                            counterOfferId,
+                            trimmedMessage
+                              ? { message: trimmedMessage }
+                              : undefined
+                          )
+                          // PMCM-376: fire the refetch explicitly — the
+                          // backend's Ably publish is not awaited, and the
+                          // channel tears down as soon as
+                          // selectedNotificationOffer is nulled below, so
+                          // waiting on the offer.updated event would
+                          // reliably lose that race.
+                          onOfferUpdateRequested?.()
+                          setWithdrawnClientOfferMessage(null)
+                          setWithdrawnTalentCounterOfferMessage({
+                            ...selectedNotificationOffer,
+                            event: "offer.counter_withdrawn",
+                            withdrawnByViewer: true,
+                            withdrawalMessage: trimmedMessage,
+                          })
+                          setSelectedNotificationOffer(null)
+                          setNotificationOfferStep("event")
+                          setNotificationWithdrawalMessage("")
+                        } catch (error) {
+                          console.error(
+                            "Counter offer withdrawal failed",
+                            error
+                          )
+                          toast({
+                            variant: "destructive",
+                            title: "Couldn't withdraw the counter offer",
+                            description: "Please try again.",
+                          })
+                        } finally {
+                          setWithdrawingCounterOffer(false)
+                        }
+                        return
+                      }
+                      const trimmedOfferMessage =
+                        notificationWithdrawalMessage.trim()
+                      setWithdrawingOffer(true)
+                      try {
+                        await withdrawOffer(
+                          selectedNotificationOffer.contractId,
+                          trimmedOfferMessage
+                            ? { message: trimmedOfferMessage }
+                            : undefined
+                        )
+                        // PMCM-379: fire the refetch explicitly — the
+                        // backend's Ably publish in OffersService.withdraw()
+                        // is also not awaited, and the channel tears down as
+                        // soon as selectedNotificationOffer is nulled below,
+                        // so waiting on the offer.updated event would
+                        // reliably lose that race — same reasoning as the
+                        // counter-offer branch above.
+                        onOfferUpdateRequested?.()
+                        setWithdrawnClientOfferMessage({
                           ...selectedNotificationOffer,
-                          event: "offer.counter_withdrawn",
+                          event: "offer.withdrawn",
                           withdrawnByViewer: true,
-                          withdrawalMessage:
-                            notificationWithdrawalMessage.trim(),
+                          withdrawalMessage: trimmedOfferMessage,
                         })
                         setSelectedNotificationOffer(null)
                         setNotificationOfferStep("event")
                         setNotificationWithdrawalMessage("")
-                        return
+                      } catch (error) {
+                        console.error("Offer withdrawal failed", error)
+                        toast({
+                          variant: "destructive",
+                          title: "Couldn't withdraw the offer",
+                          description: "Please try again.",
+                        })
+                      } finally {
+                        setWithdrawingOffer(false)
                       }
-                      setWithdrawnClientOfferMessage({
-                        ...selectedNotificationOffer,
-                        event: "offer.withdrawn",
-                        withdrawnByViewer: true,
-                        withdrawalMessage:
-                          notificationWithdrawalMessage.trim(),
-                      })
-                      setSelectedNotificationOffer(null)
-                      setNotificationOfferStep("event")
                     }}
                   >
                     {selectedNotificationOfferIsTalentCounter

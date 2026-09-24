@@ -11,6 +11,7 @@ import {
   ActiveOfferAlreadyExistsException,
   OfferNotResendableException,
   InternalOfferException,
+  OfferNotActionableException,
 } from '../common/exceptions/offer.exceptions';
 import { OutboxService } from '../outbox/outbox.service';
 import { AblyService } from '../realtime/ably.service';
@@ -75,8 +76,21 @@ export class OffersService {
   }
 
   // Backward-compat alias used by controller GET :id
-  async findById(id: string): Promise<Offer> {
-    return this.findByIdOrThrow(id);
+  // PMCM-376: additive only — every Offer field stays exactly as it was;
+  // latestCounterOffer is a new field, populated the same way list() does
+  // (same helper, same DISTINCT ON latest-by-created_at semantics, same
+  // null-when-absent behaviour). findByIdOrThrow's other callers (CAS
+  // preconditions) are untouched — this extra query only runs on this
+  // controller-facing read path.
+  async findById(
+    id: string,
+  ): Promise<Offer & { latestCounterOffer: LatestCounterOfferSummary | null }> {
+    const offer = await this.findByIdOrThrow(id);
+    const latestCounterOffers = await this.fetchLatestCounterOffers([id]);
+    return {
+      ...offer,
+      latestCounterOffer: latestCounterOffers.get(id) ?? null,
+    };
   }
 
   // ============================================================
@@ -566,7 +580,9 @@ export class OffersService {
     const offer = await this.findByIdOrThrow(id);
 
     OfferStateMachine.assertIsClient(offer, userId);
-    OfferStateMachine.assertCanTransition(offer.status, OfferStatus.PENDING); // must be PENDING
+    if (offer.status !== OfferStatus.PENDING) {
+      throw new OfferNotActionableException(offer.status);
+    }
 
     const previousTerms = this.termsFromOffer(offer);
     const newExpiresAt = calculateExpiresAt();
