@@ -182,13 +182,28 @@ export class BankPayoutExecutorService {
         // contractor via failureReason. Checking first lets this fail with
         // the same generic, finance-actionable message as every other
         // pre-flight check in this file.
-        const platformBalanceUsd = await this.getStripePlatformBalanceUsd();
-        if (platformBalanceUsd < amountUsd) {
-          this.logger.error(`Stripe platform balance insufficient: available $${platformBalanceUsd} < required $${amountUsd} for payout ${payoutRequestId}`);
-          await this.failPayout(payout,
-            'This withdrawal could not be processed right now. Please try again shortly.',
-            'ERR_STRIPE_PLATFORM_INSUFFICIENT_BALANCE');
-          return;
+        //
+        // Gated to the first execution only (payout.status read above,
+        // before the PROCESSING update) — PS-33 §6's idempotency keys exist
+        // specifically so Bull's automatic retry of a job whose worker died
+        // mid-run (e.g. a Render deploy) re-runs cleanly instead of moving
+        // money twice. Running this check on that re-run too would fail a
+        // payout whose transfers.create()/payouts.create() already
+        // succeeded once — on a re-run completedTransferId starts null
+        // regardless of what the first run did, so failPayout() here would
+        // neither reverse the already-completed transfer nor stop
+        // earnings-service crediting the contractor's balance back while
+        // Stripe is still en route to their bank. A re-run must always
+        // reach the idempotent calls below untouched by this check.
+        if (payout.status !== PayoutStatus.PROCESSING) {
+          const platformBalanceUsd = await this.getStripePlatformBalanceUsd();
+          if (platformBalanceUsd < amountUsd) {
+            this.logger.error(`Stripe platform balance insufficient: available $${platformBalanceUsd} < required $${amountUsd} for payout ${payoutRequestId}`);
+            await this.failPayout(payout,
+              'This withdrawal could not be processed right now. Please try again shortly.',
+              'ERR_STRIPE_PLATFORM_INSUFFICIENT_BALANCE');
+            return;
+          }
         }
 
         // Move platform balance → connected account, then connected account
