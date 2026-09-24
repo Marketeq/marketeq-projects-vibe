@@ -82,6 +82,7 @@
     "@types/pdfkit": "^0.17.6",
     "@types/sanitize-html": "^2.16.1",
     "@types/ua-parser-js": "^0.7.39",
+    "@walletconnect/sign-client": "^2.25.0",
     "amqp-connection-manager": "^4.1.14",
     "amqplib": "^0.10.3",
     "bad-words": "^4.0.0",

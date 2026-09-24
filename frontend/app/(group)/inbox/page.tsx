@@ -243,6 +243,11 @@ export default function InboxRoot() {
                   // live offer to source this from and must leave it unset,
                   // not invent one.
                   realContractId: offer.contractId,
+                  // PMCM-376: same rule again — real, live signal only, from
+                  // this same getOffer() call. Undefined until the backend
+                  // PR (feat/PMCM-376-expose-latest-counter-offer) merges,
+                  // or when this offer has never had a counter offer.
+                  latestCounterOfferId: offer.latestCounterOffer?.id,
                   event: item.event?.toLowerCase() || "offer.received",
                   title: item.title,
                   body: item.body,

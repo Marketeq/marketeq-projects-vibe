@@ -91,7 +91,7 @@ export function buildOfferCounterAcceptedPayload(offer: Offer, co: CounterOffer,
 
 export function buildOfferCounterDeclinedPayload(offer: Offer, co: CounterOffer, declinedById: string): OfferCounterDeclinedPayload {
   const declinedBy = co.submittedBy === 'CLIENT' ? 'TALENT' : 'CLIENT';
-  return { ...base(offer, declinedBy, declinedById), eventType: OFFER_EVENTS.COUNTER_DECLINED, counterOfferId: co.id, declinedBy, declinedById, declinedAt: (co.declinedAt ?? new Date()).toISOString(), counterOfferTerms: termsFromCO(co), parentOfferStatus: 'PENDING' };
+  return { ...base(offer, declinedBy, declinedById), eventType: OFFER_EVENTS.COUNTER_DECLINED, counterOfferId: co.id, declinedBy, declinedById, declinedAt: (co.declinedAt ?? new Date()).toISOString(), counterOfferTerms: termsFromCO(co), parentOfferStatus: offer.status === 'EXPIRED' ? 'EXPIRED' : 'PENDING' };
 }
 
 export function buildOfferCounterWithdrawnPayload(offer: Offer, co: CounterOffer): OfferCounterWithdrawnPayload {

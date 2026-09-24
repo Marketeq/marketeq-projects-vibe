@@ -16,6 +16,7 @@ import { ProviderValidationService } from './provider-validation.service';
 import { AuditService }        from '../audit/audit.service';
 import { PayoutError }         from '../common/errors/payout.error';
 import { getProviderConfig, getWalletConnectChainId } from './provider-registry';
+import { WalletConnectClientService } from './walletconnect-client.service';
 
 @Injectable()
 export class CryptoConnectionService {
@@ -32,6 +33,7 @@ export class CryptoConnectionService {
     private readonly conversionSvc: ConversionService,
     private readonly providerValidator: ProviderValidationService,
     private readonly auditService: AuditService,
+    private readonly walletConnectClient: WalletConnectClientService,
   ) {
     // Same options as earnings-service CacheService. Without them a bare
     // `new Redis(url)` retries forever and, with no 'error' listener attached,
@@ -103,15 +105,26 @@ export class CryptoConnectionService {
     const provider = dto.cryptoProvider as CryptoProvider;
     this.providerValidator.validateWalletConnectForNetwork(provider, dto.network);
 
+    // PS-11: Use provider-specific chainId for WalletConnect session
+    const chainId = getWalletConnectChainId(provider, dto.network);
+    if (!chainId) {
+      throw new PayoutError('WalletConnect is not supported for this network.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_CRYPTO_ADDRESS_NETWORK_MISMATCH');
+    }
+    if (!this.walletConnectClient.isConfigured()) {
+      throw new PayoutError('Wallet connection is not currently available. Try manual address entry instead.',
+        HttpStatus.SERVICE_UNAVAILABLE, 'ERR_WALLETCONNECT_NOT_CONFIGURED');
+    }
+
+    const providerConfig = getProviderConfig(provider);
     const sessionId = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + this.wcSessionTtl * 1000);
 
-    // PS-11: Use provider-specific chainId for WalletConnect session
-    const chainId = getWalletConnectChainId(provider, dto.network);
-    const providerConfig = getProviderConfig(provider);
-
-    // Mock WalletConnect URI (production uses @walletconnect/sign-client)
-    const wcUri = `wc:${crypto.randomUUID()}@2?relay-protocol=irn&symKey=${crypto.randomBytes(16).toString('hex')}`;
+    // PS-10 §5.1: real relay pairing — uri is what the QR code/paste-URI flow
+    // shows the contractor; approval() resolves once they approve in their
+    // wallet app (or rejects on decline/expiry). Never awaited inline here —
+    // this request has to return the URI to the contractor immediately.
+    const { uri, approval } = await this.walletConnectClient.createPairing(chainId);
 
     await this.redis.set(`wcsession:${sessionId}`,
       JSON.stringify({
@@ -124,7 +137,27 @@ export class CryptoConnectionService {
       'EX', this.wcSessionTtl);
 
     this.logger.log(`WalletConnect session created: ${sessionId} for ${providerConfig.displayName} on ${dto.network} (chainId: ${chainId}, TTL: ${this.wcSessionTtl}s)`);
-    return { sessionId, wcUri, expiresAt: expiresAt.toISOString() };
+
+    // PS-10 §5.3/§11: fire-and-forget — resolves/rejects well after this
+    // method has already returned. On approval, extracts the address and
+    // reuses the exact same handleWalletConnectApproval() this session
+    // state machine already had, just never had a real caller before.
+    approval()
+      .then(async (session: any) => {
+        const address = this.walletConnectClient.extractAccountAddress(session, chainId);
+        if (!address) {
+          this.logger.warn(`WalletConnect session ${sessionId} approved but returned no account for ${chainId}`);
+          await this.handleWalletConnectRejection(sessionId).catch(() => {});
+          return;
+        }
+        await this.handleWalletConnectApproval(sessionId, address);
+      })
+      .catch(async (err: any) => {
+        this.logger.warn(`WalletConnect pairing ${sessionId} not completed: ${err?.message}`);
+        await this.handleWalletConnectRejection(sessionId).catch(() => {});
+      });
+
+    return { sessionId, wcUri: uri, expiresAt: expiresAt.toISOString() };
   }
 
   // ─── WalletConnect Session Poll (PS-10 §11 + PS-11 §11) ────
