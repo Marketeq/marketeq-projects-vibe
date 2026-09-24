@@ -17,8 +17,10 @@ import {
   AlertCircle,
   ArrowLeft,
   Check,
+  Calendar,
   CheckCircle,
   ChevronRight,
+  Clock,
   Eye,
   EyeOff,
   HelpCircle,
@@ -56,8 +58,14 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SixDigitPinInput,
+  Textarea,
   useToast,
 } from "@/components/ui"
+import {
+  PhoneNumberInput,
+  isPhoneValid,
+} from "@/components/phone-number-input"
 import { MagicLinkSentShowcase } from "@/components/magic-link-sent-showcase"
 import { AccountNotFoundShowcase } from "@/components/account-not-found-showcaset"
 
@@ -83,6 +91,64 @@ const RECOVERY_OPTIONS = [
 type RecoveryOptionId = (typeof RECOVERY_OPTIONS)[number]["id"]
 
 /**
+ * The address the page's original `mailto:` link used. Email Us now opens a
+ * form instead, per the Figma, so this is only quoted in the fallbacks that
+ * tell someone where to write while that form has no backend.
+ */
+const SUPPORT_EMAIL = "support@marketeqdigital.com"
+
+/**
+ * Figma order and labels. Rendered as one row of two plus three full-width
+ * fields: 263 + 24 + 263 = 550, and the column is 70 + 24 + 70 + 24 + 70 + 24
+ * + 214 = 496.
+ */
+const SUPPORT_MESSAGE_FIELDS = [
+  { id: "firstName", label: "First Name", placeholder: "John" },
+  { id: "lastName", label: "Last Name", placeholder: "Doe" },
+  { id: "email", label: "Your Email", placeholder: "you@you.com" },
+  { id: "subject", label: "Subject", placeholder: "Email subject line" },
+] as const
+
+/**
+ * PLACEHOLDER. This is the number drawn in the Figma, not a real one -- there
+ * is no support number anywhere in this repo. It renders as plain text rather
+ * than a `tel:` link, which is what the Figma specifies and also means nobody
+ * can dial it by accident. **Must be replaced or the row removed before this
+ * reaches anyone.** See docs/ACCOUNT_RECOVERY_NOTES.md §4.5.
+ */
+const SUPPORT_PHONE_PLACEHOLDER = "+1 (123) 555-1212"
+
+/**
+ * Rows are the same 68px control the Account Recovery chooser uses -- the two
+ * Figmas specify it identically (12px padding, 44px icon box at 1.5px, 20px
+ * primary-500 glyph, 32px chevron), so the markup is shared rather than
+ * re-derived.
+ */
+const SUPPORT_OPTIONS = [
+  { id: "call", label: "Call Us", icon: Phone },
+  { id: "email", label: "Email Us", icon: Mail01 },
+  // The Figma repeats row 2's envelope here. Read as a slip and drawn with a
+  // calendar instead -- see the deviations list in the notes.
+  { id: "schedule", label: "Schedule a Call", icon: Calendar },
+  { id: "chat", label: "Live Chat", icon: Smartphone },
+] as const
+
+type SupportOptionId = (typeof SUPPORT_OPTIONS)[number]["id"]
+
+/** Which of the two support routes reached the shared 371x258 confirmation. */
+type SupportSentKind = "message" | "call"
+
+/**
+ * Figma order and labels for Schedule a Call. Name, Email and Phone Number are
+ * full width; the two preferences share a row: 263 + 24 + 263 = 550, and the
+ * column is 70 + 24 + 70 + 24 + 70 + 24 + 70 = 352.
+ */
+const SCHEDULE_TEXT_FIELDS = [
+  { id: "name", label: "Name", placeholder: "John Doe" },
+  { id: "email", label: "Email", placeholder: "you@me.com" },
+] as const
+
+/**
  * Kept identical to the list Settings > Account Recovery offers, so a person is
  * asked here exactly what they were asked when they set the answers. Duplicated
  * rather than imported because the Settings copy lives inside a page component;
@@ -96,6 +162,29 @@ const SECURITY_QUESTIONS = [
   "What was the make of your first car?",
   "What is your favourite book?",
 ]
+
+/**
+ * The two ways the flow can end. Both land on the same 420x490 confirmation
+ * screen; only the wording differs, because only the wording differs in the
+ * Figma. The session options and the button are shared.
+ */
+type ConfirmationKind = "password" | "authenticated"
+
+const CONFIRMATION_COPY: Record<
+  ConfirmationKind,
+  { title: string; description: string }
+> = {
+  password: {
+    title: "Your password has been successfully updated!",
+    description:
+      "You can sign in with your new password from now on. Choose what should happen to sessions already open on your other devices.",
+  },
+  authenticated: {
+    title: "You have been successfully authenticated!",
+    description:
+      "We matched the code from your authenticator app. Choose what should happen to sessions already open on your other devices.",
+  },
+}
 
 /**
  * Renders jane@gmail.com as J***e@gmail.com.
@@ -151,12 +240,42 @@ function ForgotPassword() {
   const [touchedSecurityFields, setTouchedSecurityFields] = useState<
     Record<string, boolean>
   >({})
+  const [isAuthenticatorOpen, setIsAuthenticatorOpen] = useState(false)
+  const [isSupportOpen, setIsSupportOpen] = useState(false)
+  const [isCallUsOpen, setIsCallUsOpen] = useState(false)
+  const [isEmailUsOpen, setIsEmailUsOpen] = useState(false)
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false)
+  const [scheduleForm, setScheduleForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    date: "",
+    time: "",
+  })
+  // Same 371x258 screen as the message confirmation -- the two Figmas are
+  // identical bar the wording, so it is parameterised rather than duplicated.
+  const [isSupportSentOpen, setIsSupportSentOpen] = useState(false)
+  const [supportSentKind, setSupportSentKind] =
+    useState<SupportSentKind>("message")
+  const [supportMessage, setSupportMessage] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    subject: "",
+    message: "",
+  })
   const [isUpdatePasswordOpen, setIsUpdatePasswordOpen] = useState(false)
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [isNewPasswordVisible, setIsNewPasswordVisible] = useState(false)
   const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false)
-  const [isPasswordUpdatedOpen, setIsPasswordUpdatedOpen] = useState(false)
+  // One confirmation screen serves both terminals. The Figma draws 420x490
+  // twice with identical geometry, icon, option rows and button -- only the
+  // heading and supporting text change -- so it is parameterised rather than
+  // duplicated, which is what would let the two drift apart.
+  const [isConfirmationOpen, setIsConfirmationOpen] = useState(false)
+  const [confirmationKind, setConfirmationKind] =
+    useState<ConfirmationKind>("password")
   const [sessionChoice, setSessionChoice] = useState("stay")
 
   // Both recovery modals are drawn on an empty page: the reset form and the
@@ -168,8 +287,14 @@ function ForgotPassword() {
     isRecoveryOpen ||
     isEmailVerificationOpen ||
     isSecurityQuestionsOpen ||
+    isAuthenticatorOpen ||
+    isSupportOpen ||
+    isCallUsOpen ||
+    isEmailUsOpen ||
+    isScheduleOpen ||
+    isSupportSentOpen ||
     isUpdatePasswordOpen ||
-    isPasswordUpdatedOpen
+    isConfirmationOpen
 
   const updateSecurityAnswer = (
     index: number,
@@ -315,9 +440,21 @@ function ForgotPassword() {
       return
     }
 
-    // Phone, authenticator and support have no screen yet.
-    if (id !== "email") return
+    // Support is reachable without knowing who you are, so it branches before
+    // the address check the account-bound routes need.
+    if (id === "support") {
+      setIsRecoveryOpen(false)
+      setIsSupportOpen(true)
+      return
+    }
 
+    // Phone has no screen yet.
+    if (id !== "email" && id !== "authenticator") return
+
+    // Both remaining routes are tied to an account, so the address is required
+    // before either can start. The authenticator needs it for the same reason
+    // the emailed link does: the code only means anything against a known
+    // user's TOTP secret.
     const email = watch("email").trim()
     if (!email) {
       toast({
@@ -331,6 +468,12 @@ function ForgotPassword() {
     // modal names stays the one the link was actually sent to.
     setRecoveryEmail(email)
     setIsRecoveryOpen(false)
+
+    if (id === "authenticator") {
+      setIsAuthenticatorOpen(true)
+      return
+    }
+
     setIsEmailVerificationOpen(true)
     void sendRecoveryLink(email)
   }
@@ -353,6 +496,151 @@ function ForgotPassword() {
   }
 
   /**
+   * Advances straight to the confirmation screen.
+   *
+   * This route does NOT pass through Update Password: the Figma ends the
+   * authenticator path at "You have been successfully authenticated!" with
+   * Continue to Dashboard, so proving the code is treated as regaining access
+   * rather than as authorising a password change. Security questions still go
+   * via Update Password.
+   *
+   * The code is NOT checked, and cannot be from here. Verifying it means
+   * POSTing the six digits plus recoveryEmail to a route that loads that
+   * user's TOTP secret and validates the window; auth-service exposes
+   * /auth/2fa/verify, but it requires a partialToken from a completed login,
+   * which nobody holds in a forgotten-password flow. So there is no endpoint
+   * this screen can call yet.
+   *
+   * Worse, the digits are unreadable on the client too: SixDigitPinInput owns
+   * its zag machine internally and exposes no value callback, so Submit cannot
+   * even be gated on six digits being present. It stays enabled deliberately.
+   *
+   * See docs/ACCOUNT_RECOVERY_NOTES.md.
+   */
+  /**
+   * Email Us is wired directly as a `mailto:` rather than going through here --
+   * it is the address the page's original support link used, so keeping it
+   * working is what stops this flow being a regression on what it replaced.
+   *
+   * Call Us has a screen, but the number on it is a placeholder.
+   *
+   * Schedule a Call and Live Chat need a scheduling integration and a chat
+   * provider respectively; neither exists in this repo, so they say so. A toast
+   * is a placeholder, not a design, and the copy is invented like the rest.
+   */
+  const handleSupportSelect = (id: SupportOptionId, label: string) => {
+    if (id === "call") {
+      setIsSupportOpen(false)
+      setIsCallUsOpen(true)
+      return
+    }
+
+    if (id === "email") {
+      setIsSupportOpen(false)
+      setIsEmailUsOpen(true)
+      return
+    }
+
+    if (id === "schedule") {
+      setIsSupportOpen(false)
+      setIsScheduleOpen(true)
+      return
+    }
+
+    toast({
+      title: `${label} is not connected yet. Email ${SUPPORT_EMAIL} and the team will pick it up.`,
+    })
+  }
+
+  const updateSupportMessage = (
+    field: keyof typeof supportMessage,
+    value: string
+  ) => setSupportMessage((prev) => ({ ...prev, [field]: value }))
+
+  // Every field is required and the address has to parse. Unlike the
+  // authenticator's Submit, this one really can be gated -- these are our own
+  // inputs, so the Figma's disabled state is reproduced rather than skipped.
+  const canSendSupportMessage =
+    supportMessage.firstName.trim() !== "" &&
+    supportMessage.lastName.trim() !== "" &&
+    supportMessage.subject.trim() !== "" &&
+    supportMessage.message.trim() !== "" &&
+    z.string().email().safeParse(supportMessage.email.trim()).success
+
+  /**
+   * Hands the message to the person's own mail client, addressed to
+   * SUPPORT_EMAIL and prefilled from the form.
+   *
+   * This is a HANDOFF, not a server send. There is no support-ticket endpoint
+   * anywhere in the backend -- searched `contact`, `contactUs`, `support-ticket`
+   * and every POST route; nothing exists -- and a server send would need the
+   * Brevo config that §3 is already blocked on. A `mailto:` is the only route
+   * that actually reaches the address today.
+   *
+   * The consequence worth knowing: the confirmation screen opens as soon as the
+   * client is handed the draft, so it can say thank you for a message the
+   * person then abandons in their drafts. Replace both halves with a real
+   * endpoint when one exists. See docs/ACCOUNT_RECOVERY_NOTES.md.
+   */
+  const handleSupportMessageSubmit = () => {
+    const { firstName, lastName, email, subject, message } = supportMessage
+
+    // The form collects a name and a reply-to that a bare mailto body would
+    // otherwise lose -- the client sends from whatever account it is signed
+    // into, which is not necessarily the address typed here.
+    const body = [
+      `From: ${firstName.trim()} ${lastName.trim()}`,
+      `Reply to: ${email.trim()}`,
+      "",
+      message.trim(),
+    ].join("\n")
+
+    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(
+      subject.trim()
+    )}&body=${encodeURIComponent(body)}`
+
+    setIsEmailUsOpen(false)
+    setSupportSentKind("message")
+    setIsSupportSentOpen(true)
+  }
+
+  const updateScheduleForm = (
+    field: keyof typeof scheduleForm,
+    value: string
+  ) => setScheduleForm((prev) => ({ ...prev, [field]: value }))
+
+  // isPhoneValid comes from the same design-system module as the input, so the
+  // rule here is the one Settings already enforces rather than a second guess.
+  const canScheduleCall =
+    scheduleForm.name.trim() !== "" &&
+    scheduleForm.date.trim() !== "" &&
+    scheduleForm.time.trim() !== "" &&
+    isPhoneValid(scheduleForm.phone) &&
+    z.string().email().safeParse(scheduleForm.email.trim()).success
+
+  /**
+   * NOT WIRED, and unlike Email Us there is no `mailto:` fallback that would
+   * make sense -- a booking has to land in a calendar, not an inbox.
+   *
+   * `scheduling-service` (:3024) exists but exposes nothing for unauthenticated
+   * support booking, so there is no endpoint to call. Nothing is reserved and
+   * no one is told. The confirmation screen this opens therefore states a call
+   * is booked when none is: the same class of untruth as the password screen in
+   * §4.2, and it must not reach real users. See docs/ACCOUNT_RECOVERY_NOTES.md.
+   */
+  const handleScheduleSubmit = () => {
+    setIsScheduleOpen(false)
+    setSupportSentKind("call")
+    setIsSupportSentOpen(true)
+  }
+
+  const handleAuthenticatorSubmit = () => {
+    setIsAuthenticatorOpen(false)
+    setConfirmationKind("authenticated")
+    setIsConfirmationOpen(true)
+  }
+
+  /**
    * Advances to the confirmation screen.
    *
    * NOTHING IS PERSISTED. The password is not changed: every write path into
@@ -369,13 +657,14 @@ function ForgotPassword() {
    * changed.
    */
   const handleContinueToDashboard = () => {
-    setIsPasswordUpdatedOpen(false)
+    setIsConfirmationOpen(false)
     router.push("/sign-in")
   }
 
   const handleUpdatePasswordSubmit = () => {
     setIsUpdatePasswordOpen(false)
-    setIsPasswordUpdatedOpen(true)
+    setConfirmationKind("password")
+    setIsConfirmationOpen(true)
   }
 
   const handleResend = async () => {
@@ -779,6 +1068,531 @@ function ForgotPassword() {
                 </DialogContent>
               </Dialog>
 
+              {/* App authenticator. Figma: 680x444, 50px padding, 32px gap.
+                  The buttons row is a sibling of the content column, not part
+                  of it, so the 580px column is 76 (heading) + 32 + 56
+                  (code label) + 32 + 80 (inputs) = 276, then
+                  50 + 276 + 32 + 36 + 50 = 444.
+                  The input row is exactly 580 too: 6*80 + 28 (separator)
+                  + 6*12 = 580, which is why the gap is overridden to 12px.
+                  Border is gray-100 here, not the gray-200 the other modals
+                  use -- the Figma specifies #F2F4F7. */}
+              <Dialog
+                open={isAuthenticatorOpen}
+                onOpenChange={setIsAuthenticatorOpen}
+              >
+                <DialogContent
+                  dialogOverlay={<DialogOverlay className="bg-transparent" />}
+                  className="flex h-[444px] w-[680px] max-w-[680px] flex-col items-center justify-center gap-8 rounded-xl border border-gray-100 bg-white p-[50px] shadow-[0px_32px_64px_-12px_rgba(16,24,40,0.05)]"
+                >
+                  <div className="flex w-full flex-col items-start gap-8">
+                    <div className="flex w-full flex-col items-start gap-2">
+                      <DialogTitle className="w-full text-lg font-semibold leading-7 text-gray-black">
+                        App Authenticator
+                      </DialogTitle>
+                      <DialogDescription className="w-full text-sm leading-5 text-gray-500">
+                        Open the authenticator app you paired with this account
+                        and enter the six digit code it is showing.
+                      </DialogDescription>
+                    </div>
+
+                    <div className="flex w-full flex-col items-start gap-2">
+                      <span className="w-full text-sm font-semibold leading-7 text-gray-black">
+                        Enter the Verification Code
+                      </span>
+                      <span className="w-full text-sm leading-5 text-gray-500">
+                        Type the verification code from your authenticator app
+                        below.
+                      </span>
+                    </div>
+
+                    {/* Typed digits are black; the placeholder zeros stay
+                        gray-300, as does the separator. The variant paints the
+                        value gray-300 too, and SixDigitPinInput passes
+                        pinInputClassName straight through cva without cn/
+                        twMerge -- so a plain text-gray-black would tie on
+                        specificity and be decided by stylesheet order. The
+                        important modifier is what makes it deterministic.
+                        placeholder:text-gray-300 is a separate selector, so it
+                        is untouched. */}
+                    <SixDigitPinInput
+                      size="md"
+                      className="gap-x-3"
+                      pinInputClassName="!text-gray-black"
+                    />
+                  </div>
+
+                  <div className="flex w-full items-center justify-between gap-8">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="link"
+                      onClick={() => {
+                        setIsAuthenticatorOpen(false)
+                        setIsRecoveryOpen(true)
+                      }}
+                    >
+                      Back
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleAuthenticatorSubmit}
+                    >
+                      <Check className="size-[15px]" />
+                      Submit
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Contact support. Figma: 500x502, 50px padding, 24px gap ->
+                  50 + 76 (heading) + 24 + 302 (rows) + 50 = 502, on a 400px
+                  column (500 - 2*50). The rows block is 4*68 + 3*10 = 302.
+                  The row itself is the same control the Account Recovery
+                  chooser uses -- both Figmas specify it identically -- so the
+                  markup is shared rather than re-derived. */}
+              <Dialog open={isSupportOpen} onOpenChange={setIsSupportOpen}>
+                <DialogContent
+                  dialogOverlay={<DialogOverlay className="bg-transparent" />}
+                  className="flex h-[502px] w-[500px] max-w-[500px] flex-col items-center justify-center gap-6 rounded-xl border border-gray-200 bg-white p-[50px] shadow-[0px_32px_64px_-12px_rgba(16,24,40,0.05)]"
+                >
+                  <div className="flex w-full flex-col items-start gap-2">
+                    <DialogTitle className="w-full text-lg font-semibold leading-7 text-dark-blue-400">
+                      Contact Support
+                    </DialogTitle>
+                    <DialogDescription className="w-full text-sm leading-5 text-gray-500">
+                      Pick how you would like to reach us and someone from the
+                      team will help you back into your account.
+                    </DialogDescription>
+                  </div>
+
+                  <div className="flex w-full flex-col items-start gap-2.5">
+                    {SUPPORT_OPTIONS.map(({ id, label, icon: Icon }) => {
+                      const rowClassName =
+                        "flex h-[68px] w-full items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+
+                      const rowContent = (
+                        <>
+                          <span className="flex items-center gap-x-3">
+                            <span className="flex size-11 shrink-0 items-center justify-center rounded-lg border-[1.5px] border-gray-200">
+                              <Icon className="size-5 text-primary-500" />
+                            </span>
+                            <span className="text-sm font-medium leading-[17px] text-dark-blue-400">
+                              {label}
+                            </span>
+                          </span>
+                          <span className="flex size-8 items-center justify-center rounded-[5px]">
+                            <ChevronRight className="size-5 text-gray-500" />
+                          </span>
+                        </>
+                      )
+
+                      return (
+                        <Button
+                          key={id}
+                          type="button"
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className={rowClassName}
+                          onClick={() => handleSupportSelect(id, label)}
+                        >
+                          {rowContent}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Call us. Figma: 500x280, 50px padding, 32px gap ->
+                  50 + 76 (heading) + 32 + 20 (number) + 32 + 20 (Back) + 50
+                  = 280, on a 400px column (500 - 2*50).
+                  items-start, not items-center: the Figma aligns this one left,
+                  unlike the confirmation screens.
+                  Back is 34x20 with zero padding here -- the 62x36 Back the
+                  other modals use would not fit the 20px row, so size sm's
+                  px-[14px]/h-9 is overridden. */}
+              <Dialog open={isCallUsOpen} onOpenChange={setIsCallUsOpen}>
+                <DialogContent
+                  dialogOverlay={<DialogOverlay className="bg-transparent" />}
+                  className="flex h-[280px] w-[500px] max-w-[500px] flex-col items-start justify-center gap-8 rounded-xl border border-gray-200 bg-white p-[50px] shadow-[0px_32px_64px_-12px_rgba(16,24,40,0.05)]"
+                >
+                  <div className="flex w-full flex-col items-start gap-2">
+                    <DialogTitle className="w-full text-lg font-semibold leading-7 text-dark-blue-400">
+                      Call Us
+                    </DialogTitle>
+                    <DialogDescription className="w-full text-sm leading-5 text-gray-500">
+                      Support is open Monday to Friday. Have your account email
+                      to hand so the team can find you quickly.
+                    </DialogDescription>
+                  </div>
+
+                  {/* Plain text, not a tel: link -- the Figma draws it as body
+                      copy, and the number is a placeholder that nobody should
+                      be able to dial by accident. */}
+                  <span className="text-lg font-normal leading-5 text-dark-blue-400">
+                    {SUPPORT_PHONE_PLACEHOLDER}
+                  </span>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="link"
+                    className="h-5 p-0"
+                    onClick={() => {
+                      setIsCallUsOpen(false)
+                      setIsSupportOpen(true)
+                    }}
+                  >
+                    Back
+                  </Button>
+                </DialogContent>
+              </Dialog>
+
+              {/* Email us. Figma draws 650x770; built 68px shorter at 650x702
+                  by request -- the modal read as too tall on a laptop. The
+                  message box absorbs the whole reduction (188 -> 120) because
+                  it is the only element with slack; width, padding, gaps,
+                  labels and the three single-line fields are all still
+                  Figma-exact.
+                  50 + 516 + 50 + 36 + 50 = 702, on a 550px column.
+                  The 516 column is 56 (heading) + 32 + 428 (fields), and the
+                  428 field box is 70 + 24 + 70 + 24 + 70 + 24 + 146 = 428.
+                  flex-1/min-h-0 rather than fixed heights so the field box can
+                  scroll, which is what the Figma marks it as doing. */}
+              <Dialog open={isEmailUsOpen} onOpenChange={setIsEmailUsOpen}>
+                <DialogContent
+                  dialogOverlay={<DialogOverlay className="bg-transparent" />}
+                  className="flex h-[702px] max-h-[calc(100vh-4rem)] w-[650px] max-w-[650px] flex-col items-center justify-center gap-[50px] rounded-xl border border-gray-200 bg-white p-[50px] shadow-[0px_32px_64px_-12px_rgba(16,24,40,0.05)]"
+                >
+                  <div className="flex min-h-0 w-full flex-1 flex-col items-start gap-8">
+                    <div className="flex w-full shrink-0 flex-col items-start gap-2">
+                      <DialogTitle className="w-full text-lg font-semibold leading-7 text-dark-blue-400">
+                        Email Us
+                      </DialogTitle>
+                      <DialogDescription className="w-full text-sm leading-5 text-gray-500">
+                        Use the form below to connect with one of our team
+                        members.
+                      </DialogDescription>
+                    </div>
+
+                    {/* -mb-1/pb-1 cancel out: the box takes 500px of border
+                        box while consuming only 496px of layout, so the
+                        content area stays exactly the Figma's 496 and the
+                        buttons row does not move. The 4px of padding is what
+                        stops overflow-y-auto shaving the last field's shadow-xs
+                        -- content and container were exactly equal, so the
+                        shadow paints straight onto the clip boundary. */}
+                    <div className="-mb-1 flex min-h-0 w-full flex-1 flex-col items-start gap-6 overflow-y-auto pb-1 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+                      <div className="flex w-full shrink-0 items-start gap-6">
+                        {SUPPORT_MESSAGE_FIELDS.slice(0, 2).map(
+                          ({ id, label, placeholder }) => (
+                            <div
+                              key={id}
+                              className="flex flex-1 flex-col items-start gap-1.5"
+                            >
+                              <Label
+                                htmlFor={`support-${id}`}
+                                size="sm"
+                                className="text-dark-blue-400"
+                              >
+                                {label}
+                              </Label>
+                              <Input
+                                id={`support-${id}`}
+                                placeholder={placeholder}
+                                value={supportMessage[id]}
+                                onChange={(event) =>
+                                  updateSupportMessage(id, event.target.value)
+                                }
+                              />
+                            </div>
+                          )
+                        )}
+                      </div>
+
+                      {SUPPORT_MESSAGE_FIELDS.slice(2).map(
+                        ({ id, label, placeholder }) => (
+                          <div
+                            key={id}
+                            className="flex w-full shrink-0 flex-col items-start gap-1.5"
+                          >
+                            <Label
+                              htmlFor={`support-${id}`}
+                              size="sm"
+                              className="text-dark-blue-400"
+                            >
+                              {label}
+                            </Label>
+                            <Input
+                              id={`support-${id}`}
+                              type={id === "email" ? "email" : "text"}
+                              placeholder={placeholder}
+                              value={supportMessage[id]}
+                              onChange={(event) =>
+                                updateSupportMessage(id, event.target.value)
+                              }
+                            />
+                          </div>
+                        )
+                      )}
+
+                      <div className="flex w-full shrink-0 flex-col items-start gap-1.5">
+                        <Label
+                          htmlFor="support-message"
+                          size="sm"
+                          className="text-dark-blue-400"
+                        >
+                          Your Message
+                        </Label>
+                        {/* Textarea defaults to 128px. The Figma draws 188;
+                            built at 120 to take the modal to 702 -- see the
+                            geometry note on the dialog. */}
+                        <Textarea
+                          id="support-message"
+                          className="h-[120px]"
+                          placeholder="Let us know any details that might help."
+                          value={supportMessage.message}
+                          onChange={(event) =>
+                            updateSupportMessage("message", event.target.value)
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex w-full shrink-0 items-center justify-between gap-8">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="link"
+                      onClick={() => {
+                        setIsEmailUsOpen(false)
+                        setIsSupportOpen(true)
+                      }}
+                    >
+                      Back
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!canSendSupportMessage}
+                      onClick={handleSupportMessageSubmit}
+                    >
+                      <Check className="size-[15px]" />
+                      Submit
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Schedule a call. Figma: 650x626, 50px padding, 50px gap ->
+                  50 + 440 + 50 + 36 + 50 = 626, on a 550px column.
+                  The 440 column is 56 (heading) + 32 + 352 (fields), and the
+                  352 field box is 70 + 24 + 70 + 24 + 70 + 24 + 70 = 352.
+                  Same -mb-1/pb-1 trick as Email Us: content and container are
+                  exactly equal, so without it the last row's shadow-xs is
+                  shaved by the scroll clip. */}
+              <Dialog open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
+                <DialogContent
+                  dialogOverlay={<DialogOverlay className="bg-transparent" />}
+                  className="flex h-[626px] max-h-[calc(100vh-4rem)] w-[650px] max-w-[650px] flex-col items-center justify-center gap-[50px] rounded-xl border border-gray-200 bg-white p-[50px] shadow-[0px_32px_64px_-12px_rgba(16,24,40,0.05)]"
+                >
+                  <div className="flex min-h-0 w-full flex-1 flex-col items-start gap-8">
+                    <div className="flex w-full shrink-0 flex-col items-start gap-2">
+                      <DialogTitle className="w-full text-lg font-semibold leading-7 text-dark-blue-400">
+                        Schedule a Call
+                      </DialogTitle>
+                      <DialogDescription className="w-full text-sm leading-5 text-gray-500">
+                        Use the form below to schedule a call with one of our
+                        team members.
+                      </DialogDescription>
+                    </div>
+
+                    <div className="-mb-1 flex min-h-0 w-full flex-1 flex-col items-start gap-6 overflow-y-auto pb-1 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+                      {SCHEDULE_TEXT_FIELDS.map(
+                        ({ id, label, placeholder }) => (
+                          <div
+                            key={id}
+                            className="flex w-full shrink-0 flex-col items-start gap-1.5"
+                          >
+                            <Label
+                              htmlFor={`schedule-${id}`}
+                              size="sm"
+                              className="text-dark-blue-400"
+                            >
+                              {label}
+                            </Label>
+                            <Input
+                              id={`schedule-${id}`}
+                              type={id === "email" ? "email" : "text"}
+                              placeholder={placeholder}
+                              value={scheduleForm[id]}
+                              onChange={(event) =>
+                                updateScheduleForm(id, event.target.value)
+                              }
+                            />
+                          </div>
+                        )
+                      )}
+
+                      {/* The Figma draws a country dropdown joined to the text
+                          field. PhoneNumberInput is that control, and is what
+                          Settings already uses.
+                          Its size comes from global CSS variables, not props:
+                          styles/globals.css sets the height to size.10 (40px)
+                          and the font to 14px, so out of the box it renders 4px
+                          shorter than every other field here. The variable is
+                          re-set on this wrapper rather than globally, because
+                          the global one also drives the Settings phone inputs.
+                          The Figma wants 44px, a 14px country code and 16px
+                          input text -- the var covers both halves, so the input
+                          text is lifted to 16 on its own with !text-base and
+                          the country code keeps the inherited 14.
+                          rounded-[5px] + shadow-xs on the wrapper give the
+                          outer box the Figma's shadow; the control itself
+                          carries none. */}
+                      <div className="flex w-full shrink-0 flex-col items-start gap-1.5">
+                        <Label size="sm" className="text-dark-blue-400">
+                          Phone Number
+                        </Label>
+                        <div className="w-full rounded-[5px] shadow-xs [--react-international-phone-height:44px]">
+                          <PhoneNumberInput
+                            defaultCountry="us"
+                            placeholder="(555) 555-5555"
+                            disableDialCodePrefill
+                            inputClassName="!text-base"
+                            value={scheduleForm.phone}
+                            onChange={(value) =>
+                              updateScheduleForm("phone", value)
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      {/* Free text, not pickers. The Figma draws a 44px field
+                          with a trailing 16px glyph and a typed MM/DD/YYYY
+                          placeholder; DatePicker is a 40px Button+Popover with
+                          a LEADING indicator and a hardcoded trailing chevron,
+                          and TimeField is segmented -- neither matches without
+                          editing read-only component source.
+                          Consequence: nothing validates these. canScheduleCall
+                          only checks they are non-empty, so 99/99/9999 passes,
+                          and no timezone is captured anywhere. Must be resolved
+                          before the booking endpoint is built -- its payload
+                          depends on it. See docs/ACCOUNT_RECOVERY_NOTES.md
+                          §4.6. */}
+                      <div className="flex w-full shrink-0 items-start gap-6">
+                        {(
+                          [
+                            {
+                              id: "date",
+                              label: "Preferred Date",
+                              placeholder: "MM/DD/YYYY",
+                              icon: Calendar,
+                            },
+                            {
+                              id: "time",
+                              label: "Preferred Time",
+                              placeholder: "HH:MM AM/PM",
+                              icon: Clock,
+                            },
+                          ] as const
+                        ).map(({ id, label, placeholder, icon: Icon }) => (
+                          <div
+                            key={id}
+                            className="flex flex-1 flex-col items-start gap-1.5"
+                          >
+                            <Label
+                              htmlFor={`schedule-${id}`}
+                              size="sm"
+                              className="text-dark-blue-400"
+                            >
+                              {label}
+                            </Label>
+                            <InputGroup className="w-full">
+                              <Input
+                                id={`schedule-${id}`}
+                                placeholder={placeholder}
+                                className="pr-9"
+                                value={scheduleForm[id]}
+                                onChange={(event) =>
+                                  updateScheduleForm(id, event.target.value)
+                                }
+                              />
+                              <InputRightElement>
+                                <Icon className="size-4 text-gray-400" />
+                              </InputRightElement>
+                            </InputGroup>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex w-full shrink-0 items-center justify-between gap-8">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="link"
+                      onClick={() => {
+                        setIsScheduleOpen(false)
+                        setIsSupportOpen(true)
+                      }}
+                    >
+                      Back
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!canScheduleCall}
+                      onClick={handleScheduleSubmit}
+                    >
+                      <Check className="size-[15px]" />
+                      Submit
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Message sent. Figma: 371x258, 50px padding ->
+                  50 + 158 + 50 = 258, on a 271px column (371 - 2*50).
+                  The 158 column is 48 (icon) + 20 + 90 (22 heading + 8 + 60
+                  supporting). The Figma's modal gap of 32 never applies: the
+                  only other child is the close button, which is display:none.
+                  There is no dismiss control by design -- Esc and the overlay
+                  close it, which Radix gives us. */}
+              <Dialog
+                open={isSupportSentOpen}
+                onOpenChange={setIsSupportSentOpen}
+              >
+                <DialogContent
+                  dialogOverlay={<DialogOverlay className="bg-transparent" />}
+                  className="flex h-[258px] w-[371px] max-w-[371px] flex-col items-center justify-center gap-8 rounded-xl border border-gray-200 bg-white p-[50px] shadow-[0px_32px_64px_-12px_rgba(16,24,40,0.05)]"
+                >
+                  <div className="flex w-full flex-col items-center gap-5">
+                    <span className="box-border flex size-12 shrink-0 items-center justify-center rounded-[28px] border-8 border-success-50 bg-success-100">
+                      <CheckCircle className="size-6 text-success-500" />
+                    </span>
+
+                    <div className="flex w-full flex-col items-center gap-2">
+                      <DialogTitle className="text-center text-lg font-semibold leading-[22px] text-dark-blue-400">
+                        {supportSentKind === "call"
+                          ? "Your call has been scheduled"
+                          : "Thank you for contacting us"}
+                      </DialogTitle>
+                      <DialogDescription className="w-full text-center text-sm leading-5 text-gray-500">
+                        {supportSentKind === "call"
+                          ? `We have you down for ${scheduleForm.date} at ${scheduleForm.time}. Someone will call the number you gave us.`
+                          : "Your message is on its way to our support team. Someone will reply to the address you gave us."}
+                      </DialogDescription>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
               {/* Update password. Figma: 592x582, 50px padding, 50px gap and
                   items-end so the button sits right. The 492px column is
                   76 (heading) + 24 + 296 (fields + rules) = 396, then
@@ -926,12 +1740,19 @@ function ForgotPassword() {
                 </DialogContent>
               </Dialog>
 
-              {/* Password updated. Figma: 420x490, 50px padding, 32px gap ->
+              {/* Confirmation. Figma: 420x490, 50px padding, 32px gap ->
                   50 + 180 + 32 + 110 + 32 + 36 + 50 = 490, on a 320px content
-                  column (420 - 2*50). */}
+                  column (420 - 2*50). The content column is 48 (icon) + 20 +
+                  112 (44 heading + 8 + 60 supporting) = 180, and the options
+                  block is 50 + 10 + 50 = 110.
+                  Shared by both terminals -- password updated, and
+                  authenticated via the app authenticator. The Figma draws the
+                  two with identical geometry and differing copy only, so the
+                  wording comes from CONFIRMATION_COPY and everything else is
+                  the same markup. */}
               <Dialog
-                open={isPasswordUpdatedOpen}
-                onOpenChange={setIsPasswordUpdatedOpen}
+                open={isConfirmationOpen}
+                onOpenChange={setIsConfirmationOpen}
               >
                 <DialogContent
                   dialogOverlay={<DialogOverlay className="bg-transparent" />}
@@ -944,12 +1765,10 @@ function ForgotPassword() {
 
                     <div className="flex w-full flex-col items-center gap-2">
                       <DialogTitle className="text-center text-lg font-semibold leading-[22px] text-dark-blue-400">
-                        Your password has been successfully updated!
+                        {CONFIRMATION_COPY[confirmationKind].title}
                       </DialogTitle>
                       <DialogDescription className="w-full text-center text-sm leading-5 text-gray-500">
-                        You can sign in with your new password from now on.
-                        Choose what should happen to sessions already open on
-                        your other devices.
+                        {CONFIRMATION_COPY[confirmationKind].description}
                       </DialogDescription>
                     </div>
                   </div>
