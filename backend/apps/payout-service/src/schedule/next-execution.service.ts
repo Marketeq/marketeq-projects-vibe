@@ -4,7 +4,7 @@
 //   - BANK_STRIPE/BANK_MANUAL (ACH): dayOfWeek/dayOfMonth is the ARRIVAL
 //     day. Back-calculate the initiation date via AchInitiationCalculator
 //     (T-2 business days, weekend/holiday-adjusted).
-//   - WISE/PAYONEER/CRYPTO/everything else: dayOfWeek/dayOfMonth IS the
+//   - WISE/CRYPTO/everything else: dayOfWeek/dayOfMonth IS the
 //     initiation day directly — no back-calculation, no weekend/holiday
 //     adjustment (PS-32 §4.3 — those rails run 24/7).
 // Previously this ignored dayOfWeek/dayOfMonth entirely and always snapped
@@ -22,7 +22,7 @@ export const ACH_METHOD_TYPES: MethodType[] = [MethodType.BANK_STRIPE, MethodTyp
 // PS-34 §7 / PS-41 §5: BANK_MANUAL is ACH-arrival-day semantics ONLY for US
 // bank accounts — international BANK_MANUAL (routed through Stripe
 // cross-border or Wise Platform, see bank-payout-executor.service.ts) is an
-// initiation-day method like WISE/PAYONEER, with no back-calculation and no
+// initiation-day method like WISE, with no back-calculation and no
 // weekend/holiday adjustment. A method with no bankCountry recorded is
 // treated as US — every BANK_MANUAL row created before PS-34 shipped is a US
 // account (international entry didn't exist yet), so this is backward

@@ -3,7 +3,7 @@
 // Tracks verification for each method type:
 //   micro_deposit — amount_1_cents, amount_2_cents, attempt_count, max_attempts, locked_until, expires_at
 //   stripe_fc     — oauth_state, oauth_code
-//   oauth         — oauth_state, oauth_code (Wise, Payoneer)
+//   oauth         — oauth_state, oauth_code (Wise)
 //   crypto_confirm — confirmation_code, confirmation_expires_at
 // Indexes: dmv_deposit_method_idx, dmv_contractor_idx, dmv_expires_idx (PS-01 §4)
 
