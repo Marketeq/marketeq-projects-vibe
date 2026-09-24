@@ -11192,9 +11192,6 @@ const PayoutDetailDialog = ({
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {detail.failureReason ??
                   "This payout could not be processed. Please contact support if the issue persists."}
-                <div className="text-xs text-red-500 mt-1">
-                  Retry attempts: {detail.retryCount ?? 0}
-                </div>
                 <div className="flex gap-2 mt-3">
                   <Button
                     variant="filled"
