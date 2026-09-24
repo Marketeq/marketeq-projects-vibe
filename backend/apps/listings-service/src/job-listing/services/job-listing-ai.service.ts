@@ -121,31 +121,33 @@ const DEFAULT_GROQ_TEMPERATURE = 0.3;
 // how much: "medium" measured closer to a Smart Assistant scope-edit's own
 // numeric targets (e.g. a 20% budget-reduction target) than "low", which
 // doesn't verify its arithmetic before answering and was measured
-// overshooting to ~60%+. "low" was originally chosen over "medium" because,
-// at the time, this account appeared to be rate-limited around 8,000
-// tokens/minute and "medium"'s reasoning trace alone regularly exhausted
-// that, causing frequent 429s and, on successful calls, crowding out the
-// tail of the JSON response.
+// overshooting to ~60%+. "low" was originally chosen over "medium" because
+// this account is rate-limited around 8,000 tokens/minute and "medium"'s
+// reasoning trace alone regularly exhausted that, causing frequent 429s
+// and, on successful calls, crowding out the tail of the JSON response.
 //
-// CURRENTLY SET TO "high" (2026-09-23). Re-tested after the operations-
-// based response format (see handleSmartAssistantScopeEdit) shrunk the JSON
-// output itself to a fraction of the old full-scope-echo size — with
-// reasoning_effort at "high", two back-to-back scope-edit calls totaling
-// 13,159 prompt+completion tokens within a 14-second window both succeeded
-// with zero errors, well over the previously-assumed 8,000/minute ceiling.
-// Whatever the earlier rate limit was (free-tier cap that's since changed,
-// a stricter effective limit under the old full-tree-echo format's larger
-// payloads, or something else), it is not reproducing now. If
-// `jl_ai_generation_failed ... reason=http_429` starts showing up in the
-// logs again, that's the signal to step back down to "medium" or "low" —
-// nothing else needs to change to do so, it's this one constant. Always
-// explicit, not environment-configurable, so behavior can't silently drift
-// per env. It's
-// rejected outright (400 "not supported with this model") on non-reasoning
-// models, so it must only be sent when the configured model is actually a
-// reasoning model.
+// TRIED "high" on 2026-09-23, after the operations-based response format
+// (see handleSmartAssistantScopeEdit) shrunk the JSON output itself to a
+// fraction of the old full-scope-echo size. An initial light test (2 calls,
+// well spaced) succeeded cleanly, suggesting the rate limit might not be an
+// issue anymore — but heavier back-to-back use in the same session (9 calls
+// over ~8 minutes) produced a real `reason=http_429` ("Rate limit reached
+// ... Used 3799, Requested 6515") and a `reason=http_413` ("Request too
+// large ... Requested 8361") — roughly 1-in-3 calls failing. So the
+// per-minute cap is still very real under realistic usage (a user firing
+// off several edits while iterating); it was only the earlier LIGHT test
+// that gave a false-clean read. Stepped back down to "medium" as a result —
+// still real 429 risk under heavy back-to-back use (it alone can consume
+// most of one request's budget), but a smaller step than "low" while this
+// gets more real-world testing. Revisit if the account moves to a paid
+// tier, or if "medium" also proves too risky (step down to "low" then —
+// nothing else needs to change, it's this one constant). Always explicit,
+// not environment-configurable, so behavior can't silently drift per env.
+// It's rejected outright (400 "not supported with this model") on
+// non-reasoning models, so it must only be sent when the configured model
+// is actually a reasoning model.
 const REASONING_MODEL_PATTERN = /^openai\/gpt-oss|^qwen\//i;
-const GROQ_REASONING_EFFORT = "high";
+const GROQ_REASONING_EFFORT = "medium";
 
 interface GeneratedTask {
   taskName: string;
@@ -265,10 +267,14 @@ ${REGION_COUNTRY_REFERENCE}
 If no reduction target is given, aim to reduce the sum of relativeCost
 across all tasks by approximately 20%. Don't overshoot meaningfully once
 you're close. If the command gives an explicit target as a percentage or
-fraction ("by 30%", "in half"), use that instead. A dollar figure in the
-command (e.g. "cut $500") is directional only — you have no real dollar
-baseline for this scope, so treat it as "meaningfully more than the 20%
-default" rather than a number to hit exactly.
+fraction ("by 30%", "in half"), use that instead. If the command gives a
+dollar figure (e.g. "cut $500") AND a current total budget is given below,
+divide the dollar figure by that total budget to get a percentage, and use
+that percentage as your target exactly like an explicit percentage would
+be used. If no current total budget is given below, or the dollar figure
+is larger than the current total budget, you have no real baseline to
+convert it with — treat it as directional only ("meaningfully more than
+the 20% default") rather than a number to hit exactly.
 
 If you can't reasonably reach the target within these constraints, get as
 close as you can without making unrealistic changes, then stop. Add a
@@ -1754,6 +1760,11 @@ RULES:
     command: string;
     currentScope: { phases: ScopeSnapshotPhase[] };
     workType: "project" | "service";
+    // Client-computed, advisory only (see SmartAssistantScopeDto) — used
+    // here purely as prompt context so REDUCE_BUDGET_RULES can convert a
+    // dollar figure in the command into a real percentage. Never persisted,
+    // never trusted for anything financial.
+    currentTotalBudgetUsdCents?: number;
   }): Promise<{
     summary: string;
     suggestions: string[];
@@ -1791,6 +1802,12 @@ RULES:
     // exact truncation problem this change exists to fix).
     const maxTokens = 9216;
 
+    const budgetLine =
+      Number.isFinite(input.currentTotalBudgetUsdCents) &&
+      (input.currentTotalBudgetUsdCents as number) > 0
+        ? `\nCurrent total budget: $${((input.currentTotalBudgetUsdCents as number) / 100).toFixed(2)} USD\n`
+        : "";
+
     const result = await this.call<{
       suggestions: string[];
       operations: unknown;
@@ -1808,7 +1825,7 @@ RULES:
             content: `
 Current scope:
 ${JSON.stringify(input.currentScope)}
-
+${budgetLine}
 Command:
 ${input.command}
 `,

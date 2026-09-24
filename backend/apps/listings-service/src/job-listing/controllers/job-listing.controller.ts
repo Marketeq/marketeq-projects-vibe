@@ -610,6 +610,7 @@ export class JobListingController {
           command: dto.command,
           currentScope,
           workType,
+          currentTotalBudgetUsdCents: dto.currentTotalBudgetUsdCents,
         });
 
         const persisted = await this.scopeService.applySmartAssistantScopeOperations(
