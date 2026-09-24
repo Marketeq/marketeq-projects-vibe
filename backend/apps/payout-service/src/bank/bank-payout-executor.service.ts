@@ -174,6 +174,23 @@ export class BankPayoutExecutorService {
       let transferId = `tr_stub_${Date.now()}`;
 
       if (this.stripe && !method.stripeConnectAccountId.startsWith('acct_mock')) {
+        // Mirrors the Wise Platform float check below (PS-36 §11): without
+        // this, an underfunded platform balance was only ever discovered
+        // from transfers.create()'s thrown error, which then leaked
+        // Stripe's raw (often test-mode-specific, e.g. "creating Charges
+        // using the 4000000000000077 test card") message straight to the
+        // contractor via failureReason. Checking first lets this fail with
+        // the same generic, finance-actionable message as every other
+        // pre-flight check in this file.
+        const platformBalanceUsd = await this.getStripePlatformBalanceUsd();
+        if (platformBalanceUsd < amountUsd) {
+          this.logger.error(`Stripe platform balance insufficient: available $${platformBalanceUsd} < required $${amountUsd} for payout ${payoutRequestId}`);
+          await this.failPayout(payout,
+            'This withdrawal could not be processed right now. Please try again shortly.',
+            'ERR_STRIPE_PLATFORM_INSUFFICIENT_BALANCE');
+          return;
+        }
+
         // Move platform balance → connected account, then connected account
         // balance → the attached external bank account. Two calls because a
         // Custom account's own balance has to be funded before it can pay
@@ -249,8 +266,33 @@ export class BankPayoutExecutorService {
       if (completedTransferId) {
         await this.reverseTransfer(completedTransferId, payoutRequestId, payout.contractorId);
       }
-      await this.failPayout(payout, err.message, err.errorCode ?? 'ERR_BANK_PAYOUT_FAILED');
+      // failPayout's `reason` becomes contractor-facing failureReason —
+      // every other call site above passes a written, customer-safe
+      // message. This catch-all is the one path reached with a raw
+      // provider exception (Stripe API/network errors not covered by an
+      // explicit pre-check), so it must not forward err.message verbatim:
+      // Stripe error text can include account-internal or test-mode detail
+      // ("...creating Charges using the 4000000000000077 test card...")
+      // that means nothing to a contractor. The real message is still
+      // captured below in the audit log for support/engineering to see.
+      await this.failPayout(
+        payout,
+        'This withdrawal could not be processed. Please try again or contact support if the issue persists.',
+        err.errorCode ?? 'ERR_BANK_PAYOUT_FAILED',
+        err.message,
+      );
     }
+  }
+
+  // Stripe's available balance (as opposed to pending) — what a
+  // transfers.create() call actually draws from. Mirrors
+  // WisePlatformService.getWisePlatformBalanceUsd()'s role for the Wise
+  // branch below.
+  private async getStripePlatformBalanceUsd(): Promise<number> {
+    if (!this.stripe) return Infinity;
+    const balance = await this.stripe.balance.retrieve();
+    const usdAvailable = (balance.available ?? []).find((b: any) => b.currency === 'usd');
+    return (usdAvailable?.amount ?? 0) / 100;
   }
 
   // The platform→connected-account Transfer succeeded but the connected
@@ -354,13 +396,22 @@ export class BankPayoutExecutorService {
     }
   }
 
-  private async failPayout(payout: PayoutRequest, reason: string, errorCode: string): Promise<void> {
+  private async failPayout(
+    payout: PayoutRequest,
+    reason: string,
+    errorCode: string,
+    internalReason?: string,
+  ): Promise<void> {
     await this.payoutRepo.update(payout.id, {
       status: PayoutStatus.FAILED,
       failedAt: new Date(),
       failureReason: reason,
     });
 
+    // internalReason preserves the raw provider error (when the caller has
+    // one) for support/engineering, without it ever reaching the
+    // contractor-facing `reason` above — see the catch-all in
+    // executeBankPayout for why this distinction exists.
     await this.auditService.log({
       contractorId: payout.contractorId,
       payoutRequestId: payout.id,
@@ -369,7 +420,7 @@ export class BankPayoutExecutorService {
       action: 'bank.payout.failed',
       previousStatus: payout.status,
       newStatus: PayoutStatus.FAILED,
-      metadata: { reason, errorCode },
+      metadata: { reason, errorCode, ...(internalReason && internalReason !== reason ? { internalReason } : {}) },
     });
 
     await this.publisher.publishPayoutFailed({
