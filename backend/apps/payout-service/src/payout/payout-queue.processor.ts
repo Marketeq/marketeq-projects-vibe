@@ -89,20 +89,19 @@ export class PayoutQueueProcessor {
         return this.cardExecutor.executeCardPayout(payoutRequestId);
       case MethodType.BANK_STRIPE:
       case MethodType.BANK_MANUAL:
-      // PS-09 v2.0 §2: WISE/PAYONEER execute through the same Stripe ACH
+      // PS-09 v2.0 §2: WISE executes through the same Stripe ACH
       // path as a regular bank payout — the OAuth-retrieved routing +
       // account number was already registered as a Stripe external_account
       // at connection time (oauth.service.ts's handleCallback).
       case MethodType.WISE:
-      case MethodType.PAYONEER:
         return this.bankExecutor.executeBankPayout(payoutRequestId);
       default:
-        // WISE/PAYONEER/TEQ_COIN execution isn't built yet. Leaving the
+        // WISE/TEQ_COIN execution isn't built yet. Leaving the
         // request QUEUED kept it visible instead of vanishing, which was the
         // right call while nothing had been debited yet — but the balance is
         // now taken up-front at magic-link confirmation
         // (BalanceService.holdForPayout), and these methods are reachable:
-        // AddMethodDto accepts them and addMethod() routes WISE/PAYONEER
+        // AddMethodDto accepts them and addMethod() routes WISE
         // through the real OAuth verification flow. A payout parked here
         // would hold the contractor's funds indefinitely with no executor
         // that will ever release them. Fail it explicitly instead —

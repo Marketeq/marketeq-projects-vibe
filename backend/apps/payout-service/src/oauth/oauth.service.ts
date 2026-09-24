@@ -63,7 +63,6 @@ export class OAuthService {
     // change — previously hardcoded to production for Wise, which meant
     // sandbox credentials could never actually authorize.
     const wiseBase = this.config.get('WISE_API_BASE_URL', 'https://api.transferwise.com');
-    const payoneerBase = this.config.get('PAYONEER_API_BASE_URL', 'https://api.payoneer.com');
 
     this.providerConfig = {
       WISE: {
@@ -75,16 +74,6 @@ export class OAuthService {
         clientSecret: this.config.get('WISE_CLIENT_SECRET', ''),
         redirectUri: this.config.get('WISE_REDIRECT_URI', ''),
         scopes: 'transfers:read transfers:write balances:read',
-      },
-      PAYONEER: {
-        apiBase: payoneerBase,
-        authUrl: `${payoneerBase}/v2/oauth2/authorize`,
-        tokenUrl: `${payoneerBase}/v2/oauth2/token`,
-        profileUrl: `${payoneerBase}/v4/accounts/current`,
-        clientId: this.config.get('PAYONEER_CLIENT_ID', ''),
-        clientSecret: this.config.get('PAYONEER_CLIENT_SECRET', ''),
-        redirectUri: this.config.get('PAYONEER_REDIRECT_URI', ''),
-        scopes: 'read_transactions write_payments',
       },
     };
   }
@@ -109,7 +98,6 @@ export class OAuthService {
   // same mapping in pause-status.service.ts.
   private static readonly PROVIDER_LABELS: Record<string, string> = {
     WISE: 'Wise',
-    PAYONEER: 'Payoneer',
   };
 
   // ─── Initiate OAuth (create method + store state) ─────────────
@@ -190,7 +178,7 @@ export class OAuthService {
       // 3. Fetch profile — prefer decoding an id_token if the provider's
       // grant returns one for an openid-scoped flow (no extra network call);
       // fall back to the userinfo call for providers/grants that don't
-      // return one (WISE, PAYONEER).
+      // return one (WISE).
       const profile = (tokens.idToken && this.decodeIdToken(tokens.idToken))
         || await this.fetchProfile(provider, tokens.accessToken);
 
@@ -398,8 +386,8 @@ export class OAuthService {
   }
 
   // Decodes an id_token returned alongside the access token for any
-  // `openid`-scoped grant, without a separate network call. Neither WISE nor
-  // PAYONEER currently requests the openid scope, so this is a defensive
+  // `openid`-scoped grant, without a separate network call. WISE does not
+  // currently request the openid scope, so this is a defensive
   // fallback only — kept in case a future OAuth provider's grant returns one
   // and its userinfo endpoint proves unreliable. The id_token is a JWT
   // delivered directly over the server-to-server TLS token exchange, so
@@ -454,13 +442,12 @@ export class OAuthService {
   // ─── PS-09 v2.0 §7: Fetch the contractor's US routing + account number
   // from the provider API ─────────────────────────────────────────
   // This is the step that makes the Stripe ACH execution model work.
-  // Marketeq does NOT call wise.com/v3/transfers or payoneer.com/v4/payments
-  // to send money — the OAuth token is used only to retrieve these details,
-  // which are then registered as a Stripe external_account (§8). Only the
-  // last 4 digits of accountNumber are ever persisted (handleCallback).
+  // Marketeq does NOT call wise.com/v3/transfers to send money — the OAuth
+  // token is used only to retrieve these details, which are then registered
+  // as a Stripe external_account (§8). Only the last 4 digits of
+  // accountNumber are ever persisted (handleCallback).
   async fetchBankingDetails(provider: string, accessToken: string): Promise<BankingDetailsResult> {
     if (provider === 'WISE') return this.fetchWiseBankingDetails(accessToken);
-    if (provider === 'PAYONEER') return this.fetchPayoneerBankingDetails(accessToken);
     throw new PayoutError('Unsupported OAuth provider.', HttpStatus.BAD_REQUEST, 'ERR_OAUTH_UNSUPPORTED');
   }
 
@@ -510,52 +497,6 @@ export class OAuthService {
     };
   }
 
-  private async fetchPayoneerBankingDetails(accessToken: string): Promise<BankingDetailsResult> {
-    const base = this.providerConfig.PAYONEER.apiBase;
-
-    // Step 1: the contractor's Payoneer account details.
-    const accountRes = await fetch(`${base}/v4/accounts/current`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!accountRes.ok) {
-      this.logger.error(`[PAYONEER] Account fetch failed: ${accountRes.status}`);
-      throw new PayoutError('Failed to fetch Payoneer account details.',
-        HttpStatus.BAD_GATEWAY, 'ERR_OAUTH_PROFILE_FETCH_FAILED');
-    }
-    const account: any = await accountRes.json();
-
-    // Step 2: the US receiving account — Payoneer issues a US ACH routing
-    // number + account number through its partner bank (Community Federal
-    // Savings Bank or First Century Bank).
-    const receivingRes = await fetch(`${base}/v4/accounts/current/payment-methods/bank-accounts`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!receivingRes.ok) {
-      this.logger.error(`[PAYONEER] Receiving-account fetch failed: ${receivingRes.status}`);
-      throw new PayoutError('Failed to fetch Payoneer receiving accounts.',
-        HttpStatus.BAD_GATEWAY, 'ERR_OAUTH_PROFILE_FETCH_FAILED');
-    }
-    const receivingAccounts: any = await receivingRes.json();
-
-    const usdAccount = (receivingAccounts?.items ?? []).find(
-      (a: any) => a.currency === 'USD' && a.routingNumber,
-    );
-
-    if (!usdAccount?.routingNumber) {
-      throw new PayoutError(
-        'This Payoneer account does not have a US USD receiving account. ' +
-        'The contractor must set up a USD receiving account in Payoneer first.',
-        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYONEER_NO_USD_ACCOUNT');
-    }
-
-    return {
-      routingNumber: usdAccount.routingNumber,
-      accountNumber: usdAccount.accountNumber,
-      accountEmail: account.email,
-      displayName: `${account.firstName ?? ''} ${account.lastName ?? ''}`.trim() || account.email,
-    };
-  }
-
   // ─── Refresh an expired access token ───────────────────────────
   private async refreshToken(methodType: string, refreshToken: string): Promise<TokenResult> {
     const p = this.providerConfig[methodType];
@@ -577,7 +518,7 @@ export class OAuthService {
       // refresh token (400/401 invalid_grant) both used to throw the exact
       // same error, which ensureFreshToken() below then treated identically
       // — flipping reauthRequired and pausing every future payout for the
-      // contractor over what could be a transient Wise/Payoneer blip. Only
+      // contractor over what could be a transient Wise blip. Only
       // a 4xx here means the grant itself is actually invalid.
       throw new PayoutError('Unable to refresh authorization with the provider.',
         HttpStatus.BAD_GATEWAY,

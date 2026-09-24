@@ -9,7 +9,7 @@ export class OAuthCallbackController {
   constructor(private readonly oauthSvc: OAuthService) {}
 
   // Callback routes — no JWT required (redirected from provider). The
-  // browser lands here straight from Wise/Payoneer's redirect with
+  // browser lands here straight from Wise's redirect with
   // no Marketeq auth header at all, so this must bypass the app-wide
   // JwtAuthGuard (APP_GUARD in app.module.ts) — it was previously
   // unreachable in practice since nothing here opted out of that guard.

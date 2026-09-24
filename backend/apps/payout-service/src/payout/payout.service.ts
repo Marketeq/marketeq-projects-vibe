@@ -271,7 +271,7 @@ export class PayoutService {
     // PS-09 v2.0 §11: a manual withdrawal to a method whose OAuth token
     // refresh has failed must be blocked until the contractor re-authorizes.
     if ((method as any).reauthRequired) {
-      throw new PayoutError('Your Wise/Payoneer connection needs to be re-authorized before you can withdraw to this method.',
+      throw new PayoutError('Your Wise connection needs to be re-authorized before you can withdraw to this method.',
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_METHOD_REAUTH_REQUIRED', { depositMethodId: method.id });
     }
     if (method.methodType === MethodType.TEQ_COIN && !this.config.get('FEATURE_TEQ_COIN_ENABLED', false)) {
@@ -1028,7 +1028,6 @@ export class PayoutService {
     [MethodType.MARKETEQ_DEBIT_CARD]: 1,
     [MethodType.BANK_STRIPE]: 2,
     [MethodType.WISE]: 2,
-    [MethodType.PAYONEER]: 2,
     [MethodType.BANK_MANUAL]: 3,
   };
 

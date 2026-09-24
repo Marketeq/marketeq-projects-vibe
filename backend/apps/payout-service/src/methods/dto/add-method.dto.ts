@@ -1,7 +1,7 @@
 import { IsString, IsOptional, IsIn, IsNotEmpty, Matches } from 'class-validator';
 
 export class AddMethodDto {
-  @IsIn(['BANK_STRIPE', 'BANK_MANUAL', 'WISE', 'PAYONEER', 'CRYPTO', 'MARKETEQ_DEBIT_CARD', 'TEQ_COIN'])
+  @IsIn(['BANK_STRIPE', 'BANK_MANUAL', 'WISE', 'CRYPTO', 'MARKETEQ_DEBIT_CARD', 'TEQ_COIN'])
   methodType: string;
 
   // Common bank fields

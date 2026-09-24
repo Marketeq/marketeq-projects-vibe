@@ -358,7 +358,7 @@ const MethodStep = ({
   )
 }
 
-// US-46: bank-manual only — Stripe FC/Wise/Payoneer all redirect to an
+// US-46: bank-manual only — Stripe FC/Wise all redirect to an
 // external hosted flow regardless of where the "Add" trigger lives, so an
 // in-page modal genuinely keeps the contractor in-flow only for the manual
 // bank-details path. A manually-added account also isn't instantly verified

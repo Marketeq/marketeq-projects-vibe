@@ -75,7 +75,7 @@ export class PayoutFeeService {
     }
 
     // WISE OAuth fee is fetched live from Wise at quote time — never
-    // computed here. Every other method type (PAYONEER, CRYPTO,
+    // computed here. Every other method type (CRYPTO,
     // MARKETEQ_DEBIT_CARD, TEQ_COIN) has its own fee path elsewhere and
     // never reaches this service.
     return { feeUsd: 0, netAmountUsd: amountUsd, feeDescription: '' };
