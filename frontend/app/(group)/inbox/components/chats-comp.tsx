@@ -7757,7 +7757,17 @@ export function Chats({
               // rather than sending an undefined id to the PATCH.
               const counterOfferId =
                 selectedNotificationOffer.latestCounterOfferId
-              if (!counterOfferId) return
+              if (!counterOfferId) {
+                // Withdraw disables its own button when the id is missing;
+                // this Submit is shared with the create and edit-offer
+                // flows, so say nothing was saved rather than do nothing.
+                toast({
+                  variant: "destructive",
+                  title: "Couldn't save the counter offer",
+                  description: "Please try again.",
+                })
+                return
+              }
               if (editingCounterOffer) return
 
               // BTB-285: same parsing shape as the new-counter submission
