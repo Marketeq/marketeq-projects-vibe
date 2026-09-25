@@ -3249,12 +3249,25 @@ export function Chats({
                     isDeclinedOffer ||
                     (isWithdrawnOffer &&
                       !item.event.includes("counter_withdrawn")))
+                // PMCM-367 AC-13.05: only the superseded original drops its
+                // CTA. A client-sent counter is also isCounteredOffer, but it
+                // is the live offer the talent responds to, so it keeps
+                // View Offer. The client's counter_declined/counter_withdrawn
+                // cards stay CTA-less as before — the counter card carries
+                // those actions (AC-13.09).
+                const hideOfferCardAction =
+                  (isCounteredOffer && !isClientSentTalentCounter) ||
+                  (item.clientPerspective === true &&
+                    (item.event.includes("counter_declined") ||
+                      item.event.includes("counter_withdrawn")))
                 const talentOfferDescription = isAcceptedOffer
                   ? `Starts on ${item.startDate}.`
                   : isDeclinedOffer
                     ? "This offer is now closed."
                     : isCounteredOffer
-                      ? "This offer was replaced by new terms."
+                      ? isClientSentTalentCounter
+                        ? `This offer expires ${item.expiresLabel}.`
+                        : "This offer was replaced by new terms."
                       : isCounterDeclinedOffer
                         ? `This offer expires ${item.expiresLabel}.`
                       : isWithdrawnOffer
@@ -3604,7 +3617,7 @@ export function Chats({
                                   </span>
                                 </div>
                               </div>
-                              {!isCounteredOffer &&
+                              {!hideOfferCardAction &&
                               (!isTalentOffer || showTalentOfferAction) ? (
                                 <Button
                                   size="sm"
@@ -3659,6 +3672,24 @@ export function Chats({
                                       return
                                     }
                                     openNotificationOffer(item)
+                                    // PMCM-367: the talent's closed states open
+                                    // their read-only views, the same steps the
+                                    // seeded follow-on card uses. "declined"
+                                    // also covers an offer declined this session,
+                                    // whose item.event is still the pre-decline
+                                    // one. A withdrawn offer stays on "event" for
+                                    // the "This offer was withdrawn" dialog —
+                                    // "previous" would show Accept/Decline on it.
+                                    if (isTalentOffer && isDeclinedOffer) {
+                                      setNotificationOfferStep("declined")
+                                      return
+                                    }
+                                    if (
+                                      isTalentOffer &&
+                                      item.event === "offer.withdrawn"
+                                    ) {
+                                      return
+                                    }
                                     if (
                                       item.clientPerspective &&
                                       (item.event === "offer.countered" ||
@@ -3679,6 +3710,8 @@ export function Chats({
                                     ? "View Details"
                                     : isTalentOffer && isAcceptedOffer
                                       ? "View Contract"
+                                      : isTalentOffer && isDeclinedOffer
+                                      ? "View Details"
                                       : item.event.includes("accepted")
                                       ? "View Contract"
                                       : item.event.includes("counter_withdrawn")
