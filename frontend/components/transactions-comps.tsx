@@ -5498,7 +5498,11 @@ export const OverviewTab = ({
                           bankClabe: "",
                           bankCnapsCode: "",
                           bankBik: "",
-                          accountType: "",
+                          // Shared by US (CHECKING/SAVINGS) and JP (FUTSU/TOUZA):
+                          // keep the US "Checking" default instead of a blank
+                          // select, and make JP pick explicitly.
+                          accountType:
+                            detectBankRegion(code) === "US" ? "CHECKING" : "",
                         }))
                       const saveDisabled =
                         !addForm.nickname.trim() ||
