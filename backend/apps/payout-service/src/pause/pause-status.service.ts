@@ -249,7 +249,6 @@ export class PauseStatusService {
   private providerLabel(methodType?: MethodType | null): string {
     const map: Record<string, string> = {
       WISE: 'Wise',
-      PAYONEER: 'Payoneer',
     };
     return map[methodType ?? ''] ?? 'payment provider';
   }

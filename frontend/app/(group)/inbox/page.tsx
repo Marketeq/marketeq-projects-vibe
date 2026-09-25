@@ -9,7 +9,7 @@ import {
   type NotificationItem,
   NotificationsAPI,
 } from "@/service/http/notifications"
-import { getOffer } from "@/service/http/offers"
+import { getOffer, listOffers } from "@/service/http/offers"
 import { ensureEncryptionKeysExist, loadPrivateKey } from "@/src/crypto/keys"
 import { apiFetch } from "@/src/lib/api"
 import { jobDetailsUrl } from "@/src/lib/listing-urls"
@@ -198,6 +198,41 @@ export default function InboxRoot() {
           return marker.includes("offer")
         })
 
+        // BTB-284: list() has attached latestCounterOffer to every row far
+        // longer than the single-offer read has (PMCM-376 only added it to
+        // GET /offers/:id; list() already called the same
+        // fetchLatestCounterOffers helper before that PR existed). One call
+        // per load, not one per notification — built into one Map that every
+        // item below shares. limit
+        // 100 matches the notification fetch above; there's no id-filter
+        // param on this endpoint, so a talent with more than 100 offers
+        // could still miss one here, same as the notification fetch itself
+        // already can. A failed fetch must never break the notification
+        // list, which is this effect's primary job — swallow and carry on
+        // with whatever getOffer() gives each item below.
+        //
+        // Fetched lazily, at most once: only a backend that predates
+        // PMCM-376 omits latestCounterOffer from the single read entirely
+        // (undefined; null means "no counter offer"), so on a current
+        // backend this list call never fires and adds no latency — this
+        // effect reruns on every window focus and visibility change.
+        let counterOfferIdByOffer: Promise<Map<string, string>> | undefined
+        const loadCounterOfferIdByOffer = () => {
+          if (!counterOfferIdByOffer) {
+            counterOfferIdByOffer = listOffers({ limit: 100 })
+              .then((latestOffers) => {
+                const ids = new Map<string, string>()
+                for (const listItem of latestOffers.data) {
+                  const counterId = listItem.latestCounterOffer?.id
+                  if (counterId) ids.set(listItem.id, counterId)
+                }
+                return ids
+              })
+              .catch(() => new Map<string, string>())
+          }
+          return counterOfferIdByOffer
+        }
+
         const resolved = await Promise.all(
           offerItems.map(
             async (item): Promise<OfferNotificationMessageData | null> => {
@@ -229,6 +264,10 @@ export default function InboxRoot() {
                   (offer.clientId === getCurrentUser()?.id
                     ? offer.talentId
                     : offer.clientId)
+                const latestCounterOfferId =
+                  offer.latestCounterOffer !== undefined
+                    ? offer.latestCounterOffer?.id
+                    : (await loadCounterOfferIdByOffer()).get(offerId)
                 return {
                   id: item.id,
                   contractId: offerId,
@@ -238,6 +277,21 @@ export default function InboxRoot() {
                   // created). The seeded-fixture catch branch below has no
                   // live offer to source this from and must leave it unset.
                   offerStatus: offer.status,
+                  // PMCM-392 AC-40.06: same rule as offerStatus above — real,
+                  // live signal only. The seeded-fixture catch branch has no
+                  // live offer to source this from and must leave it unset,
+                  // not invent one.
+                  realContractId: offer.contractId,
+                  // PMCM-376: same rule again — real, live signal only, from
+                  // this same getOffer() call, once the deployed backend
+                  // serves it. BTB-284: falls back to the listOffers() map
+                  // above when the single-offer read doesn't have it
+                  // (deploy hasn't caught up to PMCM-376 yet) — either
+                  // source is the same real, live-only value, never
+                  // invented, and undefined still means "no live signal
+                  // from either" when this offer has never had a counter
+                  // offer.
+                  latestCounterOfferId,
                   event: item.event?.toLowerCase() || "offer.received",
                   title: item.title,
                   body: item.body,

@@ -14,6 +14,7 @@ import { MagicLinkToken }     from '../entities/magic-link-token.entity';
 import { PayoutSchedule }     from '../entities/payout-schedule.entity';
 import { EarningsClient }     from '../common/earnings.client';
 import { KycClient }          from '../common/kyc.client';
+import { UserClient }         from '../common/user.client';
 import { AuditService }       from '../audit/audit.service';
 import { MagicLinkService }   from '../magic-link/magic-link.service';
 import { WithdrawalRateLimitService } from './withdrawal-rate-limit.service';
@@ -25,6 +26,7 @@ import { InitiatePayoutDto, InitiatePayoutResponseDto } from './dto/initiate-pay
 import { VerifyResponseDto }  from './dto/verify-response.dto';
 import { PayoutPublisher }    from '../publishers/payout.publisher';
 import { PayoutFeeService }   from '../fees/payout-fee.service';
+import { PauseStatusService } from '../pause/pause-status.service';
 
 const INSTANT_FEE = '1.75';
 
@@ -46,6 +48,7 @@ export class PayoutService {
     private readonly config: ConfigService,
     private readonly earningsClient: EarningsClient,
     private readonly kycClient: KycClient,
+    private readonly userClient: UserClient,
     private readonly auditService: AuditService,
     private readonly magicLinkService: MagicLinkService,
     private readonly rateLimitService: WithdrawalRateLimitService,
@@ -53,6 +56,7 @@ export class PayoutService {
     private readonly eddService: EddService,
     private readonly publisher: PayoutPublisher,
     private readonly feeService: PayoutFeeService,
+    private readonly pauseStatusService: PauseStatusService,
     @InjectQueue('payout-processing') private readonly queue: Queue,
   ) {
     this.payoutMinimum = parseFloat(this.config.get('PAYOUT_MINIMUM_USD', '50'));
@@ -81,6 +85,24 @@ export class PayoutService {
     // AC-30.04: KYC service unreachable → fail-closed, never fail-open.
     if (kyc.tier === 'unknown') return { allowed: false, blockedBy: 'KYC_SERVICE_UNAVAILABLE' };
     if (kyc.suspended) return { allowed: false, blockedBy: 'ACCOUNT_SUSPENDED' };
+
+    // PS-15 §3.1/§7 checks 1-2: account-level tiers, checkable before the
+    // contractor has picked a method (Tier 3 is method-scoped — checked in
+    // initiate() once dto.depositMethodId exists, not here). Additive
+    // alongside the kyc.status checks below, which come from a different,
+    // already-integrated field this pre-flight endpoint also honors.
+    // Caught rather than left to propagate — this endpoint's contract is
+    // "always return a structured { allowed, blockedBy } body," never a
+    // thrown 503, and getGateStatus() throws independently of the kyc.tier
+    // check above (a separate network call that can fail on its own).
+    try {
+      const gateStatus = await this.kycClient.getGateStatus(contractorId);
+      if (gateStatus.tier1.blocksWithdrawal) return { allowed: false, blockedBy: 'TIER_1' };
+      if (gateStatus.tier2.blocksWithdrawal) return { allowed: false, blockedBy: 'TIER_2' };
+    } catch {
+      return { allowed: false, blockedBy: 'KYC_SERVICE_UNAVAILABLE' };
+    }
+
     // Doc08 ERR-35/36/37: identity-review status, when kyc-identity-service
     // returns one — undefined `status` (current MVP contract) falls through to
     // the existing tier-based checks below rather than blocking on absence,
@@ -191,6 +213,13 @@ export class PayoutService {
     const existing = await this.payoutRepo.findOne({ where: { idempotencyKey: dto.idempotencyKey } });
     if (existing) return { ...this.toInitiateResponse(existing), replayed: true };
 
+    // PS-16 §6: "payout-service must check for active pause conditions
+    // before every withdrawal initiation" — assertNotPaused() was already
+    // wired into the scheduled-payout cron but never called here, so manual
+    // withdrawals silently skipped NO_DEFAULT_METHOD/DEFAULT_METHOD_DEACTIVATED
+    // (the two conditions with no equivalent inline check below).
+    await this.pauseStatusService.assertNotPaused(contractorId);
+
     // PS-19 §3.2: Rate limit — 5 manual withdrawals per hour
     await this.rateLimitService.checkWithdrawalRateLimit(contractorId);
 
@@ -212,35 +241,12 @@ export class PayoutService {
 
     await this.checkReserveBalance(contractorId, requestedAmount, parseFloat(balance.availableBalance), dto.ignoreReserve);
 
-    // PS-19 §3.4: KYC check at initiation — kept consistent with checkGate() so a
-    // contractor who passes the pre-flight gate can't still be blocked here (or
-    // vice versa) by two different hold computations.
-    const kyc = await this.kycClient.getStatus(contractorId);
-    const hold = await this.kycGateService.checkFirstPayoutHold(contractorId);
-    if (kyc.suspended) {
-      throw new PayoutError('Your account is suspended.',
-        HttpStatus.FORBIDDEN, 'ERR_PAYOUT_ACCOUNT_SUSPENDED');
-    }
-    // ERR-35/36/37: kept consistent with checkGate() — see comment there.
-    if (kyc.status === 'not_started') {
-      throw new PayoutError('You need to complete identity verification before you can withdraw funds.',
-        HttpStatus.FORBIDDEN, 'ERR_KYC_NOT_STARTED');
-    }
-    if (kyc.status === 'in_review') {
-      throw new PayoutError('Your identity verification is under review.',
-        HttpStatus.FORBIDDEN, 'ERR_KYC_IN_REVIEW');
-    }
-    if (kyc.status === 'rejected') {
-      throw new PayoutError('Your identity verification was unsuccessful. Please contact support for assistance.',
-        HttpStatus.FORBIDDEN, 'ERR_KYC_REJECTED', { rejectionReason: kyc.rejectionReason });
-    }
-    if (kyc.firstPayoutHold || hold.holdActive) {
-      throw new PayoutError(
-        'Your first payout is on hold. This is a standard verification step.',
-        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_FIRST_HOLD');
-    }
-
-    // Validate deposit method
+    // Validate deposit method — kept ahead of the tiered gate below so an
+    // unverified/pending-biometric bank method keeps returning its existing,
+    // frontend-handled code (ERR_METHOD_PENDING_BIOMETRIC/
+    // ERR_PAYOUT_METHOD_UNVERIFIED) instead of being masked by the tiered
+    // gate's ERR_KYC_TIER3_REQUIRED, which transfer-funds/page.tsx and
+    // withdraw-funds-dialog.tsx don't know how to recover from.
     const method = await this.methodRepo.findOne({
       where: { id: dto.depositMethodId, contractorId, isActive: true },
     });
@@ -265,12 +271,81 @@ export class PayoutService {
     // PS-09 v2.0 §11: a manual withdrawal to a method whose OAuth token
     // refresh has failed must be blocked until the contractor re-authorizes.
     if ((method as any).reauthRequired) {
-      throw new PayoutError('Your Wise/Payoneer connection needs to be re-authorized before you can withdraw to this method.',
+      throw new PayoutError('Your Wise connection needs to be re-authorized before you can withdraw to this method.',
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_METHOD_REAUTH_REQUIRED', { depositMethodId: method.id });
     }
     if (method.methodType === MethodType.TEQ_COIN && !this.config.get('FEATURE_TEQ_COIN_ENABLED', false)) {
       throw new PayoutError('This payout method is not currently available.',
         HttpStatus.BAD_REQUEST, 'ERR_PAYOUT_METHOD_UNAVAILABLE');
+    }
+
+    // Legacy kyc.status checks — kept ahead of the tiered gate below (and
+    // its FIRST_PAYOUT_HOLD case) so a not_started/in_review/rejected
+    // contractor keeps getting that specific code instead of the hold's
+    // "this will lift automatically" message, which would be wrong for
+    // them. This is the invariant the comment this replaced described:
+    // "kept consistent with checkGate() so a contractor who passes the
+    // pre-flight gate can't still be blocked here (or vice versa)" — the
+    // pre-flight GET /v1/payouts/gate-check runs these same checks first,
+    // so initiate() must match that order.
+    const kyc = await this.kycClient.getStatus(contractorId);
+    if (kyc.suspended) {
+      throw new PayoutError('Your account is suspended.',
+        HttpStatus.FORBIDDEN, 'ERR_PAYOUT_ACCOUNT_SUSPENDED');
+    }
+    if (kyc.status === 'not_started') {
+      throw new PayoutError('You need to complete identity verification before you can withdraw funds.',
+        HttpStatus.FORBIDDEN, 'ERR_KYC_NOT_STARTED');
+    }
+    if (kyc.status === 'in_review') {
+      throw new PayoutError('Your identity verification is under review.',
+        HttpStatus.FORBIDDEN, 'ERR_KYC_IN_REVIEW');
+    }
+    if (kyc.status === 'rejected') {
+      throw new PayoutError('Your identity verification was unsuccessful. Please contact support for assistance.',
+        HttpStatus.FORBIDDEN, 'ERR_KYC_REJECTED', { rejectionReason: kyc.rejectionReason });
+    }
+
+    // PS-15 §3.2/§7: the real tiered gate — checkGate() throws for
+    // suspended/service-unavailable and returns { allowed: false,
+    // blockedBy: 'TIER_1'|'TIER_2'|'TIER_3'|'FIRST_PAYOUT_HOLD' } for
+    // everything else. This used to be an ad-hoc, non-tiered check against
+    // a different (already-integrated) status field — PS-15's own error
+    // codes (ERR_KYC_TIER1_REQUIRED/TIER2_REQUIRED/TIER3_REQUIRED) never
+    // existed anywhere in code. Tier1/Tier2 are new here; Tier3 and the
+    // first-payout hold were already correctly gated above/below and are
+    // now folded into the same single check instead of two separate ones.
+    // By this point the method above is already confirmed VERIFIED and
+    // kyc.status already confirmed approved, so the only new things this
+    // can still block on are TIER_1/TIER_2 (kyc-identity-service tiers this
+    // service didn't check yet) and FIRST_PAYOUT_HOLD.
+    const gate = await this.kycGateService.checkGate(contractorId, dto.depositMethodId);
+    if (!gate.allowed) {
+      switch (gate.blockedBy) {
+        case 'TIER_1':
+          throw new PayoutError('You need to complete identity verification before you can withdraw funds.',
+            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER1_REQUIRED');
+        case 'TIER_2':
+          throw new PayoutError('You need to add your tax information before you can withdraw funds.',
+            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER2_REQUIRED', { subType: gate.tier2SubType });
+        case 'TIER_3':
+          throw new PayoutError('This bank account has not been verified yet.',
+            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER3_REQUIRED', { depositMethodId: gate.depositMethodId });
+        case 'FIRST_PAYOUT_HOLD':
+          throw new PayoutError(
+            'Your first payout is on hold. This is a standard verification step.',
+            HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_FIRST_HOLD', { holdReleasesAt: gate.holdReleasesAt });
+      }
+    }
+
+    // The external first-payout hold kyc-identity-service signals (PS-00 §5).
+    // checkGate() above only computes the local, payout-history-based hold, so
+    // without this the pre-flight gate-check (which honours both) would show
+    // "on hold" while submit went straight through. Checked last, after the
+    // tiers, to match the pre-flight order.
+    if (kyc.firstPayoutHold) {
+      throw new PayoutError('Your first payout is on hold. This is a standard verification step.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_FIRST_HOLD');
     }
 
     // Calculate fee — instant-speed surcharge (PS-19) plus, for
@@ -555,11 +630,19 @@ export class PayoutService {
     });
   }
 
-  // ─── PS-15 §6.2: Admin — release a payout past EDD review ──────
-  // No magic-link step for an EDD payout (see initiate() above) — compliance
-  // sign-off here IS the confirmation, so this goes straight to QUEUED and
-  // onto the same processing queue every verified payout uses.
-  async releaseEDD(payoutRequestId: string, actorId: string): Promise<{ status: string }> {
+  // ─── PS-15 §6.2/§6.3: Admin — release a payout past EDD review ──
+  // PS-15 §6.3's callout is explicit: "When a payout is approved after EDD
+  // review, a fresh magic link is sent to the contractor... This ensures the
+  // contractor re-confirms the withdrawal after the compliance delay, in
+  // case the contractor's intent has changed during the review period."
+  // Previously went straight to QUEUED — compliance approval was being
+  // treated as the contractor's confirmation, skipping the re-confirmation
+  // step entirely. Now mirrors §7 check 6 exactly: PENDING_VERIFICATION +
+  // a fresh magic link, same as the normal (non-EDD) flow. The existing
+  // GET /v1/payouts/verify-email endpoint (magicLinkService.verifyEmailToken)
+  // handles the balance hold + QUEUED transition + enqueue once the
+  // contractor actually clicks it — nothing EDD-specific needed there.
+  async releaseEDD(payoutRequestId: string, actorId: string, contractorEmail?: string): Promise<{ status: string }> {
     const request = await this.payoutRepo.findOne({ where: { id: payoutRequestId } });
     if (!request) throw new PayoutError('Payout request not found.',
       HttpStatus.NOT_FOUND, 'ERR_PAYOUT_NOT_FOUND');
@@ -570,9 +653,7 @@ export class PayoutService {
 
     await this.dataSource.transaction(async (em) => {
       await em.update(PayoutRequest, request.id, {
-        status: PayoutStatus.QUEUED,
-        verifiedAt: new Date(),
-        queuedAt: new Date(),
+        status: PayoutStatus.PENDING_VERIFICATION,
       });
       await this.auditService.log({
         contractorId: request.contractorId,
@@ -580,13 +661,21 @@ export class PayoutService {
         actorType: 'admin', actorId,
         action: 'edd.released',
         previousStatus: PayoutStatus.AWAITING_EDD,
-        newStatus: PayoutStatus.QUEUED,
+        newStatus: PayoutStatus.PENDING_VERIFICATION,
       });
     });
 
-    await this.enqueueForProcessing(request.id);
+    // Reviewer-caught bug: the approving admin's JWT carries the ADMIN's
+    // email, not the contractor's — without resolving the real one here,
+    // publishMagicLinkEvent() silently sends nothing (it only logs a dev
+    // warning when contractorEmail is unset) and the contractor is never
+    // told there's a link to click.
+    const resolvedEmail = contractorEmail ?? await this.userClient.getContractorEmail(request.contractorId) ?? undefined;
 
-    return { status: 'queued' };
+    const rawToken = await this.magicLinkService.generateAndStore(request.id, request.contractorId);
+    await this.magicLinkService.publishMagicLinkEvent(request, rawToken, resolvedEmail);
+
+    return { status: 'pending_verification' };
   }
 
   // ─── Cancel ───────────────────────────────────────────────────
@@ -659,6 +748,15 @@ export class PayoutService {
         });
       }
     }
+
+    // PS-14 §10, PS-23 §3.5: the dedicated event, additive to the balance
+    // restoration above — notification-service's spec'd consumer.
+    await this.publisher.publishPayoutCancelled({
+      payoutRequestId: request.id,
+      contractorId,
+      reason: 'contractor_cancelled',
+      message: 'Your withdrawal request was cancelled.',
+    });
 
     return { status: 'cancelled' };
   }
@@ -930,7 +1028,6 @@ export class PayoutService {
     [MethodType.MARKETEQ_DEBIT_CARD]: 1,
     [MethodType.BANK_STRIPE]: 2,
     [MethodType.WISE]: 2,
-    [MethodType.PAYONEER]: 2,
     [MethodType.BANK_MANUAL]: 3,
   };
 

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { PayoutAuditLog } from '../entities/payout-audit-log.entity';
 import { PayoutStatus } from '../entities/payout-request.entity';
 
@@ -32,6 +32,18 @@ export class AuditService {
       previousStatus: params.previousStatus ?? null,
       newStatus: params.newStatus ?? null,
       metadata: params.metadata ?? null,
+    });
+  }
+
+  async findRecentForContractor(
+    contractorId: string,
+    actions: string[],
+    limit = 20,
+  ): Promise<PayoutAuditLog[]> {
+    return this.auditRepo.find({
+      where: { contractorId, action: In(actions) },
+      order: { createdAt: 'DESC' },
+      take: limit,
     });
   }
 }

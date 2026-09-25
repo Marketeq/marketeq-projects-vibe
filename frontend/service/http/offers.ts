@@ -5,6 +5,7 @@ import type {
   CreateCounterOfferPayload,
   CreateCounterOfferResult,
   DeclineOfferPayload,
+  EditCounterOfferPayload,
   ListOffersParams,
   Offer,
   OfferHistoryParams,
@@ -161,6 +162,32 @@ export const declineCounterOffer = async (
   const res = await AxiosRequest.post(
     `${OFFERS_BASE}/${encodeURIComponent(offerId)}/counter-offers/${encodeURIComponent(counterOfferId)}/decline`,
     {},
+    idempotencyConfig()
+  )
+  return res.data
+}
+
+export const editCounterOffer = async (
+  offerId: string,
+  counterOfferId: string,
+  payload: EditCounterOfferPayload
+): Promise<CounterOffer> => {
+  const res = await AxiosRequest.patch(
+    `${OFFERS_BASE}/${encodeURIComponent(offerId)}/counter-offers/${encodeURIComponent(counterOfferId)}`,
+    payload,
+    idempotencyConfig()
+  )
+  return res.data
+}
+
+export const withdrawCounterOffer = async (
+  offerId: string,
+  counterOfferId: string,
+  payload?: WithdrawOfferPayload
+): Promise<CounterOffer> => {
+  const res = await AxiosRequest.post(
+    `${OFFERS_BASE}/${encodeURIComponent(offerId)}/counter-offers/${encodeURIComponent(counterOfferId)}/withdraw`,
+    payload ?? {},
     idempotencyConfig()
   )
   return res.data

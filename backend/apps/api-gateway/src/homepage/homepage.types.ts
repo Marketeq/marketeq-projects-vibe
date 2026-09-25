@@ -26,6 +26,8 @@ export interface ProjectCard extends ScoringFields {
   createdAt: string;
   /** URLs of collaborator avatars (team members on the project) */
   collaborators?: string[];
+  /** Rich team member info for name display on cards */
+  teamMembers?: Array<{ avatarUrl: string; firstName: string; username: string }>;
 }
 
 /** Card shape returned for service listings */
@@ -43,6 +45,8 @@ export interface ServiceCard extends ScoringFields {
   skills: string[];
   tags: string[];
   createdAt: string;
+  collaborators?: string[];
+  teamMembers?: Array<{ avatarUrl: string; firstName: string; username: string }>;
 }
 
 /** Card shape returned for team profiles */

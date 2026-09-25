@@ -54,6 +54,16 @@ export class CheckoutController {
     });
   }
 
+  // Internal gateway-to-service call — the gateway already authenticated
+  // the user via JwtAuthGuard and passes clientId in the body.
+  @Post("drafts/find-or-create-internal")
+  findOrCreateDraftInternal(@Body() dto: FindOrCreateDraftDto & { clientId: string }) {
+    return this.checkoutDraftService.findOrCreate(dto.clientId, dto.listingId, {
+      phases: dto.phases,
+      projectCost: dto.projectCost,
+    });
+  }
+
   // ─── Existing Endpoints (now with auth + proper DTOs) ─────────────
 
   @Post("session")

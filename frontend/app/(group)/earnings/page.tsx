@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   Calendar,
@@ -40,8 +40,25 @@ import {
 
 export default function TransactionsPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = useState("overview")
+  // Every "View Payout History" / "Withdraw Full Amount" style CTA elsewhere
+  // in this area (withdraw-funds-dialog.tsx, transfer-funds/page.tsx, the
+  // decline-state buttons below) navigates here via router.push("/earnings
+  // ?tab=payouts") — but this page never actually read that query param, so
+  // when the contractor was already on /earnings (the common case: Withdraw
+  // Funds was opened from the Overview tab in the first place), the App
+  // Router's shallow same-route navigation left activeTab untouched at its
+  // "overview" default. The URL changed; nothing visible did. Initializing
+  // from the param and reacting to it changing (the effect below) fixes
+  // both the already-here case and a fresh /earnings?tab=payouts load.
+  const [activeTab, setActiveTab] = useState(
+    () => searchParams.get("tab") ?? "overview"
+  )
+  useEffect(() => {
+    const tab = searchParams.get("tab")
+    if (tab) setActiveTab(tab)
+  }, [searchParams])
   const [showPayoutSchedule, setShowPayoutSchedule] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   // US-75: Log Time is reachable in-place from the Earnings area, rather than

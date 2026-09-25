@@ -163,7 +163,6 @@ export default function Projects() {
   const getListingCollaborators = (item: any): string[] => {
     const candidates =
       item?.teamAvatars ??
-      item?.teamMembers ??
       item?.collaborators ??
       item?.assignedUsers ??
       item?.providers ??
@@ -173,9 +172,13 @@ export default function Projects() {
       .map((member: any) =>
         typeof member === "string"
           ? member
-          : (member?.avatar ?? member?.avatarUrl ?? member?.profilePicture ?? null)
+          : (member?.avatar ?? member?.avatarUrl ?? member?.profilePicture ?? "")
       )
-      .filter(Boolean) as string[]
+      .filter((v: any): v is string => v !== null && v !== undefined)
+  }
+
+  const getListingTeamMembers = (item: any): Array<{ avatarUrl: string; firstName: string; username: string }> | undefined => {
+    return Array.isArray(item?.teamMembers) ? item.teamMembers : undefined
   }
 
   return (
@@ -431,6 +434,7 @@ export default function Projects() {
                                 project.id
                               )}
                               collaborators={getListingCollaborators(project)}
+                              teamMembers={getListingTeamMembers(project)}
                               favoriteSlot={
                                 <FavoriteRoot
                                   onValueChange={async (pressed) => {
