@@ -10761,6 +10761,14 @@ const teamRoleScheduleOptions: TeamRoleRow["schedule"][] = [
 ];
 const teamRoleLengthOptions = ["1 month", "2 months", "3 months", "6 months"];
 
+const formatTeamBudgetDuration = (durationMonths?: number) => {
+  if (typeof durationMonths !== "number" || durationMonths <= 0) {
+    return "Ongoing";
+  }
+
+  return `${durationMonths} ${durationMonths === 1 ? "month" : "months"}`;
+};
+
 const createTeamRoleRow = (
   index: number,
   overrides: Partial<TeamRoleRow> = {},
@@ -18586,7 +18594,7 @@ const TeamRoles = ({
   hiringMode?: HiringModeChoice;
 }) => {
   const { toggleValidation } = useStepContext();
-  const { setDetails } = useJobListingDraftContext();
+  const { details, setDetails } = useJobListingDraftContext();
   const { projectScopeMethods } = useProjectScopeContext();
   const [projectScopeState, setProjectScopeState] = projectScopeMethods;
   const isExistingProject = existingContractId === "marketeq-projects-network";
@@ -18597,6 +18605,8 @@ const TeamRoles = ({
   );
   const [activeRoleIndex, setActiveRoleIndex] = useState<number | null>(null);
   const [draftRoleTitle, setDraftRoleTitle] = useState("");
+  const [draftRoleSchedule, setDraftRoleSchedule] =
+    useState<TeamRoleRow["schedule"]>("Full-time");
   const [teamRoleAutocompleteOptions, setTeamRoleAutocompleteOptions] =
     useState<string[]>([]);
   const [isTeamRoleAutocompleteOpen, setTeamRoleAutocompleteOpen] =
@@ -18692,6 +18702,7 @@ const TeamRoles = ({
     setRoleDialogMode(null);
     setActiveRoleIndex(null);
     setDraftRoleTitle("");
+    setDraftRoleSchedule("Full-time");
     setTeamRoleAutocompleteOptions([]);
     setTeamRoleAutocompleteOpen(false);
   };
@@ -18699,6 +18710,7 @@ const TeamRoles = ({
     setRoleDialogMode("add");
     setActiveRoleIndex(null);
     setDraftRoleTitle("");
+    setDraftRoleSchedule("Full-time");
     setTeamRoleAutocompleteOptions([]);
     setTeamRoleAutocompleteOpen(false);
   };
@@ -18706,6 +18718,7 @@ const TeamRoles = ({
     setRoleDialogMode("rename");
     setActiveRoleIndex(rowIndex);
     setDraftRoleTitle(rows[rowIndex]?.role ?? "");
+    setDraftRoleSchedule(rows[rowIndex]?.schedule ?? "Full-time");
     setTeamRoleAutocompleteOptions([]);
     setTeamRoleAutocompleteOpen(false);
   };
@@ -18714,7 +18727,10 @@ const TeamRoles = ({
 
     if (roleDialogMode === "rename" && activeRoleIndex !== null) {
       if (role) {
-        updateRow(activeRoleIndex, { role });
+        updateRow(activeRoleIndex, {
+          role,
+          schedule: draftRoleSchedule,
+        });
       }
       closeRoleDialog();
       return;
@@ -18724,6 +18740,7 @@ const TeamRoles = ({
       ...currentRows,
       createTeamRoleRow(currentRows.length, {
         role: role || `New Team Member ${currentRows.length + 1}`,
+        schedule: draftRoleSchedule,
         length: isExistingProject ? "3 months" : "1 month",
       }),
     ]);
@@ -19135,7 +19152,7 @@ const TeamRoles = ({
                     ? "6 month project"
                     : isIndividualMode
                       ? (rows[0]?.length ?? "3 months")
-                      : "Ongoing"}
+                      : formatTeamBudgetDuration(details.durationMonths)}
                 </div>
                 <div className="flex items-center gap-x-2 text-sm leading-5 text-dark-blue-400">
                   <Copy className="size-4 text-primary-500" />
@@ -19154,86 +19171,113 @@ const TeamRoles = ({
           }
         }}
       >
-        <DialogContent className="w-[410px] max-w-[calc(100vw-32px)]">
-          <DialogHeader>
-            <DialogTitle className="text-xl leading-7 font-semibold text-dark-blue-400">
-              {roleDialogMode === "rename"
-                ? "Rename Role"
-                : isIndividualMode
-                  ? "Add Role"
-                  : "Add Team Member"}
-            </DialogTitle>
-            <DialogDescription className="text-sm leading-5 text-gray-500">
-              Enter the role title to show in this job setup.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-2">
-            <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-              Role title
-            </Label>
-            <Combobox
-              className="mt-2 w-full"
-              value={draftRoleTitle}
-              onChange={(value) => {
-                setDraftRoleTitle(String(value ?? ""));
-                setTeamRoleAutocompleteOpen(false);
-              }}
-              nullable
-            >
-              <ComboboxTrigger>
-                <ComboboxInput
-                  className="h-11 ui-open:pl-3"
-                  placeholder="e.g. Front-End Developer"
-                  value={draftRoleTitle}
-                  onChange={(event) => setDraftRoleTitle(event.target.value)}
-                  onClick={() =>
-                    setTeamRoleAutocompleteOpen(
-                      teamRoleAutocompleteOptions.length > 0,
-                    )
-                  }
-                  onFocus={() =>
-                    setTeamRoleAutocompleteOpen(
-                      teamRoleAutocompleteOptions.length > 0,
-                    )
-                  }
-                  onBlur={() =>
-                    setTimeout(() => setTeamRoleAutocompleteOpen(false), 150)
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      saveRoleDialog();
+        <DialogContent
+          variant="unanimated"
+          accessibilityTitle={
+            roleDialogMode === "rename"
+              ? "Rename role"
+              : isIndividualMode
+                ? "Add role"
+                : "Add team member"
+          }
+          dialogOverlay={<DialogOverlay className="bg-[#101828]/20" />}
+          className="left-1/2 top-1/2 flex w-[371px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col items-start gap-8 rounded-xl bg-white p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+        >
+          <div className="flex w-[323px] flex-col items-start gap-3">
+            <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+              <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                Role
+              </Label>
+              <Combobox
+                className="w-[323px]"
+                value={draftRoleTitle}
+                onChange={(value) => {
+                  setDraftRoleTitle(String(value ?? ""));
+                  setTeamRoleAutocompleteOpen(false);
+                }}
+                nullable
+              >
+                <ComboboxTrigger>
+                  <ComboboxInput
+                    className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs focus:ring-0 ui-open:pl-[14px]"
+                    value={draftRoleTitle}
+                    onChange={(event) => setDraftRoleTitle(event.target.value)}
+                    onClick={() =>
+                      setTeamRoleAutocompleteOpen(
+                        teamRoleAutocompleteOptions.length > 0,
+                      )
                     }
-                  }}
-                />
-              </ComboboxTrigger>
+                    onFocus={() =>
+                      setTeamRoleAutocompleteOpen(
+                        teamRoleAutocompleteOptions.length > 0,
+                      )
+                    }
+                    onBlur={() =>
+                      setTimeout(() => setTeamRoleAutocompleteOpen(false), 150)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        saveRoleDialog();
+                      }
+                    }}
+                  />
+                </ComboboxTrigger>
 
-              {isTeamRoleAutocompleteOpen ? (
-                <ComboboxOptions className="h-[120px] overflow-hidden">
-                  <ScrollArea viewportClassName="h-[120px]">
-                    {teamRoleAutocompleteOptions.map((option) => (
-                      <ComboboxOption key={option} value={option}>
-                        {option}
-                      </ComboboxOption>
-                    ))}
-                  </ScrollArea>
-                </ComboboxOptions>
-              ) : null}
-            </Combobox>
+                {isTeamRoleAutocompleteOpen ? (
+                  <ComboboxOptions className="h-[120px] w-[323px] overflow-hidden">
+                    <ScrollArea viewportClassName="h-[120px]">
+                      {teamRoleAutocompleteOptions.map((option) => (
+                        <ComboboxOption key={option} value={option}>
+                          {option}
+                        </ComboboxOption>
+                      ))}
+                    </ScrollArea>
+                  </ComboboxOptions>
+                ) : null}
+              </Combobox>
+            </div>
+            <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+              <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                Work Schedule
+              </Label>
+              <Select
+                value={draftRoleSchedule}
+                onValueChange={(value) =>
+                  setDraftRoleSchedule(value as TeamRoleRow["schedule"])
+                }
+              >
+                <SelectTrigger className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="w-[323px]">
+                  {teamRoleScheduleOptions.map((schedule) => (
+                    <SelectItem key={schedule} value={schedule}>
+                      {schedule}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <DialogFooter className="mt-8 grid grid-cols-2 gap-3">
+          <div className="flex h-9 w-[323px] shrink-0 items-start gap-3">
             <Button
               type="button"
               variant="outlined"
               visual="gray"
+              className="h-9 w-[155.5px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-xs"
               onClick={closeRoleDialog}
             >
-              Cancel
+              <span className="h-5 w-12 text-center">Cancel</span>
             </Button>
-            <Button type="button" onClick={saveRoleDialog}>
-              {roleDialogMode === "rename" ? "Save" : "Add"}
+            <Button
+              type="button"
+              className="h-9 w-[155.5px] rounded-[5px] bg-primary-500 px-[14px] py-2 text-sm font-semibold leading-5 text-white shadow-xs"
+              onClick={saveRoleDialog}
+            >
+              <span className="h-5 w-9 text-center">Done</span>
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </>
