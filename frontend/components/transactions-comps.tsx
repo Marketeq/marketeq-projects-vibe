@@ -1183,7 +1183,7 @@ function editBankNamePlaceholder(country: string): string {
 function editBankAccountPlaceholder(country: string): string {
   switch (editBankRegion(country)) {
     case "IN":
-      return "Enter valid Account Number (6-18 digits) here"
+      return "Enter valid Account Number (9-18 digits) here"
     case "AU":
       return "Enter 6-10 digit Account Number"
     case "GB":
@@ -1200,6 +1200,7 @@ function createBlankEditBankForm(bankCountry = "") {
   return {
     bankAccountName: "",
     bankAccountNumber: "",
+    bankAccountNumberConfirm: "",
     bankRoutingNumber: "",
     bankSortCode: "",
     bankIfscCode: "",
@@ -1262,6 +1263,11 @@ const isValidRuAccountNumber = (v: string) => /^\d{20}$/.test(v)
 function isEditBankInfoComplete(form: ReturnType<typeof createBlankEditBankForm>) {
   const region = editBankRegion(form.bankCountry)
   if (!form.bankAccountName.trim()) return false
+  if (
+    region !== "SEPA" &&
+    form.bankAccountNumberConfirm !== form.bankAccountNumber
+  )
+    return false
   switch (region) {
     case "US":
       return (
@@ -1272,7 +1278,7 @@ function isEditBankInfoComplete(form: ReturnType<typeof createBlankEditBankForm>
       return isValidIban(form.bankIban) && isValidSwiftBic(form.bankSwiftBic)
     case "IN":
       return (
-        /^\d{6,18}$/.test(form.bankAccountNumber) &&
+        /^\d{9,18}$/.test(form.bankAccountNumber) &&
         isValidIfsc(form.bankIfscCode)
       )
     case "AU":
@@ -2188,6 +2194,7 @@ export const OverviewTab = ({
     methodType: "PICK",
     bankAccountName: "",
     bankAccountNumber: "",
+    bankAccountNumberConfirm: "",
     bankRoutingNumber: "",
     bankSortCode: "",
     bankIfscCode: "",
@@ -4752,6 +4759,7 @@ export const OverviewTab = ({
                     methodType: "PICK",
                     bankAccountName: "",
                     bankAccountNumber: "",
+                    bankAccountNumberConfirm: "",
                     bankRoutingNumber: "",
                     bankSortCode: "",
                     bankIfscCode: "",
@@ -5026,6 +5034,7 @@ export const OverviewTab = ({
                                   methodType: "BANK_MANUAL",
                                   bankAccountName: "",
                                   bankAccountNumber: "",
+                                  bankAccountNumberConfirm: "",
                                   bankRoutingNumber: "",
                                   bankSortCode: "",
                                   bankIfscCode: "",
@@ -5243,6 +5252,7 @@ export const OverviewTab = ({
                                       methodType: "BANK_MANUAL",
                                       bankAccountName: "",
                                       bankAccountNumber: "",
+                                      bankAccountNumberConfirm: "",
                                       bankRoutingNumber: "",
                                       bankSortCode: "",
                                       bankIfscCode: "",
@@ -5499,7 +5509,9 @@ export const OverviewTab = ({
                         (region !== "MX" &&
                           region !== "SEPA" &&
                           region !== "GCC" &&
-                          !addForm.bankAccountNumber.trim()) ||
+                          (!addForm.bankAccountNumber.trim() ||
+                            addForm.bankAccountNumberConfirm !==
+                              addForm.bankAccountNumber)) ||
                         (region === "US" &&
                           !isValidAbaRouting(addForm.bankRoutingNumber)) ||
                         (region === "GB" &&
@@ -5787,22 +5799,51 @@ export const OverviewTab = ({
                             {region !== "MX" &&
                               region !== "SEPA" &&
                               region !== "GCC" && (
-                                <div>
-                                  <Label size="xs" className="text-gray-500 mb-1 block">
-                                    Account Number
-                                  </Label>
-                                  <Input
-                                    className="w-full px-3 py-2 text-sm"
-                                    placeholder="Up to 17 digits"
-                                    value={addForm.bankAccountNumber}
-                                    onChange={(e) =>
-                                      setAddForm((f) => ({
-                                        ...f,
-                                        bankAccountNumber: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                </div>
+                                <>
+                                  <div>
+                                    <Label size="xs" className="text-gray-500 mb-1 block">
+                                      Account Number
+                                    </Label>
+                                    <Input
+                                      className="w-full px-3 py-2 text-sm"
+                                      placeholder="Up to 17 digits"
+                                      value={addForm.bankAccountNumber}
+                                      onChange={(e) =>
+                                        setAddForm((f) => ({
+                                          ...f,
+                                          bankAccountNumber: e.target.value,
+                                        }))
+                                      }
+                                    />
+                                  </div>
+                                  <div>
+                                    {/* SCR-02: anti-typo protection — a mistyped account number sends
+                                funds nowhere recoverable, so it must be entered twice. */}
+                                    <Label size="xs" className="text-gray-500 mb-1 block">
+                                      Confirm Account Number
+                                    </Label>
+                                    <Input
+                                      className="w-full px-3 py-2 text-sm"
+                                      placeholder="Re-enter account number"
+                                      value={addForm.bankAccountNumberConfirm}
+                                      onChange={(e) =>
+                                        setAddForm((f) => ({
+                                          ...f,
+                                          bankAccountNumberConfirm:
+                                            e.target.value,
+                                        }))
+                                      }
+                                    />
+                                    {addForm.bankAccountNumberConfirm.length >
+                                      0 &&
+                                      addForm.bankAccountNumberConfirm !==
+                                        addForm.bankAccountNumber && (
+                                        <p className="text-xs text-red-500 mt-1">
+                                          Account numbers do not match
+                                        </p>
+                                      )}
+                                  </div>
+                                </>
                               )}
 
                             {region === "US" && (
@@ -7488,6 +7529,37 @@ export const OverviewTab = ({
                                   )}
                               </div>
                             </>
+                          )}
+                          {editBankRegion(editBankForm.bankCountry) !==
+                            "SEPA" && (
+                            <div className="space-y-1.5">
+                              <Label
+                                size="sm"
+                                htmlFor="edit-bank-account-number-confirm"
+                              >
+                                Confirm Account Number
+                              </Label>
+                              <Input
+                                id="edit-bank-account-number-confirm"
+                                type="text"
+                                placeholder="Re-enter account number"
+                                value={editBankForm.bankAccountNumberConfirm}
+                                onChange={(e) =>
+                                  setEditBankForm((f) => ({
+                                    ...f,
+                                    bankAccountNumberConfirm: e.target.value,
+                                  }))
+                                }
+                              />
+                              {editBankForm.bankAccountNumberConfirm.length >
+                                0 &&
+                                editBankForm.bankAccountNumberConfirm !==
+                                  editBankForm.bankAccountNumber && (
+                                  <p className="text-xs text-red-500">
+                                    Account numbers do not match.
+                                  </p>
+                                )}
+                            </div>
                           )}
                         </div>
                         <div className="mt-12 flex items-center justify-end gap-x-2">
