@@ -11,6 +11,7 @@ import { EventEmitter } from 'node:events';
 import type { Logger } from 'pino';
 import type { ScreenshotService } from './screenshot-service';
 import type { ActivityMonitor } from './activity-monitor';
+import type { AppUsageTracker } from './app-usage-tracker';
 import type { CleanupJob } from './cleanup-job';
 import type { PermissionsService } from '../permissions/permissions-service';
 import type { PreferenceRepo } from '../../db/repos/preference.repo';
@@ -44,6 +45,7 @@ interface Deps {
   logger: Logger;
   screenshotService: ScreenshotService;
   activityMonitor: ActivityMonitor;
+  appUsageTracker?: AppUsageTracker;
   cleanupJob: CleanupJob;
   permissions: PermissionsService;
   preferenceRepo: PreferenceRepo;
@@ -124,12 +126,14 @@ export function createCaptureSupervisor(deps: Deps): CaptureSupervisor {
       deps.screenshotService.start();
     }
     deps.activityMonitor.start();
+    deps.appUsageTracker?.start();
     refreshHealth();
   }
 
   function pauseCapture(): void {
     deps.screenshotService.stop();
     deps.activityMonitor.stop();
+    deps.appUsageTracker?.stop();
     refreshHealth();
   }
 

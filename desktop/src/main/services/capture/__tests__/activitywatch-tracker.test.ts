@@ -1,0 +1,204 @@
+// src/main/services/capture/__tests__/activitywatch-tracker.test.ts
+//
+// Unit tests with injected spawn/fetch fakes — no real child process, no
+// real network call, no real Electron. Mirrors the conventions already
+// used in app-usage-tracker.test.ts.
+
+import { describe, it, expect, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { EventEmitter } from 'node:events';
+import { createActivityWatchTracker } from '../activitywatch-tracker';
+
+const logger = { child: () => ({ info: vi.fn(), debug: vi.fn(), warn: vi.fn() }) } as any;
+
+function fakeChildProcess() {
+  const emitter = new EventEmitter() as any;
+  emitter.kill = vi.fn();
+  return emitter;
+}
+
+function jsonResponse(body: unknown, ok = true) {
+  return Promise.resolve({ ok, json: () => Promise.resolve(body) } as Response);
+}
+
+/** Sets up a temp resourcesDir with fake win32 binaries present. */
+function setupFakeBinaries() {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aw-tracker-test-'));
+  const dir = path.join(tmp, 'win-x64');
+  fs.mkdirSync(path.join(dir, 'aw-watcher-window'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'aw-server-rust.exe'), 'fake');
+  fs.writeFileSync(path.join(dir, 'aw-watcher-window', 'aw-watcher-window.exe'), 'fake');
+  return tmp;
+}
+
+describe('createActivityWatchTracker', () => {
+  it('isAvailable() is false and nothing is spawned when binaries are missing', () => {
+    const spawnFn = vi.fn();
+    const tracker = createActivityWatchTracker({
+      logger,
+      platform: 'win32',
+      arch: 'x64',
+      options: { resourcesDir: fs.mkdtempSync(path.join(os.tmpdir(), 'aw-tracker-empty-')) },
+      spawnFn: spawnFn as any,
+      fetchFn: vi.fn() as any,
+    });
+    tracker.start();
+    expect(spawnFn).not.toHaveBeenCalled();
+    expect(tracker.isAvailable()).toBe(false);
+    expect(tracker.drain()).toEqual([]);
+  });
+
+  it('passes --dbpath as a FILE inside the directory (not the directory itself — confirmed against the real binary that passing a directory panics it)', async () => {
+    const resourcesDir = setupFakeBinaries();
+    const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'aw-dbpath-test-')), 'nested', 'activitywatch');
+    const spawnFn = vi.fn(() => fakeChildProcess());
+    const tracker = createActivityWatchTracker({
+      logger,
+      platform: 'win32',
+      arch: 'x64',
+      options: { resourcesDir, dbPath },
+      spawnFn: spawnFn as any,
+      fetchFn: vi.fn().mockImplementation(() => jsonResponse({}, false)) as any,
+    });
+
+    tracker.start();
+
+    expect(fs.existsSync(dbPath)).toBe(true);
+    const serverCall = spawnFn.mock.calls[0];
+    const dbpathIdx = serverCall[1].indexOf('--dbpath');
+    expect(dbpathIdx).toBeGreaterThanOrEqual(0);
+    const passedPath = serverCall[1][dbpathIdx + 1];
+    expect(passedPath).not.toBe(dbPath); // must be a file inside it, not the dir itself
+    expect(path.dirname(passedPath)).toBe(dbPath);
+  });
+
+  it('spawns both processes and becomes available once the local server responds', async () => {
+    const resourcesDir = setupFakeBinaries();
+    const spawnFn = vi.fn(() => fakeChildProcess());
+    const fetchFn = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/api/0/info')) return jsonResponse({ hostname: 'test-host' });
+      return jsonResponse([]);
+    });
+    const tracker = createActivityWatchTracker({
+      logger,
+      platform: 'win32',
+      arch: 'x64',
+      options: { resourcesDir, syncIntervalMs: 50 },
+      spawnFn: spawnFn as any,
+      fetchFn: fetchFn as any,
+    });
+
+    tracker.start();
+    expect(spawnFn).toHaveBeenCalledTimes(2);
+
+    // waitForServer polls every 250ms; give it a couple of ticks to resolve.
+    await new Promise((r) => setTimeout(r, 400));
+    expect(tracker.isAvailable()).toBe(true);
+
+    tracker.stop();
+  });
+
+  it('drain() reduces synced events to distinct, name-resolved apps and clears afterward', async () => {
+    const resourcesDir = setupFakeBinaries();
+    const events = [
+      { data: { app: 'chrome.exe' } },
+      { data: { app: 'Code.exe' } },
+      { data: { app: 'chrome.exe' } },
+    ];
+    const fetchFn = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/api/0/info')) return jsonResponse({ hostname: 'test-host' });
+      if (url.includes('/events')) return jsonResponse(events);
+      return jsonResponse({});
+    });
+    const resolveNameFn = vi.fn((raw: string) => (raw === 'chrome.exe' ? 'Google Chrome' : 'Visual Studio Code'));
+    const tracker = createActivityWatchTracker({
+      logger,
+      platform: 'win32',
+      arch: 'x64',
+      options: { resourcesDir, syncIntervalMs: 50 },
+      spawnFn: (() => fakeChildProcess()) as any,
+      fetchFn: fetchFn as any,
+      resolveNameFn: resolveNameFn as any,
+    });
+
+    tracker.start();
+    await new Promise((r) => setTimeout(r, 500)); // let the startup check + at least one sync run
+
+    const result = tracker.drain();
+    expect(result.sort()).toEqual(['Google Chrome', 'Visual Studio Code']);
+    expect(tracker.drain()).toEqual([]); // cleared
+    // "chrome.exe" appeared twice across events but should only be resolved once (cached).
+    expect(resolveNameFn.mock.calls.filter((c) => c[0] === 'chrome.exe').length).toBe(1);
+
+    tracker.stop();
+  });
+
+  it('drain() returns [] non-fatally when the event query fails', async () => {
+    const resourcesDir = setupFakeBinaries();
+    const fetchFn = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/api/0/info')) return jsonResponse({ hostname: 'test-host' });
+      return Promise.reject(new Error('network down'));
+    });
+    const tracker = createActivityWatchTracker({
+      logger,
+      platform: 'win32',
+      arch: 'x64',
+      options: { resourcesDir, syncIntervalMs: 50 },
+      spawnFn: (() => fakeChildProcess()) as any,
+      fetchFn: fetchFn as any,
+    });
+
+    tracker.start();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(() => tracker.drain()).not.toThrow();
+    expect(tracker.drain()).toEqual([]);
+
+    tracker.stop();
+  });
+
+  it('stop() kills both processes and resets availability', async () => {
+    const resourcesDir = setupFakeBinaries();
+    const serverProc = fakeChildProcess();
+    const watcherProc = fakeChildProcess();
+    let call = 0;
+    const spawnFn = vi.fn(() => (call++ === 0 ? serverProc : watcherProc));
+    const fetchFn = vi.fn().mockImplementation((url: string) =>
+      url.includes('/api/0/info') ? jsonResponse({ hostname: 'test-host' }) : jsonResponse([]),
+    );
+    const tracker = createActivityWatchTracker({
+      logger,
+      platform: 'win32',
+      arch: 'x64',
+      options: { resourcesDir },
+      spawnFn: spawnFn as any,
+      fetchFn: fetchFn as any,
+    });
+
+    tracker.start();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(tracker.isAvailable()).toBe(true);
+
+    tracker.stop();
+    expect(serverProc.kill).toHaveBeenCalled();
+    expect(watcherProc.kill).toHaveBeenCalled();
+    expect(tracker.isAvailable()).toBe(false);
+  });
+
+  it('does not spawn twice if start() is called while already running', () => {
+    const resourcesDir = setupFakeBinaries();
+    const spawnFn = vi.fn(() => fakeChildProcess());
+    const tracker = createActivityWatchTracker({
+      logger,
+      platform: 'win32',
+      arch: 'x64',
+      options: { resourcesDir },
+      spawnFn: spawnFn as any,
+      fetchFn: vi.fn().mockImplementation(() => jsonResponse({}, false)) as any,
+    });
+    tracker.start();
+    tracker.start();
+    expect(spawnFn).toHaveBeenCalledTimes(2); // one pair, not two pairs
+  });
+});

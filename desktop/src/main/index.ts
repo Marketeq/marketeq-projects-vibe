@@ -26,6 +26,8 @@ import { createScreenshotService } from './services/capture/screenshot-service';
 import { createActivityMonitor } from './services/capture/activity-monitor';
 import { startInputActivity, stopInputActivity } from './services/capture/input-activity';
 import { createCleanupJob } from './services/capture/cleanup-job';
+import { createAppUsageTracker, type AppUsageTracker } from './services/capture/app-usage-tracker';
+import { createActivityWatchTracker } from './services/capture/activitywatch-tracker';
 import { createCaptureSupervisor } from './services/capture/capture-supervisor';
 import { registerCaptureIpcHandlers } from './services/capture/register-ipc';
 import { createApiClient } from './services/sync/api-client';
@@ -336,12 +338,46 @@ async function bootstrap(): Promise<void> {
       logger,
       permissionGrantRepo: repos.permissionGrant,
     });
+    // Real event-driven tracking via a locally-run ActivityWatch, with an
+    // automatic fallback to 15s polling if the bundled binaries are
+    // missing, blocked, or fail to start on this machine — app tracking
+    // never drops to zero, it just degrades to the previous behavior.
+    const pollingTracker = createAppUsageTracker({
+      logger,
+      options: { pollIntervalMs: 15_000 },
+    });
+    const awTracker = createActivityWatchTracker({
+      logger,
+      options: { dbPath: path.join(app.getPath('userData'), 'dtt', 'activitywatch') },
+    });
+    // Both trackers start and stop together with the session — neither
+    // runs while the app is merely open but not tracking. pollingTracker
+    // is cheap (a timer, no child processes) so running it alongside
+    // ActivityWatch as a standing safety net costs nothing meaningful; in
+    // exchange, drain() can simply ask "is ActivityWatch available *right
+    // now*" at read time — by which point its ~5s startup check has long
+    // settled, since the first screenshot doesn't fire until ~60s after
+    // start — with pollingTracker's own accumulated data always ready as
+    // a fallback, with no race and no risk of draining a tracker that
+    // wasn't actually accumulating anything.
+    const appUsageTracker: AppUsageTracker = {
+      start: () => {
+        pollingTracker.start();
+        awTracker.start();
+      },
+      stop: () => {
+        pollingTracker.stop();
+        awTracker.stop();
+      },
+      drain: () => (awTracker.isAvailable() ? awTracker.drain() : pollingTracker.drain()),
+    };
     screenshotService = createScreenshotService({
       logger,
       screenshotRepo: repos.screenshot,
       sessionRepo: repos.session,
       preferenceRepo: repos.preference,
       permissions,
+      appUsageTracker,
     });
     const activityMonitor = createActivityMonitor({
       logger,
@@ -357,6 +393,7 @@ async function bootstrap(): Promise<void> {
       logger,
       screenshotService,
       activityMonitor,
+      appUsageTracker,
       cleanupJob,
       permissions,
       preferenceRepo: repos.preference,

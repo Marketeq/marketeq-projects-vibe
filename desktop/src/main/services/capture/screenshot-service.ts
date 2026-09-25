@@ -41,6 +41,8 @@ import type {
   ScreenshotStats,
   ScreenshotTakenEvent,
 } from '../../../shared/ipc-contracts';
+import { createAppIconExtractionCache } from './app-icon-service';
+import type { AppUsageTracker } from './app-usage-tracker';
 
 interface ElectronCaptureSurface {
   desktopCapturer: {
@@ -105,6 +107,8 @@ interface Deps {
   electron?: ElectronCaptureSurface | null;
   // Optional activeSessionId resolver for tests.
   resolveSessionId?: () => string | null;
+  /** Tracks every distinct app seen across the interval, not just at capture instant. */
+  appUsageTracker?: AppUsageTracker;
   rootDir?: string; // override userData for tests
 }
 
@@ -158,6 +162,8 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
       : path.join(process.cwd(), '.dtt-capture', 'screenshots'));
 
   fs.mkdirSync(rootDir, { recursive: true });
+
+  const appIconCache = createAppIconExtractionCache(path.join(rootDir, 'icons'));
 
   function nextIntervalMs(): number {
     const base = intervalSeconds * 1000;
@@ -388,17 +394,23 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
           sha256: sha,
         });
 
-        // Detect the frontmost app on macOS
-        let activeAppName: string | null = null;
-        if (process.platform === 'darwin') {
-          try {
-            const result = execFileSync('osascript', [
-              '-e', 'tell application "System Events" to get name of first application process whose frontmost is true',
-            ], { timeout: 2000 }).toString().trim();
-            if (result) activeAppName = result;
-          } catch {
-            // Non-fatal
-          }
+        // Every distinct app seen frontmost across the whole interval since
+        // the last capture (macOS + Windows; empty elsewhere). Falls back to
+        // a single frontmost-app snapshot when no tracker is wired (e.g.
+        // tests), matching the previous single-snapshot behavior exactly.
+        let activeApps: string[];
+        if (deps.appUsageTracker) {
+          activeApps = deps.appUsageTracker.drain();
+        } else {
+          const single = detectActiveAppName();
+          activeApps = single ? [single] : [];
+        }
+        // Best-effort: extract each app's own icon (non-fatal, skipped on
+        // any failure — see app-icon-service.ts for why).
+        const activeAppIcons: Record<string, string> = {};
+        for (const name of activeApps) {
+          const iconPath = appIconCache.getIconPath(name);
+          if (iconPath) activeAppIcons[name] = iconPath;
         }
 
         const evt: ScreenshotTakenEvent = {
@@ -412,7 +424,8 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
           blurPath,
           displayId,
           sensitive: false,
-          activeAppName,
+          activeApps,
+          activeAppIcons,
         };
         results.push(evt);
         bus.emit('taken', evt);
@@ -538,6 +551,53 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
 }
 
 // ---- Exported helpers for unit tests ------------------------------------
+
+/**
+ * Detects the name of the frontmost/foreground application at the moment
+ * of capture. Best-effort, non-fatal: returns null on unsupported
+ * platforms or any failure (missing binary, timeout, no result).
+ */
+export function detectActiveAppName(
+  platform: NodeJS.Platform = process.platform,
+  exec: typeof execFileSync = execFileSync,
+): string | null {
+  try {
+    if (platform === 'darwin') {
+      const result = exec('osascript', [
+        '-e', 'tell application "System Events" to get name of first application process whose frontmost is true',
+      ], { timeout: 2000 }).toString().trim();
+      return result || null;
+    }
+    if (platform === 'win32') {
+      const psScript = `
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class DttWin32 {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+}
+'@
+$hwnd = [DttWin32]::GetForegroundWindow()
+$procId = 0
+[void][DttWin32]::GetWindowThreadProcessId($hwnd, [ref]$procId)
+$p = Get-Process -Id $procId -ErrorAction SilentlyContinue
+if ($p) {
+  $desc = $null
+  try { $desc = $p.MainModule.FileVersionInfo.FileDescription } catch {}
+  if ([string]::IsNullOrWhiteSpace($desc)) { $p.ProcessName } else { $desc }
+}
+`;
+      const result = exec('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', psScript,
+      ], { timeout: 2000 }).toString().trim();
+      return result || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export function computeNextIntervalMs(
   intervalSeconds: number,

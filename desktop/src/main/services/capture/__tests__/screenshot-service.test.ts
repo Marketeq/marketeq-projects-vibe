@@ -5,10 +5,11 @@
 // bootstrap here; the captureOnce integration path is exercised via
 // the smoke test in `scripts/smoke-capture.ts`.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   computeNextIntervalMs,
   findRetentionCandidates,
+  detectActiveAppName,
   type RetentionCandidate,
 } from '../screenshot-service';
 
@@ -48,6 +49,44 @@ describe('computeNextIntervalMs', () => {
     }
     expect(Math.min(...samples)).toBeGreaterThanOrEqual(5000);
     expect(Math.max(...samples)).toBeLessThanOrEqual(690_000);
+  });
+});
+
+describe('detectActiveAppName', () => {
+  it('returns trimmed osascript output on darwin', () => {
+    const exec = vi.fn().mockReturnValue(Buffer.from('Google Chrome\n'));
+    expect(detectActiveAppName('darwin', exec as any)).toBe('Google Chrome');
+    expect(exec).toHaveBeenCalledWith(
+      'osascript',
+      expect.any(Array),
+      expect.objectContaining({ timeout: 2000 }),
+    );
+  });
+
+  it('returns trimmed PowerShell output on win32', () => {
+    const exec = vi.fn().mockReturnValue(Buffer.from('Google Chrome\r\n'));
+    expect(detectActiveAppName('win32', exec as any)).toBe('Google Chrome');
+    expect(exec).toHaveBeenCalledWith(
+      'powershell.exe',
+      expect.any(Array),
+      expect.objectContaining({ timeout: 2000 }),
+    );
+  });
+
+  it('returns null on unsupported platforms', () => {
+    expect(detectActiveAppName('linux', vi.fn() as any)).toBeNull();
+  });
+
+  it('returns null when exec throws (non-fatal)', () => {
+    const exec = vi.fn().mockImplementation(() => {
+      throw new Error('timeout');
+    });
+    expect(detectActiveAppName('win32', exec as any)).toBeNull();
+  });
+
+  it('returns null on empty/whitespace output', () => {
+    const exec = vi.fn().mockReturnValue(Buffer.from('  \n'));
+    expect(detectActiveAppName('win32', exec as any)).toBeNull();
   });
 });
 

@@ -113,6 +113,8 @@ interface Screenshot {
   imageUrl: string
   activityLevel: number // 0-100 progress bar
   apps: string[] // app icon labels like "chrome", "slack", "github"
+  appIconUrls?: Record<string, string> // normalized app key -> real extracted icon URL, when available
+  appDisplayNames?: Record<string, string> // normalized app key -> real appName, for apps not in the curated appDisplay dictionary
   isDuplicate?: boolean
   duplicateCount?: number
   isNoActivity?: boolean
@@ -206,18 +208,42 @@ const projectLabelColors: Record<ProjectColor, string> = {
 //   )
 // }
 
-function AppIcons({ apps }: { apps: string[] }) {
+function AppIcons({
+  apps,
+  iconUrls,
+  displayNames,
+}: {
+  apps: string[]
+  iconUrls?: Record<string, string>
+  displayNames?: Record<string, string>
+}) {
   return (
     <div className="flex items-center gap-1">
       {apps.map((app, i) => (
-        <AppIcon key={i} app={app} />
+        <AppIcon key={i} app={app} iconUrl={iconUrls?.[app]} displayName={displayNames?.[app]} />
       ))}
     </div>
   )
 }
 
-function AppIcon({ app }: { app: string }) {
+function AppIcon({
+  app,
+  iconUrl,
+  displayName,
+}: {
+  app: string
+  iconUrl?: string
+  displayName?: string
+}) {
   const size = 14
+  if (iconUrl) {
+    // Real, OS-extracted icon — exact, not a guess. Falls through to the
+    // name-based guess below when unavailable.
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={iconUrl} alt={app} width={size} height={size} className="rounded-[3px]" />
+    )
+  }
   switch (app) {
     case "chrome":
     case "chromebrowser":
@@ -246,7 +272,7 @@ function AppIcon({ app }: { app: string }) {
     case "electron":
       return <VscCode size={size} className="text-blue-400" title="Electron" />
     default:
-      return <div className="size-3 rounded-full bg-gray-400" title={app} />
+      return <div className="size-3 rounded-full bg-gray-400" title={displayName ?? app} />
   }
 }
 
@@ -491,6 +517,20 @@ function transformScreenshotsToTimeBlocks(
         const apps = c.apps
           ? c.apps.map((a) => a.appName.toLowerCase().replace(/\s+/g, ""))
           : []
+        const appIconUrls = c.apps
+          ? c.apps.reduce<Record<string, string>>((acc, a) => {
+              const key = a.appName.toLowerCase().replace(/\s+/g, "")
+              if (a.iconUrl) acc[key] = a.iconUrl
+              return acc
+            }, {})
+          : undefined
+        const appDisplayNames = c.apps
+          ? c.apps.reduce<Record<string, string>>((acc, a) => {
+              const key = a.appName.toLowerCase().replace(/\s+/g, "")
+              acc[key] = a.appName // keep the real, original name for display
+              return acc
+            }, {})
+          : undefined
 
         return {
           id: c.id,
@@ -498,6 +538,8 @@ function transformScreenshotsToTimeBlocks(
           imageUrl: c.thumbnailUrl || "",
           activityLevel,
           apps,
+          appIconUrls,
+          appDisplayNames,
           isNoActivity: activityLevel === 0 && (!c.apps || c.apps.length === 0) && !c.thumbnailUrl,
           isBlurred: c.isBlurred ?? false,
           contractId: c.contractId ?? undefined,
@@ -619,7 +661,13 @@ function ScreenshotThumbnail({
       {/* Timestamp + app icons */}
       <div className="flex items-center justify-between mt-1">
         <span className="text-[11px] text-gray-400">{screenshot.time}</span>
-        {screenshot.apps.length > 0 && <AppIcons apps={screenshot.apps} />}
+        {screenshot.apps.length > 0 && (
+          <AppIcons
+            apps={screenshot.apps}
+            iconUrls={screenshot.appIconUrls}
+            displayNames={screenshot.appDisplayNames}
+          />
+        )}
       </div>
     </div>
   )
@@ -2362,7 +2410,11 @@ function ScreenshotDetailsDialog({
                             {f.screenshot.time}
                           </span>
                           {f.screenshot.apps.length > 0 && (
-                            <AppIcons apps={f.screenshot.apps} />
+                            <AppIcons
+                              apps={f.screenshot.apps}
+                              iconUrls={f.screenshot.appIconUrls}
+                              displayNames={f.screenshot.appDisplayNames}
+                            />
                           )}
                         </div>
                       </button>
@@ -2475,13 +2527,17 @@ function ScreenshotDetailsDialog({
                     <div className="space-y-2">
                       {s.apps.map((app, i) => {
                         const info = appDisplay[app] || {
-                          name: app,
+                          name: s.appDisplayNames?.[app] ?? app,
                           color: "bg-gray-400",
                         }
                         return (
                           <div key={i} className="flex items-center gap-2.5">
                             <div className="size-5 flex-none flex items-center justify-center">
-                              <AppIcon app={app} />
+                              <AppIcon
+                                app={app}
+                                iconUrl={s.appIconUrls?.[app]}
+                                displayName={s.appDisplayNames?.[app]}
+                              />
                             </div>
                             <span className="text-sm text-dark-blue-400">
                               {info.name}

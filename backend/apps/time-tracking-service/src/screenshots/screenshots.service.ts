@@ -59,6 +59,38 @@ export class ScreenshotsService {
       }
     }
 
+    // iconBase64 is transient — never persisted, only ever used to derive a
+    // real iconUrl. In dev (no R2 configured yet) that means writing it to
+    // the same local-file fallback the main image uses, above. In every
+    // other environment there's nowhere to put it yet, so it's dropped
+    // rather than written into the jsonb `apps` column raw — a base64 image
+    // blob has no business sitting in a database row.
+    let apps = dto.apps ?? null;
+    if (apps) {
+      const isDev = process.env.NODE_ENV !== 'production';
+      const fs = isDev ? await import('fs') : null;
+      const path = isDev ? await import('path') : null;
+      const uploadsDir = path ? path.join(process.cwd(), 'screenshot-uploads', 'icons') : null;
+      apps = apps.map((app) => {
+        if (!app.iconBase64 || !isDev || !fs || !path || !uploadsDir) {
+          const { iconBase64, ...rest } = app;
+          return rest;
+        }
+        try {
+          if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+          const safeName = app.appName.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const filename = `${safeName}.png`;
+          fs.writeFileSync(path.join(uploadsDir, filename), Buffer.from(app.iconBase64, 'base64'));
+          const port = process.env.PORT ?? 3017;
+          const { iconBase64, ...rest } = app;
+          return { ...rest, iconUrl: `http://localhost:${port}/api/screenshot-files/icons/${filename}` };
+        } catch {
+          const { iconBase64, ...rest } = app;
+          return rest;
+        }
+      });
+    }
+
     const saved = await this.repo.save({
       userId: dto.userId,
       key: dto.key,
@@ -75,7 +107,7 @@ export class ScreenshotsService {
       groupKey: dto.groupKey ?? null,
       isDeleted: false,
       url: url ?? undefined,
-      apps: dto.apps ?? null,
+      apps,
     } as any);
     // Sync to earnings_cache (non-blocking)
     if (saved.contractId && saved.capturedAt) {
