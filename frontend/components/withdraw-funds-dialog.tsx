@@ -22,7 +22,6 @@ import {
   Button, Checkbox, Dialog, DialogClose, DialogContent, DialogTitle,
   IconButton, Input, RadioGroup, RadioGroupItem,
 } from "@/components/ui"
-import { PayoneerDefault } from "@blend-metrics/icons/payment-methods"
 import { CryptoProviderIcon, formatMethodOptionLabel } from "@/components/transactions-comps"
 import { getBalance, type BalanceResponse } from "@/service/http/earnings"
 import { getPublicAuthUrl, getPublicApiUrl } from "@/lib/runtime-urls"
@@ -113,12 +112,6 @@ function resolveErrorMessage(data: { errorCode?: string; message?: string; avail
 
 function methodIcon(m: { methodType: string; displayLabel: string | null }) {
   switch (m.methodType) {
-    case "PAYONEER":
-      return (
-        <div className="size-10 flex items-center justify-center shrink-0">
-          <PayoneerDefault className="w-full h-full" />
-        </div>
-      )
     case "CRYPTO":
       // Generic crypto wallet glyph, not a per-provider brand icon — this
       // dialog's method list doesn't carry cryptoProvider, only displayLabel,
@@ -670,14 +663,7 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
                 )}
 
                 <div className="mt-6">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-sm font-semibold text-dark-blue-400">Enter Withdrawal Amount</label>
-                    {available > 0 && (
-                      <button type="button" className="text-xs font-medium text-primary-600 hover:text-primary-700" onClick={() => setAmount(available.toFixed(2))}>
-                        Withdraw Full Amount
-                      </button>
-                    )}
-                  </div>
+                  <label className="text-sm font-semibold text-dark-blue-400 block mb-1.5">Enter Withdrawal Amount</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-medium">$</span>
                     <Input
@@ -685,8 +671,17 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
                       value={amount}
                       disabled={balanceLoading || !!balanceError || (!!balance && available <= 0)}
                       onChange={(e) => setAmount(e.target.value)}
-                      className="pl-7"
+                      className="pl-7 pr-36 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
+                    {available > 0 && (
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-primary-600 hover:text-primary-700"
+                        onClick={() => setAmount(available.toFixed(2))}
+                      >
+                        Withdraw Full Amount
+                      </button>
+                    )}
                   </div>
                   {amount && available > 0 && Number(amount) > available && (
                     <p className="mt-2 text-xs text-red-600">This amount exceeds your available balance of ${available.toFixed(2)}.</p>

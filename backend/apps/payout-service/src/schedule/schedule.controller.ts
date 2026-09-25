@@ -24,6 +24,15 @@ export class ScheduleController {
     return this.scheduleService.getSchedule(req.user.userId);
   }
 
+  // Nest matches static segments before the bare route, so 'activity' here
+  // is never swallowed by the parameterless @Get() above — no ordering
+  // dependency between the two.
+  @Get('activity')
+  @HttpCode(200)
+  async getActivity(@Request() req: any) {
+    return this.scheduleService.getRecentActivity(req.user.userId);
+  }
+
   @Put()
   @HttpCode(200)
   async updateSchedule(@Request() req: any, @Body() dto: UpdateScheduleDto) {

@@ -543,7 +543,7 @@ export class StripeProvider {
     // real Connect account created for a DIFFERENT country (e.g. a
     // contractor who also has a GB/SEPA method attached via a different
     // flow) fails every US bank-account tokenization against it. bank_country
-    // is 'US' on every BANK_STRIPE/BANK_MANUAL-US row, but WISE/PAYONEER
+    // is 'US' on every BANK_STRIPE/BANK_MANUAL-US row, but WISE
     // rows (oauth.service.ts's initiateOAuth) never set it at all — treating
     // NULL as implicitly-US (rather than requiring an exact 'US' match)
     // keeps those legitimate US-context accounts reusable too, while still
@@ -551,7 +551,7 @@ export class StripeProvider {
     // PS-34 §4.2: Custom accounts are single-country, so a Connect account
     // created for 'US' can't be reused for a GB/SEPA/AU/CA contractor and
     // vice versa — matching on the exact requested country (NULL only
-    // counts as a match for 'US', preserving the original WISE/PAYONEER
+    // counts as a match for 'US', preserving the original WISE
     // reasoning below) keeps cross-country reuse from ever being attempted.
     const existing = await this.methodRepo
       .createQueryBuilder('m')
@@ -600,12 +600,12 @@ export class StripeProvider {
   // ─── PS-09 v2.0 §8: Connect external_account from a raw routing +
   // account number ──────────────────────────────────────────────
   // Used by OAuthService.handleCallback() after retrieving a contractor's
-  // Wise/Payoneer US routing + account number via fetchBankingDetails() —
+  // Wise US routing + account number via fetchBankingDetails() —
   // this is the step that lets Stripe ACH funds directly to the
-  // contractor's Wise or Payoneer balance without Marketeq ever calling the
-  // Wise/Payoneer Payouts API. Unlike attachVerifiedBankAsExternalAccount
+  // contractor's Wise balance without Marketeq ever calling the
+  // Wise Payouts API. Unlike attachVerifiedBankAsExternalAccount
   // (BANK_STRIPE/BANK_MANUAL, which goes through a confirmed SetupIntent +
-  // token), Wise/Payoneer never hand payout-service a SetupIntent — the
+  // token), Wise never hands payout-service a SetupIntent — the
   // routing/account number is all the provider API returns — so the
   // external_account is created directly from those raw values, per
   // PS-09 §8's documented createExternalAccount() shape.
@@ -1186,7 +1186,7 @@ export class StripeProvider {
     });
   }
 
-  // PS-33 §5: an external_account (bank/Wise/Payoneer routing+account) was
+  // PS-33 §5: an external_account (bank/Wise routing+account) was
   // disabled or updated — typically after a payout failure Stripe decided
   // means the destination is no longer usable. Mark the method as needing
   // re-verification rather than silently letting the next scheduled payout

@@ -1,20 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService }      from '@nestjs/config';
-import * as geoip             from 'geoip-lite';
-
-const COUNTRY_CURRENCY: Record<string, string> = {
-  US:'USD', GB:'GBP', IN:'INR', AU:'AUD', CA:'CAD',
-  JP:'JPY', CN:'CNY', SG:'SGD', AE:'AED', PK:'PKR', NG:'NGN',
-  PH:'PHP', BD:'BDT', ID:'IDR', VN:'VND', MX:'MXN', BR:'BRL',
-  DE:'EUR', FR:'EUR', ES:'EUR', IT:'EUR', NL:'EUR', BE:'EUR',
-  PL:'PLN', UA:'UAH', RO:'RON', HU:'HUF', CZ:'CZK', SE:'SEK',
-  NO:'NOK', DK:'DKK', CH:'CHF', NZ:'NZD', ZA:'ZAR', KE:'KES',
-  GH:'GHS', EG:'EGP', MA:'MAD', TZ:'TZS', ET:'ETB', UG:'UGX',
-  KR:'KRW', TW:'TWD', HK:'HKD', TH:'THB', MY:'MYR', TR:'TRY',
-  IL:'ILS', SA:'SAR', QA:'QAR', KW:'KWD', BH:'BHD', OM:'OMR',
-  AR:'ARS', CL:'CLP', CO:'COP', PE:'PEN', VE:'VES',
-  RU:'RUB', KZ:'KZT', UZ:'UZS', AZ:'AZN', GE:'GEL',
-};
 
 export interface TalentCurrencyResolution {
   currency: string;
@@ -27,11 +12,13 @@ export class GeoService {
   private readonly defaultCurrency: string;
   private readonly userServiceUrl: string;
   private readonly internalToken: string;
+  private readonly locationServiceUrl: string;
 
   constructor(private readonly config: ConfigService) {
     this.defaultCurrency = this.config.get('DEFAULT_CURRENCY', 'USD');
     this.userServiceUrl = this.config.get('earnings.userServiceUrl', 'http://localhost:3002');
     this.internalToken = this.config.get('earnings.internalServiceToken', '');
+    this.locationServiceUrl = this.config.get('LOCATION_SERVICE_URL') || 'http://localhost:3036';
   }
 
   // ES-06 §4/§8: resolves the talent's display currency.
@@ -82,33 +69,28 @@ export class GeoService {
     }
   }
 
-  // Real IP → country → currency lookup via geoip-lite (same library
-  // timezone-resolution.service.ts already uses for IP → timezone). Returns
-  // null — not a default — when the IP is unroutable/local or the country
-  // isn't in the currency table, so callers can tell "genuinely unresolved"
-  // apart from "resolved to USD because the region uses USD".
+  // IP → currency via location-service. Returns null when unresolvable so
+  // callers can tell "genuinely unresolved" apart from "resolved to USD."
   async detectCurrency(ip: string): Promise<string | null> {
     if (!ip || ip === '127.0.0.1' || ip === '::1' || ip.startsWith('10.') || ip.startsWith('192.168.'))
       return null;
 
     try {
-      const geo = geoip.lookup(ip);
-      if (!geo?.country) return null;
-      const currency = COUNTRY_CURRENCY[geo.country.toUpperCase()];
-      if (!currency) {
-        this.logger.debug(`GeoService: ${ip} → country ${geo.country} has no mapped currency`);
-        return null;
-      }
-      return currency;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(
+        `${this.locationServiceUrl}/location/resolve-ip?ip=${encodeURIComponent(ip)}`,
+        { signal: controller.signal },
+      );
+      clearTimeout(timeout);
+
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data?.currency ?? null;
     } catch (err) {
-      this.logger.warn(`GeoService: IP currency lookup failed for ${ip}: ${(err as Error).message}`);
+      this.logger.warn(`GeoService: location-service currency lookup failed for ${ip}: ${(err as Error).message}`);
       return null;
     }
-  }
-
-  // Static lookup for testing
-  getCurrencyForCountry(countryCode: string): string {
-    return COUNTRY_CURRENCY[countryCode.toUpperCase()] ?? this.defaultCurrency;
   }
 
   // Mirrors user-service's timezone-resolution.service.ts extractIp — same

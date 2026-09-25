@@ -164,17 +164,17 @@ export class MethodsService {
       };
     }
 
-    // WISE/PAYONEER: real OAuth — delegate entirely to OAuthService,
+    // WISE: real OAuth — delegate entirely to OAuthService,
     // which creates the pending DepositMethod itself, stores OAuth state in
     // Redis, and builds a real provider authorize URL from the configured
     // client_id/redirect_uri/scopes. The block below (which used to build a
     // fabricated, non-functional "authorize" URL with no client_id or
     // redirect_uri — connecting an account was never actually possible)
-    // must never run for these method types.
-    if (dto.methodType === 'WISE' || dto.methodType === 'PAYONEER') {
+    // must never run for this method type.
+    if (dto.methodType === 'WISE') {
       const result = await this.oauthService.initiateOAuth(contractorId, dto.methodType as MethodType);
 
-      // PS-35 §2/§5.2: same gap as CRYPTO above — WISE/PAYONEER previously
+      // PS-35 §2/§5.2: same gap as CRYPTO above — WISE previously
       // returned before ever reaching the biometric gate. Checked here,
       // before the contractor is sent into the OAuth flow, rather than
       // after the callback completes — consistent with "gate fires when the
@@ -269,7 +269,7 @@ export class MethodsService {
     // PS-35 §2/§5.2: biometric gate fires for every new payout method, on
     // top of whatever provider verification (Stripe/Wise/micro-deposit)
     // just ran above — covers BANK_MANUAL/BANK_STRIPE here; CRYPTO and
-    // WISE/PAYONEER call the same checkMethodBiometricGate() helper earlier
+    // WISE call the same checkMethodBiometricGate() helper earlier
     // in this method, right after their own method row is created.
     const biometric = await this.checkMethodBiometricGate(contractorId, method.id);
 
@@ -335,7 +335,7 @@ export class MethodsService {
       'bankAccountName', 'bankAccountNumber', 'bankCountry', 'bankCurrency',
       'bankRoutingNumber', 'bankIban', 'bankSwiftBic', 'bankIfscCode',
       'bankBsbNumber', 'bankSortCode', 'bankCode', 'bankBranchCode',
-      'bankInstitutionNumber', 'bankTransitNumber', 'bankClabe',
+      'bankAccountType', 'bankInstitutionNumber', 'bankTransitNumber', 'bankClabe',
       'bankCnapsCode', 'bankBik', 'bankKorrespondentAccount', 'bankCpfCnpj',
       'bankAgencia', 'bankConta',
     ];
@@ -741,8 +741,8 @@ export class MethodsService {
         };
       }
 
-      // WISE/PAYONEER no longer reach this method — addMethod()
-      // routes them to OAuthService.initiateOAuth() before createVerification()
+      // WISE no longer reaches this method — addMethod()
+      // routes it to OAuthService.initiateOAuth() before createVerification()
       // is ever called, since that's the real, credential-backed OAuth flow.
 
       default:
@@ -877,7 +877,7 @@ export class MethodsService {
   }
 
   // PS-35 §2/§5.2/§8: biometric gate check, shared by all three
-  // addMethod() branches (CRYPTO, WISE/PAYONEER, BANK_MANUAL/BANK_STRIPE) —
+  // addMethod() branches (CRYPTO, WISE, BANK_MANUAL/BANK_STRIPE) —
   // previously only the last of these actually called it, leaving crypto
   // and OAuth-based methods entirely ungated against the doc's "any new
   // payout method added" scope. FEATURE_BIOMETRIC_GATE_ENABLED defaults
@@ -941,14 +941,12 @@ export class MethodsService {
       cryptoCurrency: m.cryptoCurrency,
       walletAddressLast6: m.walletAddressLast6,
       conversionDisplay: m.conversionDisplay,
-      // wiseAccountId/payoneerPayeeId predate the real OAuth wiring and are
+      // wiseAccountId predates the real OAuth wiring and is
       // only ever set by the old fake dev-mode manual-entry path (since
       // removed from the frontend) — the real OAuth callback
       // (oauth.service.ts's handleCallback) only ever populates the generic
-      // accountEmail/accountIdentifier, uniformly across both providers,
-      // so fall back to those.
+      // accountEmail/accountIdentifier, so fall back to those.
       wiseAccountId: m.wiseAccountId ?? (m.methodType === MethodType.WISE ? (m.accountEmail ?? m.accountIdentifier) : null),
-      payoneerPayeeId: m.payoneerPayeeId ?? (m.methodType === MethodType.PAYONEER ? (m.accountEmail ?? m.accountIdentifier) : null),
     };
   }
 }

@@ -138,7 +138,7 @@ export interface OfferCounterDeclinedPayload extends BaseOfferEventPayload {
   declinedById: string;
   declinedAt: string;
   counterOfferTerms: OfferTermsPayload;
-  parentOfferStatus: 'PENDING';
+  parentOfferStatus: 'PENDING' | 'EXPIRED';
 }
 
 export interface OfferCounterWithdrawnPayload extends BaseOfferEventPayload {

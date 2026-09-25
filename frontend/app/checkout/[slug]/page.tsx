@@ -385,8 +385,14 @@ const getShortHandle = (handle?: string | null) => {
 }
 
 const renderRate = (rate?: string | null) => {
-  const value = rate || "$30/hr"
-  const [amount, unit = ""] = value.split("/")
+  if (!rate || rate === "Rate not set") {
+    return (
+      <span className="inline-flex h-5 items-center whitespace-nowrap text-sm leading-5 font-normal text-[#475467]">
+        --
+      </span>
+    )
+  }
+  const [amount, unit = ""] = rate.split("/")
 
   return (
     <span className="inline-flex h-5 w-[47px] items-center whitespace-nowrap text-sm leading-5">
