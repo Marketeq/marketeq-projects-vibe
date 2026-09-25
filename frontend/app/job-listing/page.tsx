@@ -101,6 +101,7 @@ import {
   Trash2,
   Type,
   UploadCloud,
+  Users,
   X,
   X2,
 } from "@blend-metrics/icons";
@@ -3495,6 +3496,38 @@ const parseHourlyEstimateCents = (value?: string) => {
     high: amounts[1] ?? amounts[0],
   };
 };
+
+const getTeamRoleWeeklyHours = (schedule: TeamRoleRow["schedule"]) =>
+  schedule === "Part-time" ? 20 : 40;
+
+const getTeamRoleAverageHourlyRateCents = (estimate?: string) => {
+  const { low, high } = parseHourlyEstimateCents(estimate);
+  if (typeof low !== "number") return 0;
+
+  return Math.round((low + (high ?? low)) / 2);
+};
+
+const getTeamRolesEstimatedBudget = (rows: TeamRoleRow[]) =>
+  rows.reduce((totalCents, row) => {
+    const monthlyWeeks = 4.33;
+    const contractLengthMonths = parseMonthCount(row.length) ?? 0;
+    const hourlyRateCents = getTeamRoleAverageHourlyRateCents(row.estimate);
+
+    return (
+      totalCents +
+      getTeamRoleWeeklyHours(row.schedule) *
+        contractLengthMonths *
+        monthlyWeeks *
+        hourlyRateCents
+    );
+  }, 0);
+
+const formatUsdFromCents = (value: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(Math.round(value / 100));
 
 const getPublishRoleRowDetails = (phases: Phase[] | undefined) => {
   const rows = new Map<
@@ -18943,6 +18976,12 @@ const TeamRoles = ({
         Boolean(row.schedule.trim()) &&
         Boolean(row.length.trim()),
     );
+  const estimatedBudgetCents = useMemo(
+    () => getTeamRolesEstimatedBudget(rows),
+    [rows],
+  );
+  const estimatedBudgetDisplay =
+    estimatedBudgetCents > 0 ? formatUsdFromCents(estimatedBudgetCents) : "$0";
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(initialValid || rowsAreValid);
@@ -18954,7 +18993,10 @@ const TeamRoles = ({
         ...previous,
         headcount: rows.length,
         teamRoleRows: rows,
-        budgetAmount: previous.budgetAmount ?? 5000,
+        budgetAmount:
+          estimatedBudgetCents > 0
+            ? Math.round(estimatedBudgetCents / 100)
+            : previous.budgetAmount,
         budgetFrequency:
           budgetFrequency === "month" ? "per_month" : "per_week",
         durationMonths: isExistingProject ? 6 : previous.durationMonths,
@@ -18991,7 +19033,10 @@ const TeamRoles = ({
     ]);
   }, [
     budgetFrequency,
+    estimatedBudgetCents,
     isExistingProject,
+    isIndividualMode,
+    existingContractId,
     rows,
     setDetails,
     setProjectScopeState,
@@ -19289,40 +19334,46 @@ const TeamRoles = ({
               </div>
             </div>
 
-            <div className="w-full rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1024px]:w-[321px] self-start">
-              <p className="text-sm leading-5 font-semibold text-gray-400">
-                Estimated Budget
-              </p>
-              <div className="mt-2 flex items-center gap-x-1 text-dark-blue-400">
-                <span className="text-2xl leading-8 font-semibold">$5,000</span>
-                <span className="text-sm leading-5">per</span>
-                <Select
-                  value={budgetFrequency}
-                  onValueChange={setBudgetFrequency}
-                >
-                  <SelectTrigger className="h-7 w-max rounded-full border-gray-200 bg-white px-2 py-1 text-sm leading-5 text-dark-blue-400">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["week", "month"].map((frequency) => (
-                      <SelectItem key={frequency} value={frequency}>
-                        {frequency}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="flex h-[174px] w-full flex-col items-start justify-center gap-5 self-start rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1024px]:w-[322px]">
+              <div className="flex h-[58px] w-full flex-col items-start gap-2 self-stretch">
+                <div className="flex h-5 w-full items-center gap-2">
+                  <p className="h-5 w-[120px] rounded-[4.83879px] text-sm font-medium leading-5 text-gray-400">
+                    Estimated Budget
+                  </p>
+                </div>
+                <div className="flex h-[30px] w-full items-baseline gap-1 text-dark-blue-400">
+                  <span className="text-2xl font-bold leading-[29px] capitalize">
+                    {estimatedBudgetDisplay}
+                  </span>
+                  <span className="text-sm font-medium leading-[17px]">per</span>
+                  <Select
+                    value={budgetFrequency}
+                    onValueChange={setBudgetFrequency}
+                  >
+                    <SelectTrigger className="h-[25px] w-[66px] gap-1 rounded border-gray-300 bg-white px-[7px] py-[5px] text-sm font-medium leading-[17px] text-dark-blue-400 shadow-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["week", "month"].map((frequency) => (
+                        <SelectItem key={frequency} value={frequency}>
+                          {frequency}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="mt-5 space-y-2">
-                <div className="flex items-center gap-x-2 text-sm leading-5 text-dark-blue-400">
-                  <Clock className="size-4 text-primary-500" />
+              <div className="flex h-12 w-full flex-col items-start gap-3 self-stretch">
+                <div className="flex h-[18px] items-center gap-2 self-stretch text-sm font-medium leading-[17px] text-dark-blue-400">
+                  <Clock className="size-[18px] text-primary-500" />
                   {isExistingProject
                     ? "6 month project"
                     : isIndividualMode
                       ? (rows[0]?.length ?? "3 months")
                       : formatTeamBudgetDuration(details.durationMonths)}
                 </div>
-                <div className="flex items-center gap-x-2 text-sm leading-5 text-dark-blue-400">
-                  <Copy className="size-4 text-primary-500" />
+                <div className="flex h-[18px] items-center gap-2 self-stretch text-sm font-medium leading-[17px] text-dark-blue-400">
+                  <Users className="size-[18px] text-primary-500" />
                   {rows.length} {isIndividualMode ? "role" : "team members"}
                 </div>
               </div>
