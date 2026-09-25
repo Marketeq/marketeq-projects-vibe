@@ -577,9 +577,14 @@ export function CounterOfferDialog({
                       Offer Rate
                     </div>
                     <div className="flex items-center gap-2 text-[15px] font-semibold leading-7 text-dark-blue-400">
-                      {isRateChanged ? (
+                      {/* The arrow stays in the DOM when the rate is
+                          unchanged, only hidden: chats-comp.tsx's client
+                          edit/resend review clones this svg as the arrow for
+                          its other changed rows. A div, not a span, so its
+                          "first span is the rate" read is unaffected. */}
+                      <div className={isRateChanged ? "contents" : "hidden"}>
                         <ArrowRight className="size-4 text-success-500" />
-                      ) : null}
+                      </div>
                       <span>{state.rateValue}</span>
                       {isRateChanged ? (
                         <span className="font-normal text-gray-400">
