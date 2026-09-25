@@ -10774,7 +10774,7 @@ const teamRoleLocationOptions = [
 ];
 const teamRolePillClassName =
   "h-7 max-w-full gap-x-1.5 whitespace-nowrap rounded-[5px] border border-dashed border-gray-300 bg-gray-100 py-[5px] pl-[5px] pr-2 text-xs font-medium leading-[18px] text-gray-700 [&>span:first-child]:size-[18px] [&>span:first-child]:rounded-full [&>span:not(:first-child)]:min-w-0 [&>span:not(:first-child)]:truncate [&>span:not(:first-child)]:whitespace-nowrap [&>svg]:inline-block [&>svg]:size-[15px] [&>svg]:shrink-0 [&>svg]:text-gray-500";
-const teamRoleLocationPillClassName = `${teamRolePillClassName} w-[83px] [&>svg]:hidden`;
+const teamRoleLocationPillClassName = `${teamRolePillClassName} w-[108px]`;
 const teamRoleExperiencePillClassName = `${teamRolePillClassName} w-[73px]`;
 const teamRoleSchedulePillClassName = `${teamRolePillClassName} w-[92px]`;
 const teamRoleLengthPillClassName = `${teamRolePillClassName} w-[92px]`;
@@ -19053,7 +19053,7 @@ const TeamRoles = ({
         viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
-        <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
+        <div className="mx-auto max-w-[1240px] py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-0">
           <div className="flex h-20 w-full shrink-0 flex-col items-center justify-center gap-4 self-stretch p-0">
             <h1 className="h-11 shrink-0 self-stretch text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
               {isIndividualMode ? "Customize your role" : "Customize your team"}
@@ -19085,8 +19085,8 @@ const TeamRoles = ({
               <div className="self-stretch overflow-x-auto bg-white">
                 <Table className="min-w-[886px] table-fixed bg-white">
                   <colgroup>
-                    <col className="w-[241px]" />
-                    <col className="w-[115px]" />
+                    <col className="w-[216px]" />
+                    <col className="w-[140px]" />
                     <col className="w-[105px]" />
                     <col className="w-[124px]" />
                     <col className="w-[126px]" />
@@ -19095,12 +19095,12 @@ const TeamRoles = ({
                   </colgroup>
                   <TableHeader className="bg-gray-50 [&_tr]:border-y-0">
                     <TableRow className="h-11 border-b border-gray-200 hover:bg-transparent">
-                      <TableHead className="h-11 w-[241px] px-0 py-0">
+                      <TableHead className="h-11 w-[216px] px-0 py-0">
                         <div className="flex h-11 items-center gap-3 px-6 py-3 pr-3 text-xs font-medium leading-[18px] text-gray-600">
-                          <span className="h-[18px] w-[205px]">Role</span>
+                          <span className="h-[18px] w-[180px]">Role</span>
                         </div>
                       </TableHead>
-                      <TableHead className="h-11 w-[115px] px-0 py-0">
+                      <TableHead className="h-11 w-[140px] px-0 py-0">
                         <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
                           <span className="h-[18px] w-[50px]">Location</span>
                         </div>
@@ -19112,9 +19112,7 @@ const TeamRoles = ({
                       </TableHead>
                       <TableHead className="h-11 w-[124px] px-0 py-0">
                         <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
-                          <span className="h-[18px] w-[87px] whitespace-nowrap">
-                            Work Schedule
-                          </span>
+                          <span className="h-[18px] w-[54px]">Schedule</span>
                         </div>
                       </TableHead>
                       <TableHead className="h-11 w-[126px] px-0 py-0">
@@ -19140,14 +19138,14 @@ const TeamRoles = ({
                         key={`${row.role}-${index}`}
                         className="h-[72px] border-b border-gray-200 hover:bg-transparent"
                       >
-                        <TableCell className="h-[72px] w-[241px] px-0 py-0">
-                          <div className="flex h-[72px] items-center gap-3 px-6 py-4 pr-3">
-                            <p className="h-5 w-[205px] truncate text-sm font-semibold leading-5 text-dark-blue-400">
+                        <TableCell className="h-[72px] w-[216px] px-0 py-0">
+                          <div className="flex h-[72px] items-center gap-3 px-6 py-4 pr-4">
+                            <p className="h-5 w-44 truncate text-sm font-semibold leading-5 text-dark-blue-400">
                               {row.role}
                             </p>
                           </div>
                         </TableCell>
-                        <TableCell className="h-[72px] w-[115px] px-0 py-0">
+                        <TableCell className="h-[72px] w-[140px] px-0 py-0">
                           <div className="flex h-[72px] min-w-0 items-center gap-3 px-4 py-4">
                             {row.editable ? (
                               <CountriesCombobox
