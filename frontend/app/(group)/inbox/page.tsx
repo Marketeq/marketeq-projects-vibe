@@ -9,7 +9,7 @@ import {
   type NotificationItem,
   NotificationsAPI,
 } from "@/service/http/notifications"
-import { getOffer } from "@/service/http/offers"
+import { getOffer, listOffers } from "@/service/http/offers"
 import { ensureEncryptionKeysExist, loadPrivateKey } from "@/src/crypto/keys"
 import { apiFetch } from "@/src/lib/api"
 import { jobDetailsUrl } from "@/src/lib/listing-urls"
@@ -198,6 +198,27 @@ export default function InboxRoot() {
           return marker.includes("offer")
         })
 
+        // BTB-284: list() has attached latestCounterOffer to every row far
+        // longer than the single-offer read has (PMCM-376 only added it to
+        // GET /offers/:id; list() already called the same
+        // fetchLatestCounterOffers helper before that PR existed). One call
+        // per load, not one per notification — built into a Map up front so
+        // the per-item resolution below stays a synchronous lookup. limit
+        // 100 matches the notification fetch above; there's no id-filter
+        // param on this endpoint, so a talent with more than 100 offers
+        // could still miss one here, same as the notification fetch itself
+        // already can. A failed fetch must never break the notification
+        // list, which is this effect's primary job — swallow and carry on
+        // with whatever getOffer() gives each item below.
+        const counterOfferIdByOffer = new Map<string, string>()
+        try {
+          const latestOffers = await listOffers({ limit: 100 })
+          for (const listItem of latestOffers.data) {
+            const counterId = listItem.latestCounterOffer?.id
+            if (counterId) counterOfferIdByOffer.set(listItem.id, counterId)
+          }
+        } catch {}
+
         const resolved = await Promise.all(
           offerItems.map(
             async (item): Promise<OfferNotificationMessageData | null> => {
@@ -244,10 +265,17 @@ export default function InboxRoot() {
                   // not invent one.
                   realContractId: offer.contractId,
                   // PMCM-376: same rule again — real, live signal only, from
-                  // this same getOffer() call. Undefined until the backend
-                  // PR (feat/PMCM-376-expose-latest-counter-offer) merges,
-                  // or when this offer has never had a counter offer.
-                  latestCounterOfferId: offer.latestCounterOffer?.id,
+                  // this same getOffer() call, once the deployed backend
+                  // serves it. BTB-284: falls back to the listOffers() map
+                  // built above when the single-offer read doesn't have it
+                  // (deploy hasn't caught up to PMCM-376 yet) — either
+                  // source is the same real, live-only value, never
+                  // invented, and undefined still means "no live signal
+                  // from either" when this offer has never had a counter
+                  // offer.
+                  latestCounterOfferId:
+                    offer.latestCounterOffer?.id ??
+                    counterOfferIdByOffer.get(offerId),
                   event: item.event?.toLowerCase() || "offer.received",
                   title: item.title,
                   body: item.body,
