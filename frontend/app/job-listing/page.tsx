@@ -10733,7 +10733,11 @@ const teamRoleRows: TeamRoleRow[] = [
 
 const teamRoleLocationOptions = ["USA", "India", "Pakistan", "Canada", "UK"];
 const teamRolePillClassName =
-  "h-7 w-max rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-sm font-normal leading-5 text-dark-blue-400";
+  "h-7 max-w-full gap-x-1.5 whitespace-nowrap rounded-[5px] border border-dashed border-gray-300 bg-gray-100 py-[5px] pl-[5px] pr-2 text-xs font-medium leading-[18px] text-gray-700 [&>span:first-child]:size-[18px] [&>span:first-child]:rounded-full [&>span:not(:first-child)]:min-w-0 [&>span:not(:first-child)]:truncate [&>span:not(:first-child)]:whitespace-nowrap [&>svg]:inline-block [&>svg]:size-[15px] [&>svg]:shrink-0 [&>svg]:text-gray-500";
+const teamRoleLocationPillClassName = `${teamRolePillClassName} w-[83px] [&>svg]:hidden`;
+const teamRoleExperiencePillClassName = `${teamRolePillClassName} w-[73px]`;
+const teamRoleSchedulePillClassName = `${teamRolePillClassName} w-[92px]`;
+const teamRoleLengthPillClassName = `${teamRolePillClassName} w-[92px]`;
 
 const renderLocationOptionLabel = (location?: string) => {
   const flagUrl = location ? getFlagUrlByName(location) : null;
@@ -10744,7 +10748,7 @@ const renderLocationOptionLabel = (location?: string) => {
         <img
           alt=""
           src={flagUrl}
-          className="h-[14px] w-[18px] rounded-[2px] object-cover"
+          className="size-[18px] rounded-full object-cover"
         />
       ) : null}
       <span>{location}</span>
@@ -18821,216 +18825,278 @@ const TeamRoles = ({
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
         <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
-          <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
-            {isIndividualMode ? "Customize your role" : "Customize your team"}
-          </h1>
-          <p className="mt-4 text-sm leading-5 text-dark-blue-400">
-            {isIndividualMode
-              ? "Add the role, location, and experience level you're looking for—we'll estimate pay rates and help you get ready to hire."
-              : "Add the roles, locations, and experience levels you're looking for—we'll estimate pay rates and help you build the right team faster."}
-          </p>
+          <div className="flex h-20 w-full shrink-0 flex-col items-center justify-center gap-4 self-stretch p-0">
+            <h1 className="h-11 shrink-0 self-stretch text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
+              {isIndividualMode ? "Customize your role" : "Customize your team"}
+            </h1>
+            <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+              {isIndividualMode
+                ? "Add the role, location, and experience level you're looking for—we'll estimate pay rates and help you get ready to hire."
+                : "Add the roles, locations, and experience levels you're looking for—we'll estimate pay rates and help you build the right team faster."}
+            </p>
+          </div>
 
           <div className="mt-8 flex flex-col gap-8 min-[1024px]:flex-row">
-            <div className="min-w-0 flex-auto rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <div className="flex items-center justify-between border-b border-gray-200 px-6 py-3">
-                <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
+            <div className="min-w-0 flex-auto overflow-hidden rounded-lg border border-gray-200 bg-white min-[1024px]:w-[886px] min-[1024px]:flex-none">
+              <div className="flex h-[60px] items-center justify-between gap-4 self-stretch border-b border-gray-200 bg-white px-6 py-3">
+                <h2 className="text-lg leading-7 font-semibold text-dark-blue-400">
                   {isIndividualMode ? "Role" : "Team Members"}
                 </h2>
                 <Button
-                  className="h-8"
+                  size="sm"
                   variant="outlined"
                   visual="gray"
                   onClick={openAddRoleDialog}
                 >
-                  <Plus className="size-4" />
+                  <Plus className="size-[15px]" />
                   {isIndividualMode ? "Add Role" : "Add Team Member"}
                 </Button>
               </div>
 
-              <div className="overflow-x-auto">
-                <Table className="min-w-[920px] table-fixed">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[220px]">Role</TableHead>
-                      <TableHead className="w-[190px]">Location</TableHead>
-                      <TableHead className="w-[150px]">Experience</TableHead>
-                      <TableHead className="w-[170px]">Schedule</TableHead>
-                      <TableHead className="w-[190px]">
-                        Contract Length
+              <div className="self-stretch overflow-x-auto bg-white">
+                <Table className="min-w-[886px] table-fixed bg-white">
+                  <colgroup>
+                    <col className="w-[241px]" />
+                    <col className="w-[115px]" />
+                    <col className="w-[105px]" />
+                    <col className="w-[124px]" />
+                    <col className="w-[126px]" />
+                    <col className="w-[100px]" />
+                    <col className="w-[75px]" />
+                  </colgroup>
+                  <TableHeader className="bg-gray-50 [&_tr]:border-y-0">
+                    <TableRow className="h-11 border-b border-gray-200 hover:bg-transparent">
+                      <TableHead className="h-11 w-[241px] px-0 py-0">
+                        <div className="flex h-11 items-center gap-3 px-6 py-3 pr-3 text-xs font-medium leading-[18px] text-gray-600">
+                          <span className="h-[18px] w-[205px]">Role</span>
+                        </div>
                       </TableHead>
-                      <TableHead className="w-[120px]">Hourly est.</TableHead>
-                      <TableHead className="w-[56px]" />
+                      <TableHead className="h-11 w-[115px] px-0 py-0">
+                        <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
+                          <span className="h-[18px] w-[50px]">Location</span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="h-11 w-[105px] px-0 py-0">
+                        <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
+                          <span className="h-[18px] w-16">Experience</span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="h-11 w-[124px] px-0 py-0">
+                        <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
+                          <span className="h-[18px] w-[87px] whitespace-nowrap">
+                            Work Schedule
+                          </span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="h-11 w-[126px] px-0 py-0">
+                        <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
+                          <span className="h-[18px] w-[94px] whitespace-nowrap">
+                            Contract Length
+                          </span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="h-11 w-[100px] px-0 py-0">
+                        <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
+                          Hourly est.
+                        </div>
+                      </TableHead>
+                      <TableHead className="h-11 w-[75px] px-0 py-0">
+                        <div className="h-11 px-6 py-3 pl-3" />
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {rows.map((row, index) => (
-                      <TableRow key={`${row.role}-${index}`}>
-                        <TableCell className="w-[220px]">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold leading-5 text-dark-blue-400">
+                      <TableRow
+                        key={`${row.role}-${index}`}
+                        className="h-[72px] border-b border-gray-200 hover:bg-transparent"
+                      >
+                        <TableCell className="h-[72px] w-[241px] px-0 py-0">
+                          <div className="flex h-[72px] items-center gap-3 px-6 py-4 pr-3">
+                            <p className="h-5 w-[205px] truncate text-sm font-semibold leading-5 text-dark-blue-400">
                               {row.role}
-                            </p>
-                            <p className="truncate text-sm leading-5 text-gray-500">
-                              {row.assignee}
                             </p>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          {row.editable ? (
-                            <CountriesCombobox
-                              value={row.location}
-                              onValueChange={(location) =>
-                                updateRow(index, { location })
-                              }
-                              placeholder="Select country"
-                              triggerClassName={teamRolePillClassName}
-                            />
-                          ) : (
-                            <Badge
-                              size="lg"
-                              visual="gray"
-                              className={teamRolePillClassName}
-                            >
-                              {renderLocationOptionLabel(row.location)}
-                            </Badge>
-                          )}
+                        <TableCell className="h-[72px] w-[115px] px-0 py-0">
+                          <div className="flex h-[72px] min-w-0 items-center gap-3 px-4 py-4">
+                            {row.editable ? (
+                              <CountriesCombobox
+                                value={row.location}
+                                onValueChange={(location) =>
+                                  updateRow(index, { location })
+                                }
+                                placeholder="Select country"
+                                triggerClassName={teamRoleLocationPillClassName}
+                              />
+                            ) : (
+                              <Badge
+                                size="lg"
+                                visual="gray"
+                                className={teamRoleLocationPillClassName}
+                              >
+                                {renderLocationOptionLabel(row.location)}
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
-                        <TableCell>
-                          {row.editable ? (
-                            <Select
-                              value={row.experience}
-                              onValueChange={(experience) =>
-                                updateRow(index, {
-                                  experience: experience as ExperienceLevel,
-                                })
-                              }
-                            >
-                              <SelectTrigger className={teamRolePillClassName}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {EXPERIENCE_LEVELS.map((experience) => (
-                                  <SelectItem
-                                    key={experience}
-                                    value={experience}
+                        <TableCell className="h-[72px] w-[105px] px-0 py-0">
+                          <div className="flex h-[72px] min-w-0 items-center gap-3 px-4 py-4">
+                            {row.editable ? (
+                              <Select
+                                value={row.experience}
+                                onValueChange={(experience) =>
+                                  updateRow(index, {
+                                    experience: experience as ExperienceLevel,
+                                  })
+                                }
+                              >
+                                <SelectTrigger
+                                  className={teamRoleExperiencePillClassName}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {EXPERIENCE_LEVELS.map((experience) => (
+                                    <SelectItem
+                                      key={experience}
+                                      value={experience}
+                                    >
+                                      {experience}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Badge
+                                size="lg"
+                                visual="gray"
+                                className={teamRoleExperiencePillClassName}
+                              >
+                                {row.experience}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="h-[72px] w-[124px] px-0 py-0">
+                          <div className="flex h-[72px] min-w-0 items-center gap-3 px-4 py-4">
+                            {row.editable ? (
+                              <Select
+                                value={row.schedule}
+                                onValueChange={(schedule) =>
+                                  updateRow(index, {
+                                    schedule:
+                                      schedule as TeamRoleRow["schedule"],
+                                  })
+                                }
+                              >
+                                <SelectTrigger
+                                  className={teamRoleSchedulePillClassName}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {teamRoleScheduleOptions.map((schedule) => (
+                                    <SelectItem key={schedule} value={schedule}>
+                                      {schedule}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Badge
+                                size="lg"
+                                visual="gray"
+                                className={teamRoleSchedulePillClassName}
+                              >
+                                {row.schedule}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="h-[72px] w-[126px] px-0 py-0">
+                          <div className="flex h-[72px] min-w-0 items-center gap-3 px-4 py-4">
+                            {row.editable ? (
+                              <Select
+                                value={row.length}
+                                onValueChange={(length) =>
+                                  updateRow(index, { length })
+                                }
+                              >
+                                <SelectTrigger
+                                  className={teamRoleLengthPillClassName}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {teamRoleLengthOptions.map((length) => (
+                                    <SelectItem key={length} value={length}>
+                                      {length}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Badge
+                                size="lg"
+                                visual="gray"
+                                className={teamRoleLengthPillClassName}
+                              >
+                                {row.length}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="h-[72px] w-[100px] px-0 py-0">
+                          <div className="flex h-[72px] items-center px-4 py-4">
+                            <span className="text-sm leading-5 text-gray-600">
+                              {row.estimate}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="h-[72px] w-[75px] px-0 py-0">
+                          <div className="flex h-[72px] items-center justify-center px-6 py-4">
+                            {row.editable ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <IconButton
+                                    variant="ghost"
+                                    visual="gray"
+                                    className="size-[27px] p-0 text-gray-500"
                                   >
-                                    {experience}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <Badge
-                              size="lg"
-                              visual="gray"
-                              className={teamRolePillClassName}
-                            >
-                              {row.experience}
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {row.editable ? (
-                            <Select
-                              value={row.schedule}
-                              onValueChange={(schedule) =>
-                                updateRow(index, {
-                                  schedule: schedule as TeamRoleRow["schedule"],
-                                })
-                              }
-                            >
-                              <SelectTrigger className={teamRolePillClassName}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {teamRoleScheduleOptions.map((schedule) => (
-                                  <SelectItem key={schedule} value={schedule}>
-                                    {schedule}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <Badge
-                              size="lg"
-                              visual="gray"
-                              className={teamRolePillClassName}
-                            >
-                              {row.schedule}
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {row.editable ? (
-                            <Select
-                              value={row.length}
-                              onValueChange={(length) =>
-                                updateRow(index, { length })
-                              }
-                            >
-                              <SelectTrigger className={teamRolePillClassName}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {teamRoleLengthOptions.map((length) => (
-                                  <SelectItem key={length} value={length}>
-                                    {length}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <Badge
-                              size="lg"
-                              visual="gray"
-                              className={teamRolePillClassName}
-                            >
-                              {row.length}
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm leading-5 text-gray-600">
-                            {row.estimate}
-                          </span>
-                        </TableCell>
-                        <TableCell className="w-[56px]">
-                          {row.editable ? (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <IconButton variant="ghost" visual="gray">
-                                  <MoreHorizontal className="size-4" />
-                                </IconButton>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onSelect={() => openRenameRoleDialog(index)}
-                                >
-                                  Rename role
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onSelect={() => duplicateRow(index)}
-                                >
-                                  Duplicate role
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onSelect={() => removeRow(index)}
-                                >
-                                  Remove role
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          ) : (
-                            <IconButton
-                              aria-hidden="true"
-                              tabIndex={-1}
-                              variant="ghost"
-                              visual="gray"
-                              className="invisible"
-                            >
-                              <MoreHorizontal className="size-4" />
-                            </IconButton>
-                          )}
+                                    <MoreHorizontal className="size-[15px]" />
+                                  </IconButton>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onSelect={() => openRenameRoleDialog(index)}
+                                  >
+                                    Rename role
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onSelect={() => duplicateRow(index)}
+                                  >
+                                    Duplicate role
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onSelect={() => removeRow(index)}
+                                  >
+                                    Remove role
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : (
+                              <IconButton
+                                aria-hidden="true"
+                                tabIndex={-1}
+                                variant="ghost"
+                                visual="gray"
+                                className="invisible size-[27px] p-0"
+                              >
+                                <MoreHorizontal className="size-[15px]" />
+                              </IconButton>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
