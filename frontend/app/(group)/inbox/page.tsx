@@ -202,22 +202,36 @@ export default function InboxRoot() {
         // longer than the single-offer read has (PMCM-376 only added it to
         // GET /offers/:id; list() already called the same
         // fetchLatestCounterOffers helper before that PR existed). One call
-        // per load, not one per notification — built into a Map up front so
-        // the per-item resolution below stays a synchronous lookup. limit
+        // per load, not one per notification — built into one Map that every
+        // item below shares. limit
         // 100 matches the notification fetch above; there's no id-filter
         // param on this endpoint, so a talent with more than 100 offers
         // could still miss one here, same as the notification fetch itself
         // already can. A failed fetch must never break the notification
         // list, which is this effect's primary job — swallow and carry on
         // with whatever getOffer() gives each item below.
-        const counterOfferIdByOffer = new Map<string, string>()
-        try {
-          const latestOffers = await listOffers({ limit: 100 })
-          for (const listItem of latestOffers.data) {
-            const counterId = listItem.latestCounterOffer?.id
-            if (counterId) counterOfferIdByOffer.set(listItem.id, counterId)
+        //
+        // Fetched lazily, at most once: only a backend that predates
+        // PMCM-376 omits latestCounterOffer from the single read entirely
+        // (undefined; null means "no counter offer"), so on a current
+        // backend this list call never fires and adds no latency — this
+        // effect reruns on every window focus and visibility change.
+        let counterOfferIdByOffer: Promise<Map<string, string>> | undefined
+        const loadCounterOfferIdByOffer = () => {
+          if (!counterOfferIdByOffer) {
+            counterOfferIdByOffer = listOffers({ limit: 100 })
+              .then((latestOffers) => {
+                const ids = new Map<string, string>()
+                for (const listItem of latestOffers.data) {
+                  const counterId = listItem.latestCounterOffer?.id
+                  if (counterId) ids.set(listItem.id, counterId)
+                }
+                return ids
+              })
+              .catch(() => new Map<string, string>())
           }
-        } catch {}
+          return counterOfferIdByOffer
+        }
 
         const resolved = await Promise.all(
           offerItems.map(
@@ -250,6 +264,10 @@ export default function InboxRoot() {
                   (offer.clientId === getCurrentUser()?.id
                     ? offer.talentId
                     : offer.clientId)
+                const latestCounterOfferId =
+                  offer.latestCounterOffer !== undefined
+                    ? offer.latestCounterOffer?.id
+                    : (await loadCounterOfferIdByOffer()).get(offerId)
                 return {
                   id: item.id,
                   contractId: offerId,
@@ -267,15 +285,13 @@ export default function InboxRoot() {
                   // PMCM-376: same rule again — real, live signal only, from
                   // this same getOffer() call, once the deployed backend
                   // serves it. BTB-284: falls back to the listOffers() map
-                  // built above when the single-offer read doesn't have it
+                  // above when the single-offer read doesn't have it
                   // (deploy hasn't caught up to PMCM-376 yet) — either
                   // source is the same real, live-only value, never
                   // invented, and undefined still means "no live signal
                   // from either" when this offer has never had a counter
                   // offer.
-                  latestCounterOfferId:
-                    offer.latestCounterOffer?.id ??
-                    counterOfferIdByOffer.get(offerId),
+                  latestCounterOfferId,
                   event: item.event?.toLowerCase() || "offer.received",
                   title: item.title,
                   body: item.body,
