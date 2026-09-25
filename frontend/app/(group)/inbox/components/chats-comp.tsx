@@ -8,7 +8,7 @@ import { exportPrivateKey, republishPublicKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { ApiError, apiFetch } from "@/src/lib/api"
 import { formatNotificationTime } from "@/libs/notifications"
-import { createCounterOffer, withdrawCounterOffer, withdrawOffer } from "@/service/http/offers"
+import { createCounterOffer, editCounterOffer, withdrawCounterOffer, withdrawOffer } from "@/service/http/offers"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
@@ -570,6 +570,7 @@ export function Chats({
   const [notificationWithdrawalMessage, setNotificationWithdrawalMessage] =
     useState("")
   const [submittingCounterOffer, setSubmittingCounterOffer] = useState(false)
+  const [editingCounterOffer, setEditingCounterOffer] = useState(false)
   const [withdrawingCounterOffer, setWithdrawingCounterOffer] = useState(false)
   const [withdrawingOffer, setWithdrawingOffer] = useState(false)
   const [declinedCounterOfferMessage, setDeclinedCounterOfferMessage] =
@@ -6536,7 +6537,16 @@ export function Chats({
                       <span>{selectedNotificationOfferData.startDate}</span>
                       {counterTermChanges.startDate ? (
                         <span className="text-xs font-medium text-gray-400">
-                          (was {selectedNotificationOffer?.originalStartDate})
+                          {/* BTB-285: originalStartDate can be a raw ISO
+                          string (seeded/notification metadata never
+                          reformats it, unlike startDate above) — reuse the
+                          same display-time reformatter already in this
+                          file rather than rendering it unparsed. */}
+                          (was{" "}
+                          {formatAcceptedHeadlineDate(
+                            selectedNotificationOffer?.originalStartDate ?? ""
+                          )}
+                          )
                         </span>
                       ) : null}
                     </div>
@@ -7667,6 +7677,7 @@ export function Chats({
           // there would contradict the screen the viewer is already on.
           submitDisabled={
             submittingCounterOffer ||
+            editingCounterOffer ||
             (notificationOfferStep === "counter" && Boolean(liveTerminalNotice))
           }
           terminalNotice={
@@ -7707,31 +7718,128 @@ export function Chats({
               selectedNotificationOffer.event.includes("counter") &&
               !selectedNotificationOffer.clientPerspective
             ) {
-              setSelectedNotificationOffer({
-                ...selectedNotificationOffer,
-                originalOfferRate:
-                  selectedNotificationOffer.originalOfferRate ||
-                  selectedNotificationOffer.offerRate,
-                originalDuration:
-                  selectedNotificationOffer.originalDuration ||
-                  selectedNotificationOffer.duration,
-                originalSchedule:
-                  selectedNotificationOffer.originalSchedule ||
-                  selectedNotificationOffer.schedule,
-                originalStartDate:
-                  selectedNotificationOffer.originalStartDate ||
-                  selectedNotificationOffer.startDate,
-                offerRate: counterOffer.offerRate,
-                duration: counterOffer.duration,
-                schedule: counterOffer.schedule,
-                startDate: counterOffer.startDate,
-                counterOfferMessage: counterOffer.message || undefined,
-              })
-              setNotificationOfferStep("sent-counter")
-              toast({
-                title: "Counter Offer Updated",
-                description: "Your revised counteroffer is ready.",
-              })
+              // BTB-285: same id source as the withdraw handler above
+              // (latestCounterOfferId) — gate exactly as withdraw does
+              // rather than sending an undefined id to the PATCH.
+              const counterOfferId =
+                selectedNotificationOffer.latestCounterOfferId
+              if (!counterOfferId) return
+              if (editingCounterOffer) return
+
+              // BTB-285: same parsing shape as the new-counter submission
+              // below (rate/durationMonths/workSchedule/parsedStartDate) —
+              // this branch was never sending any of it to the backend.
+              const rate = Number(
+                counterOffer.offerRate.replace(/[^\d]/g, "")
+              )
+              const durationMonths =
+                counterOffer.duration === "Ongoing"
+                  ? 12
+                  : Number(counterOffer.duration.match(/\d+/)?.[0] ?? 0) *
+                    (counterOffer.duration.toLowerCase().includes("year")
+                      ? 12
+                      : 1)
+              const scheduleHours = Number(
+                counterOffer.schedule.match(/\d+/)?.[0] ?? 0
+              )
+              const workSchedule = counterOffer.schedule.startsWith(
+                "Full Time"
+              )
+                ? { type: "FULL_TIME" as const }
+                : counterOffer.schedule.startsWith("Part Time")
+                  ? { type: "PART_TIME" as const }
+                  : {
+                      type: "CUSTOM" as const,
+                      hoursPerWeek: Math.min(
+                        168,
+                        Math.max(1, scheduleHours > 0 ? scheduleHours * 5 : 40)
+                      ),
+                    }
+              const parsedStartDate = new Date(
+                counterOffer.startDate.replace(/(\d+)(st|nd|rd|th)/i, "$1")
+              )
+
+              if (
+                !Number.isFinite(rate) ||
+                rate <= 0 ||
+                !Number.isFinite(durationMonths) ||
+                durationMonths <= 0 ||
+                Number.isNaN(parsedStartDate.getTime())
+              ) {
+                toast({
+                  variant: "destructive",
+                  title: "Check the counteroffer terms",
+                  description:
+                    "Rate, duration, schedule, and start date are required.",
+                })
+                return
+              }
+
+              setEditingCounterOffer(true)
+              try {
+                await editCounterOffer(
+                  selectedNotificationOffer.contractId,
+                  counterOfferId,
+                  {
+                    rate,
+                    currencyCode: "USD",
+                    durationMonths,
+                    workSchedule,
+                    startDate: `${parsedStartDate.getFullYear()}-${String(
+                      parsedStartDate.getMonth() + 1
+                    ).padStart(2, "0")}-${String(
+                      parsedStartDate.getDate()
+                    ).padStart(2, "0")}`,
+                    message: counterOffer.message.trim() || undefined,
+                  }
+                )
+                // BTB-285: fire the refetch explicitly, same reasoning as
+                // the withdraw handler above — the backend's Ably publish
+                // is not awaited, and the channel tears down once this
+                // step moves off "edit" below, so waiting on the
+                // offer.updated event would reliably lose that race.
+                onOfferUpdateRequested?.()
+                setSelectedNotificationOffer({
+                  ...selectedNotificationOffer,
+                  originalOfferRate:
+                    selectedNotificationOffer.originalOfferRate ||
+                    selectedNotificationOffer.offerRate,
+                  originalDuration:
+                    selectedNotificationOffer.originalDuration ||
+                    selectedNotificationOffer.duration,
+                  originalSchedule:
+                    selectedNotificationOffer.originalSchedule ||
+                    selectedNotificationOffer.schedule,
+                  originalStartDate:
+                    selectedNotificationOffer.originalStartDate ||
+                    selectedNotificationOffer.startDate,
+                  offerRate: counterOffer.offerRate,
+                  duration: counterOffer.duration,
+                  schedule: counterOffer.schedule,
+                  startDate: counterOffer.startDate,
+                  counterOfferMessage: counterOffer.message || undefined,
+                })
+                setNotificationOfferStep("sent-counter")
+                // BTB-285: only fires after the PATCH resolves — this used
+                // to run unconditionally, which is why QA saw success on a
+                // save that never happened.
+                toast({
+                  title: "Counter Offer Updated",
+                  description: "Your revised counteroffer is ready.",
+                })
+              } catch (error) {
+                console.error("Counter offer edit failed", error)
+                toast({
+                  variant: "destructive",
+                  title: "Couldn't save the counter offer",
+                  description: "Please try again.",
+                })
+                // Modal stays open on failure — no state change that would
+                // close it or advance the step, matching the withdraw
+                // handler's failure path above.
+              } finally {
+                setEditingCounterOffer(false)
+              }
               return
             }
 
