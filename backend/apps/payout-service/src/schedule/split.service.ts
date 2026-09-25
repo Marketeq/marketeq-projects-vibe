@@ -62,6 +62,14 @@ export class SplitService {
         secondaryMethodId: dto.secondaryMethodId,
       });
 
+      // Labels are resolved and stored on the audit row itself (not looked
+      // up again when the activity feed reads it back) so the "Deposit
+      // Settings Changed" entry still shows the right method names even if
+      // that method is later renamed or removed.
+      const [primaryLabel, secondaryLabel] = await Promise.all([
+        this.resolveMethodLabel(schedule.primaryMethodId),
+        this.resolveMethodLabel(dto.secondaryMethodId),
+      ]);
       await this.auditService.log({
         contractorId,
         actorType: 'contractor',
@@ -71,6 +79,9 @@ export class SplitService {
           scheduleId: schedule.id,
           secondaryMethodId: dto.secondaryMethodId,
           primarySplitPercent: 50.00,
+          secondarySplitPercent: 50.00,
+          primaryMethodLabel: primaryLabel,
+          secondaryMethodLabel: secondaryLabel,
         },
       });
 
@@ -80,6 +91,8 @@ export class SplitService {
 
     // ── Case 2: Disabling split (on → off) — primary gets 100% ──
     if (dto.splitEnabled === false && schedule.splitEnabled) {
+      const primaryLabel = await this.resolveMethodLabel(schedule.primaryMethodId);
+
       await this.scheduleRepo.update(schedule.id, {
         splitEnabled: false,
         splitDisabledAt: new Date(),
@@ -92,7 +105,7 @@ export class SplitService {
         actorType: 'contractor',
         actorId: contractorId,
         action: 'split.disabled',
-        metadata: { scheduleId: schedule.id },
+        metadata: { scheduleId: schedule.id, primaryMethodLabel: primaryLabel },
       });
 
       this.logger.log(`Split disabled for ${contractorId}`);
@@ -117,6 +130,10 @@ export class SplitService {
         primarySplitPercent: truncated,
       });
 
+      const [primaryLabel, secondaryLabel] = await Promise.all([
+        this.resolveMethodLabel(schedule.primaryMethodId),
+        this.resolveMethodLabel(schedule.secondaryMethodId),
+      ]);
       await this.auditService.log({
         contractorId,
         actorType: 'contractor',
@@ -126,6 +143,8 @@ export class SplitService {
           scheduleId: schedule.id,
           primarySplitPercent: truncated,
           secondarySplitPercent: Math.round((100 - truncated) * 100) / 100,
+          primaryMethodLabel: primaryLabel,
+          secondaryMethodLabel: secondaryLabel,
         },
       });
 
@@ -141,12 +160,24 @@ export class SplitService {
         secondaryMethodId: dto.secondaryMethodId,
       });
 
+      const psp = parseFloat(String(schedule.primarySplitPercent));
+      const [primaryLabel, secondaryLabel] = await Promise.all([
+        this.resolveMethodLabel(schedule.primaryMethodId),
+        this.resolveMethodLabel(dto.secondaryMethodId),
+      ]);
       await this.auditService.log({
         contractorId,
         actorType: 'contractor',
         actorId: contractorId,
         action: 'split.secondary_method_changed',
-        metadata: { scheduleId: schedule.id, secondaryMethodId: dto.secondaryMethodId },
+        metadata: {
+          scheduleId: schedule.id,
+          secondaryMethodId: dto.secondaryMethodId,
+          primarySplitPercent: psp,
+          secondarySplitPercent: Math.round((100 - psp) * 100) / 100,
+          primaryMethodLabel: primaryLabel,
+          secondaryMethodLabel: secondaryLabel,
+        },
       });
 
       this.logger.log(`Split secondary method changed for ${contractorId}`);
@@ -225,6 +256,16 @@ export class SplitService {
 
       this.logger.log(`Split cleared for ${contractorId}: primary removed, no promotion`);
     }
+  }
+
+  // Short display name for the "Deposit Settings Changed" activity entry
+  // (e.g. "Chase") — nickname first since that's the contractor's own label,
+  // falling back to the generic displayLabel/methodType for a method that
+  // was never nicknamed.
+  private async resolveMethodLabel(methodId: string | null): Promise<string | null> {
+    if (!methodId) return null;
+    const method = await this.methodRepo.findOne({ where: { id: methodId } });
+    return method?.nickname || method?.displayLabel || method?.methodType || null;
   }
 
   // ─── Validate secondary method (PS-18 §9) ────────────────────

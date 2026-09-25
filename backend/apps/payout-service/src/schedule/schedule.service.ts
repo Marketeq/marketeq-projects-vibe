@@ -114,6 +114,35 @@ export class ScheduleService {
     };
   }
 
+  // ─── GET /v1/payouts/schedule/activity ─────────────────────────
+  // Recent Activity has no dedicated feed of its own on the frontend — it's
+  // derived from real data sources, and until now this one didn't exist:
+  // a schedule/split change (updateSchedule/SplitService.updateSplit below,
+  // both of which already call auditService.log) never produces a
+  // PayoutRequest row, so it was invisible to the payout-history-derived
+  // feed no matter how many times the contractor saved Setup Your Direct
+  // Deposit Schedule. Exposes the contractor's own schedule.updated/split.*
+  // rows so the frontend can build "Deposit Settings Changed" entries from
+  // real data instead of never showing them.
+  private static readonly ACTIVITY_ACTIONS = [
+    'schedule.updated',
+    'split.enabled',
+    'split.disabled',
+    'split.percent_updated',
+    'split.secondary_method_changed',
+  ];
+  async getRecentActivity(contractorId: string) {
+    const rows = await this.auditService.findRecentForContractor(
+      contractorId, ScheduleService.ACTIVITY_ACTIONS, 20,
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      action: r.action,
+      createdAt: r.createdAt.toISOString(),
+      metadata: r.metadata,
+    }));
+  }
+
   // ─── PUT /v1/payouts/schedule ─────────────────────────────────
   async updateSchedule(contractorId: string, dto: UpdateScheduleDto, skipBiometricGate = false) {
     // Validate frequency-specific fields

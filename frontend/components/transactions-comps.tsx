@@ -2037,14 +2037,17 @@ export const OverviewTab = ({
   // fetch previously rendered identically to "No previous payouts yet".
   const [previousPayoutError, setPreviousPayoutError] = React.useState(false)
   // "Recent Activity" has no dedicated activity-feed endpoint in payout-service — this
-  // derives real entries from the same payout history list rather than showing mock data.
+  // derives real entries from the payout history list plus the schedule/split
+  // audit trail (GET /payouts/schedule/activity), merged and sorted by sortAt,
+  // rather than showing mock data.
   const [recentActivity, setRecentActivity] = React.useState<
     {
       id: string
       title: string
       description: string
       time: string
-      kind: "scheduled" | "sent" | "processing" | "failed" | "cancelled"
+      kind: "scheduled" | "sent" | "processing" | "failed" | "cancelled" | "settings"
+      sortAt: number
     }[]
   >([])
   const [recentActivityLoading, setRecentActivityLoading] = React.useState(true)
@@ -2070,18 +2073,36 @@ export const OverviewTab = ({
       .catch((e) => console.error("Recent earnings fetch failed:", e))
   }, [])
 
-  // Sourced from real payout history — no dedicated activity-feed endpoint
-  // exists in payout-service; see toActivityItem().
+  // Sourced from real payout history plus the schedule/split audit trail — no
+  // single dedicated activity-feed endpoint exists in payout-service; see
+  // toActivityItem() and toScheduleActivityItem(). A schedule/split change
+  // (e.g. saving Setup Your Direct Deposit Schedule) never produces a
+  // PayoutRequest row, so without the second fetch it never appeared here at
+  // all — only payout lifecycle events did.
   const loadRecentActivity = React.useCallback(async () => {
     setRecentActivityError(false)
     try {
-      const res = await payoutFetch(`/payouts?page=1&pageSize=8`)
-      if (!res.ok) {
+      const [payoutsRes, scheduleRes] = await Promise.all([
+        payoutFetch(`/payouts?page=1&pageSize=8`),
+        payoutFetch(`/payouts/schedule/activity`),
+      ])
+      if (!payoutsRes.ok) {
         setRecentActivityError(true)
         return
       }
-      const d = await res.json()
-      setRecentActivity((d.payouts ?? []).map((p: any) => toActivityItem(p)))
+      const d = await payoutsRes.json()
+      const payoutItems = (d.payouts ?? []).map((p: any) => toActivityItem(p))
+      // A failure here shouldn't blank out the payout-derived entries that did
+      // load — just show fewer items rather than erroring the whole feed.
+      const scheduleItems = scheduleRes.ok
+        ? ((await scheduleRes.json()) ?? []).map((a: any) =>
+            toScheduleActivityItem(a)
+          )
+        : []
+      const merged = [...payoutItems, ...scheduleItems]
+        .sort((a, b) => b.sortAt - a.sortAt)
+        .slice(0, 8)
+      setRecentActivity(merged)
     } catch (e) {
       console.error("Failed to fetch recent activity", e)
       setRecentActivityError(true)
@@ -9287,9 +9308,11 @@ function toActivityItem(p: {
   createdAt: string
   settledAt: string | null
 }) {
-  const time = formatDistanceToNowStrict(new Date(p.settledAt ?? p.createdAt), {
+  const at = p.settledAt ?? p.createdAt
+  const time = formatDistanceToNowStrict(new Date(at), {
     addSuffix: true,
   })
+  const sortAt = new Date(at).getTime()
   const method = p.methodLabel ?? "your payout method"
   const amount = parseFloat(p.amountUsd).toFixed(2)
   switch (p.status) {
@@ -9300,6 +9323,7 @@ function toActivityItem(p: {
         description: `$${amount} to ${method}`,
         time,
         kind: "sent" as const,
+        sortAt,
       }
     case "processing":
       return {
@@ -9308,6 +9332,7 @@ function toActivityItem(p: {
         description: `$${amount} to ${method}`,
         time,
         kind: "processing" as const,
+        sortAt,
       }
     case "queued":
       return {
@@ -9316,6 +9341,7 @@ function toActivityItem(p: {
         description: `$${amount} to ${method}`,
         time,
         kind: "processing" as const,
+        sortAt,
       }
     case "failed":
       return {
@@ -9324,6 +9350,7 @@ function toActivityItem(p: {
         description: `$${amount} to ${method}`,
         time,
         kind: "failed" as const,
+        sortAt,
       }
     case "cancelled":
       return {
@@ -9332,6 +9359,7 @@ function toActivityItem(p: {
         description: `$${amount} to ${method}`,
         time,
         kind: "cancelled" as const,
+        sortAt,
       }
     default:
       return {
@@ -9340,7 +9368,59 @@ function toActivityItem(p: {
         description: `$${amount} to ${method}`,
         time,
         kind: "scheduled" as const,
+        sortAt,
       }
+  }
+}
+
+// Deposit-schedule/split changes (Setup Your Direct Deposit Schedule) never
+// produce a PayoutRequest row, so toActivityItem() above never sees them —
+// this derives entries from GET /payouts/schedule/activity instead, the
+// contractor's own schedule.updated/split.* rows from payout_audit_log.
+function toScheduleActivityItem(a: {
+  id: string
+  action: string
+  createdAt: string
+  metadata: Record<string, any> | null
+}) {
+  const time = formatDistanceToNowStrict(new Date(a.createdAt), {
+    addSuffix: true,
+  })
+  const sortAt = new Date(a.createdAt).getTime()
+  const m = a.metadata ?? {}
+  const splitDescription = (primaryPercent: number, secondaryPercent: number) =>
+    `${m.primaryMethodLabel ?? "Primary method"} ${primaryPercent}% • ${m.secondaryMethodLabel ?? "Secondary method"} ${secondaryPercent}%`
+
+  let description = "Your deposit schedule was updated."
+  switch (a.action) {
+    case "split.enabled":
+    case "split.percent_updated":
+    case "split.secondary_method_changed":
+      description = splitDescription(
+        m.primarySplitPercent ?? 50,
+        m.secondarySplitPercent ??
+          Math.round((100 - (m.primarySplitPercent ?? 50)) * 100) / 100
+      )
+      break
+    case "split.disabled":
+      description = m.primaryMethodLabel
+        ? `${m.primaryMethodLabel} 100%`
+        : "Split payout turned off."
+      break
+    case "schedule.updated":
+      description = m.frequency
+        ? `Frequency changed to ${String(m.frequency).replace(/_/g, " ")}.`
+        : description
+      break
+  }
+
+  return {
+    id: a.id,
+    title: "Deposit Settings Changed",
+    description,
+    time,
+    kind: "settings" as const,
+    sortAt,
   }
 }
 
@@ -9372,6 +9452,8 @@ const ACTIVITY_ICON: Record<string, { icon: React.ReactNode }> = {
   processing: { icon: <Clock className="size-5 text-primary-500" /> },
   failed: { icon: <XCircle className="size-5 text-error-500" /> },
   cancelled: { icon: <SlashCircle01 className="size-5 text-gray-400" /> },
+  // Figma "Deposit Settings Changed" reference uses this gear icon in blue.
+  settings: { icon: <Settings02 className="size-5 text-primary-500" /> },
 }
 
 // ─── Earnings Tab ───────────────────────────────────────────────────────
