@@ -8,7 +8,7 @@ import { exportPrivateKey, republishPublicKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { ApiError, apiFetch } from "@/src/lib/api"
 import { formatNotificationTime } from "@/libs/notifications"
-import { createCounterOffer, withdrawCounterOffer, withdrawOffer } from "@/service/http/offers"
+import { createCounterOffer, declineOffer, withdrawCounterOffer, withdrawOffer } from "@/service/http/offers"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
@@ -65,7 +65,7 @@ import { format, isSameDay, parseISO } from "date-fns"
 import { useMeasure, useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message, MessageAttachment } from "@/types/message"
-import type { OfferStatus } from "@/types/offer"
+import type { DeclineChip, OfferStatus } from "@/types/offer"
 import { User } from "@/types/user"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { toast } from "@/components/ui/toast/use-toast"
@@ -380,6 +380,21 @@ export interface OfferNotificationMessageData {
 
 const COUNTER_OFFER_STORAGE_PREFIX = "inbox_counter_offer_submitted"
 
+// BTB-287: OfferFlowDialog's own DECLINE_REASONS chip labels
+// (offer-flow-dialog.tsx, not exported) mapped to offer-service's
+// DeclineChip enum (decline-chip.enum.ts) — same six reasons, same order.
+// The dialog only ever hands back the human label via
+// onDeclineReasonChange; DeclineOfferDto's optional `chip` field needs the
+// enum value, so this is the one place that conversion has to happen.
+const DECLINE_CHIP_BY_REASON: Record<string, DeclineChip> = {
+  "Budget doesn’t work": "BUDGET_DOESNT_WORK",
+  "Start date doesn’t work": "START_DATE_DOESNT_WORK",
+  "Requirements are unclear": "REQUIREMENTS_UNCLEAR",
+  "Not a fit for my skills": "NOT_A_FIT",
+  "Too busy right now": "TOO_BUSY",
+  "Need different terms": "NEED_DIFFERENT_TERMS",
+}
+
 // PMCM-392 AC-40.02: "Monday, Jan 30, 2025" — the weekday variant, matching
 // offer-service's own OfferResponse.startDateDisplay spec and the identical
 // toLocaleDateString call already in hire-me-button.tsx. Display-time only:
@@ -570,6 +585,7 @@ export function Chats({
   const [notificationWithdrawalMessage, setNotificationWithdrawalMessage] =
     useState("")
   const [submittingCounterOffer, setSubmittingCounterOffer] = useState(false)
+  const [decliningOffer, setDecliningOffer] = useState(false)
   const [withdrawingCounterOffer, setWithdrawingCounterOffer] = useState(false)
   const [withdrawingOffer, setWithdrawingOffer] = useState(false)
   const [declinedCounterOfferMessage, setDeclinedCounterOfferMessage] =
@@ -6150,6 +6166,7 @@ export function Chats({
           termsAccepted={notificationTermsAccepted}
           declineMessage={notificationDeclineMessage}
           selectedDeclineReason={notificationDeclineReason}
+          declineLoading={decliningOffer}
           declinedByViewer={
             notificationOfferStep === "declined" ||
             (selectedNotificationOffer?.event !== "offer.declined" &&
@@ -6262,7 +6279,7 @@ export function Chats({
               step === "accept" ? "accepted" : "accept"
             )
           }}
-          onDecline={() => {
+          onDecline={async () => {
             if (
               notificationOfferStep === "decline" &&
               selectedNotificationOffer &&
@@ -6270,59 +6287,96 @@ export function Chats({
               !selectedNotificationOffer.clientPerspective &&
               !selectedNotificationOffer.event.includes("counter")
             ) {
-              const declinedAt = new Date().toISOString()
+              if (decliningOffer) return
+
               const contractId = selectedNotificationOffer.contractId
+              const trimmedReason = notificationDeclineReason.trim()
               const declineMessage =
                 notificationDeclineMessage.trim() ||
                 "Thanks, unfortunately I can't take this on right now."
+              // BTB-287: DeclineOfferDto has one free-text `reason` field
+              // (required) plus an optional structured `chip` — the chip
+              // buttons hand back a human label ("Budget doesn’t work"),
+              // never the enum value, so DECLINE_CHIP_BY_REASON does that
+              // conversion. declineMessage always has content (its own
+              // fallback above), so `reason` is never sent empty even when
+              // the talent only picked a chip and typed nothing.
+              const reason = declineMessage
+              const chip = trimmedReason
+                ? DECLINE_CHIP_BY_REASON[trimmedReason]
+                : undefined
 
-              setLocallyDeclinedTalentOffers((contractIds) =>
-                contractIds.includes(contractId)
-                  ? contractIds
-                  : [...contractIds, contractId]
-              )
+              setDecliningOffer(true)
+              try {
+                await declineOffer(contractId, { reason, chip })
+                // BTB-287: fire the refetch explicitly, same reasoning as
+                // the withdraw/edit handlers — the backend's Ably publish
+                // is not awaited, and the channel tears down as soon as
+                // selectedNotificationOffer is nulled below, so waiting on
+                // the offer.updated event would reliably lose that race.
+                onOfferUpdateRequested?.()
 
-              if (typeof window !== "undefined") {
-                sessionStorage.setItem(
-                  `inbox_offer_declined:${contractId}`,
-                  JSON.stringify({
-                    status: "declined",
-                    contractId,
-                    offerTitle: selectedNotificationOfferData.offerTitle,
-                    offerType: selectedNotificationOfferData.offerType,
-                    receivedLabel:
-                      selectedNotificationOfferData.receivedLabel ||
-                      "Feb 1, 2025",
-                    declinedAt,
-                    declinedLabel: "Feb 1, 2025",
-                    offerRate: selectedNotificationOfferData.offerRate,
-                    role: selectedNotificationOfferData.role,
-                    duration: selectedNotificationOfferData.duration,
-                    schedule: selectedNotificationOfferData.schedule,
-                    startDate: selectedNotificationOfferData.startDate,
-                    senderDisplayName:
-                      selectedNotificationOfferData.senderDisplayName,
-                    senderUsername:
-                      selectedNotificationOfferData.senderUsername,
-                    senderAvatarSrc:
-                      selectedNotificationOfferData.senderAvatarSrc,
-                    declineMessage,
-                    declineReason:
-                      notificationDeclineReason.trim() ||
-                      "The budget does not align.",
-                  })
+                const declinedAt = new Date().toISOString()
+
+                setLocallyDeclinedTalentOffers((contractIds) =>
+                  contractIds.includes(contractId)
+                    ? contractIds
+                    : [...contractIds, contractId]
                 )
 
-                const url = new URL(window.location.href)
-                url.searchParams.set("offerStatus", "declined")
-                url.searchParams.set("contractId", contractId)
-                router.replace(`${url.pathname}${url.search}${url.hash}`)
-              }
+                if (typeof window !== "undefined") {
+                  sessionStorage.setItem(
+                    `inbox_offer_declined:${contractId}`,
+                    JSON.stringify({
+                      status: "declined",
+                      contractId,
+                      offerTitle: selectedNotificationOfferData.offerTitle,
+                      offerType: selectedNotificationOfferData.offerType,
+                      receivedLabel:
+                        selectedNotificationOfferData.receivedLabel ||
+                        "Feb 1, 2025",
+                      declinedAt,
+                      declinedLabel: "Feb 1, 2025",
+                      offerRate: selectedNotificationOfferData.offerRate,
+                      role: selectedNotificationOfferData.role,
+                      duration: selectedNotificationOfferData.duration,
+                      schedule: selectedNotificationOfferData.schedule,
+                      startDate: selectedNotificationOfferData.startDate,
+                      senderDisplayName:
+                        selectedNotificationOfferData.senderDisplayName,
+                      senderUsername:
+                        selectedNotificationOfferData.senderUsername,
+                      senderAvatarSrc:
+                        selectedNotificationOfferData.senderAvatarSrc,
+                      declineMessage,
+                      declineReason:
+                        trimmedReason || "The budget does not align.",
+                    })
+                  )
 
-              setSelectedNotificationOffer(null)
-              setNotificationOfferStep("event")
-              setNotificationDeclineMessage("")
-              setNotificationDeclineReason("")
+                  const url = new URL(window.location.href)
+                  url.searchParams.set("offerStatus", "declined")
+                  url.searchParams.set("contractId", contractId)
+                  router.replace(`${url.pathname}${url.search}${url.hash}`)
+                }
+
+                setSelectedNotificationOffer(null)
+                setNotificationOfferStep("event")
+                setNotificationDeclineMessage("")
+                setNotificationDeclineReason("")
+              } catch (error) {
+                console.error("Offer decline failed", error)
+                toast({
+                  variant: "destructive",
+                  title: "Couldn't decline the offer",
+                  description: "Please try again.",
+                })
+                // Modal stays open on failure — no state change that would
+                // close it or advance the step, matching the withdraw/edit
+                // handlers' failure paths.
+              } finally {
+                setDecliningOffer(false)
+              }
               return
             }
             if (
