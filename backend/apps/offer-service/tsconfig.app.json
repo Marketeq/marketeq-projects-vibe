@@ -4,6 +4,6 @@
     "declaration": false,
     "outDir": "../../dist/apps/offer-service"
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "migrations/**/*"],
   "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
 }
