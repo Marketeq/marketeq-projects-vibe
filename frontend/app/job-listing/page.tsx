@@ -10732,7 +10732,13 @@ const teamRoleRows: TeamRoleRow[] = [
   },
 ];
 
-const teamRoleLocationOptions = ["USA", "India", "Pakistan", "Canada", "UK"];
+const teamRoleLocationOptions = [
+  "United States",
+  "India",
+  "Pakistan",
+  "Canada",
+  "United Kingdom",
+];
 const teamRolePillClassName =
   "h-7 max-w-full gap-x-1.5 whitespace-nowrap rounded-[5px] border border-dashed border-gray-300 bg-gray-100 py-[5px] pl-[5px] pr-2 text-xs font-medium leading-[18px] text-gray-700 [&>span:first-child]:size-[18px] [&>span:first-child]:rounded-full [&>span:not(:first-child)]:min-w-0 [&>span:not(:first-child)]:truncate [&>span:not(:first-child)]:whitespace-nowrap [&>svg]:inline-block [&>svg]:size-[15px] [&>svg]:shrink-0 [&>svg]:text-gray-500";
 const teamRoleLocationPillClassName = `${teamRolePillClassName} w-[83px] [&>svg]:hidden`;
@@ -10776,7 +10782,7 @@ const createTeamRoleRow = (
 ): TeamRoleRow => ({
   role: `New Team Member ${index + 1}`,
   assignee: "Unassigned Member",
-  location: "USA",
+  location: "United States",
   experience: "Junior",
   schedule: "Full-time",
   length: "3 months",
@@ -10815,6 +10821,11 @@ const formatHourlyEstimate = (low?: unknown, high?: unknown) => {
 
   return lowUsd === highUsd ? `$${lowUsd}` : `$${lowUsd} - $${highUsd}`;
 };
+
+const toJobListingWorkSchedule = (
+  schedule: TeamRoleRow["schedule"],
+): JobListingWorkSchedule =>
+  schedule === "Part-time" ? "part_time" : "full_time";
 
 const createTeamRoleRowsFromApi = (rows: unknown): TeamRoleRow[] =>
   Array.isArray(rows)
@@ -10862,10 +10873,7 @@ const createTeamRoleRowsPayload = (rows: TeamRoleRow[]) =>
       positionOrder,
       location: row.location,
       experienceLevel: row.experience,
-      workSchedule:
-        row.schedule === "Part-time"
-          ? ("part_time" as const)
-          : ("full_time" as const),
+      workSchedule: toJobListingWorkSchedule(row.schedule),
       contractLengthMonths: parseMonthCount(row.length),
       hourlyRateLowUsdCents: estimate.low,
       hourlyRateHighUsdCents: estimate.high,
@@ -18754,10 +18762,22 @@ const TeamRoles = ({
       }
 
       try {
-        await JobListingAPI.ReplaceRoleRows(
+        const response = await JobListingAPI.ReplaceRoleRows(
           listingId,
           createTeamRoleRowsPayload(nextRows),
         );
+        const savedRows = createTeamRoleRowsFromApi(
+          getResponsePayload(response)?.teamMemberRows ??
+            getResponsePayload(response)?.roles ??
+            getResponsePayload(response),
+        );
+        if (savedRows.length > 0) {
+          setRows(savedRows);
+          setDetails((previous) => ({
+            ...previous,
+            teamRoleRows: savedRows,
+          }));
+        }
         return true;
       } catch (error) {
         console.error("Failed to save team member rows", error);

@@ -33,6 +33,7 @@ import { UpdateRoleDescriptionDto } from "../dto/update-role-description.dto";
 import { JobListingInviteService } from "./job-listing-invite.service";
 import { JobListingBriefStorageService } from "./job-listing-brief-storage.service";
 import { JobListingScopeService } from "./job-listing-scope.service";
+import { JobListingBudgetService } from "./job-listing-budget.service";
 import { JobListingEventsPublisher } from "../events/job-listing-events.publisher";
 
 // ── Rich text helpers (exported so publish service can reuse wordCount) ───────
@@ -75,6 +76,7 @@ export class JobListingService {
     private readonly briefStorage: JobListingBriefStorageService,
     private readonly publisher: JobListingEventsPublisher,
     private readonly scopeService: JobListingScopeService,
+    private readonly budgetService: JobListingBudgetService,
   ) {}
 
   private inferListingType(input: {
@@ -550,29 +552,49 @@ export class JobListingService {
   ): Promise<TeamMemberRow[]> {
     await this.roleRowRepo.delete({ jobListingId: listingId });
 
-    const roleRows = rows
-      .map((row, positionOrder) => {
-        const roleTitle = row.role?.trim();
-        if (!roleTitle) return null;
+    const validRows = rows
+      .map((row, positionOrder) => ({
+        row,
+        positionOrder,
+        roleTitle: row.role?.trim(),
+      }))
+      .filter((entry) => Boolean(entry.roleTitle));
 
-        return this.roleRowRepo.create({
-          jobListingId: listingId,
-          roleTitle,
-          positionOrder: row.positionOrder ?? positionOrder,
-          assignedUserId: row.assignedUserId ?? null,
-          assignedUsername: null,
-          assignedUserDeactivated: false,
-          location: row.location ?? null,
-          experienceLevel: row.experienceLevel ?? null,
-          workSchedule: row.workSchedule ?? undefined,
-          customHours: row.customHours ?? null,
-          customFrequency: row.customFrequency ?? null,
-          contractLengthMonths: row.contractLengthMonths ?? null,
-          hourlyRateLowUsdCents: row.hourlyRateLowUsdCents ?? null,
-          hourlyRateHighUsdCents: row.hourlyRateHighUsdCents ?? null,
-        });
-      })
-      .filter((row): row is TeamMemberRow => Boolean(row));
+    // Hourly rates are always recomputed from pricing-service; whatever the
+    // client sent for hourlyRate*UsdCents is ignored. A failed or empty lookup
+    // (getRateLookupResult returns 0) is stored as null, never as a zero rate.
+    const rates = await Promise.all(
+      validRows.map(({ row, roleTitle }) =>
+        this.budgetService.getRateUsdCents(
+          roleTitle as string,
+          row.location ?? null,
+          row.experienceLevel ?? null,
+        ),
+      ),
+    );
+
+    const roleRows = validRows.map(({ row, positionOrder, roleTitle }, i) => {
+      const rateUsdCents = rates[i] > 0 ? rates[i] : null;
+
+      return this.roleRowRepo.create({
+        jobListingId: listingId,
+        roleTitle: roleTitle as string,
+        positionOrder: row.positionOrder ?? positionOrder,
+        assignedUserId: row.assignedUserId ?? null,
+        assignedUsername: null,
+        assignedUserDeactivated: false,
+        location: row.location ?? null,
+        experienceLevel: row.experienceLevel ?? null,
+        workSchedule: row.workSchedule ?? undefined,
+        customHours: row.customHours ?? null,
+        customFrequency: row.customFrequency ?? null,
+        contractLengthMonths: row.contractLengthMonths ?? null,
+        hourlyRateLowUsdCents:
+          rateUsdCents === null ? null : Math.round(rateUsdCents * 0.85),
+        hourlyRateHighUsdCents:
+          rateUsdCents === null ? null : Math.round(rateUsdCents * 1.15),
+      });
+    });
 
     if (roleRows.length === 0) return [];
     return this.roleRowRepo.save(roleRows);
