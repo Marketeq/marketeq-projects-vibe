@@ -1,7 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
-import * as geoip from 'geoip-lite';
-import { find as geoTz } from 'geo-tz';
 import { isIP } from 'node:net';
 
 export type TimeZoneSource = 'client' | 'ip' | 'stored' | 'default_utc';
@@ -13,11 +12,19 @@ export type TimeZoneResolution = {
 
 @Injectable()
 export class TimezoneResolutionService {
-  resolve(
+  private readonly logger = new Logger(TimezoneResolutionService.name);
+  private readonly locationServiceUrl: string;
+
+  constructor(private readonly config: ConfigService) {
+    this.locationServiceUrl =
+      this.config.get('LOCATION_SERVICE_URL') || 'http://localhost:3036';
+  }
+
+  async resolve(
     req: Request,
     clientTimeZone?: string | null,
     storedTimeZone?: string | null,
-  ): TimeZoneResolution {
+  ): Promise<TimeZoneResolution> {
     const normalizedClientTimeZone = this.normalizeTimeZone(clientTimeZone);
     if (normalizedClientTimeZone && this.isValidIanaTimeZone(normalizedClientTimeZone)) {
       return {
@@ -27,7 +34,7 @@ export class TimezoneResolutionService {
     }
 
     const ip = this.extractIp(req);
-    const ipTimeZone = ip ? this.lookupTimeZoneFromIp(ip) : null;
+    const ipTimeZone = ip ? await this.lookupTimeZoneFromLocationService(ip) : null;
     if (ipTimeZone) {
       return {
         timeZone: ipTimeZone,
@@ -49,30 +56,29 @@ export class TimezoneResolutionService {
     };
   }
 
-  private lookupTimeZoneFromIp(ip: string): string | null {
+  private async lookupTimeZoneFromLocationService(ip: string): Promise<string | null> {
     try {
-      const geo = geoip.lookup(ip);
-      if (!geo || !Array.isArray(geo.ll) || geo.ll.length < 2) {
-        return null;
-      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(
+        `${this.locationServiceUrl}/location/resolve-ip?ip=${encodeURIComponent(ip)}`,
+        { signal: controller.signal },
+      );
+      clearTimeout(timeout);
 
-      const [lat, lon] = geo.ll;
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-        return null;
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data?.timezone) {
+        const tz = this.normalizeTimeZone(data.timezone);
+        if (tz && this.isValidIanaTimeZone(tz)) {
+          return tz;
+        }
       }
-
-      const candidates = geoTz(lat, lon);
-      if (!Array.isArray(candidates) || candidates.length === 0) {
-        return null;
-      }
-
-      const timeZone = this.normalizeTimeZone(candidates[0]);
-      if (!timeZone || !this.isValidIanaTimeZone(timeZone)) {
-        return null;
-      }
-
-      return timeZone;
-    } catch {
+      return null;
+    } catch (err) {
+      this.logger.warn(
+        `Location service timezone lookup failed for ${ip}: ${(err as Error).message}`,
+      );
       return null;
     }
   }
@@ -114,26 +120,16 @@ export class TimezoneResolutionService {
   }
 
   private getHeaderValues(value: string | string[] | undefined): string[] {
-    if (!value) {
-      return [];
-    }
-
-    if (Array.isArray(value)) {
-      return value;
-    }
-
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
     return [value];
   }
 
   private normalizeIp(raw: string | null): string | null {
-    if (!raw) {
-      return null;
-    }
+    if (!raw) return null;
 
     let ip = raw.trim();
-    if (!ip || ip.toLowerCase() === 'unknown') {
-      return null;
-    }
+    if (!ip || ip.toLowerCase() === 'unknown') return null;
 
     if (ip.startsWith('::ffff:')) {
       ip = ip.slice('::ffff:'.length);
@@ -159,9 +155,7 @@ export class TimezoneResolutionService {
   }
 
   private normalizeTimeZone(value?: string | null): string | null {
-    if (!value) {
-      return null;
-    }
+    if (!value) return null;
     const normalized = value.trim();
     return normalized.length > 0 ? normalized : null;
   }
@@ -175,4 +169,3 @@ export class TimezoneResolutionService {
     }
   }
 }
-

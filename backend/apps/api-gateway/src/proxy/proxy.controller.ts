@@ -67,6 +67,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   resume: 'users',                  // resume upload/parse lives in user-service
   'dashboard-tasks': 'users',       // personal to-do tasks live in user-service
   privacy: 'users',                  // privacy settings live in user-service
+  location: 'location',              // location-service: IP/GPS resolution
 }
 
 const USER_SERVICE_V1_RESOURCES = new Set([
@@ -227,6 +228,7 @@ export class ProxyController {
       // boot-all.js runs this on 3033 and sets RESUME_PARSING_SERVICE_URL to match;
       // the 3028 default is the ecosystem.config.js port used by local PM2.
       'resume-parsing-service': process.env.RESUME_PARSING_SERVICE_URL || 'http://localhost:3028',
+      'location-service': process.env.LOCATION_SERVICE_URL || 'http://localhost:3036',
     }
 
     const results: Record<string, { status: string; code: number }> = {}

@@ -281,27 +281,30 @@ export class ProjectsService {
       });
   }
 
-  // Total career span across a user's real work-experience rows, bucketed
+  // Sum of actual work durations across a user's experience rows, bucketed
   // into the same Student/Junior/Mediator/Senior/Guru brackets the
   // checkout page's Experience dropdown already offers (0-2/2-3/3-5/5-10/10+
-  // years) — see the Dropdown component in
-  // frontend/app/checkout/[slug]/page.tsx.
+  // years). Each entry contributes its own (end - start) individually so
+  // career gaps don't inflate the total.
   private resolveExperienceLevel(
     entries: Array<{ startDate: string | null; endDate: string | null }>,
   ): string | null {
-    const starts: number[] = [];
-    const ends: number[] = [];
+    const MS_PER_YEAR = 1000 * 60 * 60 * 24 * 365.25;
+    let totalMs = 0;
+    let validEntries = 0;
+
     for (const entry of entries) {
       const start = entry.startDate ? Date.parse(entry.startDate) : NaN;
-      if (!Number.isNaN(start)) starts.push(start);
-      const end = entry.endDate ? Date.parse(entry.endDate) : NaN;
-      ends.push(Number.isNaN(end) ? Date.now() : end);
+      if (Number.isNaN(start)) continue;
+      const end = entry.endDate ? Date.parse(entry.endDate) : Date.now();
+      if (end > start) {
+        totalMs += end - start;
+        validEntries++;
+      }
     }
-    if (!starts.length) return null;
+    if (!validEntries) return null;
 
-    const earliest = Math.min(...starts);
-    const latest = Math.max(...ends);
-    const years = (latest - earliest) / (1000 * 60 * 60 * 24 * 365.25);
+    const years = totalMs / MS_PER_YEAR;
 
     if (years < 2) return 'Student';
     if (years < 3) return 'Junior';
