@@ -51,7 +51,7 @@ export class ProxyService {
       legal: config.get('LEGAL_SERVICE_URL') || 'http://localhost:3032',
       identityVerification:
         config.get('IDENTITY_VERIFICATION_SERVICE_URL') || 'http://localhost:3019',
-      location: config.get('LOCATION_SERVICE_URL') || 'http://localhost:3030',
+      location: config.get('LOCATION_SERVICE_URL') || 'http://localhost:3036',
     }
   }
 

@@ -262,6 +262,17 @@ export interface CreateCounterOfferPayload {
   message?: string
 }
 
+// EditCounterOfferDto — every field optional, unlike CreateCounterOfferDto
+// (PATCH is an in-place partial edit, not a resubmission).
+export interface EditCounterOfferPayload {
+  rate?: number
+  currencyCode?: string
+  durationMonths?: number
+  workSchedule?: WorkScheduleResponse
+  startDate?: string
+  message?: string
+}
+
 // What counter-offers.service.ts's accept()/decline() actually return: the
 // bare CounterOffer entity (mapRawToCO), not the aspirational
 // AcceptCounterOfferResponse/DeclineCounterOfferResponse
