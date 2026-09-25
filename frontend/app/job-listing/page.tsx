@@ -3361,6 +3361,7 @@ type JobListingDraftDetails = {
   tools?: string[];
   ndaEnabled?: boolean;
   ndaDocumentId?: string | null;
+  teamRoleRows?: TeamRoleRow[];
 };
 
 const PROJECT_INFO_PROGRESS_FIELDS: Array<keyof ProjectInfoFormValues> = [
@@ -10783,6 +10784,93 @@ const createTeamRoleRow = (
   editable: true,
   ...overrides,
 });
+
+const toTeamRoleSchedule = (
+  schedule?: JobListingWorkSchedule | string,
+): TeamRoleRow["schedule"] =>
+  schedule === "part_time" || schedule === "Part-time"
+    ? "Part-time"
+    : "Full-time";
+
+const toTeamRoleExperience = (experience?: string): ExperienceLevel => {
+  const normalized = experience?.trim().toLowerCase();
+  const match = EXPERIENCE_LEVELS.find(
+    (level) => level.toLowerCase() === normalized,
+  );
+
+  return match ?? "Junior";
+};
+
+const formatHourlyEstimate = (low?: unknown, high?: unknown) => {
+  const lowCents = toFiniteNumber(low);
+  const highCents = toFiniteNumber(high);
+
+  if (typeof lowCents !== "number") {
+    return "$25 - $40";
+  }
+
+  const lowUsd = Math.round(lowCents / 100);
+  const highUsd =
+    typeof highCents === "number" ? Math.round(highCents / 100) : lowUsd;
+
+  return lowUsd === highUsd ? `$${lowUsd}` : `$${lowUsd} - $${highUsd}`;
+};
+
+const createTeamRoleRowsFromApi = (rows: unknown): TeamRoleRow[] =>
+  Array.isArray(rows)
+    ? rows
+        .map((row: any, index) => {
+          const role = String(
+            row?.role ?? row?.roleTitle ?? row?.title ?? "",
+          ).trim();
+
+          if (!role) return null;
+
+          return createTeamRoleRow(index, {
+            role,
+            assignee: row?.assignedUserId
+              ? "Assigned Member"
+              : "Unassigned Member",
+            location: String(row?.location ?? "USA"),
+            experience: toTeamRoleExperience(
+              row?.experienceLevel ?? row?.experience,
+            ),
+            schedule: toTeamRoleSchedule(row?.workSchedule),
+            length:
+              typeof row?.contractLengthMonths === "number" &&
+              row.contractLengthMonths > 0
+                ? `${row.contractLengthMonths} ${
+                    row.contractLengthMonths === 1 ? "month" : "months"
+                  }`
+                : "3 months",
+            estimate: formatHourlyEstimate(
+              row?.hourlyRateLowUsdCents,
+              row?.hourlyRateHighUsdCents,
+            ),
+            editable: true,
+          });
+        })
+        .filter((row): row is TeamRoleRow => Boolean(row))
+    : [];
+
+const createTeamRoleRowsPayload = (rows: TeamRoleRow[]) =>
+  rows.map((row, positionOrder) => {
+    const estimate = parseHourlyEstimateCents(row.estimate);
+
+    return {
+      role: row.role,
+      positionOrder,
+      location: row.location,
+      experienceLevel: row.experience,
+      workSchedule:
+        row.schedule === "Part-time"
+          ? ("part_time" as const)
+          : ("full_time" as const),
+      contractLengthMonths: parseMonthCount(row.length),
+      hourlyRateLowUsdCents: estimate.low,
+      hourlyRateHighUsdCents: estimate.high,
+    };
+  });
 
 const serviceScopePhases = [
   {
@@ -18588,12 +18676,17 @@ const TeamRoles = ({
   initialValid = false,
   existingContractId,
   hiringMode,
+  jobListingId,
+  ensureJobListingDraft,
 }: ProgressProps & {
   initialValid?: boolean;
   existingContractId?: string | null;
   hiringMode?: HiringModeChoice;
+  jobListingId?: string | null;
+  ensureJobListingDraft?: EnsureJobListingDraft;
 }) => {
   const { toggleValidation } = useStepContext();
+  const { toast } = useToast();
   const { details, setDetails } = useJobListingDraftContext();
   const { projectScopeMethods } = useProjectScopeContext();
   const [projectScopeState, setProjectScopeState] = projectScopeMethods;
@@ -18616,6 +18709,14 @@ const TeamRoles = ({
   > | null>(null);
   const teamRoleAutocompleteRequestIdRef = useRef(0);
   const [rows, setRows] = useState<TeamRoleRow[]>(() => {
+    if (details.teamRoleRows?.length) {
+      return details.teamRoleRows;
+    }
+
+    if (!existingContractId && !isIndividualMode) {
+      return [];
+    }
+
     const scopedRows = projectScopeState?.[0]?.rows ?? [];
 
     if (scopedRows.length > 0 && !existingContractId) {
@@ -18636,12 +18737,45 @@ const TeamRoles = ({
 
     return teamRoleRows;
   });
+  const persistTeamRoleRows = useCallback(
+    async (nextRows: TeamRoleRow[]) => {
+      setDetails((previous) => ({
+        ...previous,
+        teamRoleRows: nextRows,
+      }));
+
+      const listingId = jobListingId ?? (await ensureJobListingDraft?.());
+      if (!listingId) {
+        toast({
+          title: "Unable to save team members. Please try again.",
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      try {
+        await JobListingAPI.ReplaceRoleRows(
+          listingId,
+          createTeamRoleRowsPayload(nextRows),
+        );
+        return true;
+      } catch (error) {
+        console.error("Failed to save team member rows", error);
+        toast({
+          title: "Unable to save team members. Please try again.",
+          variant: "destructive",
+        });
+        return false;
+      }
+    },
+    [ensureJobListingDraft, jobListingId, setDetails, toast],
+  );
   const updateRow = (rowIndex: number, nextValues: Partial<TeamRoleRow>) => {
-    setRows((currentRows) =>
-      currentRows.map((row, index) =>
-        index === rowIndex ? { ...row, ...nextValues } : row,
-      ),
+    const nextRows = rows.map((row, index) =>
+      index === rowIndex ? { ...row, ...nextValues } : row,
     );
+    setRows(nextRows);
+    void persistTeamRoleRows(nextRows);
   };
   useEffect(() => {
     const query = draftRoleTitle.trim();
@@ -18727,48 +18861,57 @@ const TeamRoles = ({
 
     if (roleDialogMode === "rename" && activeRoleIndex !== null) {
       if (role) {
-        updateRow(activeRoleIndex, {
-          role,
-          schedule: draftRoleSchedule,
-        });
+        const nextRows = rows.map((row, index) =>
+          index === activeRoleIndex
+            ? {
+                ...row,
+                role,
+                schedule: draftRoleSchedule,
+              }
+            : row,
+        );
+        setRows(nextRows);
+        void persistTeamRoleRows(nextRows);
       }
       closeRoleDialog();
       return;
     }
 
-    setRows((currentRows) => [
-      ...currentRows,
-      createTeamRoleRow(currentRows.length, {
-        role: role || `New Team Member ${currentRows.length + 1}`,
+    const nextRows = [
+      ...rows,
+      createTeamRoleRow(rows.length, {
+        role: role || `New Team Member ${rows.length + 1}`,
         schedule: draftRoleSchedule,
         length: isExistingProject ? "3 months" : "1 month",
       }),
-    ]);
+    ];
+    setRows(nextRows);
+    void persistTeamRoleRows(nextRows);
     closeRoleDialog();
   };
   const duplicateRow = (rowIndex: number) => {
-    setRows((currentRows) => {
-      const rowToCopy = currentRows[rowIndex];
-      if (!rowToCopy) return currentRows;
+    const rowToCopy = rows[rowIndex];
+    if (!rowToCopy) return;
 
-      return [
-        ...currentRows.slice(0, rowIndex + 1),
-        {
-          ...rowToCopy,
-          role: `${rowToCopy.role} Copy`,
-          assignee: "Unassigned Member",
-          editable: true,
-        },
-        ...currentRows.slice(rowIndex + 1),
-      ];
-    });
+    const nextRows = [
+      ...rows.slice(0, rowIndex + 1),
+      {
+        ...rowToCopy,
+        role: `${rowToCopy.role} Copy`,
+        assignee: "Unassigned Member",
+        editable: true,
+      },
+      ...rows.slice(rowIndex + 1),
+    ];
+    setRows(nextRows);
+    void persistTeamRoleRows(nextRows);
   };
   const removeRow = (rowIndex: number) => {
-    setRows((currentRows) =>
-      currentRows.length > 1
-        ? currentRows.filter((_, index) => index !== rowIndex)
-        : currentRows,
-    );
+    if (rows.length <= 1) return;
+
+    const nextRows = rows.filter((_, index) => index !== rowIndex);
+    setRows(nextRows);
+    void persistTeamRoleRows(nextRows);
   };
   const rowsAreValid =
     rows.length > 0 &&
@@ -18786,14 +18929,18 @@ const TeamRoles = ({
   }, [initialValid, rowsAreValid]);
 
   useEffect(() => {
-    setDetails((previous) => ({
-      ...previous,
-      headcount: rows.length,
-      budgetAmount: previous.budgetAmount ?? 5000,
-      budgetFrequency: budgetFrequency === "month" ? "per_month" : "per_week",
-      durationMonths: isExistingProject ? 6 : previous.durationMonths,
-      isOngoing: isExistingProject ? previous.isOngoing : true,
-    }));
+    if (rows.length > 0 || existingContractId || isIndividualMode) {
+      setDetails((previous) => ({
+        ...previous,
+        headcount: rows.length,
+        teamRoleRows: rows,
+        budgetAmount: previous.budgetAmount ?? 5000,
+        budgetFrequency:
+          budgetFrequency === "month" ? "per_month" : "per_week",
+        durationMonths: isExistingProject ? 6 : previous.durationMonths,
+        isOngoing: isExistingProject ? previous.isOngoing : true,
+      }));
+    }
 
     setProjectScopeState([
       {
@@ -19683,6 +19830,9 @@ function PublishProject({
             listing.teamMemberRows.length > 0
               ? listing.teamMemberRows.length
               : undefined);
+          const nextTeamRoleRows = createTeamRoleRowsFromApi(
+            listing?.teamMemberRows,
+          );
           const nextDurationMonths = toFiniteNumber(listing?.durationMonths);
           const nextBriefSizeBytes = toFiniteNumber(listing?.briefSizeBytes);
           setJobListingDraftDetails({
@@ -19715,6 +19865,8 @@ function PublishProject({
               typeof listing?.ndaDocumentId === "string"
                 ? listing.ndaDocumentId
                 : null,
+            teamRoleRows:
+              nextTeamRoleRows.length > 0 ? nextTeamRoleRows : undefined,
           });
           const persistedJobListingScope =
             listing?.workType === "service"
@@ -20777,12 +20929,16 @@ function PublishProject({
                             initialValid
                             existingContractId={selectedExistingContractId}
                             hiringMode={selectedHiringMode}
+                            jobListingId={jobListingId}
+                            ensureJobListingDraft={ensureJobListingDraft}
                           />
                         ) : isNoScopeFlow ? (
                           <TeamRoles
                             setProgress={setTeamRolesProgress}
                             initialValid
                             hiringMode={selectedHiringMode}
+                            jobListingId={jobListingId}
+                            ensureJobListingDraft={ensureJobListingDraft}
                           />
                         ) : selectedWorkType === "service" ? (
                           <ServiceScopeEditStep
