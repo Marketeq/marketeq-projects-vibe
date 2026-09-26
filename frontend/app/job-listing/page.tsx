@@ -19013,7 +19013,6 @@ const TeamRoles = ({
             ? {
                 ...row,
                 role,
-                schedule: draftRoleSchedule,
               }
             : row,
         );
@@ -19044,7 +19043,6 @@ const TeamRoles = ({
       ...rows.slice(0, rowIndex + 1),
       {
         ...rowToCopy,
-        role: `${rowToCopy.role} Copy`,
         assignee: "Unassigned Member",
         editable: true,
       },
@@ -19278,9 +19276,19 @@ const TeamRoles = ({
                       >
                         <TableCell className="h-[72px] w-[216px] px-0 py-0">
                           <div className="flex h-[72px] items-center gap-3 px-6 py-4 pr-4">
-                            <p className="h-5 w-44 truncate text-sm font-semibold leading-5 text-dark-blue-400">
-                              {row.role}
-                            </p>
+                            {row.editable ? (
+                              <button
+                                type="button"
+                                className="h-5 w-44 truncate p-0 text-left text-sm font-semibold leading-5 text-dark-blue-400"
+                                onClick={() => openRenameRoleDialog(index)}
+                              >
+                                {row.role}
+                              </button>
+                            ) : (
+                              <p className="h-5 w-44 truncate text-sm font-semibold leading-5 text-dark-blue-400">
+                                {row.role}
+                              </p>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="h-[72px] w-[140px] px-0 py-0">
@@ -19413,10 +19421,110 @@ const TeamRoles = ({
                           </div>
                         </TableCell>
                         <TableCell className="h-[72px] w-[100px] px-0 py-0">
-                          <div className="flex h-[72px] items-center px-4 py-4">
-                            <span className="text-sm leading-5 text-gray-600">
-                              {row.estimate}
-                            </span>
+                          <div className="flex h-[72px] items-center px-3 py-4">
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="cursor-default whitespace-nowrap text-sm leading-5 text-gray-600">
+                                    {row.estimate}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="left"
+                                  align="center"
+                                  sideOffset={12}
+                                  visual="white"
+                                  className="flex h-[246px] w-[252px] max-w-none flex-col items-start gap-4 rounded-lg bg-primary-50 p-5 text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                >
+                                  <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                  <span className="h-6 w-[90px] text-base font-semibold leading-6 text-gray-800">
+                                    Price Guide
+                                  </span>
+                                  <div className="relative h-[166px] w-[212px]">
+                                    <div className="absolute bottom-0 left-0 flex h-[120px] w-[212px] items-end gap-1">
+                                      {[
+                                        ["h-6", "bg-primary-100"],
+                                        ["h-[39px]", "bg-primary-100"],
+                                        ["h-[78px]", "bg-primary-100"],
+                                        ["h-[104px]", "bg-primary-500"],
+                                        ["h-[120px]", "bg-primary-500"],
+                                        ["h-24", "bg-primary-500"],
+                                        ["h-[68px]", "bg-primary-100"],
+                                        ["h-12", "bg-primary-100"],
+                                        ["h-[13px]", "bg-primary-100"],
+                                      ].map(([heightClassName, colorClassName], barIndex) => (
+                                        <div
+                                          key={barIndex}
+                                          className={cn(
+                                            "w-5 rounded",
+                                            heightClassName,
+                                            colorClassName,
+                                          )}
+                                        />
+                                      ))}
+                                    </div>
+                                    {(() => {
+                                      const estimate =
+                                        parseHourlyEstimateCents(row.estimate);
+                                      const low =
+                                        typeof estimate.low === "number"
+                                          ? Math.round(estimate.low / 100)
+                                          : null;
+                                      const high =
+                                        typeof estimate.high === "number"
+                                          ? Math.round(estimate.high / 100)
+                                          : null;
+                                      const median =
+                                        typeof low === "number" &&
+                                        typeof high === "number"
+                                          ? Math.round((low + high) / 2)
+                                          : null;
+                                      const guideValues = [
+                                        {
+                                          label: "Low",
+                                          value: low,
+                                          className:
+                                            "left-[49.54px] top-4 w-[30px]",
+                                        },
+                                        {
+                                          label: "Median",
+                                          value: median,
+                                          className:
+                                            "left-[86.54px] top-0 w-[39px]",
+                                        },
+                                        {
+                                          label: "High",
+                                          value: high,
+                                          className:
+                                            "left-[131.54px] top-6 w-[30px]",
+                                        },
+                                      ];
+
+                                      return guideValues.map(
+                                        ({ label, value, className }) => (
+                                          <div
+                                            key={label}
+                                            className={cn(
+                                              "absolute flex h-[34px] flex-col items-center gap-1 p-0",
+                                              className,
+                                            )}
+                                          >
+                                            <span className="h-[13px] text-[11px] font-normal leading-[13px] tracking-[0.06px] text-dark-blue-400">
+                                              {label}
+                                            </span>
+                                            <span className="flex h-[17px] items-center justify-center rounded bg-black px-1 py-0.5 text-[11px] font-normal leading-[13px] tracking-[0.06px] text-white">
+                                              {typeof value === "number"
+                                                ? `$${value}`
+                                                : "--"}
+                                            </span>
+                                          </div>
+                                        ),
+                                      );
+                                    })()}
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </div>
                         </TableCell>
                         <TableCell className="h-[72px] w-[75px] px-0 py-0">
@@ -19432,21 +19540,27 @@ const TeamRoles = ({
                                     <MoreHorizontal className="size-[15px]" />
                                   </IconButton>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem
-                                    onSelect={() => openRenameRoleDialog(index)}
-                                  >
-                                    Rename role
-                                  </DropdownMenuItem>
+                                <DropdownMenuContent
+                                  align="end"
+                                  className="flex h-[88px] w-[153px] flex-col items-start rounded-lg border border-gray-100 bg-white p-0 shadow-lg"
+                                >
                                   <DropdownMenuItem
                                     onSelect={() => duplicateRow(index)}
+                                    className="flex h-11 w-[153px] items-center justify-start gap-2 rounded-none border-b border-gray-200 px-4 py-3 text-sm font-normal leading-5 text-black focus:bg-gray-50"
                                   >
-                                    Duplicate role
+                                    <Copy className="size-[18px] shrink-0 text-gray-400" />
+                                    <span className="h-5 w-[95px] shrink-0 whitespace-nowrap rounded text-sm font-normal leading-5 text-black">
+                                      Duplicate Role
+                                    </span>
                                   </DropdownMenuItem>
                                   <DropdownMenuItem
                                     onSelect={() => removeRow(index)}
+                                    className="flex h-11 w-[153px] items-center justify-start gap-2 rounded-none px-4 py-3 text-sm font-normal leading-5 text-black focus:bg-gray-50"
                                   >
-                                    Remove role
+                                    <Trash01 className="size-[18px] shrink-0 text-gray-400" />
+                                    <span className="h-5 w-[95px] shrink-0 whitespace-nowrap rounded text-sm font-normal leading-5 text-black">
+                                      Delete
+                                    </span>
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -19535,7 +19649,10 @@ const TeamRoles = ({
                 : "Add team member"
           }
           dialogOverlay={<DialogOverlay className="bg-[#101828]/20" />}
-          className="left-1/2 top-1/2 flex w-[371px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col items-start gap-8 rounded-xl bg-white p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+          className={cn(
+            "left-1/2 top-1/2 flex w-[371px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col items-start gap-8 rounded-xl bg-white p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]",
+            roleDialogMode === "rename" && "h-[186px]",
+          )}
         >
           <div className="flex w-[323px] flex-col items-start gap-3">
             <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
@@ -19591,28 +19708,30 @@ const TeamRoles = ({
                 ) : null}
               </Combobox>
             </div>
-            <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
-              <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
-                Work Schedule
-              </Label>
-              <Select
-                value={draftRoleSchedule}
-                onValueChange={(value) =>
-                  setDraftRoleSchedule(value as TeamRoleRow["schedule"])
-                }
-              >
-                <SelectTrigger className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="w-[323px]">
-                  {teamRoleScheduleOptions.map((schedule) => (
-                    <SelectItem key={schedule} value={schedule}>
-                      {schedule}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {roleDialogMode === "add" ? (
+              <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+                <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                  Work Schedule
+                </Label>
+                <Select
+                  value={draftRoleSchedule}
+                  onValueChange={(value) =>
+                    setDraftRoleSchedule(value as TeamRoleRow["schedule"])
+                  }
+                >
+                  <SelectTrigger className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="w-[323px]">
+                    {teamRoleScheduleOptions.map((schedule) => (
+                      <SelectItem key={schedule} value={schedule}>
+                        {schedule}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
           </div>
           <div className="flex h-9 w-[323px] shrink-0 items-start gap-3">
             <Button
