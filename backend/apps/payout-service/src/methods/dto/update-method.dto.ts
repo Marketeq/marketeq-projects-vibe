@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsBoolean, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, IsIn, MaxLength } from 'class-validator';
 
 export class UpdateMethodDto {
   @IsOptional() @IsString() @MaxLength(64)
@@ -23,6 +23,11 @@ export class UpdateMethodDto {
   @IsOptional() @IsString() bankSortCode?: string;
   @IsOptional() @IsString() bankCode?: string;
   @IsOptional() @IsString() bankBranchCode?: string;
+  // Zengin accountType — PS-36 §7 requires FUTSU (ordinary) or TOUZA (current).
+  // Same requirement as AddMethodDto's field: the edit path re-runs
+  // createVerification() -> verifyViaWisePlatform(), which needs this for a
+  // JP recipient exactly as much as the initial add does.
+  @IsOptional() @IsIn(['FUTSU', 'TOUZA']) bankAccountType?: string;
   @IsOptional() @IsString() bankInstitutionNumber?: string;
   @IsOptional() @IsString() bankTransitNumber?: string;
   @IsOptional() @IsString() bankClabe?: string;

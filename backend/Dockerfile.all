@@ -54,6 +54,7 @@ RUN npx nest build identity-verification-service
 RUN npx nest build invitations-service
 RUN npx nest build legal-service
 RUN npx nest build listings-service
+RUN npx nest build location-service
 RUN npx nest build messaging-service
 RUN npx nest build notification-service
 RUN npx nest build offer-service
