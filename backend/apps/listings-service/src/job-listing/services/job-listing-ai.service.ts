@@ -219,6 +219,31 @@ interface SmartAssistantFieldContext {
   roles?: string[];
 }
 
+export interface GeneratedTeamRow {
+  roleTitle: string;
+  location: string;
+  experienceLevel: string;
+  workSchedule: "full_time" | "part_time";
+}
+
+// Hard cap on generated team size, independent of what the client asked for.
+export const MAX_GENERATED_TEAM_ROWS = 20;
+
+// The step-2 budget is an amount per week or per month. The team-row prompt is
+// given the TOTAL for the whole contract: per_month amounts multiply by the
+// number of months, per_week amounts by weeks (4.33 per month, the same
+// constant the step-4 estimate uses). Unknown frequency defaults to per_week,
+// matching the step-2 form default.
+export function computeTeamTotalBudgetUsdCents(
+  budgetUsdCents: number,
+  budgetFrequency: string | null | undefined,
+  durationMonths: number,
+): number {
+  const periods =
+    budgetFrequency === "per_month" ? durationMonths : durationMonths * 4.33;
+  return Math.round(budgetUsdCents * periods);
+}
+
 export class GroqUnavailableException extends Error {
   constructor(public readonly reason = "unknown") {
     super("AI generation service is temporarily unavailable.");
@@ -1390,6 +1415,108 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
     );
 
     return this.normalizeServiceScope(result);
+  }
+
+  // Generates the step-4 team table for the "no scope" Teams flow. Titles are
+  // free text (same as project scope — no catalog snapping); location and
+  // experience are validated strictly, and anything short of exactly
+  // `headcount` valid rows fails the whole call so the caller falls back to
+  // manual entry rather than saving a partial team.
+  async generateTeamRows(input: {
+    description: string;
+    tools: string[];
+    headcount: number;
+    durationMonths: number;
+    totalBudgetUsdCents: number;
+  }): Promise<GeneratedTeamRow[]> {
+    const headcount = Math.min(input.headcount, MAX_GENERATED_TEAM_ROWS);
+    const totalBudgetUsd = (input.totalBudgetUsdCents / 100).toFixed(2);
+
+    const result = await this.call<{ rows?: Partial<GeneratedTeamRow>[] }>(
+      {
+        maxTokens: 4096,
+        temperature: 0.3,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a senior staffing and workforce planner for a freelance marketplace. " +
+              "Given a client's brief, you design the team they should hire. " +
+              "Respond only with a JSON object matching: " +
+              '{ "rows": [{ "roleTitle": "string", "location": "string", ' +
+              '"experienceLevel": "string", "workSchedule": "full_time|part_time" }] }. ' +
+              `Return exactly ${headcount} rows, one per person to hire. Never more, never fewer. ` +
+              'roleTitle must be a specific, standard job title (for example "Frontend Developer", ' +
+              '"QA Engineer", "UX Designer"), never a generic label such as "Team Member 1". ' +
+              "Each row should cover a distinct part of the brief; do not repeat the same role " +
+              "unless the brief clearly needs several people in it. " +
+              `location must be one of these countries: ${VALID_COUNTRIES_PROMPT_LIST}. ` +
+              `experienceLevel must be one of: ${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}. ` +
+              "workSchedule is full_time (40 hours per week) or part_time (20 hours per week). " +
+              "The client's total budget for the whole team over the contract is given below. " +
+              "Choose experience levels, locations and schedules that fit it, as a reasonable target. " +
+              "Never reduce the number of people to fit it, and never choose a level or location " +
+              "that makes a role unrealistic for the work. " +
+              "Do not include markdown, comments or prose.",
+          },
+          {
+            role: "user",
+            content: [
+              `Team description: ${input.description}`,
+              `Tools and technologies: ${input.tools.length > 0 ? input.tools.join(", ") : "Not specified"}`,
+              `Number of people to hire: ${headcount}`,
+              `Contract length: ${input.durationMonths} months for every person`,
+              `Total budget for the whole team over the contract: $${totalBudgetUsd} USD`,
+              "Design the team so its combined cost over the contract fits this total.",
+            ].join("\n"),
+          },
+        ],
+      },
+      "team_rows",
+    );
+
+    return this.normalizeTeamRows(result?.rows, headcount);
+  }
+
+  private normalizeTeamRows(
+    rawRows: unknown,
+    headcount: number,
+  ): GeneratedTeamRow[] {
+    if (!Array.isArray(rawRows)) {
+      throw new GroqUnavailableException("team_rows_invalid_shape");
+    }
+
+    const rows: GeneratedTeamRow[] = [];
+    for (const raw of rawRows as Partial<GeneratedTeamRow>[]) {
+      const roleTitle =
+        typeof raw?.roleTitle === "string" ? raw.roleTitle.trim() : "";
+      const location =
+        VALID_COUNTRIES_CANONICAL[String(raw?.location ?? "").trim().toLowerCase()];
+      const experienceLevel = String(raw?.experienceLevel ?? "")
+        .trim()
+        .toLowerCase();
+
+      if (
+        !roleTitle ||
+        !location ||
+        !VALID_EXPERIENCE_LEVELS.includes(experienceLevel)
+      ) {
+        throw new GroqUnavailableException("team_rows_invalid_row");
+      }
+
+      rows.push({
+        roleTitle,
+        location,
+        experienceLevel,
+        workSchedule: raw.workSchedule === "part_time" ? "part_time" : "full_time",
+      });
+    }
+
+    // Extras are trimmed; too few is a failure, never a partial team.
+    if (rows.length < headcount) {
+      throw new GroqUnavailableException("team_rows_too_few");
+    }
+    return rows.slice(0, headcount);
   }
 
   async generateScopeFromMinimalInput(input: {

@@ -41,12 +41,14 @@ import {
   RecommendRoleConfigurationDto,
   GenerateRoleDescriptionsDto,
   GenerateScopeDto,
+  GenerateTeamRowsDto,
   GenerateToolsDto,
 } from "../dto/ai-generation.dto";
 import { UpdateRoleDescriptionDto } from "../dto/update-role-description.dto";
 import {
   GroqUnavailableException,
   JobListingAiService,
+  computeTeamTotalBudgetUsdCents,
 } from "../services/job-listing-ai.service";
 import {
   GeneratedScopePhaseInput,
@@ -462,6 +464,54 @@ export class JobListingController {
           workType,
           scope: { phases },
           phases,
+          message: error.message,
+        };
+      }
+      throw error;
+    }
+  }
+
+  @Post(":id/generate-team-rows")
+  @UseGuards(JobListingOwnerGuard)
+  @HttpCode(HttpStatus.OK)
+  async generateTeamRows(
+    @Param("id") id: string,
+    @Body() dto: GenerateTeamRowsDto,
+  ): Promise<any> {
+    const listing = await this.jobListingService.findOneInternal(id);
+    const headcount = dto.headcount ?? listing.headcount ?? 0;
+    const durationMonths = listing.durationMonths ?? 0;
+    const description = dto.description ?? listing.description ?? "";
+
+    if (headcount < 1 || durationMonths < 1 || !description.trim()) {
+      throw new BadRequestException({
+        code: "JL_TEAM_ROWS_INPUT_MISSING",
+        message:
+          "Headcount, duration and a description are required to generate a team.",
+      });
+    }
+
+    const totalBudgetUsdCents = computeTeamTotalBudgetUsdCents(
+      listing.budgetAmountUsdCents ?? 0,
+      listing.budgetFrequency,
+      durationMonths,
+    );
+
+    try {
+      const rows = await this.aiService.generateTeamRows({
+        description,
+        tools: dto.tools ?? listing.tools ?? [],
+        headcount,
+        durationMonths,
+        totalBudgetUsdCents,
+      });
+      return { aiStatus: "OK", durationMonths, rows };
+    } catch (error) {
+      if (error instanceof GroqUnavailableException) {
+        return {
+          aiStatus: "AI_UNAVAILABLE",
+          durationMonths,
+          rows: [],
           message: error.message,
         };
       }

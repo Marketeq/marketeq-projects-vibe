@@ -163,6 +163,11 @@ import {
 } from "@/components/own-combobox";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import {
+  Alert,
+  AlertContent,
+  AlertDescription,
+  AlertIcon,
+  AlertTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -18733,7 +18738,20 @@ const TeamRoles = ({
   const [projectScopeState, setProjectScopeState] = projectScopeMethods;
   const isExistingProject = existingContractId === "marketeq-projects-network";
   const isIndividualMode = hiringMode === "individual";
-  const [budgetFrequency, setBudgetFrequency] = useState("week");
+  // AI generates the team table only for a new (non-existing-contract) team.
+  const shouldAutoGenerateTeam = hiringMode === "team" && !existingContractId;
+  // The step-2 budget is the client's target, so a new team must not overwrite
+  // it with the rows' estimate.
+  const keepStepTwoBudget = shouldAutoGenerateTeam;
+  const [isGeneratingTeamRows, setIsGeneratingTeamRows] = useState(false);
+  const [teamRowsGenerationFailed, setTeamRowsGenerationFailed] =
+    useState(false);
+  const didAttemptTeamGenerationRef = useRef(false);
+  const [budgetFrequency, setBudgetFrequency] = useState(
+    shouldAutoGenerateTeam && details.budgetFrequency === "per_month"
+      ? "month"
+      : "week",
+  );
   const [roleDialogMode, setRoleDialogMode] = useState<"add" | "rename" | null>(
     null,
   );
@@ -18830,6 +18848,82 @@ const TeamRoles = ({
     setRows(nextRows);
     void persistTeamRoleRows(nextRows);
   };
+  useEffect(() => {
+    if (
+      !shouldAutoGenerateTeam ||
+      !jobListingId ||
+      rows.length > 0 ||
+      didAttemptTeamGenerationRef.current
+    ) {
+      return;
+    }
+    didAttemptTeamGenerationRef.current = true;
+
+    const generateTeamRows = async () => {
+      setIsGeneratingTeamRows(true);
+      try {
+        // Saved rows can arrive after this step mounts (draft hydration on
+        // re-entry); never replace a team that already exists server-side.
+        const listingResponse = await JobListingAPI.Get(jobListingId);
+        const savedRows = createTeamRoleRowsFromApi(
+          getResponsePayload(listingResponse)?.teamMemberRows,
+        );
+        if (savedRows.length > 0) {
+          setRows(savedRows);
+          setDetails((previous) => ({
+            ...previous,
+            teamRoleRows: savedRows,
+          }));
+          return;
+        }
+
+        const response = await JobListingAPI.GenerateTeamRows(jobListingId);
+        const payload = getResponsePayload(response);
+        const generated: any[] = Array.isArray(payload?.rows)
+          ? payload.rows
+          : [];
+        const durationMonths = toFiniteNumber(payload?.durationMonths);
+
+        if (payload?.aiStatus !== "OK" || generated.length === 0) {
+          setTeamRowsGenerationFailed(true);
+          return;
+        }
+
+        const nextRows = generated.map((row, index) =>
+          createTeamRoleRow(index, {
+            role: String(row?.roleTitle ?? "").trim(),
+            location: String(row?.location ?? "United States"),
+            experience: toTeamRoleExperience(row?.experienceLevel),
+            schedule: toTeamRoleSchedule(row?.workSchedule),
+            length:
+              typeof durationMonths === "number" && durationMonths > 0
+                ? `${durationMonths} ${
+                    durationMonths === 1 ? "month" : "months"
+                  }`
+                : "3 months",
+          }),
+        );
+        setRows(nextRows);
+        const didPersist = await persistTeamRoleRows(nextRows);
+        if (!didPersist) {
+          setTeamRowsGenerationFailed(true);
+        }
+      } catch (error) {
+        console.error("Failed to generate team rows", error);
+        setTeamRowsGenerationFailed(true);
+      } finally {
+        setIsGeneratingTeamRows(false);
+      }
+    };
+
+    void generateTeamRows();
+  }, [
+    jobListingId,
+    persistTeamRoleRows,
+    rows.length,
+    setDetails,
+    shouldAutoGenerateTeam,
+  ]);
   useEffect(() => {
     const query = draftRoleTitle.trim();
 
@@ -18980,8 +19074,20 @@ const TeamRoles = ({
     () => getTeamRolesEstimatedBudget(rows),
     [rows],
   );
+  // estimatedBudgetCents is the whole-contract total. For a new team the card
+  // shows it per week or per month (whichever is selected), so it reads in the
+  // same unit as the budget entered in step 2. Weeks use the same 4.33
+  // weeks/month as the estimate itself.
+  const contractMonths =
+    details.durationMonths ??
+    Math.max(0, ...rows.map((row) => parseMonthCount(row.length) ?? 0));
+  const displayedBudgetCents =
+    keepStepTwoBudget && contractMonths > 0
+      ? estimatedBudgetCents /
+        (budgetFrequency === "month" ? contractMonths : contractMonths * 4.33)
+      : estimatedBudgetCents;
   const estimatedBudgetDisplay =
-    estimatedBudgetCents > 0 ? formatUsdFromCents(estimatedBudgetCents) : "$0";
+    displayedBudgetCents > 0 ? formatUsdFromCents(displayedBudgetCents) : "$0";
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(initialValid || rowsAreValid);
@@ -18994,11 +19100,14 @@ const TeamRoles = ({
         headcount: rows.length,
         teamRoleRows: rows,
         budgetAmount:
-          estimatedBudgetCents > 0
+          !keepStepTwoBudget && estimatedBudgetCents > 0
             ? Math.round(estimatedBudgetCents / 100)
             : previous.budgetAmount,
-        budgetFrequency:
-          budgetFrequency === "month" ? "per_month" : "per_week",
+        budgetFrequency: keepStepTwoBudget
+          ? previous.budgetFrequency
+          : budgetFrequency === "month"
+            ? "per_month"
+            : "per_week",
         durationMonths: isExistingProject ? 6 : previous.durationMonths,
         isOngoing: isExistingProject ? previous.isOngoing : true,
       }));
@@ -19037,6 +19146,7 @@ const TeamRoles = ({
     isExistingProject,
     isIndividualMode,
     existingContractId,
+    keepStepTwoBudget,
     rows,
     setDetails,
     setProjectScopeState,
@@ -19081,6 +19191,20 @@ const TeamRoles = ({
                   {isIndividualMode ? "Add Role" : "Add Team Member"}
                 </Button>
               </div>
+
+              {teamRowsGenerationFailed && rows.length === 0 ? (
+                <Alert variant="error" className="self-stretch">
+                  <AlertIcon>
+                    <AlertCircle className="h-5 w-5 flex-none" />
+                  </AlertIcon>
+                  <AlertContent>
+                    <AlertTitle>We couldn&apos;t generate your team</AlertTitle>
+                    <AlertDescription>
+                      Add your team members manually using the button above.
+                    </AlertDescription>
+                  </AlertContent>
+                </Alert>
+              ) : null}
 
               <div className="self-stretch overflow-x-auto bg-white">
                 <Table className="min-w-[886px] table-fixed bg-white">
@@ -19133,6 +19257,20 @@ const TeamRoles = ({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
+                    {isGeneratingTeamRows && rows.length === 0
+                      ? Array.from({ length: 3 }, (_, index) => (
+                          <TableRow
+                            key={`team-row-skeleton-${index}`}
+                            className="h-[72px] border-b border-gray-200 hover:bg-transparent"
+                          >
+                            <TableCell colSpan={7} className="h-[72px] px-6 py-4">
+                              <span className="relative block h-10 w-full overflow-hidden rounded bg-gray-100">
+                                <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      : null}
                     {rows.map((row, index) => (
                       <TableRow
                         key={`${row.role}-${index}`}

@@ -179,6 +179,19 @@ export const JobListingAPI = {
       data,
     ),
 
+  GenerateTeamRows: (
+    id: string,
+    data: {
+      description?: string;
+      headcount?: number;
+      tools?: string[];
+    } = {},
+  ) =>
+    AxiosRequest.post(
+      jobListingUrl(`/v1/job-listings/${id}/generate-team-rows`),
+      data,
+    ),
+
   ApplyGeneratedScope: (
     id: string,
     data: {
