@@ -10824,7 +10824,7 @@ const createTeamRoleRow = (
   experience: "Junior",
   schedule: "Full-time",
   length: "3 months",
-  estimate: "$25 - $40",
+  estimate: "$0 - $0",
   editable: true,
   ...overrides,
 });
@@ -10850,7 +10850,7 @@ const formatHourlyEstimate = (low?: unknown, high?: unknown) => {
   const highCents = toFiniteNumber(high);
 
   if (typeof lowCents !== "number") {
-    return "$25 - $40";
+    return "$0 - $0";
   }
 
   const lowUsd = Math.round(lowCents / 100);
@@ -19095,7 +19095,6 @@ const TeamRoles = ({
     if (rows.length > 0 || existingContractId || isIndividualMode) {
       setDetails((previous) => ({
         ...previous,
-        headcount: rows.length,
         teamRoleRows: rows,
         budgetAmount:
           !keepStepTwoBudget && estimatedBudgetCents > 0
