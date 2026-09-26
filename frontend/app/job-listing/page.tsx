@@ -19224,7 +19224,28 @@ const TeamRoles = ({
                       </TableHead>
                       <TableHead className="h-11 w-[140px] px-0 py-0">
                         <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
-                          <span className="h-[18px] w-[50px]">Location</span>
+                          <TooltipProvider delayDuration={75}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="h-[18px] w-[50px] cursor-default">
+                                  Location
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="right"
+                                align="center"
+                                sideOffset={12}
+                                visual="white"
+                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                              >
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                <span className="flex h-[54px] w-[182.55px] items-center">
+                                  Affects cost, availability, and potential time
+                                  zone alignment with your team.
+                                </span>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </TableHead>
                       <TableHead className="h-11 w-[105px] px-0 py-0">
@@ -19234,19 +19255,80 @@ const TeamRoles = ({
                       </TableHead>
                       <TableHead className="h-11 w-[124px] px-0 py-0">
                         <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
-                          <span className="h-[18px] w-[54px]">Schedule</span>
+                          <TooltipProvider delayDuration={75}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="h-[18px] w-[54px] cursor-default">
+                                  Schedule
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="right"
+                                align="center"
+                                sideOffset={12}
+                                visual="white"
+                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                              >
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                <span className="flex h-[54px] w-[182.55px] items-center">
+                                  Defines how much time the freelancer will
+                                  commit. Impacts total cost.
+                                </span>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </TableHead>
                       <TableHead className="h-11 w-[126px] px-0 py-0">
                         <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
-                          <span className="h-[18px] w-[94px] whitespace-nowrap">
-                            Contract Length
-                          </span>
+                          <TooltipProvider delayDuration={75}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="h-[18px] w-[94px] cursor-default whitespace-nowrap">
+                                  Contract Length
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="left"
+                                align="center"
+                                sideOffset={12}
+                                visual="white"
+                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                              >
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                <span className="flex h-[54px] w-[182.55px] items-center">
+                                  Sets how long the freelancer will be engaged.
+                                  Affects overall budget planning.
+                                </span>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </TableHead>
                       <TableHead className="h-11 w-[100px] px-0 py-0">
                         <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
-                          Hourly est.
+                          <TooltipProvider delayDuration={75}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="cursor-default whitespace-nowrap">
+                                  Hourly est.
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="left"
+                                align="center"
+                                sideOffset={12}
+                                visual="white"
+                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                              >
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                <span className="flex h-[54px] w-[182.55px] items-center">
+                                  Estimated hourly rate based on the selected
+                                  location, experience, and schedule
+                                </span>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </TableHead>
                       <TableHead className="h-11 w-[75px] px-0 py-0">
