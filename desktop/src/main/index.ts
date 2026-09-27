@@ -342,32 +342,39 @@ async function bootstrap(): Promise<void> {
     // automatic fallback to 15s polling if the bundled binaries are
     // missing, blocked, or fail to start on this machine — app tracking
     // never drops to zero, it just degrades to the previous behavior.
+    //
+    // The polling tracker only ever runs when ActivityWatch has genuinely
+    // failed — its own startup check came back negative, or one of its two
+    // child processes exited mid-session — never as a standing "just in
+    // case" companion. Each polling sample shells out to PowerShell/
+    // osascript; running that on a timer for the length of every session
+    // regardless of whether it's needed was wasted work for the common
+    // case where ActivityWatch is working fine.
     const pollingTracker = createAppUsageTracker({
       logger,
       options: { pollIntervalMs: 15_000 },
     });
+    let fallbackActive = false;
     const awTracker = createActivityWatchTracker({
       logger,
       options: { dbPath: path.join(app.getPath('userData'), 'dtt', 'activitywatch') },
+      onAvailabilityChange: (available) => {
+        if (!available && !fallbackActive) {
+          fallbackActive = true;
+          pollingTracker.start();
+          logger.info('activitywatch unavailable — starting polling tracker fallback');
+        }
+      },
     });
-    // Both trackers start and stop together with the session — neither
-    // runs while the app is merely open but not tracking. pollingTracker
-    // is cheap (a timer, no child processes) so running it alongside
-    // ActivityWatch as a standing safety net costs nothing meaningful; in
-    // exchange, drain() can simply ask "is ActivityWatch available *right
-    // now*" at read time — by which point its ~5s startup check has long
-    // settled, since the first screenshot doesn't fire until ~60s after
-    // start — with pollingTracker's own accumulated data always ready as
-    // a fallback, with no race and no risk of draining a tracker that
-    // wasn't actually accumulating anything.
     const appUsageTracker: AppUsageTracker = {
       start: () => {
-        pollingTracker.start();
+        fallbackActive = false;
         awTracker.start();
       },
       stop: () => {
         pollingTracker.stop();
         awTracker.stop();
+        fallbackActive = false;
       },
       drain: () => (awTracker.isAvailable() ? awTracker.drain() : pollingTracker.drain()),
     };

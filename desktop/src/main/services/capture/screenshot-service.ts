@@ -29,8 +29,12 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import crypto from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 import { v4 as uuid } from 'uuid';
 import type { Logger } from 'pino';
 import type { ScreenshotRepo } from '../../db/repos/screenshot.repo';
@@ -400,16 +404,16 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
         // tests), matching the previous single-snapshot behavior exactly.
         let activeApps: string[];
         if (deps.appUsageTracker) {
-          activeApps = deps.appUsageTracker.drain();
+          activeApps = await deps.appUsageTracker.drain();
         } else {
-          const single = detectActiveAppName();
+          const single = await detectActiveAppName();
           activeApps = single ? [single] : [];
         }
         // Best-effort: extract each app's own icon (non-fatal, skipped on
         // any failure — see app-icon-service.ts for why).
         const activeAppIcons: Record<string, string> = {};
         for (const name of activeApps) {
-          const iconPath = appIconCache.getIconPath(name);
+          const iconPath = await appIconCache.getIconPath(name);
           if (iconPath) activeAppIcons[name] = iconPath;
         }
 
@@ -557,20 +561,47 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
  * of capture. Best-effort, non-fatal: returns null on unsupported
  * platforms or any failure (missing binary, timeout, no result).
  */
-export function detectActiveAppName(
+export type AsyncDetectExec = (
+  file: string,
+  args: string[],
+  options: { timeout?: number; env?: NodeJS.ProcessEnv },
+) => Promise<string>;
+
+const defaultDetectExec: AsyncDetectExec = async (file, args, options) => {
+  const { stdout } = await execFileAsync(file, args, options);
+  return stdout;
+};
+
+export async function detectActiveAppName(
   platform: NodeJS.Platform = process.platform,
-  exec: typeof execFileSync = execFileSync,
-): string | null {
+  exec: AsyncDetectExec = defaultDetectExec,
+): Promise<string | null> {
   try {
     if (platform === 'darwin') {
-      const result = exec('osascript', [
-        '-e', 'tell application "System Events" to get name of first application process whose frontmost is true',
-      ], { timeout: 2000 }).toString().trim();
+      const result = (
+        await exec('osascript', [
+          '-e', 'tell application "System Events" to get name of first application process whose frontmost is true',
+        ], { timeout: 2000 })
+      ).trim();
       return result || null;
     }
     if (platform === 'win32') {
+      // Add-Type compiles this small helper type from C# source fresh on
+      // every call unless told otherwise — real, measured cost on this
+      // machine: ~150ms extra per call versus loading an already-compiled
+      // copy. Compiled once to a cached .dll (survives across app
+      // restarts, not just this process's lifetime) and loaded via
+      // `Add-Type -Path` on every call after that. Confirmed directly:
+      // -OutputAssembly compiles and saves but does NOT load the type into
+      // the calling session by itself — `Add-Type -Path` must always run
+      // afterward regardless of which branch compiled it.
+      const helperDllPath = path.join(os.tmpdir(), 'marketeq-dtt-helpers', 'DttWin32.dll');
       const psScript = `
-Add-Type @'
+$dllPath = $env:DTT_HELPER_DLL
+$dllDir = Split-Path $dllPath -Parent
+if (-not (Test-Path $dllDir)) { New-Item -ItemType Directory -Path $dllDir -Force | Out-Null }
+if (-not (Test-Path $dllPath)) {
+  Add-Type -OutputAssembly $dllPath -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public class DttWin32 {
@@ -578,6 +609,8 @@ public class DttWin32 {
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 }
 '@
+}
+Add-Type -Path $dllPath
 $hwnd = [DttWin32]::GetForegroundWindow()
 $procId = 0
 [void][DttWin32]::GetWindowThreadProcessId($hwnd, [ref]$procId)
@@ -588,9 +621,11 @@ if ($p) {
   if ([string]::IsNullOrWhiteSpace($desc)) { $p.ProcessName } else { $desc }
 }
 `;
-      const result = exec('powershell.exe', [
-        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', psScript,
-      ], { timeout: 2000 }).toString().trim();
+      const result = (
+        await exec('powershell.exe', [
+          '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', psScript,
+        ], { timeout: 2000, env: { ...process.env, DTT_HELPER_DLL: helperDllPath } })
+      ).trim();
       return result || null;
     }
     return null;

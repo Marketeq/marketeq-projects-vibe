@@ -19,6 +19,7 @@ import {
   bulkTransferScreenshots,
 } from "@/service/http/screenshots"
 import { cn } from "@/utils/functions"
+import { getPublicApiUrl, getPublicBackendUrl } from "@/lib/runtime-urls"
 import { ROLE } from "@/types/user"
 import {
   ArrowLeft,
@@ -226,6 +227,31 @@ function AppIcons({
   )
 }
 
+// The backend never sends anything but its own server-derived iconUrl (see
+// screenshots.service.ts#confirm — a client-supplied value is always
+// dropped) — this is a second, independent check on the render side, so a
+// future backend regression can't turn into loading an arbitrary attacker
+// URL in another user's browser just by re-introducing a passthrough field.
+function isTrustedIconOrigin(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") return true
+    const trustedOrigins = [getPublicBackendUrl(), getPublicApiUrl(), process.env.NEXT_PUBLIC_R2_CDN_BASE]
+      .map((u) => {
+        if (!u) return null
+        try {
+          return new URL(u).origin
+        } catch {
+          return null
+        }
+      })
+      .filter((origin): origin is string => origin !== null)
+    return trustedOrigins.includes(parsed.origin)
+  } catch {
+    return false
+  }
+}
+
 function AppIcon({
   app,
   iconUrl,
@@ -236,9 +262,9 @@ function AppIcon({
   displayName?: string
 }) {
   const size = 14
-  if (iconUrl) {
+  if (iconUrl && isTrustedIconOrigin(iconUrl)) {
     // Real, OS-extracted icon — exact, not a guess. Falls through to the
-    // name-based guess below when unavailable.
+    // name-based guess below when unavailable or untrusted.
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img src={iconUrl} alt={app} width={size} height={size} className="rounded-[3px]" />

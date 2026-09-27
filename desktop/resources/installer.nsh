@@ -12,4 +12,10 @@
 !macro customUnInstall
   DeleteRegKey HKCU "Software\Classes\DTTFile"
   DeleteRegKey HKCU "Software\Classes\.dtt"
+  ; Local ActivityWatch tracking data (see activitywatch-tracker.ts) is
+  ; cleaned up on every stop(), but that only covers ending a session —
+  ; nothing removes it if the app itself is uninstalled. Delete it here so
+  ; no tracking data survives an uninstall. Scoped to just this folder, not
+  ; the rest of $APPDATA\marketeq-time-tracker (timer/task history, settings).
+  RMDir /r "$APPDATA\marketeq-time-tracker\dtt\activitywatch"
 !macroend

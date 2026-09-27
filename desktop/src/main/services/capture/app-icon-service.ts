@@ -30,7 +30,28 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Async shell-out signature used throughout this file (and injected in
+ * tests). Runs off the main thread's synchronous call stack — a slow or
+ * hung PowerShell/osascript process no longer freezes Electron's IPC,
+ * windows, and timers while it runs (previously execFileSync blocked the
+ * whole main process for the full duration of every call).
+ */
+export type AsyncExecFile = (
+  file: string,
+  args: string[],
+  options: { timeout?: number; env?: NodeJS.ProcessEnv },
+) => Promise<string>;
+
+const defaultExec: AsyncExecFile = async (file, args, options) => {
+  const { stdout } = await execFileAsync(file, args, options);
+  return stdout;
+};
 
 function slugify(name: string): string {
   return (
@@ -55,33 +76,40 @@ function slugify(name: string): string {
  * unchanged (aw-watcher-window's other capture strategies already report a
  * display name there).
  */
-export function resolveFriendlyAppName(
+export async function resolveFriendlyAppName(
   rawName: string,
   platform: NodeJS.Platform = process.platform,
-  exec: typeof execFileSync = execFileSync,
-): string {
+  exec: AsyncExecFile = defaultExec,
+): Promise<string> {
   const stripped = rawName.replace(/\.exe$/i, '');
   if (platform !== 'win32') return rawName;
   try {
-    const escaped = rawName.replace(/"/g, '`"');
-    const escapedStripped = stripped.replace(/"/g, '`"');
+    // rawName comes from the OS (a window's process/module name) — never
+    // interpolate it into the script text itself. PowerShell string
+    // interpolation inside "..." expands $(...) and $var, so a name like
+    // `x$(Start-Process calc)` would execute as code if pasted into the
+    // script. Passed via env instead: $env:VAR is always read as a plain
+    // string value, never parsed as PowerShell syntax, regardless of what
+    // characters it contains.
     const psScript = `
+$name = $env:DTT_APP_NAME
+$nameNoExt = $name -replace '\\.exe$', ''
 $p = Get-Process | Where-Object {
   try {
-    $_.ProcessName -eq "${escapedStripped}" -or $_.MainModule.ModuleName -eq "${escaped}"
+    $_.ProcessName -eq $nameNoExt -or $_.MainModule.ModuleName -eq $name
   } catch { $false }
 } | Select-Object -First 1
 if ($p) {
   try { $p.MainModule.FileVersionInfo.FileDescription } catch {}
 }
 `;
-    const result = exec(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', psScript],
-      { timeout: 2000 },
-    )
-      .toString()
-      .trim();
+    const result = (
+      await exec(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', psScript],
+        { timeout: 2000, env: { ...process.env, DTT_APP_NAME: rawName } },
+      )
+    ).trim();
     return result || stripped;
   } catch {
     return stripped;
@@ -92,25 +120,28 @@ if ($p) {
  * Best-effort: extracts the given app's own icon and writes it to a PNG
  * under outDir. Returns the file path, or null on any failure.
  */
-export function extractAppIconToFile(
+export async function extractAppIconToFile(
   appName: string,
   outDir: string,
   platform: NodeJS.Platform = process.platform,
-  exec: typeof execFileSync = execFileSync,
-): string | null {
+  exec: AsyncExecFile = defaultExec,
+): Promise<string | null> {
   try {
     fs.mkdirSync(outDir, { recursive: true });
     const outPath = path.join(outDir, `icon-${slugify(appName)}.png`);
 
     if (platform === 'darwin') {
-      const escaped = appName.replace(/"/g, '\\"');
-      const bundlePath = exec(
-        'osascript',
-        ['-e', `POSIX path of (path to application "${escaped}")`],
-        { timeout: 3000 },
-      )
-        .toString()
-        .trim();
+      // appName is untrusted (arbitrary app-reported metadata) — never
+      // interpolated into the AppleScript text. `on run argv` receives it
+      // as a real argument instead, so it's always treated as a plain
+      // string value by AppleScript, never as script syntax to parse.
+      const bundlePath = (
+        await exec(
+          'osascript',
+          ['-e', 'on run argv\n  return POSIX path of (path to application (item 1 of argv))\nend run', appName],
+          { timeout: 3000 },
+        )
+      ).trim();
       if (!bundlePath) return null;
 
       const plistPath = path.join(bundlePath, 'Contents', 'Info.plist');
@@ -125,26 +156,33 @@ export function extractAppIconToFile(
       const icnsPath = path.join(bundlePath, 'Contents', 'Resources', iconFile);
       if (!fs.existsSync(icnsPath)) return null;
 
-      exec('sips', ['-s', 'format', 'png', icnsPath, '--out', outPath], { timeout: 3000 });
+      await exec('sips', ['-s', 'format', 'png', icnsPath, '--out', outPath], { timeout: 3000 });
       return fs.existsSync(outPath) ? outPath : null;
     }
 
     if (platform === 'win32') {
-      const escapedName = appName.replace(/"/g, '`"');
+      // appName is untrusted (arbitrary app-reported metadata, e.g. a
+      // FileDescription string any executable can set) and must never be
+      // interpolated into the script text — see resolveFriendlyAppName
+      // above for why. Both appName and outPath (which we generate
+      // ourselves, but keep consistent with the same safe pattern) are
+      // passed via env instead.
+      //
       // Names can arrive two ways: a friendly display name from
       // detectActiveAppName (FileDescription, e.g. "Google Chrome"), or a
       // raw executable name from the ActivityWatch tracker (e.g.
       // "chrome.exe"). Match against either so extraction works
       // regardless of which tracker produced the name.
-      const escapedNameNoExt = appName.replace(/\.exe$/i, '').replace(/"/g, '`"');
-      const escapedOut = outPath.replace(/"/g, '`"');
       const psScript = `
 Add-Type -AssemblyName System.Drawing
+$name = $env:DTT_APP_NAME
+$nameNoExt = $name -replace '\\.exe$', ''
+$outPath = $env:DTT_OUT_PATH
 $p = Get-Process | Where-Object {
   try {
-    $_.MainModule.FileVersionInfo.FileDescription -eq "${escapedName}" -or
-    $_.ProcessName -eq "${escapedNameNoExt}" -or
-    $_.MainModule.ModuleName -eq "${escapedName}"
+    $_.MainModule.FileVersionInfo.FileDescription -eq $name -or
+    $_.ProcessName -eq $nameNoExt -or
+    $_.MainModule.ModuleName -eq $name
   } catch { $false }
 } | Select-Object -First 1
 if ($p) {
@@ -152,14 +190,14 @@ if ($p) {
   $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exePath)
   if ($icon) {
     $bmp = $icon.ToBitmap()
-    $bmp.Save("${escapedOut}", [System.Drawing.Imaging.ImageFormat]::Png)
+    $bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
   }
 }
 `;
-      exec(
+      await exec(
         'powershell.exe',
         ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', psScript],
-        { timeout: 3000 },
+        { timeout: 3000, env: { ...process.env, DTT_APP_NAME: appName, DTT_OUT_PATH: outPath } },
       );
       return fs.existsSync(outPath) ? outPath : null;
     }
@@ -189,16 +227,16 @@ export function readIconAsBase64(iconFilePath: string): string | null {
 export function createAppIconExtractionCache(
   outDir: string,
   platform: NodeJS.Platform = process.platform,
-  exec: typeof execFileSync = execFileSync,
+  exec: AsyncExecFile = defaultExec,
 ) {
   const cache = new Map<string, string | null>();
   return {
-    getIconPath(appName: string): string | null {
+    async getIconPath(appName: string): Promise<string | null> {
       if (cache.has(appName)) {
         const cached = cache.get(appName)!;
         if (cached && fs.existsSync(cached)) return cached;
       }
-      const extracted = extractAppIconToFile(appName, outDir, platform, exec);
+      const extracted = await extractAppIconToFile(appName, outDir, platform, exec);
       cache.set(appName, extracted);
       return extracted;
     },

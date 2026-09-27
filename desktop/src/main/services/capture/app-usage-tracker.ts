@@ -28,7 +28,7 @@ export interface AppUsageTracker {
   start: () => void;
   stop: () => void;
   /** Distinct app names seen since the last drain (plus one fresh sample); clears state. */
-  drain: () => string[];
+  drain: () => Promise<string[]>;
 }
 
 export function createAppUsageTracker(deps: Deps): AppUsageTracker {
@@ -38,9 +38,9 @@ export function createAppUsageTracker(deps: Deps): AppUsageTracker {
   const seen = new Set<string>();
   let handle: NodeJS.Timeout | null = null;
 
-  function sampleOnce(): void {
+  async function sampleOnce(): Promise<void> {
     try {
-      const name = detect();
+      const name = await detect();
       if (name) seen.add(name);
     } catch (err) {
       log.debug({ err }, 'sample failed (non-fatal)');
@@ -49,8 +49,8 @@ export function createAppUsageTracker(deps: Deps): AppUsageTracker {
 
   function start(): void {
     if (handle) return;
-    sampleOnce();
-    handle = setInterval(sampleOnce, pollIntervalMs);
+    void sampleOnce();
+    handle = setInterval(() => void sampleOnce(), pollIntervalMs);
     if (handle.unref) handle.unref();
     log.info({ pollIntervalMs }, 'app usage tracker started');
   }
@@ -61,8 +61,8 @@ export function createAppUsageTracker(deps: Deps): AppUsageTracker {
     log.info('app usage tracker stopped');
   }
 
-  function drain(): string[] {
-    sampleOnce(); // catch whatever's frontmost right now before returning
+  async function drain(): Promise<string[]> {
+    await sampleOnce(); // catch whatever's frontmost right now before returning
     const result = Array.from(seen);
     seen.clear();
     return result;

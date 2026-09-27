@@ -73,6 +73,14 @@ interface Deps {
   spawnFn?: typeof spawn;
   fetchFn?: typeof fetch;
   resolveNameFn?: typeof resolveFriendlyAppName;
+  /**
+   * Fired once with the result of the startup check (binaries missing,
+   * failed to bind, or came up successfully), and again with `false` if
+   * either child process exits unexpectedly afterward. Lets the caller run
+   * a fallback tracker only when ActivityWatch genuinely isn't working,
+   * instead of running both unconditionally for the whole session.
+   */
+  onAvailabilityChange?: (available: boolean) => void;
 }
 
 export interface ActivityWatchTracker extends AppUsageTracker {
@@ -105,6 +113,7 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
   const port = deps.options?.port ?? DEFAULT_PORT;
   const syncIntervalMs = deps.options?.syncIntervalMs ?? SYNC_INTERVAL_MS;
   const dbPath = deps.options?.dbPath;
+  const onAvailabilityChange = deps.onAvailabilityChange ?? (() => {});
   const spawnFn = deps.spawnFn ?? spawn;
   const fetchFn = deps.fetchFn ?? fetch;
   const resolveNameFn = deps.resolveNameFn ?? resolveFriendlyAppName;
@@ -129,10 +138,10 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
   // round-trip on Windows — cache it per session so each distinct app only
   // pays that cost once, not once per 5s sync tick.
   const nameCache = new Map<string, string>();
-  function friendlyName(raw: string): string {
+  async function friendlyName(raw: string): Promise<string> {
     let resolved = nameCache.get(raw);
     if (resolved === undefined) {
-      resolved = resolveNameFn(raw, platform);
+      resolved = await resolveNameFn(raw, platform);
       nameCache.set(raw, resolved);
     }
     return resolved;
@@ -168,15 +177,74 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
         `&end=${encodeURIComponent(new Date(to).toISOString())}`;
       const res = await fetchFn(url);
       if (res.ok) {
-        const events = (await res.json()) as Array<{ data?: { app?: string } }>;
+        const events = (await res.json()) as Array<{ id?: number; data?: { app?: string } }>;
         for (const e of events) {
           const app = e.data?.app;
-          if (app) seen.add(friendlyName(app));
+          if (app) seen.add(await friendlyName(app));
         }
+        // Retention: we've extracted everything this feature ever needs
+        // (just the app name) — delete the underlying events from
+        // ActivityWatch's own database immediately rather than letting
+        // them accumulate indefinitely. Confirmed directly against the
+        // real binary: DELETE /api/0/buckets/<bucket>/events/<id> -> 200.
+        // Best-effort per event; one failed delete doesn't block the rest
+        // or the next sync (they'll fall outside the next [from, to]
+        // window either way once syncedThrough advances).
+        await Promise.all(
+          events
+            .filter((e) => e.id !== undefined)
+            .map((e) =>
+              fetchFn(
+                `http://127.0.0.1:${port}/api/0/buckets/${encodeURIComponent(bucketId)}/events/${e.id}`,
+                { method: 'DELETE' },
+              ).catch((err) => log.debug({ err, id: e.id }, 'failed to delete synced AW event (non-fatal)')),
+            ),
+        );
       }
       syncedThrough = to;
     } catch (err) {
       log.debug({ err }, 'activitywatch event sync failed (non-fatal)');
+    }
+  }
+
+  // Written after both processes spawn successfully, removed on a clean
+  // stop(). If it's still there on the next start(), the previous run
+  // crashed or was force-quit without stopping cleanly — those two
+  // processes are orphaned, still running, and (per the review that found
+  // this) the next launch would otherwise find the port already taken.
+  // Only meaningful when dbPath is set (real usage always sets it — see
+  // index.ts); skipped entirely otherwise, e.g. in tests.
+  const pidFilePath = dbPath ? path.join(dbPath, 'activitywatch.pid') : null;
+
+  function killOrphansFromPreviousRun(): void {
+    if (!pidFilePath || !fs.existsSync(pidFilePath)) return;
+    try {
+      const { serverPid, watcherPid } = JSON.parse(fs.readFileSync(pidFilePath, 'utf8')) as {
+        serverPid?: number;
+        watcherPid?: number;
+      };
+      // Best-effort: a PID could in principle have been reused by an
+      // unrelated process since the crash, but Windows/macOS don't reuse
+      // PIDs immediately, and the realistic window here is "the next time
+      // this app is opened" — not a guarantee, just a reasonable trade-off
+      // for a background cleanup, not something depended on for safety.
+      for (const pid of [serverPid, watcherPid]) {
+        if (!pid) continue;
+        try {
+          process.kill(pid);
+          log.info({ pid }, 'killed orphaned activitywatch process from a previous crashed run');
+        } catch {
+          /* already gone — nothing to clean up */
+        }
+      }
+    } catch (err) {
+      log.debug({ err }, 'failed to read/parse stale activitywatch pid file (non-fatal)');
+    } finally {
+      try {
+        fs.unlinkSync(pidFilePath);
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -185,8 +253,10 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
     if (!fs.existsSync(serverPath) || !fs.existsSync(watcherPath)) {
       log.info({ serverPath, watcherPath }, 'activitywatch binaries not present, unavailable');
       available = false;
+      onAvailabilityChange(false);
       return;
     }
+    killOrphansFromPreviousRun();
     try {
       const serverArgs = ['--port', String(port)];
       if (dbPath) {
@@ -205,15 +275,47 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
         windowsHide: true,
       });
       serverProc.on('error', (err) => log.warn({ err }, 'aw-server-rust spawn error'));
-      serverProc.on('exit', (code) => log.info({ code }, 'aw-server-rust exited'));
+      serverProc.on('exit', (code) => {
+        log.info({ code }, 'aw-server-rust exited');
+        if (available) {
+          available = false;
+          onAvailabilityChange(false);
+        }
+      });
 
-      watcherProc = spawnFn(watcherPath, ['--port', String(port)], {
+      // --exclude-title: aw-watcher-window records the full window title by
+      // default (document names, email subjects, and on macOS the active
+      // browser URL including incognito) — far more than this feature needs
+      // or should retain. We only ever read data.app; --exclude-title makes
+      // the watcher itself replace the title field before it's ever written
+      // to the local database, rather than us discarding it after the fact.
+      // Verified directly against the real binary: with this flag, captured
+      // events show `"title":"excluded"` while `"app"` is unaffected.
+      watcherProc = spawnFn(watcherPath, ['--port', String(port), '--exclude-title'], {
         stdio: 'ignore',
         windowsHide: true,
         cwd: path.dirname(watcherPath),
       });
       watcherProc.on('error', (err) => log.warn({ err }, 'aw-watcher-window spawn error'));
-      watcherProc.on('exit', (code) => log.info({ code }, 'aw-watcher-window exited'));
+      watcherProc.on('exit', (code) => {
+        log.info({ code }, 'aw-watcher-window exited');
+        if (available) {
+          available = false;
+          onAvailabilityChange(false);
+        }
+      });
+
+      if (pidFilePath && serverProc.pid && watcherProc.pid) {
+        try {
+          fs.mkdirSync(path.dirname(pidFilePath), { recursive: true });
+          fs.writeFileSync(
+            pidFilePath,
+            JSON.stringify({ serverPid: serverProc.pid, watcherPid: watcherProc.pid }),
+          );
+        } catch (err) {
+          log.debug({ err }, 'failed to write activitywatch pid file (non-fatal)');
+        }
+      }
 
       waitForServer().then((ok) => {
         available = ok;
@@ -223,17 +325,31 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
           syncHandle = setInterval(() => void syncOnce(), syncIntervalMs);
           if (syncHandle.unref) syncHandle.unref();
         }
+        onAvailabilityChange(ok);
       });
     } catch (err) {
       log.warn({ err }, 'failed to spawn activitywatch processes (non-fatal)');
       available = false;
       stop();
+      onAvailabilityChange(false);
     }
   }
 
   function stop(): void {
     if (syncHandle) clearInterval(syncHandle);
     syncHandle = null;
+    // Retention backstop: wipe anything left in the bucket (events that
+    // arrived after the last sync but before stop) so nothing outlives the
+    // session that generated it. Best-effort and fired before the server
+    // process is killed below, since it needs to still be running to
+    // answer the request. Confirmed directly against the real binary:
+    // DELETE /api/0/buckets/<bucket>?force=1 -> 200.
+    if (available && hostname) {
+      const bucketId = `aw-watcher-window_${hostname}`;
+      fetchFn(`http://127.0.0.1:${port}/api/0/buckets/${encodeURIComponent(bucketId)}?force=1`, {
+        method: 'DELETE',
+      }).catch((err) => log.debug({ err }, 'failed to wipe AW bucket on stop (non-fatal)'));
+    }
     try {
       watcherProc?.kill();
     } catch {
@@ -244,6 +360,15 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
     } catch {
       /* ignore */
     }
+    // A clean stop shut both processes down properly — nothing orphaned,
+    // nothing for the next start() to clean up.
+    if (pidFilePath) {
+      try {
+        fs.unlinkSync(pidFilePath);
+      } catch {
+        /* ignore — may not exist */
+      }
+    }
     watcherProc = null;
     serverProc = null;
     available = false;
@@ -253,7 +378,11 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
     return available;
   }
 
-  function drain(): string[] {
+  // Synchronous in practice (just reads the in-memory Set that syncOnce's
+  // background interval already populated) — async only to satisfy the
+  // shared AppUsageTracker interface, which the polling tracker genuinely
+  // needs async for (see app-usage-tracker.ts).
+  async function drain(): Promise<string[]> {
     const result = Array.from(seen);
     seen.clear();
     return result;
