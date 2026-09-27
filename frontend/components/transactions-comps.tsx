@@ -58,7 +58,6 @@ import {
   XCircle,
 } from "@blend-metrics/icons"
 import {
-  PayoneerDefault,
   StripeDefault,
 } from "@blend-metrics/icons/payment-methods"
 import { type Stripe as StripeJSInstance, loadStripe } from "@stripe/stripe-js"
@@ -252,48 +251,6 @@ const WiseIconV2 = ({ className }: { className?: string }) => (
     )}
   >
     <WiseGlyphV2 className="w-1/2 h-1/2" />
-  </div>
-)
-
-const PayoneerIcon = ({ className }: { className?: string }) => (
-  <PayoneerDefault className={cn("shrink-0", className)} />
-)
-
-// Bare glyph paths lifted directly from PayoneerDefault, minus the two rects
-// (fill card + stroke border) it draws around them — used only where a
-// circular badge is needed (Add Deposit Method list), same pattern as
-// WiseIcon's own circular badge.
-
-const PayoneerGlyph = ({ className }: { className?: string }) => (
-  <svg
-    viewBox="0 0 34 24"
-    className={cn("shrink-0", className)}
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      fill="#000"
-      fillRule="evenodd"
-      clipRule="evenodd"
-      d="m4 14.406.049-.271c.024-.137.047-.269.074-.401l.341-1.794.342-1.793c.016-.076.038-.126.113-.139.589-.088 1.18-.151 1.77-.003.512.126.871.49.93.916.124.849-.37 1.528-1.104 1.77-.387.127-.78.159-1.18.12-.095-.009-.123.017-.139.108-.085.464-.173.925-.264 1.386-.007.038-.041.098-.063.098-.214.005-.425.004-.643.004H4Zm1.354-2.346c.061 0 .12.002.179.004.123.003.24.006.352-.007.328-.034.59-.183.737-.495.167-.354.047-.73-.268-.84-.223-.08-.453-.063-.683-.032-.028.003-.066.048-.072.076l-.134.704v.001l-.111.59ZM9.58 13.8c-.05.052-.097.104-.142.155-.099.11-.192.216-.302.3-.33.255-.708.312-1.09.135-.377-.173-.531-.511-.547-.909-.034-.836.258-1.528.96-2.008.441-.303.948-.395 1.473-.366.174.01.347.04.52.07.093.017.186.033.28.047.107.015.123.075.104.167l-.076.396c-.096.492-.191.983-.27 1.476a8.889 8.889 0 0 0-.082.858l-.01.15c-.006.1-.031.141-.135.138a9.07 9.07 0 0 0-.586 0c-.1.003-.135-.034-.125-.132.009-.108.014-.22.02-.335l.008-.142Zm.22-1.951c-.305-.085-.56-.025-.774.155a1.505 1.505 0 0 0-.551 1.31c.01.16.072.316.242.385.17.07.325.019.457-.095.079-.07.154-.148.21-.237.223-.34.283-.723.345-1.112.021-.135.043-.271.071-.406Zm4.46 1.768c.174.556.649.865 1.483.865.573-.016 1.143-.341 1.498-1.01.19-.36.258-.745.233-1.15-.022-.388-.176-.716-.49-.95-.331-.246-.709-.297-1.112-.252-1.347.151-1.898 1.581-1.611 2.497Zm.897-.464v-.048c.01-.363.098-.7.315-1a.66.66 0 0 1 .384-.272c.334-.076.608.117.64.48a1.67 1.67 0 0 1-.35 1.212.597.597 0 0 1-.415.24c-.312.029-.548-.183-.573-.514a1.125 1.125 0 0 1-.001-.098Zm3.066-1.967h.8c-.013.17-.025.335-.04.502l.084-.08c.059-.057.115-.11.173-.16.312-.272.668-.392 1.08-.325.34.057.576.306.614.656.04.365-.027.719-.095 1.072l-.015.078-.082.428v.002c-.06.314-.12.628-.183.94-.01.04-.057.1-.088.104-.27.006-.542.003-.812 0-.01 0-.018-.005-.032-.012a.549.549 0 0 0-.018-.01 59.911 59.911 0 0 0 .352-2.011.682.682 0 0 0-.003-.212c-.025-.243-.205-.353-.438-.28-.226.072-.362.249-.472.444-.163.288-.22.607-.277.926l-.042.236c-.048.27-.096.54-.15.812-.01.04-.056.104-.088.107-.22.008-.443.007-.68.007h-.186c.208-1.087.403-2.15.598-3.224Zm4.54 2.56c-.334-.04-.558-.274-.536-.603l.208.002c.137.003.272.005.406-.002.324-.019.642-.072.938-.22.378-.19.554-.503.526-.91-.029-.414-.252-.713-.652-.833-.598-.18-1.149-.054-1.618.347-.57.486-.783 1.13-.702 1.866.057.52.34.893.857 1.026.554.142 1.098.066 1.624-.149.038-.015.082-.075.078-.113a8.988 8.988 0 0 0-.038-.462l-.012-.116h-.024c-.008-.002-.013-.002-.017 0-.034.013-.07.025-.1.038a1.942 1.942 0 0 1-.939.13Zm.487-1.398c-.192.1-.689.16-.931.11.05-.42.494-.748.868-.656.126.031.218.097.24.233.022.133-.044.243-.177.313Zm2.122.808c-.028.31.192.546.529.59.314.038.617-.01.913-.116l.082-.032.081-.032.02.197c.014.134.027.264.034.394.003.038-.041.098-.076.114-.535.22-1.086.296-1.65.141-.506-.138-.77-.508-.833-1.013-.079-.647.088-1.231.538-1.711.485-.515 1.08-.698 1.766-.508.418.116.642.42.667.846.025.416-.164.729-.557.912-.397.183-.818.212-1.247.221-.085-.003-.173-.003-.267-.003Zm.26-.682c.14-.007.274-.014.407-.032.126-.015.252-.053.365-.107.123-.054.183-.167.164-.306-.019-.133-.107-.196-.23-.227-.371-.101-.834.24-.875.681l.17-.009Zm1.984 1.272c-.04.215-.079.427-.12.66h.187c.242.001.473.002.704-.006.022 0 .057-.06.063-.098.032-.158.062-.316.092-.475.055-.292.11-.583.179-.87.154-.638.415-.859 1.036-.94.025-.004.066-.032.072-.054.04-.182.075-.365.112-.554L30 11.11c-.598-.063-.932.284-1.221.71l.004-.061.046-.583h-.193c-.186 0-.365-.001-.543.004-.026.003-.073.06-.076.094-.067.812-.226 1.605-.385 2.398l-.015.074Z"
-    />
-    <path
-      fill="#FC461E"
-      fillRule="evenodd"
-      clipRule="evenodd"
-      d="m19.284 7.377-.096-.024c-.098 0-.195 0-.3.003a6.169 6.169 0 0 0-.106.023l-.132.028a5.177 5.177 0 0 0-1.373.48 10.526 10.526 0 0 0-2.559 1.837c-.507.486-.998.995-1.473 1.515a14.058 14.058 0 0 0-2.118 3.028c-.293.572-.558 1.156-.677 1.79-.022.117.016.253.053.37.016.047.104.082.164.1.016.007.063-.072.085-.116l.024-.053c.137-.299.322-.704.482-.972.34-.568.608-1.008.99-1.548a19.19 19.19 0 0 1 2.072-2.472c.709-.71 1.418-1.345 2.309-1.825.409-.218.828-.433 1.256-.61a9.703 9.703 0 0 1 2.304-.63c.085-.014.198-.08.227-.15.025-.062-.035-.182-.095-.242-.242-.25-.526-.44-.878-.496a1.48 1.48 0 0 1-.16-.036Zm-7.207 4.308c.151-.41.227-.837.236-1.279l-.01-.142c-.008-.095-.015-.19-.027-.284-.085-.733-.4-1.355-.9-1.888a.6.6 0 0 0-.224-.136c-.082-.032-.135.016-.13.11l.001.006c.006.08.013.164.028.244l.066.379c.078.449.157.9.243 1.348.085.451.179.9.28 1.345.034.142.091.284.16.417.054.1.13.091.199 0 .031-.038.063-.076.078-.12Z"
-    />
-  </svg>
-)
-
-const PayoneerCircleIcon = ({ className }: { className?: string }) => (
-  <div
-    className={cn(
-      "size-9 rounded-full border border-gray-200 bg-white flex items-center justify-center shrink-0",
-      className
-    )}
-  >
-    <PayoneerGlyph className="size-6" />
   </div>
 )
 
@@ -1216,7 +1173,7 @@ function editBankNamePlaceholder(country: string): string {
     case "GB":
       return "e.g. Bank of London"
     case "JP":
-      return "e.g. 三井住友銀行 (Mitsui Sumitomo)"
+      return "e.g. ミツイスミトモ (Mitsui Sumitomo)"
     case "SWIFT":
       return "e.g. DBS Bank"
     default:
@@ -1254,6 +1211,7 @@ function createBlankEditBankForm(bankCountry = "") {
     bankSwiftBic: "",
     bankCode: "",
     bankBranchCode: "",
+    bankAccountType: "",
     bankCountry,
   }
 }
@@ -1337,6 +1295,7 @@ function isEditBankInfoComplete(form: ReturnType<typeof createBlankEditBankForm>
       return (
         isValidJpBankCode(form.bankCode) &&
         isValidJpBranchCode(form.bankBranchCode) &&
+        (form.bankAccountType === "FUTSU" || form.bankAccountType === "TOUZA") &&
         /^\d{7}$/.test(form.bankAccountNumber)
       )
     case "SWIFT":
@@ -1371,6 +1330,7 @@ const BANK_FIELD_ERROR_MESSAGES: Record<string, string> = {
   ERR_BANK_BSB_INVALID: "BSB number must be 6 digits.",
   ERR_BANK_CODE_INVALID: "Bank code must be 4 digits.",
   ERR_BANK_BRANCH_CODE_INVALID: "Branch code must be 3 digits.",
+  ERR_BANK_ACCOUNT_TYPE_INVALID: "Select an account type.",
   ERR_BANK_INSTITUTION_INVALID: "Institution number must be 3 digits.",
   ERR_BANK_TRANSIT_INVALID: "Transit number must be 5 digits.",
   ERR_BANK_CLABE_INVALID: "CLABE must be 18 digits.",
@@ -1913,14 +1873,14 @@ const PROMO_BANNERS: { id: string; emoji: string; content: React.ReactNode }[] =
     },
   ]
 
-// "first...last" masking for plain IDs (no @) — used for Wise/Payoneer
+// "first...last" masking for plain IDs (no @) — used for Wise
 // account identifiers, the same masking style bank account numbers use
 // elsewhere in this list (e.g. "...4553").
 const maskId = (value: string): string =>
   value.length > 6 ? `${value.slice(0, 1)}...${value.slice(-3)}` : value
 
 // The deposit-methods LIST endpoint doesn't return the per-provider raw
-// fields (wiseAccountId/payoneerPayeeId/cryptoAddress) — only
+// fields (wiseAccountId/cryptoAddress) — only
 // displayLabel (e.g. "Wise (customer123@example.com)" for OAuth methods,
 // "TRANSAK ETH ••••1111" for crypto). Fall back to parsing that when the
 // raw field is missing, so the sub-label isn't just blank.
@@ -1935,12 +1895,6 @@ export const formatMethodOptionLabel = (m: any): string => {
   if (m.methodType === "WISE") {
     const id = m.wiseAccountId ?? emailFromDisplayLabel(m.displayLabel)
     return [m.nickname || "Wise", id ? maskId(id) : ""]
-      .filter(Boolean)
-      .join(" ")
-  }
-  if (m.methodType === "PAYONEER") {
-    const id = m.payoneerPayeeId ?? emailFromDisplayLabel(m.displayLabel)
-    return [m.nickname || "Payoneer", id ? maskId(id) : ""]
       .filter(Boolean)
       .join(" ")
   }
@@ -1966,17 +1920,12 @@ function splitMethodLabel(m: {
   nickname?: string | null
   displayLabel?: string | null
   wiseAccountId?: string | null
-  payoneerPayeeId?: string | null
   cryptoAddress?: string | null
   cryptoProvider?: string | null
 }): { name: string; sub: string } {
   if (m.methodType === "WISE") {
     const id = m.wiseAccountId ?? emailFromDisplayLabel(m.displayLabel)
     return { name: m.nickname || "Wise", sub: id ? maskId(id) : "" }
-  }
-  if (m.methodType === "PAYONEER") {
-    const id = m.payoneerPayeeId ?? emailFromDisplayLabel(m.displayLabel)
-    return { name: m.nickname || "Payoneer", sub: id ? maskId(id) : "" }
   }
   if (m.methodType === "CRYPTO") {
     const address = m.cryptoAddress
@@ -2091,14 +2040,17 @@ export const OverviewTab = ({
   // fetch previously rendered identically to "No previous payouts yet".
   const [previousPayoutError, setPreviousPayoutError] = React.useState(false)
   // "Recent Activity" has no dedicated activity-feed endpoint in payout-service — this
-  // derives real entries from the same payout history list rather than showing mock data.
+  // derives real entries from the payout history list plus the schedule/split
+  // audit trail (GET /payouts/schedule/activity), merged and sorted by sortAt,
+  // rather than showing mock data.
   const [recentActivity, setRecentActivity] = React.useState<
     {
       id: string
       title: string
       description: string
       time: string
-      kind: "scheduled" | "sent" | "processing" | "failed" | "cancelled"
+      kind: "scheduled" | "sent" | "processing" | "failed" | "cancelled" | "settings"
+      sortAt: number
     }[]
   >([])
   const [recentActivityLoading, setRecentActivityLoading] = React.useState(true)
@@ -2124,18 +2076,36 @@ export const OverviewTab = ({
       .catch((e) => console.error("Recent earnings fetch failed:", e))
   }, [])
 
-  // Sourced from real payout history — no dedicated activity-feed endpoint
-  // exists in payout-service; see toActivityItem().
+  // Sourced from real payout history plus the schedule/split audit trail — no
+  // single dedicated activity-feed endpoint exists in payout-service; see
+  // toActivityItem() and toScheduleActivityItem(). A schedule/split change
+  // (e.g. saving Setup Your Direct Deposit Schedule) never produces a
+  // PayoutRequest row, so without the second fetch it never appeared here at
+  // all — only payout lifecycle events did.
   const loadRecentActivity = React.useCallback(async () => {
     setRecentActivityError(false)
     try {
-      const res = await payoutFetch(`/payouts?page=1&pageSize=8`)
-      if (!res.ok) {
+      const [payoutsRes, scheduleRes] = await Promise.all([
+        payoutFetch(`/payouts?page=1&pageSize=8`),
+        payoutFetch(`/payouts/schedule/activity`),
+      ])
+      if (!payoutsRes.ok) {
         setRecentActivityError(true)
         return
       }
-      const d = await res.json()
-      setRecentActivity((d.payouts ?? []).map((p: any) => toActivityItem(p)))
+      const d = await payoutsRes.json()
+      const payoutItems = (d.payouts ?? []).map((p: any) => toActivityItem(p))
+      // A failure here shouldn't blank out the payout-derived entries that did
+      // load — just show fewer items rather than erroring the whole feed.
+      const scheduleItems = scheduleRes.ok
+        ? ((await scheduleRes.json()) ?? []).map((a: any) =>
+            toScheduleActivityItem(a)
+          )
+        : []
+      const merged = [...payoutItems, ...scheduleItems]
+        .sort((a, b) => b.sortAt - a.sortAt)
+        .slice(0, 8)
+      setRecentActivity(merged)
     } catch (e) {
       console.error("Failed to fetch recent activity", e)
       setRecentActivityError(true)
@@ -2504,6 +2474,7 @@ export const OverviewTab = ({
           case "JP":
             payload.bankCode = addForm.bankCode
             payload.bankBranchCode = addForm.bankBranchCode
+            payload.bankAccountType = addForm.accountType
             break
           case "MX":
             payload.bankClabe = addForm.bankClabe
@@ -2726,14 +2697,14 @@ export const OverviewTab = ({
     }
   }
 
-  // AC-07.03/07.04, AC-08.03/08.04: real OAuth redirect for Wise/Payoneer — POSTs
+  // AC-07.03/07.04: real OAuth redirect for Wise — POSTs
   // to create the pending method (payout-service returns a real provider oauthUrl
   // via oauth.service.ts's provider config), then navigates the browser there.
   // The provider redirects back to GET /v1/oauth/:provider/callback, which lands
   // the contractor back on this page with ?oauth=success|error (handled by the
   // effect below, mirroring how OverviewTab already reacts to other async state).
   const [oauthConnecting, setOauthConnecting] = React.useState(false)
-  const handleConnectOAuth = async (methodType: "WISE" | "PAYONEER") => {
+  const handleConnectOAuth = async (methodType: "WISE") => {
     setOauthConnecting(true)
     try {
       const res = await payoutFetch(`/deposit-methods`, {
@@ -2749,7 +2720,7 @@ export const OverviewTab = ({
       // ?oauth=success&methodId=... or ?oauth=error&code=... — no provider
       // name on the error path (nothing was created yet to read it off of).
       // Stash it client-side across the full-page redirect so the returning
-      // "Wise/Payoneer Connected" / "Couldn't Connect" screen knows
+      // "Wise Connected" / "Couldn't Connect" screen knows
       // which provider it's reporting on.
       sessionStorage.setItem("oauth_pending_provider", methodType)
       window.location.href = oauthUrl
@@ -2812,7 +2783,7 @@ export const OverviewTab = ({
   // just a toast — the toast alone gave no confirmation of *which* account
   // got linked or a way to set it default/retry in place.
   const [oauthResult, setOauthResult] = React.useState<{
-    provider: "WISE" | "PAYONEER"
+    provider: "WISE"
     status: "success" | "error"
     method?: any
     errorMessage?: string
@@ -2825,7 +2796,6 @@ export const OverviewTab = ({
     const provider =
       (sessionStorage.getItem("oauth_pending_provider") as
         | "WISE"
-        | "PAYONEER"
         | null) ?? "WISE"
     sessionStorage.removeItem("oauth_pending_provider")
     if (result === "success") {
@@ -3041,6 +3011,7 @@ export const OverviewTab = ({
           case "JP":
             payload.bankCode = editBankForm.bankCode
             payload.bankBranchCode = editBankForm.bankBranchCode
+            payload.bankAccountType = editBankForm.bankAccountType
             break
           case "SEPA":
             payload.bankIban = editBankForm.bankIban
@@ -3187,10 +3158,6 @@ export const OverviewTab = ({
       const id = m.wiseAccountId ?? emailFromDisplayLabel(m.displayLabel)
       return { name: m.nickname || "Wise", sub: id ? maskId(id) : "" }
     }
-    if (m.methodType === "PAYONEER") {
-      const id = m.payoneerPayeeId ?? emailFromDisplayLabel(m.displayLabel)
-      return { name: m.nickname || "Payoneer", sub: id ? maskId(id) : "" }
-    }
     // BANK_MANUAL / BANK_STRIPE — show nickname if set, else displayLabel.
     // displayLabel is "${bankName} ••••${last4}" (see the fallback built at
     // stripe-connect time) — split it so the masked suffix renders as its
@@ -3210,8 +3177,8 @@ export const OverviewTab = ({
   const getMethodStatusBadge = (
     m: any
   ): { visual: "success" | "warning" | "error" | "gray"; label: string } => {
-    // Checked ahead of verificationStatus — an OAuth-linked method (Wise/
-    // Payoneer) can be "verified" from its original link yet still need the
+    // Checked ahead of verificationStatus — an OAuth-linked method (Wise)
+    // can be "verified" from its original link yet still need the
     // contractor to re-authorize (e.g. a revoked/expired provider token).
     // That's a distinct, actionable state from any verificationStatus value,
     // so it takes over the badge entirely rather than being layered on top.
@@ -4665,7 +4632,7 @@ export const OverviewTab = ({
               </div>
             )}
 
-            {/* Wise/Payoneer OAuth return — dedicated "X Connected" /
+            {/* Wise OAuth return — dedicated "X Connected" /
               "Couldn't Connect to X" screens (Figma), replacing what used to be
               a toast-only confirmation with no way to set default or retry in place. */}
             {oauthResult && (
@@ -4689,27 +4656,16 @@ export const OverviewTab = ({
                   {oauthResult.status === "success" ? (
                     <div className="text-center py-2 space-y-4">
                       <div className="flex flex-col items-center gap-1">
-                        {oauthResult.provider === "WISE" ? (
-                          <WiseIconV2 className="size-12" />
-                        ) : (
-                          <PayoneerDefault className="size-10" />
-                        )}
+                        <WiseIconV2 className="size-12" />
                       </div>
                       <h4 className="text-base font-semibold text-dark-blue-400">
-                        {oauthResult.provider === "WISE" ? "Wise" : "Payoneer"}{" "}
-                        Connected
+                        Wise Connected
                       </h4>
                       <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-3 text-left">
-                        {oauthResult.provider === "WISE" ? (
-                          <WiseIconV2 className="size-5 rounded-full" />
-                        ) : (
-                          <PayoneerDefault className="size-5" />
-                        )}
+                        <WiseIconV2 className="size-5 rounded-full" />
                         <div className="flex flex-col items-start min-w-0">
                           <span className="text-sm font-medium text-dark-blue-400">
-                            {oauthResult.provider === "WISE"
-                              ? "Wise Account"
-                              : "Payoneer Account"}
+                            Wise Account
                           </span>
                           <span className="text-xs text-gray-400 truncate">
                             {oauthResult.method?.displayLabel ??
@@ -4755,12 +4711,11 @@ export const OverviewTab = ({
                         <AlertTriangle className="size-6 text-warning-600" />
                       </div>
                       <h4 className="text-base font-semibold text-dark-blue-400">
-                        Couldn't Connect to{" "}
-                        {oauthResult.provider === "WISE" ? "Wise" : "Payoneer"}
+                        Couldn't Connect to Wise
                       </h4>
                       <p className="text-sm text-gray-500">
                         {oauthResult.errorMessage ??
-                          `We were unable to link your ${oauthResult.provider === "WISE" ? "Wise" : "Payoneer"} account. You may have canceled the login or encountered a connection issue.`}
+                          `We were unable to link your Wise account. You may have canceled the login or encountered a connection issue.`}
                       </p>
                       <div className="flex flex-col gap-2">
                         <Button
@@ -4887,9 +4842,6 @@ export const OverviewTab = ({
                                 <BankIcon className="size-5 text-gray-500" />
                               ),
                             },
-                            // PayoneerCircleIcon uses the bare glyph paths (no
-                            // card/border baked in, unlike PayoneerIcon) inside its
-                            // own circular badge — matches WiseIcon's own circular badge below.
                             {
                               type: "WISE",
                               label: "Wise",
@@ -4911,20 +4863,6 @@ export const OverviewTab = ({
                                   <WiseGlyphV2 className="w-1/2 h-1/2" />
                                 </div>
                               ),
-                              selfContained: true,
-                            },
-                            {
-                              type: "PAYONEER",
-                              label: "Payoneer",
-                              // Now settles over the same Stripe ACH rail as
-                              // Direct Deposit (see BANK_CONNECT above) —
-                              // Payoneer is only used to OAuth-link the
-                              // banking details, not to move the money itself.
-                              sub: [
-                                "Transfer reflects in 1–2 business days",
-                                "Charges $0–$1 per transaction",
-                              ],
-                              icon: <PayoneerCircleIcon />,
                               selfContained: true,
                             },
                             {
@@ -5033,7 +4971,7 @@ export const OverviewTab = ({
                     // nothing here — this is purely so the contractor sees the "your
                     // credentials are never shared with Marketeq" disclosure before we
                     // hand off to Stripe's hosted modal, matching the consent step every
-                    // other provider — Wise/Payoneer — already has).
+                    // other provider — Wise — already has).
                     <div className="p-6 relative">
                       <div className="absolute top-4 right-4">
                         <IconButton
@@ -5389,7 +5327,7 @@ export const OverviewTab = ({
                             </p>
                             {/* Storybook Buttons/Button > GoogleOutlined pattern — outlined/
                               gray with a leftIcon brand mark, matching the other provider
-                              connect buttons (Wise/Payoneer) and GoogleLoginButton.tsx. */}
+                              connect buttons (Wise) and GoogleLoginButton.tsx. */}
                             <Button
                               variant="outlined"
                               visual="gray"
@@ -5560,6 +5498,11 @@ export const OverviewTab = ({
                           bankClabe: "",
                           bankCnapsCode: "",
                           bankBik: "",
+                          // Shared by US (CHECKING/SAVINGS) and JP (FUTSU/TOUZA):
+                          // keep the US "Checking" default instead of a blank
+                          // select, and make JP pick explicitly.
+                          accountType:
+                            detectBankRegion(code) === "US" ? "CHECKING" : "",
                         }))
                       const saveDisabled =
                         !addForm.nickname.trim() ||
@@ -5589,6 +5532,8 @@ export const OverviewTab = ({
                         (region === "JP" &&
                           (!isValidJpBankCode(addForm.bankCode) ||
                             !isValidJpBranchCode(addForm.bankBranchCode) ||
+                            (addForm.accountType !== "FUTSU" &&
+                              addForm.accountType !== "TOUZA") ||
                             !/^\d{7}$/.test(addForm.bankAccountNumber))) ||
                         (region === "MX" && !isValidClabe(addForm.bankClabe)) ||
                         (region === "CN" &&
@@ -5772,6 +5717,86 @@ export const OverviewTab = ({
                                 </Select>
                               </div>
                             )}
+                            {region === "JP" && (
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
+                                    Bank Code
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
+                                    placeholder="4 digits"
+                                    value={addForm.bankCode}
+                                    onChange={(e) =>
+                                      setAddForm((f) => ({
+                                        ...f,
+                                        bankCode: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                  {addForm.bankCode.length > 0 &&
+                                    !isValidJpBankCode(addForm.bankCode) && (
+                                      <p className="text-xs text-red-500 mt-1">
+                                        4 digits required
+                                      </p>
+                                    )}
+                                </div>
+                                <div>
+                                  <Label size="xs" className="text-gray-500 mb-1 block">
+                                    Branch Code
+                                  </Label>
+                                  <Input
+                                    className="w-full px-3 py-2 text-sm"
+                                    placeholder="3 digits"
+                                    value={addForm.bankBranchCode}
+                                    onChange={(e) =>
+                                      setAddForm((f) => ({
+                                        ...f,
+                                        bankBranchCode: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                  {addForm.bankBranchCode.length > 0 &&
+                                    !isValidJpBranchCode(
+                                      addForm.bankBranchCode
+                                    ) && (
+                                      <p className="text-xs text-red-500 mt-1">
+                                        3 digits required
+                                      </p>
+                                    )}
+                                </div>
+                              </div>
+                            )}
+                            {region === "JP" && (
+                              <div>
+                                <Label size="xs" className="text-gray-500 mb-1 block">
+                                  Account Type
+                                </Label>
+                                {/* PS-36 §7: Wise's Zengin recipient needs FUTSU
+                                  (ordinary) or TOUZA (current) exactly — this
+                                  field previously didn't exist in the UI at all,
+                                  so every JP method submission was silently
+                                  missing a Wise-required field until it failed
+                                  deep inside verifyViaWisePlatform(). */}
+                                <Select
+                                  value={addForm.accountType}
+                                  onValueChange={(accountType) =>
+                                    setAddForm((f) => ({
+                                      ...f,
+                                      accountType,
+                                    }))
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="FUTSU">Ordinary (Futsu)</SelectItem>
+                                    <SelectItem value="TOUZA">Current (Touza)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
 
                             {/* Account number — every region except MX (CLABE only)/SEPA/GCC
                           (IBAN only) uses a plain account number field. */}
@@ -5832,7 +5857,7 @@ export const OverviewTab = ({
                                 </Label>
                                 <Input
                                   className="w-full px-3 py-2 text-sm"
-                                  placeholder="9-digit ABA routing number"
+                                  placeholder="xxxx-xxxx-x"
                                   value={addForm.bankRoutingNumber}
                                   onChange={(e) =>
                                     setAddForm((f) => ({
@@ -5970,56 +5995,6 @@ export const OverviewTab = ({
                                     ) && (
                                       <p className="text-xs text-red-500 mt-1">
                                         5 digits required
-                                      </p>
-                                    )}
-                                </div>
-                              </div>
-                            )}
-                            {region === "JP" && (
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <Label size="xs" className="text-gray-500 mb-1 block">
-                                    Bank Code
-                                  </Label>
-                                  <Input
-                                    className="w-full px-3 py-2 text-sm"
-                                    placeholder="4 digits"
-                                    value={addForm.bankCode}
-                                    onChange={(e) =>
-                                      setAddForm((f) => ({
-                                        ...f,
-                                        bankCode: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                  {addForm.bankCode.length > 0 &&
-                                    !isValidJpBankCode(addForm.bankCode) && (
-                                      <p className="text-xs text-red-500 mt-1">
-                                        4 digits required
-                                      </p>
-                                    )}
-                                </div>
-                                <div>
-                                  <Label size="xs" className="text-gray-500 mb-1 block">
-                                    Branch Code
-                                  </Label>
-                                  <Input
-                                    className="w-full px-3 py-2 text-sm"
-                                    placeholder="3 digits"
-                                    value={addForm.bankBranchCode}
-                                    onChange={(e) =>
-                                      setAddForm((f) => ({
-                                        ...f,
-                                        bankBranchCode: e.target.value,
-                                      }))
-                                    }
-                                  />
-                                  {addForm.bankBranchCode.length > 0 &&
-                                    !isValidJpBranchCode(
-                                      addForm.bankBranchCode
-                                    ) && (
-                                      <p className="text-xs text-red-500 mt-1">
-                                        3 digits required
                                       </p>
                                     )}
                                 </div>
@@ -6185,9 +6160,11 @@ export const OverviewTab = ({
                               />
                               <span className="text-xs text-gray-400">
                                 By linking your bank account, you authorize
-                                Marketeq to initiate direct deposit payments to
+                                Marketeq to initiate direct deposit
+                                {region === "US" ? " (ACH)" : ""} payments to
                                 your account. You acknowledge that all transfers
-                                will comply with applicable local laws and
+                                will comply with applicable
+                                {region === "US" ? " U.S." : " local"} laws and
                                 banking regulations.
                               </span>
                             </div>
@@ -6221,16 +6198,13 @@ export const OverviewTab = ({
                         </div>
                       )
                     })()
-                  ) : addForm.methodType === "WISE" ||
-                    addForm.methodType === "PAYONEER" ? (
-                    /* Step 2b/2c: Wise / Payoneer — real OAuth redirect
-                     (AC-07.01/07.04, AC-08.01/08.04). One shared
-                     screen: same backend call (handleConnectOAuth -> POST
-                     /deposit-methods -> verification.oauthUrl -> redirect) and
-                     the same Figma layout for both providers — centered
-                     icon, no title bar, single X close in the corner. Figma places
-                     the provider icon to the left of the heading, side by side —
-                     not centered above it. */
+                  ) : addForm.methodType === "WISE" ? (
+                    /* Step 2b: Wise — real OAuth redirect
+                     (AC-07.01/07.04). Same backend call (handleConnectOAuth ->
+                     POST /deposit-methods -> verification.oauthUrl -> redirect)
+                     and Figma layout — centered icon, no title bar, single X
+                     close in the corner. Figma places the provider icon to the
+                     left of the heading, side by side — not centered above it. */
                     <div className="p-8 relative flex flex-col">
                       <IconButton
                         size="sm"
@@ -6242,15 +6216,10 @@ export const OverviewTab = ({
                         <X className="size-4" />
                       </IconButton>
                       <div className="flex items-center pt-6 pb-3 gap-4">
-                        {addForm.methodType === "WISE" ? (
-                          <WiseIconV2 className="size-14 shrink-0" />
-                        ) : (
-                          <PayoneerDefault className="size-14 shrink-0" />
-                        )}
+                        <WiseIconV2 className="size-14 shrink-0" />
                         <h3 className="text-base font-semibold text-dark-blue-400">
-                          You'll be redirected to{" "}
-                          {addForm.methodType === "WISE" ? "Wise" : "Payoneer"}{" "}
-                          to securely connect your account.
+                          You'll be redirected to Wise to securely connect
+                          your account.
                         </h3>
                       </div>
                       <p className="text-xs text-gray-400 pb-2">
@@ -6270,15 +6239,9 @@ export const OverviewTab = ({
                         size="sm"
                         className="w-full mt-6 bg-gray-900 hover:bg-gray-800 text-white active:ring-4 active:ring-gray-300"
                         disabled={!addForm.bankConsent || oauthConnecting}
-                        onClick={() =>
-                          handleConnectOAuth(
-                            addForm.methodType as "WISE" | "PAYONEER"
-                          )
-                        }
+                        onClick={() => handleConnectOAuth("WISE")}
                       >
-                        {oauthConnecting
-                          ? "Connecting…"
-                          : `Continue To ${addForm.methodType === "WISE" ? "Wise" : "Payoneer"}`}
+                        {oauthConnecting ? "Connecting…" : "Continue To Wise"}
                       </Button>
                       <Button
                         variant="link"
@@ -6306,13 +6269,9 @@ export const OverviewTab = ({
                         />
                         <span className="text-xs text-gray-400">
                           By connecting your account, you authorize Marketeq to
-                          send deposits to your linked{" "}
-                          {addForm.methodType === "WISE" ? "Wise" : "Payoneer"}{" "}
-                          account. You agree to abide by{" "}
-                          {addForm.methodType === "WISE"
-                            ? "Wise's"
-                            : "Payoneer's"}{" "}
-                          terms and conditions for receiving business payments.
+                          send deposits to your linked Wise account. You agree
+                          to abide by Wise's terms and conditions for
+                          receiving business payments.
                         </span>
                       </label>
                     </div>
@@ -7244,7 +7203,7 @@ export const OverviewTab = ({
                                 <Input
                                   id="edit-bank-swift"
                                   type="text"
-                                  placeholder="Enter 8 or 11 character SWIFT / BIC Code"
+                                  placeholder="Enter 8 or 11 character SWIFT/BIC Code"
                                   value={editBankForm.bankSwiftBic}
                                   onChange={(e) =>
                                     setEditBankForm((f) => ({
@@ -7466,6 +7425,34 @@ export const OverviewTab = ({
                                       Branch code must be 3 digits.
                                     </p>
                                   )}
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label
+                                  size="sm"
+                                  htmlFor="edit-bank-account-type-jp"
+                                >
+                                  Account Type
+                                </Label>
+                                <Select
+                                  value={editBankForm.bankAccountType}
+                                  onValueChange={(bankAccountType) =>
+                                    setEditBankForm((f) => ({
+                                      ...f,
+                                      bankAccountType,
+                                    }))
+                                  }
+                                >
+                                  <SelectTrigger
+                                    id="edit-bank-account-type-jp"
+                                    className="w-full"
+                                  >
+                                    <SelectValue placeholder="Select" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="FUTSU">Ordinary (Futsu)</SelectItem>
+                                    <SelectItem value="TOUZA">Current (Touza)</SelectItem>
+                                  </SelectContent>
+                                </Select>
                               </div>
                               <div className="space-y-1.5">
                                 <Label
@@ -8087,7 +8074,6 @@ export const HelpSupportDialog = ({
 // it's a closure inside a different component.
 const renderScheduleMethodIcon = (m: any) => {
   if (m.methodType === "WISE") return <WiseIcon className="size-5" />
-  if (m.methodType === "PAYONEER") return <PayoneerIcon className="size-5" />
   if (m.methodType === "CRYPTO")
     return <CryptoProviderIcon provider={m.cryptoProvider} className="size-5" />
   // Figma: every bank row (regardless of institution) uses the same plain
@@ -8192,7 +8178,7 @@ export const PayoutScheduleDialog = ({
   const selectedDayFull = DAYS_OF_WEEK[dayOfWeek]?.fullName ?? "Monday"
 
   // ERR_SCHEDULE_INVALID_FREQUENCY: daily payouts only settle over the ACH
-  // rail (BANK_STRIPE/BANK_MANUAL) — Wise/Payoneer/Crypto still route through
+  // rail (BANK_STRIPE/BANK_MANUAL) — Wise/Crypto still route through
   // an OAuth-linked or on-chain transfer that can't clear same-day, every day.
   // Mirror that server-side rule client-side so the option is disabled (with
   // a reason) before the contractor ever submits and hits the error.
@@ -9394,9 +9380,11 @@ function toActivityItem(p: {
   createdAt: string
   settledAt: string | null
 }) {
-  const time = formatDistanceToNowStrict(new Date(p.settledAt ?? p.createdAt), {
+  const at = p.settledAt ?? p.createdAt
+  const time = formatDistanceToNowStrict(new Date(at), {
     addSuffix: true,
   })
+  const sortAt = new Date(at).getTime()
   const method = p.methodLabel ?? "your payout method"
   const amount = parseFloat(p.amountUsd).toFixed(2)
   switch (p.status) {
@@ -9407,6 +9395,7 @@ function toActivityItem(p: {
         description: `$${amount} to ${method}`,
         time,
         kind: "sent" as const,
+        sortAt,
       }
     case "processing":
       return {
@@ -9415,6 +9404,7 @@ function toActivityItem(p: {
         description: `$${amount} to ${method}`,
         time,
         kind: "processing" as const,
+        sortAt,
       }
     case "queued":
       return {
@@ -9423,6 +9413,7 @@ function toActivityItem(p: {
         description: `$${amount} to ${method}`,
         time,
         kind: "processing" as const,
+        sortAt,
       }
     case "failed":
       return {
@@ -9431,6 +9422,7 @@ function toActivityItem(p: {
         description: `$${amount} to ${method}`,
         time,
         kind: "failed" as const,
+        sortAt,
       }
     case "cancelled":
       return {
@@ -9439,6 +9431,7 @@ function toActivityItem(p: {
         description: `$${amount} to ${method}`,
         time,
         kind: "cancelled" as const,
+        sortAt,
       }
     default:
       return {
@@ -9447,7 +9440,59 @@ function toActivityItem(p: {
         description: `$${amount} to ${method}`,
         time,
         kind: "scheduled" as const,
+        sortAt,
       }
+  }
+}
+
+// Deposit-schedule/split changes (Setup Your Direct Deposit Schedule) never
+// produce a PayoutRequest row, so toActivityItem() above never sees them —
+// this derives entries from GET /payouts/schedule/activity instead, the
+// contractor's own schedule.updated/split.* rows from payout_audit_log.
+function toScheduleActivityItem(a: {
+  id: string
+  action: string
+  createdAt: string
+  metadata: Record<string, any> | null
+}) {
+  const time = formatDistanceToNowStrict(new Date(a.createdAt), {
+    addSuffix: true,
+  })
+  const sortAt = new Date(a.createdAt).getTime()
+  const m = a.metadata ?? {}
+  const splitDescription = (primaryPercent: number, secondaryPercent: number) =>
+    `${m.primaryMethodLabel ?? "Primary method"} ${primaryPercent}% • ${m.secondaryMethodLabel ?? "Secondary method"} ${secondaryPercent}%`
+
+  let description = "Your deposit schedule was updated."
+  switch (a.action) {
+    case "split.enabled":
+    case "split.percent_updated":
+    case "split.secondary_method_changed":
+      description = splitDescription(
+        m.primarySplitPercent ?? 50,
+        m.secondarySplitPercent ??
+          Math.round((100 - (m.primarySplitPercent ?? 50)) * 100) / 100
+      )
+      break
+    case "split.disabled":
+      description = m.primaryMethodLabel
+        ? `${m.primaryMethodLabel} 100%`
+        : "Split payout turned off."
+      break
+    case "schedule.updated":
+      description = m.frequency
+        ? `Frequency changed to ${String(m.frequency).replace(/_/g, " ")}.`
+        : description
+      break
+  }
+
+  return {
+    id: a.id,
+    title: "Deposit Settings Changed",
+    description,
+    time,
+    kind: "settings" as const,
+    sortAt,
   }
 }
 
@@ -9479,6 +9524,8 @@ const ACTIVITY_ICON: Record<string, { icon: React.ReactNode }> = {
   processing: { icon: <Clock className="size-5 text-primary-500" /> },
   failed: { icon: <XCircle className="size-5 text-error-500" /> },
   cancelled: { icon: <SlashCircle01 className="size-5 text-gray-400" /> },
+  // Figma "Deposit Settings Changed" reference uses this gear icon in blue.
+  settings: { icon: <Settings02 className="size-5 text-primary-500" /> },
 }
 
 // ─── Earnings Tab ───────────────────────────────────────────────────────
@@ -11299,9 +11346,6 @@ const PayoutDetailDialog = ({
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {detail.failureReason ??
                   "This payout could not be processed. Please contact support if the issue persists."}
-                <div className="text-xs text-red-500 mt-1">
-                  Retry attempts: {detail.retryCount ?? 0}
-                </div>
                 <div className="flex gap-2 mt-3">
                   <Button
                     variant="filled"

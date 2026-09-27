@@ -519,6 +519,16 @@ export const getNotificationHref = (
   kind: NotificationKind
 ) => {
   if (isOfferNotification(item)) {
+    // Only these two events have a real, existing destination reachable
+    // without a new route or an /inbox deep-link — /my-contracts is a
+    // plain list page, no id needed, and matches the "View Contracts"
+    // CTA these events already show. Every other offer event has no page
+    // anywhere in the app that could show that specific record, so they
+    // keep the /notifications fallback deliberately, not by omission.
+    const event = item.event?.toLowerCase() || ""
+    if (event === "offer.accepted" || event === "offer.counter_accepted") {
+      return "/my-contracts"
+    }
     return "/notifications"
   }
 

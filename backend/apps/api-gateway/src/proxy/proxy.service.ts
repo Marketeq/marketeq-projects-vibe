@@ -49,6 +49,7 @@ export class ProxyService {
       wireReview: config.get('WIRE_REVIEW_SERVICE_URL') || 'http://localhost:3031',
       offers: config.get('OFFER_SERVICE_URL') || 'http://localhost:3011',
       legal: config.get('LEGAL_SERVICE_URL') || 'http://localhost:3032',
+      location: config.get('LOCATION_SERVICE_URL') || 'http://localhost:3036',
     }
   }
 

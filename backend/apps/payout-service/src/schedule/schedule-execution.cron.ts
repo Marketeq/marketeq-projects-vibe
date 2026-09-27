@@ -6,7 +6,7 @@
 // PS-17 v2.0 §2/§6: dayOfWeek/dayOfMonth means the ARRIVAL day for ACH
 // methods and the INITIATION day for everything else, and the Mon-Fri
 // 06:00-22:00 UTC execution window (plus weekend/holiday deferral) applies
-// to ACH only — Wise/Payoneer/Crypto initiate on the configured day
+// to ACH only — Wise/Crypto initiate on the configured day
 // regardless of window, weekend, or holiday. NextExecutionService already
 // bakes the correct initiation date into nextExecutionAt, so this file only
 // needs to gate ACH's execution *window* (a same-day time-of-day + weekend/
@@ -141,7 +141,7 @@ export class ScheduleExecutionCron {
   }
 
   // ─── PS-17 v2.0 §6 / PS-34 §7: Execution window check — US ACH only ──
-  // Non-ACH methods (Wise, Payoneer, Crypto) run 24/7 and are never gated by
+  // Non-ACH methods (Wise, Crypto) run 24/7 and are never gated by
   // this window — they initiate exactly on their configured day regardless
   // of time, weekend, or US federal holiday. International BANK_MANUAL
   // (Stripe cross-border or Wise Platform) is in the same boat — Wise
