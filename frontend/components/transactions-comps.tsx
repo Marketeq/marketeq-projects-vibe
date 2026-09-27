@@ -6441,7 +6441,8 @@ export const OverviewTab = ({
                               {selectedCryptoProvider?.networks?.map(
                                 (n: any) => (
                                   <SelectItem key={n.network} value={n.network}>
-                                    {n.network}
+                                    {n.network.charAt(0).toUpperCase() +
+                                      n.network.slice(1)}
                                   </SelectItem>
                                 )
                               )}
