@@ -80,15 +80,51 @@ const parseEmails = (input: string): string[] => {
     .filter(Boolean)
 }
 
+// QA-180/PMCM-399: teamInvite/listingId/onInvited are additive — every
+// existing caller keeps calling toggle(open, title) exactly as before and
+// gets the exact same behavior (teamInvite/listingId/onInvited stay
+// unset). Without an explicit teamInvite: true, isTeamInvite below still
+// falls back to the original "no title" heuristic, so share-flavored
+// callers (Share Your Project/Transactions/Invoices) are unaffected.
+export interface InviteWindowContext {
+  teamInvite?: boolean
+  listingId?: string | null
+  onInvited?: (emails: string[]) => void
+}
+
 export const useInviteWindowStore = create(
-  combine({ open: false, title: "" }, (set) => ({
-    toggle: (open?: boolean, title?: string) =>
-      set((state) => ({
-        ...state,
-        open: typeof open === "boolean" ? open : !state.open,
-        title: title ?? (typeof open === "boolean" && !open ? "" : state.title),
-      })),
-  }))
+  combine(
+    {
+      open: false,
+      title: "",
+      teamInvite: false,
+      listingId: null as string | null,
+      onInvited: undefined as ((emails: string[]) => void) | undefined,
+    },
+    (set) => ({
+      toggle: (
+        open?: boolean,
+        title?: string,
+        context?: InviteWindowContext
+      ) =>
+        set((state) => {
+          const closing = typeof open === "boolean" && !open
+          return {
+            ...state,
+            open: typeof open === "boolean" ? open : !state.open,
+            title: title ?? (closing ? "" : state.title),
+            // Closing always clears the per-caller context so the next
+            // opener (a different page, or the default "Invite Your Team"
+            // trigger) never inherits a stale flavor/listing/callback.
+            teamInvite: closing
+              ? false
+              : context?.teamInvite ?? state.teamInvite,
+            listingId: closing ? null : (context?.listingId ?? state.listingId),
+            onInvited: closing ? undefined : (context?.onInvited ?? state.onInvited),
+          }
+        }),
+    })
+  )
 )
 
 export const InviteWindowTrigger = React.forwardRef<
@@ -539,6 +575,9 @@ export const InviteWindow = () => {
   const {
     open,
     title: storeTitle,
+    teamInvite: storeTeamInvite,
+    listingId: storeListingId,
+    onInvited: storeOnInvited,
     toggle: toggleInviteWindow,
   } = useInviteWindowStore()
   const [view, setView] = useState<InviteView>("invite")
@@ -554,8 +593,15 @@ export const InviteWindow = () => {
     isTeam: boolean
   } | null>(null)
   const [isUndoing, setIsUndoing] = useState(false)
-  // Share-flavored callers pass their own title and skip company assignment.
-  const isTeamInvite = !storeTitle
+  // QA-180/PMCM-399: a caller can now opt into team-invite behavior
+  // (company assignment shown, so contact search has a company to search)
+  // even while also passing its own title, via toggle's context.teamInvite
+  // — see edit-listing/[slug]/page.tsx's "Add Team Member" trigger. Every
+  // other title-passing caller (Share Your Project/Transactions/Invoices)
+  // never sets that flag, so they keep the original share-flavored
+  // behavior unchanged: share-flavored callers pass their own title and
+  // skip company assignment.
+  const isTeamInvite = !storeTitle || storeTeamInvite
   const [showCompanySteps, setShowCompanySteps] = useState(isTeamInvite)
   const [company, setCompany] = useState<InviteCompany | null>(null)
   // Fixed role for every invitee. Permissions (via SelectPermissionsControl)
@@ -844,6 +890,17 @@ export const InviteWindow = () => {
           .map((invitation) => invitation.id),
         isTeam: isTeamInvite,
       })
+      // QA-180/PMCM-399: lets a caller (e.g. the listing wizard's Team
+      // step) know which addresses were actually invited, so it can show
+      // its own "Pending Invite" row for each — same sentEmails-or-fallback
+      // derivation as setSentInvites above, captured from this render's
+      // closure so it still fires correctly even though handleOpenChange
+      // below clears the store's copy of it on close.
+      storeOnInvited?.(
+        sentEmails.length
+          ? sentEmails
+          : finalInvitees.map((invitee) => invitee.email)
+      )
       // Close straight away; the confirmation lives in the top-right card now.
       // Same teardown as Cancel, so a sent draft can't linger either.
       handleOpenChange(false)
@@ -915,6 +972,11 @@ export const InviteWindow = () => {
           [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
           user?.email,
         inviterHandle: user?.username ? `@${user.username}` : undefined,
+        // QA-180/PMCM-399 AC: the listing's own id, so the invite is
+        // traceable back to the listing that generated it. Absent for
+        // every non-listing caller (Share Your Project/Transactions/
+        // Invoices, or the default "Invite Your Team").
+        listingId: storeListingId ?? undefined,
       })
 
       await navigator.clipboard.writeText(inviteLinkWithContext)

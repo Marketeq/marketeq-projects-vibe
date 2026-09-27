@@ -38,6 +38,7 @@ export class Project {
   media?: any[];
   mediaUrls?: string[];
   teamMemberIds?: string[];
+  pendingInviteEmails?: string[];
   videoUrl?: string | null;
   faqs?: { question: string; answer: string; is_ai_generated?: boolean }[];
 

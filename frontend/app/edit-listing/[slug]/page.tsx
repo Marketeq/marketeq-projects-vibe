@@ -7121,6 +7121,14 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   setTaskSearchDialogOpen: React.Dispatch<React.SetStateAction<boolean>>
   teamMemberIds: string[]
   setTeamMemberIds: React.Dispatch<React.SetStateAction<string[]>>
+  // QA-180/PMCM-399: emails invited (search or email) via the shared
+  // InviteWindow while this listing's dialog context was active — shown
+  // as "Pending Invite" rows below teamMemberIds' real members. Locally
+  // tracked: invitations-service has no per-listing correlation, so this
+  // can't be re-derived from a server-side "pending invites for this
+  // project" query, only from what this session actually sent.
+  pendingInviteEmails: string[]
+  setPendingInviteEmails: React.Dispatch<React.SetStateAction<string[]>>
   draftProjectId: string | null
   pricingBudgetCents: number
   scopeType: ScopeType
@@ -7155,8 +7163,14 @@ const Team = () => {
   const mapRole = (role?: string) =>
     role === "owner" ? "Owner" : role === "lead" ? "Manager" : "Contributor"
 
-  const { teamMemberIds, setTeamMemberIds, draftProjectId, projectScopeMethods } =
-    useProjectScopeContext()
+  const {
+    teamMemberIds,
+    setTeamMemberIds,
+    pendingInviteEmails,
+    setPendingInviteEmails,
+    draftProjectId,
+    projectScopeMethods,
+  } = useProjectScopeContext()
   const inviteWindow = useInviteWindowStore()
   const [addQuery, setAddQuery] = React.useState("")
   const [wizardRoles, setWizardRoles] = React.useState<Record<string, string>>(
@@ -7266,6 +7280,30 @@ const Team = () => {
       } as any).catch(() => {})
     }
   }
+  // QA-180/PMCM-399: same persistence shape as persistTeam above, for the
+  // emails invited via the shared InviteWindow (search or email method)
+  // while this listing's dialog context was active. Passed as
+  // context.onInvited to inviteWindow.toggle below. Uses the functional
+  // setState form (unlike persistTeam) because this fires from a callback
+  // captured at dialog-open time, so teamMemberIds's simpler
+  // read-then-persistTeam(next) shape could dedupe against a stale prev.
+  const handleInvited = React.useCallback(
+    (emails: string[]) => {
+      if (!emails.length) return
+      setPendingInviteEmails((prev) => {
+        const next = Array.from(
+          new Set([...prev, ...emails.map((email) => email.toLowerCase())])
+        )
+        if (draftProjectId) {
+          ProjectAPI.UpdateProjectDraft(draftProjectId, {
+            pendingInviteEmails: next,
+          } as any).catch(() => {})
+        }
+        return next
+      })
+    },
+    [draftProjectId, setPendingInviteEmails]
+  )
   const addToProject = (userId: string) => {
     persistTeam(Array.from(new Set([...teamMemberIds, String(userId)])))
     setAddQuery("")
@@ -7531,7 +7569,21 @@ const Team = () => {
               <Button
                 variant="outlined"
                 visual="gray"
-                onClick={() => inviteWindow.toggle(true, "Invite Team Members")}
+                onClick={() =>
+                  inviteWindow.toggle(true, "Invite Team Members", {
+                    // QA-180/PMCM-399: without this the shared dialog
+                    // treats any custom-titled caller as share-flavored
+                    // and skips company assignment, which is why contact
+                    // search always came back empty here — company never
+                    // got picked, so useCompanyMembers had nothing to
+                    // search. teamInvite: true keeps the custom title but
+                    // still shows the company step, same as the default
+                    // "Invite Your Team" flow.
+                    teamInvite: true,
+                    listingId: draftProjectId,
+                    onInvited: handleInvited,
+                  })
+                }
               >
                 <Plus className="size-[15px]" />
                 Add Team Member
@@ -7784,6 +7836,55 @@ const Team = () => {
                     </TableRow>
                     )
                   })}
+                  {/* QA-180/PMCM-399 AC: invited-but-not-yet-accepted addresses
+                  show as "Pending Invite" here, same table/columns as real
+                  members — no role yet (nothing to assign until they accept),
+                  no dropdown (nothing to manage besides canceling). */}
+                  {pendingInviteEmails.map((email) => (
+                    <TableRow key={`pending-invite-${email}`}>
+                      <TableCell className="py-4">
+                        <div className="flex items-center gap-x-3">
+                          <Avatar size="sm">
+                            <AvatarFallback>
+                              {email.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-semibold text-dark-blue-400">
+                            {email}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <span className="text-sm text-gray-400">—</span>
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <span className="text-sm font-semibold text-gray-500">
+                          Pending Invite
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <Button
+                          variant="link"
+                          visual="gray"
+                          size="sm"
+                          className="text-error-600"
+                          onClick={() => {
+                            const next = pendingInviteEmails.filter(
+                              (e) => e !== email
+                            )
+                            setPendingInviteEmails(next)
+                            if (draftProjectId) {
+                              ProjectAPI.UpdateProjectDraft(draftProjectId, {
+                                pendingInviteEmails: next,
+                              } as any).catch(() => {})
+                            }
+                          }}
+                        >
+                          Cancel Invite
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>
@@ -8861,6 +8962,7 @@ function PublishProject({
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
   const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
+  const [pendingInviteEmails, setPendingInviteEmails] = useState<string[]>([])
   const [pricingBudgetCents, setPricingBudgetCents] = useState(0)
   const [scopeType, setScopeType] = useState<ScopeType>("project")
   const [isPublishing, setIsPublishing] = useState(false)
@@ -9103,6 +9205,11 @@ function PublishProject({
         setTeamMemberIds(
           Array.isArray(draft?.teamMemberIds)
             ? draft.teamMemberIds.map(String)
+            : []
+        )
+        setPendingInviteEmails(
+          Array.isArray(draft?.pendingInviteEmails)
+            ? draft.pendingInviteEmails.map(String)
             : []
         )
         setPricingBudgetCents(Number(draft?.budgetUsdCents) || 0)
@@ -9631,6 +9738,8 @@ function PublishProject({
       setTaskSearchDialogOpen,
       teamMemberIds,
       setTeamMemberIds,
+      pendingInviteEmails,
+      setPendingInviteEmails,
       draftProjectId,
       pricingBudgetCents,
       scopeType,
@@ -9646,6 +9755,8 @@ function PublishProject({
       setTaskSearchDialogOpen,
       teamMemberIds,
       setTeamMemberIds,
+      pendingInviteEmails,
+      setPendingInviteEmails,
       draftProjectId,
       pricingBudgetCents,
       scopeType,
