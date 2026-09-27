@@ -1199,12 +1199,14 @@ const Header = ({
   lastSavedAt,
   onPublish,
   publishing,
+  publishDisabled,
 }: {
   onClose?: () => void
   slug?: string
   lastSavedAt?: Date | null
   onPublish?: () => void
   publishing?: boolean
+  publishDisabled?: boolean
 }) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200 z-10">
@@ -1243,7 +1245,7 @@ const Header = ({
             <TooltipContent>Preview</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <Button onClick={onPublish} disabled={publishing}>
+        <Button onClick={onPublish} disabled={publishing || publishDisabled}>
           {publishing ? "Publishing…" : "Publish"}
         </Button>
         <TooltipProvider>
@@ -9771,6 +9773,7 @@ function PublishProject({
                     lastSavedAt={lastSavedAt}
                     onPublish={handlePublish}
                     publishing={isPublishing}
+                    publishDisabled={firstInvalidStep !== null}
                   />
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}
