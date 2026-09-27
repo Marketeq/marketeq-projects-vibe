@@ -93,6 +93,7 @@ const SERVICES = [
   // read it. Putting a live service there would turn a clean connection-refused
   // (which falls back to static defaults) into 404s from the wrong service.
   { name: 'identity-verification-service', port: '3035', dir: 'apps/identity-verification-service', maxOldSpaceMb: 48 },
+  { name: 'location-service',             port: '3036', dir: 'apps/location-service',             maxOldSpaceMb: 48 },
 ];
 
 const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gateway', maxOldSpaceMb: 96 };
@@ -137,6 +138,7 @@ const gatewayEnv = {
   RESUME_PARSING_SERVICE_URL:     'http://localhost:3033',
   BROWSING_HISTORY_SERVICE_URL:   'http://localhost:3034',
   IDENTITY_VERIFICATION_SERVICE_URL: 'http://localhost:3035',
+  LOCATION_SERVICE_URL:           'http://localhost:3036',
 };
 
 // svc.portKey allows services that read a non-standard env var for their port

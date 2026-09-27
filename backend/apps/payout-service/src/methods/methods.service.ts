@@ -335,7 +335,7 @@ export class MethodsService {
       'bankAccountName', 'bankAccountNumber', 'bankCountry', 'bankCurrency',
       'bankRoutingNumber', 'bankIban', 'bankSwiftBic', 'bankIfscCode',
       'bankBsbNumber', 'bankSortCode', 'bankCode', 'bankBranchCode',
-      'bankInstitutionNumber', 'bankTransitNumber', 'bankClabe',
+      'bankAccountType', 'bankInstitutionNumber', 'bankTransitNumber', 'bankClabe',
       'bankCnapsCode', 'bankBik', 'bankKorrespondentAccount', 'bankCpfCnpj',
       'bankAgencia', 'bankConta',
     ];
