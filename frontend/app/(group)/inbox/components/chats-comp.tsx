@@ -3248,6 +3248,17 @@ export function Chats({
                     isExpiredOffer ||
                     isClientSentTalentCounter ||
                     isDeclinedOffer ||
+                    // BTB-291/PMCM-367 AC-13.02: isActiveTalentOffer is
+                    // `!state`, and OFFER_EVENT_STATE maps
+                    // offer.expiring_soon to a real (Badge-worthy) state —
+                    // so a PENDING offer nearing expiry fell through every
+                    // branch here and lost its CTA, even though it's still
+                    // fully actionable. isPendingOffer (already computed
+                    // above) is exactly that "expiring but not terminal"
+                    // case; QA's jobListingId theory didn't hold up — see
+                    // hasJobListing above, which is a separate, real bug in
+                    // the modal's View Job link, not this gate.
+                    isPendingOffer ||
                     (isWithdrawnOffer &&
                       !item.event.includes("counter_withdrawn")))
                 // PMCM-367 AC-13.05: only the superseded original drops its
@@ -6384,6 +6395,11 @@ export function Chats({
           onBack={() => setNotificationOfferStep("event")}
           onResend={() => setNotificationOfferStep("previous")}
           onEditTerms={() => setNotificationOfferStep("counter")}
+          // BTB-291: offerJobHref() always returns a non-empty
+          // /job-details/... string even with no real jobListingId, so
+          // onViewJob's own `if (!href) return` never catches that case —
+          // hide the link instead of letting it navigate to a broken URL.
+          hasJobListing={Boolean(selectedNotificationOffer?.jobListingId)}
           onViewJob={() => {
             const href = selectedNotificationOffer?.viewJobHref
             if (!href) return

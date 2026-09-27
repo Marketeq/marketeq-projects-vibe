@@ -9019,7 +9019,19 @@ function PublishProject({
     setStepValid(2, projectScopeSchema.safeParse(scopePhases))
   }, [scopePhases, setStepValid])
   useEffect(() => {
-    setStepValid(3, teamMemberIds.length > 0)
+    // QA-198/PMCM-395: teamMemberIds never contains the project owner's own
+    // id — inProject() (in the Team step) treats role "owner" as always
+    // in-project without ever writing to teamMemberIds, and addable()
+    // excludes anyone already inProject, so the owner can never be
+    // programmatically added to this array. A solo owner is therefore
+    // permanently "0 members" by this check alone, even though the Team
+    // table already shows them (You / Owner) with nothing left to fill
+    // in. The account owner always counts as the team's one required
+    // member, matching what the UI already displays.
+    setStepValid(
+      3,
+      teamMemberIds.length > 0 || Boolean(getCurrentUser()?.id)
+    )
   }, [teamMemberIds, setStepValid])
   useEffect(() => {
     setStepValid(4, completedFaqCount >= 3)
@@ -9030,7 +9042,10 @@ function PublishProject({
       0: projectInfoSchema.safeParse(projectInfoMethods.getValues()).success,
       1: mediaFormSchema.safeParse(mediaMethods.getValues()).success,
       2: projectScopeSchema.safeParse(scopePhases),
-      3: teamMemberIds.length > 0,
+      // QA-198/PMCM-395: same owner-always-counts fix as setStepValid(3, ...)
+      // above — this is the Publish button's own separate validity check
+      // (PMCM-401), and it was blocked by the identical stale condition.
+      3: teamMemberIds.length > 0 || Boolean(getCurrentUser()?.id),
       4: completedFaqCount >= 3,
     }
     return [0, 1, 2, 3, 4].find((index) => !validity[index]) ?? null
