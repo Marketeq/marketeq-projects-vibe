@@ -377,7 +377,16 @@ export default function InboxRoot() {
                     { month: "short", day: "numeric", year: "numeric" }
                   ),
                   seeded: metadata.seeded === true,
-                  clientPerspective: metadata.clientPerspective === true,
+                  // BTB-292: derived from the real offer's own parties, not
+                  // trusted from whatever wrote the notification metadata.
+                  // GET /v1/offers/:id is behind OfferPartyGuard, so by the
+                  // time this getOffer() call has already succeeded, the
+                  // viewer is guaranteed to be either offer.clientId or
+                  // offer.talentId — there's no reachable third case here
+                  // that this could misclassify into the wrong (more
+                  // powerful) view; a non-party viewer would have thrown
+                  // above and landed in the catch branch below instead.
+                  clientPerspective: offer.clientId === getCurrentUser()?.id,
                   withdrawnByViewer: metadata.withdrawnByViewer === true,
                   // No backend producer writes offer notification metadata,
                   // so metadata.withdrawalMessage is always undefined for a

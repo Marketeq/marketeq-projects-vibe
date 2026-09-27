@@ -1397,6 +1397,17 @@ export class PublishService {
       } else if (dto.featuredImage) {
         featuredImageUrl = dto.featuredImage;
       } else if (clearFeatured) {
+        // QA-176/PMCM-396: only the pure-clear path reaches here — a
+        // request that also supplies a replacement (files.featuredImage or
+        // dto.featuredImage above) never falls through to this branch, so
+        // this is exactly "delete would leave the slot empty." A published
+        // listing can't be left without a featured image; draft listings
+        // are unrestricted, matching the pre-existing behavior below.
+        if (project.status === 'published') {
+          throw new BadRequestException(
+            'The featured image cannot be deleted on a published listing until a replacement image is uploaded.',
+          );
+        }
         featuredImageUrl = '';
       } else {
         throw new BadRequestException('Featured image is required.');

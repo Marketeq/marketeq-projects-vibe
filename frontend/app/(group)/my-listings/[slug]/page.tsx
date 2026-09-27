@@ -3922,6 +3922,11 @@ export default function ProjectDetails() {
                   </div>
 
                   {/* Featured image delete confirmation */}
+                  {/* QA-176/PMCM-396: a Published listing can't be left with
+                  no featured image — deleting it here is a pure clear with
+                  no replacement in the same action (unlike the Edit/replace
+                  button above, which uploads the new image before the old
+                  one is gone). Draft listings stay unrestricted. */}
                   <Dialog
                     open={featuredDeleteOpen}
                     onOpenChange={setFeaturedDeleteOpen}
@@ -3930,7 +3935,9 @@ export default function ProjectDetails() {
                       <div className="p-6 border-b border-gray-200">
                         <DialogTitle>Delete featured image?</DialogTitle>
                         <DialogDescription className="mt-2">
-                          Your image will be removed permanently.
+                          {isPublished
+                            ? "This listing is published. A replacement image must be uploaded first."
+                            : "Your image will be removed permanently."}
                         </DialogDescription>
                       </div>
                       <div className="py-4 flex rounded-b-xl bg-gray-25 items-center justify-between px-6">
@@ -3947,6 +3954,7 @@ export default function ProjectDetails() {
                         <Button
                           variant="outlined"
                           visual="gray"
+                          disabled={isPublished}
                           onClick={() => {
                             setProject((prev: any) => ({
                               ...prev,
