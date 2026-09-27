@@ -3060,12 +3060,26 @@ export default function ProjectDetails() {
         Math.round((Number(project.budget) || 0) * 100)
       const pricingCents = Number(project.budgetUsdCents) || 0
       const computedCents = estimateScopeBudgetCents(phases)
-      const budgetTotalCents =
-        pricingCents > 0
+      // QA-178/PMCM-397: pricingCents only updates ~1.5s after a change,
+      // via handleScopeChange's debounced ReplaceProjectScope round-trip —
+      // so preferring it over computedCents (the old order) masked every
+      // edit made before that round-trip landed, or made again inside that
+      // window. This is what made phase deletion look broken while task
+      // deletion looked fine: both mutate scope through the identical
+      // onPhasesChange -> handleScopeChange path and land in this same
+      // memo, but by the time a *later* edit (e.g. a phase delete) ran, an
+      // *earlier* edit's round-trip had already primed a stale positive
+      // pricingCents that outranked anything computed live afterward —
+      // including the AC's "reset to zero when every phase is deleted"
+      // case. Once scope has actually been loaded (project.scope is a real
+      // array, even an empty one), the live computation is authoritative;
+      // storedCents/pricingCents only apply before scope has loaded at all.
+      const hasScope = Array.isArray(project.scope)
+      const budgetTotalCents = hasScope
+        ? computedCents
+        : pricingCents > 0
           ? pricingCents
-          : computedCents > 0
-            ? computedCents
-            : storedCents
+          : storedCents
 
       return { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays: totalDays }
     }, [
