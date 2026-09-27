@@ -55,13 +55,13 @@ export class BankPayoutExecutorService {
       return;
     }
 
-    // PS-09 v2.0 §2: WISE/PAYONEER execute through this same Stripe ACH path
-    // — Marketeq never calls the Wise/Payoneer Payouts API directly. Once
+    // PS-09 v2.0 §2: WISE executes through this same Stripe ACH path
+    // — Marketeq never calls the Wise Payouts API directly. Once
     // OAuth has registered a Stripe external_account for the method
     // (oauth.service.ts's handleCallback), it is indistinguishable from a
     // regular bank payout from here on.
     const method = payout.depositMethod;
-    const bankLikeTypes = [MethodType.BANK_STRIPE, MethodType.BANK_MANUAL, MethodType.WISE, MethodType.PAYONEER];
+    const bankLikeTypes = [MethodType.BANK_STRIPE, MethodType.BANK_MANUAL, MethodType.WISE];
     if (!method || !bankLikeTypes.includes(method.methodType)) {
       this.logger.error(`Payout ${payoutRequestId} is not a bank-executed type`);
       return;
@@ -90,22 +90,22 @@ export class BankPayoutExecutorService {
     // payouts to this method until the contractor re-authorizes.
     if ((method as any).reauthRequired) {
       await this.failPayout(payout,
-        'Your Wise/Payoneer connection needs to be re-authorized before this payout can proceed.',
+        'Your Wise connection needs to be re-authorized before this payout can proceed.',
         'ERR_PAYOUT_METHOD_REAUTH_REQUIRED');
       return;
     }
 
     // PS-09 v2.0 §11: ensureFreshToken() was fully built but never called
-    // from anywhere — a revoked Wise/Payoneer OAuth grant was never
+    // from anywhere — a revoked Wise OAuth grant was never
     // detected until whatever hypothetical future caller invoked it. This
     // is that caller: proactively refresh (or flip reauthRequired) right
     // before the payout actually executes, since it's the only real
     // point-of-use for a still-valid grant. Execution itself doesn't
-    // consume the access token (WISE/PAYONEER route through Stripe via
+    // consume the access token (WISE routes through Stripe via
     // stripeExternalAccountId below, per PS-09 v2.0 §2) — this call exists
     // purely to detect a revoked grant and fail closed instead of letting
     // it go undetected indefinitely.
-    if (method.methodType === MethodType.WISE || method.methodType === MethodType.PAYONEER) {
+    if (method.methodType === MethodType.WISE) {
       try {
         await this.oauthService.ensureFreshToken(method);
       } catch (err: any) {
@@ -117,7 +117,7 @@ export class BankPayoutExecutorService {
         // catch below rather than a wrong, alarming "reauthorize" message.
         if (err instanceof PayoutError && err.errorCode === 'ERR_OAUTH_REAUTH_REQUIRED') {
           await this.failPayout(payout,
-            'Your Wise/Payoneer connection needs to be re-authorized before this payout can proceed.',
+            'Your Wise connection needs to be re-authorized before this payout can proceed.',
             'ERR_PAYOUT_METHOD_REAUTH_REQUIRED');
           return;
         }
@@ -174,6 +174,38 @@ export class BankPayoutExecutorService {
       let transferId = `tr_stub_${Date.now()}`;
 
       if (this.stripe && !method.stripeConnectAccountId.startsWith('acct_mock')) {
+        // Mirrors the Wise Platform float check below (PS-36 §11): without
+        // this, an underfunded platform balance was only ever discovered
+        // from transfers.create()'s thrown error, which then leaked
+        // Stripe's raw (often test-mode-specific, e.g. "creating Charges
+        // using the 4000000000000077 test card") message straight to the
+        // contractor via failureReason. Checking first lets this fail with
+        // the same generic, finance-actionable message as every other
+        // pre-flight check in this file.
+        //
+        // Gated to the first execution only (payout.status read above,
+        // before the PROCESSING update) — PS-33 §6's idempotency keys exist
+        // specifically so Bull's automatic retry of a job whose worker died
+        // mid-run (e.g. a Render deploy) re-runs cleanly instead of moving
+        // money twice. Running this check on that re-run too would fail a
+        // payout whose transfers.create()/payouts.create() already
+        // succeeded once — on a re-run completedTransferId starts null
+        // regardless of what the first run did, so failPayout() here would
+        // neither reverse the already-completed transfer nor stop
+        // earnings-service crediting the contractor's balance back while
+        // Stripe is still en route to their bank. A re-run must always
+        // reach the idempotent calls below untouched by this check.
+        if (payout.status !== PayoutStatus.PROCESSING) {
+          const platformBalanceUsd = await this.getStripePlatformBalanceUsd();
+          if (platformBalanceUsd < amountUsd) {
+            this.logger.error(`Stripe platform balance insufficient: available $${platformBalanceUsd} < required $${amountUsd} for payout ${payoutRequestId}`);
+            await this.failPayout(payout,
+              'This withdrawal could not be processed right now. Please try again shortly.',
+              'ERR_STRIPE_PLATFORM_INSUFFICIENT_BALANCE');
+            return;
+          }
+        }
+
         // Move platform balance → connected account, then connected account
         // balance → the attached external bank account. Two calls because a
         // Custom account's own balance has to be funded before it can pay
@@ -249,8 +281,33 @@ export class BankPayoutExecutorService {
       if (completedTransferId) {
         await this.reverseTransfer(completedTransferId, payoutRequestId, payout.contractorId);
       }
-      await this.failPayout(payout, err.message, err.errorCode ?? 'ERR_BANK_PAYOUT_FAILED');
+      // failPayout's `reason` becomes contractor-facing failureReason —
+      // every other call site above passes a written, customer-safe
+      // message. This catch-all is the one path reached with a raw
+      // provider exception (Stripe API/network errors not covered by an
+      // explicit pre-check), so it must not forward err.message verbatim:
+      // Stripe error text can include account-internal or test-mode detail
+      // ("...creating Charges using the 4000000000000077 test card...")
+      // that means nothing to a contractor. The real message is still
+      // captured below in the audit log for support/engineering to see.
+      await this.failPayout(
+        payout,
+        'This withdrawal could not be processed. Please try again or contact support if the issue persists.',
+        err.errorCode ?? 'ERR_BANK_PAYOUT_FAILED',
+        err.message,
+      );
     }
+  }
+
+  // Stripe's available balance (as opposed to pending) — what a
+  // transfers.create() call actually draws from. Mirrors
+  // WisePlatformService.getWisePlatformBalanceUsd()'s role for the Wise
+  // branch below.
+  private async getStripePlatformBalanceUsd(): Promise<number> {
+    if (!this.stripe) return Infinity;
+    const balance = await this.stripe.balance.retrieve();
+    const usdAvailable = (balance.available ?? []).find((b: any) => b.currency === 'usd');
+    return (usdAvailable?.amount ?? 0) / 100;
   }
 
   // The platform→connected-account Transfer succeeded but the connected
@@ -354,13 +411,22 @@ export class BankPayoutExecutorService {
     }
   }
 
-  private async failPayout(payout: PayoutRequest, reason: string, errorCode: string): Promise<void> {
+  private async failPayout(
+    payout: PayoutRequest,
+    reason: string,
+    errorCode: string,
+    internalReason?: string,
+  ): Promise<void> {
     await this.payoutRepo.update(payout.id, {
       status: PayoutStatus.FAILED,
       failedAt: new Date(),
       failureReason: reason,
     });
 
+    // internalReason preserves the raw provider error (when the caller has
+    // one) for support/engineering, without it ever reaching the
+    // contractor-facing `reason` above — see the catch-all in
+    // executeBankPayout for why this distinction exists.
     await this.auditService.log({
       contractorId: payout.contractorId,
       payoutRequestId: payout.id,
@@ -369,7 +435,7 @@ export class BankPayoutExecutorService {
       action: 'bank.payout.failed',
       previousStatus: payout.status,
       newStatus: PayoutStatus.FAILED,
-      metadata: { reason, errorCode },
+      metadata: { reason, errorCode, ...(internalReason && internalReason !== reason ? { internalReason } : {}) },
     });
 
     await this.publisher.publishPayoutFailed({

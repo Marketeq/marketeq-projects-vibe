@@ -24,19 +24,17 @@ export class CheckoutDraftGatewayService {
       config.get<string>('CHECKOUT_SERVICE_URL') || 'http://localhost:3009';
   }
 
-  async getListingSummary(listingId: string, authorization: string | undefined) {
+  async getListingSummary(listingId: string, clientId: string) {
     const project = await this.fetchProject(listingId);
 
     const draft = await firstValueFrom(
       this.http.post(
-        `${this.checkoutUrl}/v1/checkout/drafts/find-or-create`,
+        `${this.checkoutUrl}/v1/checkout/drafts/find-or-create-internal`,
         {
+          clientId,
           listingId,
           phases: project.scope ?? [],
           projectCost: project.budget ?? null,
-        },
-        {
-          headers: authorization ? { authorization } : {},
         },
       ),
     );

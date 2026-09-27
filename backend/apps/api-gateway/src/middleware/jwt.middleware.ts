@@ -81,11 +81,11 @@ const PUBLIC_PATTERNS = [
   // Enumerated rather than a /v1/webhooks/* wildcard so that adding a new
   // route under this namespace does not silently make it unauthenticated.
   /^\/v1\/webhooks\/(?:stripe|ramp)$/,
-  // Wise/Payoneer redirect the browser here straight from the
+  // Wise redirects the browser here straight from the
   // provider's own login page — there's no Marketeq session cookie to send,
   // same reasoning as the webhooks entry above. payout-service's own
   // @Public() on this route is powerless against this upstream gateway check.
-  /^\/v1\/oauth\/(?:wise|payoneer)\/callback$/,
+  /^\/v1\/oauth\/wise\/callback$/,
   // Renders the invite banner / accept-invite flow before the visitor is
   // signed in. The route is already @Public() in invitations-service, but
   // that decorator is powerless against this upstream gateway check, same as

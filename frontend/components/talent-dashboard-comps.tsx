@@ -1172,7 +1172,7 @@ const GETTING_STARTED_STEPS = [
   {
     title: "Set Up Payments",
     description:
-      "Connect a payout method so you're ready to get paid when contracts come in. Choose from bank transfer, Wise, Payoneer, or crypto.",
+      "Connect a payout method so you're ready to get paid when contracts come in. Choose from bank transfer, Wise, or crypto.",
     cta: "Set Up Payments",
     href: "#",
     time: "3 min",
