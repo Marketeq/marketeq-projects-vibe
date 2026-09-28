@@ -64,3 +64,27 @@ export enum VpnProxyDetectionResult {
   PROXY_DETECTED = 'proxy_detected',
   VPN_AND_PROXY_DETECTED = 'vpn_and_proxy_detected',
 }
+
+// Result of the standalone Didit document-check call (POST
+// /v3/id-verification/) for one IdentityDocument row. Distinct from
+// IdentityVerificationStatus, which is the account-wide, both-stages
+// outcome — this is one stage's own vendor result only.
+export enum DocumentCheckStatus {
+  APPROVED = 'approved',
+  DECLINED = 'declined',
+  // Vendor call failed (transport/auth/rate-limit/malformed response) —
+  // distinct from a real Declined decision. Never written as a terminal
+  // result; a retry can still succeed.
+  UNAVAILABLE = 'unavailable',
+}
+
+// Our own tracked status for a Didit-hosted biometric session, updated
+// only by a verified webhook — never by the redirect return from Didit's
+// page (see providers/webhooks/README-style header comments).
+export enum BiometricSessionStatus {
+  CREATED = 'created',
+  APPROVED = 'approved',
+  DECLINED = 'declined',
+  IN_REVIEW = 'in_review',
+  EXPIRED = 'expired',
+}
