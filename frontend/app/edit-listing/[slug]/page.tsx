@@ -8945,6 +8945,9 @@ function PublishProject({
     }
   }
   const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true)
+  // QA-196/PMCM-402: set when the backend 403s the draft fetch — the
+  // listing exists but this account isn't its owner or a team member on it.
+  const [isAccessDenied, setIsAccessDenied] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [faqs, setFaqs] = useState<WizardFaq[]>([])
   const [faqModerationError, setFaqModerationError] = useState<string | null>(
@@ -9073,7 +9076,15 @@ function PublishProject({
         if (slug) {
           try {
             response = await ProjectAPI.GetProjectBySlug(slug)
-          } catch {
+          } catch (err: any) {
+            // QA-196/PMCM-402: a 403 means this listing exists but the
+            // signed-in account isn't its owner or a team member on it —
+            // that must stop here, not fall through to auto-creating an
+            // unrelated blank draft under this URL.
+            if (err?.response?.status === 403) {
+              setIsAccessDenied(true)
+              return
+            }
             response = null
           }
         }
@@ -9083,7 +9094,15 @@ function PublishProject({
           const urlParams = new URLSearchParams(window.location.search)
           const existingDraftId = urlParams.get("draftId")
           if (existingDraftId && UUID_PATTERN.test(existingDraftId)) {
-            response = await ProjectAPI.GetProjectDraft(existingDraftId)
+            try {
+              response = await ProjectAPI.GetProjectDraft(existingDraftId)
+            } catch (err: any) {
+              if (err?.response?.status === 403) {
+                setIsAccessDenied(true)
+                return
+              }
+              throw err
+            }
           }
         }
 
@@ -9091,7 +9110,11 @@ function PublishProject({
         if (!response?.data && slug && UUID_PATTERN.test(slug)) {
           try {
             response = await ProjectAPI.GetProjectDraft(slug)
-          } catch {
+          } catch (err: any) {
+            if (err?.response?.status === 403) {
+              setIsAccessDenied(true)
+              return
+            }
             // fall through to create a fresh draft below
           }
         }
@@ -9720,6 +9743,35 @@ function PublishProject({
     toggleIsSaveExitDialogOpen(false)
     router.push("/my-listings")
   }, [toggleIsSaveExitDialogOpen, router])
+
+  // QA-196/PMCM-402: reusing the same "not found" empty-state pattern
+  // already used on the public listing page and the my-listings editor
+  // (centered AlertCircle + heading + description + button) rather than
+  // inventing a new one, per the design-system reuse rule.
+  if (isAccessDenied) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <div className="mx-auto mb-4 size-12 rounded-full bg-gray-100 flex items-center justify-center">
+            <AlertCircle className="size-6 text-gray-400" />
+          </div>
+          <h1 className="text-xl font-semibold text-dark-blue-400">
+            Unauthorized access
+          </h1>
+          <p className="mt-2 text-sm text-gray-500">
+            You don&apos;t have access to this project&apos;s editor. Ask the
+            listing owner to add you to the team if you should be able to
+            edit it.
+          </p>
+          <div className="mt-6">
+            <Button onClick={() => router.push("/my-listings")}>
+              Go to My Listings
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return isProjectSubmitted ? (
     <div className="min-h-screen flex flex-col">

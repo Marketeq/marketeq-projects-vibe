@@ -1469,6 +1469,9 @@ function ProjectDetailsInner() {
     scope: [],
   })
   const [loading, setLoading] = React.useState(true)
+  // QA-196/PMCM-402: set when the backend 403s the draft fetch — the
+  // listing exists but this account isn't its owner or a team member on it.
+  const [accessDenied, setAccessDenied] = React.useState(false)
   const [hasChanges, setHasChanges] = React.useState(false)
 
   // Warn on browser tab close/refresh with unsaved changes
@@ -3443,7 +3446,16 @@ function ProjectDetailsInner() {
               setLoading(false)
               return
             }
-          } catch {
+          } catch (err: any) {
+            // QA-196/PMCM-402: a 403 means this listing exists but the
+            // signed-in account isn't its owner or a team member on it —
+            // stop here instead of falling through to auto-creating an
+            // unrelated blank draft under this URL.
+            if (err?.response?.status === 403) {
+              setAccessDenied(true)
+              setLoading(false)
+              return
+            }
             // draft not found by ID — fall through
           }
         }
@@ -3463,7 +3475,12 @@ function ProjectDetailsInner() {
               setLoading(false)
               return
             }
-          } catch {
+          } catch (err: any) {
+            if (err?.response?.status === 403) {
+              setAccessDenied(true)
+              setLoading(false)
+              return
+            }
             // not found — try next candidate
           }
         }
@@ -3705,6 +3722,31 @@ function ProjectDetailsInner() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <div className="mx-auto mb-4 size-12 rounded-full bg-gray-100 flex items-center justify-center">
+            <AlertCircle className="size-6 text-gray-400" />
+          </div>
+          <h1 className="text-xl font-semibold text-dark-blue-400">
+            Unauthorized access
+          </h1>
+          <p className="mt-2 text-sm text-gray-500">
+            You don&apos;t have access to this project&apos;s editor. Ask
+            the listing owner to add you to the team if you should be able
+            to edit it.
+          </p>
+          <div className="mt-6">
+            <Button onClick={() => router.push("/my-listings")}>
+              Go to My Listings
+            </Button>
           </div>
         </div>
       </div>
