@@ -128,6 +128,7 @@ describe('createActivityWatchTracker', () => {
     });
 
     tracker.start();
+    await new Promise((r) => setTimeout(r, 50)); // let the (now async) orphan check resolve before spawning
 
     expect(fs.existsSync(dbPath)).toBe(true);
     const serverCall = spawnFn.mock.calls[0];
@@ -138,7 +139,7 @@ describe('createActivityWatchTracker', () => {
     expect(path.dirname(passedPath)).toBe(dbPath);
   });
 
-  it('always passes --exclude-title to the watcher, so window titles (document names, email subjects, browser URLs) are never captured — only the app name we actually use', () => {
+  it('always passes --exclude-title to the watcher, so window titles (document names, email subjects, browser URLs) are never captured — only the app name we actually use', async () => {
     const resourcesDir = setupFakeBinaries();
     const spawnFn = vi.fn(() => fakeChildProcess());
     const tracker = createActivityWatchTracker({
@@ -151,6 +152,7 @@ describe('createActivityWatchTracker', () => {
     });
 
     tracker.start();
+    await new Promise((r) => setTimeout(r, 50));
 
     const watcherCall = spawnFn.mock.calls[1];
     expect(watcherCall[1]).toContain('--exclude-title');
@@ -173,10 +175,10 @@ describe('createActivityWatchTracker', () => {
     });
 
     tracker.start();
-    expect(spawnFn).toHaveBeenCalledTimes(2);
-
-    // waitForServer polls every 250ms; give it a couple of ticks to resolve.
+    // waitForServer polls every 250ms; give it a couple of ticks to resolve
+    // (this also covers the now-async orphan check ahead of spawning).
     await new Promise((r) => setTimeout(r, 400));
+    expect(spawnFn).toHaveBeenCalledTimes(2);
     expect(tracker.isAvailable()).toBe(true);
 
     tracker.stop();
@@ -337,7 +339,7 @@ describe('createActivityWatchTracker', () => {
     expect(tracker.isAvailable()).toBe(false);
   });
 
-  it('does not spawn twice if start() is called while already running', () => {
+  it('does not spawn twice if start() is called while already running', async () => {
     const resourcesDir = setupFakeBinaries();
     const spawnFn = vi.fn(() => fakeChildProcess());
     const tracker = createActivityWatchTracker({
@@ -350,6 +352,7 @@ describe('createActivityWatchTracker', () => {
     });
     tracker.start();
     tracker.start();
+    await new Promise((r) => setTimeout(r, 50));
     expect(spawnFn).toHaveBeenCalledTimes(2); // one pair, not two pairs
   });
 
@@ -367,6 +370,7 @@ describe('createActivityWatchTracker', () => {
     });
 
     tracker.start();
+    await new Promise((r) => setTimeout(r, 50)); // let the (now async) orphan check resolve before spawning
     expect(fs.existsSync(pidFilePath)).toBe(true);
     const written = JSON.parse(fs.readFileSync(pidFilePath, 'utf8'));
     expect(written).toEqual({ serverPid: 12345, watcherPid: 12345 });
@@ -375,12 +379,23 @@ describe('createActivityWatchTracker', () => {
     expect(fs.existsSync(pidFilePath)).toBe(false);
   });
 
-  it('kills orphaned processes from a stale pid file (a previous crashed run) before spawning new ones', async () => {
+  /** A checkExecFn that reports a given pid as running at a given path — the "identity" the real OS lookup would return. */
+  function fakeCheckExec(pidToPath: Record<string, string>) {
+    return vi.fn(async (_file: string, _args: string[], options: any) => {
+      const pid = options?.env?.DTT_CHECK_PID;
+      return pidToPath[pid] ?? '';
+    });
+  }
+
+  it('kills a stale pid only after confirming it still points at our own binary — the actual bug that was found', async () => {
     const resourcesDir = setupFakeBinaries();
     const dbPath = fs.mkdtempSync(path.join(os.tmpdir(), 'aw-pidfile-test-'));
     const pidFilePath = path.join(dbPath, 'activitywatch.pid');
     fs.writeFileSync(pidFilePath, JSON.stringify({ serverPid: 99991, watcherPid: 99992 }));
 
+    const serverExePath = path.join(resourcesDir, 'win-x64', 'aw-server-rust.exe');
+    const watcherExePath = path.join(resourcesDir, 'win-x64', 'aw-watcher-window', 'aw-watcher-window.exe');
+    const checkExecFn = fakeCheckExec({ '99991': serverExePath, '99992': watcherExePath });
     const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true as any);
     const tracker = createActivityWatchTracker({
       logger,
@@ -389,29 +404,35 @@ describe('createActivityWatchTracker', () => {
       options: { resourcesDir, dbPath },
       spawnFn: (() => fakeChildProcess()) as any,
       fetchFn: vi.fn().mockImplementation(() => jsonResponse({}, false)) as any,
+      checkExecFn: checkExecFn as any,
     });
 
     tracker.start();
+    await new Promise((r) => setTimeout(r, 50));
 
+    expect(checkExecFn).toHaveBeenCalled(); // identity was actually checked, not assumed
     expect(killSpy).toHaveBeenCalledWith(99991);
     expect(killSpy).toHaveBeenCalledWith(99992);
-    // The stale file is consumed and replaced by this run's own pid file,
-    // not left behind.
     const written = JSON.parse(fs.readFileSync(pidFilePath, 'utf8'));
     expect(written).toEqual({ serverPid: 12345, watcherPid: 12345 });
 
     killSpy.mockRestore();
   });
 
-  it('does not throw when a stale pid refers to a process that is already gone', async () => {
+  it('does NOT kill a stale pid that now belongs to an unrelated program — the exact scenario the review flagged', async () => {
     const resourcesDir = setupFakeBinaries();
     const dbPath = fs.mkdtempSync(path.join(os.tmpdir(), 'aw-pidfile-test-'));
     const pidFilePath = path.join(dbPath, 'activitywatch.pid');
+    // 99991 is claimed by the stale file to be our server — but the OS now
+    // reports something completely different living at that pid, e.g. an
+    // editor that started later and happened to reuse the number.
     fs.writeFileSync(pidFilePath, JSON.stringify({ serverPid: 99991, watcherPid: 99992 }));
 
-    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
-      throw new Error('ESRCH: no such process');
+    const checkExecFn = fakeCheckExec({
+      '99991': 'C:\\Program Files\\SomeEditor\\editor.exe',
+      '99992': 'C:\\Program Files\\SomeEditor\\editor.exe',
     });
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true as any);
     const tracker = createActivityWatchTracker({
       logger,
       platform: 'win32',
@@ -419,9 +440,156 @@ describe('createActivityWatchTracker', () => {
       options: { resourcesDir, dbPath },
       spawnFn: (() => fakeChildProcess()) as any,
       fetchFn: vi.fn().mockImplementation(() => jsonResponse({}, false)) as any,
+      checkExecFn: checkExecFn as any,
+    });
+
+    tracker.start();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(killSpy).not.toHaveBeenCalled();
+
+    killSpy.mockRestore();
+  });
+
+  it('does not throw when a stale pid refers to a process that is already gone (identity check returns nothing)', async () => {
+    const resourcesDir = setupFakeBinaries();
+    const dbPath = fs.mkdtempSync(path.join(os.tmpdir(), 'aw-pidfile-test-'));
+    const pidFilePath = path.join(dbPath, 'activitywatch.pid');
+    fs.writeFileSync(pidFilePath, JSON.stringify({ serverPid: 99991, watcherPid: 99992 }));
+
+    const checkExecFn = fakeCheckExec({}); // nothing found for any pid
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true as any);
+    const tracker = createActivityWatchTracker({
+      logger,
+      platform: 'win32',
+      arch: 'x64',
+      options: { resourcesDir, dbPath },
+      spawnFn: (() => fakeChildProcess()) as any,
+      fetchFn: vi.fn().mockImplementation(() => jsonResponse({}, false)) as any,
+      checkExecFn: checkExecFn as any,
     });
 
     expect(() => tracker.start()).not.toThrow();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(killSpy).not.toHaveBeenCalled();
+
     killSpy.mockRestore();
+  });
+
+  it('skips a malformed pid (zero, negative, not a number) without even attempting a lookup', async () => {
+    const resourcesDir = setupFakeBinaries();
+    const dbPath = fs.mkdtempSync(path.join(os.tmpdir(), 'aw-pidfile-test-'));
+    const pidFilePath = path.join(dbPath, 'activitywatch.pid');
+    fs.writeFileSync(pidFilePath, JSON.stringify({ serverPid: -5, watcherPid: 0 }));
+
+    const checkExecFn = vi.fn(async () => '');
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true as any);
+    const tracker = createActivityWatchTracker({
+      logger,
+      platform: 'win32',
+      arch: 'x64',
+      options: { resourcesDir, dbPath },
+      spawnFn: (() => fakeChildProcess()) as any,
+      fetchFn: vi.fn().mockImplementation(() => jsonResponse({}, false)) as any,
+      checkExecFn: checkExecFn as any,
+    });
+
+    tracker.start();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(checkExecFn).not.toHaveBeenCalled(); // never even asked — invalid before that
+    expect(killSpy).not.toHaveBeenCalled();
+
+    killSpy.mockRestore();
+  });
+
+  it('never kills its own current process, even if the stale file somehow claims that pid', async () => {
+    const resourcesDir = setupFakeBinaries();
+    const dbPath = fs.mkdtempSync(path.join(os.tmpdir(), 'aw-pidfile-test-'));
+    const pidFilePath = path.join(dbPath, 'activitywatch.pid');
+    fs.writeFileSync(pidFilePath, JSON.stringify({ serverPid: process.pid, watcherPid: 99992 }));
+
+    const checkExecFn = fakeCheckExec({
+      [String(process.pid)]: path.join(resourcesDir, 'win-x64', 'aw-server-rust.exe'),
+      '99992': path.join(resourcesDir, 'win-x64', 'aw-watcher-window', 'aw-watcher-window.exe'),
+    });
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true as any);
+    const tracker = createActivityWatchTracker({
+      logger,
+      platform: 'win32',
+      arch: 'x64',
+      options: { resourcesDir, dbPath },
+      spawnFn: (() => fakeChildProcess()) as any,
+      fetchFn: vi.fn().mockImplementation(() => jsonResponse({}, false)) as any,
+      checkExecFn: checkExecFn as any,
+    });
+
+    tracker.start();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(killSpy).not.toHaveBeenCalledWith(process.pid);
+
+    killSpy.mockRestore();
+  });
+
+  it('still starts tracking normally even if the identity check itself throws unexpectedly', async () => {
+    const resourcesDir = setupFakeBinaries();
+    const dbPath = fs.mkdtempSync(path.join(os.tmpdir(), 'aw-pidfile-test-'));
+    const pidFilePath = path.join(dbPath, 'activitywatch.pid');
+    fs.writeFileSync(pidFilePath, JSON.stringify({ serverPid: 99991, watcherPid: 99992 }));
+
+    const checkExecFn = vi.fn(async () => {
+      throw new Error('boom — unexpected failure inside the identity check');
+    });
+    const spawnFn = vi.fn(() => fakeChildProcess());
+    const tracker = createActivityWatchTracker({
+      logger,
+      platform: 'win32',
+      arch: 'x64',
+      options: { resourcesDir, dbPath },
+      spawnFn: spawnFn as any,
+      fetchFn: vi.fn().mockImplementation(() => jsonResponse({}, false)) as any,
+      checkExecFn: checkExecFn as any,
+    });
+
+    expect(() => tracker.start()).not.toThrow();
+    await new Promise((r) => setTimeout(r, 50));
+
+    // A bug in the safety check must never stop the feature it's protecting.
+    expect(spawnFn).toHaveBeenCalledTimes(2); // still spawned a fresh pair
+  });
+
+  it('only spawns new processes after the orphan check has finished, never before or during', async () => {
+    const resourcesDir = setupFakeBinaries();
+    const dbPath = fs.mkdtempSync(path.join(os.tmpdir(), 'aw-pidfile-test-'));
+    const pidFilePath = path.join(dbPath, 'activitywatch.pid');
+    fs.writeFileSync(pidFilePath, JSON.stringify({ serverPid: 99991, watcherPid: 99992 }));
+
+    const resolvers: Array<(v: string) => void> = [];
+    const checkExecFn = vi.fn(
+      () => new Promise<string>((resolve) => { resolvers.push(resolve); }),
+    );
+    const spawnFn = vi.fn(() => fakeChildProcess());
+    const tracker = createActivityWatchTracker({
+      logger,
+      platform: 'win32',
+      arch: 'x64',
+      options: { resourcesDir, dbPath },
+      spawnFn: spawnFn as any,
+      fetchFn: vi.fn().mockImplementation(() => jsonResponse({}, false)) as any,
+      checkExecFn: checkExecFn as any,
+    });
+
+    tracker.start();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(spawnFn).not.toHaveBeenCalled(); // still waiting on the first pid's check
+
+    resolvers[0](''); // serverPid's check resolves ("not found") — loop moves to watcherPid
+    await new Promise((r) => setTimeout(r, 20));
+    expect(spawnFn).not.toHaveBeenCalled(); // watcherPid's check is now the one pending — still no spawn
+
+    resolvers[1](''); // let the test finish cleanly, no dangling promise
+    await new Promise((r) => setTimeout(r, 20));
+    expect(spawnFn).toHaveBeenCalledTimes(2); // now that the check is fully done, spawning proceeds
   });
 });

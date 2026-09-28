@@ -35,12 +35,19 @@
 //     "WindowsTerminal.exe"), not a friendly display name — app-icon-
 //     service.ts's extraction matching was updated to handle this.
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execFile, type ChildProcess } from 'node:child_process';
+import { promisify } from 'node:util';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { Logger } from 'pino';
 import type { AppUsageTracker } from './app-usage-tracker';
-import { resolveFriendlyAppName } from './app-icon-service';
+import { resolveFriendlyAppName, type AsyncExecFile } from './app-icon-service';
+
+const execFileAsync = promisify(execFile);
+const defaultCheckExec: AsyncExecFile = async (file, args, options) => {
+  const { stdout } = await execFileAsync(file, args, options);
+  return stdout;
+};
 
 const DEFAULT_PORT = 5987; // deliberately not AW's own default 5600, to
 // avoid colliding with a real ActivityWatch install the user might already
@@ -73,6 +80,8 @@ interface Deps {
   spawnFn?: typeof spawn;
   fetchFn?: typeof fetch;
   resolveNameFn?: typeof resolveFriendlyAppName;
+  /** Injectable for tests — used only to verify a stale PID's identity before killing it. */
+  checkExecFn?: AsyncExecFile;
   /**
    * Fired once with the result of the startup check (binaries missing,
    * failed to bind, or came up successfully), and again with `false` if
@@ -106,6 +115,51 @@ function platformDir(platform: NodeJS.Platform, arch: string): string {
   return `${os}-${a}`;
 }
 
+/**
+ * Looks up the full executable path of whatever is *currently* running
+ * under `pid`, or null if nothing is (or the lookup itself fails). Used to
+ * confirm a stale PID from a previous crashed run genuinely still is our
+ * own process before killing it — PIDs get reused by the OS, sometimes for
+ * something else entirely, so the PID alone is never enough to act on.
+ *
+ * pid is passed out of band (env var on Windows, a real argv item on
+ * macOS/Linux), never interpolated into script text — same rule as every
+ * other shell-out in this codebase, even though a PID is "just a number":
+ * consistency matters more than judging this one value safe in isolation.
+ *
+ * Confirmed directly against the real OS (not assumed): a real spawned
+ * process's path comes back byte-identical to how this file already
+ * constructs it; a real unrelated process's path correctly does not match;
+ * a nonexistent PID comes back as a clean empty result, not an error,
+ * given -ErrorAction SilentlyContinue on Windows.
+ */
+async function getProcessExecutablePath(
+  pid: number,
+  platform: NodeJS.Platform,
+  exec: AsyncExecFile,
+): Promise<string | null> {
+  try {
+    if (platform === 'win32') {
+      const script = '(Get-Process -Id $env:DTT_CHECK_PID -ErrorAction SilentlyContinue).Path';
+      const result = (
+        await exec(
+          'powershell.exe',
+          ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+          { timeout: 2000, env: { ...process.env, DTT_CHECK_PID: String(pid) } },
+        )
+      ).trim();
+      return result || null;
+    }
+    // macOS/Linux: `ps -p <pid> -o comm=` prints the executable path for
+    // that pid, or nothing (empty stdout) if it doesn't exist. pid is a
+    // real argv item here, not shell text, so there's nothing to escape.
+    const result = (await exec('ps', ['-p', String(pid), '-o', 'comm='], { timeout: 2000 })).trim();
+    return result || null;
+  } catch {
+    return null;
+  }
+}
+
 export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
   const log = deps.logger.child({ svc: 'activitywatch-tracker' });
   const platform = deps.platform ?? process.platform;
@@ -117,6 +171,7 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
   const spawnFn = deps.spawnFn ?? spawn;
   const fetchFn = deps.fetchFn ?? fetch;
   const resolveNameFn = deps.resolveNameFn ?? resolveFriendlyAppName;
+  const checkExecFn = deps.checkExecFn ?? defaultCheckExec;
   const resourcesDir = deps.options?.resourcesDir ?? resolveDefaultResourcesDir();
 
   const dir = path.join(resourcesDir, platformDir(platform, arch));
@@ -216,25 +271,59 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
   // index.ts); skipped entirely otherwise, e.g. in tests.
   const pidFilePath = dbPath ? path.join(dbPath, 'activitywatch.pid') : null;
 
-  function killOrphansFromPreviousRun(): void {
+  function isValidPid(pid: unknown): pid is number {
+    return typeof pid === 'number' && Number.isInteger(pid) && pid > 0;
+  }
+
+  // Kills a leftover process from a previous crashed run — but only after
+  // confirming it's actually still our own binary, not whatever the OS has
+  // since handed that PID to. Real review finding, verified against the
+  // real OS before fixing: PIDs get reused, sometimes within days (a
+  // reboot, or the app just not being reopened for a while), and killing
+  // by PID alone could take down something completely unrelated — an
+  // editor, anything. Confirmed directly: a real spawned copy of our own
+  // binary reports back the exact same path we already know it by; a real
+  // unrelated program's path correctly never matches.
+  //
+  // Structured so this can never reject and never throw past its own
+  // boundary — a bug in a safety check must never be able to stop the
+  // feature it's protecting from starting.
+  async function killOrphansFromPreviousRun(): Promise<void> {
     if (!pidFilePath || !fs.existsSync(pidFilePath)) return;
     try {
-      const { serverPid, watcherPid } = JSON.parse(fs.readFileSync(pidFilePath, 'utf8')) as {
+      const parsed = JSON.parse(fs.readFileSync(pidFilePath, 'utf8')) as {
         serverPid?: number;
         watcherPid?: number;
       };
-      // Best-effort: a PID could in principle have been reused by an
-      // unrelated process since the crash, but Windows/macOS don't reuse
-      // PIDs immediately, and the realistic window here is "the next time
-      // this app is opened" — not a guarantee, just a reasonable trade-off
-      // for a background cleanup, not something depended on for safety.
-      for (const pid of [serverPid, watcherPid]) {
-        if (!pid) continue;
+      const candidates: Array<{ pid: number | undefined; expectedPath: string; label: string }> = [
+        { pid: parsed.serverPid, expectedPath: serverPath, label: 'aw-server-rust' },
+        { pid: parsed.watcherPid, expectedPath: watcherPath, label: 'aw-watcher-window' },
+      ];
+      for (const { pid, expectedPath, label } of candidates) {
+        if (!isValidPid(pid)) continue; // malformed entry (zero, negative, not a number) — never act on it
+        if (pid === process.pid) continue; // never kill ourselves, whatever the file claims
         try {
-          process.kill(pid);
-          log.info({ pid }, 'killed orphaned activitywatch process from a previous crashed run');
-        } catch {
-          /* already gone — nothing to clean up */
+          const actualPath = await getProcessExecutablePath(pid, platform, checkExecFn);
+          const matches =
+            actualPath !== null && path.resolve(actualPath).toLowerCase() === path.resolve(expectedPath).toLowerCase();
+          if (matches) {
+            try {
+              process.kill(pid);
+              log.info({ pid, label }, 'killed orphaned activitywatch process from a previous crashed run');
+            } catch {
+              /* gone between the check and the kill — fine, nothing left to clean up */
+            }
+          } else {
+            log.debug(
+              { pid, label, actualPath },
+              'stale pid no longer matches our own process (reused, or already gone) — leaving it alone',
+            );
+          }
+        } catch (err) {
+          // A failure verifying this one candidate must never turn into an
+          // unverified kill, and must never stop the other candidate from
+          // still being checked.
+          log.debug({ err, pid, label }, 'failed to verify stale pid, leaving it alone (non-fatal)');
         }
       }
     } catch (err) {
@@ -248,6 +337,16 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
     }
   }
 
+  // Bumped on every start() and stop() call. The orphan check now happens
+  // asynchronously before anything spawns, which opens a real gap that
+  // didn't exist when this was all synchronous: stop() (or a newer
+  // start()) could run while an earlier start() is still mid-check. Each
+  // start() captures its own generation and re-checks it right before
+  // spawning — if something else has moved the generation on in the
+  // meantime, that attempt is abandoned instead of spawning into a session
+  // that's already changed its mind.
+  let startGeneration = 0;
+
   function start(): void {
     if (serverProc || watcherProc) return;
     if (!fs.existsSync(serverPath) || !fs.existsSync(watcherPath)) {
@@ -256,86 +355,99 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
       onAvailabilityChange(false);
       return;
     }
-    killOrphansFromPreviousRun();
-    try {
-      const serverArgs = ['--port', String(port)];
-      if (dbPath) {
-        // --dbpath wants the database *file* itself, not its containing
-        // directory — passing a directory makes aw-server-rust panic trying
-        // to open it as a SQLite file, which poisons its internal lock and
-        // breaks every request after (confirmed directly against the real
-        // binary). dbPath here is the directory; create it, then point
-        // --dbpath at a file inside it.
-        fs.mkdirSync(dbPath, { recursive: true });
-        const dbFilePath = path.join(dbPath, 'aw-server.sqlite');
-        serverArgs.push('--dbpath', dbFilePath);
-      }
-      serverProc = spawnFn(serverPath, serverArgs, {
-        stdio: 'ignore',
-        windowsHide: true,
-      });
-      serverProc.on('error', (err) => log.warn({ err }, 'aw-server-rust spawn error'));
-      serverProc.on('exit', (code) => {
-        log.info({ code }, 'aw-server-rust exited');
-        if (available) {
-          available = false;
-          onAvailabilityChange(false);
+    const myGeneration = ++startGeneration;
+    void killOrphansFromPreviousRun()
+      .catch((err) => {
+        // killOrphansFromPreviousRun is written to never reject — this is
+        // a last-resort guard, not the expected path.
+        log.debug({ err }, 'unexpected error during orphan cleanup (non-fatal)');
+      })
+      .then(() => {
+        if (myGeneration !== startGeneration) {
+          log.debug('start() superseded by a newer start()/stop() while checking for orphans — abandoning');
+          return;
         }
-      });
-
-      // --exclude-title: aw-watcher-window records the full window title by
-      // default (document names, email subjects, and on macOS the active
-      // browser URL including incognito) — far more than this feature needs
-      // or should retain. We only ever read data.app; --exclude-title makes
-      // the watcher itself replace the title field before it's ever written
-      // to the local database, rather than us discarding it after the fact.
-      // Verified directly against the real binary: with this flag, captured
-      // events show `"title":"excluded"` while `"app"` is unaffected.
-      watcherProc = spawnFn(watcherPath, ['--port', String(port), '--exclude-title'], {
-        stdio: 'ignore',
-        windowsHide: true,
-        cwd: path.dirname(watcherPath),
-      });
-      watcherProc.on('error', (err) => log.warn({ err }, 'aw-watcher-window spawn error'));
-      watcherProc.on('exit', (code) => {
-        log.info({ code }, 'aw-watcher-window exited');
-        if (available) {
-          available = false;
-          onAvailabilityChange(false);
-        }
-      });
-
-      if (pidFilePath && serverProc.pid && watcherProc.pid) {
         try {
-          fs.mkdirSync(path.dirname(pidFilePath), { recursive: true });
-          fs.writeFileSync(
-            pidFilePath,
-            JSON.stringify({ serverPid: serverProc.pid, watcherPid: watcherProc.pid }),
-          );
-        } catch (err) {
-          log.debug({ err }, 'failed to write activitywatch pid file (non-fatal)');
-        }
-      }
+          const serverArgs = ['--port', String(port)];
+          if (dbPath) {
+            // --dbpath wants the database *file* itself, not its containing
+            // directory — passing a directory makes aw-server-rust panic trying
+            // to open it as a SQLite file, which poisons its internal lock and
+            // breaks every request after (confirmed directly against the real
+            // binary). dbPath here is the directory; create it, then point
+            // --dbpath at a file inside it.
+            fs.mkdirSync(dbPath, { recursive: true });
+            const dbFilePath = path.join(dbPath, 'aw-server.sqlite');
+            serverArgs.push('--dbpath', dbFilePath);
+          }
+          serverProc = spawnFn(serverPath, serverArgs, {
+            stdio: 'ignore',
+            windowsHide: true,
+          });
+          serverProc.on('error', (err) => log.warn({ err }, 'aw-server-rust spawn error'));
+          serverProc.on('exit', (code) => {
+            log.info({ code }, 'aw-server-rust exited');
+            if (available) {
+              available = false;
+              onAvailabilityChange(false);
+            }
+          });
 
-      waitForServer().then((ok) => {
-        available = ok;
-        log.info({ available: ok }, 'activitywatch tracker startup check complete');
-        if (ok) {
-          syncedThrough = Date.now();
-          syncHandle = setInterval(() => void syncOnce(), syncIntervalMs);
-          if (syncHandle.unref) syncHandle.unref();
+          // --exclude-title: aw-watcher-window records the full window title by
+          // default (document names, email subjects, and on macOS the active
+          // browser URL including incognito) — far more than this feature needs
+          // or should retain. We only ever read data.app; --exclude-title makes
+          // the watcher itself replace the title field before it's ever written
+          // to the local database, rather than us discarding it after the fact.
+          // Verified directly against the real binary: with this flag, captured
+          // events show `"title":"excluded"` while `"app"` is unaffected.
+          watcherProc = spawnFn(watcherPath, ['--port', String(port), '--exclude-title'], {
+            stdio: 'ignore',
+            windowsHide: true,
+            cwd: path.dirname(watcherPath),
+          });
+          watcherProc.on('error', (err) => log.warn({ err }, 'aw-watcher-window spawn error'));
+          watcherProc.on('exit', (code) => {
+            log.info({ code }, 'aw-watcher-window exited');
+            if (available) {
+              available = false;
+              onAvailabilityChange(false);
+            }
+          });
+
+          if (pidFilePath && serverProc.pid && watcherProc.pid) {
+            try {
+              fs.mkdirSync(path.dirname(pidFilePath), { recursive: true });
+              fs.writeFileSync(
+                pidFilePath,
+                JSON.stringify({ serverPid: serverProc.pid, watcherPid: watcherProc.pid }),
+              );
+            } catch (err) {
+              log.debug({ err }, 'failed to write activitywatch pid file (non-fatal)');
+            }
+          }
+
+          waitForServer().then((ok) => {
+            available = ok;
+            log.info({ available: ok }, 'activitywatch tracker startup check complete');
+            if (ok) {
+              syncedThrough = Date.now();
+              syncHandle = setInterval(() => void syncOnce(), syncIntervalMs);
+              if (syncHandle.unref) syncHandle.unref();
+            }
+            onAvailabilityChange(ok);
+          });
+        } catch (err) {
+          log.warn({ err }, 'failed to spawn activitywatch processes (non-fatal)');
+          available = false;
+          stop();
+          onAvailabilityChange(false);
         }
-        onAvailabilityChange(ok);
       });
-    } catch (err) {
-      log.warn({ err }, 'failed to spawn activitywatch processes (non-fatal)');
-      available = false;
-      stop();
-      onAvailabilityChange(false);
-    }
   }
 
   function stop(): void {
+    startGeneration++;
     if (syncHandle) clearInterval(syncHandle);
     syncHandle = null;
     // Retention backstop: wipe anything left in the bucket (events that
