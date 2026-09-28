@@ -28,6 +28,8 @@ describe('IdentityVerificationService — location backfill', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
+      {} as any,
       locationProvider as any,
       {} as any,
       events as any,

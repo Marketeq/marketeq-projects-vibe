@@ -4,6 +4,7 @@ import {
   Post,
   Param,
   Body,
+  Query,
   Req,
   UseGuards,
   HttpCode,
@@ -12,6 +13,7 @@ import {
 import { Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { IdentityVerificationService } from '../services/identity-verification.service';
+import { TwoStageVerificationService } from '../services/two-stage-verification.service';
 import { BearerAuthGuard } from '../common/guards/bearer-auth.guard';
 import { VpnProxyCheckGuard } from '../common/guards/vpn-proxy-check.guard';
 import { extractClientIp } from '../common/utils/extract-client-ip';
@@ -19,10 +21,17 @@ import { TravelClassificationRequestDto } from '../dto/request/travel-classifica
 import { TravelDurationRequestDto } from '../dto/request/travel-duration.request.dto';
 import { DocumentUploadUrlRequestDto } from '../dto/request/document-upload-url.request.dto';
 import { SubmitDocumentRequestDto } from '../dto/request/submit-document.request.dto';
+import { AcceptedDocumentsRequestDto } from '../dto/request/accepted-documents.request.dto';
 import { ProfileStatusResponseDto } from '../dto/response/profile-status.response.dto';
 import { DocumentResponseDto } from '../dto/response/document.response.dto';
 import { DocumentUploadUrlResponseDto } from '../dto/response/document-upload-url.response.dto';
 import { VerificationSessionResponseDto } from '../dto/response/verification-session.response.dto';
+import { AcceptedDocumentsResponseDto } from '../dto/response/accepted-documents.response.dto';
+import {
+  BeginBiometricVerificationResponseDto,
+  DocumentCheckResponseDto,
+  TwoStageStatusResponseDto,
+} from '../dto/response/two-stage-verification.response.dto';
 
 interface AuthenticatedRequest extends Request {
   userId: string;
@@ -31,7 +40,10 @@ interface AuthenticatedRequest extends Request {
 @Controller('v1/identity-verification')
 @UseGuards(BearerAuthGuard)
 export class IdentityVerificationController {
-  constructor(private readonly service: IdentityVerificationService) {}
+  constructor(
+    private readonly service: IdentityVerificationService,
+    private readonly twoStageService: TwoStageVerificationService,
+  ) {}
 
   // Standalone gate the frontend calls before location verification
   // begins (Technical Requirements §1.5). Enforcement doesn't depend on
@@ -81,6 +93,20 @@ export class IdentityVerificationController {
     return ProfileStatusResponseDto.fromEntity(profile);
   }
 
+  // Document-selection screen calls this after the user picks (or the flow
+  // defaults to) an issuing country, to know which of our canonical
+  // document types to show as selectable cards. Not guarded by
+  // VpnProxyCheckGuard — it's an informational lookup, not itself an
+  // advancing action toward verification; every route that actually
+  // records progress still carries the guard.
+  @Get('accepted-documents')
+  async getAcceptedDocuments(
+    @Query() dto: AcceptedDocumentsRequestDto,
+  ): Promise<AcceptedDocumentsResponseDto> {
+    const acceptedDocumentTypes = await this.service.getAcceptedDocumentTypes(dto.issuingCountry);
+    return AcceptedDocumentsResponseDto.from(dto.issuingCountry, acceptedDocumentTypes);
+  }
+
   @Post('documents/upload-url')
   @UseGuards(VpnProxyCheckGuard)
   async createDocumentUploadUrl(
@@ -104,6 +130,15 @@ export class IdentityVerificationController {
     return DocumentResponseDto.fromEntity(document);
   }
 
+  // SUPERSEDED for the two-stage flow below by
+  // documents/:documentId/document-check + begin-biometric-verification.
+  // The route itself is left in place (not deleted — the DI-registered
+  // DiditDocumentVerificationProvider/DOCUMENT_VERIFICATION_PROVIDER it
+  // calls stay too), but the service method now always throws
+  // LegacyVerificationPathRetiredException (410) for a NEW attempt — see
+  // identity-verification.service.ts's startVerificationSession for the
+  // full reasoning (2026-09-26 review of the account-wide attempt-ceiling
+  // race and the now-removed LEGACY_VERIFICATION_PATH_CAN_APPROVE flag).
   @Post('documents/:documentId/verify')
   @UseGuards(VpnProxyCheckGuard)
   async startVerificationSession(
@@ -111,6 +146,47 @@ export class IdentityVerificationController {
     @Param('documentId') documentId: string,
   ): Promise<VerificationSessionResponseDto> {
     return this.service.startVerificationSession(req.userId, documentId, extractClientIp(req));
+  }
+
+  // Stage 1 of the two-stage Didit integration: standalone document check.
+  // Ownership enforced inside the service (document must belong to the
+  // caller's own profile). Guarded the same as every other advancing
+  // action.
+  @Post('documents/:documentId/document-check')
+  @UseGuards(VpnProxyCheckGuard)
+  async checkDocumentWithVendor(
+    @Req() req: AuthenticatedRequest,
+    @Param('documentId') documentId: string,
+  ): Promise<DocumentCheckResponseDto> {
+    const document = await this.twoStageService.checkDocumentWithVendor(req.userId, documentId);
+    return DocumentCheckResponseDto.from(document);
+  }
+
+  // Stage 2: creates (or resumes) the Didit-hosted biometric session.
+  // Eligibility (document Approved + usable portrait) is enforced inside
+  // the service — this route never itself decides eligibility.
+  @Post('documents/:documentId/begin-biometric-verification')
+  @UseGuards(VpnProxyCheckGuard)
+  async beginBiometricVerification(
+    @Req() req: AuthenticatedRequest,
+    @Param('documentId') documentId: string,
+  ): Promise<BeginBiometricVerificationResponseDto> {
+    const result = await this.twoStageService.beginBiometricVerification(req.userId, documentId);
+    return BeginBiometricVerificationResponseDto.from(result);
+  }
+
+  // Authenticated status read for both stages plus the overall,
+  // webhook-derived result. Never itself infers "verified" — only reports
+  // what handleBiometricSessionWebhook has already written. Not guarded
+  // by VpnProxyCheckGuard — informational, same convention as
+  // accepted-documents above.
+  @Get('documents/:documentId/two-stage-status')
+  async getTwoStageStatus(
+    @Req() req: AuthenticatedRequest,
+    @Param('documentId') documentId: string,
+  ): Promise<TwoStageStatusResponseDto> {
+    const status = await this.twoStageService.getTwoStageStatus(req.userId, documentId);
+    return TwoStageStatusResponseDto.from(status);
   }
 
   @Get('documents')

@@ -10,7 +10,10 @@ export class DocumentResponseDto {
   documentType!: DocumentType;
   documentTypeLabel!: string | null;
   issuingCountry!: string;
-  expirationDate!: string;
+  // Nullable — legitimately absent for captureMethod=scan until/unless
+  // Didit's document-check extracts one (see SubmitDocumentRequestDto's
+  // header comment).
+  expirationDate!: string | null;
   issuingState!: string | null;
   captureMethod!: CaptureMethod;
   verificationDepth!: VerificationDepth | null;

@@ -5,6 +5,7 @@ import { IdentityVerificationProfile } from '../entities/identity-verification-p
 import { IdentityDocument } from '../entities/identity-document.entity';
 import { VerificationAttempt } from '../entities/verification-attempt.entity';
 import { PendingVerificationSession } from '../entities/pending-verification-session.entity';
+import { AttemptReservation } from '../entities/attempt-reservation.entity';
 import {
   TravelClassification,
   DeclaredDuration,
@@ -12,6 +13,7 @@ import {
   LocationVerificationStatus,
   AttemptOutcome,
   VpnProxyDetectionResult,
+  DocumentType,
 } from '../entities/enums/identity-verification.enums';
 import { SubmitDocumentRequestDto } from '../dto/request/submit-document.request.dto';
 import { DiditWebhookPayloadDto } from '../dto/webhooks/didit-webhook.payload.dto';
@@ -25,6 +27,8 @@ import {
   InvalidWebhookSignatureException,
   UnknownVendorSessionException,
   VpnProxyDetectedException,
+  UnsupportedDocumentForCountryException,
+  LegacyVerificationPathRetiredException,
 } from '../common/errors/domain-exceptions';
 import { verifyDiditWebhookSignature } from '../common/utils/verify-didit-webhook-signature';
 import {
@@ -36,6 +40,10 @@ import {
   DocumentVerificationProvider,
   DOCUMENT_VERIFICATION_PROVIDER,
 } from '../providers/document-verification/document-verification-provider.interface';
+import {
+  DocumentCoverageProvider,
+  DOCUMENT_COVERAGE_PROVIDER,
+} from '../providers/document-coverage/document-coverage-provider.interface';
 import {
   VpnProxyDetectionProvider,
   VPN_PROXY_DETECTION_PROVIDER,
@@ -53,8 +61,8 @@ import {
   NOTIFICATION_EVENT_PUBLISHER,
 } from '../events/notification-event-publisher.interface';
 import { IdentityVerificationEventType } from '../events/identity-verification-event.types';
+import { getAccountWideAttemptCount, RETRY_LIMIT } from '../common/attempt-limit/account-wide-attempt-count';
 
-const RETRY_LIMIT = 3;
 const FIRST_REMINDER_DELAY_MS = 5 * 60 * 1000;
 const FAILED_FINAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
@@ -83,10 +91,14 @@ export class IdentityVerificationService {
     private readonly attemptRepository: Repository<VerificationAttempt>,
     @InjectRepository(PendingVerificationSession)
     private readonly pendingSessionRepository: Repository<PendingVerificationSession>,
+    @InjectRepository(AttemptReservation)
+    private readonly reservationRepository: Repository<AttemptReservation>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
     @Inject(DOCUMENT_VERIFICATION_PROVIDER)
     private readonly documentVerificationProvider: DocumentVerificationProvider,
+    @Inject(DOCUMENT_COVERAGE_PROVIDER)
+    private readonly documentCoverageProvider: DocumentCoverageProvider,
     @Inject(VPN_PROXY_DETECTION_PROVIDER)
     private readonly vpnProxyDetectionProvider: VpnProxyDetectionProvider,
     @Inject(LOCATION_PROVIDER)
@@ -228,44 +240,77 @@ export class IdentityVerificationService {
     };
   }
 
+  // Backend-owned mirror of the document-selection screen's own filtering —
+  // deliberately re-checked here, not trusted from the request body, so a
+  // client that skips or tampers with the UI's own filtering still can't
+  // submit an issuingCountry/documentType combination the coverage provider
+  // doesn't back. Propagates DocumentCoverageUnavailableException as-is when
+  // the provider can't determine coverage (fail closed, same policy as
+  // every other "can't determine yet" boundary in this service).
+  async getAcceptedDocumentTypes(issuingCountry: string): Promise<DocumentType[]> {
+    return this.documentCoverageProvider.getAcceptedDocumentTypes(issuingCountry);
+  }
+
   async submitDocument(
     userId: string,
     dto: SubmitDocumentRequestDto,
   ): Promise<IdentityDocument> {
     const profile = await this.getOrCreateProfile(userId);
-    const documentNumberNormalized = normalizeDocumentNumber(dto.documentNumber);
-    const documentNumberFingerprint = hashDocumentNumber(documentNumberNormalized);
+
+    const acceptedDocumentTypes = await this.documentCoverageProvider.getAcceptedDocumentTypes(
+      dto.issuingCountry,
+    );
+    if (!acceptedDocumentTypes.includes(dto.documentType)) {
+      throw new UnsupportedDocumentForCountryException({
+        issuingCountry: dto.issuingCountry,
+        documentType: dto.documentType,
+      });
+    }
+
+    // documentNumber is absent for captureMethod=scan (SubmitDocumentRequestDto's
+    // header comment) — nothing to fingerprint or duplicate-check yet at
+    // submission time in that case. TwoStageVerificationService.checkDocumentWithVendor
+    // runs this exact same duplicate check later, once Didit's document-check
+    // extracts a real number (or never runs it, if extraction genuinely
+    // produces none) — see that method's own header comment.
+    const documentNumberFingerprint = dto.documentNumber
+      ? hashDocumentNumber(normalizeDocumentNumber(dto.documentNumber))
+      : null;
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
-      await queryRunner.query('SELECT pg_advisory_xact_lock(hashtext($1 || $2 || $3))', [
-        documentNumberFingerprint,
-        dto.issuingCountry,
-        dto.documentType,
-      ]);
+      let duplicate: { id: string; profile_id: string } | undefined;
+      if (documentNumberFingerprint) {
+        await queryRunner.query('SELECT pg_advisory_xact_lock(hashtext($1 || $2 || $3))', [
+          documentNumberFingerprint,
+          dto.issuingCountry,
+          dto.documentType,
+        ]);
 
-      const matches: Array<{ id: string; profile_id: string }> = await queryRunner.query(
-        `SELECT id, profile_id FROM identity_verification.identity_documents
-         WHERE document_number_normalized = $1 AND issuing_country = $2
-           AND document_type = $3 AND profile_id <> $4
-         LIMIT 1`,
-        [documentNumberFingerprint, dto.issuingCountry, dto.documentType, profile.id],
-      );
-      const duplicate = matches[0];
+        const matches: Array<{ id: string; profile_id: string }> = await queryRunner.query(
+          `SELECT id, profile_id FROM identity_verification.identity_documents
+           WHERE document_number_normalized = $1 AND issuing_country = $2
+             AND document_type = $3 AND profile_id <> $4
+           LIMIT 1`,
+          [documentNumberFingerprint, dto.issuingCountry, dto.documentType, profile.id],
+        );
+        duplicate = matches[0];
+      }
 
       const document = queryRunner.manager.create(IdentityDocument, {
         profileId: profile.id,
         documentType: dto.documentType,
         documentTypeLabel: dto.documentTypeLabel ?? null,
         issuingCountry: dto.issuingCountry,
-        documentNumber: dto.documentNumber,
+        documentNumber: dto.documentNumber ?? null,
         documentNumberNormalized: documentNumberFingerprint,
-        expirationDate: dto.expirationDate,
+        expirationDate: dto.expirationDate ?? null,
         issuingState: dto.issuingState ?? null,
         captureMethod: dto.captureMethod,
         documentImageReference: dto.documentImageReference,
+        backImageReference: dto.backImageReference ?? null,
         isDuplicateMatch: !!duplicate,
         duplicateOfDocumentId: duplicate ? duplicate.id : null,
       });
@@ -296,21 +341,44 @@ export class IdentityVerificationService {
     }
   }
 
-  // Account-wide (profile_id alone) count of settled attempts plus
-  // in-flight sessions still awaiting a Didit outcome — TRVG2 §2's
-  // gate-table note / Answer 3. Summing both, rather than only settled
-  // attempts, keeps the 3-attempt ceiling from being bypassed by
-  // concurrent in-flight sessions.
-  private async getAccountWideAttemptCount(profileId: string): Promise<number> {
-    const existingAttempts = await this.attemptRepository.count({ where: { profileId } });
-    const pendingSessions = await this.pendingSessionRepository.count({ where: { profileId } });
-    return existingAttempts + pendingSessions;
+  private getAccountWideAttemptCount(profileId: string): Promise<number> {
+    return getAccountWideAttemptCount(
+      {
+        attemptRepository: this.attemptRepository,
+        pendingSessionRepository: this.pendingSessionRepository,
+        documentRepository: this.documentRepository,
+        reservationRepository: this.reservationRepository,
+      },
+      profileId,
+    );
   }
 
+  // RETIRED for new attempts (2026-09-26). This used to start a NEW
+  // old-pipeline (hosted-Sessions-API) vendor session with only a plain
+  // count-then-act ceiling check — no lock, so two concurrent calls could
+  // both read a count under the ceiling and both create a session. Rather
+  // than retrofit locking onto a path that's already superseded by the
+  // two-stage flow, new attempts on this path are closed off entirely
+  // instead: after only a document-existence check, this method now
+  // always throws.
+  //
+  // This retirement does NOT, by itself, make it safe for handleDiditWebhook
+  // to treat whatever PendingVerificationSession rows already exist as
+  // trustworthy — that was this pass's original (2026-09-26) reasoning and
+  // was corrected the same day (see that method's comment): predating
+  // retirement only proves the row is old, not that a webhook resolving it
+  // is genuine or that "Approved" means what the code assumes. This method
+  // still closes off new attempts (that part of the fix stands on its own
+  // merits — the concurrency race it fixes is real regardless of the
+  // webhook question) — it is handleDiditWebhook's APPROVED branch that
+  // was walked back separately. The vendor call, PendingVerificationSession
+  // creation, and IN_PROGRESS transition this method used to perform are
+  // removed as dead code, not left unreachable; see git history for the
+  // prior body.
   async startVerificationSession(
     userId: string,
     documentId: string,
-    ipAddress: string | null = null,
+    _ipAddress: string | null = null,
   ): Promise<{ vendorSessionId: string; vendorSessionUrl: string; attemptNumber: number }> {
     const profile = await this.getOrCreateProfile(userId);
     const document = await this.documentRepository.findOne({
@@ -318,52 +386,7 @@ export class IdentityVerificationService {
     });
     if (!document) throw new DocumentNotFoundException();
 
-    const attemptTotal = await this.getAccountWideAttemptCount(profile.id);
-    if (attemptTotal >= RETRY_LIMIT) {
-      throw new RetryLimitExceededException();
-    }
-
-    // VpnProxyCheckGuard already enforces this same check at the
-    // controller boundary — this call is a defense-in-depth re-check right
-    // before the vendor session actually starts, not the sole enforcement
-    // point (Technical Requirements §1.5: backend enforcement, not just
-    // the frontend gate).
-    const vpnProxyResult = await this.vpnProxyDetectionProvider.detect({
-      ipAddress: ipAddress ?? '',
-    });
-    if (vpnProxyResult !== VpnProxyDetectionResult.NONE) {
-      throw new VpnProxyDetectedException({ vpnProxyResult });
-    }
-
-    const session = await this.documentVerificationProvider.startVerificationSession({
-      documentId: document.id,
-      documentType: document.documentType,
-      issuingCountry: document.issuingCountry,
-      documentImageReference: document.documentImageReference,
-    });
-
-    const attemptNumber = attemptTotal + 1;
-    const pendingSession = this.pendingSessionRepository.create({
-      profileId: profile.id,
-      documentId: document.id,
-      vendorSessionId: session.vendorSessionId,
-      attemptMethod: document.captureMethod,
-      attemptDocumentType: document.documentType,
-      attemptNumber,
-      vpnProxyDetectionResult: vpnProxyResult,
-    });
-    await this.pendingSessionRepository.save(pendingSession);
-
-    // TRVG2 §3: session created -> IN_PROGRESS.
-    await this.profileRepository.update(profile.id, {
-      identityVerificationStatus: IdentityVerificationStatus.IN_PROGRESS,
-    });
-
-    return {
-      vendorSessionId: session.vendorSessionId,
-      vendorSessionUrl: session.vendorSessionUrl,
-      attemptNumber,
-    };
+    throw new LegacyVerificationPathRetiredException();
   }
 
   async listDocuments(userId: string): Promise<IdentityDocument[]> {
@@ -473,10 +496,49 @@ export class IdentityVerificationService {
       }
 
       // TRVG2 §3 transition table.
+      //
+      // 2026-09-27 correction: the previous pass (2026-09-26) restored
+      // this branch to unconditionally set VERIFIED, reasoning that
+      // startVerificationSession's retirement makes every remaining
+      // PendingVerificationSession "predate retirement" and therefore
+      // trustworthy. That reasoning was reviewed and rejected: predating
+      // retirement only establishes the SESSION ROW is old — it says
+      // nothing about whether a webhook claiming to resolve it is
+      // genuine, or whether "Approved" actually means what this code
+      // assumes. Concretely, on inspection:
+      //  - `outcome` above is read from `raw.outcome`, a field this
+      //    file's own comment already flags as a PLACEHOLDER never
+      //    confirmed against Didit's real payload.
+      //  - DiditWebhookPayloadDto (vendorSessionId/eventType/occurredAt/raw)
+      //    has no decorators and no transform from Didit's real,
+      //    confirmed-this-engagement snake_case envelope
+      //    (session_id/event_id/webhook_type/...) — unlike
+      //    didit-webhook-verification.ts's parseDiditWebhookEvent, which
+      //    IS verified against that real envelope.
+      //  - main.ts's global ValidationPipe runs with
+      //    { whitelist: true, forbidNonWhitelisted: true }. Since
+      //    DiditWebhookPayloadDto has zero validated/whitelisted
+      //    properties, a real Didit payload (which has properties) would
+      //    be REJECTED by that pipe before this method ever runs — this
+      //    route cannot currently process a genuine Didit webhook at all.
+      //  - The signature check below reads header `x-didit-signature`
+      //    (identity-verification-webhooks.controller.ts), not the
+      //    `x-signature`/`x-timestamp` pair confirmed this engagement as
+      //    Didit's real header names.
+      // None of this was verified when "predates retirement" was offered
+      // as the safety argument — it wasn't evidence, it was an assumption.
+      // Given that, this branch no longer sets VERIFIED at all (in either
+      // direction, unconditionally or via a flag) until the payload
+      // contract above is actually confirmed and fixed. The attempt is
+      // still recorded (counts toward the account-wide ceiling, matching
+      // the REJECTED branch below), so this is a reported gap, not a
+      // silent no-op. Already-VERIFIED profiles in the database from
+      // before this change are untouched by any of this — nothing here
+      // reads or rewrites existing status values in bulk.
       if (outcome === AttemptOutcome.APPROVED) {
-        await queryRunner.manager.update(IdentityVerificationProfile, savedAttempt.profileId, {
-          identityVerificationStatus: IdentityVerificationStatus.VERIFIED,
-        });
+        this.logger.warn(
+          `Legacy verification path received an Approved outcome for profile ${savedAttempt.profileId}, but this path's payload contract (DiditWebhookPayloadDto, the x-didit-signature header, and the raw.outcome field) is unverified against Didit's real webhook shape and cannot currently confirm this is a genuine, complete approval. Not setting VERIFIED. See handleDiditWebhook's comment for what needs confirming before this can be re-enabled.`,
+        );
       } else if (raw?.under_age) {
         // No source specifies how Didit actually conveys an under-18
         // result; raw.under_age/raw.eligible_on are this pass's own
@@ -505,16 +567,8 @@ export class IdentityVerificationService {
       // here (Doc 05 Section 4).
 
       await queryRunner.commitTransaction();
-
-      if (outcome === AttemptOutcome.APPROVED) {
-        const profile = await this.profileRepository.findOne({ where: { id: savedAttempt.profileId } });
-        await this.events.publish({
-          eventType: IdentityVerificationEventType.IDENTITY_VERIFIED,
-          profileId: savedAttempt.profileId,
-          userId: profile?.userId || payload.vendorSessionId,
-          occurredAt: new Date().toISOString(),
-        });
-      }
+      // No IDENTITY_VERIFIED publish here — matches the branch above:
+      // nothing was actually confirmed VERIFIED, so nothing to announce.
     } catch (err) {
       if (queryRunner.isTransactionActive) {
         await queryRunner.rollbackTransaction();

@@ -117,3 +117,85 @@ export class DocumentCoverageUnavailableException extends DomainException {
     super("We couldn't load accepted documents for that country. Please try again later.", HttpStatus.SERVICE_UNAVAILABLE, details);
   }
 }
+
+export class UnsupportedDocumentForCountryException extends DomainException {
+  readonly code = 'UNSUPPORTED_DOCUMENT_FOR_COUNTRY';
+  constructor(details?: Record<string, unknown>) {
+    super('This document type is not accepted for the selected issuing country.', HttpStatus.BAD_REQUEST, details);
+  }
+}
+
+// The vendor document check hasn't produced a usable result yet — either
+// it was never run, or it ran but the standalone response had no portrait
+// (e.g. PORTRAIT_IMAGE_NOT_DETECTED-equivalent). Distinct from a real
+// Declined decision: this is "not ready", never treated as a rejection.
+export class DocumentNotEligibleForBiometricVerificationException extends DomainException {
+  readonly code = 'DOCUMENT_NOT_ELIGIBLE_FOR_BIOMETRIC_VERIFICATION';
+  constructor(details?: Record<string, unknown>) {
+    super('This document is not yet ready for face verification.', HttpStatus.CONFLICT, details);
+  }
+}
+
+// The vendor call for this stage failed for reasons unrelated to the
+// user's document/face (auth/credit/rate-limit/transport/malformed
+// response) — never surfaced as a rejection of the user. Implies a
+// DEFINITE failure: either no response was needed (a local validation
+// failure) or a response WAS received confirming the vendor did not
+// produce a usable result. Safe to retry immediately/freely.
+export class VendorStageUnavailableException extends DomainException {
+  readonly code = 'VENDOR_STAGE_UNAVAILABLE';
+  constructor(details?: Record<string, unknown>) {
+    super('The verification vendor is temporarily unavailable. Try again shortly.', HttpStatus.BAD_GATEWAY, details);
+  }
+}
+
+// Distinct from VendorStageUnavailableException: no HTTP response was
+// ever received (network failure, or the adapter's own request timeout
+// aborting a hung connection — see AmbiguousVendorOutcomeError), so
+// whether the vendor actually processed the request is genuinely
+// unknown. Unlike VendorStageUnavailableException, a caller must NOT
+// treat this as safe to retry immediately without consequence — see
+// TwoStageVerificationService.checkDocumentWithVendor, which does not
+// release the attempt reservation on this specific error so an ambiguous
+// outcome still counts toward the account-wide ceiling until it
+// self-heals via RESERVATION_TTL_MS.
+export class VendorOutcomeUnknownException extends DomainException {
+  readonly code = 'VENDOR_OUTCOME_UNKNOWN';
+  constructor(details?: Record<string, unknown>) {
+    super(
+      "We couldn't confirm whether this step completed. Please wait a moment before trying again.",
+      HttpStatus.SERVICE_UNAVAILABLE,
+      details,
+    );
+  }
+}
+
+// A biometric-session webhook referenced a didit_session_id this service
+// never created. Never trusted enough to change any status.
+export class UnknownBiometricSessionException extends DomainException {
+  readonly code = 'UNKNOWN_BIOMETRIC_SESSION';
+  constructor(details?: Record<string, unknown>) {
+    super('No biometric session matches this webhook.', HttpStatus.NOT_FOUND, details);
+  }
+}
+
+// startVerificationSession (the old hosted-Sessions-API path) no longer
+// creates new attempts — superseded by the two-stage flow
+// (TwoStageVerificationService). This is a permanent, code-level retirement
+// of NEW attempts on this path, not a runtime-toggleable bypass — it fixes
+// a real concurrency race in that method's own attempt-ceiling check
+// (see its own comment). It does NOT, on its own, establish that any
+// PendingVerificationSession row still around is safe to approve via
+// webhook; that is a separate question, resolved separately (and more
+// conservatively) in handleDiditWebhook — see that method's comment for
+// why "predates retirement" was tried and rejected as a safety argument.
+export class LegacyVerificationPathRetiredException extends DomainException {
+  readonly code = 'LEGACY_VERIFICATION_PATH_RETIRED';
+  constructor(details?: Record<string, unknown>) {
+    super(
+      'This verification method has been retired. Please use the current document and face verification flow.',
+      HttpStatus.GONE,
+      details,
+    );
+  }
+}
