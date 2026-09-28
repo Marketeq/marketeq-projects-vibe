@@ -201,8 +201,10 @@ import {
   AccordionTrigger,
   Avatar,
   AvatarGroup,
+  AvatarGroupButton,
   AvatarFallback,
   AvatarImage,
+  AvatarRoot,
   Badge,
   Button,
   Card,
@@ -19358,17 +19360,29 @@ const TeamRoles = ({
                         <TableCell className="h-[72px] w-[216px] px-0 py-0">
                           <div className="flex h-[72px] items-center gap-3 px-6 py-4 pr-4">
                             {row.editable ? (
-                              <button
+                              <Button
                                 type="button"
-                                className="h-5 w-44 truncate p-0 text-left text-sm font-semibold leading-5 text-dark-blue-400"
+                                variant="ghost"
+                                visual="gray"
+                                className="flex h-10 w-44 flex-col items-start justify-start gap-0 p-0 text-left hover:bg-transparent"
                                 onClick={() => openRenameRoleDialog(index)}
                               >
-                                {row.role}
-                              </button>
+                                <span className="h-5 w-44 truncate text-sm font-semibold leading-5 text-dark-blue-400">
+                                  {row.role}
+                                </span>
+                                <span className="h-5 max-w-44 truncate text-sm font-normal leading-5 text-gray-500">
+                                  {row.assignee?.trim() || "Unassigned Member"}
+                                </span>
+                              </Button>
                             ) : (
-                              <p className="h-5 w-44 truncate text-sm font-semibold leading-5 text-dark-blue-400">
-                                {row.role}
-                              </p>
+                              <div className="flex h-10 w-44 flex-col items-start">
+                                <p className="h-5 w-44 truncate text-sm font-semibold leading-5 text-dark-blue-400">
+                                  {row.role}
+                                </p>
+                                <p className="h-5 max-w-44 truncate text-sm font-normal leading-5 text-gray-500">
+                                  {row.assignee?.trim() || "Unassigned Member"}
+                                </p>
+                              </div>
                             )}
                           </div>
                         </TableCell>
@@ -19732,7 +19746,6 @@ const TeamRoles = ({
           dialogOverlay={<DialogOverlay className="bg-[#101828]/20" />}
           className={cn(
             "left-1/2 top-1/2 flex w-[371px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col items-start gap-8 rounded-xl bg-white p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]",
-            roleDialogMode === "rename" && "h-[186px]",
           )}
         >
           <div className="flex w-[323px] flex-col items-start gap-3">
@@ -19811,6 +19824,22 @@ const TeamRoles = ({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            ) : null}
+            {roleDialogMode === "rename" ? (
+              <div className="flex h-8 w-[323px] items-center gap-4">
+                <span className="w-20 shrink-0 text-sm font-medium text-gray-600">
+                  Assigned to
+                </span>
+                <AvatarRoot>
+                  <AvatarGroupButton
+                    size="sm"
+                    className="pointer-events-none !inline-flex !h-8 !w-8 !rounded-full !p-0 !text-gray-400"
+                    aria-label="Assigned to"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </AvatarGroupButton>
+                </AvatarRoot>
               </div>
             ) : null}
           </div>
