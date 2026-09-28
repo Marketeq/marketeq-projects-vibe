@@ -2514,7 +2514,15 @@ const PhaseTable = ({
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow className="hover:bg-transparent" key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
-                <TableHead key={header.id} colSpan={header.colSpan}>
+                <TableHead
+                  key={header.id}
+                  colSpan={header.colSpan}
+                  className={
+                    header.column.id === "task"
+                      ? "pl-[44px] text-left"
+                      : undefined
+                  }
+                >
                   {header.isPlaceholder
                     ? null
                     : flexRender(
