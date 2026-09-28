@@ -120,6 +120,16 @@ export class ServicesService {
   async findBySlug(slug: string) {
     const item = await this.repo.findOne({ where: { slug, listingType: 'service' } });
     if (!item) throw new NotFoundException('Service not found');
+    // QA-192/PMCM-402: archiving must hide the listing outright, even
+    // though the `publishedSnapshot` exception below is otherwise correct
+    // (it exists so a service being re-edited after publish keeps showing
+    // its last-published content publicly while the draft is in progress).
+    // Without this, an archived service that had ever been published stays
+    // fully visible via its old public slug — the exact case this ticket
+    // is about.
+    if (item.status === ListingStatus.Archived) {
+      throw new NotFoundException('Service not found');
+    }
     if (item.status !== ListingStatus.Published && !item.publishedSnapshot) {
       throw new NotFoundException('Service not found');
     }
