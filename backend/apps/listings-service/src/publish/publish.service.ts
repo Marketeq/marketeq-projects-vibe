@@ -835,9 +835,49 @@ export class PublishService {
     };
   }
 
+  // QA-195/PMCM-403: mirrors the wizard's own "which required fields are
+  // still missing" check (edit-listing/[slug]/page.tsx's firstInvalidStep)
+  // at the level of "is the field populated at all" rather than the
+  // wizard's exact character-count/regex niceties — this runs for every
+  // listing regardless of status, so a Published listing whose content was
+  // edited down below what's required after it went live is flagged the
+  // same as an unfinished draft. Team is intentionally excluded: PMCM-395
+  // made the account owner always satisfy it, so it can never be the
+  // reason a listing gets flagged here either.
+  private hasUnresolvedRequiredFields(
+    project: Project,
+    scopedProjectIds: Set<string>,
+  ): boolean {
+    const missingProjectInfo =
+      !project.title?.trim() ||
+      !(project.categories ?? []).length ||
+      !(project.industries ?? []).length ||
+      !(project.tags ?? []).length ||
+      !(project.skills ?? []).length ||
+      !project.shortDescription?.trim() ||
+      !project.fullDescription?.trim();
+
+    const hasFeaturedImage =
+      (project.mediaUrls ?? []).length > 0 ||
+      Boolean((project.media ?? [])[0]?.featuredImage);
+
+    const completedFaqCount = (project.faqs ?? []).filter(
+      (f) => f?.question?.trim() && f?.answer?.trim(),
+    ).length;
+
+    return (
+      missingProjectInfo ||
+      !hasFeaturedImage ||
+      !scopedProjectIds.has(String(project.id)) ||
+      completedFaqCount < 3
+    );
+  }
+
   async getMyProjects(
     userId: string,
-  ): Promise<(Project & { teamAvatars: string[] })[]> {
+  ): Promise<
+    (Project & { teamAvatars: string[]; hasValidationError: boolean })[]
+  > {
     const projects = await this.projectRepository.findAll({
       filterOptions: {
         userId,
@@ -864,6 +904,10 @@ export class PublishService {
       hydrated.map((m) => [String(m.userId), m.avatarUrl]),
     );
 
+    const scopedProjectIds = await this.projectRepository.getProjectIdsWithScope(
+      projects.map((p) => p.id).filter((id): id is string => !!id),
+    );
+
     return projects.map((p) => {
       const ids = [
         String(userId),
@@ -872,7 +916,14 @@ export class PublishService {
       const teamAvatars = Array.from(new Set(ids))
         .map((id) => avatarByUserId.get(id))
         .filter((url): url is string => Boolean(url));
-      return { ...p, teamAvatars };
+      return {
+        ...p,
+        teamAvatars,
+        hasValidationError: this.hasUnresolvedRequiredFields(
+          p,
+          scopedProjectIds,
+        ),
+      };
     });
   }
 
