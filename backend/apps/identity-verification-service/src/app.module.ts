@@ -14,6 +14,7 @@ import { AttemptReservation } from './entities/attempt-reservation.entity';
 import { IdentityVerificationController } from './controllers/identity-verification.controller';
 import { IdentityVerificationInternalController } from './controllers/identity-verification-internal.controller';
 import { IdentityVerificationWebhooksController } from './controllers/identity-verification-webhooks.controller';
+import { IdentityVerificationSandboxController } from './controllers/identity-verification-sandbox.controller';
 import { IdentityVerificationService } from './services/identity-verification.service';
 import { TwoStageVerificationService } from './services/two-stage-verification.service';
 import { TravelModeReminderJob } from './jobs/travel-mode-reminder.job';
@@ -64,6 +65,9 @@ import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
     IdentityVerificationController,
     IdentityVerificationInternalController,
     IdentityVerificationWebhooksController,
+    // Sandbox-only diagnostic routes — 404 outside NODE_ENV=development, see
+    // SandboxOnlyGuard. Not part of the real talent-dashboard flow.
+    IdentityVerificationSandboxController,
   ],
   providers: [
     IdentityVerificationService,
