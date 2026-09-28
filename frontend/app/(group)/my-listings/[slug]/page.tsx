@@ -29,6 +29,7 @@ import {
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
 import { useAuth } from "@/contexts/auth"
+import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import { cn, getIsNotEmpty, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
@@ -1428,16 +1429,16 @@ function SortableGalleryItem({
   )
 }
 
-export default function ProjectDetails() {
+// PMCM-402/QA-190: this used to redirect an unauthenticated visitor to the
+// full /sign-in page, which bypasses the on-page auth modal SOP §1.4.1
+// requires everywhere on listing pages. The default export below wraps this
+// in AuthenticatedRoute instead, matching every other gated route (spinner,
+// then the modal, then the page — no full-page redirect).
+function ProjectDetailsInner() {
   const params = useParams()
   const router = useRouter()
   const pathname = usePathname()
-  const { user, isLoading: isAuthLoading } = useAuth()
-  React.useEffect(() => {
-    if (!isAuthLoading && !user) {
-      router.replace(`/sign-in?redirect=${encodeURIComponent(pathname)}`)
-    }
-  }, [isAuthLoading, user, router, pathname])
+  const { user } = useAuth()
   const [project, setProject] = React.useState<any>({
     id: "draft",
     title: "Enter Project Title",
@@ -3566,10 +3567,6 @@ export default function ProjectDetails() {
   const projectStaticContent = React.useMemo<ProjectStaticContent>(() => {
     return buildProjectStaticContentFromGateway(project?.projectStaticContent)
   }, [project?.projectStaticContent])
-
-  if (!isAuthLoading && !user) {
-    return null
-  }
 
   if (loading) {
     return (
@@ -10587,5 +10584,13 @@ export default function ProjectDetails() {
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+export default function ProjectDetails() {
+  return (
+    <AuthenticatedRoute>
+      <ProjectDetailsInner />
+    </AuthenticatedRoute>
   )
 }

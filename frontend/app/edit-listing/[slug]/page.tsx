@@ -20,6 +20,7 @@ import {
   useSearchParams,
 } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import options from "@/public/mock/options.json"
 import {
   AutocompleteAPI,
@@ -9835,19 +9836,10 @@ function PublishProject({
 
 export default function PublishRootProject() {
   const params = useParams<{ slug: string }>()
-  const router = useRouter()
-  const pathname = usePathname()
-  const { user, isLoading: isAuthLoading } = useAuth()
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
     setMounted(true)
   }, [])
-
-  useEffect(() => {
-    if (!isAuthLoading && !user) {
-      router.replace(`/sign-in?redirect=${encodeURIComponent(pathname)}`)
-    }
-  }, [isAuthLoading, user, router, pathname])
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -9859,12 +9851,13 @@ export default function PublishRootProject() {
     return null
   }
 
-  if (!isAuthLoading && !user) {
-    return null
-  }
-
+  // PMCM-402/QA-190: this used to redirect an unauthenticated visitor to the
+  // full /sign-in page, which bypasses the on-page auth modal SOP §1.4.1
+  // requires everywhere on listing pages. AuthenticatedRoute gives the same
+  // "protected route" behavior (spinner, then the modal, then the page)
+  // every other gated route already uses, with no full-page redirect.
   return (
-    <>
+    <AuthenticatedRoute>
       <PublishProject
         slug={params.slug}
         projectInfo={<ProjectInfo />}
@@ -9872,6 +9865,6 @@ export default function PublishRootProject() {
         projectScope={<ProjectScope />}
       />
       <Toaster />
-    </>
+    </AuthenticatedRoute>
   )
 }
