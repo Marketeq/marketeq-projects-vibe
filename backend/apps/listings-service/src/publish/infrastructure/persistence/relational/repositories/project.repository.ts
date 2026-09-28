@@ -234,6 +234,25 @@ export class ProjectRelationalRepository implements ProjectRepository {
     }
   }
 
+  async getProjectIdsWithScope(
+    projectIds: Array<Project['id']>,
+  ): Promise<Set<string>> {
+    const ids = projectIds.filter((id): id is string => !!id).map(String);
+    if (!ids.length) return new Set();
+    const rows: Array<{ projectId: string }> =
+      await this.projectRepository.manager.query(
+        `SELECT DISTINCT p."projectId"::text AS "projectId"
+         FROM listings.phase p
+         INNER JOIN listings.task t
+           ON t."phaseId" = p.id AND t."deletedAt" IS NULL
+         WHERE p."projectId" = ANY($1::uuid[])
+           AND p."deletedAt" IS NULL
+           AND btrim(p."phaseName") <> ''`,
+        [ids],
+      );
+    return new Set(rows.map((r) => r.projectId));
+  }
+
   async getRecentQuestions(id: Project['id']): Promise<RecentQuestion[]> {
     const rows = await this.projectRepository.manager.query(
       `SELECT "recentQuestions" FROM listings.project WHERE id = $1`,

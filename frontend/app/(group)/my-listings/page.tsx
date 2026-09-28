@@ -619,6 +619,16 @@ export default function MyListingsPage() {
                             >
                               {listing.status}
                             </Badge>
+                            {listing.hasValidationError && (
+                              <Badge
+                                size="md"
+                                visual="error"
+                                className="cursor-pointer"
+                                onClick={() => goEdit(listing.id)}
+                              >
+                                Needs Attention
+                              </Badge>
+                            )}
                             <p className="text-xs text-gray-400">
                               Updated {formatRelativeTime(listing.updatedAt)}
                             </p>
@@ -708,12 +718,19 @@ export default function MyListingsPage() {
                             )}
                           </td>
                           <td className="px-6 py-2">
-                            <Badge
-                              size="md"
-                              visual={statusToBadgeVisual(listing.status)}
-                            >
-                              {listing.status}
-                            </Badge>
+                            <div className="flex items-center gap-x-2">
+                              <Badge
+                                size="md"
+                                visual={statusToBadgeVisual(listing.status)}
+                              >
+                                {listing.status}
+                              </Badge>
+                              {listing.hasValidationError && (
+                                <Badge size="md" visual="error">
+                                  Needs Attention
+                                </Badge>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-2">
                             <span className="text-sm leading-5 text-gray-500">
