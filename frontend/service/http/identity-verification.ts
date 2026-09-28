@@ -34,4 +34,16 @@ export const IdentityVerificationAPI = {
     AxiosRequest.get("/v1/identity-verification/connection-check") as Promise<{
       data: { ok: true }
     }>,
+
+  // Backend-owned lookup of which canonical document types are accepted
+  // for a given 2-letter issuing country code. See
+  // src/lib/api/accepted-documents.ts for response validation and the
+  // honest "unavailable" outcome — this client never fabricates a list on
+  // failure, it just forwards whatever the backend returns or throws.
+  getAcceptedDocuments: (issuingCountry: string) =>
+    AxiosRequest.get(
+      `/v1/identity-verification/accepted-documents?issuingCountry=${encodeURIComponent(issuingCountry)}`
+    ) as Promise<{
+      data: { issuingCountry: string; acceptedDocumentTypes: string[] }
+    }>,
 }

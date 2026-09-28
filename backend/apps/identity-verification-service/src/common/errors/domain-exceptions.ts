@@ -103,3 +103,17 @@ export class UnknownVendorSessionException extends DomainException {
     super('No verification attempt matches this vendor session.', HttpStatus.NOT_FOUND, details);
   }
 }
+
+// Distinct from UnsupportedDocumentForCountryException: this fires when the
+// coverage lookup itself could not produce an answer (no confirmed data
+// source is wired in yet — see DocumentCoverageProvider's doc comment) —
+// never a confirmed "this type isn't accepted" result. Callers must fail
+// closed on this (block submission, show error/retry in the UI), the same
+// policy already applied to ConnectionCheckUnavailableException and
+// LocationLookupUnavailableException.
+export class DocumentCoverageUnavailableException extends DomainException {
+  readonly code = 'DOCUMENT_COVERAGE_UNAVAILABLE';
+  constructor(details?: Record<string, unknown>) {
+    super("We couldn't load accepted documents for that country. Please try again later.", HttpStatus.SERVICE_UNAVAILABLE, details);
+  }
+}

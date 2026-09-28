@@ -138,6 +138,15 @@ export const ERROR_CODE_CATALOG: readonly ErrorCatalogEntry[] = [
     messagingNote: 'Caller is Didit — message is generic and safe.',
   },
   {
+    code: 'DOCUMENT_COVERAGE_UNAVAILABLE',
+    httpStatus: 503,
+    meaning: 'The per-country accepted-document-types lookup could not produce an answer — distinct from a confirmed "not accepted" result, which returns UNSUPPORTED_DOCUMENT_FOR_COUNTRY instead. No confirmed Didit data source is wired in yet (see DocumentCoverageProvider).',
+    source: 'accepted-documents endpoint and submitDocument coverage check.',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message is the fixed string "We couldn\'t load accepted documents for that country. Please try again later." — never implies the country/document combination was actually rejected.',
+  },
+  {
     code: 'RATE_LIMITED',
     httpStatus: 429,
     meaning: 'Too many requests to a rate-limited endpoint in the current window.',
