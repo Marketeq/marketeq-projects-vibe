@@ -46,4 +46,44 @@ export const IdentityVerificationAPI = {
     ) as Promise<{
       data: { issuingCountry: string; acceptedDocumentTypes: string[] }
     }>,
+
+  // Real R2 presigned-upload-URL request. The actual file bytes are then
+  // PUT directly to `uploadUrl` by the caller — never routed through our
+  // own backend.
+  createDocumentUploadUrl: (fileExtension: string) =>
+    AxiosRequest.post("/v1/identity-verification/documents/upload-url", {
+      fileExtension,
+    }) as Promise<{
+      data: { uploadUrl: string; documentImageReference: string; expiresAt: string }
+    }>,
+
+  // Stage 1 of the two-stage Didit integration: submits the already-stored
+  // image reference(s) to the standalone document-check API and records
+  // the result. NOTE: not yet called anywhere in this file — see
+  // submit-identity-document.ts's header comment for the exact reason
+  // (documentNumber/expirationDate are required by the backend but are
+  // not collected by any screen in the current approved UI).
+  checkDocumentWithVendor: (documentId: string) =>
+    AxiosRequest.post(`/v1/identity-verification/documents/${documentId}/document-check`, null) as Promise<{
+      data: { documentId: string; documentCheckStatus: string | null; warnings: unknown[]; checkedAt: string | null }
+    }>,
+
+  // Stage 2 — creates/resumes the Didit-hosted biometric session. Backend
+  // route is real and tested; no UI calls this yet (the Figma handoff
+  // screens for this step haven't been supplied — see the flow component's
+  // header note).
+  beginBiometricVerification: (documentId: string) =>
+    AxiosRequest.post(`/v1/identity-verification/documents/${documentId}/begin-biometric-verification`, null) as Promise<{
+      data: { sessionId: string; url: string; resumed: boolean }
+    }>,
+
+  getTwoStageStatus: (documentId: string) =>
+    AxiosRequest.get(`/v1/identity-verification/documents/${documentId}/two-stage-status`) as Promise<{
+      data: {
+        documentCheckStatus: string | null
+        biometricSessionStatus: string | null
+        biometricSessionUrl: string | null
+        overallStatus: string
+      }
+    }>,
 }

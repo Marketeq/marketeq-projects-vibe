@@ -18,20 +18,46 @@
 //      toast and never closes) — otherwise a user finishing setup would be
 //      stuck with the modal open.
 //
-// Document submission and identity-verification-status are still backed by
-// temporary, isolated mocks (src/lib/api/*) — see each mock file's own
-// header for why. Detected location is a real backend integration
-// (identity-verification-service + location-service, both via api-gateway —
-// see detected-location.ts's header for the split and why).
+// Front/back document images are uploaded for real, straight to R2, via
+// the identity-verification-service's presigned-upload-URL endpoint (see
+// src/lib/api/submit-identity-document.ts). What is NOT wired yet: the
+// real submitDocument/document-check/begin-biometric-verification calls.
+// This used to be a hard blocker (that DTO required documentNumber/
+// expirationDate, which no screen here collects) — the backend now makes
+// both optional for captureMethod=scan and backfills them from Didit's own
+// OCR/MRZ extraction instead, so wiring the real submission is no longer
+// blocked on missing fields. It is simply not done in this pass: no
+// IdentityDocument row exists to track these images at all yet (and the
+// old submitDocument endpoint that would create one is separately blocked
+// server-side by its document-coverage gate, a backend-side decision this
+// UI-only pass does not touch).
+//
+// Third screen added for the Figma face-verification handoff (node
+// 13101-47597): "all-set" now advances (rather than closing) into
+// "face-verification-handoff", whose "Begin verifying" action is wired to
+// the caller-supplied onBeginVerifying prop plus a caller-supplied
+// verificationContext, not to a fetch call made here — this pass is
+// UI-only. That button is disabled unless BOTH are present, which no real
+// caller supplies today (see VerificationContext's own comment): wiring
+// the create-document step is a separate, not-yet-made decision, same
+// boundary as the paragraph above.
+// No notification or resume mechanism exists for the upload step either,
+// so its copy makes no promise of one ("we'll let you know..." was removed
+// for exactly that reason — state only what happened). Overall
+// identity-verification-status is still backed by a temporary, isolated
+// mock — see that mock file's own header for why. Detected location is a
+// real backend integration (identity-verification-service +
+// location-service, both via api-gateway — see detected-location.ts's
+// header for the split and why).
 
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useMountedState } from "react-use"
 import type { Map as LeafletMap } from "leaflet"
 import {
+  AlertTriangle,
   ArrowLeft,
   Camera,
-  Certificate02,
   Check,
   CheckCircle,
   ChevronRight,
@@ -73,6 +99,7 @@ import {
   useToast,
 } from "@/components/ui"
 import { CountriesCombobox } from "@/components/own-combobox"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import { useStateMachine } from "@/utils/hooks"
 import type { DetectedLocation } from "@/src/lib/api/detected-location"
 import { submitIdentityDocument } from "@/src/lib/api/submit-identity-document"
@@ -80,6 +107,11 @@ import {
   scheduleTravelModeReminderMock,
   type TravelDuration,
 } from "@/src/lib/api/travel-mode-reminder"
+import {
+  getAcceptedDocuments,
+  type AcceptedDocumentTypeId,
+} from "@/src/lib/api/accepted-documents"
+import { resolveCountryCodeByName } from "@/src/lib/api/resolve-country-code"
 
 // Decorative icon only (matches Storybook's local QR constant exactly,
 // same file, same paths) — not a design-system component, just static art.
@@ -391,8 +423,14 @@ const NoDocumentOverlay = ({ label }: { label: string }) => (
   </div>
 )
 
+// Birth Certificate deliberately removed (Identity Verification Decision
+// Record §1.1/§3): Didit's document catalogue has no Birth Certificate
+// type at all — not scannable, no barcode, no way to authenticate — so it
+// can never be a real accepted-documents answer for any country, unlike
+// the other three, which are real Didit-supported types subject to
+// per-country availability (see the accepted-documents fetch below).
 type DocumentTypeOption = {
-  id: "passport" | "drivers_licence" | "residence_permit" | "birth_certificate"
+  id: AcceptedDocumentTypeId
   label: string
   Icon: typeof Passport
 }
@@ -401,7 +439,6 @@ const DOCUMENT_TYPE_OPTIONS: DocumentTypeOption[] = [
   { id: "passport", label: "Passport", Icon: Passport },
   { id: "drivers_licence", label: "Driver's License", Icon: CreditCardCheck },
   { id: "residence_permit", label: "Residence Permit", Icon: FileCheck02 },
-  { id: "birth_certificate", label: "Birth Certificate", Icon: Certificate02 },
 ]
 
 type FlowState =
@@ -412,17 +449,52 @@ type FlowState =
   | "loading"
   | "back-scan"
   | "all-set"
+  | "face-verification-handoff"
   | "current-location-showcase"
   | "traveling-showcase"
+
+// The face-verification-handoff screen's "Begin verifying" action needs a
+// real IdentityDocument id before it means anything. Nothing in this
+// component ever produces one itself (see submit-identity-document.ts's
+// header and this service's own coverage-provider gate — both still-open
+// backend blockers this UI-only work does not resolve) — a real caller
+// supplies it once that chain exists, and a dev preview wrapper can supply
+// an in-memory simulated one of its own. Either way this is a plain prop,
+// never internal state, and never anything read from browser storage.
+export interface VerificationContext {
+  documentId: string
+}
 
 export function IdentityVerificationFlow({
   open,
   onOpenChange,
   detectedLocation,
+  verificationContext,
+  onBeginVerifying,
+  initialState,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   detectedLocation: DetectedLocation
+  // See VerificationContext's own comment. `null`/undefined (the real
+  // app's state today) means "Begin verifying" stays disabled.
+  verificationContext?: VerificationContext | null
+  // Explicit hand-off point for the face-verification handoff screen's
+  // "Begin verifying" action. Deliberately NOT an API call made from
+  // inside this component — this pass is UI-only. Only ever invoked when
+  // both this callback AND a real verificationContext are present — never
+  // with a missing or invented documentId.
+  onBeginVerifying?: (context: VerificationContext) => void
+  // Escape hatch for the dev preview route ONLY (app/identity-verification-preview/)
+  // to reach a specific screen directly instead of clicking through the
+  // whole flow. Optional and defaulted to "ideal" — every real caller
+  // (talent-dashboard/page.tsx, account-verification-gate.tsx) omits this
+  // entirely, so their starting state, guards (VpnProxyCheckGuard-gated
+  // connection-check, etc.) and API behavior are byte-for-byte unchanged.
+  // Only read once, on mount — a caller that needs a different starting
+  // screen after the first render must remount (e.g. via a changing
+  // `key`), not rely on this prop updating live.
+  initialState?: FlowState
 }) {
   const getIsMounted = useMountedState()
   const { toast } = useToast()
@@ -433,12 +505,97 @@ export function IdentityVerificationFlow({
     detectedLocation.countryName
   )
 
+  // issuingCountry is deliberately its own concept, separate from
+  // detectedLocation (approximate, IP-based), verifiedHomeCountry
+  // (confirmed residence), and identityVerificationStatus — it only
+  // describes which country issued the document about to be submitted.
+  // Changing it invalidates whatever document type was picked for the
+  // previous country (and anything captured against it); this screen is
+  // the only place issuingCountry can change, so there's nothing further
+  // downstream to unwind yet.
+  const handleIssuingCountryChange = (name: string) => {
+    setIssuingCountry(name)
+    setSelectedDocument(null)
+    setFrontImageReference(null)
+    setBackImageReference(null)
+  }
+
+  type AcceptedDocumentsStatus = "loading" | "ready" | "empty" | "error"
+  const [acceptedDocumentsStatus, setAcceptedDocumentsStatus] =
+    useState<AcceptedDocumentsStatus>("loading")
+  const [acceptedDocumentTypeIds, setAcceptedDocumentTypeIds] = useState<
+    AcceptedDocumentTypeId[]
+  >([])
+  const [acceptedDocumentsRetryTick, setAcceptedDocumentsRetryTick] =
+    useState(0)
+  // Guards against a response for a country the user has since navigated
+  // away from (by picking a different one) overwriting the list a newer
+  // request already resolved or is still resolving — only the response
+  // matching the most recently requested country is ever applied.
+  const latestRequestedCountryRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    latestRequestedCountryRef.current = issuingCountry
+
+    // detectedLocation already carries a real ISO code for its own country
+    // name — no lookup needed for the common case where issuingCountry
+    // still matches it. Any other value came from the user actively
+    // picking an item out of CountriesCombobox's own already-rendered,
+    // already-loaded list, so its shared country cache is guaranteed
+    // populated by then (own-combobox.tsx's countriesCache) — see
+    // resolveCountryCodeByName's header for why this never needs a second,
+    // independently-maintained name->code table.
+    const code =
+      issuingCountry === detectedLocation.countryName &&
+      detectedLocation.countryCode
+        ? detectedLocation.countryCode
+        : resolveCountryCodeByName(issuingCountry)
+
+    if (!code) {
+      setAcceptedDocumentsStatus("error")
+      setAcceptedDocumentTypeIds([])
+      return
+    }
+
+    let cancelled = false
+    setAcceptedDocumentsStatus("loading")
+
+    getAcceptedDocuments(code).then((result) => {
+      if (
+        cancelled ||
+        latestRequestedCountryRef.current !== issuingCountry
+      ) {
+        return
+      }
+      if (result.unavailable) {
+        setAcceptedDocumentsStatus("error")
+        setAcceptedDocumentTypeIds([])
+        return
+      }
+      setAcceptedDocumentTypeIds(result.acceptedDocumentTypes)
+      setAcceptedDocumentsStatus(
+        result.acceptedDocumentTypes.length === 0 ? "empty" : "ready"
+      )
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [issuingCountry, acceptedDocumentsRetryTick, detectedLocation.countryName, detectedLocation.countryCode])
+
+  const retryAcceptedDocuments = () =>
+    setAcceptedDocumentsRetryTick((tick) => tick + 1)
+
+  const visibleDocumentOptions = DOCUMENT_TYPE_OPTIONS.filter((option) =>
+    acceptedDocumentTypeIds.includes(option.id)
+  )
+
   // UPDATE_LOCATION is defined on every state (not just the ones it's
   // reachable from in normal flow) so the travel-reminder toast's "Update"
   // button can jump straight to "current-location-showcase" regardless of
   // whatever screen this component's internal state was last left on.
   const [state, send] = useStateMachine<Record<FlowState, Record<string, FlowState>>>(
-    "ideal",
+    initialState ?? "ideal",
     {
       ideal: {
         NEXT: "home-country-showcase",
@@ -475,6 +632,11 @@ export function IdentityVerificationFlow({
         UPDATE_LOCATION: "current-location-showcase",
       },
       "all-set": {
+        NEXT: "face-verification-handoff",
+        UPDATE_LOCATION: "current-location-showcase",
+      },
+      "face-verification-handoff": {
+        BACK: "all-set",
         UPDATE_LOCATION: "current-location-showcase",
       },
       "current-location-showcase": {
@@ -563,20 +725,52 @@ export function IdentityVerificationFlow({
 
   // Guards against a second capture firing (e.g. a fast double-click) while
   // the first one is still submitting — capture is now a manual, user-timed
-  // action (see the "scan" screen's onClick below), not a blind timer, so
-  // this replaces the timer's natural one-shot behavior.
+  // action (see the "scan"/"back-scan" screens' onClick below), not a blind
+  // timer, so this replaces the timer's natural one-shot behavior.
   const capturingRef = useRef(false)
 
-  const handleCapture = async () => {
+  // Real image references from the R2 upload (see submit-identity-document.ts)
+  // for each side of the document. Held here only so a future submission
+  // step has them ready — nothing downstream calls the real
+  // submitDocument/document-check endpoints yet (see that file's header:
+  // documentNumber/expirationDate aren't collected by any screen here).
+  const [frontImageReference, setFrontImageReference] = useState<
+    string | null
+  >(null)
+  const [backImageReference, setBackImageReference] = useState<
+    string | null
+  >(null)
+
+  // Gates the face-verification-handoff screen's "Begin verifying" button.
+  // Both the context AND the callback must be real — a caller that
+  // supplies one without the other gets a disabled button, not a
+  // half-wired action. Purely derived from props; no internal state, no
+  // browser storage, nothing this component invents on its own.
+  const canBeginVerifying = Boolean(verificationContext?.documentId) && Boolean(onBeginVerifying)
+
+  const handleBeginVerifying = () => {
+    // Guarded by the button's own `disabled` below — this is a second,
+    // load-bearing guard, not decoration: never invoke the callback with a
+    // missing or fabricated id.
+    if (!verificationContext?.documentId || !onBeginVerifying) return
+    onBeginVerifying(verificationContext)
+  }
+
+  const handleCapture = async (stage: "front" | "back") => {
     if (capturingRef.current) return
     capturingRef.current = true
     try {
       const file = (await cameraHandler.current?.capture()) ?? null
-      await submitIdentityDocument({
+      const result = await submitIdentityDocument({
         documentType: selectedDocument?.id ?? "passport",
         capturedFile: file,
       })
       if (getIsMounted()) {
+        if (stage === "front") {
+          setFrontImageReference(result.documentImageReference)
+        } else {
+          setBackImageReference(result.documentImageReference)
+        }
         send("NEXT")
       }
     } finally {
@@ -611,7 +805,7 @@ export function IdentityVerificationFlow({
         <DialogContent className="max-w-[650px]">
           <div className="flex items-start justify-between gap-x-3">
             <div className="space-y-2 flex-auto">
-              <h1 className="text-lg leading-none text-dark-blue-400">
+              <h1 className="text-lg leading-5 text-dark-blue-400">
                 {detectedLocation.serviceUnavailable
                   ? "Location service temporarily unavailable."
                   : detectedLocation.detected
@@ -619,21 +813,16 @@ export function IdentityVerificationFlow({
                     : "We couldn’t detect your current location"}
               </h1>
               {detectedLocation.detected && (
-                <>
-                  <p className="text-lg font-bold text-dark-blue-400">
-                    {detectedLocationLabel}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Approximate location, based on your IP address
-                  </p>
-                </>
+                <p className="text-lg font-bold leading-5 text-dark-blue-400">
+                  {detectedLocationLabel}
+                </p>
               )}
             </div>
 
             <DialogClose asChild>
               <IconButton
-                className="text-gray-500/50 hover:text-gray-500"
-                size="md"
+                className="rounded-lg text-gray-500/50 hover:text-gray-500"
+                size="sm"
                 visual="gray"
                 variant="ghost"
               >
@@ -649,7 +838,7 @@ export function IdentityVerificationFlow({
           />
 
           <div className="mt-[50px]">
-            <h1 className="text-lg font-semibold text-center text-dark-blue-400">
+            <h1 className="text-lg font-semibold leading-5 text-center text-dark-blue-400">
               Is this your home country?
             </h1>
 
@@ -673,7 +862,7 @@ export function IdentityVerificationFlow({
             </div>
 
             <div className="mt-6 text-center">
-              <span className="text-xs leading-none text-gray-500">
+              <span className="text-xs leading-5 text-gray-500">
                 Your data is encrypted and handled securely.{" "}
                 <Link href="#" className="focus-visible:outline-none underline">
                   Learn More
@@ -697,7 +886,7 @@ export function IdentityVerificationFlow({
                 <ArrowLeft className="size-5" />
               </IconButton>
               <h1 className="text-lg leading-none text-dark-blue-400">
-                Please confirm your home country
+                Select your document&rsquo;s issuing country
               </h1>
             </div>
 
@@ -720,7 +909,7 @@ export function IdentityVerificationFlow({
               </Label>
               <CountriesCombobox
                 value={issuingCountry}
-                onValueChange={setIssuingCountry}
+                onValueChange={handleIssuingCountryChange}
                 placeholder="Select country"
                 // justify-between was pushing the flag and text apart —
                 // the shared component's chevron icon is always
@@ -740,27 +929,74 @@ export function IdentityVerificationFlow({
                 Accepted Documents
               </h3>
 
-              <div className="mt-3 space-y-2.5">
-                {DOCUMENT_TYPE_OPTIONS.map((option) => (
-                  <button
-                    key={option.id}
-                    onClick={() => {
-                      setSelectedDocument(option)
-                      send("NEXT")
-                    }}
-                    className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg"
-                  >
-                    <div className="inline-flex items-center gap-x-3">
-                      <option.Icon className="size-5 shrink-0 text-primary-500" />{" "}
-                      <span className="text-sm font-medium text-dark-blue-400">
-                        {option.label}
-                      </span>
-                    </div>
+              {acceptedDocumentsStatus === "loading" && (
+                <div className="mt-3 flex justify-center py-6">
+                  <Spinner size={28} strokeWidth={4} />
+                </div>
+              )}
 
-                    <ChevronRight className="size-5 text-gray-500" />
-                  </button>
-                ))}
-              </div>
+              {acceptedDocumentsStatus === "error" && (
+                <>
+                  <Alert variant="error" className="rounded-[5px] mt-3">
+                    <AlertIcon>
+                      <Info className="size-5" />
+                    </AlertIcon>
+                    <AlertContent>
+                      <AlertTitle>
+                        We couldn&rsquo;t load accepted documents for that
+                        country.
+                      </AlertTitle>
+                    </AlertContent>
+                  </Alert>
+                  <Button
+                    className="mt-3"
+                    variant="outlined"
+                    visual="gray"
+                    onClick={retryAcceptedDocuments}
+                  >
+                    <RefreshCw className="size-[15px]" />
+                    Retry
+                  </Button>
+                </>
+              )}
+
+              {acceptedDocumentsStatus === "empty" && (
+                <Alert variant="warning" className="rounded-[5px] mt-3">
+                  <AlertIcon>
+                    <Info className="size-5" />
+                  </AlertIcon>
+                  <AlertContent>
+                    <AlertTitle>
+                      No accepted document types are available for this
+                      country yet.
+                    </AlertTitle>
+                  </AlertContent>
+                </Alert>
+              )}
+
+              {acceptedDocumentsStatus === "ready" && (
+                <div className="mt-3 space-y-2.5">
+                  {visibleDocumentOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => {
+                        setSelectedDocument(option)
+                        send("NEXT")
+                      }}
+                      className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg"
+                    >
+                      <div className="inline-flex items-center gap-x-3">
+                        <option.Icon className="size-5 shrink-0 text-primary-500" />{" "}
+                        <span className="text-sm font-medium text-dark-blue-400">
+                          {option.label}
+                        </span>
+                      </div>
+
+                      <ChevronRight className="size-5 text-gray-500" />
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </DialogContent>
@@ -879,7 +1115,7 @@ export function IdentityVerificationFlow({
 
           <div
             ref={cameraBoxRef}
-            onClick={() => void handleCapture()}
+            onClick={() => void handleCapture("front")}
             className="relative rounded-lg overflow-hidden mt-3 border border-gray-200 h-[373px] bg-gray-900 cursor-pointer"
           >
             <WebCamera
@@ -1097,6 +1333,7 @@ export function IdentityVerificationFlow({
               style={{ height: 373, width: 602 }}
               videoStyle={{ borderRadius: 8, objectFit: "cover" }}
               captureMode="back"
+              ref={cameraHandler}
               onError={() => {
                 setCameraError(true)
                 toast({
@@ -1184,7 +1421,9 @@ export function IdentityVerificationFlow({
               <RefreshCw className="size-[15px]" />
               Retake
             </Button>
-            <Button onClick={() => send("NEXT")}>Continue</Button>
+            <Button onClick={() => void handleCapture("back")}>
+              Continue
+            </Button>
           </div>
         </DialogContent>
       )}
@@ -1199,18 +1438,74 @@ export function IdentityVerificationFlow({
 
           <div className="mt-5">
             <h1 className="text-lg text-center font-semibold leading-7 text-dark-blue-400">
-              You&rsquo;re all set!
+              You’re all set!
             </h1>
 
+            {/* Deliberately not "verified" here — only the images have
+                been received; face verification (next screen) still has to
+                happen before identityVerificationStatus can ever become
+                VERIFIED. See the face-verification-handoff screen below. */}
             <p className="mt-2 text-sm text-dark-blue-400 text-center">
-              Your identity and location have been successfully verified. You
-              can now access all platform features.
+              Your documents have been received. One more step is needed to
+              verify your identity.
             </p>
 
             <div className="mt-[50px] grid">
-              <Button onClick={() => onOpenChange(false)}>Done</Button>
+              <Button onClick={() => send("NEXT")}>Continue</Button>
             </div>
           </div>
+        </DialogContent>
+      )}
+
+      {state === "face-verification-handoff" && (
+        <DialogContent className="max-w-[418px] pt-[50px]">
+          <div className="flex flex-col items-center gap-y-5">
+            <div className="size-12 rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
+              <AlertTriangle className="size-6" />
+            </div>
+
+            <p className="text-sm text-dark-blue-400 text-center leading-5">
+              To finish verifying your identity, you’ll complete a quick face
+              check with our verification partner.
+            </p>
+          </div>
+
+          <div className="mt-[50px] flex justify-center items-center gap-x-3">
+            <Button
+              visual="gray"
+              variant="outlined"
+              size="md"
+              onClick={() => send("BACK")}
+            >
+              Back
+            </Button>
+            {/* Calls the caller-supplied onBeginVerifying callback only —
+                this component makes no API call itself (UI-only pass).
+                Disabled unless BOTH verificationContext and
+                onBeginVerifying are supplied by the caller, which no real
+                caller does today: nothing upstream of this screen creates
+                an IdentityDocument row (see VerificationContext's own
+                comment above). Never sends a request with a missing id,
+                never invents one, never silently no-ops on click — the
+                disabled state plus the explanation below are the honest
+                alternative to that. */}
+            <Button
+              visual="primary"
+              variant="light"
+              size="md"
+              disabled={!canBeginVerifying}
+              onClick={handleBeginVerifying}
+            >
+              Begin verifying
+            </Button>
+          </div>
+
+          {!canBeginVerifying && (
+            <p className="mt-3 text-xs text-gray-500 text-center">
+              Verification isn’t ready yet. Please check back once your
+              documents finish processing.
+            </p>
+          )}
         </DialogContent>
       )}
 

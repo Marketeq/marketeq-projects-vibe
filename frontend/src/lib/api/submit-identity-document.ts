@@ -1,24 +1,67 @@
 // frontend/src/lib/api/submit-identity-document.ts
 //
-// Isolated document-submission client. The real identity-verification-service
-// POST /v1/identity-verification/documents endpoint (plus the vendor
-// verification session it kicks off) exists on a separate, not-yet-merged
-// backend branch. This is a temporary, self-contained mock — it never
-// calls a real backend, never uploads the captured file anywhere, and
-// always resolves successfully after a short delay so the flow's UI can
-// be built and tested end to end. Swap this function's body for the real
-// upload + submission calls once that branch is merged; call sites (the
-// identity-verification-flow component) do not need to change shape.
+// Real R2 upload for a captured front/back document image: requests a
+// presigned PUT URL from the real, tested
+// POST /v1/identity-verification/documents/upload-url endpoint, then PUTs
+// the captured file's bytes directly to R2 (never through our own
+// backend). Returns the resulting documentImageReference so the caller can
+// hold onto it.
+//
+// This does NOT call the real document-submission endpoint
+// (POST /v1/identity-verification/documents) or the two-stage
+// document-check/begin-biometric-verification endpoints — this file only
+// uploads the image bytes and hands back a reference. That is now a
+// deliberate scope boundary for this pass, not a hard blocker: the backend
+// DTO used to require documentNumber/expirationDate unconditionally, but
+// now only requires them for captureMethod=manual_entry — for
+// captureMethod=scan (what this flow uses) they are optional and get
+// backfilled server-side from Didit's own OCR/MRZ extraction once the
+// document-check runs, so nothing here would need to be fabricated to wire
+// the real submission. Doing so is a separate, not-yet-made decision
+// (it also needs the caller to decide what to show while the real
+// document-check result comes back) — reported rather than done
+// unilaterally in this pass.
 export interface SubmitIdentityDocumentInput {
   documentType: string
   capturedFile: File | null
 }
 
-const MOCK_SUBMIT_DELAY_MS = 600
+export interface SubmitIdentityDocumentResult {
+  success: true
+  documentImageReference: string
+}
+
+function resolveFileExtension(file: File): "jpg" | "jpeg" | "png" | "pdf" {
+  const fromName = file.name.split(".").pop()?.toLowerCase()
+  if (fromName === "jpg" || fromName === "jpeg" || fromName === "png" || fromName === "pdf") {
+    return fromName
+  }
+  if (file.type === "image/png") return "png"
+  if (file.type === "application/pdf") return "pdf"
+  return "jpeg"
+}
 
 export async function submitIdentityDocument(
-  _input: SubmitIdentityDocumentInput
-): Promise<{ success: true }> {
-  await new Promise((resolve) => setTimeout(resolve, MOCK_SUBMIT_DELAY_MS))
-  return { success: true }
+  input: SubmitIdentityDocumentInput
+): Promise<SubmitIdentityDocumentResult> {
+  if (!input.capturedFile) {
+    throw new Error("No captured image to upload.")
+  }
+
+  const { IdentityVerificationAPI } = await import("@/service/http/identity-verification")
+  const fileExtension = resolveFileExtension(input.capturedFile)
+  const { data } = await IdentityVerificationAPI.createDocumentUploadUrl(fileExtension)
+
+  const putResponse = await fetch(data.uploadUrl, {
+    method: "PUT",
+    body: input.capturedFile,
+    headers: {
+      "Content-Type": input.capturedFile.type || "application/octet-stream",
+    },
+  })
+  if (!putResponse.ok) {
+    throw new Error(`Document image upload failed with status ${putResponse.status}`)
+  }
+
+  return { success: true, documentImageReference: data.documentImageReference }
 }
