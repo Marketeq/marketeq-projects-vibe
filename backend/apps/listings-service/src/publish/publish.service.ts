@@ -1634,7 +1634,13 @@ export class PublishService {
   //   // return this.projectRepository.update(id, clonedPayload);
   // }
 
-  async softDelete(id: Project['id']): Promise<void> {
+  // QA-202/PMCM-403: this existed but was never wired to a controller route
+  // — "Delete project" on the dashboard card menu had nowhere to call. Also
+  // had no authorization check at all (would soft-delete any project by id
+  // for any authenticated caller); ensureProjectOwnership now gates it the
+  // same as every other mutating project endpoint in this service.
+  async softDelete(userId: string, id: string): Promise<void> {
+    await this.ensureProjectOwnership(id, userId);
     await this.projectRepository.softDelete(id);
   }
 

@@ -235,6 +235,9 @@ export const ProjectAPI = {
       {}
     )
   },
+  DeleteProject: (projectId: string) => {
+    return AxiosRequest.del(`${LISTINGS_BASE}/publish/project/${projectId}`)
+  },
   UpdateTask: (id: string, data: UpdateTaskPayload) => {
     return AxiosRequest.put(`${LISTINGS_BASE}/publish/task/update/${id}`, data)
   },
