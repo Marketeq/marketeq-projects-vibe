@@ -35,6 +35,7 @@ import { JobListingBriefStorageService } from "./job-listing-brief-storage.servi
 import { JobListingScopeService } from "./job-listing-scope.service";
 import { JobListingBudgetService } from "./job-listing-budget.service";
 import { JobListingEventsPublisher } from "../events/job-listing-events.publisher";
+import { UserProfileClient } from "../../shared/user-profile/user-profile.client";
 
 // ── Rich text helpers (exported so publish service can reuse wordCount) ───────
 
@@ -77,7 +78,28 @@ export class JobListingService {
     private readonly publisher: JobListingEventsPublisher,
     private readonly scopeService: JobListingScopeService,
     private readonly budgetService: JobListingBudgetService,
+    private readonly userProfileClient: UserProfileClient,
   ) {}
+
+  // Resolves each row's assignedUserId into a real profile (name/avatar/
+  // skills) for the frontend, batching one hydrateTeam() call per response
+  // rather than one per row. Mutates assignedMember (and assignedUsername,
+  // which the column persists but never had a real writer) in place.
+  private async hydrateAssignees(rows: TeamMemberRow[]): Promise<void> {
+    const ids = Array.from(
+      new Set(rows.map((r) => r.assignedUserId).filter((id): id is string => !!id)),
+    );
+    if (ids.length === 0) return;
+
+    const hydrated = await this.userProfileClient.hydrateTeam(ids);
+    const byId = new Map(hydrated.map((m) => [m.userId, m]));
+
+    for (const row of rows) {
+      const member = row.assignedUserId ? (byId.get(row.assignedUserId) ?? null) : null;
+      row.assignedMember = member;
+      row.assignedUsername = member?.username ?? row.assignedUsername;
+    }
+  }
 
   private inferListingType(input: {
     listingType?: JobListingType | null;
@@ -306,6 +328,10 @@ export class JobListingService {
         code: "JL_NOT_FOUND",
         message: "Job listing not found.",
       });
+    }
+
+    if (listing.teamMemberRows?.length) {
+      await this.hydrateAssignees(listing.teamMemberRows);
     }
 
     return this.attachInheritedScope(listing);
@@ -560,21 +586,34 @@ export class JobListingService {
       }))
       .filter((entry) => Boolean(entry.roleTitle));
 
-    // Hourly rates are always recomputed from pricing-service; whatever the
-    // client sent for hourlyRate*UsdCents is ignored. A failed or empty lookup
-    // (getRateLookupResult returns 0) is stored as null, never as a zero rate.
+    // Open roles use pricing-service ranges. Assigned roles preserve the
+    // selected talent's own rate sent by the client.
     const rates = await Promise.all(
       validRows.map(({ row, roleTitle }) =>
-        this.budgetService.getRateUsdCents(
-          roleTitle as string,
-          row.location ?? null,
-          row.experienceLevel ?? null,
-        ),
+        row.assignedUserId
+          ? Promise.resolve(0)
+          : this.budgetService.getRateUsdCents(
+              roleTitle as string,
+              row.location ?? null,
+              row.experienceLevel ?? null,
+            ),
       ),
     );
 
     const roleRows = validRows.map(({ row, positionOrder, roleTitle }, i) => {
       const rateUsdCents = rates[i] > 0 ? rates[i] : null;
+      const assignedRateLowUsdCents =
+        row.assignedUserId &&
+        typeof row.hourlyRateLowUsdCents === "number" &&
+        row.hourlyRateLowUsdCents > 0
+          ? row.hourlyRateLowUsdCents
+          : null;
+      const assignedRateHighUsdCents =
+        row.assignedUserId &&
+        typeof row.hourlyRateHighUsdCents === "number" &&
+        row.hourlyRateHighUsdCents > 0
+          ? row.hourlyRateHighUsdCents
+          : assignedRateLowUsdCents;
 
       return this.roleRowRepo.create({
         jobListingId: listingId,
@@ -590,14 +629,18 @@ export class JobListingService {
         customFrequency: row.customFrequency ?? null,
         contractLengthMonths: row.contractLengthMonths ?? null,
         hourlyRateLowUsdCents:
-          rateUsdCents === null ? null : Math.round(rateUsdCents * 0.85),
+          assignedRateLowUsdCents ??
+          (rateUsdCents === null ? null : Math.round(rateUsdCents * 0.85)),
         hourlyRateHighUsdCents:
-          rateUsdCents === null ? null : Math.round(rateUsdCents * 1.15),
+          assignedRateHighUsdCents ??
+          (rateUsdCents === null ? null : Math.round(rateUsdCents * 1.15)),
       });
     });
 
     if (roleRows.length === 0) return [];
-    return this.roleRowRepo.save(roleRows);
+    const saved = await this.roleRowRepo.save(roleRows);
+    await this.hydrateAssignees(saved);
+    return saved;
   }
 
   async listRoleDescriptions(listingId: string): Promise<RoleDescription[]> {

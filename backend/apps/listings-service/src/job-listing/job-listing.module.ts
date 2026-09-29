@@ -39,6 +39,7 @@ import { JobListingOwnerGuard } from './guards/job-listing-owner.guard';
 
 // ── External ─────────────────────────────────────────────────────────────────
 import { AlgoliaService } from '../algolia/algolia.service';
+import { UserProfileModule } from '../shared/user-profile/user-profile.module';
 
 @Module({
   imports: [
@@ -62,6 +63,10 @@ import { AlgoliaService } from '../algolia/algolia.service';
     //   - JobListingAiService      (Groq API calls)
     //   - AlgoliaService           (algolia-service HTTP calls)
     HttpModule,
+
+    // UserProfileClient.hydrateTeam() — resolves assignedUserId on role rows
+    // into real name/avatar/skills for the frontend, same as publish/services.
+    UserProfileModule,
 
     // RabbitMQ client used by JobListingEventsPublisher to emit events.
     // Registered here (not in AppModule) so the RABBITMQ_CLIENT token

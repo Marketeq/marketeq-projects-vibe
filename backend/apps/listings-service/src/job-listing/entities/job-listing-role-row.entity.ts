@@ -1,6 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { JobListing } from './job-listing.entity';
 import { WorkSchedule } from '../enums/work-schedule.enum';
+import type { HydratedTeamMember } from '../../shared/user-profile/user-profile.client';
 
 @Entity({ name: 'job_listing_role_rows' })
 export class TeamMemberRow {
@@ -65,4 +66,9 @@ export class TeamMemberRow {
 
   @Column({ name: 'updated_at', type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
   updatedAt: Date;
+
+  // Not persisted — populated at read time by JobListingService.hydrateAssignees()
+  // from user-service via UserProfileClient, so the frontend gets a real name/
+  // avatar instead of just the bare assignedUserId.
+  assignedMember?: HydratedTeamMember | null;
 }

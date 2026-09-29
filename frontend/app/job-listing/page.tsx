@@ -10741,6 +10741,7 @@ type TeamRoleRow = {
   // `assignee` stays the display label (kept for existing readers of it);
   // this is the field that actually round-trips to assignedUserId.
   assigneeUserId: string | null;
+  assigneeHourlyRateUsdCents: number | null;
   location: string;
   experience: ExperienceLevel;
   schedule: "Full-time" | "Part-time";
@@ -10754,6 +10755,7 @@ const teamRoleRows: TeamRoleRow[] = [
     role: "UX Designer",
     assignee: "Unassigned Member",
     assigneeUserId: null,
+    assigneeHourlyRateUsdCents: null,
     location: "India",
     experience: "Senior",
     schedule: "Full-time",
@@ -10765,6 +10767,7 @@ const teamRoleRows: TeamRoleRow[] = [
     role: "Full Stack Developer",
     assignee: "Unassigned Member",
     assigneeUserId: null,
+    assigneeHourlyRateUsdCents: null,
     location: "Pakistan",
     experience: "Junior",
     schedule: "Part-time",
@@ -10776,6 +10779,7 @@ const teamRoleRows: TeamRoleRow[] = [
     role: "Business Analyst",
     assignee: "Nana @nana_ba03",
     assigneeUserId: null,
+    assigneeHourlyRateUsdCents: null,
     location: "USA",
     experience: "Senior",
     schedule: "Part-time",
@@ -10787,6 +10791,7 @@ const teamRoleRows: TeamRoleRow[] = [
     role: "Software Developer",
     assignee: "Abu @software_dev2038",
     assigneeUserId: null,
+    assigneeHourlyRateUsdCents: null,
     location: "Pakistan",
     experience: "Senior",
     schedule: "Full-time",
@@ -10847,6 +10852,7 @@ const createTeamRoleRow = (
   role: `New Team Member ${index + 1}`,
   assignee: "Unassigned Member",
   assigneeUserId: null,
+  assigneeHourlyRateUsdCents: null,
   location: "United States",
   experience: "Junior",
   schedule: "Full-time",
@@ -10887,6 +10893,22 @@ const formatHourlyEstimate = (low?: unknown, high?: unknown) => {
   return lowUsd === highUsd ? `$${lowUsd}` : `$${lowUsd} - $${highUsd}`;
 };
 
+const getAssignedRateEstimateRange = (hourlyRateUsdCents?: number | null) => {
+  if (typeof hourlyRateUsdCents !== "number" || hourlyRateUsdCents <= 0) {
+    return { low: undefined, high: undefined };
+  }
+
+  return {
+    low: Math.round(hourlyRateUsdCents * 0.85),
+    high: Math.round(hourlyRateUsdCents * 1.15),
+  };
+};
+
+const formatAssignedRateEstimate = (hourlyRateUsdCents?: number | null) => {
+  const range = getAssignedRateEstimateRange(hourlyRateUsdCents);
+  return formatHourlyEstimate(range.low, range.high);
+};
+
 const toJobListingWorkSchedule = (
   schedule: TeamRoleRow["schedule"],
 ): JobListingWorkSchedule =>
@@ -10903,6 +10925,9 @@ const createTeamRoleRowsFromApi = (rows: unknown): TeamRoleRow[] =>
           if (!role) return null;
 
           const assignedMember = row?.assignedMember;
+          const assignedHourlyRateUsdCents = getCandidateHourlyRateUsdCents(
+            assignedMember?.hourlyRate,
+          );
           const assigneeName = assignedMember
             ? [assignedMember.firstName, assignedMember.username && `@${assignedMember.username}`]
                 .filter(Boolean)
@@ -10913,6 +10938,7 @@ const createTeamRoleRowsFromApi = (rows: unknown): TeamRoleRow[] =>
             role,
             assignee: assigneeName ?? (row?.assignedUserId ? "Assigned Member" : "Unassigned Member"),
             assigneeUserId: row?.assignedUserId ?? null,
+            assigneeHourlyRateUsdCents: assignedHourlyRateUsdCents,
             location: String(row?.location ?? "USA"),
             experience: toTeamRoleExperience(
               row?.experienceLevel ?? row?.experience,
@@ -10925,10 +10951,13 @@ const createTeamRoleRowsFromApi = (rows: unknown): TeamRoleRow[] =>
                     row.contractLengthMonths === 1 ? "month" : "months"
                   }`
                 : "3 months",
-            estimate: formatHourlyEstimate(
-              row?.hourlyRateLowUsdCents,
-              row?.hourlyRateHighUsdCents,
-            ),
+            estimate:
+              typeof assignedHourlyRateUsdCents === "number"
+                ? formatAssignedRateEstimate(assignedHourlyRateUsdCents)
+                : formatHourlyEstimate(
+                    row?.hourlyRateLowUsdCents,
+                    row?.hourlyRateHighUsdCents,
+                  ),
             editable: true,
           });
         })
@@ -10938,6 +10967,9 @@ const createTeamRoleRowsFromApi = (rows: unknown): TeamRoleRow[] =>
 const createTeamRoleRowsPayload = (rows: TeamRoleRow[]) =>
   rows.map((row, positionOrder) => {
     const estimate = parseHourlyEstimateCents(row.estimate);
+    const assignedRateRange = getAssignedRateEstimateRange(
+      row.assigneeHourlyRateUsdCents,
+    );
 
     return {
       role: row.role,
@@ -10947,8 +10979,8 @@ const createTeamRoleRowsPayload = (rows: TeamRoleRow[]) =>
       experienceLevel: row.experience,
       workSchedule: toJobListingWorkSchedule(row.schedule),
       contractLengthMonths: parseMonthCount(row.length),
-      hourlyRateLowUsdCents: estimate.low,
-      hourlyRateHighUsdCents: estimate.high,
+      hourlyRateLowUsdCents: assignedRateRange.low ?? estimate.low,
+      hourlyRateHighUsdCents: assignedRateRange.high ?? estimate.high,
     };
   });
 
@@ -18760,21 +18792,58 @@ interface TeamRoleCandidate {
   username: string;
   avatarUrl: string | null;
   headline: string;
+  experience: ExperienceLevel | null;
+  hourlyRateUsdCents: number | null;
 }
+
+const getCandidateHourlyRateUsdCents = (...values: unknown[]) => {
+  for (const value of values) {
+    const normalizedValue =
+      typeof value === "string" ? value.replace(/[$,\s]/g, "") : value;
+    const numberValue = toFiniteNumber(normalizedValue);
+    if (typeof numberValue === "number" && numberValue > 0) {
+      return Math.round(numberValue * 100);
+    }
+  }
+
+  return null;
+};
 
 const toTeamRoleCandidate = (source: any): TeamRoleCandidate | null => {
   const id = String(source?.id ?? source?.userId ?? "").trim();
   if (!id) return null;
 
   const firstJobTitle = Array.isArray(source?.jobTitles)
-    ? source.jobTitles[0]
+    ? (source.jobTitles.find(
+        (jobTitle: any) =>
+          typeof jobTitle !== "string" &&
+          (jobTitle?.isDefault || jobTitle?.saveAsDefault),
+      ) ?? source.jobTitles[0])
     : null;
   const headline =
     source?.recentJobTitle ||
     (typeof firstJobTitle === "string"
       ? firstJobTitle
-      : firstJobTitle?.headline || firstJobTitle?.jobTitle || firstJobTitle?.title) ||
+      : firstJobTitle?.headline ||
+        firstJobTitle?.jobTitle ||
+        firstJobTitle?.title) ||
     "";
+  const experienceLevel =
+    source?.experienceLevel ??
+    source?.experience ??
+    source?.overview?.experienceLevel;
+  const hourlyRateUsdCents = getCandidateHourlyRateUsdCents(
+    source?.hourlyRate,
+    source?.rate,
+    typeof firstJobTitle === "object" && firstJobTitle !== null
+      ? firstJobTitle?.clientRate
+      : null,
+    typeof firstJobTitle === "object" && firstJobTitle !== null
+      ? firstJobTitle?.earning
+      : null,
+    source?.rateMax,
+    source?.rateMin,
+  );
 
   return {
     id,
@@ -18782,6 +18851,10 @@ const toTeamRoleCandidate = (source: any): TeamRoleCandidate | null => {
     username: source?.username ?? "",
     avatarUrl: source?.avatarUrl ?? null,
     headline: String(headline || ""),
+    experience: experienceLevel
+      ? toTeamRoleExperience(String(experienceLevel))
+      : null,
+    hourlyRateUsdCents,
   };
 };
 
@@ -19342,6 +19415,9 @@ const TeamRoles = ({
       {
         ...rowToCopy,
         assignee: "Unassigned Member",
+        assigneeUserId: null,
+        assigneeHourlyRateUsdCents: null,
+        estimate: "$0 - $0",
         editable: true,
       },
       ...rows.slice(rowIndex + 1),
@@ -19686,13 +19762,30 @@ const TeamRoles = ({
                                             .filter(Boolean)
                                             .join(" ")
                                         : "Unassigned Member",
+                                      assigneeHourlyRateUsdCents:
+                                        candidate?.hourlyRateUsdCents ?? null,
+                                      ...(candidate?.experience
+                                        ? { experience: candidate.experience }
+                                        : {}),
+                                      ...(candidate?.hourlyRateUsdCents
+                                        ? {
+                                            estimate: formatAssignedRateEstimate(
+                                              candidate.hourlyRateUsdCents,
+                                            ),
+                                          }
+                                        : {}),
                                     })
                                   }
                                   triggerClassName="!h-5 !w-44 !justify-start !rounded-none !border-0 !bg-transparent !p-0 hover:!text-primary-500"
                                   trigger={
-                                    <button type="button" className="block h-5 max-w-44 truncate text-left text-sm font-normal leading-5 text-gray-500 hover:text-primary-500">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      visual="gray"
+                                      className="block h-5 max-w-44 justify-start truncate p-0 text-left text-sm font-normal leading-5 text-gray-500 hover:bg-transparent hover:text-primary-500"
+                                    >
                                       {row.assignee?.trim() || "Unassigned Member"}
-                                    </button>
+                                    </Button>
                                   }
                                 />
                               </div>
@@ -20146,22 +20239,6 @@ const TeamRoles = ({
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-            ) : null}
-            {roleDialogMode === "rename" ? (
-              <div className="flex h-8 w-[323px] items-center gap-4">
-                <span className="w-20 shrink-0 text-sm font-medium text-gray-600">
-                  Assigned to
-                </span>
-                <AvatarRoot>
-                  <AvatarGroupButton
-                    size="sm"
-                    className="pointer-events-none !inline-flex !h-8 !w-8 !rounded-full !p-0 !text-gray-400"
-                    aria-label="Assigned to"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </AvatarGroupButton>
-                </AvatarRoot>
               </div>
             ) : null}
           </div>
