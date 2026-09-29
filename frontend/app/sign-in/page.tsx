@@ -112,6 +112,7 @@ export default function SignIn() {
     }, 1000)
     return () => clearInterval(timer)
   }, [resendCooldown])
+  const loginMessage = searchParams.get("message")
   const redirectTarget = searchParams.get("redirect")
   const nextRoute =
     redirectTarget &&
@@ -487,6 +488,11 @@ export default function SignIn() {
               <p className="md:text-left text-center text-base mt-2 leading-[19.36px] font-light text-dark-blue-400">
                 Login to your account below
               </p>
+              {loginMessage && (
+                <p className="md:text-left text-center text-sm mt-2 leading-5 font-medium text-primary-500">
+                  {loginMessage}
+                </p>
+              )}
 
               <div className="grid md:grid-cols-2 mt-10 md:mt-[50px] gap-3 items-center">
                 <GoogleLoginButton

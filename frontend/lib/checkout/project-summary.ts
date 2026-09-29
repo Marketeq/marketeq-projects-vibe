@@ -211,7 +211,7 @@ const getFaqs = (project: any): CheckoutFaq[] => {
 const mapProjectSummary = (project: any, slug: string): CheckoutProjectSummary => ({
   id: project.id ? String(project.id) : null,
   title: project.title || titleizeCheckoutSlug(slug),
-  mediaUrl: project.mediaUrls?.[0] || project.featuredImage || "/dashboard.png",
+  mediaUrl: project.mediaUrls?.[0] || project.featuredImage || "",
   teamMemberCount: getTeamMemberCount(project),
   dateRangeLabel: getDateRangeLabel(project),
   projectCost: getProjectCost(project),

@@ -8,11 +8,6 @@ import {
   useSearchParams,
 } from "next/navigation"
 import { UserAPI } from "@/service/http/user"
-import {
-  getCheckoutProjectSummary,
-  titleizeCheckoutSlug,
-  type CheckoutProjectSummary,
-} from "@/lib/checkout/project-summary"
 import { apiFetch } from "@/src/lib/api"
 import { cn } from "@/utils/functions"
 import {
@@ -46,6 +41,11 @@ import type {
 } from "@stripe/stripe-js"
 import CurrencyInput from "react-currency-input-field"
 import type { UserProfile } from "@/types/user"
+import {
+  type CheckoutProjectSummary,
+  getCheckoutProjectSummary,
+  titleizeCheckoutSlug,
+} from "@/lib/checkout/project-summary"
 import CreditDebitCardArticle1, {
   CreditDebitCardArticle3,
 } from "@/components/ui/credit-debit-card-article/credit-debit-card-article"
@@ -1390,6 +1390,8 @@ export default function PaymentPage() {
     React.useState(false)
   const [isOtherCheckoutTabOpen, setIsOtherCheckoutTabOpen] =
     React.useState(false)
+  const tabLockKeyRef = React.useRef("")
+  const tabLockIdRef = React.useRef("")
   const [bankSearch, setBankSearch] = React.useState("")
   const [selectedBankId, setSelectedBankId] = React.useState("chase")
   const [isStripeLinkDialogOpen, setIsStripeLinkDialogOpen] =
@@ -1433,18 +1435,38 @@ export default function PaymentPage() {
   React.useEffect(() => {
     const tabKey = `checkout-active-tab:${basePath}:${decodedSlug}`
     const tabId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
-    const existingTabId = window.localStorage.getItem(tabKey)
+    tabLockKeyRef.current = tabKey
+    tabLockIdRef.current = tabId
 
+    const existingTabId = window.localStorage.getItem(tabKey)
     if (existingTabId && existingTabId !== tabId) {
       setIsOtherCheckoutTabOpen(true)
     }
 
     window.localStorage.setItem(tabKey, tabId)
 
-    return () => {
+    const handleStorageChange = (event: StorageEvent) => {
+      if (
+        event.key === tabKey &&
+        event.newValue &&
+        event.newValue !== tabLockIdRef.current
+      ) {
+        setIsOtherCheckoutTabOpen(true)
+      }
+    }
+    window.addEventListener("storage", handleStorageChange)
+
+    const releaseLock = () => {
       if (window.localStorage.getItem(tabKey) === tabId) {
         window.localStorage.removeItem(tabKey)
       }
+    }
+    window.addEventListener("pagehide", releaseLock)
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange)
+      window.removeEventListener("pagehide", releaseLock)
+      releaseLock()
     }
   }, [basePath, decodedSlug])
 
@@ -6195,9 +6217,9 @@ export default function PaymentPage() {
                         </p>
                         <p className="mt-1 font-normal">
                           We couldn&apos;t reach Stripe to load the card form.
-                          An ad blocker or privacy extension is the usual
-                          cause — allow js.stripe.com and try again, or use
-                          another payment method below.
+                          An ad blocker or privacy extension is the usual cause
+                          — allow js.stripe.com and try again, or use another
+                          payment method below.
                         </p>
                         <Button
                           type="button"
@@ -6676,7 +6698,7 @@ export default function PaymentPage() {
                                 : phoneNumber.trim() &&
                                     getUsPhoneDigits(phoneNumber).length !== 10
                                   ? "Please enter a valid US phone number."
-                                : "Please complete all required billing address fields."}
+                                  : "Please complete all required billing address fields."}
                             </span>
                           ) : null}
                         </div>
@@ -8603,7 +8625,17 @@ export default function PaymentPage() {
             session before continuing.
           </p>
           <div className="mt-6 flex justify-end">
-            <Button onClick={() => setIsOtherCheckoutTabOpen(false)}>
+            <Button
+              onClick={() => {
+                if (tabLockKeyRef.current && tabLockIdRef.current) {
+                  window.localStorage.setItem(
+                    tabLockKeyRef.current,
+                    tabLockIdRef.current
+                  )
+                }
+                setIsOtherCheckoutTabOpen(false)
+              }}
+            >
               Continue Here
             </Button>
           </div>
