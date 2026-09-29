@@ -354,8 +354,18 @@ the component would be a COMPONENTS.md violation.
 |---|---|
 | Email Us | `POST /support/messages` → relayed to the support inbox over Brevo |
 | Schedule a Call | `POST /support/call-requests` → relayed to the support inbox |
-| Call Us | screen exists, **placeholder number** (below) |
-| Live Chat | inert — no provider (below) |
+| ~~Call Us~~ | **commented out** 2026-09-29 per @CTorres9800 — SMS/phone not in use |
+| ~~Live Chat~~ | **commented out** 2026-09-29 per @CTorres9800 — no provider |
+
+**Only the two working rows are shown.** Call Us and Live Chat are commented out
+of `SUPPORT_OPTIONS`, not deleted, so restoring either is a one-line change.
+Commenting Call Us also removed the last screen in this flow that displayed a
+fabricated value to a user — the placeholder phone number. The Call Us modal
+markup is still in the file but is now unreachable.
+
+**Phone Verification is commented out of `RECOVERY_OPTIONS` too**, same date and
+same reason: SMS is not in use, so the row had no working route behind it. This
+matches how the SMS paths in Settings were handled.
 
 **What was built.** `notification-service` gained a `SupportController` at
 `@Controller('support')` with two endpoints, backed by a `SupportService` that
@@ -538,8 +548,8 @@ in §4.7.
 | Email Verification | built + **sending** | Real email delivers as of 2026-09-28 (§3); Render envs still unset |
 | Security Questions | built | Answers never checked (§4.1) |
 | App Authenticator | built | Code never checked, Submit ungateable (§4.4) |
-| Contact Support | built | Call Us, Email Us, Schedule a Call built; Live Chat inert (§4.5) |
-| Phone Verification | **none** | `handleRecoverySelect` returns early. **SMS — per @CTorres9800 this is deprioritised**, so this is deliberate |
+| Contact Support | built + **sending** | Email Us and Schedule a Call reach the support inbox; Call Us and Live Chat commented out per @CTorres9800 (§4.5) |
+| ~~Phone Verification~~ | **removed from the chooser** | Commented out of `RECOVERY_OPTIONS` 2026-09-29 per @CTorres9800 — SMS not in use. Uncomment to restore |
 
 Also outstanding:
 
@@ -695,12 +705,14 @@ exists (§4.4).
 Storybook again (§4.6). Until these exist, Schedule a Call collects free text:
 `99/99/9999` and `banana` both pass, and no timezone is captured.
 
-**4. A real support phone number, or delete the Call Us row.** It currently
-shows a placeholder constant — the last screen in this flow that displays
-something fabricated to a user (§4.5).
+**4. ~~A real support phone number~~ — resolved 2026-09-29.** You asked for Call
+Us to be commented out; it is. Restoring the row needs a real number first.
 
-**5. A live-chat provider**, or delete that row too. Nothing in the stack
-provides chat to a logged-out visitor.
+**5. ~~A live-chat provider~~ — resolved 2026-09-29.** Live Chat is commented
+out. Restoring it needs a provider that serves logged-out visitors.
+
+**5b. Phone Verification** is commented out of the recovery chooser at your
+request. Restoring it needs the SMS decision reversed.
 
 **6. Should the authenticator route skip Update Password?** The Figma draws it
 that way; the implementation follows the Figma. Confirm that is intended.
