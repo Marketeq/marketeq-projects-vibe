@@ -27,7 +27,9 @@ import {
   HelpCircle,
   Mail01,
   MessageDotsSquare,
-  Phone,
+  // Phone is only used by the commented-out Phone Verification and Call Us
+  // rows; uncomment alongside either of them.
+  // Phone,
   Send01,
   Smartphone,
 } from "@blend-metrics/icons"
@@ -80,7 +82,10 @@ const ACCOUNT_FOUND_STORAGE_KEY = "forgotPasswordAccountFound"
  * this particular set rather than any similar-looking alternative.
  */
 const RECOVERY_OPTIONS = [
-  { id: "phone", label: "Phone Verification", icon: Phone },
+  // Phone Verification is commented out per @CTorres9800 (2026-09-29): SMS is
+  // not being used yet, so the row had no working route behind it. Same
+  // treatment as the SMS paths in Settings — commented, not deleted.
+  // { id: "phone", label: "Phone Verification", icon: Phone },
   { id: "email", label: "Email Verification", icon: Mail01 },
   { id: "questions", label: "Security Questions", icon: HelpCircle },
   { id: "authenticator", label: "App Authenticator", icon: Smartphone },
@@ -124,12 +129,17 @@ const SUPPORT_PHONE_PLACEHOLDER = "+1 (123) 555-1212"
  * re-derived.
  */
 const SUPPORT_OPTIONS = [
-  { id: "call", label: "Call Us", icon: Phone },
+  // Call Us and Live Chat are commented out per @CTorres9800 (2026-09-29):
+  // neither is in use. Call Us only ever showed a placeholder number, and
+  // nothing in the stack provides chat to a logged-out visitor. Left in place
+  // rather than deleted so restoring them is a one-line change once there is
+  // a real support number and a chat provider.
+  // { id: "call", label: "Call Us", icon: Phone },
   { id: "email", label: "Email Us", icon: Mail01 },
   // The Figma repeats row 2's envelope here. Read as a slip and drawn with a
   // calendar instead -- see the deviations list in the notes.
   { id: "schedule", label: "Schedule a Call", icon: Calendar },
-  { id: "chat", label: "Live Chat", icon: Smartphone },
+  // { id: "chat", label: "Live Chat", icon: Smartphone },
 ] as const
 
 type SupportOptionId = (typeof SUPPORT_OPTIONS)[number]["id"]
@@ -461,7 +471,8 @@ function ForgotPassword() {
       return
     }
 
-    // Phone has no screen yet.
+    // Security questions and support are handled above; anything else is not a
+    // route this screen can start.
     if (id !== "email" && id !== "authenticator") return
 
     // Both remaining routes are tied to an account, so the address is required
@@ -531,22 +542,23 @@ function ForgotPassword() {
    * See docs/ACCOUNT_RECOVERY_NOTES.md.
    */
   /**
-   * Email Us is wired directly as a `mailto:` rather than going through here --
-   * it is the address the page's original support link used, so keeping it
-   * working is what stops this flow being a regression on what it replaced.
+   * Only Email Us and Schedule a Call are offered — Call Us and Live Chat are
+   * commented out of SUPPORT_OPTIONS per @CTorres9800. Both remaining rows post
+   * to notification-service, which relays them to the support inbox.
    *
-   * Call Us has a screen, but the number on it is a placeholder.
+   * The Call Us branch is commented rather than deleted so restoring the row
+   * stays a two-line change; with its id gone from SUPPORT_OPTIONS the
+   * comparison would not type-check.
    *
-   * Schedule a Call and Live Chat need a scheduling integration and a chat
-   * provider respectively; neither exists in this repo, so they say so. A toast
-   * is a placeholder, not a design, and the copy is invented like the rest.
+   * The trailing toast is a safety net for an id with no branch. It is
+   * unreachable today and should stay that way.
    */
   const handleSupportSelect = (id: SupportOptionId, label: string) => {
-    if (id === "call") {
-      setIsSupportOpen(false)
-      setIsCallUsOpen(true)
-      return
-    }
+    // if (id === "call") {
+    //   setIsSupportOpen(false)
+    //   setIsCallUsOpen(true)
+    //   return
+    // }
 
     if (id === "email") {
       setIsSupportOpen(false)
@@ -850,18 +862,28 @@ function ForgotPassword() {
                   Start account recovery
                 </DialogTrigger>
 
-                {/* Figma draws this 650x580 with 50px padding. It is scaled up
-                    to 700x630 by widening the padding to 75px, which leaves the
-                    content box at exactly 550px -- the width every row is drawn
-                    at -- so the rows themselves are untouched and only the frame
-                    grows. The extra height is what keeps the reset-password card
-                    behind from peeking over the top edge, since the overlay is
-                    transparent and the dialog is centred vertically.
+                {/* Figma draws this 650x580 with 50px padding. Widened to 700
+                    with 75px padding, which leaves the content box at exactly
+                    550px -- the width every row is drawn at -- so the rows are
+                    untouched and only the frame grows.
+
+                    Height follows the row count and is recomputed when rows are
+                    added or removed. With Phone Verification commented out
+                    there are 4:
+                      75 + 76 (heading) + 24 (gap) + 302 (rows) + 75 = 552
+                    where rows = 4*68 + 3*10. It was 630 for five rows; leaving
+                    it there left an empty band below the last row.
+
+                    The old note here claimed the surplus height stopped the
+                    reset-password card behind from showing through. It does
+                    not: isRecoveryFlowOpen puts `invisible` on that wrapper, so
+                    nothing is behind the dialog to see.
+
                     No close button: the Figma ships one but sets it to
                     display:none. */}
                 <DialogContent
                   dialogOverlay={<DialogOverlay className="bg-transparent" />}
-                  className="flex h-[630px] w-[700px] max-w-[700px] flex-col items-start gap-6 rounded-xl border border-gray-200 bg-white p-[75px] shadow-[0px_32px_64px_-12px_rgba(16,24,40,0.05)]"
+                  className="flex h-[552px] w-[700px] max-w-[700px] flex-col items-start gap-6 rounded-xl border border-gray-200 bg-white p-[75px] shadow-[0px_32px_64px_-12px_rgba(16,24,40,0.05)]"
                 >
                   <div className="flex w-full flex-col items-start gap-2">
                     <DialogTitle className="w-full text-lg font-semibold leading-7 text-dark-blue-400">
@@ -1191,16 +1213,21 @@ function ForgotPassword() {
                 </DialogContent>
               </Dialog>
 
-              {/* Contact support. Figma: 500x502, 50px padding, 24px gap ->
-                  50 + 76 (heading) + 24 + 302 (rows) + 50 = 502, on a 400px
-                  column (500 - 2*50). The rows block is 4*68 + 3*10 = 302.
+              {/* Contact support. Figma: 500x502, 50px padding, 24px gap, on a
+                  400px column (500 - 2*50). The Figma's 502 assumed four rows
+                  (4*68 + 3*10 = 302).
+
+                  Call Us and Live Chat are commented out, leaving two:
+                    50 + 76 (heading) + 24 (gap) + 146 (rows) + 50 = 346
+                  where rows = 2*68 + 1*10. Recompute this if a row returns.
+
                   The row itself is the same control the Account Recovery
                   chooser uses -- both Figmas specify it identically -- so the
                   markup is shared rather than re-derived. */}
               <Dialog open={isSupportOpen} onOpenChange={setIsSupportOpen}>
                 <DialogContent
                   dialogOverlay={<DialogOverlay className="bg-transparent" />}
-                  className="flex h-[502px] w-[500px] max-w-[500px] flex-col items-center justify-center gap-6 rounded-xl border border-gray-200 bg-white p-[50px] shadow-[0px_32px_64px_-12px_rgba(16,24,40,0.05)]"
+                  className="flex h-[346px] w-[500px] max-w-[500px] flex-col items-center justify-center gap-6 rounded-xl border border-gray-200 bg-white p-[50px] shadow-[0px_32px_64px_-12px_rgba(16,24,40,0.05)]"
                 >
                   <div className="flex w-full flex-col items-start gap-2">
                     <DialogTitle className="w-full text-lg font-semibold leading-7 text-dark-blue-400">
