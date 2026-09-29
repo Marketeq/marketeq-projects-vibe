@@ -253,6 +253,7 @@ export function IdentityVerificationPreviewClient() {
         onOpenChange={setOpen}
         detectedLocation={MOCK_DETECTED_LOCATION}
         initialState={entryPoint}
+        simulateUploadForPreview
         verificationContext={verificationContext}
         onBeginVerifying={handleBeginVerifying}
       />

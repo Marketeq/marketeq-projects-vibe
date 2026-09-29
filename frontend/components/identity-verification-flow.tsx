@@ -523,6 +523,7 @@ export function IdentityVerificationFlow({
   verificationContext,
   onBeginVerifying,
   initialState,
+  simulateUploadForPreview,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -546,8 +547,16 @@ export function IdentityVerificationFlow({
   // screen after the first render must remount (e.g. via a changing
   // `key`), not rely on this prop updating live.
   initialState?: FlowState
+  // Development preview only (app/identity-verification-preview/): skips the
+  // real presigned-URL + R2 upload in handleCapture so every screen can be
+  // walked through without storage credentials. Defaults to off and is
+  // additionally gated on NODE_ENV === "development" below, so it can never
+  // take effect in a production build even if a caller passes it.
+  simulateUploadForPreview?: boolean
 }) {
   const getIsMounted = useMountedState()
+  const simulateUpload =
+    simulateUploadForPreview === true && process.env.NODE_ENV === "development"
   const { toast } = useToast()
   const cameraHandler = useRef<WebCameraHandler>(null)
   const [selectedDocument, setSelectedDocument] =
@@ -821,16 +830,22 @@ export function IdentityVerificationFlow({
     if (capturingRef.current) return
     capturingRef.current = true
     try {
-      const file = (await cameraHandler.current?.capture()) ?? null
-      const result = await submitIdentityDocument({
-        documentType: selectedDocument?.id ?? "passport",
-        capturedFile: file,
-      })
+      // Preview-only simulation (see simulateUploadForPreview): no capture
+      // is required and nothing is uploaded; a placeholder reference stands
+      // in for the stored image so the rest of the flow behaves the same.
+      const documentImageReference = simulateUpload
+        ? `simulated-${stage}-image`
+        : (
+            await submitIdentityDocument({
+              documentType: selectedDocument?.id ?? "passport",
+              capturedFile: (await cameraHandler.current?.capture()) ?? null,
+            })
+          ).documentImageReference
       if (getIsMounted()) {
         if (stage === "front") {
-          setFrontImageReference(result.documentImageReference)
+          setFrontImageReference(documentImageReference)
         } else {
-          setBackImageReference(result.documentImageReference)
+          setBackImageReference(documentImageReference)
         }
         send("NEXT")
       }
