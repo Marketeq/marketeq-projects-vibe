@@ -15644,9 +15644,9 @@ const FinalProjectReviewStep = ({
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
       {addSkillDialog}
-      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
-        <div className="flex flex-col gap-8 min-[1180px]:flex-row">
-          <div className="min-w-0 flex-auto max-w-[790px]">
+      <div className="bg-gray-50 px-5 py-10 md:px-10 min-[1024px]:px-[100px] min-[1024px]:pb-5 min-[1024px]:pt-[50px]">
+        <div className="mx-auto flex max-w-[1240px] flex-col gap-8 min-[1180px]:flex-row min-[1180px]:items-start">
+          <div className="min-w-0 flex-auto min-[1180px]:w-[886px]">
             <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
               One Last Check
             </h1>
@@ -15846,21 +15846,23 @@ const FinalProjectReviewStep = ({
             </div>
           </div>
 
-          <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
-            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
+          <div className="flex h-[calc(100vh-248px)] min-h-0 w-full shrink-0 flex-col self-stretch rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1180px]:sticky min-[1180px]:top-[50px] min-[1180px]:w-[322px] min-[1180px]:self-start">
+            <div className="flex h-12 shrink-0 self-stretch items-start justify-between gap-2 border-b border-gray-200 px-5 py-3">
+              <h2 className="h-6 flex-1 text-base font-semibold leading-6 text-dark-blue-400">
                 Smart Assistant
               </h2>
               <Copy className="size-5 text-gray-400" />
             </div>
-            <div className="p-5">
-              <h3 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                What do you want to do?
-              </h3>
-              <p className="text-sm leading-5 text-dark-blue-400">
-                Here are some suggestions:
-              </p>
-              <div className="mt-4 space-y-3">
+            <div className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+              <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
+                <h3 className="h-7 shrink-0 self-stretch text-lg font-semibold leading-7 text-dark-blue-400">
+                  What do you want to do?
+                </h3>
+                <p className="h-5 shrink-0 self-stretch text-sm font-normal leading-5 text-dark-blue-400">
+                  Here are some suggestions:
+                </p>
+              </div>
+              <div className="flex w-[282px] shrink-0 flex-col items-start gap-3 self-stretch">
                 {[
                   ["Change a Project Title", "title"],
                   ["Rewrite Overview", "overview"],
@@ -15885,23 +15887,25 @@ const FinalProjectReviewStep = ({
                 ))}
               </div>
               {projectAssistant.result ? (
-                <p className="mt-4 text-xs leading-[18px] text-primary-600">
+                <p className="text-xs leading-[18px] text-primary-600">
                   {projectAssistant.result}
                 </p>
               ) : null}
-              <div className="mt-[280px] rounded-[5px] border border-gray-300 bg-white p-3 shadow-xs">
+            </div>
+            <div className="flex h-[140px] w-full shrink-0 flex-col items-start gap-2 self-stretch p-5">
+              <div className="flex h-[100px] w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
                 <Textarea
-                  className="h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-gray-500 shadow-none focus:border-0 focus:ring-0 focus-visible:outline-none"
+                  className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm font-normal leading-5 text-gray-500 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-gray-400 focus:ring-0"
                   placeholder="I want to change..."
                   value={projectAssistant.message}
                   onChange={(event) =>
                     projectAssistant.setMessage(event.target.value)
                   }
                 />
-                <div className="flex items-center justify-between">
+                <div className="flex h-6 w-[260px] shrink-0 self-stretch items-center justify-between gap-2 p-0">
                   <RefreshCcw05 className="size-4 text-gray-400" />
                   <Button
-                    className="size-8 rounded-full p-0"
+                    className="size-6 rounded-full p-1 shadow-none"
                     type="button"
                     disabled={
                       projectAssistant.isLoading ||
