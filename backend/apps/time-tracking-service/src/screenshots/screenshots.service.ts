@@ -59,6 +59,52 @@ export class ScreenshotsService {
       }
     }
 
+    // iconBase64 is transient — never persisted, only ever used to derive a
+    // real iconUrl. In dev (no R2 configured yet) that means writing it to
+    // the same local-file fallback the main image uses, above. In every
+    // other environment there's nowhere to put it yet, so it's dropped
+    // rather than written into the jsonb `apps` column raw — a base64 image
+    // blob has no business sitting in a database row.
+    let apps = dto.apps ?? null;
+    if (apps) {
+      const isDev = process.env.NODE_ENV !== 'production';
+      const fs = isDev ? await import('fs') : null;
+      const path = isDev ? await import('path') : null;
+      // Namespaced per user — without this, two different users' icon
+      // uploads for the same app name (e.g. both used Chrome) would
+      // overwrite each other's file on disk, since the filename was
+      // previously keyed on appName alone.
+      const safeUserId = isDev ? dto.userId.replace(/[^a-zA-Z0-9_-]/g, '_') : null;
+      const uploadsDir =
+        path && safeUserId ? path.join(process.cwd(), 'screenshot-uploads', 'icons', safeUserId) : null;
+      apps = apps.map((app) => {
+        // Never trust a client-supplied iconUrl. It's rendered directly as
+        // an <img src> to anyone viewing this timesheet later — accepting
+        // an arbitrary client-chosen URL here would let a modified desktop
+        // client make other users' browsers load attacker-controlled
+        // content. The only iconUrl ever stored is one this service
+        // derives itself below; the client's own value is always dropped.
+        const { iconUrl: _clientSuppliedIconUrl, iconBase64, appName, url } = app;
+        const rest = { appName, ...(url !== undefined ? { url } : {}) };
+        if (!iconBase64 || !isDev || !fs || !path || !uploadsDir || !safeUserId) {
+          return rest;
+        }
+        try {
+          if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+          const safeName = app.appName.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const filename = `${safeName}.png`;
+          fs.writeFileSync(path.join(uploadsDir, filename), Buffer.from(iconBase64, 'base64'));
+          const port = process.env.PORT ?? 3017;
+          return {
+            ...rest,
+            iconUrl: `http://localhost:${port}/api/screenshot-files/icons/${safeUserId}/${filename}`,
+          };
+        } catch {
+          return rest;
+        }
+      });
+    }
+
     const saved = await this.repo.save({
       userId: dto.userId,
       key: dto.key,
@@ -75,7 +121,7 @@ export class ScreenshotsService {
       groupKey: dto.groupKey ?? null,
       isDeleted: false,
       url: url ?? undefined,
-      apps: dto.apps ?? null,
+      apps,
     } as any);
     // Sync to earnings_cache (non-blocking)
     if (saved.contractId && saved.capturedAt) {
