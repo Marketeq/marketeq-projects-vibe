@@ -190,9 +190,9 @@ const DotSpinner = ({ size = 56 }: { size?: number }) => {
 // the source of these). Deliberately never uses the browser Geolocation
 // API: that would need browser permission for precise device location,
 // which Technical Architecture §11 explicitly scopes out for this flow
-// ("country-level resolution only, not precise/coordinate-based"). Zoom is
-// capped at city-level (10) so the marker doesn't imply more precision than
-// IP geolocation actually has.
+// ("country-level resolution only, not precise/coordinate-based"). Zoom is 12
+// to match the Figma map; the coordinates are still IP-derived, so the pin
+// marks the approximate area, not an address.
 //
 // LOCATIONIQ_TILES_KEY is intentionally a *different* key from the
 // LOCATIONIQ_API_KEY location-service's reverse-geocode call uses
@@ -203,11 +203,20 @@ const DotSpinner = ({ size = 56 }: { size?: number }) => {
 //
 // Attribution is mandatory on every tile view (LocationIQ's commercial-use
 // terms require a link back on the free plan; OpenStreetMap's data license
-// separately requires its own credit) — passed straight to Leaflet's
-// attribution control, which renders it automatically; never removed.
+// separately requires its own credit). Leaflet's in-map attribution control
+// is turned off to match the Figma map, and the same credit is rendered as a
+// caption directly below the map instead — never removed.
 const LEAFLET_VERSION = "1.9.4" // pinned to the installed leaflet package.json version
-const LOCATIONIQ_TILE_ATTRIBUTION =
-  '<a href="https://locationiq.com/" target="_blank" rel="noreferrer">Search by LocationIQ.com</a> | © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
+
+// Red location pin (Figma, all-layers CSS) — 20.91×30 box, #EA4335 body with an
+// 8px #B01D1D dot at (6.45, 6.45). Drawn as an inline SVG divIcon so no remote
+// marker image is needed. Figma centres the box on the map centre
+// (left: calc(50% - w/2 + 0.45px), top: calc(50% - h/2)), so the icon anchor is
+// the box's own centre offset by that 0.45px, not the tip.
+const LOCATION_PIN_WIDTH = 20.91
+const LOCATION_PIN_HEIGHT = 30
+const LOCATION_PIN_HTML =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="20.91" height="30" viewBox="0 0 20.91 30" fill="none"><path d="M10.455 0C4.681 0 0 4.681 0 10.455c0 7.841 10.455 19.545 10.455 19.545S20.91 18.296 20.91 10.455C20.91 4.681 16.229 0 10.455 0Z" fill="#EA4335"/><circle cx="10.451" cy="10.45" r="4" fill="#B01D1D"/></svg>'
 
 let leafletCssInjected = false
 function ensureLeafletCss() {
@@ -265,22 +274,12 @@ const DetectedLocationMap = ({
       .then((L) => {
         if (cancelled || !containerRef.current) return
 
-        // webpack/Next can't resolve Leaflet's default marker icon's
-        // relative asset paths — point them at the same CDN version
-        // instead of the (broken) local bundle path.
-        delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })
-          ._getIconUrl
-        L.Icon.Default.mergeOptions({
-          iconRetinaUrl: `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/images/marker-icon-2x.png`,
-          iconUrl: `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/images/marker-icon.png`,
-          shadowUrl: `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/images/marker-shadow.png`,
-        })
-
         mapRef.current?.remove()
         const map = L.map(containerRef.current, {
           center: [latitude, longitude],
-          zoom: 10,
-          zoomControl: true,
+          zoom: 12,
+          zoomControl: false,
+          attributionControl: false,
         })
         mapRef.current = map
 
@@ -289,12 +288,21 @@ const DetectedLocationMap = ({
         // documented pattern (docs.locationiq.com/docs/maps).
         const tileUrl = `https://{s}-tiles.locationiq.com/v3/streets/r/{z}/{x}/{y}.png?key=${apiKey}`
         L.tileLayer(tileUrl, {
-          attribution: LOCATIONIQ_TILE_ATTRIBUTION,
           subdomains: "abc",
           maxZoom: 20,
         }).addTo(map)
 
-        L.marker([latitude, longitude]).addTo(map)
+        L.marker([latitude, longitude], {
+          icon: L.divIcon({
+            html: LOCATION_PIN_HTML,
+            className: "",
+            iconSize: [LOCATION_PIN_WIDTH, LOCATION_PIN_HEIGHT],
+            iconAnchor: [
+              LOCATION_PIN_WIDTH / 2 - 0.45,
+              LOCATION_PIN_HEIGHT / 2,
+            ],
+          }),
+        }).addTo(map)
 
         setState("ready")
       })
@@ -310,33 +318,59 @@ const DetectedLocationMap = ({
   }, [latitude, longitude, serviceUnavailable])
 
   return (
-    <div className="rounded-lg overflow-hidden relative mt-6 h-[170px] bg-gray-100">
-      <div ref={containerRef} className="absolute inset-0" />
-      {state !== "ready" && (
-        <div className="absolute inset-0 z-[1000] flex items-center justify-center bg-gray-100 px-4">
-          {state === "loading" && <DotSpinner size={28} />}
-          {state === "service-unavailable" && (
-            <span className="text-xs text-center text-gray-500">
-              Location service temporarily unavailable.
-            </span>
-          )}
-          {state === "no-location" && (
-            <span className="text-xs text-center text-gray-500">
-              We couldn&rsquo;t detect your location
-            </span>
-          )}
-          {state === "no-key" && (
-            <span className="text-xs text-center text-gray-500">
-              Map unavailable — LocationIQ tiles key not configured
-            </span>
-          )}
-          {state === "error" && (
-            <span className="text-xs text-center text-gray-500">
-              Map failed to load
-            </span>
-          )}
-        </div>
-      )}
+    <div className="mt-6">
+      <div className="rounded-lg overflow-hidden relative h-[170px] bg-gray-100">
+        {/* Figma "Map Image": oversized -11% / -11.67% and clipped by the frame */}
+        <div
+          ref={containerRef}
+          className="absolute -left-[11%] -right-[11%] -top-[11.67%] -bottom-[11.67%]"
+        />
+        {state !== "ready" && (
+          <div className="absolute inset-0 z-[1000] flex items-center justify-center bg-gray-100 px-4">
+            {state === "loading" && <DotSpinner size={28} />}
+            {state === "service-unavailable" && (
+              <span className="text-xs text-center text-gray-500">
+                Location service temporarily unavailable.
+              </span>
+            )}
+            {state === "no-location" && (
+              <span className="text-xs text-center text-gray-500">
+                We couldn&rsquo;t detect your location
+              </span>
+            )}
+            {state === "no-key" && (
+              <span className="text-xs text-center text-gray-500">
+                Map unavailable — LocationIQ tiles key not configured
+              </span>
+            )}
+            {state === "error" && (
+              <span className="text-xs text-center text-gray-500">
+                Map failed to load
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+      <p className="mt-1 text-xs text-gray-500">
+        <a
+          href="https://locationiq.com/"
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+        >
+          Search by LocationIQ.com
+        </a>{" "}
+        | ©{" "}
+        <a
+          href="https://www.openstreetmap.org/copyright"
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+        >
+          OpenStreetMap
+        </a>{" "}
+        contributors
+      </p>
     </div>
   )
 }
