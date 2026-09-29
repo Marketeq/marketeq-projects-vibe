@@ -37,12 +37,6 @@ import {
 } from "@/service/http/job-listing";
 import { LegalAPI } from "@/service/http/legal";
 import { ProjectAPI } from "@/service/http/project";
-import { UserAPI } from "@/service/http/user";
-import { useTalentNetwork } from "@/src/hooks/useTeamNetwork";
-import {
-  useRecommendedTalentUsers,
-  type TalentUser,
-} from "@/src/lib/api/talent-users";
 import { editProjectListingUrl } from "@/src/lib/listing-urls";
 import { buildProjectUrl } from "@/src/lib/urlHelpers";
 import { HTTPS, ONE_SECOND } from "@/utils/constants";
@@ -200,16 +194,6 @@ import {
   useStepContext,
   useStepRootContext,
   useStepperContext,
-  CommandList,
-  DropdownPopover,
-  DropdownPopoverTrigger,
-  DropdownPopoverContent,
-  DropdownCommand,
-  DropdownCommandInput,
-  DropdownCommandEmpty,
-  DropdownCommandGroup,
-  DropdownCommandItem,
-  comboboxInputVariants,
 } from "@/components/ui";
 import {
   Accordion,
@@ -217,10 +201,8 @@ import {
   AccordionTrigger,
   Avatar,
   AvatarGroup,
-  AvatarGroupButton,
   AvatarFallback,
   AvatarImage,
-  AvatarRoot,
   Badge,
   Button,
   Card,
@@ -18783,19 +18765,7 @@ const ExistingContractFinalReviewStep = ({
   );
 };
 
-// One real person to fill a generated role row. Normalized from two
-// different shapes: user-service profiles (My team, via UserAPI.getProfile)
-// and TalentUser recommendations (Suggested, via useRecommendedTalentUsers).
-interface TeamRoleCandidate {
-  id: string;
-  name: string;
-  username: string;
-  avatarUrl: string | null;
-  headline: string;
-  experience: ExperienceLevel | null;
-  hourlyRateUsdCents: number | null;
-}
-
+// Normalize hourly rate values coming from hydrated team role rows.
 const getCandidateHourlyRateUsdCents = (...values: unknown[]) => {
   for (const value of values) {
     const normalizedValue =
@@ -18807,280 +18777,6 @@ const getCandidateHourlyRateUsdCents = (...values: unknown[]) => {
   }
 
   return null;
-};
-
-const toTeamRoleCandidate = (source: any): TeamRoleCandidate | null => {
-  const id = String(source?.id ?? source?.userId ?? "").trim();
-  if (!id) return null;
-
-  const firstJobTitle = Array.isArray(source?.jobTitles)
-    ? (source.jobTitles.find(
-        (jobTitle: any) =>
-          typeof jobTitle !== "string" &&
-          (jobTitle?.isDefault || jobTitle?.saveAsDefault),
-      ) ?? source.jobTitles[0])
-    : null;
-  const headline =
-    source?.recentJobTitle ||
-    (typeof firstJobTitle === "string"
-      ? firstJobTitle
-      : firstJobTitle?.headline ||
-        firstJobTitle?.jobTitle ||
-        firstJobTitle?.title) ||
-    "";
-  const experienceLevel =
-    source?.experienceLevel ??
-    source?.experience ??
-    source?.overview?.experienceLevel;
-  const hourlyRateUsdCents = getCandidateHourlyRateUsdCents(
-    source?.hourlyRate,
-    source?.rate,
-    typeof firstJobTitle === "object" && firstJobTitle !== null
-      ? firstJobTitle?.clientRate
-      : null,
-    typeof firstJobTitle === "object" && firstJobTitle !== null
-      ? firstJobTitle?.earning
-      : null,
-    source?.rateMax,
-    source?.rateMin,
-  );
-
-  return {
-    id,
-    name: source?.firstName || source?.name || source?.username || "User",
-    username: source?.username ?? "",
-    avatarUrl: source?.avatarUrl ?? null,
-    headline: String(headline || ""),
-    experience: experienceLevel
-      ? toTeamRoleExperience(String(experienceLevel))
-      : null,
-    hourlyRateUsdCents,
-  };
-};
-
-// Same visual/interaction template as the frozen AssigneePicker in
-// active-project/[id]/page.tsx (search box, grouped "My team"/"Suggested"
-// list, avatar+name+username row, checkmark) — rebuilt here, single-select,
-// wired to real data instead of that page's hardcoded sampleMembers.
-const TeamRoleAssigneePicker = ({
-  roleTitle,
-  location,
-  experience,
-  schedule,
-  selectedId,
-  onSelect,
-  open,
-  onOpenChange,
-  trigger,
-  triggerClassName = "!inline-flex !h-8 !w-8 !rounded-full !p-0 !text-gray-400 transition-colors duration-300 hover:!border-gray-400 hover:!text-gray-500",
-}: {
-  roleTitle: string;
-  location: string;
-  experience: ExperienceLevel;
-  schedule: TeamRoleRow["schedule"];
-  selectedId: string | null;
-  onSelect: (candidate: TeamRoleCandidate | null) => void;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  trigger?: React.ReactNode;
-  triggerClassName?: string;
-}) => {
-  const { user } = useAuth();
-  const [search, setSearch] = useState("");
-
-  const { data: talentNetwork, isLoading: isLoadingTalentNetwork } =
-    useTalentNetwork(open ? user?.id : undefined);
-  const [myTeam, setMyTeam] = useState<TeamRoleCandidate[]>([]);
-  const [isLoadingMyTeam, setIsLoadingMyTeam] = useState(false);
-  useEffect(() => {
-    // Wait for the talent-network query itself to resolve before deciding
-    // there are no entries — otherwise an in-flight query briefly looks
-    // identical to "this client has no talent network."
-    if (!open || isLoadingTalentNetwork) return;
-    const entries = [
-      ...(talentNetwork?.active ?? []),
-      ...(talentNetwork?.pending ?? []),
-    ];
-    if (entries.length === 0) {
-      setMyTeam([]);
-      return;
-    }
-
-    let cancelled = false;
-    setIsLoadingMyTeam(true);
-    Promise.allSettled(entries.map((entry) => UserAPI.getProfile(entry.talentId)))
-      .then((results) => {
-        if (cancelled) return;
-        const candidates = results
-          .filter(
-            (r): r is PromiseFulfilledResult<any> => r.status === "fulfilled",
-          )
-          .map((r) => toTeamRoleCandidate(r.value?.data))
-          .filter((c): c is TeamRoleCandidate => Boolean(c));
-        setMyTeam(candidates);
-      })
-      .catch(() => {
-        if (!cancelled) setMyTeam([]);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingMyTeam(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, isLoadingTalentNetwork, talentNetwork]);
-
-  const recommendationRequest = useMemo(
-    () =>
-      open
-        ? {
-            roleTitle,
-            locations: location ? [location] : [],
-            experienceLevels: experience ? [experience] : [],
-            workSchedules: [
-              schedule === "Part-time" ? "part_time" : "full_time",
-            ],
-            limit: 10,
-          }
-        : null,
-    [open, roleTitle, location, experience, schedule],
-  );
-  const { talents: recommendedTalents, isLoading: isLoadingSuggested } =
-    useRecommendedTalentUsers(recommendationRequest);
-
-  const suggested = useMemo(() => {
-    const myTeamIds = new Set(myTeam.map((c) => c.id));
-    return recommendedTalents
-      .map((talent: TalentUser) => toTeamRoleCandidate(talent))
-      .filter(
-        (c): c is TeamRoleCandidate => c != null && !myTeamIds.has(c.id),
-      );
-  }, [recommendedTalents, myTeam]);
-
-  const allCandidates = useMemo(
-    () => [...myTeam, ...suggested],
-    [myTeam, suggested],
-  );
-
-  const isPopupLoading =
-    open && (isLoadingTalentNetwork || isLoadingMyTeam || isLoadingSuggested);
-
-  return (
-    <DropdownPopover
-      open={open}
-      onOpenChange={onOpenChange}
-      selected={selectedId ?? undefined}
-      onSelectedChange={(id: string | null) => {
-        const candidate = id
-          ? (allCandidates.find((c) => c.id === id) ?? null)
-          : null;
-        onSelect(candidate);
-      }}
-    >
-      <DropdownPopoverTrigger asChild className={triggerClassName}>
-        {trigger ?? (
-          <AvatarGroupButton size="sm">
-            <Plus className="h-4 w-4" />
-          </AvatarGroupButton>
-        )}
-      </DropdownPopoverTrigger>
-      <DropdownPopoverContent
-        align="start"
-        collisionPadding={16}
-        className="w-72 border border-gray-100 p-0"
-      >
-        {isPopupLoading ? (
-          <div className="p-3.5">
-            <span className="relative block h-11 w-full overflow-hidden rounded-[5px] bg-gray-100">
-              <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
-            </span>
-            <div className="mt-4 space-y-4">
-              {Array.from({ length: 4 }, (_, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <span className="relative block size-8 shrink-0 overflow-hidden rounded-full bg-gray-100">
-                    <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
-                  </span>
-                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                    <span className="relative block h-3 w-24 overflow-hidden rounded bg-gray-100">
-                      <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
-                    </span>
-                    <span className="relative block h-2.5 w-16 overflow-hidden rounded bg-gray-100">
-                      <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <DropdownCommand>
-            <div className="border-b border-gray-100 p-3.5">
-              <InputGroup>
-                <InputLeftElement className="w-8">
-                  <SearchMd className="size-4 text-gray-500" />
-                </InputLeftElement>
-                <DropdownCommandInput
-                  placeholder="Search names, emails, or roles"
-                  className={comboboxInputVariants({ visual: "default", size: "sm" })}
-                  value={search}
-                  onValueChange={setSearch}
-                />
-              </InputGroup>
-            </div>
-
-            <CommandList className="max-h-72 pr-2.5 scrollbar scrollbar-w-2 scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
-              <DropdownCommandEmpty>No team members found</DropdownCommandEmpty>
-              {[
-                { heading: "My team", members: myTeam },
-                { heading: "Suggested", members: suggested },
-              ]
-                .filter((group) => group.members.length > 0)
-                .map((group) => (
-                  <DropdownCommandGroup
-                    key={group.heading}
-                    heading={group.heading}
-                    className="[&_[cmdk-group-heading]]:mb-2 [&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-gray-800"
-                  >
-                    {group.members.map((member) => (
-                      <DropdownCommandItem
-                        key={member.id}
-                        itemValue={member.id}
-                        value={`${member.name} ${member.username} ${member.headline}`}
-                        className="items-center gap-2 rounded-md bg-transparent py-2 data-[selected=true]:bg-gray-50"
-                      >
-                        <Avatar size="sm">
-                          {member.avatarUrl ? (
-                            <AvatarImage src={member.avatarUrl} alt={member.name} />
-                          ) : null}
-                          <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
-                          <p className="truncate text-[13px] font-medium leading-[13px] text-gray-700 transition-colors group-data-[selected=true]:text-gray-900">
-                            {member.name}{" "}
-                            {member.username && (
-                              <span className="font-normal text-gray-500 transition-colors group-data-[selected=true]:text-gray-700">
-                                @{member.username}
-                              </span>
-                            )}
-                          </p>
-                          {member.headline && (
-                            <p className="truncate text-[11px] font-light leading-[13px] text-gray-500 transition-colors group-data-[selected=true]:text-gray-700">
-                              {member.headline}
-                            </p>
-                          )}
-                        </div>
-                        <Check className="ml-auto size-4 shrink-0 text-primary-500 opacity-0 group-data-[state=selected]:opacity-100" />
-                      </DropdownCommandItem>
-                    ))}
-                  </DropdownCommandGroup>
-                ))}
-            </CommandList>
-          </DropdownCommand>
-        )}
-      </DropdownPopoverContent>
-    </DropdownPopover>
-  );
 };
 
 const TeamRoles = ({
@@ -19122,11 +18818,6 @@ const TeamRoles = ({
     null,
   );
   const [activeRoleIndex, setActiveRoleIndex] = useState<number | null>(null);
-  // Index of the row whose assignee picker is open. Only one at a time,
-  // matching the single-select AssigneePicker template.
-  const [openAssigneeRowIndex, setOpenAssigneeRowIndex] = useState<
-    number | null
-  >(null);
   const [draftRoleTitle, setDraftRoleTitle] = useState("");
   const [draftRoleSchedule, setDraftRoleSchedule] =
     useState<TeamRoleRow["schedule"]>("Full-time");
@@ -19744,58 +19435,11 @@ const TeamRoles = ({
                                     {row.role}
                                   </span>
                                 </Button>
-                                <TeamRoleAssigneePicker
-                                  roleTitle={row.role}
-                                  location={row.location}
-                                  experience={row.experience}
-                                  schedule={row.schedule}
-                                  selectedId={row.assigneeUserId}
-                                  open={openAssigneeRowIndex === index}
-                                  onOpenChange={(open) =>
-                                    setOpenAssigneeRowIndex(open ? index : null)
-                                  }
-                                  onSelect={(candidate) =>
-                                    updateRow(index, {
-                                      assigneeUserId: candidate?.id ?? null,
-                                      assignee: candidate
-                                        ? [candidate.name, candidate.username && `@${candidate.username}`]
-                                            .filter(Boolean)
-                                            .join(" ")
-                                        : "Unassigned Member",
-                                      assigneeHourlyRateUsdCents:
-                                        candidate?.hourlyRateUsdCents ?? null,
-                                      ...(candidate?.experience
-                                        ? { experience: candidate.experience }
-                                        : {}),
-                                      ...(candidate?.hourlyRateUsdCents
-                                        ? {
-                                            estimate: formatAssignedRateEstimate(
-                                              candidate.hourlyRateUsdCents,
-                                            ),
-                                          }
-                                        : {}),
-                                    })
-                                  }
-                                  triggerClassName="!h-5 !w-44 !justify-start !rounded-none !border-0 !bg-transparent !p-0 hover:!text-primary-500"
-                                  trigger={
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      visual="gray"
-                                      className="block h-5 max-w-44 justify-start truncate p-0 text-left text-sm font-normal leading-5 text-gray-500 hover:bg-transparent hover:text-primary-500"
-                                    >
-                                      {row.assignee?.trim() || "Unassigned Member"}
-                                    </Button>
-                                  }
-                                />
                               </div>
                             ) : (
                               <div className="flex h-10 w-44 flex-col items-start">
                                 <p className="h-5 w-44 truncate text-sm font-semibold leading-5 text-dark-blue-400">
                                   {row.role}
-                                </p>
-                                <p className="h-5 max-w-44 truncate text-sm font-normal leading-5 text-gray-500">
-                                  {row.assignee?.trim() || "Unassigned Member"}
                                 </p>
                               </div>
                             )}
