@@ -14,6 +14,8 @@ interface ContractOption {
 interface NewTaskFormProps {
   contracts?: ContractOption[]
   defaultContractId?: string
+  /** Opened from a contract card: the contract is fixed (AC-033.2). */
+  lockContract?: boolean
   onCancel?: () => void
   onCreate?: (data: { contractId: string; taskName: string; notes: string }) => void
   className?: string
@@ -35,12 +37,24 @@ function ChevronDownIcon({ className }: { className?: string }) {
   )
 }
 
-export function NewTaskForm({ contracts = [], defaultContractId, onCancel, onCreate, className }: NewTaskFormProps) {
+// AC-034.1 — task names are plain text, at most 50 characters.
+const MAX_TASK_NAME = 50
+
+// Plain text only: drop control characters (EDGE-TASK.04) and cap the length.
+function cleanTaskName(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\u0000-\u001F\u007F]/g, "").slice(0, MAX_TASK_NAME)
+}
+
+export function NewTaskForm({ contracts = [], defaultContractId, lockContract = false, onCancel, onCreate, className }: NewTaskFormProps) {
   const [contractId, setContractId] = React.useState(defaultContractId || "")
   const [showDropdown, setShowDropdown] = React.useState(false)
   const [taskName, setTaskName] = React.useState("")
   const [notes, setNotes] = React.useState("")
   const [showDiscard, setShowDiscard] = React.useState(false)
+  // Show "Please name this task before tracking" once the user has tried
+  // to leave the name empty (blurred it, or pressed Enter on it).
+  const [nameTouched, setNameTouched] = React.useState(false)
   const maxNotes = 50
 
   const selectedContract = contracts.find((c) => c.id === contractId)
@@ -101,7 +115,8 @@ export function NewTaskForm({ contracts = [], defaultContractId, onCancel, onCre
             Contract
           </label>
           <button
-            onClick={() => setShowDropdown(!showDropdown)}
+            disabled={lockContract}
+            onClick={() => { if (!lockContract) setShowDropdown(!showDropdown) }}
             className={cn(
               "flex h-11 w-full items-center justify-between rounded-[5px] border bg-white px-3.5 text-sm shadow-xs transition",
               showDropdown
@@ -125,9 +140,11 @@ export function NewTaskForm({ contracts = [], defaultContractId, onCancel, onCre
             ) : (
               <span className="text-gray-500">Select Contract</span>
             )}
-            <ChevronDownIcon className={cn("h-4 w-4 text-gray-400 shrink-0 ml-3 transition-transform", showDropdown && "rotate-180")} />
+            {!lockContract && (
+              <ChevronDownIcon className={cn("h-4 w-4 text-gray-400 shrink-0 ml-3 transition-transform", showDropdown && "rotate-180")} />
+            )}
           </button>
-          {showDropdown && contracts.length > 0 && (
+          {showDropdown && !lockContract && contracts.length > 0 && (
             <div className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-gray-100 bg-white py-1 shadow-lg z-10 max-h-[160px] overflow-y-auto">
               {contracts.map((c) => (
                 <button
@@ -159,16 +176,34 @@ export function NewTaskForm({ contracts = [], defaultContractId, onCancel, onCre
 
         {/* Task Name */}
         <div>
-          <label className="block text-sm font-semibold text-dark-blue-400 mb-1.5">
-            Task Name
-          </label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-sm font-semibold text-dark-blue-400">Task Name</label>
+            <span className="text-xs text-gray-400">
+              {taskName.length}/{MAX_TASK_NAME}
+            </span>
+          </div>
           <input
             type="text"
             value={taskName}
-            onChange={(e) => setTaskName(e.target.value)}
+            maxLength={MAX_TASK_NAME}
+            onChange={(e) => setTaskName(cleanTaskName(e.target.value))}
+            onBlur={() => setNameTouched(true)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return
+              if (!taskName.trim()) setNameTouched(true)
+              else if (contractId) onCreate?.({ contractId, taskName: taskName.trim(), notes })
+            }}
             placeholder="Enter task name"
-            className="h-11 w-full rounded-[5px] border border-gray-300 bg-white px-3.5 text-sm text-dark-blue-400 shadow-xs placeholder:text-gray-500 focus:border-primary-300 focus:ring-2 focus:ring-primary-50 focus-visible:outline-none"
+            className={cn(
+              "h-11 w-full rounded-[5px] border bg-white px-3.5 text-sm text-dark-blue-400 shadow-xs placeholder:text-gray-500 focus-visible:outline-none",
+              nameTouched && !taskName.trim()
+                ? "border-error-300 focus:border-error-300 focus:ring-2 focus:ring-error-50"
+                : "border-gray-300 focus:border-primary-300 focus:ring-2 focus:ring-primary-50"
+            )}
           />
+          {nameTouched && !taskName.trim() && (
+            <p className="text-xs text-error-500 mt-1">Please name this task before tracking</p>
+          )}
         </div>
 
         {/* Notes */}

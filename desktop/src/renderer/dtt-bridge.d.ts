@@ -18,6 +18,9 @@ import type {
   AuthStatusChangedPayload,
   BackendContract,
   BackendTask,
+  CreateTaskInput,
+  CreateManualTimeInput,
+  CreateManualTimeResult,
   BreakExpiredPayload,
   BreakExpiringPayload,
   CaptureHealth,
@@ -120,6 +123,11 @@ export interface DttOnboardingBridge {
 export interface DttContractsBridge {
   getMine: () => Promise<BackendContract[]>;
   getTasks: (contractId: string) => Promise<BackendTask[]>;
+  createTask: (input: CreateTaskInput) => Promise<BackendTask>;
+}
+
+export interface DttManualTimeBridge {
+  create: (input: CreateManualTimeInput) => Promise<CreateManualTimeResult>;
 }
 
 export interface DttStatsBridge {
@@ -138,6 +146,7 @@ export interface DttBridgeGlobal {
   permissions: DttPermissionsBridge;
   auth: DttAuthBridge;
   contracts: DttContractsBridge;
+  manualTime: DttManualTimeBridge;
   stats: DttStatsBridge;
   sync: DttSyncBridge;
   onboarding: DttOnboardingBridge;

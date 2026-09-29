@@ -211,7 +211,11 @@ export function createEventBridge(deps: EventBridgeDeps) {
             mimeType: 'image/jpeg',
             bytes: e.bytes,
             timestamp: new Date(e.takenAt).toISOString(),
-            monitorId: e.displayId,
+            // Screen number, not the OS display id: "1" is the default
+            // screen, which the web grid shows; groupKey ties the monitors
+            // of one capture together for the details view's switcher.
+            monitorId: String(e.screenNumber),
+            groupKey: e.groupKey,
             contractId: contract?.contractId ?? undefined,
             taskId: contract?.taskId ?? undefined,
             imageBase64,

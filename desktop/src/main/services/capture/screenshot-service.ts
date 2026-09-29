@@ -68,10 +68,16 @@ interface ElectronCaptureSurface {
     >;
   };
   screen: {
-    getPrimaryDisplay: () => { size: { width: number; height: number } };
+    getPrimaryDisplay: () => {
+      id?: number;
+      size: { width: number; height: number };
+    };
     getAllDisplays: () => Array<{
       id: number;
       size: { width: number; height: number };
+      bounds?: { x: number; y: number };
+      /** True for a laptop's built-in panel. */
+      internal?: boolean;
     }>;
   };
   app: { getPath: (p: string) => string };
@@ -282,8 +288,39 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
       }
       const now = Date.now();
       const dir = datedDir(now);
+      // Every monitor of this capture shares one group key, and the monitors
+      // are numbered 1..n: the laptop's built-in screen is 1 (Windows' own
+      // display 1), even when an external monitor is set as the main display;
+      // with no built-in screen the primary display is 1; the rest follow
+      // left to right. The web grid shows only screen 1 and switches between
+      // the others in the screenshot details view.
+      const groupKey = `grp_${uuid()}`;
+      const primaryId = String(electron.screen.getPrimaryDisplay().id ?? '');
+      const internalIds = new Set(
+        displays.filter((d) => d.internal).map((d) => String(d.id)),
+      );
+      const leftOf = new Map(
+        displays.map((d) => [String(d.id), d.bounds?.x ?? 0] as const),
+      );
+      const rank = (displayId: string | undefined): number => {
+        const id = displayId ?? '';
+        if (internalIds.has(id)) return 0;
+        return id === primaryId ? 1 : 2;
+      };
+      const ordered = sources
+        .map((src, i) => ({ src, i }))
+        .sort((a, b) => {
+          const ap = rank(a.src.display_id);
+          const bp = rank(b.src.display_id);
+          if (ap !== bp) return ap - bp;
+          const ax = leftOf.get(a.src.display_id ?? '') ?? 0;
+          const bx = leftOf.get(b.src.display_id ?? '') ?? 0;
+          return ax - bx || a.i - b.i;
+        })
+        .map(({ src }) => src);
 
-      for (const src of sources) {
+      for (const [screenIdx, src] of ordered.entries()) {
+        const screenNumber = screenIdx + 1;
         const id = `shot_${uuid()}`;
         const size = src.thumbnail.getSize();
         const fullPath = path.join(dir, `${id}.jpg`);
@@ -411,6 +448,8 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
           filePath: diskPath,
           blurPath,
           displayId,
+          screenNumber,
+          groupKey,
           sensitive: false,
           activeAppName,
         };

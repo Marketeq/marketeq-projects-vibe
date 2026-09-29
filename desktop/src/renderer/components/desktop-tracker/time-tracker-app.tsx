@@ -22,6 +22,8 @@ interface Contract {
   name: string
   clientHandle: string
   avatarSrc?: string
+  /** Hourly rate for this contract (from the contracts API). */
+  rate?: number
   tasks: TaskEntry[]
 }
 
@@ -33,11 +35,51 @@ interface DayGroup {
   contracts: Contract[]
 }
 
+interface TodayTaskStat {
+  contractId: string
+  taskId: string
+  trackedSeconds: number
+  firstStartedAt: number
+  lastEndedAt: number | null
+  /** The live session's share of trackedSeconds (0 unless running). */
+  liveSeconds?: number
+}
+
 interface TodayStats {
   trackedSeconds: number
   earnedCents: number
   currency: string
   goalSeconds: number
+  tasks?: TodayTaskStat[]
+  lastTask?: { contractId: string; taskId: string } | null
+  yesterday?: { trackedSeconds: number; earnedCents: number; tasks: TodayTaskStat[] }
+}
+
+// ── Persisted UI state (per device) ─────────────────────────────────────────
+
+const EXPANDED_CARDS_KEY = "dtt.ui.expandedCards"
+const COLLAPSED_DAYS_KEY = "dtt.ui.collapsedDays"
+
+function cardKey(dayLabel: string, contractId: string): string {
+  return `${dayLabel}:${contractId}`
+}
+
+function readStoredSet(key: string): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(key)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    return new Set(Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function writeStoredSet(key: string, value: Set<string>): void {
+  try {
+    window.localStorage.setItem(key, JSON.stringify([...value]))
+  } catch {
+    // Storage unavailable — the state just won't survive a relaunch.
+  }
 }
 
 interface TimeTrackerAppProps {
@@ -581,8 +623,20 @@ export function TimeTrackerApp({
 
   // ── "Today" hours/earnings — persisted locally, survives app restarts ──
   const [todayStats, setTodayStats] = React.useState<TodayStats | null>(null)
-  const [expandedContracts, setExpandedContracts] = React.useState<Set<string>>(new Set())
-  const [collapsedDays, setCollapsedDays] = React.useState<Set<number>>(new Set())
+  // Expanded contract cards, keyed per strip ("Today:<id>", "Yesterday:<id>")
+  // so the same contract's cards open/close independently in each strip
+  // (DTT-AC-024.2), and collapsed strips by label. Both persist across
+  // launches (DTT-AC-024.2 / AC-040.1 persistence clause). localStorage is a
+  // per-device UI preference; it can be unavailable, so every access is
+  // guarded and the app works without it.
+  const [expandedContracts, setExpandedContracts] = React.useState<Set<string>>(
+    () => readStoredSet(EXPANDED_CARDS_KEY),
+  )
+  const [collapsedDays, setCollapsedDays] = React.useState<Set<string>>(
+    () => readStoredSet(COLLAPSED_DAYS_KEY),
+  )
+  React.useEffect(() => { writeStoredSet(EXPANDED_CARDS_KEY, expandedContracts) }, [expandedContracts])
+  React.useEffect(() => { writeStoredSet(COLLAPSED_DAYS_KEY, collapsedDays) }, [collapsedDays])
 
   // Search
   const [searchValue, setSearchValue] = React.useState("")
@@ -648,6 +702,10 @@ export function TimeTrackerApp({
   const [taskCreatedAlert, setTaskCreatedAlert] = React.useState<string | null>(null)
   const taskCreatedTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Floating alert after manual time is submitted for review (AC-091.1)
+  const [manualTimeAlert, setManualTimeAlert] = React.useState(false)
+  const manualTimeTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // Manual time entry
   const [showManualTime, setShowManualTime] = React.useState(false)
 
@@ -685,6 +743,7 @@ export function TimeTrackerApp({
               id: c.id,
               name: c.title || "Untitled Contract",
               clientHandle: c.clientName || c.clientId?.slice(0, 12) || "client",
+              rate: Number(c.rate) || 0,
               tasks,
             }
           })
@@ -731,6 +790,112 @@ export function TimeTrackerApp({
     return () => clearInterval(id)
   }, [isRunning, isPaused, refreshTodayStats])
 
+  // ── Restore today's work into the task list ─────────────────────────────
+  // Sessions live in local SQLite, so after a quit + relaunch each task shows
+  // the time worked on it today and its first-start / last-end range, instead
+  // of every task resetting to "Not started".
+  // The Yesterday strip (DTT-AC-024.1) is rebuilt from yesterday's saved
+  // sessions: only contracts/tasks with tracked time, each with its own time.
+  React.useEffect(() => {
+    if (!contractsLoaded || !todayStats) return
+    const withStat = (t: TaskEntry, stat: TodayTaskStat): TaskEntry => ({
+      ...t,
+      duration: formatDuration(stat.trackedSeconds),
+      timeRange: `${formatTimeOfDay(new Date(stat.firstStartedAt))} - ${
+        stat.lastEndedAt ? formatTimeOfDay(new Date(stat.lastEndedAt)) : "now"
+      }`,
+      progress: Math.min(Math.round((stat.trackedSeconds / (8 * 3600)) * 100), 100),
+    })
+    const todayByTask = new Map((todayStats.tasks ?? []).map((t) => [t.taskId, t]))
+    const yesterdayByTask = new Map((todayStats.yesterday?.tasks ?? []).map((t) => [t.taskId, t]))
+    setDays((prev) => {
+      if (!prev[0]) return prev
+      const today = { ...prev[0] }
+      today.contracts = today.contracts.map((c) => ({
+        ...c,
+        tasks: c.tasks.map((t) => {
+          const stat = todayByTask.get(t.id)
+          return stat ? withStat(t, stat) : t
+        }),
+      }))
+
+      const yesterdayContracts: Contract[] = today.contracts
+        .map((c) => ({
+          ...c,
+          tasks: c.tasks.flatMap((t) => {
+            const stat = yesterdayByTask.get(t.id)
+            return stat ? [withStat(t, stat)] : []
+          }),
+        }))
+        .filter((c) => c.tasks.length > 0)
+
+      const next: DayGroup[] = [today]
+      if (yesterdayContracts.length > 0) {
+        const y = new Date()
+        y.setDate(y.getDate() - 1)
+        next.push({
+          label: "Yesterday",
+          fullDate: y.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
+          totalHours: today.totalHours,
+          hourlyRate: today.hourlyRate,
+          contracts: yesterdayContracts,
+        })
+      }
+      return next
+    })
+  }, [contractsLoaded, todayStats])
+
+  // ── Live row for the task being tracked (US-043) ────────────────────────
+  // Only the active task's row in Today changes each second: its saved time
+  // (without the live session) plus the running clock. Other rows keep the
+  // saved totals from todayStats.
+  const displayDays = React.useMemo(() => {
+    if (!isRunning || !activeTask?.taskId || !days[0]) return days
+    const stat = todayStats?.tasks?.find((t) => t.taskId === activeTask.taskId)
+    const savedSeconds = stat ? stat.trackedSeconds - (stat.liveSeconds ?? 0) : 0
+    const started = stat?.firstStartedAt ?? trackingStartTime?.getTime() ?? Date.now()
+    const today = {
+      ...days[0],
+      contracts: days[0].contracts.map((c) =>
+        c.id !== activeTask.contractId
+          ? c
+          : {
+              ...c,
+              tasks: c.tasks.map((t) =>
+                t.id !== activeTask.taskId
+                  ? t
+                  : {
+                      ...t,
+                      duration: formatDuration(savedSeconds + elapsed),
+                      timeRange: `${formatTimeOfDay(new Date(started))} - now`,
+                    },
+              ),
+            },
+      ),
+    }
+    return [today, ...days.slice(1)]
+  }, [days, isRunning, activeTask, todayStats, elapsed, trackingStartTime])
+
+  // ── Pre-select the previous task on relaunch ────────────────────────────
+  // Once, after contracts load: select the task of the most recent session
+  // so "Start" continues where the user left off. The timer is never
+  // auto-started — an unclean exit must not silently resume billing.
+  const restoredLastTaskRef = React.useRef(false)
+  React.useEffect(() => {
+    if (restoredLastTaskRef.current || !contractsLoaded || isRunning) return
+    const last = todayStats?.lastTask
+    if (!last) return
+    restoredLastTaskRef.current = true
+    for (const day of days) {
+      const c = day.contracts.find((x) => x.id === last.contractId)
+      const t = c?.tasks.find((x) => x.id === last.taskId)
+      if (c && t) {
+        setSelectedTask({ id: t.id, taskName: t.name, contractName: c.name, clientHandle: c.clientHandle })
+        return
+      }
+    }
+  }, [contractsLoaded, todayStats, days, isRunning])
+
   // ── Live clock ──────────────────────────────────────────────────────────
   React.useEffect(() => {
     const id = setInterval(() => setUtcTime(formatUtcTime()), 10000)
@@ -768,7 +933,18 @@ export function TimeTrackerApp({
   const hours = Math.floor(elapsed / 3600)
   const minutes = Math.floor((elapsed % 3600) / 60)
   const seconds = elapsed % 60
-  const amountEarned = `$${((elapsed / 3600) * hourlyRate).toFixed(2)}`
+  // Live earnings use the rate of the contract actually being tracked. This
+  // used to be the first contract's rate (or a hard-coded $75) no matter
+  // which contract was running.
+  const activeRate = React.useMemo(() => {
+    if (!activeTask) return 0
+    for (const day of days) {
+      const c = day.contracts.find((x) => x.id === activeTask.contractId)
+      if (c?.rate !== undefined) return c.rate
+    }
+    return 0
+  }, [days, activeTask])
+  const amountEarned = `$${((elapsed / 3600) * activeRate).toFixed(2)}`
 
   const searchResults: SearchResult[] = React.useMemo(() => {
     if (!searchValue.trim()) return []
@@ -794,12 +970,17 @@ export function TimeTrackerApp({
 
   const allContracts = React.useMemo(() => {
     const seen = new Set<string>()
-    const list: { id: string; name: string; clientHandle?: string }[] = []
+    const list: { id: string; name: string; clientHandle?: string; tasks: { id: string; name: string }[] }[] = []
     for (const day of days) {
       for (const c of day.contracts) {
         if (!seen.has(c.id)) {
           seen.add(c.id)
-          list.push({ id: c.id, name: c.name, clientHandle: c.clientHandle })
+          list.push({
+            id: c.id,
+            name: c.name,
+            clientHandle: c.clientHandle,
+            tasks: c.tasks.map((t) => ({ id: t.id, name: t.name })),
+          })
         }
       }
     }
@@ -886,34 +1067,40 @@ export function TimeTrackerApp({
   // Used when the user clicks ▶ on a contract header — per spec that only
   // re-scopes to the contract's tasks, it must not start the timer.
   const openContract = (id: string) => {
-    const alreadyOpen = expandedContracts.has(id)
-    setExpandedContracts((prev) => new Set(prev).add(id))
+    const key = cardKey("Today", id)
+    const alreadyOpen = expandedContracts.has(key)
+    setExpandedContracts((prev) => new Set(prev).add(key))
     if (!alreadyOpen) scrollContractIntoView(id)
   }
 
   // A real task from the backend must be selected before the timer can start.
-  // Reject a missing id, the raw contract id, a synthetic "task-<id>" mirror,
-  // or a locally-created "t-<timestamp>" row — each produces a session the
-  // website cannot map back to a task.
-  const isRealTaskId = (id?: string): id is string =>
-    !!id && !/^task-/.test(id) && !/^t-\d/.test(id)
+  // Reject a missing id, the raw contract id, the synthetic "task-<contractId>"
+  // mirror placeholder, or a locally-created "t-<timestamp>" row — each
+  // produces a session the website cannot map back to a task. A bare
+  // "task-" prefix is NOT a placeholder signal: real TTS task ids use it too
+  // (e.g. the seeded "task-seed-a-1"), and rejecting the prefix silently
+  // blocked the timer on every one of them.
+  const isRealTaskId = (id: string | undefined, contractId: string): id is string =>
+    !!id && id !== contractId && id !== `task-${contractId}` && !/^t-\d+$/.test(id)
 
-  const toggleContract = (id: string) => {
-    const isOpening = !expandedContracts.has(id)
+  const toggleContract = (id: string, dayLabel = "Today") => {
+    const key = cardKey(dayLabel, id)
+    const isOpening = !expandedContracts.has(key)
     setExpandedContracts((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
-    // Single scroll: pin the card at the top, ensuring header is at least collapsed
-    if (isOpening) {
+    // Single scroll: pin the card at the top, ensuring header is at least collapsed.
+    // Only Today's cards carry the scroll-target DOM id.
+    if (isOpening && dayLabel === "Today") {
       scrollContractIntoView(id)
     }
   }
 
   const startTimerImmediate = (taskName: string, contractName: string, contractId: string, taskId?: string, clientHandle?: string) => {
-    if (!isRealTaskId(taskId)) {
+    if (!isRealTaskId(taskId, contractId)) {
       console.error("startTimer blocked: no real task selected", { contractId, taskId })
       return
     }
@@ -935,7 +1122,7 @@ export function TimeTrackerApp({
   }
 
   const startTimer = (taskName: string, contractName: string, contractId: string, taskId?: string, clientHandle?: string) => {
-    if (!isRealTaskId(taskId)) {
+    if (!isRealTaskId(taskId, contractId)) {
       console.error("startTimer blocked: no real task selected", { contractId, taskId })
       return
     }
@@ -993,33 +1180,11 @@ export function TimeTrackerApp({
       return
     }
 
-    const endTime = new Date()
-    const newTask: TaskEntry = {
-      id: `t-${Date.now()}`,
-      name: activeTask.taskName,
-      timeRange: `${formatTimeOfDay(trackingStartTime)} - ${formatTimeOfDay(endTime)}`,
-      duration: formatDuration(elapsed),
-      progress: Math.min(Math.round((elapsed / (8 * 3600)) * 100), 100),
-    }
-
-    setDays((prev) => {
-      const next = [...prev]
-      const today = { ...next[0] }
-      today.contracts = today.contracts.map((c) => {
-        if (c.id === activeTask.contractId) {
-          return { ...c, tasks: [...c.tasks, newTask] }
-        }
-        return c
-      })
-      if (!today.contracts.find((c) => c.id === activeTask.contractId)) {
-        today.contracts = [
-          ...today.contracts,
-          { id: activeTask.contractId, name: activeTask.contractName, clientHandle: "user", tasks: [newTask] },
-        ]
-      }
-      next[0] = today
-      return next
-    })
+    // The stopped session is now saved in local SQLite; the timer's state
+    // change triggers refreshTodayStats(), which writes the real task row's
+    // time and range from that saved data. (This used to append a separate
+    // "t-<timestamp>" row instead — it vanished on relaunch and couldn't be
+    // started, since it isn't a real task.)
 
     setIsRunning(false)
     setIsPaused(false)
@@ -1030,7 +1195,7 @@ export function TimeTrackerApp({
 
   const handlePlayTask = (taskId: string, contractId?: string) => {
     // Ignore synthetic / local ids that don't exist on the backend.
-    if (!isRealTaskId(taskId)) return
+    if (!isRealTaskId(taskId, contractId ?? "")) return
     // If already tracking, switch immediately (no countdown)
     const start = isRunning ? startTimerImmediate : startTimer
     for (const day of days) {
@@ -1075,10 +1240,31 @@ export function TimeTrackerApp({
     setView("new-task")
   }
 
-  const handleCreateTask = (data: { contractId: string; taskName: string; notes: string }) => {
+  // Guards against a double-click firing two POSTs for one task.
+  const creatingTaskRef = React.useRef(false)
+
+  const handleCreateTask = async (data: { contractId: string; taskName: string; notes: string }) => {
+    if (creatingTaskRef.current) return
+    creatingTaskRef.current = true
+    let created: { id: string; name: string } | undefined
+    try {
+      // Persist to the backend first — the timer can only start a session
+      // against a task id that exists in TTS and in the local SQLite mirror.
+      created = await window.dtt?.contracts?.createTask?.({
+        contractId: data.contractId,
+        name: data.taskName,
+      })
+    } catch (err) {
+      console.error("Failed to create task:", err)
+    } finally {
+      creatingTaskRef.current = false
+    }
+    // On failure stay on the form so the user's entry isn't lost.
+    if (!created) return
+
     const newTask: TaskEntry = {
-      id: `t-${Date.now()}`,
-      name: data.taskName,
+      id: created.id,
+      name: created.name,
       timeRange: "Not started",
       duration: "00:00:00",
     }
@@ -1096,7 +1282,7 @@ export function TimeTrackerApp({
       return next
     })
 
-    setExpandedContracts((prev) => new Set(prev).add(data.contractId))
+    setExpandedContracts((prev) => new Set(prev).add(cardKey("Today", data.contractId)))
     setView("main")
 
     // Show task created alert
@@ -1164,6 +1350,7 @@ export function TimeTrackerApp({
           <NewTaskForm
             contracts={allContracts}
             defaultContractId={newTaskContractId}
+            lockContract={!!newTaskContractId}
             onCancel={() => setView("main")}
             onCreate={handleCreateTask}
           />
@@ -1185,10 +1372,16 @@ export function TimeTrackerApp({
           <ManualTimeForm
             contracts={allContracts}
             onCancel={() => setView("main")}
-            onSubmit={(data) => {
-              // TODO: wire to backend / local DB
-              console.log("Manual time submitted:", data)
-              setView("main")
+            onSubmit={async (data) => {
+              const result = await window.dtt?.manualTime?.create?.(data)
+              if (!result) return { ok: false, message: "Manual time isn't available right now. Please try again." }
+              if (result.ok) {
+                setView("main")
+                setManualTimeAlert(true)
+                if (manualTimeTimeout.current) clearTimeout(manualTimeTimeout.current)
+                manualTimeTimeout.current = setTimeout(() => setManualTimeAlert(false), 3000)
+              }
+              return result
             }}
           />
         </div>
@@ -1430,17 +1623,24 @@ export function TimeTrackerApp({
                 </div>
               </div>
             )}
-            {days.map((day, dayIdx) => {
-              const dayCollapsed = collapsedDays.has(dayIdx)
+            {displayDays.map((day, dayIdx) => {
+              const dayCollapsed = collapsedDays.has(day.label)
               const isToday = day.label === "Today"
-              const hoursTracked = isToday && todayStats
-                ? (todayStats.trackedSeconds / 3600).toFixed(1)
+              // Today and Yesterday come from saved sessions (per-contract
+              // rates); other strips fall back to their task durations.
+              const dayStats = isToday
+                ? todayStats
+                : day.label === "Yesterday" && todayStats?.yesterday
+                  ? { ...todayStats.yesterday, goalSeconds: todayStats.goalSeconds }
+                  : null
+              const hoursTracked = dayStats
+                ? (dayStats.trackedSeconds / 3600).toFixed(1)
                 : calcDayTrackedHours(day.contracts)
-              const totalHoursDisplay = isToday && todayStats
-                ? (todayStats.goalSeconds / 3600).toFixed(1)
+              const totalHoursDisplay = dayStats
+                ? (dayStats.goalSeconds / 3600).toFixed(1)
                 : day.totalHours
-              const earned = isToday && todayStats
-                ? `$${(todayStats.earnedCents / 100).toFixed(2)}`
+              const earned = dayStats
+                ? `$${(dayStats.earnedCents / 100).toFixed(2)}`
                 : calcDayEarnings(day.contracts, day.hourlyRate)
               return (
                 <div key={dayIdx} className="animate-stagger-in" style={{ animationDelay: `${dayIdx * 100}ms`, animationFillMode: "both" }}>
@@ -1454,8 +1654,8 @@ export function TimeTrackerApp({
                     onToggle={() => {
                       setCollapsedDays((prev) => {
                         const next = new Set(prev)
-                        if (next.has(dayIdx)) next.delete(dayIdx)
-                        else next.add(dayIdx)
+                        if (next.has(day.label)) next.delete(day.label)
+                        else next.add(day.label)
                         return next
                       })
                     }}
@@ -1464,7 +1664,7 @@ export function TimeTrackerApp({
                   <Collapsible open={!dayCollapsed}>
                     <div className="px-2 pb-2 space-y-2">
                       {day.contracts.map((contract, cIdx) => (
-                        <div key={contract.id} id={`contract-${contract.id}`} className="animate-stagger-in" style={{ animationDelay: `${(dayIdx * 100) + (cIdx * 80)}ms`, animationFillMode: "both" }}>
+                        <div key={contract.id} id={isToday ? `contract-${contract.id}` : undefined} className="animate-stagger-in" style={{ animationDelay: `${(dayIdx * 100) + (cIdx * 80)}ms`, animationFillMode: "both" }}>
                         <ContractEntry
                           contractId={contract.id}
                           contractName={contract.name}
@@ -1472,9 +1672,9 @@ export function TimeTrackerApp({
                           avatarSrc={contract.avatarSrc}
                           totalHours={calcTotalHours(contract.tasks)}
                           tasks={contract.tasks}
-                          isExpanded={expandedContracts.has(contract.id)}
+                          isExpanded={expandedContracts.has(cardKey(day.label, contract.id))}
                           activeContractId={activeTask?.contractId || null}
-                          onToggle={() => toggleContract(contract.id)}
+                          onToggle={() => toggleContract(contract.id, day.label)}
                           onAddTask={() => handleAddTask(contract.id)}
                           onPlay={() => handlePlayContract(contract.id)}
                           onPlayTask={(taskId) => handlePlayTask(taskId)}
@@ -1527,6 +1727,21 @@ export function TimeTrackerApp({
             </svg>
             <span className="text-sm text-dark-blue-400">
               Task created <span className="font-semibold">&ldquo;{taskCreatedAlert}&rdquo;</span>
+            </span>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {manualTimeAlert && ReactDOM.createPortal(
+        <div className="fixed bottom-4 left-4 z-[300] animate-fade-in">
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white shadow-[0_4px_20px_rgba(0,0,0,0.12)] border border-gray-100">
+            <svg className="h-4 w-4 text-success-500 shrink-0" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="text-sm text-dark-blue-400">
+              Manual time submitted for review
             </span>
           </div>
         </div>,
