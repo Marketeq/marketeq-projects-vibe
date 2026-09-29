@@ -60,6 +60,7 @@ import {
   Camera,
   Check,
   CheckCircle,
+  ChevronDown,
   ChevronRight,
   CreditCardCheck,
   FileCheck02,
@@ -98,7 +99,17 @@ import {
   ToastViewport,
   useToast,
 } from "@/components/ui"
-import { CountriesCombobox } from "@/components/own-combobox"
+import {
+  Command,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+} from "@/components/own-combobox"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { useStateMachine } from "@/utils/hooks"
 import type { DetectedLocation } from "@/src/lib/api/detected-location"
@@ -111,7 +122,10 @@ import {
   getAcceptedDocuments,
   type AcceptedDocumentTypeId,
 } from "@/src/lib/api/accepted-documents"
-import { resolveCountryCodeByName } from "@/src/lib/api/resolve-country-code"
+import {
+  getSupportedDocumentCountries,
+  type SupportedDocumentCountry,
+} from "@/src/lib/api/supported-document-countries"
 
 // Decorative icon only (matches Storybook's local QR constant exactly,
 // same file, same paths) — not a design-system component, just static art.
@@ -457,12 +471,14 @@ const NoDocumentOverlay = ({ label }: { label: string }) => (
   </div>
 )
 
+// Presentation only: label + icon per canonical document type id. Which of
+// these are shown for a country is decided entirely by the backend's
+// accepted-documents answer (see the fetch below) — never by this list.
 // Birth Certificate deliberately removed (Identity Verification Decision
 // Record §1.1/§3): Didit's document catalogue has no Birth Certificate
-// type at all — not scannable, no barcode, no way to authenticate — so it
-// can never be a real accepted-documents answer for any country, unlike
-// the other three, which are real Didit-supported types subject to
-// per-country availability (see the accepted-documents fetch below).
+// type at all, so it can never be a real accepted-documents answer for any
+// country. "Identification Card" is the approved label for the single
+// backend `id_card` type (README §6: National ID / Local ID retired).
 type DocumentTypeOption = {
   id: AcceptedDocumentTypeId
   label: string
@@ -471,6 +487,7 @@ type DocumentTypeOption = {
 
 const DOCUMENT_TYPE_OPTIONS: DocumentTypeOption[] = [
   { id: "passport", label: "Passport", Icon: Passport },
+  { id: "id_card", label: "Identification Card", Icon: CreditCardCheck },
   { id: "drivers_licence", label: "Driver's License", Icon: CreditCardCheck },
   { id: "residence_permit", label: "Residence Permit", Icon: FileCheck02 },
 ]
@@ -535,9 +552,26 @@ export function IdentityVerificationFlow({
   const cameraHandler = useRef<WebCameraHandler>(null)
   const [selectedDocument, setSelectedDocument] =
     useState<DocumentTypeOption | null>(null)
-  const [issuingCountry, setIssuingCountry] = useState(
-    detectedLocation.countryName
+  // The issuing country is held as its ISO alpha-2 code (what the backend's
+  // accepted-documents route takes), chosen from the backend's own
+  // supported-document-countries list. It starts at the detected country's
+  // code and is only honoured once that code is actually in the loaded list.
+  const [issuingCountryCode, setIssuingCountryCode] = useState<string | null>(
+    detectedLocation.countryCode || null
   )
+
+  type SupportedCountriesStatus = "loading" | "ready" | "error"
+  const [supportedCountriesStatus, setSupportedCountriesStatus] =
+    useState<SupportedCountriesStatus>("loading")
+  const [supportedCountries, setSupportedCountries] = useState<
+    SupportedDocumentCountry[]
+  >([])
+  const [countryPickerOpen, setCountryPickerOpen] = useState(false)
+
+  const selectedIssuingCountry =
+    supportedCountries.find(
+      (country) => country.alpha2 === issuingCountryCode
+    ) ?? null
 
   // issuingCountry is deliberately its own concept, separate from
   // detectedLocation (approximate, IP-based), verifiedHomeCountry
@@ -547,60 +581,37 @@ export function IdentityVerificationFlow({
   // previous country (and anything captured against it); this screen is
   // the only place issuingCountry can change, so there's nothing further
   // downstream to unwind yet.
-  const handleIssuingCountryChange = (name: string) => {
-    setIssuingCountry(name)
+  const handleIssuingCountryChange = (alpha2: string) => {
+    setIssuingCountryCode(alpha2)
     setSelectedDocument(null)
     setFrontImageReference(null)
     setBackImageReference(null)
   }
 
-  type AcceptedDocumentsStatus = "loading" | "ready" | "empty" | "error"
+  type AcceptedDocumentsStatus = "idle" | "loading" | "ready" | "empty" | "error"
   const [acceptedDocumentsStatus, setAcceptedDocumentsStatus] =
-    useState<AcceptedDocumentsStatus>("loading")
+    useState<AcceptedDocumentsStatus>("idle")
   const [acceptedDocumentTypeIds, setAcceptedDocumentTypeIds] = useState<
     AcceptedDocumentTypeId[]
   >([])
-  const [acceptedDocumentsRetryTick, setAcceptedDocumentsRetryTick] =
-    useState(0)
-  // Guards against a response for a country the user has since navigated
-  // away from (by picking a different one) overwriting the list a newer
-  // request already resolved or is still resolving — only the response
-  // matching the most recently requested country is ever applied.
-  const latestRequestedCountryRef = useRef<string | null>(null)
 
+  // Fetch the accepted document types for the selected country. The
+  // `cancelled` flag guards against a response for a country the user has
+  // since navigated away from overwriting a newer request's result.
+  const selectedIssuingCountryCode = selectedIssuingCountry?.alpha2 ?? null
   useEffect(() => {
-    latestRequestedCountryRef.current = issuingCountry
-
-    // detectedLocation already carries a real ISO code for its own country
-    // name — no lookup needed for the common case where issuingCountry
-    // still matches it. Any other value came from the user actively
-    // picking an item out of CountriesCombobox's own already-rendered,
-    // already-loaded list, so its shared country cache is guaranteed
-    // populated by then (own-combobox.tsx's countriesCache) — see
-    // resolveCountryCodeByName's header for why this never needs a second,
-    // independently-maintained name->code table.
-    const code =
-      issuingCountry === detectedLocation.countryName &&
-      detectedLocation.countryCode
-        ? detectedLocation.countryCode
-        : resolveCountryCodeByName(issuingCountry)
-
-    if (!code) {
-      setAcceptedDocumentsStatus("error")
+    if (!selectedIssuingCountryCode) {
+      setAcceptedDocumentsStatus("idle")
       setAcceptedDocumentTypeIds([])
       return
     }
 
     let cancelled = false
     setAcceptedDocumentsStatus("loading")
+    setAcceptedDocumentTypeIds([])
 
-    getAcceptedDocuments(code).then((result) => {
-      if (
-        cancelled ||
-        latestRequestedCountryRef.current !== issuingCountry
-      ) {
-        return
-      }
+    getAcceptedDocuments(selectedIssuingCountryCode).then((result) => {
+      if (cancelled) return
       if (result.unavailable) {
         setAcceptedDocumentsStatus("error")
         setAcceptedDocumentTypeIds([])
@@ -615,10 +626,7 @@ export function IdentityVerificationFlow({
     return () => {
       cancelled = true
     }
-  }, [issuingCountry, acceptedDocumentsRetryTick, detectedLocation.countryName, detectedLocation.countryCode])
-
-  const retryAcceptedDocuments = () =>
-    setAcceptedDocumentsRetryTick((tick) => tick + 1)
+  }, [selectedIssuingCountryCode])
 
   const visibleDocumentOptions = DOCUMENT_TYPE_OPTIONS.filter((option) =>
     acceptedDocumentTypeIds.includes(option.id)
@@ -688,6 +696,25 @@ export function IdentityVerificationFlow({
       },
     }
   )
+
+  // Load the supported-country list the first time the country screen is
+  // reached (not on every dashboard visit that never opens this flow).
+  const countriesRequestedRef = useRef(false)
+  const isCountryScreen = state === "home-country-showcase"
+  useEffect(() => {
+    if (!isCountryScreen || countriesRequestedRef.current) return
+    countriesRequestedRef.current = true
+    getSupportedDocumentCountries().then((result) => {
+      if (!getIsMounted()) return
+      if (result.unavailable) {
+        setSupportedCountriesStatus("error")
+        setSupportedCountries([])
+        return
+      }
+      setSupportedCountries(result.countries)
+      setSupportedCountriesStatus("ready")
+    })
+  }, [isCountryScreen, getIsMounted])
 
   // Travel Mode confirmation is a top-right Notification toast (Figma node
   // 13101-46846), not a screen in the dialog flow — a separate, locally
@@ -941,21 +968,83 @@ export function IdentityVerificationFlow({
               <Label size="sm" className="text-dark-blue-400">
                 Issuing country
               </Label>
-              <CountriesCombobox
-                value={issuingCountry}
-                onValueChange={handleIssuingCountryChange}
-                placeholder="Select country"
-                // justify-between was pushing the flag and text apart —
-                // the shared component's chevron icon is always
-                // display:none by default (its group-data-[state=open]
-                // class never applies, since the trigger isn't wrapped in
-                // a `group`), so with only the flag+text left as flex
-                // children, space-between shoved them to opposite edges.
-                // Default (flex-start) keeps them together with the
-                // Figma-specified 12px gap instead.
-                triggerClassName="w-full h-11 bg-white border-solid border-gray-300 shadow-xs rounded-[5px] pl-[14px] pr-3 py-2.5 gap-3"
-                contentClassName="w-[var(--radix-popover-trigger-width)]"
-              />
+              {/* List, scrolling and row hover as in the CountriesCombobox from
+                  Storybook's checkout story (stories/checkout.stories.tsx +
+                  own-combobox.tsx, read-only), composed here from the same
+                  primitives because that component only accepts its own
+                  built-in list. The field itself stays white with a solid
+                  border in every state, and the list opens directly with no
+                  search input. The country list and each flag come from the
+                  backend's supported-document-countries answer (flag by
+                  alpha-2), so nothing here is hard-coded — which is why its
+                  "Popular" group is not reproduced. */}
+              <Popover
+                open={countryPickerOpen}
+                onOpenChange={setCountryPickerOpen}
+              >
+                <PopoverTrigger asChild>
+                  <button
+                    disabled={supportedCountriesStatus !== "ready"}
+                    className={cn(
+                      "bg-gray-100 focus-visible:outline-none pr-2 p-[5px] border border-gray-300 border-dashed rounded-[5px] inline-flex items-center gap-x-1.5 disabled:cursor-not-allowed disabled:opacity-50",
+                      "w-full h-11 bg-white border-solid border-gray-300 shadow-xs rounded-[5px] pl-[14px] pr-3 py-2.5 gap-3"
+                    )}
+                  >
+                    {selectedIssuingCountry && (
+                      <span className="inline-flex items-center justify-center size-6 shrink-0 rounded-full overflow-hidden bg-gray-100">
+                        <img
+                          className="w-full h-full object-cover"
+                          src={`https://flagcdn.com/36x27/${selectedIssuingCountry.alpha2.toLowerCase()}.png`}
+                          alt={selectedIssuingCountry.name}
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none"
+                          }}
+                        />
+                      </span>
+                    )}
+
+                    <span className="text-xs inline-block truncate max-w-[120px] leading-[18px] font-medium text-gray-700">
+                      {selectedIssuingCountry
+                        ? selectedIssuingCountry.name
+                        : "Select country"}
+                    </span>
+
+                    <ChevronDown className="ml-auto inline-block size-[18px] shrink-0 text-gray-500" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[var(--radix-popover-trigger-width)] pb-2 px-0 pt-0 z-50 bg-white border-gray-100 rounded-lg border shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]">
+                  <Command>
+                    <CommandList>
+                      <CommandGroup heading="All Countries">
+                        {supportedCountries.map((country) => (
+                          <CommandItem
+                            key={country.alpha2}
+                            value={`${country.name} ${country.alpha2}`}
+                            onSelect={() => {
+                              handleIssuingCountryChange(country.alpha2)
+                              setCountryPickerOpen(false)
+                            }}
+                          >
+                            <span className="inline-flex items-center justify-center size-6 shrink-0 rounded-full overflow-hidden bg-gray-100">
+                              <img
+                                className="w-full h-full object-cover"
+                                src={`https://flagcdn.com/36x27/${country.alpha2.toLowerCase()}.png`}
+                                alt={country.name}
+                                onError={(e) => {
+                                  e.currentTarget.style.display = "none"
+                                }}
+                              />
+                            </span>
+                            <span className="inline-block flex-grow truncate">
+                              {country.name}
+                            </span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="mt-8">
@@ -967,31 +1056,6 @@ export function IdentityVerificationFlow({
                 <div className="mt-3 flex justify-center py-6">
                   <Spinner size={28} strokeWidth={4} />
                 </div>
-              )}
-
-              {acceptedDocumentsStatus === "error" && (
-                <>
-                  <Alert variant="error" className="rounded-[5px] mt-3">
-                    <AlertIcon>
-                      <Info className="size-5" />
-                    </AlertIcon>
-                    <AlertContent>
-                      <AlertTitle>
-                        We couldn&rsquo;t load accepted documents for that
-                        country.
-                      </AlertTitle>
-                    </AlertContent>
-                  </Alert>
-                  <Button
-                    className="mt-3"
-                    variant="outlined"
-                    visual="gray"
-                    onClick={retryAcceptedDocuments}
-                  >
-                    <RefreshCw className="size-[15px]" />
-                    Retry
-                  </Button>
-                </>
               )}
 
               {acceptedDocumentsStatus === "empty" && (

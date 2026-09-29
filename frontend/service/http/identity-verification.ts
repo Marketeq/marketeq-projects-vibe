@@ -35,6 +35,18 @@ export const IdentityVerificationAPI = {
       data: { ok: true }
     }>,
 
+  // Backend-owned list of issuing countries that have at least one accepted
+  // document type, from the same versioned coverage catalog as
+  // accepted-documents below. See src/lib/api/supported-document-countries.ts
+  // for response validation.
+  getSupportedDocumentCountries: () =>
+    AxiosRequest.get("/v1/identity-verification/supported-document-countries") as Promise<{
+      data: {
+        catalogVersion: string
+        countries: { alpha2: string; alpha3: string; name: string }[]
+      }
+    }>,
+
   // Backend-owned lookup of which canonical document types are accepted
   // for a given 2-letter issuing country code. See
   // src/lib/api/accepted-documents.ts for response validation and the
