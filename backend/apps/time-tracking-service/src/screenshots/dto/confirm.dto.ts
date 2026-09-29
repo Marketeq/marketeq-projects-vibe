@@ -13,5 +13,5 @@ export class ConfirmScreenshotDto {
   @IsOptional() @IsString() groupKey?: string;
   @IsOptional() @IsString() imageBase64?: string;
   @IsOptional()
-  apps?: Array<{ appName: string; iconUrl?: string; url?: string }>;
+  apps?: Array<{ appName: string; iconUrl?: string; url?: string; iconBase64?: string }>;
 }
