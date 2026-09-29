@@ -60,6 +60,12 @@ interface OfferFlowDialogProps {
   onTermsAcceptedChange?: (value: boolean) => void
   onDeclineMessageChange?: (value: string) => void
   onDeclineReasonChange?: (value: string) => void
+  /** BTB-291: hides the View Job link when the offer has no linked job
+   * listing — without a real jobListingId onViewJob's own href resolves to
+   * a broken /job-details/ URL, not an empty/no-op one, so the caller must
+   * say there's nothing to link to rather than this component guessing.
+   * Defaults true so every existing caller keeps today's behavior. */
+  hasJobListing?: boolean
   onViewJob?: () => void
   onOfferHistory?: () => void
   onPreviousOffer?: () => void
@@ -153,6 +159,7 @@ export function OfferFlowDialog({
   onTermsAcceptedChange,
   onDeclineMessageChange,
   onDeclineReasonChange,
+  hasJobListing = true,
   onViewJob,
   onOfferHistory,
   onPreviousOffer,
@@ -777,15 +784,17 @@ export function OfferFlowDialog({
                     <div className="truncate text-[16px] font-medium leading-6 text-dark-blue-400">
                       {data.offerTitle}
                     </div>
-                    <Button
-                      variant="link"
-                      visual="primary"
-                      className="h-5 gap-2 text-xs"
-                      leftIcon={<Briefcase className="size-[15px]" />}
-                      onClick={onViewJob}
-                    >
-                      View Job
-                    </Button>
+                    {hasJobListing ? (
+                      <Button
+                        variant="link"
+                        visual="primary"
+                        className="h-5 gap-2 text-xs"
+                        leftIcon={<Briefcase className="size-[15px]" />}
+                        onClick={onViewJob}
+                      >
+                        View Job
+                      </Button>
+                    ) : null}
                   </div>
 
                   {clientPerspective ? (
@@ -1006,15 +1015,17 @@ export function OfferFlowDialog({
                     </Button>
                   </div>
 
-                  <Button
-                    variant="link"
-                    visual="primary"
-                    className="h-5 gap-2 text-xs"
-                    leftIcon={<Briefcase className="size-4" />}
-                    onClick={onViewJob}
-                  >
-                    View Job
-                  </Button>
+                  {hasJobListing ? (
+                    <Button
+                      variant="link"
+                      visual="primary"
+                      className="h-5 gap-2 text-xs"
+                      leftIcon={<Briefcase className="size-4" />}
+                      onClick={onViewJob}
+                    >
+                      View Job
+                    </Button>
+                  ) : null}
                 </div>
 
                 <div className="border-t border-gray-100" />
@@ -1204,15 +1215,17 @@ export function OfferFlowDialog({
                       {data.offerTitle}
                     </div>
 
-                    <Button
-                      variant="link"
-                      visual="primary"
-                      className="mt-3 underline-offset-2 hover:underline"
-                      leftIcon={<Briefcase className="size-4" />}
-                      onClick={onViewJob}
-                    >
-                      View Job
-                    </Button>
+                    {hasJobListing ? (
+                      <Button
+                        variant="link"
+                        visual="primary"
+                        className="mt-3 underline-offset-2 hover:underline"
+                        leftIcon={<Briefcase className="size-4" />}
+                        onClick={onViewJob}
+                      >
+                        View Job
+                      </Button>
+                    ) : null}
                   </div>
 
                   {isHistoryState ? (
