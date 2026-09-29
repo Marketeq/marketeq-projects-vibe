@@ -31,6 +31,12 @@ interface ProxyCheckResponse {
 // before writing this check. A request whose only resolvable IP is one of
 // these is never something this check can meaningfully answer for, so it
 // must never be allowed to reach the provider and produce a "clean" pass.
+// Local development only (see the NODE_ENV gate in detect()): the exact
+// loopback spellings a browser on the same machine produces. Deliberately
+// not the whole 127.0.0.0/8 block, and not any private/link-local range —
+// those keep failing closed everywhere, development included.
+const LOOPBACK_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
 function isUsablePublicIp(ip: string): boolean {
   if (ip === '::1' || ip === '::' || ip === '0.0.0.0') return false;
 
@@ -64,6 +70,17 @@ export class ProxyCheckVpnProxyDetectionProvider implements VpnProxyDetectionPro
     if (!input.ipAddress) {
       this.logger.warn('VPN/proxy check attempted with no resolvable client IP');
       throw new ConnectionCheckUnavailableException({ reason: 'no_client_ip' });
+    }
+    // Local development only: a developer running the whole stack on their own
+    // machine always reaches this service from loopback, which can never be
+    // checked, so the fail-closed rule below would block every guarded route
+    // (e.g. document upload) locally. Allow exactly the loopback addresses
+    // when NODE_ENV is 'development'. Read at call time; any other NODE_ENV
+    // (production, staging, test, unset) keeps the unchanged fail-closed path
+    // below, and public IPs are always checked normally.
+    if (process.env.NODE_ENV === 'development' && LOOPBACK_IPS.has(input.ipAddress)) {
+      this.logger.debug(`VPN/proxy check skipped for loopback ${input.ipAddress} (development only)`);
+      return VpnProxyDetectionResult.NONE;
     }
     // A private/loopback/reserved IP can never be meaningfully checked —
     // never let it reach the provider and risk a false "clean" pass.

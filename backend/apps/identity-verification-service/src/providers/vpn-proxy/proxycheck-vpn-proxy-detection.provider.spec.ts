@@ -162,4 +162,87 @@ describe('ProxyCheckVpnProxyDetectionProvider', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
   });
+
+  // Local-development loopback allowance: exactly 127.0.0.1, ::1 and the
+  // IPv4-mapped loopback, and only while NODE_ENV === 'development'.
+  describe('loopback handling by NODE_ENV', () => {
+    const LOOPBACKS = ['127.0.0.1', '::1', '::ffff:127.0.0.1'];
+    const originalNodeEnv = process.env.NODE_ENV;
+
+    afterEach(() => {
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+    });
+
+    describe('in development', () => {
+      beforeEach(() => {
+        process.env.NODE_ENV = 'development';
+      });
+
+      it.each(LOOPBACKS)('passes %s as NONE without calling proxycheck.io', async (loopback) => {
+        await expect(provider.detect({ ipAddress: loopback })).resolves.toBe(
+          VpnProxyDetectionResult.NONE,
+        );
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['10.0.0.5', 'RFC1918'],
+        ['192.168.1.1', 'RFC1918'],
+        ['172.20.0.5', 'RFC1918'],
+        ['169.254.1.1', 'IPv4 link-local'],
+        ['fe80::1', 'IPv6 link-local'],
+        ['fd00::1', 'IPv6 unique-local'],
+        ['0.0.0.0', 'unspecified'],
+        ['127.0.0.2', 'other 127.x loopback'],
+      ])('still fails closed for %s (%s)', async (unusableIp) => {
+        await expect(provider.detect({ ipAddress: unusableIp })).rejects.toBeInstanceOf(
+          ConnectionCheckUnavailableException,
+        );
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+
+      it('still fails closed when no IP could be resolved', async () => {
+        await expect(provider.detect({ ipAddress: '' })).rejects.toBeInstanceOf(
+          ConnectionCheckUnavailableException,
+        );
+      });
+
+      it('still checks a public IP normally and reports a detected VPN', async () => {
+        fetchMock.mockResolvedValue(jsonResponse(detections(true, false)));
+        await expect(provider.detect({ ipAddress: ip })).resolves.toBe(
+          VpnProxyDetectionResult.VPN_DETECTED,
+        );
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe.each([['production'], ['staging'], ['test'], [undefined]])(
+      'outside development (NODE_ENV=%s)',
+      (nodeEnv) => {
+        beforeEach(() => {
+          if (nodeEnv === undefined) delete process.env.NODE_ENV;
+          else process.env.NODE_ENV = nodeEnv;
+        });
+
+        // The IPv4-mapped spelling never reaches detect() in practice —
+        // extractClientIp strips the ::ffff: prefix first — so it is covered
+        // through the guard (vpn-proxy-check.guard.loopback.spec.ts) instead.
+        it.each(['127.0.0.1', '::1'])('still fails closed for %s', async (loopback) => {
+          await expect(provider.detect({ ipAddress: loopback })).rejects.toBeInstanceOf(
+            ConnectionCheckUnavailableException,
+          );
+          expect(fetchMock).not.toHaveBeenCalled();
+        });
+
+        it('still checks a public IP normally', async () => {
+          fetchMock.mockResolvedValue(jsonResponse(detections(false, false)));
+          await expect(provider.detect({ ipAddress: ip })).resolves.toBe(
+            VpnProxyDetectionResult.NONE,
+          );
+          expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+      },
+    );
+  });
 });
