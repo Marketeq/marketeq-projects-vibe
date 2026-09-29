@@ -80,6 +80,18 @@ export class OfferAcceptedSubscriber implements OnModuleInit, OnModuleDestroy {
       this.connection = connection;
 
       const channel = await connection.createChannel();
+      // The broker can close just this channel (PRECONDITION_FAILED on a
+      // topology mismatch, an ack of an unknown delivery tag) while the
+      // connection stays up. amqplib then emits 'error' on the channel, which
+      // with no listener is an unhandled 'error' event that crashes the
+      // process, and without a 'close' handler the consumer would silently
+      // stop. Closing the connection hands recovery to its 'close' handler.
+      channel.on('error', (err: Error) => this.logger.error(`RabbitMQ channel error: ${err.message}`));
+      channel.on('close', () => {
+        if (this.shuttingDown) return;
+        this.logger.warn('RabbitMQ channel closed — reconnecting');
+        connection.close().catch(() => undefined);
+      });
       await channel.assertExchange(OFFER_EXCHANGE, 'topic', { durable: true, autoDelete: false });
       await channel.assertExchange(OFFER_DLX, 'direct', { durable: true, autoDelete: false });
       await channel.assertQueue(QUEUE_CONTRACTS, {
@@ -99,6 +111,9 @@ export class OfferAcceptedSubscriber implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Consuming ${QUEUE_CONTRACTS} (${ROUTING_KEYS.join(', ')})`);
     } catch (err) {
       this.logger.error(`Failed to start offer.accepted consumer: ${(err as Error).message}`);
+      // A failure after connecting (createChannel, a declare) leaves the
+      // connection open; close it so each retry doesn't leak one.
+      await this.connection?.close().catch(() => undefined);
       this.scheduleReconnect();
     }
   }
