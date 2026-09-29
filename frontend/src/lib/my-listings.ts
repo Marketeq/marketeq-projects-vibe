@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ProjectAPI } from "@/service/http/project"
 
 export const MY_LISTING_TYPES = ["project", "service"] as const
@@ -320,42 +320,44 @@ export function formatActivityDate(iso?: string): string {
   }).format(date)
 }
 
+// QA-201/PMCM-403: this used to catch its own errors and return `[]`,
+// making a failed request indistinguishable from a genuinely empty
+// account — the dashboard would silently render "you haven't created any
+// listings yet" (or nothing, once seeds were already migrated) instead of
+// telling the user anything failed. Errors now propagate to the caller,
+// which is what lets useMyListings tell the two cases apart and show a
+// real error state instead of a misleading empty one.
 async function fetchBackendListings(): Promise<MyListing[]> {
-  try {
-    const res = await ProjectAPI.GetMyProjects()
-    const projects = res?.data ?? []
-    if (!Array.isArray(projects)) return []
-    return projects.map((p: any) => ({
-      id: p.id,
-      title: p.title && p.title.trim().length > 0 ? p.title : "Untitled",
-      type: (p.listingType === "service"
-        ? "service"
-        : "project") as MyListingType,
-      status: (p.status === "published"
-        ? "Active"
-        : p.status === "in_review"
-          ? "In Review"
-          : "Draft") as MyListingStatus,
-      category: p.categories?.[0] || "Uncategorized",
-      description: p.shortDescription || p.fullDescription,
-      mediaUrl:
-        p.mediaUrls?.[0] ||
-        (Array.isArray(p.media)
-          ? p.media[0]?.featuredImage
-          : p.media?.featuredImage) ||
-        undefined,
-      budget: p.budget
-        ? `$${Number(p.budget).toLocaleString()} budget`
-        : "Budget TBD",
-      updatedAt: p.updatedAt || p.createdAt,
-      datePublished: p.projectDatePublished ?? null,
-      teamAvatars: Array.isArray(p.teamAvatars) ? p.teamAvatars : [],
-      hasValidationError: Boolean(p.hasValidationError),
-    }))
-  } catch (err) {
-    console.warn("Failed to fetch backend listings; using local fallback:", err)
-    return []
-  }
+  const res = await ProjectAPI.GetMyProjects()
+  const projects = res?.data ?? []
+  if (!Array.isArray(projects)) return []
+  return projects.map((p: any) => ({
+    id: p.id,
+    title: p.title && p.title.trim().length > 0 ? p.title : "Untitled",
+    type: (p.listingType === "service"
+      ? "service"
+      : "project") as MyListingType,
+    status: (p.status === "published"
+      ? "Active"
+      : p.status === "in_review"
+        ? "In Review"
+        : "Draft") as MyListingStatus,
+    category: p.categories?.[0] || "Uncategorized",
+    description: p.shortDescription || p.fullDescription,
+    mediaUrl:
+      p.mediaUrls?.[0] ||
+      (Array.isArray(p.media)
+        ? p.media[0]?.featuredImage
+        : p.media?.featuredImage) ||
+      undefined,
+    budget: p.budget
+      ? `$${Number(p.budget).toLocaleString()} budget`
+      : "Budget TBD",
+    updatedAt: p.updatedAt || p.createdAt,
+    datePublished: p.projectDatePublished ?? null,
+    teamAvatars: Array.isArray(p.teamAvatars) ? p.teamAvatars : [],
+    hasValidationError: Boolean(p.hasValidationError),
+  }))
 }
 
 const SEED_MIGRATED_KEY = "marketeq-seed-listings-migrated"
@@ -412,16 +414,32 @@ async function ensureSeedListingsInBackend(): Promise<void> {
 export function useMyListings() {
   const [listings, setListings] = useState<MyListing[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  // QA-201/PMCM-403: distinct from isLoading/listings.length===0 — true only
+  // when the backend fetch itself failed, so the dashboard can tell "you
+  // have no listings" apart from "your listings failed to load".
+  const [hasError, setHasError] = useState(false)
+  // QA-201/PMCM-403: the mount effect and the window-focus listener below
+  // both call refreshListings with the same stable reference — if the
+  // window regains focus while the mount-triggered call is still in
+  // flight (e.g. tabbing away and back right after landing on the page),
+  // two overlapping calls race, and without this guard an earlier, slower
+  // call resolving after a later, faster one would overwrite its result —
+  // including overwriting a real success with a stale failure. Only the
+  // most recently started call is allowed to commit state.
+  const requestIdRef = useRef(0)
 
   const refreshListings = useCallback(async () => {
+    const requestId = ++requestIdRef.current
     try {
       setIsLoading(true)
+      setHasError(false)
       // Ensure seed listings exist in the backend on first load
       await ensureSeedListingsInBackend()
       const [backendListings, localDrafts] = await Promise.all([
         fetchBackendListings(),
         Promise.resolve(normalizeDraftsFromStorage()),
       ])
+      if (requestId !== requestIdRef.current) return
       // Backend listings take priority; only show local drafts that
       // don't have a matching backend entry (by id)
       const backendIds = new Set(backendListings.map((l) => l.id))
@@ -437,11 +455,16 @@ export function useMyListings() {
         ].sort(compareListingsByRecentActivity)
       )
     } catch (error) {
+      if (requestId !== requestIdRef.current) return
       console.error("Failed to fetch listings:", error)
-      // Fallback to local-only
+      // QA-201/PMCM-403: surface the failure rather than silently rendering
+      // the same "no listings" state a genuinely empty account would show.
+      // Local drafts still fill in below it so in-progress work isn't
+      // hidden by the error state.
+      setHasError(true)
       setListings(getMyListings())
     } finally {
-      setIsLoading(false)
+      if (requestId === requestIdRef.current) setIsLoading(false)
     }
   }, [])
 
@@ -457,5 +480,5 @@ export function useMyListings() {
     return () => window.removeEventListener("focus", onFocus)
   }, [refreshListings])
 
-  return { listings, isLoading, refreshListings }
+  return { listings, isLoading, hasError, refreshListings }
 }
