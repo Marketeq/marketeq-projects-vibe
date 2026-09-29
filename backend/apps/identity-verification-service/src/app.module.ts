@@ -23,7 +23,7 @@ import { HealthModule } from './health/health.module';
 import { DOCUMENT_VERIFICATION_PROVIDER } from './providers/document-verification/document-verification-provider.interface';
 import { DiditDocumentVerificationProvider } from './providers/document-verification/didit-document-verification.provider';
 import { DOCUMENT_COVERAGE_PROVIDER } from './providers/document-coverage/document-coverage-provider.interface';
-import { NotYetAvailableDocumentCoverageProvider } from './providers/document-coverage/not-yet-available-document-coverage.provider';
+import { CatalogDocumentCoverageProvider } from './providers/document-coverage/catalog-document-coverage.provider';
 import { VPN_PROXY_DETECTION_PROVIDER } from './providers/vpn-proxy/vpn-proxy-detection-provider.interface';
 import { ProxyCheckVpnProxyDetectionProvider } from './providers/vpn-proxy/proxycheck-vpn-proxy-detection.provider';
 import { LOCATION_PROVIDER } from './providers/location/location-provider.interface';
@@ -80,7 +80,7 @@ import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
     // startVerificationSession route still depends on it. See the
     // two-stage integration's final report.
     { provide: DOCUMENT_VERIFICATION_PROVIDER, useClass: DiditDocumentVerificationProvider },
-    { provide: DOCUMENT_COVERAGE_PROVIDER, useClass: NotYetAvailableDocumentCoverageProvider },
+    { provide: DOCUMENT_COVERAGE_PROVIDER, useClass: CatalogDocumentCoverageProvider },
     { provide: VPN_PROXY_DETECTION_PROVIDER, useClass: ProxyCheckVpnProxyDetectionProvider },
     { provide: LOCATION_PROVIDER, useClass: LocationServiceHttpProvider },
     { provide: OBJECT_STORAGE_PROVIDER, useClass: R2ObjectStorageProvider },

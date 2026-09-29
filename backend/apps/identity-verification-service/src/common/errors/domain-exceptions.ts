@@ -105,8 +105,8 @@ export class UnknownVendorSessionException extends DomainException {
 }
 
 // Distinct from UnsupportedDocumentForCountryException: this fires when the
-// coverage lookup itself could not produce an answer (no confirmed data
-// source is wired in yet — see DocumentCoverageProvider's doc comment) —
+// coverage lookup itself could not produce an answer (the committed coverage
+// catalog failed its integrity check — see CatalogDocumentCoverageProvider) —
 // never a confirmed "this type isn't accepted" result. Callers must fail
 // closed on this (block submission, show error/retry in the UI), the same
 // policy already applied to ConnectionCheckUnavailableException and

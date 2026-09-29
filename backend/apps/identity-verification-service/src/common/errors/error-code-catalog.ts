@@ -140,7 +140,7 @@ export const ERROR_CODE_CATALOG: readonly ErrorCatalogEntry[] = [
   {
     code: 'DOCUMENT_COVERAGE_UNAVAILABLE',
     httpStatus: 503,
-    meaning: 'The per-country accepted-document-types lookup could not produce an answer — distinct from a confirmed "not accepted" result, which returns UNSUPPORTED_DOCUMENT_FOR_COUNTRY instead. No confirmed Didit data source is wired in yet (see DocumentCoverageProvider).',
+    meaning: 'The per-country accepted-document-types lookup could not produce an answer — distinct from a confirmed "not accepted" result, which returns UNSUPPORTED_DOCUMENT_FOR_COUNTRY instead. In practice this fires only if the committed coverage catalog fails its integrity check (see CatalogDocumentCoverageProvider); a country the catalog simply does not list is a confirmed empty answer, not this error.',
     source: 'accepted-documents endpoint and submitDocument coverage check.',
     callerAudience: 'end-user',
     safeToDisplayVerbatim: true,

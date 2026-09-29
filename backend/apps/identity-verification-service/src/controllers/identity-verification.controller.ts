@@ -104,7 +104,8 @@ export class IdentityVerificationController {
     @Query() dto: AcceptedDocumentsRequestDto,
   ): Promise<AcceptedDocumentsResponseDto> {
     const acceptedDocumentTypes = await this.service.getAcceptedDocumentTypes(dto.issuingCountry);
-    return AcceptedDocumentsResponseDto.from(dto.issuingCountry, acceptedDocumentTypes);
+    const metadata = await this.service.getDocumentCoverageMetadata();
+    return AcceptedDocumentsResponseDto.from(dto.issuingCountry, acceptedDocumentTypes, metadata);
   }
 
   @Post('documents/upload-url')

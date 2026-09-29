@@ -14,6 +14,7 @@ import {
   DocumentNotFoundException,
   LegacyVerificationPathRetiredException,
 } from '../common/errors/domain-exceptions';
+import { CatalogDocumentCoverageProvider } from '../providers/document-coverage/catalog-document-coverage.provider';
 import { IdentityVerificationProfile } from '../entities/identity-verification-profile.entity';
 import { IdentityDocument } from '../entities/identity-document.entity';
 import { VerificationAttempt } from '../entities/verification-attempt.entity';
@@ -317,6 +318,20 @@ describe('IdentityVerificationService', () => {
     });
   });
 
+  describe('getDocumentCoverageMetadata', () => {
+    it('returns the coverage provider\'s catalog metadata unchanged', async () => {
+      const metadata = { catalogVersion: '2026-09-29.1', retrievedAt: '2026-09-29' };
+      const { service } = buildService({
+        documentCoverageProvider: {
+          getAcceptedDocumentTypes: jest.fn(),
+          getCatalogMetadata: jest.fn().mockResolvedValue(metadata),
+        } as any,
+      });
+
+      await expect(service.getDocumentCoverageMetadata()).resolves.toEqual(metadata);
+    });
+  });
+
   describe('getAcceptedDocumentTypes', () => {
     it('returns exactly what the coverage provider resolves, including a genuine empty list', async () => {
       const { service, documentCoverageProvider } = buildService({
@@ -459,6 +474,67 @@ describe('IdentityVerificationService', () => {
 
       await expect(service.submitDocument('user-1', buildDto())).rejects.toMatchObject({
         code: 'DOCUMENT_COVERAGE_UNAVAILABLE',
+      });
+    });
+
+    describe('against the real catalog-backed provider (same catalog as GET accepted-documents)', () => {
+      const realProvider = () => new CatalogDocumentCoverageProvider() as any;
+
+      it('accepts a passport for the United States', async () => {
+        const { service, queryRunner } = buildService({
+          profileRepository: { findOne: jest.fn().mockResolvedValue(profile) },
+          documentCoverageProvider: realProvider(),
+        });
+
+        await expect(service.submitDocument('user-1', buildDto())).resolves.toMatchObject({
+          documentType: DocumentType.PASSPORT,
+        });
+        expect(queryRunner.commitTransaction).toHaveBeenCalled();
+      });
+
+      it('rejects a residence permit for Afghanistan, which Didit does not list for it', async () => {
+        const { service, queryRunner } = buildService({
+          profileRepository: { findOne: jest.fn().mockResolvedValue(profile) },
+          documentCoverageProvider: realProvider(),
+        });
+
+        await expect(
+          service.submitDocument(
+            'user-1',
+            buildDto({ issuingCountry: 'AF', documentType: DocumentType.RESIDENCE_PERMIT }),
+          ),
+        ).rejects.toMatchObject({ code: 'UNSUPPORTED_DOCUMENT_FOR_COUNTRY' });
+        expect(queryRunner.connect).not.toHaveBeenCalled();
+      });
+
+      it('rejects a passport for Aruba, which Didit does not list for it', async () => {
+        const { service } = buildService({
+          profileRepository: { findOne: jest.fn().mockResolvedValue(profile) },
+          documentCoverageProvider: realProvider(),
+        });
+
+        await expect(
+          service.submitDocument('user-1', buildDto({ issuingCountry: 'AW' })),
+        ).rejects.toMatchObject({ code: 'UNSUPPORTED_DOCUMENT_FOR_COUNTRY' });
+      });
+
+      it('accepts and rejects the same combinations the accepted-documents lookup reports', async () => {
+        const provider = realProvider();
+        const { service } = buildService({
+          profileRepository: { findOne: jest.fn().mockResolvedValue(profile) },
+          documentCoverageProvider: provider,
+        });
+
+        const accepted = await service.getAcceptedDocumentTypes('AF');
+        expect(accepted).toEqual([DocumentType.ID_CARD, DocumentType.PASSPORT, DocumentType.DRIVERS_LICENCE]);
+        for (const documentType of Object.values(DocumentType)) {
+          const outcome = service.submitDocument('user-1', buildDto({ issuingCountry: 'AF', documentType }));
+          if (accepted.includes(documentType)) {
+            await expect(outcome).resolves.toBeDefined();
+          } else {
+            await expect(outcome).rejects.toMatchObject({ code: 'UNSUPPORTED_DOCUMENT_FOR_COUNTRY' });
+          }
+        }
       });
     });
   });
