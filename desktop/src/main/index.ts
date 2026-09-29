@@ -282,6 +282,7 @@ async function bootstrap(): Promise<void> {
       apiBaseUrl,
       contractRepo: repos.contract,
       taskRepo: repos.task,
+      onUnauthorized: () => authService?.handleUnauthorized() ?? Promise.resolve(false),
     });
     logger.info('contracts IPC wired');
   } catch (err) {
@@ -694,6 +695,25 @@ async function bootstrap(): Promise<void> {
     logger.info('phase 7 auto-updater skipped (dev mode)');
   }
 
+  // Close the active session BEFORE anything is torn down. APP_QUIT's
+  // effects write ended_at/billable_seconds and the event-bridge enqueues the
+  // backend session.close into the (SQLite) outbox — both need the DB and the
+  // timer's bus alive. It used to be fired without awaiting, right before
+  // dispose() and the DB close, so it never landed: every quit left the
+  // session open and the next boot "crash-recovered" it with 0 billable.
+  let sessionClosedForQuit = false;
+  const closeSessionForQuit = async () => {
+    if (sessionClosedForQuit) return;
+    sessionClosedForQuit = true;
+    try {
+      if (timerService && timerService.getSnapshot().activeSessionId) {
+        await timerService.dispatch({ type: 'APP_QUIT' });
+      }
+    } catch (err) {
+      logger.warn({ err }, 'error while closing the active session on quit');
+    }
+  };
+
   app.on('before-quit', (evt) => {
     // Confirm-before-quit when there's an active session.
     if (windowManager && !windowManager.isQuitting()) {
@@ -701,9 +721,18 @@ async function bootstrap(): Promise<void> {
       void (async () => {
         const ok = await windowManager!.confirmQuit();
         if (!ok) return;
+        await closeSessionForQuit();
         windowManager!.prepareToQuit();
         app.quit();
       })();
+      return;
+    }
+
+    // Quit paths that skip the confirm (updater restart, OS shutdown, no
+    // window manager): hold the quit once to close the session first.
+    if (!sessionClosedForQuit && timerService?.getSnapshot().activeSessionId) {
+      evt.preventDefault();
+      void closeSessionForQuit().then(() => app.quit());
       return;
     }
 
@@ -749,7 +778,7 @@ async function bootstrap(): Promise<void> {
       logger.warn({ err }, 'error while stopping updater service');
     }
     try {
-      timerService?.dispatch({ type: 'APP_QUIT' }).catch(() => undefined);
+      // The session was already closed by closeSessionForQuit() above.
       timerService?.dispose();
       detachIpcHandlers?.();
     } catch (err) {

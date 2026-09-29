@@ -13,6 +13,15 @@ const DailyContractTotalRow = z.object({
 });
 export type DailyContractTotal = z.infer<typeof DailyContractTotalRow>;
 
+const DailyTaskTotalRow = z.object({
+  contract_id: z.string().min(1),
+  task_id: z.string().min(1),
+  total_billable_seconds: z.number().int().nonnegative(),
+  first_started_at: z.number().int(),
+  last_ended_at: z.number().int(),
+});
+export type DailyTaskTotal = z.infer<typeof DailyTaskTotalRow>;
+
 export function createSessionRepo(db: DbHandle) {
   return {
     findActive(userId: string): SessionRow | null {
@@ -87,13 +96,40 @@ export function createSessionRepo(db: DbHandle) {
     },
 
     /**
+     * Running checkpoint: persist the session's billable seconds so far and
+     * stamp updated_at as "last moment we know the timer was alive". Written
+     * every few seconds while Running and on every transition out of it, so a
+     * crash / force-kill loses at most one checkpoint interval instead of the
+     * whole session (billable_seconds was previously only ever written on a
+     * graceful close). Nothing else writes session.updated_at, which is what
+     * lets closeAllOpen() use it as the recovery end time.
+     */
+    checkpoint(input: { id: string; billableSeconds: number; at: number }): void {
+      run(
+        db,
+        `UPDATE session SET billable_seconds = ?, updated_at = ?
+           WHERE id = ? AND ended_at IS NULL`,
+        [input.billableSeconds, input.at, input.id],
+      );
+    },
+
+    /**
      * Crash-recovery sweep: close every session a previous process left open
      * (ended_at IS NULL). A raw local UPDATE — not an FSM transition, never a
-     * DELETE. Mirrors closeActive's time_entry close, minus the per-session
-     * filter. Deliberately does NOT rewrite billable_seconds — whatever was
-     * persisted stays. Returns each closed row's id/endedAt/endReason/
-     * billableSeconds — everything the caller needs to enqueue a backend
-     * session.close — without a second lookup query.
+     * DELETE.
+     *
+     * Each session is closed at its LAST CHECKPOINT (updated_at), not at the
+     * relaunch time: the gap while the app was dead is not work, and billing
+     * it would pay for hours nobody tracked (doc 01 §18: never silently bill
+     * after an unclean restart). `endedAt` is only an upper bound.
+     *
+     * billable_seconds becomes the larger of the last checkpoint and the sum
+     * of the session's time_entry segments (with any still-open segment cut
+     * at the checkpoint) — so work that was recorded is never dropped to 0.
+     *
+     * Returns each closed row's id/endedAt/endReason/billableSeconds —
+     * everything the caller needs to enqueue a backend session.close —
+     * without a second lookup query.
      */
     closeAllOpen(input: {
       endedAt: number;
@@ -110,25 +146,77 @@ export function createSessionRepo(db: DbHandle) {
           SessionRow,
           `SELECT * FROM session WHERE ended_at IS NULL`,
         );
-        run(
-          db,
-          `UPDATE session SET ended_at = ?, end_reason = ?, updated_at = ?
-             WHERE ended_at IS NULL`,
-          [input.endedAt, input.reason, input.endedAt],
-        );
-        run(
-          db,
-          `UPDATE time_entry SET ended_at = ?, duration_seconds = CAST((? - started_at) / 1000 AS INTEGER)
-             WHERE ended_at IS NULL`,
-          [input.endedAt, input.endedAt],
-        );
-        return open.map((r) => ({
-          id: r.id,
-          endedAt: input.endedAt,
-          endReason: input.reason,
-          billableSeconds: r.billable_seconds,
-        }));
+        return open.map((r) => {
+          const endedAt = Math.min(
+            input.endedAt,
+            Math.max(r.started_at, r.updated_at),
+          );
+          run(
+            db,
+            `UPDATE time_entry
+                SET ended_at = MAX(started_at, ?),
+                    duration_seconds = CAST((MAX(started_at, ?) - started_at) / 1000 AS INTEGER)
+              WHERE session_id = ? AND ended_at IS NULL`,
+            [endedAt, endedAt, r.id],
+          );
+          const entrySeconds =
+            (db
+              .prepare(
+                `SELECT COALESCE(SUM(duration_seconds), 0) AS s FROM time_entry WHERE session_id = ?`,
+              )
+              .get(r.id) as { s: number }).s;
+          const billableSeconds = Math.max(r.billable_seconds, entrySeconds);
+          run(
+            db,
+            `UPDATE session SET ended_at = ?, end_reason = ?, billable_seconds = ?, updated_at = ?
+               WHERE id = ?`,
+            [endedAt, input.reason, billableSeconds, endedAt, r.id],
+          );
+          return {
+            id: r.id,
+            endedAt,
+            endReason: input.reason,
+            billableSeconds,
+          };
+        });
       });
+    },
+
+    /**
+     * Per-task totals for CLOSED sessions started in [startAt, endAt) — what
+     * the tracker shows next to each task after a relaunch (time worked and
+     * the day's first-start / last-end range). The open session is excluded
+     * for the same reason as sumBillableSecondsByContract: its live total
+     * comes from the timer snapshot, not this row.
+     */
+    sumBillableSecondsByTask(input: {
+      userId: string;
+      startAt: number;
+      endAt: number;
+    }): DailyTaskTotal[] {
+      return many(
+        db,
+        DailyTaskTotalRow,
+        `SELECT contract_id, task_id,
+                SUM(billable_seconds) AS total_billable_seconds,
+                MIN(started_at) AS first_started_at,
+                MAX(ended_at) AS last_ended_at
+           FROM session
+          WHERE user_id = ? AND ended_at IS NOT NULL
+            AND started_at >= ? AND started_at < ?
+          GROUP BY contract_id, task_id`,
+        [input.userId, input.startAt, input.endAt],
+      );
+    },
+
+    /** The user's most recent session (open or closed), any day. */
+    findLatest(userId: string): SessionRow | null {
+      return one(
+        db,
+        SessionRow,
+        `SELECT * FROM session WHERE user_id = ? ORDER BY started_at DESC LIMIT 1`,
+        [userId],
+      );
     },
 
     listForUser(userId: string, limit = 200): SessionRow[] {

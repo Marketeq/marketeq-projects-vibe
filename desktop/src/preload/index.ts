@@ -15,6 +15,9 @@ import type {
   AuthStatusChangedPayload,
   BackendContract,
   BackendTask,
+  CreateTaskInput,
+  CreateManualTimeInput,
+  CreateManualTimeResult,
   BreakExpiredPayload,
   BreakExpiringPayload,
   CaptureHealth,
@@ -281,6 +284,13 @@ const dtt = {
       ipcRenderer.invoke(IPC.contractsGetMine),
     getTasks: (contractId: string): Promise<BackendTask[]> =>
       ipcRenderer.invoke(IPC.contractsGetTasks, contractId),
+    createTask: (input: CreateTaskInput): Promise<BackendTask> =>
+      ipcRenderer.invoke(IPC.contractsCreateTask, input),
+  },
+
+  manualTime: {
+    create: (input: CreateManualTimeInput): Promise<CreateManualTimeResult> =>
+      ipcRenderer.invoke(IPC.manualTimeCreate, input),
   },
 
   stats: {
