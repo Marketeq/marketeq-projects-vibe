@@ -44,6 +44,7 @@ import {
   DocumentCoverageProvider,
   DOCUMENT_COVERAGE_PROVIDER,
   DocumentCoverageMetadata,
+  SupportedDocumentCountry,
 } from '../providers/document-coverage/document-coverage-provider.interface';
 import {
   VpnProxyDetectionProvider,
@@ -250,6 +251,10 @@ export class IdentityVerificationService {
   // every other "can't determine yet" boundary in this service).
   async getAcceptedDocumentTypes(issuingCountry: string): Promise<DocumentType[]> {
     return this.documentCoverageProvider.getAcceptedDocumentTypes(issuingCountry);
+  }
+
+  async getSupportedDocumentCountries(): Promise<SupportedDocumentCountry[]> {
+    return this.documentCoverageProvider.getSupportedCountries();
   }
 
   // Version of the coverage catalog that answers getAcceptedDocumentTypes and

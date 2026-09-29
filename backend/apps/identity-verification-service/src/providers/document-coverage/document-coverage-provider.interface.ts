@@ -23,6 +23,12 @@ export interface DocumentCoverageMetadata {
   retrievedAt: string;
 }
 
+export interface SupportedDocumentCountry {
+  alpha2: string;
+  alpha3: string;
+  name: string;
+}
+
 export interface DocumentCoverageProvider {
   /**
    * Resolves to the subset of our DocumentType values accepted for
@@ -34,6 +40,13 @@ export interface DocumentCoverageProvider {
    * answer as a known empty one.
    */
   getAcceptedDocumentTypes(issuingCountry: string): Promise<DocumentType[]>;
+
+  /**
+   * Countries for which at least one canonical document type is accepted and
+   * that can be addressed by ISO alpha-2 (entries without an alpha-2 mapping
+   * are excluded), sorted by name.
+   */
+  getSupportedCountries(): Promise<SupportedDocumentCountry[]>;
 
   /** Version metadata of the catalog that answers getAcceptedDocumentTypes. */
   getCatalogMetadata(): Promise<DocumentCoverageMetadata>;

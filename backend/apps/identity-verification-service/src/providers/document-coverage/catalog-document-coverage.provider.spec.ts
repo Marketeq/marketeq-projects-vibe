@@ -1,7 +1,9 @@
+import { DIDIT_CODES_WITHOUT_ISO_ALPHA2 } from './iso-3166-1';
 import { DocumentType } from '../../entities/enums/identity-verification.enums';
 import { DocumentCoverageUnavailableException } from '../../common/errors/domain-exceptions';
 import {
   buildCoverageIndex,
+  buildSupportedCountries,
   CatalogDocumentCoverageProvider,
   DocumentCoverageCatalogIntegrityError,
 } from './catalog-document-coverage.provider';
@@ -83,6 +85,81 @@ describe('CatalogDocumentCoverageProvider', () => {
       const first = await provider.getAcceptedDocumentTypes('US');
       first.length = 0;
       await expect(provider.getAcceptedDocumentTypes('US')).resolves.toHaveLength(4);
+    });
+  });
+
+  describe('getSupportedCountries', () => {
+    it.each([
+      ['US', 'USA', 'United States'],
+      ['IN', 'IND', 'India'],
+      ['GB', 'GBR', 'United Kingdom'],
+    ])('lists %s with its alpha-3 and name', async (alpha2, alpha3, name) => {
+      const countries = await provider.getSupportedCountries();
+
+      expect(countries).toContainEqual({ alpha2, alpha3, name });
+    });
+
+    it('excludes every catalog entry that has no ISO alpha-2 mapping', async () => {
+      const countries = await provider.getSupportedCountries();
+      const alpha3s = new Set(countries.map((c) => c.alpha3));
+
+      for (const code of DIDIT_CODES_WITHOUT_ISO_ALPHA2) {
+        expect(alpha3s.has(code)).toBe(false);
+      }
+      expect(countries).toHaveLength(DIDIT_DOCUMENT_COVERAGE_CATALOG.countries.length - DIDIT_CODES_WITHOUT_ISO_ALPHA2.length);
+      for (const country of countries) {
+        expect(country.alpha2).toMatch(/^[A-Z]{2}$/);
+        expect(country.alpha3).toMatch(/^[A-Z]{3}$/);
+        expect(country.name.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('maps Didit\'s RKS row to Kosovo (XK / XKX)', async () => {
+      await expect(provider.getSupportedCountries()).resolves.toContainEqual({
+        alpha2: 'XK',
+        alpha3: 'XKX',
+        name: 'Kosovo',
+      });
+    });
+
+    it('is sorted by name, has unique alpha-2 codes, and agrees with getAcceptedDocumentTypes', async () => {
+      const countries = await provider.getSupportedCountries();
+
+      const names = countries.map((c) => c.name);
+      expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+      expect(new Set(countries.map((c) => c.alpha2)).size).toBe(countries.length);
+      for (const { alpha2 } of countries) {
+        expect((await provider.getAcceptedDocumentTypes(alpha2)).length).toBeGreaterThan(0);
+      }
+    });
+
+    it('omits a country whose only listed document has no canonical type', () => {
+      const countries = [
+        { code: 'USA', documents: ['Passport'] },
+        { code: 'GBR', documents: ['Health Insurance'] },
+      ] as DiditCoverageCountry[];
+      const catalog = catalogWith(countries);
+
+      expect(buildSupportedCountries(catalog, buildCoverageIndex(catalog)).map((c) => c.alpha2)).toEqual(['US']);
+    });
+
+    it('returns fresh objects so callers cannot mutate the catalog view', async () => {
+      const first = await provider.getSupportedCountries();
+      first[0].name = 'tampered';
+      first.length = 0;
+
+      const second = await provider.getSupportedCountries();
+      expect(second.length).toBeGreaterThan(200);
+      expect(second[0].name).not.toBe('tampered');
+    });
+
+    it('fails closed when the catalog integrity check fails', async () => {
+      const broken = new CatalogDocumentCoverageProvider({
+        ...DIDIT_DOCUMENT_COVERAGE_CATALOG,
+        contentSha256: '0'.repeat(64),
+      });
+
+      await expect(broken.getSupportedCountries()).rejects.toBeInstanceOf(DocumentCoverageUnavailableException);
     });
   });
 

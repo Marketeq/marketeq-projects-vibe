@@ -27,6 +27,7 @@ import { DocumentResponseDto } from '../dto/response/document.response.dto';
 import { DocumentUploadUrlResponseDto } from '../dto/response/document-upload-url.response.dto';
 import { VerificationSessionResponseDto } from '../dto/response/verification-session.response.dto';
 import { AcceptedDocumentsResponseDto } from '../dto/response/accepted-documents.response.dto';
+import { SupportedDocumentCountriesResponseDto } from '../dto/response/supported-document-countries.response.dto';
 import {
   BeginBiometricVerificationResponseDto,
   DocumentCheckResponseDto,
@@ -106,6 +107,17 @@ export class IdentityVerificationController {
     const acceptedDocumentTypes = await this.service.getAcceptedDocumentTypes(dto.issuingCountry);
     const metadata = await this.service.getDocumentCoverageMetadata();
     return AcceptedDocumentsResponseDto.from(dto.issuingCountry, acceptedDocumentTypes, metadata);
+  }
+
+  // Countries the document-selection screen can offer, from the same catalog
+  // that answers accepted-documents and submitDocument's coverage check.
+  // Informational lookup: not guarded by VpnProxyCheckGuard, like
+  // accepted-documents above.
+  @Get('supported-document-countries')
+  async getSupportedDocumentCountries(): Promise<SupportedDocumentCountriesResponseDto> {
+    const countries = await this.service.getSupportedDocumentCountries();
+    const metadata = await this.service.getDocumentCoverageMetadata();
+    return SupportedDocumentCountriesResponseDto.from(countries, metadata);
   }
 
   @Post('documents/upload-url')

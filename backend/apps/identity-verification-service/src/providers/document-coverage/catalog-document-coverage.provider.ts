@@ -4,6 +4,7 @@ import { DocumentCoverageUnavailableException } from '../../common/errors/domain
 import {
   DocumentCoverageMetadata,
   DocumentCoverageProvider,
+  SupportedDocumentCountry,
 } from './document-coverage-provider.interface';
 import {
   computeCoverageContentSha256,
@@ -12,7 +13,7 @@ import {
   DOCUMENT_COVERAGE_CATALOG,
   DocumentCoverageCatalog,
 } from './didit-document-coverage.catalog';
-import { isoAlpha2FromDiditAlpha3 } from './iso-3166-1';
+import { isoAlpha2FromDiditAlpha3, isoCountryFromDiditAlpha3 } from './iso-3166-1';
 
 export class DocumentCoverageCatalogIntegrityError extends Error {}
 
@@ -60,6 +61,22 @@ export function buildCoverageIndex(catalog: DocumentCoverageCatalog): Map<string
   return index;
 }
 
+// Countries the alpha-2 API can serve with at least one canonical document
+// type, sorted by name (alpha-2 as tiebreaker). Rows with no ISO alpha-2
+// mapping are excluded. Assumes the catalog already passed buildCoverageIndex.
+export function buildSupportedCountries(
+  catalog: DocumentCoverageCatalog,
+  index: Map<string, DocumentType[]>,
+): SupportedDocumentCountry[] {
+  const countries: SupportedDocumentCountry[] = [];
+  for (const row of catalog.countries) {
+    const iso = isoCountryFromDiditAlpha3(row.code);
+    if (!iso || !(index.get(iso.alpha2)?.length)) continue;
+    countries.push({ alpha2: iso.alpha2, alpha3: iso.alpha3, name: iso.name });
+  }
+  return countries.sort((a, b) => a.name.localeCompare(b.name) || a.alpha2.localeCompare(b.alpha2));
+}
+
 /**
  * Bound as DOCUMENT_COVERAGE_PROVIDER. Answers from the committed, versioned
  * Didit coverage catalog — no network calls. A country absent from the
@@ -72,18 +89,27 @@ export function buildCoverageIndex(catalog: DocumentCoverageCatalog): Map<string
 export class CatalogDocumentCoverageProvider implements DocumentCoverageProvider {
   private readonly catalog: DocumentCoverageCatalog;
   private readonly index: Map<string, DocumentType[]> | null;
+  private readonly supportedCountries: SupportedDocumentCountry[];
 
   constructor(@Optional() @Inject(DOCUMENT_COVERAGE_CATALOG) catalog?: DocumentCoverageCatalog) {
     this.catalog = catalog ?? DIDIT_DOCUMENT_COVERAGE_CATALOG;
+    let index: Map<string, DocumentType[]> | null;
     try {
-      this.index = buildCoverageIndex(this.catalog);
+      index = buildCoverageIndex(this.catalog);
     } catch {
-      this.index = null;
+      index = null;
     }
+    this.index = index;
+    this.supportedCountries = index ? buildSupportedCountries(this.catalog, index) : [];
   }
 
   async getAcceptedDocumentTypes(issuingCountry: string): Promise<DocumentType[]> {
     return [...(this.requireIndex().get(issuingCountry.trim().toUpperCase()) ?? [])];
+  }
+
+  async getSupportedCountries(): Promise<SupportedDocumentCountry[]> {
+    this.requireIndex();
+    return this.supportedCountries.map((country) => ({ ...country }));
   }
 
   async getCatalogMetadata(): Promise<DocumentCoverageMetadata> {

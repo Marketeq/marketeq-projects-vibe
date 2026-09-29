@@ -5,7 +5,8 @@
 // Provenance: the alpha-2/alpha-3 pairs are the 249 officially assigned
 // ISO 3166-1 codes plus XK/XKX (Kosovo, user-assigned, used by Didit and by
 // common GeoIP data). Names are informational only (IANA tz database
-// iso3166.tab short names) and never drive behavior. Every pair was
+// iso3166.tab short names, except GB shown as "United Kingdom") and never
+// drive behavior. Every pair was
 // cross-checked against the alpha-2 and alpha-3 code sets in the `validator`
 // package and against the alpha-3/flag-file pairs on Didit's own published
 // coverage page before being committed.
@@ -96,7 +97,7 @@ export const ISO_3166_1_COUNTRIES: readonly IsoCountry[] = [
   { alpha2: 'FO', alpha3: 'FRO', name: 'Faroe Islands' },
   { alpha2: 'FM', alpha3: 'FSM', name: 'Micronesia' },
   { alpha2: 'GA', alpha3: 'GAB', name: 'Gabon' },
-  { alpha2: 'GB', alpha3: 'GBR', name: 'Britain (UK)' },
+  { alpha2: 'GB', alpha3: 'GBR', name: 'United Kingdom' },
   { alpha2: 'GE', alpha3: 'GEO', name: 'Georgia' },
   { alpha2: 'GG', alpha3: 'GGY', name: 'Guernsey' },
   { alpha2: 'GH', alpha3: 'GHA', name: 'Ghana' },
@@ -285,7 +286,10 @@ export const DIDIT_CODES_WITHOUT_ISO_ALPHA2: readonly string[] = ['ABK', 'DPR', 
 
 const BY_ALPHA3 = new Map(ISO_3166_1_COUNTRIES.map((country) => [country.alpha3, country]));
 
+export function isoCountryFromDiditAlpha3(diditAlpha3: string): IsoCountry | null {
+  return BY_ALPHA3.get(DIDIT_ALPHA3_ALIASES[diditAlpha3] ?? diditAlpha3) ?? null;
+}
+
 export function isoAlpha2FromDiditAlpha3(diditAlpha3: string): string | null {
-  const alpha3 = DIDIT_ALPHA3_ALIASES[diditAlpha3] ?? diditAlpha3;
-  return BY_ALPHA3.get(alpha3)?.alpha2 ?? null;
+  return isoCountryFromDiditAlpha3(diditAlpha3)?.alpha2 ?? null;
 }

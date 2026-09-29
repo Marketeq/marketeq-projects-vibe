@@ -70,4 +70,62 @@ describe('IdentityVerificationController GET accepted-documents', () => {
     expect(await errors('USA')).not.toHaveLength(0);
     expect(await errors('us')).not.toHaveLength(0);
   });
+
+  describe('GET supported-document-countries', () => {
+    it('returns catalogVersion and countries with alpha2, alpha3 and name only', async () => {
+      const response = await buildController().getSupportedDocumentCountries();
+
+      expect(response.catalogVersion).toBe('2026-09-29.1');
+      expect(Object.keys(response).sort()).toEqual(['catalogVersion', 'countries']);
+      for (const country of response.countries) {
+        expect(Object.keys(country).sort()).toEqual(['alpha2', 'alpha3', 'name']);
+      }
+    });
+
+    it.each([
+      ['US', 'USA', 'United States'],
+      ['IN', 'IND', 'India'],
+      ['GB', 'GBR', 'United Kingdom'],
+    ])('includes %s', async (alpha2, alpha3, name) => {
+      const response = await buildController().getSupportedDocumentCountries();
+
+      expect(response.countries).toContainEqual({ alpha2, alpha3, name });
+    });
+
+    it('excludes Didit entries with no alpha-2 mapping', async () => {
+      const response = await buildController().getSupportedDocumentCountries();
+      const alpha3s = response.countries.map((c) => c.alpha3);
+
+      for (const code of ['ABK', 'DPR', 'LPR', 'RSL', 'TRN', 'XOM', 'RKS']) {
+        expect(alpha3s).not.toContain(code);
+      }
+      expect(response.countries).toHaveLength(231);
+    });
+
+    it('every listed country is answerable by the accepted-documents route', async () => {
+      const controller = buildController();
+      const { countries } = await controller.getSupportedDocumentCountries();
+
+      for (const { alpha2 } of countries) {
+        const accepted = await controller.getAcceptedDocuments(query(alpha2));
+        expect(accepted.acceptedDocumentTypes.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('propagates DocumentCoverageUnavailableException (503) when the catalog is unusable', async () => {
+      const broken = new CatalogDocumentCoverageProvider({
+        catalogVersion: 'x',
+        sourceUrl: 'x',
+        sourceRenditionUrl: 'x',
+        retrievedAt: '2026-09-29',
+        sourceSha256: 'x',
+        contentSha256: 'not-the-hash',
+        countries: [],
+      });
+
+      await expect(buildController(broken).getSupportedDocumentCountries()).rejects.toBeInstanceOf(
+        DocumentCoverageUnavailableException,
+      );
+    });
+  });
 });

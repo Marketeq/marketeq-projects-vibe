@@ -332,6 +332,33 @@ describe('IdentityVerificationService', () => {
     });
   });
 
+  describe('getSupportedDocumentCountries', () => {
+    it('returns the coverage provider\'s supported countries unchanged', async () => {
+      const countries = [{ alpha2: 'US', alpha3: 'USA', name: 'United States' }];
+      const { service } = buildService({
+        documentCoverageProvider: {
+          getAcceptedDocumentTypes: jest.fn(),
+          getSupportedCountries: jest.fn().mockResolvedValue(countries),
+        } as any,
+      });
+
+      await expect(service.getSupportedDocumentCountries()).resolves.toEqual(countries);
+    });
+
+    it('propagates DocumentCoverageUnavailableException (fail closed)', async () => {
+      const { service } = buildService({
+        documentCoverageProvider: {
+          getAcceptedDocumentTypes: jest.fn(),
+          getSupportedCountries: jest.fn().mockRejectedValue(new DocumentCoverageUnavailableException()),
+        } as any,
+      });
+
+      await expect(service.getSupportedDocumentCountries()).rejects.toBeInstanceOf(
+        DocumentCoverageUnavailableException,
+      );
+    });
+  });
+
   describe('getAcceptedDocumentTypes', () => {
     it('returns exactly what the coverage provider resolves, including a genuine empty list', async () => {
       const { service, documentCoverageProvider } = buildService({
