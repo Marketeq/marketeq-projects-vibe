@@ -9,7 +9,11 @@
 import { ipcMain } from 'electron';
 import type { Logger } from 'pino';
 import { IPC } from '../../../shared/ipc-contracts';
-import type { IpcErrorResult, TodayStatsDTO } from '../../../shared/ipc-contracts';
+import type {
+  IpcErrorResult,
+  TodayStatsDTO,
+  TodayTaskStatDTO,
+} from '../../../shared/ipc-contracts';
 import type { SessionRepo } from '../../db/repos/session.repo';
 import type { ContractRepo } from '../../db/repos/contract.repo';
 import type { TimerService } from '../timer/timer-service';
@@ -41,6 +45,65 @@ export interface StatsIpcDeps {
 export function registerStatsIpc(deps: StatsIpcDeps): () => void {
   const log = deps.logger?.child({ svc: 'stats-ipc' });
 
+  // Totals for one local-day window from closed sessions, optionally folding
+  // in the live, not-yet-closed session (correct in any FSM state —
+  // Running/Paused/OnBreak* — since elapsed only grows while a billable
+  // segment is open). Earnings use each contract's own rate.
+  const dayTotals = (userId: string, startAt: number, endAt: number, includeLive: boolean) => {
+    const byContract = new Map<string, number>(
+      deps.sessionRepo
+        .sumBillableSecondsByContract({ userId, startAt, endAt })
+        .map((r) => [r.contract_id, r.total_billable_seconds]),
+    );
+
+    // Per-task totals, so a relaunch restores each task's time and range
+    // instead of showing every task as "Not started".
+    const byTask = new Map<string, TodayTaskStatDTO>();
+    for (const r of deps.sessionRepo.sumBillableSecondsByTask({ userId, startAt, endAt })) {
+      byTask.set(r.task_id, {
+        contractId: r.contract_id,
+        taskId: r.task_id,
+        trackedSeconds: r.total_billable_seconds,
+        firstStartedAt: r.first_started_at,
+        lastEndedAt: r.last_ended_at,
+        liveSeconds: 0,
+      });
+    }
+
+    if (includeLive) {
+      const snap = deps.timer.getSnapshot();
+      if (snap.activeSessionId && snap.pickedContract) {
+        const active = deps.sessionRepo.findById(snap.activeSessionId);
+        if (active && active.started_at >= startAt && active.started_at < endAt) {
+          const { contractId, taskId } = snap.pickedContract;
+          byContract.set(contractId, (byContract.get(contractId) ?? 0) + snap.elapsedSec);
+          const t = byTask.get(taskId);
+          byTask.set(taskId, {
+            contractId,
+            taskId,
+            trackedSeconds: (t?.trackedSeconds ?? 0) + snap.elapsedSec,
+            firstStartedAt: Math.min(t?.firstStartedAt ?? active.started_at, active.started_at),
+            lastEndedAt: null,
+            liveSeconds: snap.elapsedSec,
+          });
+        }
+      }
+    }
+
+    let trackedSeconds = 0;
+    let earnedCents = 0;
+    for (const [contractId, seconds] of byContract) {
+      const contract = deps.contractRepo.findById(contractId);
+      if (!contract) {
+        log?.warn({ contractId }, 'day-stats: contract not mirrored locally, skipping');
+        continue;
+      }
+      trackedSeconds += seconds;
+      earnedCents += Math.round((seconds * contract.rate_minor) / 3600);
+    }
+    return { trackedSeconds, earnedCents, tasks: [...byTask.values()] };
+  };
+
   ipcMain.handle(IPC.statsGetToday, (): TodayStatsDTO | IpcErrorResult => {
     try {
       const userId = deps.getUserId();
@@ -48,37 +111,30 @@ export function registerStatsIpc(deps: StatsIpcDeps): () => void {
 
       const startAt = startOfLocalDay();
       const endAt = endOfLocalDay();
+      const today = dayTotals(userId, startAt, endAt, true);
+      // The previous local day (DST-safe: derived from today's local midnight).
+      const yesterdayStart = startOfLocalDay(new Date(startAt - 1));
+      const yesterday = dayTotals(userId, yesterdayStart, startAt, false);
 
-      const closed = deps.sessionRepo.sumBillableSecondsByContract({ userId, startAt, endAt });
-      const byContract = new Map<string, number>(
-        closed.map((r) => [r.contract_id, r.total_billable_seconds]),
-      );
+      // The task to pre-select on relaunch: the live one, else the most
+      // recent session's task.
+      const picked = deps.timer.getSnapshot().pickedContract;
+      const latestRow = picked ? null : deps.sessionRepo.findLatest(userId);
+      const lastTask = picked
+        ? { contractId: picked.contractId, taskId: picked.taskId }
+        : latestRow
+          ? { contractId: latestRow.contract_id, taskId: latestRow.task_id }
+          : null;
 
-      // Fold in the live, not-yet-closed session's elapsed seconds (correct
-      // in any FSM state — Running/Paused/OnBreak* — since it only grows
-      // while a billable segment is open).
-      const snap = deps.timer.getSnapshot();
-      if (snap.activeSessionId && snap.pickedContract) {
-        const active = deps.sessionRepo.findById(snap.activeSessionId);
-        if (active && active.started_at >= startAt && active.started_at < endAt) {
-          const prev = byContract.get(snap.pickedContract.contractId) ?? 0;
-          byContract.set(snap.pickedContract.contractId, prev + snap.elapsedSec);
-        }
-      }
-
-      let trackedSeconds = 0;
-      let earnedCents = 0;
-      for (const [contractId, seconds] of byContract) {
-        const contract = deps.contractRepo.findById(contractId);
-        if (!contract) {
-          log?.warn({ contractId }, 'today-stats: contract not mirrored locally, skipping');
-          continue;
-        }
-        trackedSeconds += seconds;
-        earnedCents += Math.round((seconds * contract.rate_minor) / 3600);
-      }
-
-      return { trackedSeconds, earnedCents, currency: 'USD', goalSeconds: GOAL_SECONDS };
+      return {
+        trackedSeconds: today.trackedSeconds,
+        earnedCents: today.earnedCents,
+        currency: 'USD',
+        goalSeconds: GOAL_SECONDS,
+        tasks: today.tasks,
+        lastTask,
+        yesterday,
+      };
     } catch (err) {
       log?.error({ err }, 'stats:get-today failed');
       return ipcError('ERR_STATS_TODAY', err instanceof Error ? err.message : String(err));

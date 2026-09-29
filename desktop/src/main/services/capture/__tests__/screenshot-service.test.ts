@@ -5,10 +5,11 @@
 // bootstrap here; the captureOnce integration path is exercised via
 // the smoke test in `scripts/smoke-capture.ts`.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   computeNextIntervalMs,
   findRetentionCandidates,
+  detectActiveAppName,
   type RetentionCandidate,
 } from '../screenshot-service';
 
@@ -48,6 +49,53 @@ describe('computeNextIntervalMs', () => {
     }
     expect(Math.min(...samples)).toBeGreaterThanOrEqual(5000);
     expect(Math.max(...samples)).toBeLessThanOrEqual(690_000);
+  });
+});
+
+describe('detectActiveAppName', () => {
+  it('returns trimmed osascript output on darwin', async () => {
+    const exec = vi.fn().mockResolvedValue('Google Chrome\n');
+    expect(await detectActiveAppName('darwin', exec as any)).toBe('Google Chrome');
+    expect(exec).toHaveBeenCalledWith(
+      'osascript',
+      expect.any(Array),
+      expect.objectContaining({ timeout: 2000 }),
+    );
+  });
+
+  it('returns trimmed PowerShell output on win32', async () => {
+    const exec = vi.fn().mockResolvedValue('Google Chrome\r\n');
+    expect(await detectActiveAppName('win32', exec as any)).toBe('Google Chrome');
+    expect(exec).toHaveBeenCalledWith(
+      'powershell.exe',
+      expect.any(Array),
+      expect.objectContaining({ timeout: 2000 }),
+    );
+  });
+
+  it('returns null on unsupported platforms', async () => {
+    expect(await detectActiveAppName('linux', vi.fn() as any)).toBeNull();
+  });
+
+  it('returns null when exec throws (non-fatal)', async () => {
+    const exec = vi.fn().mockRejectedValue(new Error('timeout'));
+    expect(await detectActiveAppName('win32', exec as any)).toBeNull();
+  });
+
+  it('returns null on empty/whitespace output', async () => {
+    const exec = vi.fn().mockResolvedValue('  \n');
+    expect(await detectActiveAppName('win32', exec as any)).toBeNull();
+  });
+
+  it('win32: passes a stable cache path via env and always loads it via Add-Type -Path (compiling only when it does not yet exist) — avoids recompiling the C# helper on every call', async () => {
+    const exec = vi.fn().mockResolvedValue('Google Chrome');
+    await detectActiveAppName('win32', exec as any);
+    const [, , opts] = exec.mock.calls[0];
+    const script = exec.mock.calls[0][1][exec.mock.calls[0][1].length - 1];
+    expect(opts.env.DTT_HELPER_DLL).toMatch(/DttWin32\.dll$/);
+    expect(script).toContain('Add-Type -OutputAssembly $dllPath');
+    expect(script).toContain('if (-not (Test-Path $dllPath))'); // only compiles when missing
+    expect(script).toContain('Add-Type -Path $dllPath'); // always loads regardless of branch
   });
 });
 

@@ -26,6 +26,8 @@ import { createScreenshotService } from './services/capture/screenshot-service';
 import { createActivityMonitor } from './services/capture/activity-monitor';
 import { startInputActivity, stopInputActivity } from './services/capture/input-activity';
 import { createCleanupJob } from './services/capture/cleanup-job';
+import { createAppUsageTracker, type AppUsageTracker } from './services/capture/app-usage-tracker';
+import { createActivityWatchTracker } from './services/capture/activitywatch-tracker';
 import { createCaptureSupervisor } from './services/capture/capture-supervisor';
 import { registerCaptureIpcHandlers } from './services/capture/register-ipc';
 import { createApiClient } from './services/sync/api-client';
@@ -280,6 +282,7 @@ async function bootstrap(): Promise<void> {
       apiBaseUrl,
       contractRepo: repos.contract,
       taskRepo: repos.task,
+      onUnauthorized: () => authService?.handleUnauthorized() ?? Promise.resolve(false),
     });
     logger.info('contracts IPC wired');
   } catch (err) {
@@ -336,12 +339,53 @@ async function bootstrap(): Promise<void> {
       logger,
       permissionGrantRepo: repos.permissionGrant,
     });
+    // Real event-driven tracking via a locally-run ActivityWatch, with an
+    // automatic fallback to 15s polling if the bundled binaries are
+    // missing, blocked, or fail to start on this machine — app tracking
+    // never drops to zero, it just degrades to the previous behavior.
+    //
+    // The polling tracker only ever runs when ActivityWatch has genuinely
+    // failed — its own startup check came back negative, or one of its two
+    // child processes exited mid-session — never as a standing "just in
+    // case" companion. Each polling sample shells out to PowerShell/
+    // osascript; running that on a timer for the length of every session
+    // regardless of whether it's needed was wasted work for the common
+    // case where ActivityWatch is working fine.
+    const pollingTracker = createAppUsageTracker({
+      logger,
+      options: { pollIntervalMs: 15_000 },
+    });
+    let fallbackActive = false;
+    const awTracker = createActivityWatchTracker({
+      logger,
+      options: { dbPath: path.join(app.getPath('userData'), 'dtt', 'activitywatch') },
+      onAvailabilityChange: (available) => {
+        if (!available && !fallbackActive) {
+          fallbackActive = true;
+          pollingTracker.start();
+          logger.info('activitywatch unavailable — starting polling tracker fallback');
+        }
+      },
+    });
+    const appUsageTracker: AppUsageTracker = {
+      start: () => {
+        fallbackActive = false;
+        awTracker.start();
+      },
+      stop: () => {
+        pollingTracker.stop();
+        awTracker.stop();
+        fallbackActive = false;
+      },
+      drain: () => (awTracker.isAvailable() ? awTracker.drain() : pollingTracker.drain()),
+    };
     screenshotService = createScreenshotService({
       logger,
       screenshotRepo: repos.screenshot,
       sessionRepo: repos.session,
       preferenceRepo: repos.preference,
       permissions,
+      appUsageTracker,
     });
     const activityMonitor = createActivityMonitor({
       logger,
@@ -357,6 +401,7 @@ async function bootstrap(): Promise<void> {
       logger,
       screenshotService,
       activityMonitor,
+      appUsageTracker,
       cleanupJob,
       permissions,
       preferenceRepo: repos.preference,
@@ -650,6 +695,25 @@ async function bootstrap(): Promise<void> {
     logger.info('phase 7 auto-updater skipped (dev mode)');
   }
 
+  // Close the active session BEFORE anything is torn down. APP_QUIT's
+  // effects write ended_at/billable_seconds and the event-bridge enqueues the
+  // backend session.close into the (SQLite) outbox — both need the DB and the
+  // timer's bus alive. It used to be fired without awaiting, right before
+  // dispose() and the DB close, so it never landed: every quit left the
+  // session open and the next boot "crash-recovered" it with 0 billable.
+  let sessionClosedForQuit = false;
+  const closeSessionForQuit = async () => {
+    if (sessionClosedForQuit) return;
+    sessionClosedForQuit = true;
+    try {
+      if (timerService && timerService.getSnapshot().activeSessionId) {
+        await timerService.dispatch({ type: 'APP_QUIT' });
+      }
+    } catch (err) {
+      logger.warn({ err }, 'error while closing the active session on quit');
+    }
+  };
+
   app.on('before-quit', (evt) => {
     // Confirm-before-quit when there's an active session.
     if (windowManager && !windowManager.isQuitting()) {
@@ -657,9 +721,18 @@ async function bootstrap(): Promise<void> {
       void (async () => {
         const ok = await windowManager!.confirmQuit();
         if (!ok) return;
+        await closeSessionForQuit();
         windowManager!.prepareToQuit();
         app.quit();
       })();
+      return;
+    }
+
+    // Quit paths that skip the confirm (updater restart, OS shutdown, no
+    // window manager): hold the quit once to close the session first.
+    if (!sessionClosedForQuit && timerService?.getSnapshot().activeSessionId) {
+      evt.preventDefault();
+      void closeSessionForQuit().then(() => app.quit());
       return;
     }
 
@@ -705,7 +778,7 @@ async function bootstrap(): Promise<void> {
       logger.warn({ err }, 'error while stopping updater service');
     }
     try {
-      timerService?.dispatch({ type: 'APP_QUIT' }).catch(() => undefined);
+      // The session was already closed by closeSessionForQuit() above.
       timerService?.dispose();
       detachIpcHandlers?.();
     } catch (err) {
