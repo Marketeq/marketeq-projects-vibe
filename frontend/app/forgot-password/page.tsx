@@ -3,6 +3,7 @@
 import { Fragment, Suspense, useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
+import { SupportAPI } from "@/service/http/support"
 import { AuthAPI } from "@/service/http/auth"
 import {
   cn,
@@ -24,7 +25,6 @@ import {
   Eye,
   EyeOff,
   HelpCircle,
-  Lock01,
   Mail01,
   MessageDotsSquare,
   Phone,
@@ -66,7 +66,6 @@ import {
   PhoneNumberInput,
   isPhoneValid,
 } from "@/components/phone-number-input"
-import { MagicLinkSentShowcase } from "@/components/magic-link-sent-showcase"
 import { AccountNotFoundShowcase } from "@/components/account-not-found-showcaset"
 
 const SENT_EMAIL_STORAGE_KEY = "forgotPasswordEmail"
@@ -255,6 +254,8 @@ function ForgotPassword() {
   // Same 371x258 screen as the message confirmation -- the two Figmas are
   // identical bar the wording, so it is parameterised rather than duplicated.
   const [isSupportSentOpen, setIsSupportSentOpen] = useState(false)
+  const [isSendingSupportMessage, setIsSendingSupportMessage] = useState(false)
+  const [isRequestingCall, setIsRequestingCall] = useState(false)
   const [supportSentKind, setSupportSentKind] =
     useState<SupportSentKind>("message")
   const [supportMessage, setSupportMessage] = useState({
@@ -354,11 +355,16 @@ function ForgotPassword() {
         ? window.sessionStorage.getItem(SENT_EMAIL_STORAGE_KEY)
         : null
     if (storedEmail) {
+      const found =
+        window.sessionStorage.getItem(ACCOUNT_FOUND_STORAGE_KEY) !== "0"
       setSentEmail(storedEmail)
-      setAccountFound(
-        window.sessionStorage.getItem(ACCOUNT_FOUND_STORAGE_KEY) !== "0",
-      )
-      setSubmitted(true)
+      setAccountFound(found)
+      if (found) {
+        setRecoveryEmail(storedEmail)
+        setIsEmailVerificationOpen(true)
+      } else {
+        setSubmitted(true)
+      }
     }
   }, [searchParams])
 
@@ -395,7 +401,14 @@ function ForgotPassword() {
       }
       setSentEmail(email)
       setAccountFound(found)
-      setSubmitted(true)
+      // A found account gets the Figma "Please check your email" modal. The
+      // not-found case still falls through to its own showcase.
+      if (found) {
+        setRecoveryEmail(email)
+        setIsEmailVerificationOpen(true)
+      } else {
+        setSubmitted(true)
+      }
       router.replace("/forgot-password?sent=1")
     } catch (error: any) {
       toast({
@@ -568,40 +581,38 @@ function ForgotPassword() {
     z.string().email().safeParse(supportMessage.email.trim()).success
 
   /**
-   * Hands the message to the person's own mail client, addressed to
-   * SUPPORT_EMAIL and prefilled from the form.
+   * Posts the message to notification-service, which relays it to the support
+   * inbox over Brevo.
    *
-   * This is a HANDOFF, not a server send. There is no support-ticket endpoint
-   * anywhere in the backend -- searched `contact`, `contactUs`, `support-ticket`
-   * and every POST route; nothing exists -- and a server send would need the
-   * Brevo config that §3 is already blocked on. A `mailto:` is the only route
-   * that actually reaches the address today.
-   *
-   * The consequence worth knowing: the confirmation screen opens as soon as the
-   * client is handed the draft, so it can say thank you for a message the
-   * person then abandons in their drafts. Replace both halves with a real
-   * endpoint when one exists. See docs/ACCOUNT_RECOVERY_NOTES.md.
+   * This replaces the `mailto:` handoff the screen used to do. That handoff
+   * only existed because Brevo was unconfigured; it also opened the
+   * confirmation as soon as the draft was handed over, so it could thank
+   * someone for a message they then abandoned. The confirmation now waits for
+   * the server to accept.
    */
-  const handleSupportMessageSubmit = () => {
-    const { firstName, lastName, email, subject, message } = supportMessage
-
-    // The form collects a name and a reply-to that a bare mailto body would
-    // otherwise lose -- the client sends from whatever account it is signed
-    // into, which is not necessarily the address typed here.
-    const body = [
-      `From: ${firstName.trim()} ${lastName.trim()}`,
-      `Reply to: ${email.trim()}`,
-      "",
-      message.trim(),
-    ].join("\n")
-
-    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(
-      subject.trim()
-    )}&body=${encodeURIComponent(body)}`
-
-    setIsEmailUsOpen(false)
-    setSupportSentKind("message")
-    setIsSupportSentOpen(true)
+  const handleSupportMessageSubmit = async () => {
+    setIsSendingSupportMessage(true)
+    try {
+      await SupportAPI.SendMessage({
+        firstName: supportMessage.firstName.trim(),
+        lastName: supportMessage.lastName.trim(),
+        email: supportMessage.email.trim(),
+        subject: supportMessage.subject.trim(),
+        message: supportMessage.message.trim(),
+      })
+      setIsEmailUsOpen(false)
+      setSupportSentKind("message")
+      setIsSupportSentOpen(true)
+    } catch (error: any) {
+      toast({
+        title:
+          error?.response?.data?.message ??
+          "We could not send that message. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSendingSupportMessage(false)
+    }
   }
 
   const updateScheduleForm = (
@@ -619,19 +630,38 @@ function ForgotPassword() {
     z.string().email().safeParse(scheduleForm.email.trim()).success
 
   /**
-   * NOT WIRED, and unlike Email Us there is no `mailto:` fallback that would
-   * make sense -- a booking has to land in a calendar, not an inbox.
+   * Posts the call request to notification-service, which emails it to the
+   * support inbox for a human to action.
    *
-   * `scheduling-service` (:3024) exists but exposes nothing for unauthenticated
-   * support booking, so there is no endpoint to call. Nothing is reserved and
-   * no one is told. The confirmation screen this opens therefore states a call
-   * is booked when none is: the same class of untruth as the password screen in
-   * §4.2, and it must not reach real users. See docs/ACCOUNT_RECOVERY_NOTES.md.
+   * This is a REQUEST, not a booking: nothing is reserved in a calendar, and
+   * the date and time are relayed as the free text the form collected, with no
+   * timezone attached. The confirmation copy must not promise more than that
+   * until a real scheduling integration exists — see
+   * docs/ACCOUNT_RECOVERY_NOTES.md §4.6.
    */
-  const handleScheduleSubmit = () => {
-    setIsScheduleOpen(false)
-    setSupportSentKind("call")
-    setIsSupportSentOpen(true)
+  const handleScheduleSubmit = async () => {
+    setIsRequestingCall(true)
+    try {
+      await SupportAPI.RequestCall({
+        name: scheduleForm.name.trim(),
+        email: scheduleForm.email.trim(),
+        phone: scheduleForm.phone.trim(),
+        date: scheduleForm.date.trim(),
+        time: scheduleForm.time.trim(),
+      })
+      setIsScheduleOpen(false)
+      setSupportSentKind("call")
+      setIsSupportSentOpen(true)
+    } catch (error: any) {
+      toast({
+        title:
+          error?.response?.data?.message ??
+          "We could not send that request. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsRequestingCall(false)
+    }
   }
 
   const handleAuthenticatorSubmit = () => {
@@ -708,6 +738,24 @@ function ForgotPassword() {
     router.replace("/forgot-password")
   }
 
+  /**
+   * The verification modal is reached two ways: from the reset form, and from
+   * the recovery chooser before the form has ever been submitted. Only the
+   * first has sent-state to tear down, which is what handleBack clears.
+   */
+  const closeEmailVerification = () => {
+    setIsEmailVerificationOpen(false)
+    if (sentEmail) handleBack()
+  }
+
+  /**
+   * Resending is bound to the submitted address on the form path — that one
+   * also re-checks whether the account exists and confirms with a toast —
+   * and to the email field on the recovery path.
+   */
+  const handleVerificationResend = () =>
+    sentEmail ? handleResend() : sendRecoveryLink(recoveryEmail)
+
   return (
     <>
       <div className="px-5 md:px-[100px] h-[64px] flex items-center justify-between">
@@ -733,16 +781,9 @@ function ForgotPassword() {
         )}
       >
         {submitted ? (
-          accountFound ? (
-            <MagicLinkSentShowcase
-              email={sentEmail}
-              onResend={handleResend}
-              goBack={handleBack}
-              isResending={isResending}
-            />
-          ) : (
-            <AccountNotFoundShowcase email={sentEmail} goBack={handleBack} />
-          )
+          // Only the not-found case renders here now; a found account gets the
+          // "Please check your email" modal instead.
+          <AccountNotFoundShowcase email={sentEmail} goBack={handleBack} />
         ) : (
           <form
             onSubmit={handleSubmit(onSubmit)}
@@ -867,7 +908,9 @@ function ForgotPassword() {
                   152 + 32 + 36 + 32 + 20 + 100 padding = 372. */}
               <Dialog
                 open={isEmailVerificationOpen}
-                onOpenChange={setIsEmailVerificationOpen}
+                onOpenChange={(open) =>
+                  open ? setIsEmailVerificationOpen(true) : closeEmailVerification()
+                }
               >
                 <DialogContent
                   dialogOverlay={<DialogOverlay className="bg-transparent" />}
@@ -900,11 +943,13 @@ function ForgotPassword() {
                   <Button
                     type="button"
                     size="sm"
-                    disabled={isSendingRecoveryLink}
-                    onClick={() => void sendRecoveryLink(recoveryEmail)}
+                    disabled={isSendingRecoveryLink || isResending}
+                    onClick={() => void handleVerificationResend()}
                   >
                     <Send01 className="size-[15px]" />
-                    {isSendingRecoveryLink ? "Sending..." : "Resend Link"}
+                    {isSendingRecoveryLink || isResending
+                      ? "Sending..."
+                      : "Resend Link"}
                   </Button>
 
                   {/* The Figma draws Back as bare 14/20 text, not a 36px
@@ -914,7 +959,7 @@ function ForgotPassword() {
                     size="sm"
                     variant="link"
                     className="h-5 p-0"
-                    onClick={() => setIsEmailVerificationOpen(false)}
+                    onClick={closeEmailVerification}
                   >
                     Back
                   </Button>
@@ -1378,11 +1423,11 @@ function ForgotPassword() {
                     <Button
                       type="button"
                       size="sm"
-                      disabled={!canSendSupportMessage}
-                      onClick={handleSupportMessageSubmit}
+                      disabled={!canSendSupportMessage || isSendingSupportMessage}
+                      onClick={() => void handleSupportMessageSubmit()}
                     >
                       <Check className="size-[15px]" />
-                      Submit
+                      {isSendingSupportMessage ? "Sending..." : "Submit"}
                     </Button>
                   </div>
                 </DialogContent>
@@ -1547,11 +1592,11 @@ function ForgotPassword() {
                     <Button
                       type="button"
                       size="sm"
-                      disabled={!canScheduleCall}
-                      onClick={handleScheduleSubmit}
+                      disabled={!canScheduleCall || isRequestingCall}
+                      onClick={() => void handleScheduleSubmit()}
                     >
                       <Check className="size-[15px]" />
-                      Submit
+                      {isRequestingCall ? "Sending..." : "Submit"}
                     </Button>
                   </div>
                 </DialogContent>
@@ -1834,20 +1879,6 @@ function ForgotPassword() {
           </form>
         )}
 
-        <div className="max-w-[467px] mt-10 3xl:mt-[50px] mx-auto px-5 md:px-[50px] w-full">
-          <div className="flex items-center gap-x-2">
-            <Lock01 className="size-5 text-primary-500" />
-            <span className="text-sm font-bold leading-5 text-dark-blue-400">
-              Security Tip
-            </span>
-          </div>
-          <div className="mt-2.5">
-            <span className="text-sm leading-5 text-dark-blue-400">
-              Marketeq will never ask for your password over email. Always make
-              sure you're on marketeqdigital.com before entering your credentials.
-            </span>
-          </div>
-        </div>
       </div>
     </>
   )

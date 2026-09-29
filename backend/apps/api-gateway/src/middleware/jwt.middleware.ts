@@ -46,6 +46,13 @@ const PUBLIC_EXACT_ROUTES = new Set([
   // credential; verify-email hashes and validates it server-side.
   '/v1/payouts/verify-email',
   '/v1/payouts/verify',
+  // Contact Support in the account recovery flow. Whoever needs it is locked
+  // out by definition and has no token to present, so the same reasoning as
+  // /auth/forgot-password applies. Both endpoints are per-IP rate limited in
+  // notification-service's SupportService, since a public endpoint that sends
+  // mail is a relay otherwise.
+  '/support/messages',
+  '/support/call-requests',
 ])
 
 // Only explicitly allowed dynamic routes are public.
