@@ -24,6 +24,10 @@ __UPDATE — 17 SEPTEMBER 2026__
 
 Corrects one stale citation identified by the Identity Verification Final Cross\-Document Audit \(Finding 11\): Section 9’s “10\. What’s Next” list previously described the Setup & Bootstrapping document’s number as still unconfirmed\. It is Document 06 — Identity Verification Setup & Bootstrapping, per the Required Docs Checklist’s locked numbering and Document 06’s own self\-identification; the bullet now names it directly\. No other content in this document was changed\.
 
+__UPDATE — 29 SEPTEMBER 2026__
+
+Documents the existing user\-facing route GET /v1/identity\-verification/accepted\-documents, which was implemented before this document described it, and records that it is now backed by a real, versioned country/document coverage catalog instead of always returning 503\. Additive documentation only; no existing route, DTO field, or error code is changed\. See Section 5f and the Section 6 route table\.
+
 # __1\. Purpose & Scope__
 
 This document defines the complete HTTP API surface of identity\-verification\-service: every route, its authentication requirement, its request and response shapes, its validation rules, and every error it can return\. It contains full, copy\-pasteable NestJS controller and DTO code\.
@@ -42,7 +46,7 @@ Every DTO field, enum, and validation rule below reuses the exact entities, enum
 
 # __3\. What You're Building__
 
-Ten endpoints across three controllers, grouped by who calls them:
+Eleven endpoints across three controllers, grouped by who calls them:
 
 __User\-facing \(bearer auth — the logged\-in end user, via the frontend\)__
 
@@ -54,6 +58,7 @@ __User\-facing \(bearer auth — the logged\-in end user, via the frontend\)__
 - POST /v1/identity\-verification/documents — submit document metadata \(SVC\-08, SVC\-09, SVC\-11\)\.
 - POST /v1/identity\-verification/documents/:documentId/verify — start a Didit verification session \(SVC\-14, SVC\-21\)\.
 - GET /v1/identity\-verification/documents — list the current user's submitted documents\.
+- GET /v1/identity\-verification/accepted\-documents?issuingCountry=US — which canonical document types are accepted for an issuing country \(Section 5f\)\.
 
 __Internal \(internal auth — other Marketeq services\)__
 
@@ -830,6 +835,35 @@ export class InternalStatusResponseDto \{
   isVerified: boolean;
 
 \}
+
+## __5f — Accepted documents by issuing country \(coverage catalog\)__
+
+__Route: __GET /v1/identity\-verification/accepted\-documents?issuingCountry=US
+
+Returns which of the four canonical document types \(passport, id\_card, drivers\_licence, residence\_permit\) are accepted for the given issuing country\. The document\-selection screen renders only what this returns; the Figma rows are layout examples, not universal support\. submitDocument validates against the same catalog server\-side, so a client that skips the UI filter cannot submit an unsupported combination \(400 UNSUPPORTED\_DOCUMENT\_FOR\_COUNTRY\)\.
+
+__Request: __issuingCountry — exactly two uppercase letters \(ISO 3166\-1 alpha\-2\), validated by AcceptedDocumentsRequestDto\.
+
+__Response \(200\): __
+
+```
+{
+  "issuingCountry": "AF",
+  "acceptedDocumentTypes": ["id_card", "passport", "drivers_licence"],
+  "catalogVersion": "2026-09-29.1",
+  "catalogRetrievedAt": "2026-09-29"
+}
+```
+
+issuingCountry and acceptedDocumentTypes are unchanged from the original contract\. catalogVersion and catalogRetrievedAt are additive metadata; clients that ignore them are unaffected\. An empty acceptedDocumentTypes array is a real answer \(Didit lists nothing we support for that country, or does not list the country\) — it is not a failure\.
+
+__Errors: __400 VALIDATION\_ERROR for a malformed issuingCountry; 503 DOCUMENT\_COVERAGE\_UNAVAILABLE only if the committed coverage catalog fails its integrity check \(fail\-closed; never a silently empty or permissive list\)\.
+
+__Data source — a versioned, backend\-owned catalog\. __Didit publishes no supported API for this data; its only supported publication is the public page https://docs.didit.me/core\-technology/id\-verification/supported\-documents\-id\-verification\. The service therefore ships a reviewed snapshot of that page \(providers/document\-coverage/didit\-document\-coverage\.catalog\.ts\), served by CatalogDocumentCoverageProvider\. It is never scraped at runtime, and Didit's undocumented internal coverage endpoint is not used\. The catalog records its source URL, retrieval date, catalogVersion, the SHA\-256 of the retrieved source, and a SHA\-256 of the normalized data that is verified on load\.
+
+__What the source does and does not contain\. __Didit publishes, per country, its code \(ISO 3166\-1 alpha\-3, plus a few non\-ISO territory codes\) and a supported/unsupported flag for five columns: ID Card, Passport, Driver License, Residence Permit, Health Insurance\. It publishes no Didit document codes and no required\-side counts; both are stored as null and are never inferred\. Health Insurance is retained in the source snapshot but maps to no canonical DocumentType, so it is never returned or accepted \(the four\-type model is Answer 7\); Birth Certificate is not present\. Didit's alpha\-3 codes are bridged to the public alpha\-2 input through an ISO 3166\-1 table \(iso\-3166\-1\.ts\); Didit's RKS is aliased to XK \(Kosovo\), and six Didit\-only codes with no ISO equivalent \(ABK, DPR, LPR, RSL, TRN, XOM\) stay in the snapshot but are unreachable through the alpha\-2 API\.
+
+__Refreshing the catalog\. __Manually download the markdown rendition of the Didit page \(\.\.\./supported\-documents\-id\-verification\.md\), then run the offline importer from backend/: npx ts\-node apps/identity\-verification\-service/scripts/import\-didit\-document\-coverage\.ts \-\-input <file> \-\-retrieved\-at YYYY\-MM\-DD\. By default it is a dry run that validates the file and prints a readable diff against the current catalog; add \-\-write to regenerate didit\-document\-coverage\.data\.ts \(the only generated file\)\. It computes the source and normalized\-data hashes and the next catalogVersion itself, and is deterministic and idempotent\. It refuses to write on duplicate countries, unknown or reordered document columns, malformed rows, ISO codes with no alpha\-2 mapping that are not on the deliberate no\-ISO list, alpha\-2 collisions, or any country/mapping count change that is not acknowledged with \-\-expect\-countries and \-\-expect\-mappings\. It never fetches anything and is never imported by the running service; Health Insurance stays in the source rows but maps to no canonical type, and document codes and required sides are never generated\. A hash mismatch in the committed data fails the catalog integrity check and its spec\.
 
 ## __Step 6 — Guards & Exception Filter__
 
@@ -1906,6 +1940,18 @@ none
 DocumentResponseDto\[\]
 
 401 \(auth\)
+
+GET
+
+/v1/identity\-verification/accepted\-documents
+
+bearer
+
+AcceptedDocumentsRequestDto \(query: issuingCountry, ISO 3166\-1 alpha\-2\)
+
+AcceptedDocumentsResponseDto
+
+400 VALIDATION\_ERROR; 503 DOCUMENT\_COVERAGE\_UNAVAILABLE
 
 GET
 
